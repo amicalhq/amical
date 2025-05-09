@@ -1,9 +1,14 @@
 import fs from 'fs';
 import { globby } from 'globby';
 import prettier from 'prettier';
+import path from 'path';
 
 async function generate() {
   const prettierConfig = await prettier.resolveConfig('./.prettierrc');
+
+  // Ensure directories exist
+  fs.mkdirSync('public', { recursive: true });
+  fs.mkdirSync('out', { recursive: true });
 
   // Get static pages
   const pages = await globby([
