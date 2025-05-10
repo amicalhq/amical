@@ -33,76 +33,79 @@
 - [🎗 License](#-license)
 
 > [!CAUTION]
-> Amical is still in alpha, expect bugs and breaking changes.
+> Amical is in active development towards its first release, expect bugs and breaking changes.
 
 ## 🔮 Overview
 
-Open Source Speech-to-Text App powered by Gen AI
-Type 10x faster, no keyboards needed. Fast, Accurate, Context-aware and Private.
+Open Source Speech-to-Text App powered by Gen AI\
+Type 10x faster, no keyboard needed. Fast, Accurate, Context-aware and Private.
 
 ## ✨ Features
+> ✔︎ - Done, ◑ - In Progress, ◯ - Planned
+### Apps
 
-### 🖥️ Apps
+◑<span style="color: #a855f7"> Mac</span>
+◯<span style="color: #a855f7"> Windows</span>
+◯<span style="color: #a855f7"> Linux</span>
+◯<span style="color: #a855f7"> iOS</span>
+◯<span style="color: #a855f7"> Android</span>
 
-📅 Windows
-🔄 Mac
-📅 Linux
-📅 iOS
-📅 Android
+### Core Features
 
-### ⚡ Core Features
+◑<span style="color: #22C55E"> Context-Awareness</span>
+<span style="color: #808080">Recognize context based on the apps being used in the background to customize transcription based on use case.</span>
 
-🔄 Audio/Video Transcription
-Transcribe both audio and video files into text seamlessly.
+◑<span style="color: #22C55E"> Custom Hotkeys</span>
+<span style="color: #808080">Configure your own keyboard shortcuts for common transcription actions (start/stop, commands).</span>
 
-🔄 Context-Awareness
-Recognize and maintain context across long transcription sessions.
+◑<span style="color: #22C55E"> Desktop Widget</span>
+<span style="color: #808080">A floating, easily accessible widget to control transcription without leaving your workflow.</span>
 
-🔄 Custom Hotkeys
-Configure your own keyboard shortcuts for common transcription actions (start/stop, pause).
+◑<span style="color: #22C55E"> Multi-Language Support</span>
+<span style="color: #808080">Support for multiple languages and dialects for global usability.</span>
 
-🔄 Desktop Widget
-A floating, easily accessible widget to control transcription without leaving your workflow.
+◯<span style="color: #22C55E"> Audio/Video Transcription</span>
+<span style="color: #808080">Transcribe uploaded audio and video files into text.</span>
 
-📅 Multi-Language Support
-Support for multiple languages and dialects for global usability.
+◯<span style="color: #22C55E"> Custom Vocabulary</span>
+<span style="color: #808080">Add custom terms, such as names, technical terms, or slang, for better accuracy.</span>
 
-📅 Meeting Recording
-Record live meetings or conferences with both mic and system audio.
+◯<span style="color: #22C55E"> Automatic Vocabulary</span>
+<span style="color: #808080">Dynamically learn new words based on usage.</span>
 
-📅 Custom Vocabulary
-Add custom terms, such as product names, technical terms, or slang, for better accuracy.
+◯<span style="color: #22C55E"> Bring Your Own Key</span>
+<span style="color: #808080">Use your own API keys for AI models within the app.</span>
 
-📅 Automatic Vocabulary
-Dynamically learn new words based on user input and usage.
+◯<span style="color: #22C55E"> Bring Your Own Model</span>
+<span style="color: #808080">Point to any AI model within the app.</span>
 
-📅 Bring Your Own Model
-Easily plug in your own custom or third-party ASR model for transcription.
+### Integrations & Workflow
 
-📅 Bring Your Own Key
-Integrate with third-party ASR models by using your own API key (e.g., OpenAI, Azure).
+◯<span style="color: #22C55E"> MCP Integrations</span>
+<span style="color: #808080">Seamlessly integrate your apps via MCP for control and command.</span>
 
-📅 Voice Commands
-Control desktop apps and transcription processes via native voice commands and MCP integrations.
+◯<span style="color: #22C55E"> Voice Commands</span>
+<span style="color: #808080">Control desktop apps and transcription processes via native and custom integrations.</span>
 
-### 🔗 Integrations & Workflow
+◯<span style="color: #22C55E"> Integration Framework</span>
+<span style="color: #808080">Framework and devkit to build your own integrations.</span>
 
-📅 MCP Integrations
-Seamlessly integrate with collaboration tools like Slack, Teams, or Notion for real-time workflow.
+### Enhancements
 
-### 🌟 Enhancements
+◯<span style="color: #22C55E"> Text Editing</span>
+<span style="color: #808080">Inline editing of transcribed text via voice commands.</span>
 
-📅 Text Editing
-Inline editing with full support for timestamps, formatting, and searching within transcripts.
+◯<span style="color: #22C55E"> Transcription History</span>
+<span style="color: #808080">Maintain an easily searchable history of transcribed texts, with export options.</span>
 
-📅 Transcription History
-Maintain an easily searchable history of transcribed texts, with export options (CSV, DOCX, PDF).
+◯<span style="color: #22C55E"> Note Taking</span>
+<span style="color: #808080">Take quick notes with voice within the app.</span>
 
-📅 Note Taking
-Add notes, tags, or highlight sections of your transcriptions for better organization.
+◯<span style="color: #22C55E"> Custom Prompts</span>
+<span style="color: #808080">Custom prompts for AI to pre and post-process transcription to support use cases like custom formatting, summaries, etc.</span>
 
-📅 Custom Prompts
-Pre-define prompts for AI to generate summaries, action items, or other insights directly from transcripts.
+◯<span style="color: #22C55E"> Meeting Transcription</span>
+<span style="color: #808080">Record live meetings with both mic and system audio for seamless transcription.</span>
 
 ## 🔰 Tech Stack
 
