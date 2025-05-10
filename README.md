@@ -7,6 +7,7 @@
 </picture>
 </div>
 
+
 <p align="center">
   <a href='http://makeapullrequest.com'>
     <img alt='PRs Welcome' src='https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=shields'/>
@@ -42,70 +43,57 @@ Type 10x faster, no keyboard needed. Fast, Accurate, Context-aware and Private.
 
 ## ✨ Features
 > ✔︎ - Done, ◑ - In Progress, ◯ - Planned
-### Apps
 
-◑<span style="color: #a855f7"> Mac</span>
-◯<span style="color: #a855f7"> Windows</span>
-◯<span style="color: #a855f7"> Linux</span>
-◯<span style="color: #a855f7"> iOS</span>
-◯<span style="color: #a855f7"> Android</span>
+### 📱 Apps
 
-### Core Features
+◑ `Mac`
+◯ `Windows`
+◯ `Linux`
+◯ `iOS`
+◯ `Android`
 
-◑<span style="color: #22C55E"> Context-Awareness</span>
-<span style="color: #808080">Recognize context based on the apps being used in the background to customize transcription based on use case.</span>
+### ⚡ Core Features
 
-◑<span style="color: #22C55E"> Custom Hotkeys</span>
-<span style="color: #808080">Configure your own keyboard shortcuts for common transcription actions (start/stop, commands).</span>
+◑<kbd>Context-Awareness</kbd>\
+<sup>Recognize context based on the apps being used in the background to customize transcription based on use case.</sup>\
+◑<kbd>Custom Hotkeys</kbd>\
+<sup>Configure your own keyboard shortcuts for common transcription actions (start/stop, commands).</sup>\
+◑<kbd>Desktop Widget</kbd>\
+<sup>A floating, easily accessible widget to control transcription without leaving your workflow.</sup>\
+◑<kbd>Multi-Language Support</kbd>\
+<sup>Support for multiple languages and dialects for global usability.</sup>\
+◯<kbd>Audio/Video Transcription</kbd>\
+<sup>Transcribe uploaded audio and video files into text.</sup>\
+◯<kbd>Custom Vocabulary</kbd>\
+<sup>Add custom terms, such as names, technical terms, or slang, for better accuracy.</sup>\
+◯<kbd>Automatic Vocabulary</kbd>\
+<sup>Dynamically learn new words based on usage.</sup>\
+◯<kbd>Bring Your Own Key</kbd>\
+<sup>Use your own API keys for AI models within the app.</sup>\
+◯<kbd>Bring Your Own Model</kbd>\
+<sup>Point to any AI model within the app.</sup>
 
-◑<span style="color: #22C55E"> Desktop Widget</span>
-<span style="color: #808080">A floating, easily accessible widget to control transcription without leaving your workflow.</span>
+### 🔗 Integrations & Workflow
 
-◑<span style="color: #22C55E"> Multi-Language Support</span>
-<span style="color: #808080">Support for multiple languages and dialects for global usability.</span>
+◯<kbd>MCP Integrations</kbd>\
+<sup>Seamlessly integrate your apps via MCP for control and command.</sup>\
+◯<kbd>Voice Commands</kbd>\
+<sup>Control desktop apps and transcription processes via native and custom integrations.</sup>\
+◯<kbd>Integration Framework</kbd>\
+<sup>Framework and devkit to build your own integrations.</sup>
 
-◯<span style="color: #22C55E"> Audio/Video Transcription</span>
-<span style="color: #808080">Transcribe uploaded audio and video files into text.</span>
+### 🌟 Enhancements
 
-◯<span style="color: #22C55E"> Custom Vocabulary</span>
-<span style="color: #808080">Add custom terms, such as names, technical terms, or slang, for better accuracy.</span>
-
-◯<span style="color: #22C55E"> Automatic Vocabulary</span>
-<span style="color: #808080">Dynamically learn new words based on usage.</span>
-
-◯<span style="color: #22C55E"> Bring Your Own Key</span>
-<span style="color: #808080">Use your own API keys for AI models within the app.</span>
-
-◯<span style="color: #22C55E"> Bring Your Own Model</span>
-<span style="color: #808080">Point to any AI model within the app.</span>
-
-### Integrations & Workflow
-
-◯<span style="color: #22C55E"> MCP Integrations</span>
-<span style="color: #808080">Seamlessly integrate your apps via MCP for control and command.</span>
-
-◯<span style="color: #22C55E"> Voice Commands</span>
-<span style="color: #808080">Control desktop apps and transcription processes via native and custom integrations.</span>
-
-◯<span style="color: #22C55E"> Integration Framework</span>
-<span style="color: #808080">Framework and devkit to build your own integrations.</span>
-
-### Enhancements
-
-◯<span style="color: #22C55E"> Text Editing</span>
-<span style="color: #808080">Inline editing of transcribed text via voice commands.</span>
-
-◯<span style="color: #22C55E"> Transcription History</span>
-<span style="color: #808080">Maintain an easily searchable history of transcribed texts, with export options.</span>
-
-◯<span style="color: #22C55E"> Note Taking</span>
-<span style="color: #808080">Take quick notes with voice within the app.</span>
-
-◯<span style="color: #22C55E"> Custom Prompts</span>
-<span style="color: #808080">Custom prompts for AI to pre and post-process transcription to support use cases like custom formatting, summaries, etc.</span>
-
-◯<span style="color: #22C55E"> Meeting Transcription</span>
-<span style="color: #808080">Record live meetings with both mic and system audio for seamless transcription.</span>
+◯<kbd>Text Editing</kbd>\
+<sup>Inline editing of transcribed text via voice commands.</sup>\
+◯<kbd>Transcription History</kbd>\
+<sup>Maintain an easily searchable history of transcribed texts, with export options.</sup>\
+◯<kbd>Note Taking</kbd>\
+<sup>Take quick notes with voice within the app.</sup>\
+◯<kbd>Custom Prompts</kbd>\
+<sup>Custom prompts for AI to pre and post-process transcription to support use cases like custom formatting, summaries, etc.</sup>\
+◯<kbd>Meeting Transcription</kbd>\
+<sup>Record live meetings with both mic and system audio for seamless transcription.</sup>
 
 ## 🔰 Tech Stack
 
