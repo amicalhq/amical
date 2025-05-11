@@ -1,0 +1,30 @@
+{
+  "pages": [
+    "---Getting Started---",
+    "index",
+    "getting-started",
+    "---Core Features---",
+    "context-awareness",
+    "custom-hotkeys",
+    "desktop-widget",
+    "multi-language-support",
+    "audio-video-transcription",
+    "custom-vocabulary",
+    "automatic-vocabulary",
+    "bring-your-own-key",
+    "bring-your-own-model",
+    "---Integrations---",
+    "mcp-integrations",
+    "voice-commands",
+    "---Enhancements---",
+    "inline-editing",
+    "transcription-history",
+    "note-taking",
+    "custom-prompts",
+    "meeting-transcription",
+    "---Open Source---",
+    "contributing",
+    "[Heart][Sponsoring](https://github.com/sponsors/amicalhq)"
+  ]
+}
+
