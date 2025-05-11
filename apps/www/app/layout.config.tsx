@@ -26,20 +26,6 @@ export const baseOptions: BaseLayoutProps = {
   },
   links: [
     {
-      text: 'Docs',
-      url: '/docs',
-    },
-    {
-      text: 'Contact',
-      url: '/contact',
-      active: 'nested-url',
-    },
-    {
-      text: 'Changelog',
-      url: '/changelog',
-      active: 'nested-url',
-    },
-    {
       type: 'icon',
       url: '/community',
       text: 'Discord',

@@ -9,7 +9,22 @@ export default function Layout({
   children: ReactNode;
 }): React.ReactElement {
   return (
-    <HomeLayout {...baseOptions}>
+    <HomeLayout {...baseOptions} links={[
+      {
+        text: 'Docs',
+        url: '/docs',
+      },
+      {
+        text: 'Contact',
+        url: '/contact',
+        active: 'nested-url',
+      },
+      {
+        text: 'Changelog',
+        url: '/changelog',
+        active: 'nested-url',
+      },
+    ]}>
       <div className="fixed inset-0 pointer-events-none">
       </div>
       <div className="relative min-h-screen w-full">
