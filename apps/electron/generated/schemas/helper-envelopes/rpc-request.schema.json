@@ -1,0 +1,30 @@
+{
+  "$ref": "#/definitions/RpcRequest",
+  "definitions": {
+    "RpcRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "getAccessibilityTreeDetails",
+            "pasteText",
+            "muteSystemAudio",
+            "restoreSystemAudio"
+          ]
+        },
+        "params": {}
+      },
+      "required": [
+        "id",
+        "method"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

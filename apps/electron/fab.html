@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Floating Button</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden; /* Prevent scrollbars on the tiny window */
+      background-color: transparent; /* Ensure body is transparent */
+      font-family: sans-serif;
+    }
+    #root {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: flex-end; /* Align to bottom */
+      justify-content: center; /* Center horizontally */
+    }
+  </style>
+</head>
+<body>
+  <div id="root" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0;"></div>
+  <!-- This script tag will point to the TSX file for Vite to process -->
+  <script type="module" src="src/renderer/fab.tsx"></script>
+</body>
+</html> 
