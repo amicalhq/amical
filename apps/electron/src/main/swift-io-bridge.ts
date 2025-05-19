@@ -123,7 +123,7 @@ export class SwiftIOBridge extends EventEmitter {
         }
 
         // If it's neither a recognized RPC response nor a helper event
-        console.warn('SwiftRpcClient: Received unknown message from helper:', message);
+        console.warn('SwiftIOBridge: Received unknown message from helper:', message);
       } catch (e) {
         console.error('SwiftIOBridge: Error parsing JSON from helper:', e, 'Received line:', line);
         this.emit('error', new Error(`Error parsing JSON from helper: ${line}`));
@@ -175,7 +175,7 @@ export class SwiftIOBridge extends EventEmitter {
     const validationResult = RpcRequestSchema.safeParse(requestPayload);
     if (!validationResult.success) {
       console.error(
-        'SwiftRpcClient: Invalid RPC request payload:',
+        'SwiftIOBridge: Invalid RPC request payload:',
         validationResult.error.flatten()
       );
       return Promise.reject(

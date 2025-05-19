@@ -38,7 +38,7 @@ let mainWindow: BrowserWindow | null = null;
 let floatingButtonWindow: BrowserWindow | null = null;
 let audioCapture: AudioCapture | null = null;
 let aiService: AiService | null = null;
-let swiftRpcClientInstance: SwiftIOBridge | null = null;
+let swiftIOBridgeClientInstance: SwiftIOBridge | null = null;
 let openAiApiKey: string | null = null;
 let currentWindowDisplayId: number | null = null; // ADDED for tracking display
 let screenPollInterval: NodeJS.Timeout | null = null; // ADDED for polling screen changes
@@ -209,7 +209,7 @@ app.on('ready', async () => {
         if (transcription && typeof transcription === 'string') {
           console.log('Main: Transcription copied to clipboard.');
           // Attempt to paste into the active application
-          swiftRpcClientInstance!.call('pasteText', { transcript: transcription });
+          swiftIOBridgeClientInstance!.call('pasteText', { transcript: transcription });
         } else {
           console.warn('Main: Transcription result was empty or not a string, not copying.');
         }
@@ -252,27 +252,19 @@ app.on('ready', async () => {
 
   ipcMain.handle('recording-starting', async () => {
     console.log('Main: Received recording-starting event.');
-    await swiftRpcClientInstance!.call('muteSystemAudio', {});
+    await swiftIOBridgeClientInstance!.call('muteSystemAudio', {});
   });
 
   ipcMain.handle('recording-stopping', async () => {
     console.log('Main: Received recording-stopping event.');
-    await swiftRpcClientInstance!.call('restoreSystemAudio', {});
+    await swiftIOBridgeClientInstance!.call('restoreSystemAudio', {});
   });
 
-  // Initialize the SwiftRpcClient
-  swiftRpcClientInstance = new SwiftIOBridge();
+  // Initialize the SwiftIOBridgeClient
+  swiftIOBridgeClientInstance = new SwiftIOBridge();
 
-  /* swiftRpcClientInstance.on('ready', () => {
-    console.log('Main: SwiftRpcClient is ready.');
-    // You can now make calls to the Swift helper, e.g.:
-    // swiftRpcClientInstance.call('getAccessibilityTreeDetails', { rootId: 'someRoot' })
-    //   .then(result => console.log('Accessibility tree:', result))
-    //   .catch(error => console.error('Error getting accessibility tree:', error));
-  }); */
-
-  swiftRpcClientInstance.on('helperEvent', (event: HelperEvent) => {
-    console.log('Main: Received helperEvent from SwiftRpcClient:', JSON.stringify(event, null, 2));
+  swiftIOBridgeClientInstance.on('helperEvent', (event: HelperEvent) => {
+    console.log('Main: Received helperEvent from SwiftIOBridge:', JSON.stringify(event, null, 2));
 
     switch (event.type) {
       case 'flagsChanged': {
@@ -308,13 +300,13 @@ app.on('ready', async () => {
     }
   });
 
-  swiftRpcClientInstance.on('error', (error) => {
-    console.error('Main: SwiftRpcClient error:', error);
+  swiftIOBridgeClientInstance.on('error', (error) => {
+    console.error('Main: SwiftIOBridge error:', error);
     // Potentially notify the user or attempt to restart
   });
 
-  swiftRpcClientInstance.on('close', (code) => {
-    console.log(`Main: SwiftRpcClient helper process closed with code: ${code}`);
+  swiftIOBridgeClientInstance.on('close', (code) => {
+    console.log(`Main: Swift helper process closed with code: ${code}`);
     // Handle unexpected close, maybe attempt restart
   });
 
@@ -347,10 +339,9 @@ app.on('ready', async () => {
 app.on('will-quit', () => {
   // globalShortcut.unregisterAll();
   globalShortcut.unregisterAll();
-  // Stop the SwiftRpcClient helper
-  if (swiftRpcClientInstance) {
-    console.log('Main: Stopping SwiftRpcClient helper...');
-    swiftRpcClientInstance.stopHelper();
+  if (swiftIOBridgeClientInstance) {
+    console.log('Main: Stopping Swift helper...');
+    swiftIOBridgeClientInstance.stopHelper();
   }
   if (screenPollInterval) { // Clear the interval
     clearInterval(screenPollInterval);
@@ -393,11 +384,11 @@ app.on('activate', () => {
 
 // Function to log the accessibility tree (added)
 async function logAccessibilityTree() {
-  if (swiftRpcClientInstance && swiftRpcClientInstance.isHelperRunning()) {
+  if (swiftIOBridgeClientInstance && swiftIOBridgeClientInstance.isHelperRunning()) {
     try {
       console.log('Main: Requesting full accessibility tree...');
       // Call with empty params for the whole tree, as per schema for GetAccessibilityTreeDetailsParams
-      const result = await swiftRpcClientInstance.call('getAccessibilityTreeDetails', {});
+      const result = await swiftIOBridgeClientInstance.call('getAccessibilityTreeDetails', {});
       // Using JSON.stringify to see the whole structure since it's 'any' for now
       console.log('Main: Accessibility tree received:', JSON.stringify(result, null, 2));
     } catch (error) {
@@ -405,7 +396,7 @@ async function logAccessibilityTree() {
     }
   } else {
     console.warn(
-      'Main: SwiftRpcClient not ready or helper not running, cannot log accessibility tree.'
+      'Main: SwiftIOBridge not ready or helper not running, cannot log accessibility tree.'
     );
   }
 }
