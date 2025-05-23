@@ -5,9 +5,9 @@
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
   "scripts": {
-    "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "start": "pnpm build:swift-helper && electron-forge start",
+    "package": "pnpm build:swift-helper && electron-forge package",
+    "make": "pnpm build:swift-helper && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
@@ -16,7 +16,9 @@
     "schema:generate-json": "tsx scripts/generate-json-schema.ts",
     "schema:generate-swift": "tsx scripts/generate-swift-models.js",
     "schema:generate-all": "pnpm schema:generate-json && pnpm schema:generate-swift",
-    "build:swift-helper": "pnpm schema:generate-all && swift build --package-path src/helper/swift/KeyTapHelper --configuration release && mkdir -p src/helper/bin && cp src/helper/swift/KeyTapHelper/.build/release/KeyTapHelper src/helper/bin/"
+    "build:swift-helper": "pnpm schema:generate-all && pnpm --filter @amical/swift-helper build",
+    "dev": "pnpm start",
+    "prepare": "pnpm build:swift-helper"
   },
   "keywords": [],
   "license": "MIT",
@@ -47,7 +49,7 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.4.0",
     "prettier": "^3.5.3",
-    "quicktype": "^23.1.4",
+    "quicktype": "23.1.4",
     "tailwindcss": "^4.1.6",
     "tsx": "^4.19.4",
     "typescript": "~5.8.3",

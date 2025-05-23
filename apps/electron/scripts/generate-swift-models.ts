@@ -2,7 +2,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const generatedDir = 'src/helper/swift/KeyTapHelper/Sources/KeyTapHelper/models/generated';
+const generatedDir = '../../packages/native-helpers/swift-helper/Sources/SwiftHelper/models/generated';
 
 try {
   // Remove existing generated models and create the directory
@@ -16,7 +16,7 @@ try {
   // Generate Swift models from JSON schemas using quicktype
   const commands = [
     'quicktype --src-lang schema --lang swift ' +
-      '-o src/helper/swift/KeyTapHelper/Sources/KeyTapHelper/models/generated/models.swift ' +
+      '-o ../../packages/native-helpers/swift-helper/Sources/SwiftHelper/models/generated/models.swift ' +
       'generated/schemas/helper-envelopes/rpc-request.schema.json ' +
       'generated/schemas/helper-envelopes/rpc-response.schema.json ' +
       'generated/schemas/helper-requests/get-accessibility-tree-details-params.schema.json ' +

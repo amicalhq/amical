@@ -13,8 +13,21 @@
     "turbo": "^2.5.3",
     "typescript": "5.8.2"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@10.4.0",
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "better-sqlite3",
+      "core-js-pure",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "keytar",
+      "protobufjs",
+      "sharp"
+    ]
   }
 }

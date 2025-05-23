@@ -71,10 +71,10 @@ export class SwiftIOBridge extends EventEmitter {
   }
 
   private determineHelperPath(): string {
-    const helperName = 'KeyTapHelper'; // Or your Swift executable name
+    const helperName = 'SwiftHelper'; // Swift native helper executable
     return electronApp.isPackaged
       ? path.join(process.resourcesPath, 'bin', helperName)
-      : path.join(electronApp.getAppPath(), 'src', 'helper', 'bin', helperName);
+      : path.join(electronApp.getAppPath(), '..', '..', 'packages', 'native-helpers', 'swift-helper', 'bin', helperName);
   }
 
   private startHelperProcess(): void {
@@ -82,7 +82,7 @@ export class SwiftIOBridge extends EventEmitter {
       fs.accessSync(this.helperPath, fs.constants.X_OK);
     } catch (err) {
       console.error(
-        `SwiftIOBridge: KeyTapHelper executable not found or not executable at ${this.helperPath}.`
+        `SwiftIOBridge: SwiftHelper executable not found or not executable at ${this.helperPath}.`
       );
       this.emit(
         'error',
@@ -94,7 +94,7 @@ export class SwiftIOBridge extends EventEmitter {
       return;
     }
 
-    console.log(`SwiftIOBridge: Spawning KeyTapHelper from: ${this.helperPath}`);
+    console.log(`SwiftIOBridge: Spawning SwiftHelper from: ${this.helperPath}`);
     this.proc = spawn(this.helperPath, [], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     this.proc.stdout.pipe(split2()).on('data', (line: string) => {
@@ -132,19 +132,19 @@ export class SwiftIOBridge extends EventEmitter {
 
     this.proc.stderr.on('data', (data: Buffer) => {
       const errorMsg = data.toString();
-      console.error(`SwiftIOBridge: KeyTapHelper stderr: ${errorMsg}`);
+      console.error(`SwiftIOBridge: SwiftHelper stderr: ${errorMsg}`);
       this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
     });
 
     this.proc.on('error', (err) => {
-      console.error('SwiftIOBridge: Failed to start KeyTapHelper process:', err);
+      console.error('SwiftIOBridge: Failed to start SwiftHelper process:', err);
       this.emit('error', err);
       this.proc = null;
     });
 
     this.proc.on('close', (code, signal) => {
       console.log(
-        `SwiftIOBridge: KeyTapHelper process exited with code ${code} and signal ${signal}`
+        `SwiftIOBridge: SwiftHelper process exited with code ${code} and signal ${signal}`
       );
       this.emit('close', code, signal);
       this.proc = null;
@@ -236,7 +236,7 @@ export class SwiftIOBridge extends EventEmitter {
 
   public stopHelper(): void {
     if (this.proc) {
-      console.log('SwiftIOBridge: Stopping KeyTapHelper process...');
+      console.log('SwiftIOBridge: Stopping SwiftHelper process...');
       this.proc.kill();
       this.proc = null;
     }

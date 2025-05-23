@@ -5,7 +5,13 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "!.next/cache/**", "bin/**", "out/**"]
+    },
+    "build:native": {
+      "dependsOn": [],
+      "inputs": ["Sources/**", "Package.swift", "main.swift", "scripts/**"],
+      "outputs": ["bin/**"],
+      "cache": true
     },
     "lint": {
       "dependsOn": ["^lint"]

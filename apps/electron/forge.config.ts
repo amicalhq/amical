@@ -11,7 +11,7 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    extraResource: ['src/helper/bin'],
+    extraResource: ['../../packages/native-helpers/swift-helper/bin'],
     extendInfo: {
       NSMicrophoneUsageDescription: "This app needs access to your microphone to record audio for transcription.",
     },
