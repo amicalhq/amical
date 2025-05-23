@@ -43,7 +43,7 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm --filter @amical/www install
 
       - name: Build
         run: pnpm --filter @amical/www build

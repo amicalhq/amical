@@ -13,8 +13,7 @@
     "db:generate": "drizzle-kit generate:sqlite",
     "db:push": "drizzle-kit push:sqlite",
     "build:swift-helper": "pnpm --filter @amical/swift-helper build",
-    "dev": "pnpm start",
-    "prepare": "pnpm build:swift-helper"
+    "dev": "pnpm start"
   },
   "keywords": [],
   "license": "MIT",
