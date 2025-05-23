@@ -8,4 +8,4 @@ export const RpcResponseSchema = z.object({
     .object({ code: z.number().int(), message: z.string(), data: z.any().optional() }) // Changed code to int
     .optional(),
 });
-export type RpcResponse = z.infer<typeof RpcResponseSchema>;
+export type RpcResponse = z.infer<typeof RpcResponseSchema>; 

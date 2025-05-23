@@ -4,10 +4,10 @@
   "description": "Swift native helper for accessibility APIs and system integration",
   "private": true,
   "scripts": {
-    "build": "turbo run build:native",
+    "build": "pnpm --filter @amical/types generate:all && turbo run build:native",
     "build:native": "swift build --configuration release && mkdir -p bin && cp .build/release/SwiftHelper bin/SwiftHelper",
     "clean": "rm -rf .build bin",
-    "dev": "swift build --configuration debug && mkdir -p bin && cp .build/debug/SwiftHelper bin/SwiftHelper"
+    "dev": "pnpm --filter @amical/types generate:all && swift build --configuration debug && mkdir -p bin && cp .build/debug/SwiftHelper bin/SwiftHelper"
   },
   "files": [
     "bin/*"

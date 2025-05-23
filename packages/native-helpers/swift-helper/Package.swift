@@ -1,4 +1,4 @@
-// swift-tools-version:5.3
+// swift-tools-version:5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -19,7 +19,8 @@ let package = Package(
             name: "SwiftHelper",
             dependencies: [],
             resources: [
-                .process("Resources") // This line tells SPM to copy the Resources folder
+                .embedInCode("Resources/rec-start.mp3"),
+                .embedInCode("Resources/rec-stop.mp3")
             ]
         )
     ]

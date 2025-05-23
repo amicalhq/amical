@@ -6,28 +6,23 @@ import { app, app as electronApp } from 'electron'; // electronApp for app.getAp
 import split2 from 'split2';
 import { v4 as uuid } from 'uuid';
 
-import { RpcRequestSchema, RpcRequest } from '../schemas/helper-envelopes/request';
-import { RpcResponseSchema, RpcResponse } from '../schemas/helper-envelopes/response';
-import { HelperEventSchema, HelperEvent } from '../schemas/helper-events/key-event';
-
-import {
-  GetAccessibilityTreeDetailsParamsSchema,
-  GetAccessibilityTreeDetailsParams,
-} from '../schemas/helper-requests/get-accessibility-tree-details';
-import {
-  PasteTextParams,
-  PasteTextParamsSchema, // Assuming you might use this for validation if needed client-side
-} from '../schemas/helper-requests/paste-text';
 import { EventEmitter } from 'events';
 import {
+  RpcRequestSchema,
+  RpcRequest,
+  RpcResponseSchema, 
+  RpcResponse,
+  HelperEventSchema,
+  HelperEvent,
+  GetAccessibilityTreeDetailsParams,
   GetAccessibilityTreeDetailsResult,
-  GetAccessibilityTreeDetailsResultSchema,
-} from '../schemas/helper-responses/get-accessibility-tree-details';
-import { PasteTextResult } from '../schemas/helper-responses/paste-text';
-import { MuteSystemAudioResult } from '../schemas/helper-responses/mute-system-audio';
-import { MuteSystemAudioParams } from '../schemas/helper-requests/mute-system-audio';
-import { RestoreSystemAudioResult } from '../schemas/helper-responses/restore-system-audio';
-import { RestoreSystemAudioParams } from '../schemas/helper-requests/restore-system-audio';
+  PasteTextParams,
+  PasteTextResult,
+  MuteSystemAudioParams,
+  MuteSystemAudioResult,
+  RestoreSystemAudioParams,
+  RestoreSystemAudioResult,
+} from '@amical/types';
 
 // Define the interface for RPC methods
 interface RPCMethods {

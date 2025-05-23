@@ -1,7 +1,6 @@
 import { z } from 'zod';
-import { GetAccessibilityTreeDetailsParamsSchema } from '../helper-requests/get-accessibility-tree-details';
-import { PasteTextParamsSchema } from '../helper-requests/paste-text';
-// Removed incorrect import for AnyCodable
+import { GetAccessibilityTreeDetailsParamsSchema } from '../methods/get-accessibility-tree-details';
+import { PasteTextParamsSchema } from '../methods/paste-text';
 
 // Define a union of all possible RPC method names
 const RPCMethodNameSchema = z.union([
@@ -58,4 +57,4 @@ export const SetLogLevelRequestSchema = RpcRequestSchema.extend({
   params: SetLogLevelParamsSchema,
 });
 export type SetLogLevelRequest = z.infer<typeof SetLogLevelRequestSchema>;
-*/
+*/ 

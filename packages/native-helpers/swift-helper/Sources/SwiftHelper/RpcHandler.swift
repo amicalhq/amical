@@ -1,10 +1,6 @@
 import Foundation
 import AVFoundation // ADDED
 
-// Assuming models like RPCRequestSchema, RPCResponseSchema, Error, 
-// GetAccessibilityTreeDetailsParamsSchema, GetAccessibilityTreeDetailsResultSchema, JSONAny
-// are available in the module (e.g., from models.swift)
-
 class IOBridge: NSObject, AVAudioPlayerDelegate {
     private let jsonEncoder: JSONEncoder
     private let jsonDecoder: JSONDecoder
@@ -29,26 +25,35 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
 
         self.audioCompletionHandler = completion
 
-        guard let soundURL = Bundle.main.url(forResource: soundName, withExtension: "mp3", subdirectory: "Resources") else {
-            FileHandle.standardError.write("[IOBridge] Error: \(soundName).mp3 not found in Resources subdirectory. Completion will not be called.\n".data(using: .utf8)!)
+        // Get the embedded audio data
+        let audioData: [UInt8]
+        switch soundName {
+        case "rec-start":
+            audioData = PackageResources.rec_start_mp3
+        case "rec-stop":
+            audioData = PackageResources.rec_stop_mp3
+        default:
+            FileHandle.standardError.write("[IOBridge] Error: Unknown sound name '\(soundName)'. Completion will not be called.\n".data(using: .utf8)!)
             self.audioCompletionHandler = nil
             return
         }
 
         do {
-            // Initialize the audio player. It's important to keep a reference to it
-            // for the duration of the playback, hence the class property.
-            audioPlayer = try AVAudioPlayer(contentsOf: soundURL)
+            // Convert embedded data to Data object
+            let soundData = Data(audioData)
+            
+            // Initialize the audio player with the embedded data
+            audioPlayer = try AVAudioPlayer(data: soundData)
             audioPlayer?.delegate = self
 
             if audioPlayer?.play() == true {
-                FileHandle.standardError.write("[IOBridge] Playing sound: \(soundName).mp3. Delegate will handle completion.\n".data(using: .utf8)!)
+                FileHandle.standardError.write("[IOBridge] Playing embedded sound: \(soundName).mp3. Delegate will handle completion.\n".data(using: .utf8)!)
             } else {
-                FileHandle.standardError.write("[IOBridge] Failed to start playing sound: \(soundName).mp3 (audioPlayer.play() returned false or player is nil). Completion will not be called.\n".data(using: .utf8)!)
+                FileHandle.standardError.write("[IOBridge] Failed to start playing embedded sound: \(soundName).mp3 (audioPlayer.play() returned false or player is nil). Completion will not be called.\n".data(using: .utf8)!)
                 self.audioCompletionHandler = nil
             }
         } catch {
-            FileHandle.standardError.write("[IOBridge] Error initializing AVAudioPlayer for \(soundName).mp3: \(error.localizedDescription). Completion will not be called.\n".data(using: .utf8)!)
+            FileHandle.standardError.write("[IOBridge] Error initializing AVAudioPlayer for embedded \(soundName).mp3: \(error.localizedDescription). Completion will not be called.\n".data(using: .utf8)!)
             self.audioCompletionHandler = nil
         }
     }
