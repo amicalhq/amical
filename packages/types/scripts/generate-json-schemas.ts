@@ -3,28 +3,30 @@ import path from 'path';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
 // Import schemas from the types package
-import { RpcRequestSchema } from '../src/schemas/rpc/request';
-import { RpcResponseSchema } from '../src/schemas/rpc/response';
+import { RpcRequestSchema } from '../src/schemas/rpc/request.js';
+import { RpcResponseSchema } from '../src/schemas/rpc/response.js';
 import { 
   GetAccessibilityTreeDetailsParamsSchema,
   GetAccessibilityTreeDetailsResultSchema 
-} from '../src/schemas/methods/get-accessibility-tree-details';
+} from '../src/schemas/methods/get-accessibility-tree-details.js';
 import { 
   PasteTextParamsSchema,
   PasteTextResultSchema 
-} from '../src/schemas/methods/paste-text';
+} from '../src/schemas/methods/paste-text.js';
 import { 
   MuteSystemAudioParamsSchema,
   MuteSystemAudioResultSchema 
-} from '../src/schemas/methods/mute-system-audio';
+} from '../src/schemas/methods/mute-system-audio.js';
 import { 
   RestoreSystemAudioParamsSchema,
   RestoreSystemAudioResultSchema 
-} from '../src/schemas/methods/restore-system-audio';
+} from '../src/schemas/methods/restore-system-audio.js';
 import { 
   KeyDownEventSchema, 
-  KeyUpEventSchema 
-} from '../src/schemas/events/key-events';
+  KeyUpEventSchema,
+  FlagsChangedEventSchema,
+  HelperEventSchema
+} from '../src/schemas/events/key-events.js';
 
 // Output directory
 const baseOutputDir = 'generated/json-schemas';
@@ -44,6 +46,8 @@ const schemasToGenerate = [
   },
   { zod: KeyDownEventSchema, name: 'KeyDownEvent', category: 'events' },
   { zod: KeyUpEventSchema, name: 'KeyUpEvent', category: 'events' },
+  { zod: FlagsChangedEventSchema, name: 'FlagsChangedEvent', category: 'events' },
+  { zod: HelperEventSchema, name: 'HelperEvent', category: 'events' },
   { zod: PasteTextParamsSchema, name: 'PasteTextParams', category: 'methods' },
   { zod: PasteTextResultSchema, name: 'PasteTextResult', category: 'methods' },
   {

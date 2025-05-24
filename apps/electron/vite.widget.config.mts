@@ -1,7 +1,7 @@
-import * as vite from 'vite';
+import { defineConfig } from 'vite';
 import { resolve } from 'path';
 // https://vitejs.dev/config
-export default vite.defineConfig(async () => {
+export default defineConfig(async () => {
   // @ts-ignore
   const { default: tailwindcss } = await import('@tailwindcss/vite');
 

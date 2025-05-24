@@ -15,6 +15,8 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
     }
 
     private func playSound(named soundName: String, completion: (() -> Void)? = nil) {
+        FileHandle.standardError.write("[IOBridge] playSound called with soundName: \(soundName)\n".data(using: .utf8)!)
+        
         if audioPlayer?.isPlaying == true {
             FileHandle.standardError.write("[IOBridge] Sound '\(audioPlayer?.url?.lastPathComponent ?? "previous")' is playing. Stopping it before playing \(soundName).\n".data(using: .utf8)!)
             audioPlayer?.delegate = nil
@@ -27,13 +29,23 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
 
         // Get the embedded audio data
         let audioData: [UInt8]
-        switch soundName {
-        case "rec-start":
-            audioData = PackageResources.rec_start_mp3
-        case "rec-stop":
-            audioData = PackageResources.rec_stop_mp3
-        default:
-            FileHandle.standardError.write("[IOBridge] Error: Unknown sound name '\(soundName)'. Completion will not be called.\n".data(using: .utf8)!)
+        do {
+            switch soundName {
+            case "rec-start":
+                FileHandle.standardError.write("[IOBridge] Attempting to load rec-start.mp3 from PackageResources\n".data(using: .utf8)!)
+                audioData = PackageResources.rec_start_mp3
+                FileHandle.standardError.write("[IOBridge] Successfully loaded rec-start.mp3, data size: \(audioData.count) bytes\n".data(using: .utf8)!)
+            case "rec-stop":
+                FileHandle.standardError.write("[IOBridge] Attempting to load rec-stop.mp3 from PackageResources\n".data(using: .utf8)!)
+                audioData = PackageResources.rec_stop_mp3
+                FileHandle.standardError.write("[IOBridge] Successfully loaded rec-stop.mp3, data size: \(audioData.count) bytes\n".data(using: .utf8)!)
+            default:
+                FileHandle.standardError.write("[IOBridge] Error: Unknown sound name '\(soundName)'. Completion will not be called.\n".data(using: .utf8)!)
+                self.audioCompletionHandler = nil
+                return
+            }
+        } catch {
+            FileHandle.standardError.write("[IOBridge] Error loading embedded audio data for '\(soundName)': \(error.localizedDescription). Completion will not be called.\n".data(using: .utf8)!)
             self.audioCompletionHandler = nil
             return
         }
