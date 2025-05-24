@@ -15,7 +15,7 @@ import dotenv from 'dotenv';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 //import { runMigrations } from '../db/migrate';
-import { HelperEvent, KeyEventPayload } from '../schemas/helper-events/key-event'; // ADD THIS IMPORT
+import { HelperEvent, KeyEventPayload } from '@amical/types';
 
 dotenv.config(); // Load .env file
 import { AudioCapture } from '../modules/audio/audio-capture';

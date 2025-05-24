@@ -1,0 +1,79 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Built executables
+bin/
+*.app/
+*.ipa
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon must end with two \r
+Icon
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Swift specific
+*.swiftdoc
+*.swiftmodule
+*.swiftsourceinfo
+
+# SPM Dependencies
+.swift-version
+
+# Turbo cache (for monorepo)
+.turbo/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Coverage reports
+*.profdata
+*.profraw
+
+# Swift testing
+.coverage/
+
+# Generated files
+Sources/*/models/generated/ 

@@ -1,22 +1,19 @@
 {
-  "name": "amical-app",
-  "productName": "amical-app",
+  "name": "@amical/electron",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Amical Electron application",
   "main": ".vite/build/main.js",
   "scripts": {
-    "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "start": "pnpm build:swift-helper && electron-forge start",
+    "package": "pnpm build:swift-helper && electron-forge package",
+    "make": "pnpm build:swift-helper && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "db:generate": "drizzle-kit generate:sqlite",
     "db:push": "drizzle-kit push:sqlite",
-    "schema:generate-json": "tsx scripts/generate-json-schema.ts",
-    "schema:generate-swift": "tsx scripts/generate-swift-models.js",
-    "schema:generate-all": "pnpm schema:generate-json && pnpm schema:generate-swift",
-    "build:swift-helper": "pnpm schema:generate-all && swift build --package-path src/helper/swift/KeyTapHelper --configuration release && mkdir -p src/helper/bin && cp src/helper/swift/KeyTapHelper/.build/release/KeyTapHelper src/helper/bin/"
+    "build:swift-helper": "pnpm --filter @amical/swift-helper build",
+    "dev": "pnpm start"
   },
   "keywords": [],
   "license": "MIT",
@@ -47,15 +44,13 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.4.0",
     "prettier": "^3.5.3",
-    "quicktype": "^23.1.4",
     "tailwindcss": "^4.1.6",
     "tsx": "^4.19.4",
     "typescript": "~5.8.3",
-    "vite": "^5.4.19",
-    "zod": "^3.24.4",
-    "zod-to-json-schema": "^3.24.5"
+    "vite": "^5.4.19"
   },
   "dependencies": {
+    "@amical/types": "workspace:*",
     "@hookform/resolvers": "^5.0.1",
     "@radix-ui/react-accordion": "^1.2.10",
     "@radix-ui/react-alert-dialog": "^1.1.13",

@@ -1,0 +1,40 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:amical}/packages/native-helpers/swift-helper",
+      "name": "Debug KeyTapHelper (packages/native-helpers/swift-helper)",
+      "program": "${workspaceFolder:amical}/packages/native-helpers/swift-helper/.build/debug/KeyTapHelper",
+      "preLaunchTask": "swift: Build Debug KeyTapHelper (packages/native-helpers/swift-helper)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:amical}/packages/native-helpers/swift-helper",
+      "name": "Release KeyTapHelper (packages/native-helpers/swift-helper)",
+      "program": "${workspaceFolder:amical}/packages/native-helpers/swift-helper/.build/release/KeyTapHelper",
+      "preLaunchTask": "swift: Build Release KeyTapHelper (packages/native-helpers/swift-helper)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:amical}/packages/native-helpers/swift-helper",
+      "name": "Debug SwiftHelper (packages/native-helpers/swift-helper)",
+      "program": "${workspaceFolder:amical}/packages/native-helpers/swift-helper/.build/debug/SwiftHelper",
+      "preLaunchTask": "swift: Build Debug SwiftHelper (packages/native-helpers/swift-helper)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:amical}/packages/native-helpers/swift-helper",
+      "name": "Release SwiftHelper (packages/native-helpers/swift-helper)",
+      "program": "${workspaceFolder:amical}/packages/native-helpers/swift-helper/.build/release/SwiftHelper",
+      "preLaunchTask": "swift: Build Release SwiftHelper (packages/native-helpers/swift-helper)"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@amical/types",
+  "version": "1.0.0",
+  "description": "Shared type definitions and schema generation for Amical",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist generated",
+    "generate:json-schemas": "tsx scripts/generate-json-schemas.ts",
+    "generate:swift": "tsx scripts/generate-swift-models.ts", 
+    "generate:all": "pnpm run generate:json-schemas && pnpm run generate:swift",
+    "lint": "eslint --ext .ts .",
+    "check-types": "tsc --noEmit"
+  },
+  "keywords": ["amical", "types", "schemas", "rpc"],
+  "license": "MIT",
+  "devDependencies": {
+    "@amical/typescript-config": "workspace:*",
+    "@amical/eslint-config": "workspace:*",
+    "eslint": "^9.26.0",
+    "quicktype": "23.1.4",
+    "tsx": "^4.19.4",
+    "typescript": "~5.8.3",
+    "zod-to-json-schema": "^3.24.5"
+  },
+  "dependencies": {
+    "zod": "^3.24.4"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schemas/*": {
+      "types": "./dist/schemas/*.d.ts",
+      "default": "./dist/schemas/*.js"
+    }
+  }
+} 
