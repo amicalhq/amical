@@ -273,23 +273,30 @@ app.on('ready', async () => {
           'Main: Received flagsChanged event. Fn key pressed state:',
           payload?.fnKeyPressed
         );
-        // Forward the flagsChanged event to renderers if they need detailed modifier info
+        // Use flagsChanged for more reliable Fn key state tracking
+        if (payload?.fnKeyPressed !== undefined) {
+          console.log(`Main: Setting recording state to: ${payload.fnKeyPressed}`);
+          floatingButtonWindow!.webContents.send('recording-state-changed', payload.fnKeyPressed);
+        }
         break;
       }
       case 'keyDown': {
         const payload = event.payload;
         console.log(`Main: Received keyDown for key: ${payload?.key}.`);
+        // Keep keyDown handling as fallback, but flagsChanged should be primary
         if (payload?.key?.toLowerCase() === 'fn') {
-          floatingButtonWindow!.webContents.send('recording-state-changed', true);
+          console.log('Main: Fn keyDown detected (fallback)');
+          // Don't send recording-state-changed here as flagsChanged should handle it
         }
         break;
       }
       case 'keyUp': {
         const payload = event.payload;
         console.log(`Main: Received keyUp for key: ${payload?.key}.`);
-
+        // Keep keyUp handling as fallback, but flagsChanged should be primary
         if (payload?.key?.toLowerCase() === 'fn') {
-          floatingButtonWindow!.webContents.send('recording-state-changed', false);
+          console.log('Main: Fn keyUp detected (fallback)');
+          // Don't send recording-state-changed here as flagsChanged should handle it
         }
         break;
       }
@@ -316,11 +323,11 @@ app.on('ready', async () => {
   if (screenPollInterval) clearInterval(screenPollInterval);
   console.log('Main: Starting screen polling interval...');
   screenPollInterval = setInterval(() => {
-    console.log('Main: Polling for screen changes...');
+    //console.log('Main: Polling for screen changes...');
     if (floatingButtonWindow && !floatingButtonWindow.isDestroyed()) {
       try {
         const cursorPoint = screen.getCursorScreenPoint();
-        console.log('Main: Cursor point:', cursorPoint);
+        //console.log('Main: Cursor point:', cursorPoint);
         const displayForCursor = screen.getDisplayNearestPoint(cursorPoint);
         //console.log('Main: Display for cursor:', displayForCursor);
         if (currentWindowDisplayId !== displayForCursor.id) {

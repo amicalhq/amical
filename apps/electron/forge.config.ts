@@ -31,23 +31,23 @@ const config: ForgeConfig = {
         {
           // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
           entry: 'src/main/main.ts',
-          config: 'vite.main.config.ts',
+          config: 'vite.main.config.mts',
           target: 'main',
         },
         {
           entry: 'src/main/preload.ts',
-          config: 'vite.preload.config.ts',
+          config: 'vite.preload.config.mts',
           target: 'preload',
         },
       ],
       renderer: [
         {
           name: 'main_window',
-          config: 'vite.renderer.config.ts',
+          config: 'vite.renderer.config.mts',
         },
         {
           name: 'widget_window',
-          config: 'vite.widget.config.ts',
+          config: 'vite.widget.config.mts',
         },
       ],
     }),
