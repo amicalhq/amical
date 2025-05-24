@@ -1,6 +1,12 @@
+<<<<<<< HEAD
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+=======
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+>>>>>>> origin/main
 
 const generatedDir = '../native-helpers/swift-helper/Sources/SwiftHelper/models/generated';
 
@@ -28,9 +34,13 @@ try {
       'generated/json-schemas/methods/restore-system-audio-params.schema.json ' +
       'generated/json-schemas/methods/restore-system-audio-result.schema.json ' +
       'generated/json-schemas/events/key-down-event.schema.json ' +
+<<<<<<< HEAD
       'generated/json-schemas/events/key-up-event.schema.json ' +
       'generated/json-schemas/events/flags-changed-event.schema.json ' +
       'generated/json-schemas/events/helper-event.schema.json',
+=======
+      'generated/json-schemas/events/key-up-event.schema.json',
+>>>>>>> origin/main
   ];
 
   commands.forEach((command) => {

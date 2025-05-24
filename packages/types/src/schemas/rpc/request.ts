@@ -1,6 +1,11 @@
 import { z } from 'zod';
+<<<<<<< HEAD
 import { GetAccessibilityTreeDetailsParamsSchema } from '../methods/get-accessibility-tree-details.js';
 import { PasteTextParamsSchema } from '../methods/paste-text.js';
+=======
+import { GetAccessibilityTreeDetailsParamsSchema } from '../methods/get-accessibility-tree-details';
+import { PasteTextParamsSchema } from '../methods/paste-text';
+>>>>>>> origin/main
 
 // Define a union of all possible RPC method names
 const RPCMethodNameSchema = z.union([

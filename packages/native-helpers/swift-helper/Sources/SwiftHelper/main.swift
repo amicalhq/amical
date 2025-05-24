@@ -135,7 +135,7 @@ class SwiftHelper {
             options: .defaultTap, // Default options
             eventsOfInterest: CGEventMask(eventMask),
             callback: eventTapCallback,
-            userInfo: selfPtr // Pass a pointer to the KeyTapHelper instance
+            userInfo: selfPtr // Pass a pointer to the SwiftHelper instance
         ) else {
             let errorMsg = "Failed to create event tap\n"
             if let data = errorMsg.data(using: .utf8) {
