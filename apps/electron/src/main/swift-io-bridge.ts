@@ -128,12 +128,8 @@ export class SwiftIOBridge extends EventEmitter {
     this.proc.stderr.on('data', (data: Buffer) => {
       const errorMsg = data.toString();
       console.error(`SwiftIOBridge: SwiftHelper stderr: ${errorMsg}`);
-<<<<<<< HEAD
       // Don't emit as error since stderr is often just debug info
       // this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
-=======
-      this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
->>>>>>> origin/main
     });
 
     this.proc.on('error', (err) => {
