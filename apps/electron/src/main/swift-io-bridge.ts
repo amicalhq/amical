@@ -128,7 +128,8 @@ export class SwiftIOBridge extends EventEmitter {
     this.proc.stderr.on('data', (data: Buffer) => {
       const errorMsg = data.toString();
       console.error(`SwiftIOBridge: SwiftHelper stderr: ${errorMsg}`);
-      this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
+      // Don't emit as error since stderr is often just debug info
+      // this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
     });
 
     this.proc.on('error', (err) => {
@@ -178,11 +179,14 @@ export class SwiftIOBridge extends EventEmitter {
       );
     }
 
+    console.log(`SwiftIOBridge: Sending RPC request: ${method} (id: ${id})`);
     this.proc.stdin.write(JSON.stringify(requestPayload) + '\n', (err) => {
       if (err) {
         console.error('SwiftIOBridge: Error writing to helper stdin:', err);
         // Note: The promise might have already been set up, consider how to reject it.
         // For now, this error will be logged. The timeout will eventually reject.
+      } else {
+        console.log(`SwiftIOBridge: Successfully sent RPC request: ${method} (id: ${id})`);
       }
     });
 

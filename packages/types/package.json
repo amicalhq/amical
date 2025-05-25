@@ -2,6 +2,7 @@
   "name": "@amical/types",
   "version": "1.0.0",
   "description": "Shared type definitions and schema generation for Amical",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -31,10 +32,12 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./schemas/*": {
       "types": "./dist/schemas/*.d.ts",
+      "import": "./dist/schemas/*.js",
       "default": "./dist/schemas/*.js"
     }
   }
