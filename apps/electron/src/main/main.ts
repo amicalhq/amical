@@ -9,8 +9,6 @@ import {
 } from 'electron';
 import path from 'node:path';
 import fsPromises from 'node:fs/promises'; // For reading the audio file (async)
-import fs from 'node:fs'; // For synchronous file operations like accessSync
-import { exec, spawn, ChildProcessWithoutNullStreams, execSync } from 'node:child_process'; // For executing system commands
 import dotenv from 'dotenv';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
@@ -40,8 +38,8 @@ let audioCapture: AudioCapture | null = null;
 let aiService: AiService | null = null;
 let swiftIOBridgeClientInstance: SwiftIOBridge | null = null;
 let openAiApiKey: string | null = null;
-let currentWindowDisplayId: number | null = null; // ADDED for tracking display
-let screenPollInterval: NodeJS.Timeout | null = null; // ADDED for polling screen changes
+let currentWindowDisplayId: number | null = null; // For tracking current display
+let activeSpaceChangeSubscriptionId: number | null = null; // For display change notifications
 
 interface StoreSchema {
   'openai-api-key': string;
@@ -319,30 +317,46 @@ app.on('ready', async () => {
 
   setupApplicationMenu(createOrShowSettingsWindow);
 
-  // Start polling for screen changes to move the floatingButtonWindow
-  if (screenPollInterval) clearInterval(screenPollInterval);
-  console.log('Main: Starting screen polling interval...');
-  screenPollInterval = setInterval(() => {
-    //console.log('Main: Polling for screen changes...');
-    if (floatingButtonWindow && !floatingButtonWindow.isDestroyed()) {
-      try {
-        const cursorPoint = screen.getCursorScreenPoint();
-        //console.log('Main: Cursor point:', cursorPoint);
-        const displayForCursor = screen.getDisplayNearestPoint(cursorPoint);
-        //console.log('Main: Display for cursor:', displayForCursor);
-        if (currentWindowDisplayId !== displayForCursor.id) {
-          console.log(`[Main Process] Cursor moved to display ID: ${displayForCursor.id}. Updating floatingButtonWindow.`);
-          floatingButtonWindow.setBounds(displayForCursor.workArea);
-          currentWindowDisplayId = displayForCursor.id;
+  if (process.platform === 'darwin') {
+    try {
+      console.log("Main: Setting up display change notifications");
+      
+      activeSpaceChangeSubscriptionId = systemPreferences.subscribeWorkspaceNotification(
+        'NSWorkspaceActiveDisplayDidChangeNotification',
+        () => {
+          if (floatingButtonWindow && !floatingButtonWindow.isDestroyed()) {
+            try {
+              const cursorPoint = screen.getCursorScreenPoint();
+              const displayForCursor = screen.getDisplayNearestPoint(cursorPoint);
+              if (currentWindowDisplayId !== displayForCursor.id) {
+                console.log(
+                  `[Main Process] Moving floating window to display ID: ${displayForCursor.id}`
+                );
+                floatingButtonWindow.setBounds(displayForCursor.workArea);
+                currentWindowDisplayId = displayForCursor.id;
+              }
+            } catch (error) {
+              console.warn('[Main Process] Error handling display change:', error);
+            }
+          }
         }
-      } catch (error) {
-        console.warn('[Main Process] Error in screen polling interval (safe to ignore if sporadic):', error);
+      );
+
+      if (activeSpaceChangeSubscriptionId !== undefined && activeSpaceChangeSubscriptionId >= 0) {
+        console.log(`Main: Successfully subscribed to display change notifications`);
+      } else {
+        console.error('Main: Failed to subscribe to display change notifications');
       }
+    } catch (e) {
+      console.error('Main: Error during subscription to display notifications:', e);
+      activeSpaceChangeSubscriptionId = null;
     }
-  }, 500); // Check every 500ms
+  } else {
+    console.log('Main: Display change tracking is a macOS-only feature');
+  }
 });
 
-// Unregister all shortcuts when the app is about to quit
+// Clean up intervals and subscriptions
 app.on('will-quit', () => {
   // globalShortcut.unregisterAll();
   globalShortcut.unregisterAll();
@@ -350,9 +364,10 @@ app.on('will-quit', () => {
     console.log('Main: Stopping Swift helper...');
     swiftIOBridgeClientInstance.stopHelper();
   }
-  if (screenPollInterval) { // Clear the interval
-    clearInterval(screenPollInterval);
-    screenPollInterval = null;
+  if (process.platform === 'darwin' && activeSpaceChangeSubscriptionId !== null) {
+    systemPreferences.unsubscribeWorkspaceNotification(activeSpaceChangeSubscriptionId);
+    console.log('Main: Unsubscribed from display change notifications');
+    activeSpaceChangeSubscriptionId = null;
   }
 });
 
