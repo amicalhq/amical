@@ -1,0 +1,20 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["@amical/types#generate:all"],
+      "inputs": [
+        "Sources/**",
+        "Package.swift",
+        "Package.resolved",
+        ".swiftpm/**"
+      ],
+      "outputs": [
+        ".build/**",
+        "bin/SwiftHelper"
+      ],
+      "cache": true
+    }
+  }
+} 
