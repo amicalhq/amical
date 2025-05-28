@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { GetAccessibilityTreeDetailsParamsSchema } from '../methods/get-accessibility-tree-details.js';
+import { GetAccessibilityContextParamsSchema } from '../methods/get-accessibility-context.js';
 import { PasteTextParamsSchema } from '../methods/paste-text.js';
 
 // Define a union of all possible RPC method names
 const RPCMethodNameSchema = z.union([
   z.literal('getAccessibilityTreeDetails'),
+  z.literal('getAccessibilityContext'),
   z.literal('pasteText'),
   z.literal('muteSystemAudio'),
   z.literal('restoreSystemAudio'),
@@ -29,6 +31,14 @@ export const GetAccessibilityTreeDetailsRequestSchema = RpcRequestSchema.extend(
 });
 export type GetAccessibilityTreeDetailsRequest = z.infer<
   typeof GetAccessibilityTreeDetailsRequestSchema
+>;
+
+export const GetAccessibilityContextRequestSchema = RpcRequestSchema.extend({
+  method: z.literal('getAccessibilityContext'),
+  params: GetAccessibilityContextParamsSchema.optional(),
+});
+export type GetAccessibilityContextRequest = z.infer<
+  typeof GetAccessibilityContextRequestSchema
 >;
 
 export const PasteTextRequestSchema = RpcRequestSchema.extend({
