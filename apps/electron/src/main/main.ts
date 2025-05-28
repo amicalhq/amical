@@ -291,6 +291,15 @@ app.on('ready', async () => {
 
   ipcMain.handle('recording-starting', async () => {
     console.log('Main: Received recording-starting event.');
+    
+    // Get accessibility context when recording starts
+    try {
+      const accessibilityContext = await swiftIOBridgeClientInstance!.call('getAccessibilityContext', { editableOnly: true });
+      console.log('Main: Accessibility context captured:', JSON.stringify(accessibilityContext, null, 2));
+    } catch (error) {
+      console.error('Main: Error getting accessibility context:', error);
+    }
+    
     await swiftIOBridgeClientInstance!.call('muteSystemAudio', {});
   });
 

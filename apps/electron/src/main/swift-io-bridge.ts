@@ -17,6 +17,8 @@ import {
   HelperEvent,
   GetAccessibilityTreeDetailsParams,
   GetAccessibilityTreeDetailsResult,
+  GetAccessibilityContextParams,
+  GetAccessibilityContextResult,
   PasteTextParams,
   PasteTextResult,
   MuteSystemAudioParams,
@@ -30,6 +32,10 @@ interface RPCMethods {
   getAccessibilityTreeDetails: {
     params: GetAccessibilityTreeDetailsParams;
     result: GetAccessibilityTreeDetailsResult;
+  };
+  getAccessibilityContext: {
+    params: GetAccessibilityContextParams;
+    result: GetAccessibilityContextResult;
   };
   pasteText: {
     params: PasteTextParams;

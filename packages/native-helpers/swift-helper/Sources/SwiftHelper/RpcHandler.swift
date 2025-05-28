@@ -129,6 +129,52 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
             }
             rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
         
+        case .getAccessibilityContext:
+            var contextParams: GetAccessibilityContextParamsSchema? = nil
+            FileHandle.standardError.write("[IOBridge] Handling getAccessibilityContext for ID: \(request.id)\n".data(using: .utf8)!)
+            if let paramsAnyCodable = request.params {
+                do {
+                    let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                    contextParams = try jsonDecoder.decode(GetAccessibilityContextParamsSchema.self, from: paramsData)
+                    FileHandle.standardError.write("[IOBridge] Decoded contextParams.editableOnly: \(contextParams?.editableOnly ?? false) for ID: \(request.id)\n".data(using: .utf8)!)
+                } catch {
+                    FileHandle.standardError.write("[IOBridge] Error decoding getAccessibilityContext params: \(error.localizedDescription)\n".data(using: .utf8)!)
+                    let errPayload = Error(code: -32602, data: request.params, message: "Invalid params: \(error.localizedDescription)")
+                    rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                    sendRpcResponse(rpcResponse)
+                    return
+                }
+            }
+            
+            // Get accessibility context using the new service
+            let editableOnly = contextParams?.editableOnly ?? false
+            let contextData = AccessibilityContextService.getAccessibilityContext(editableOnly: editableOnly)
+            
+            FileHandle.standardError.write("[IOBridge] Fetched contextData from AccessibilityContextService. Is nil? \(contextData == nil). For ID: \(request.id)\n".data(using: .utf8)!)
+            
+            var contextAsJsonAny: JSONAny? = nil
+            if let dataToEncode = contextData {
+                do {
+                    let encodedData = try jsonEncoder.encode(dataToEncode)
+                    contextAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: encodedData)
+                    if let contextDataForLog = try? jsonEncoder.encode(contextAsJsonAny), let contextStringForLog = String(data: contextDataForLog, encoding: .utf8) {
+                        FileHandle.standardError.write("[IOBridge] contextAsJsonAny (after encoding contextData): \(contextStringForLog) for ID: \(request.id)\n".data(using: .utf8)!)
+                    }
+                } catch {
+                    FileHandle.standardError.write("[IOBridge] Error encoding contextData to JSONAny: \(error.localizedDescription) for ID: \(request.id)\n".data(using: .utf8)!)
+                }
+            }
+            
+            let resultPayload = GetAccessibilityContextResultSchema(context: contextData)
+            var resultAsJsonAny: JSONAny? = nil
+            do {
+                let resultPayloadData = try jsonEncoder.encode(resultPayload)
+                resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultPayloadData)
+            } catch {
+                FileHandle.standardError.write("Error encoding GetAccessibilityContextResultSchema to JSONAny: \(error.localizedDescription)\n".data(using: .utf8)!)
+            }
+            rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+        
         case .pasteText: // Corrected to use enum case
             FileHandle.standardError.write("[IOBridge] Handling pasteText for ID: \(request.id)\n".data(using: .utf8)!)
             guard let paramsAnyCodable = request.params else {

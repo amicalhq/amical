@@ -10,6 +10,10 @@ import {
   GetAccessibilityTreeDetailsResultSchema 
 } from '../src/schemas/methods/get-accessibility-tree-details.js';
 import { 
+  GetAccessibilityContextParamsSchema,
+  GetAccessibilityContextResultSchema 
+} from '../src/schemas/methods/get-accessibility-context.js';
+import { 
   PasteTextParamsSchema,
   PasteTextResultSchema 
 } from '../src/schemas/methods/paste-text.js';
@@ -42,6 +46,16 @@ const schemasToGenerate = [
   {
     zod: GetAccessibilityTreeDetailsResultSchema,
     name: 'GetAccessibilityTreeDetailsResult',
+    category: 'methods',
+  },
+  {
+    zod: GetAccessibilityContextParamsSchema,
+    name: 'GetAccessibilityContextParams',
+    category: 'methods',
+  },
+  {
+    zod: GetAccessibilityContextResultSchema,
+    name: 'GetAccessibilityContextResult',
     category: 'methods',
   },
   { zod: KeyDownEventSchema, name: 'KeyDownEvent', category: 'events' },
