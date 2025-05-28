@@ -52,7 +52,7 @@ const cleanupMediaResources = (
 
 export const useRecording = ({
   onAudioChunk,
-  chunkDurationMs = 2000,
+  chunkDurationMs = 28000,
   onRecordingStartCallback,
   onRecordingStopCallback,
 }: UseRecordingParams): UseRecordingOutput => {

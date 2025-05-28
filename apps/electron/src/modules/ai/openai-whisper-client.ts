@@ -1,8 +1,10 @@
 import { TranscriptionClient } from './transcription-client';
 import OpenAI from 'openai';
+import { createScopedLogger } from '../../main/logger';
 
 export class OpenAIWhisperClient implements TranscriptionClient {
   private openai: OpenAI;
+  private logger = createScopedLogger('openai-client');
 
   constructor(apiKey: string) {
     this.openai = new OpenAI({ apiKey });
@@ -10,7 +12,7 @@ export class OpenAIWhisperClient implements TranscriptionClient {
 
   async transcribe(audioData: Buffer): Promise<string> {
     if (!audioData || audioData.length === 0) {
-      console.error('OpenAIWhisperClient: Received empty audio data.');
+      this.logger.error('Received empty audio data');
       throw new Error('Cannot transcribe empty audio data.');
     }
     try {
@@ -19,13 +21,14 @@ export class OpenAIWhisperClient implements TranscriptionClient {
         type: 'audio/webm',
       });
 
-      console.log(
-        `OpenAIWhisperClient: Transcribing audio file of size: ${audioData.length} bytes.`
-      );
-      console.log('OpenAIWhisperClient: audioFile object created by OpenAI.toFile:', audioFile); // Log the object
+      this.logger.info('Transcribing audio file', {
+        sizeBytes: audioData.length,
+        sizeKB: Math.round(audioData.length / 1024)
+      });
+      this.logger.debug('audioFile object created by OpenAI.toFile', { audioFile });
 
       if (!audioFile) {
-        console.error('OpenAIWhisperClient: OpenAI.toFile returned undefined or null.');
+        this.logger.error('OpenAI.toFile returned undefined or null');
         throw new Error('Failed to prepare audio file for OpenAI SDK.');
       }
 
@@ -36,7 +39,7 @@ export class OpenAIWhisperClient implements TranscriptionClient {
 
       return response.text;
     } catch (error) {
-      console.error('Error transcribing audio with OpenAI Whisper:', error);
+      this.logger.error('Error transcribing audio with OpenAI Whisper', { error });
       throw error; // Rethrow or handle as appropriate
     }
   }

@@ -18,4 +18,19 @@ export interface ElectronAPI {
 
   // New method for setting the API key
   setApiKey: (apiKey: string) => Promise<void>;
+  getApiKey: () => Promise<string>;
+  
+  // Logging API for renderer process
+  log: {
+    info: (...args: any[]) => void;
+    warn: (...args: any[]) => void;
+    error: (...args: any[]) => void;
+    debug: (...args: any[]) => void;
+    scope: (name: string) => {
+      info: (...args: any[]) => void;
+      warn: (...args: any[]) => void;
+      error: (...args: any[]) => void;
+      debug: (...args: any[]) => void;
+    };
+  };
 }
