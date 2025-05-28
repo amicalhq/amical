@@ -1,3 +1,7 @@
+// Load .env file FIRST before any other imports
+import dotenv from 'dotenv';
+dotenv.config();
+
 import {
   app,
   BrowserWindow,
@@ -9,13 +13,11 @@ import {
 } from 'electron';
 import path from 'node:path';
 import fsPromises from 'node:fs/promises'; // For reading the audio file (async)
-import dotenv from 'dotenv';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 //import { runMigrations } from '../db/migrate';
 import { HelperEvent, KeyEventPayload } from '@amical/types';
-
-dotenv.config(); // Load .env file
+import { logger, logError, logPerformance } from './logger';
 import { AudioCapture } from '../modules/audio/audio-capture';
 import { setupApplicationMenu } from './menu';
 import { OpenAIWhisperClient } from '../modules/ai/openai-whisper-client';
@@ -47,10 +49,32 @@ interface StoreSchema {
 
 const store = new Store<StoreSchema>();
 
+// Function to create the appropriate transcription client based on configuration
+const createTranscriptionClient = () => {
+  // Check environment variable or use OpenAI as default
+  const useCloudInference = true;
+  
+  if (useCloudInference) {
+    logger.ai.info('Using Amical Cloud inference (via USE_CLOUD_INFERENCE=true)');
+    return new AmicalCloudClient();
+  } else {
+    logger.ai.info('Using OpenAI inference (default or USE_CLOUD_INFERENCE=false)');
+    const apiKey = store.get('openai-api-key') || process.env.OPENAI_API_KEY || null;
+    if (!apiKey) {
+      throw new Error('OpenAI API key is required when using OpenAI inference. Set it via UI or OPENAI_API_KEY env var.');
+    }
+    return new OpenAIWhisperClient(apiKey);
+  }
+};
+
 ipcMain.handle('set-api-key', (event, apiKey: string) => {
-  console.log('Main: Received set-api-key', event, ' API key:', apiKey);
+  logger.main.info('Received set-api-key request', { hasApiKey: !!apiKey });
   openAiApiKey = apiKey;
   store.set('openai-api-key', apiKey);
+});
+
+ipcMain.handle('get-api-key', () => {
+  return store.get('openai-api-key', '');
 });
 
 const requestPermissions = async () => {
@@ -69,12 +93,12 @@ const requestPermissions = async () => {
 
     // Request microphone permissions
     const microphoneEnabled = systemPreferences.getMediaAccessStatus('microphone');
-    console.log('Main: Microphone access status:', microphoneEnabled);
+    logger.main.info('Microphone access status:', { status: microphoneEnabled });
     if (microphoneEnabled !== 'granted') {
       await systemPreferences.askForMediaAccess('microphone');
     }
   } catch (error) {
-    console.error('Error requesting permissions:', error);
+    logError(error instanceof Error ? error : new Error(String(error)), 'requesting permissions');
   }
 };
 
@@ -156,9 +180,9 @@ app.on('ready', async () => {
   // Run database migrations first
   try {
     //runMigrations();
-    console.log('Database migrations completed successfully');
+    logger.db.info('Database migrations completed successfully');
   } catch (error) {
-    console.error('Failed to run database migrations:', error);
+    logError(error instanceof Error ? error : new Error(String(error)), 'running database migrations');
     // You might want to handle this error differently, perhaps showing a dialog to the user
   }
 
@@ -171,55 +195,72 @@ app.on('ready', async () => {
 
   audioCapture = new AudioCapture();
 
-  openAiApiKey = store.get('openai-api-key') || null;
-  if (openAiApiKey) {
-    console.log('Main: Loaded API key from store.');
-  } else {
-    console.log('Main: No API key found in store.');
-  }
-
-  if (!openAiApiKey) {
-    console.warn('OPENAI_API_KEY not provided. Transcription will not work.');
-  } else {
-    try {
-      const whisperClient = new OpenAIWhisperClient(openAiApiKey);
-      aiService = new AiService(whisperClient);
-      console.log('AI Service initialized with OpenAI Whisper client.');
-    } catch (error) {
-      console.error('Failed to initialize AI Service:', error);
-    }
+  // Initialize AI service with the appropriate client based on configuration
+  try {
+    const transcriptionClient = createTranscriptionClient();
+    aiService = new AiService(transcriptionClient);
+    const useCloudInference = process.env.USE_CLOUD_INFERENCE === 'true';
+    logger.ai.info('AI Service initialized', { 
+      client: useCloudInference ? 'Amical Cloud' : 'OpenAI' 
+    });
+  } catch (error) {
+    logError(error instanceof Error ? error : new Error(String(error)), 'initializing AI Service');
+    logger.ai.warn('Transcription will not work until configuration is fixed');
+    aiService = null;
   }
 
   audioCapture.on('recording-finished', async (filePath: string) => {
-    openAiApiKey = store.get('openai-api-key') || 'test123'; // Ensure there is a fallback or handle error
-    const whisperClient = new OpenAIWhisperClient(openAiApiKey); // Re-init or ensure client is valid
-    aiService = new AiService(whisperClient); // Re-init or ensure service is valid
+    // Ensure AI service is available and up-to-date
+    if (!aiService) {
+      try {
+        const transcriptionClient = createTranscriptionClient();
+        aiService = new AiService(transcriptionClient);
+        const useCloudInference = process.env.USE_CLOUD_INFERENCE === 'true';
+        logger.ai.info('AI Service reinitialized', { 
+          client: useCloudInference ? 'Amical Cloud' : 'OpenAI' 
+        });
+      } catch (error) {
+        logError(error instanceof Error ? error : new Error(String(error)), 'reinitializing AI Service');
+      }
+    }
 
-    console.log(`Main: Recording finished, file available at: ${filePath}`);
+    logger.audio.info('Recording finished', { filePath });
     if (aiService) {
       try {
+        const startTime = Date.now();
         const audioBuffer = await fsPromises.readFile(filePath);
-        console.log(`Main: Read audio file of size: ${audioBuffer.length} bytes. Transcribing...`);
+        logger.audio.info('Audio file read', { 
+          size: audioBuffer.length,
+          sizeKB: Math.round(audioBuffer.length / 1024)
+        });
+        
         const transcription = await aiService.transcribeAudio(audioBuffer);
-        console.log('Main: Transcription result:', transcription);
+        logPerformance('audio transcription', startTime, { 
+          audioSizeKB: Math.round(audioBuffer.length / 1024),
+          transcriptionLength: transcription?.length || 0
+        });
+        logger.ai.info('Transcription completed', { 
+          resultLength: transcription?.length || 0,
+          hasResult: !!transcription
+        });
 
         // Copy transcription to clipboard
         if (transcription && typeof transcription === 'string') {
-          console.log('Main: Transcription copied to clipboard.');
+          logger.main.info('Transcription pasted to active application');
           // Attempt to paste into the active application
           swiftIOBridgeClientInstance!.call('pasteText', { transcript: transcription });
         } else {
-          console.warn('Main: Transcription result was empty or not a string, not copying.');
+          logger.main.warn('Transcription result was empty or not a string, not copying');
         }
 
         // Optionally, delete the audio file after processing
         // await fs.unlink(filePath);
         // console.log(`Main: Deleted audio file: ${filePath}`);
       } catch (error) {
-        console.error('Main: Error during transcription or file handling:', error);
+        logError(error instanceof Error ? error : new Error(String(error)), 'transcription or file handling');
       }
     } else {
-      console.warn('Main: AI Service not available, cannot transcribe audio.');
+      logger.ai.warn('AI Service not available, cannot transcribe audio');
     }
   });
 
@@ -262,18 +303,17 @@ app.on('ready', async () => {
   swiftIOBridgeClientInstance = new SwiftIOBridge();
 
   swiftIOBridgeClientInstance.on('helperEvent', (event: HelperEvent) => {
-    console.log('Main: Received helperEvent from SwiftIOBridge:', JSON.stringify(event, null, 2));
+    logger.swift.debug('Received helperEvent from SwiftIOBridge', { event });
 
     switch (event.type) {
       case 'flagsChanged': {
         const payload = event.payload;
-        console.log(
-          'Main: Received flagsChanged event. Fn key pressed state:',
-          payload?.fnKeyPressed
-        );
+        logger.swift.debug('Received flagsChanged event', { 
+          fnKeyPressed: payload?.fnKeyPressed 
+        });
         // Use flagsChanged for more reliable Fn key state tracking
         if (payload?.fnKeyPressed !== undefined) {
-          console.log(`Main: Setting recording state to: ${payload.fnKeyPressed}`);
+          logger.swift.info('Setting recording state', { state: payload.fnKeyPressed });
           floatingButtonWindow!.webContents.send('recording-state-changed', payload.fnKeyPressed);
         }
         break;
@@ -306,12 +346,12 @@ app.on('ready', async () => {
   });
 
   swiftIOBridgeClientInstance.on('error', (error) => {
-    console.error('Main: SwiftIOBridge error:', error);
+    logError(error instanceof Error ? error : new Error(String(error)), 'SwiftIOBridge error');
     // Potentially notify the user or attempt to restart
   });
 
   swiftIOBridgeClientInstance.on('close', (code) => {
-    console.log(`Main: Swift helper process closed with code: ${code}`);
+    logger.swift.warn('Swift helper process closed', { code });
     // Handle unexpected close, maybe attempt restart
   });
 

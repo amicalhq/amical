@@ -1,93 +1,99 @@
-import fs from 'node:fs';
+import log from 'electron-log';
+import { app } from 'electron';
 import path from 'node:path';
-import { app as electronApp } from 'electron';
 
-export class AppLogger {
-  private logFilePath: string;
-  private logFileName: string;
+// Configure electron-log immediately when module is imported
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-  constructor(logFileName: string) {
-    this.logFileName = logFileName;
-    try {
-      const logsPath = electronApp.getPath('logs');
-      if (!fs.existsSync(logsPath)) {
-        fs.mkdirSync(logsPath, { recursive: true });
-      }
-      this.logFilePath = path.join(logsPath, this.logFileName);
-      this._log('INFO', `Log session started. Log file: ${this.logFilePath}`);
-    } catch (e: any) {
-      // Fallback if getPath or mkdir fails
-      const tempPath = electronApp.getPath('temp');
-       if (!fs.existsSync(tempPath)) {
-        // Attempt to create temp path if it also doesn't exist (less likely)
-        fs.mkdirSync(tempPath, { recursive: true });
-      }
-      this.logFilePath = path.join(tempPath, `${this.logFileName}.fallback.log`);
-      console.error(`AppLogger (${this.logFileName}): Error setting up primary log path, using fallback: ${e.message}`);
-      this._log('ERROR', `Error setting up primary log path: ${e.message}. Using fallback: ${this.logFilePath}`);
-    }
+// Configure main logger - check for LOG_LEVEL override
+const envLogLevel = process.env.LOG_LEVEL as 'error' | 'warn' | 'info' | 'debug' | undefined;
+const defaultFileLevel: 'debug' | 'info' = isDev ? 'debug' : 'info';
+const defaultConsoleLevel: 'debug' | 'warn' = isDev ? 'debug' : 'warn';
+
+log.transports.file.level = envLogLevel || defaultFileLevel;
+log.transports.console.level = envLogLevel || defaultConsoleLevel;
+
+// Configure file transport
+log.transports.file.maxSize = 10 * 1024 * 1024; // 10MB
+log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+
+// Set custom log file path
+const logPath = isDev 
+  ? path.join(app.getPath('userData'), 'logs', 'amical-dev.log')
+  : path.join(app.getPath('logs'), 'amical.log');
+
+log.transports.file.resolvePathFn = () => logPath;
+
+// Configure console transport for better development experience
+if (isDev) {
+  log.transports.console.format = '[{level}] {text}';
+  log.transports.console.useStyles = true;
+} else {
+  log.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}] [{level}] {text}';
+  log.transports.console.useStyles = false;
+}
+
+// Configure remote transport for production error reporting (optional)
+if (!isDev) {
+  // You can configure remote logging here if needed
+  // log.transports.remote.level = 'error';
+  // log.transports.remote.url = 'your-logging-service-url';
+}
+
+// Create scoped loggers for different modules
+export const logger = {
+  main: log.scope('main'),
+  audio: log.scope('audio'),
+  ai: log.scope('ai'),
+  swift: log.scope('swift'),
+  ui: log.scope('ui'),
+  db: log.scope('db'),
+};
+
+// Log startup information
+logger.main.info('Logger initialized', {
+  isDev,
+  fileLogLevel: log.transports.file.level,
+  consoleLogLevel: log.transports.console.level,
+  envLogLevel: envLogLevel || 'not set',
+  logPath,
+  version: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+});
+
+// Export the main logger instance for direct use
+export { log };
+
+// Utility function to create custom scoped loggers
+export function createScopedLogger(scope: string) {
+  return log.scope(scope);
+}
+
+// Error handling utilities
+export function logError(error: Error, context?: string, metadata?: Record<string, any>) {
+  const errorInfo = {
+    message: error.message,
+    stack: error.stack,
+    name: error.name,
+    context,
+    ...metadata,
+  };
+  
+  logger?.main.error('Error occurred:', errorInfo);
+}
+
+export function logPerformance(operation: string, startTime: number, metadata?: Record<string, any>) {
+  const duration = Date.now() - startTime;
+  logger?.main.info(`Performance: ${operation}`, {
+    duration: `${duration}ms`,
+    ...metadata,
+  });
+}
+
+// Development helpers
+export function logDebugInfo(component: string, data: any) {
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    logger?.main.debug(`[${component}]`, data);
   }
-
-  private _log(level: 'INFO' | 'ERROR' | 'WARN' | 'DEBUG', ...args: any[]): void {
-    const timestamp = new Date().toISOString();
-    const serializedArgs = args.map(arg => {
-      if (arg instanceof Error) {
-        return `Error: ${arg.message}${arg.stack ? '\nStack: ' + arg.stack : ''}`;
-      }
-      if (typeof arg === 'object' && arg !== null) {
-        try {
-          return JSON.stringify(arg);
-        } catch (e) {
-          return '[Unserializable Object]';
-        }
-      }
-      return String(arg);
-    });
-    const formattedMessage = `[${timestamp}] [${level}] ${serializedArgs.join(' ')}\n`;
-
-    try {
-      const logDir = path.dirname(this.logFilePath);
-      if (!fs.existsSync(logDir)) {
-        fs.mkdirSync(logDir, { recursive: true });
-      }
-      fs.appendFileSync(this.logFilePath, formattedMessage);
-    } catch (e: any) {
-      console.error(`AppLogger (${this.logFileName}): FATAL - Failed to write to log file:`, this.logFilePath, e.message);
-      if (level === 'ERROR') console.error(...args);
-      else if (level === 'WARN') console.warn(...args);
-      else console.log(...args); // Default to console.log for INFO/DEBUG if file write fails
-      return;
-    }
-
-    // Also log to the actual console based on level
-    if (level === 'ERROR') {
-      console.error(`[${this.logFileName}]`, ...args);
-    } else if (level === 'WARN') {
-      console.warn(`[${this.logFileName}]`, ...args);
-    } else if (level === 'INFO') {
-      console.info(`[${this.logFileName}]`, ...args);
-    } else { // DEBUG
-      console.debug(`[${this.logFileName}]`, ...args);
-    }
-  }
-
-  public info(...args: any[]): void {
-    this._log('INFO', ...args);
-  }
-
-  public warn(...args: any[]): void {
-    this._log('WARN', ...args);
-  }
-
-  public error(...args: any[]): void {
-    this._log('ERROR', ...args);
-  }
-
-  public debug(...args: any[]): void {
-    this._log('DEBUG', ...args);
-  }
-
-  public getLogFilePath(): string {
-    return this.logFilePath;
-  }
-} 
+}

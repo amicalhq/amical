@@ -2,6 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
+import log from 'electron-log/renderer';
 import type { ElectronAPI } from '../types/electron-api';
 
 interface ShortcutData {
@@ -50,6 +51,16 @@ const api: ElectronAPI = {
   //   ipcRenderer.removeAllListeners('global-shortcut-event');
   // }
   setApiKey: (apiKey: string) => ipcRenderer.invoke('set-api-key', apiKey),
+  getApiKey: () => ipcRenderer.invoke('get-api-key'),
+  
+  // Logging API for renderer process
+  log: {
+    info: (...args: any[]) => log.info(...args),
+    warn: (...args: any[]) => log.warn(...args),
+    error: (...args: any[]) => log.error(...args),
+    debug: (...args: any[]) => log.debug(...args),
+    scope: (name: string) => log.scope(name),
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

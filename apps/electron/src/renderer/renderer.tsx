@@ -26,9 +26,11 @@
  * ```
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import '@/styles/globals.css';
 import ShortcutIndicator from '../components/ShortcutIndicator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
