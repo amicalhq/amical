@@ -102,7 +102,7 @@ const requestPermissions = async () => {
   }
 };
 
-const createOrShowSettingsWindow = () => {
+const createOrShowMainWindow = () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     mainWindow.focus();
@@ -364,7 +364,7 @@ app.on('ready', async () => {
     // Handle unexpected close, maybe attempt restart
   });
 
-  setupApplicationMenu(createOrShowSettingsWindow);
+  setupApplicationMenu(createOrShowMainWindow);
 
   if (process.platform === 'darwin') {
     try {
@@ -433,7 +433,7 @@ app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    // If no windows are open, just re-create the FAB. Settings window should be opened via menu.
+    // If no windows are open, create both FAB and main window
     createFloatingButtonWindow();
   } else {
     // If there are windows, ensure FAB is visible.
@@ -442,11 +442,9 @@ app.on('activate', () => {
     } else {
       floatingButtonWindow.show();
     }
-    // Optionally, if main window exists and is minimized, it could be shown,
-    // but the primary action of dock click is usually for the main app presence,
-    // which is now the FAB by default.
-    // If mainWindow and !mainWindow.isDestroyed() and mainWindow.isMinimized()
-    // mainWindow.restore();
+    
+    // Always show/create the main window when dock icon is clicked
+    createOrShowMainWindow();
   }
 });
 
