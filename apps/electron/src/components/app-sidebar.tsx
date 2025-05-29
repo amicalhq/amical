@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Mic, Settings, FileText, History, User } from "lucide-react"
+import { Mic, Settings, FileText, History, User, Book } from "lucide-react"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -31,6 +31,12 @@ const data = {
       title: "Transcriptions",
       url: "#",
       icon: FileText,
+      isActive: false,
+    },
+    {
+      title: "Vocabulary",
+      url: "#",
+      icon: Book,
       isActive: false,
     },
     {
@@ -121,7 +127,32 @@ export function AppSidebar({ onNavigate, ...props }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="gap-2">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              className="flex items-center justify-center size-8"
+              tooltip={{
+                children: "Join Discord Community",
+                hidden: false,
+              }}
+            >
+              <a 
+                href="https://amical.ai/community" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <img 
+                  src="/assets/discord-icon.svg" 
+                  alt="Discord" 
+                  className="w-5 h-5"
+                />
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <NavUser user={data.user} />
       </SidebarFooter>
     </Sidebar>

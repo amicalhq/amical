@@ -35,6 +35,8 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/s
 import { AppSidebar } from '@/components/app-sidebar';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { VocabularyManager } from '@/components/vocabulary-manager';
+import { TranscriptionsTable } from '@/components/transcriptions-table';
 import '@/styles/globals.css';
 import ShortcutIndicator from '../components/ShortcutIndicator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -47,7 +49,13 @@ const NUM_WAVEFORM_BARS = 10; // This might be unused now
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
-  const [currentView, setCurrentView] = useState('Voice Recording');
+  const [currentView, setCurrentView] = useState(() => {
+    // Try to restore the view from localStorage, fallback to default
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('amical-current-view') || 'Voice Recording';
+    }
+    return 'Voice Recording';
+  });
 
   const handleApiKeyChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setApiKey(event.target.value);
@@ -60,6 +68,8 @@ const App: React.FC = () => {
 
   const handleNavigation = (item: any) => {
     setCurrentView(item.title);
+    // Save to localStorage to preserve during HMR
+    localStorage.setItem('amical-current-view', item.title);
   };
 
   const renderContent = () => {
@@ -73,12 +83,9 @@ const App: React.FC = () => {
           </div>
         );
       case 'Transcriptions':
-        return (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Transcriptions</h2>
-            <p>View and manage your transcriptions here.</p>
-          </div>
-        );
+        return <TranscriptionsTable />;
+      case 'Vocabulary':
+        return <VocabularyManager />;
       case 'History':
         return (
           <div className="space-y-4">
@@ -150,10 +157,10 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <SidebarProvider>
+      <SidebarProvider defaultOpen={false}>
         <AppSidebar onNavigate={handleNavigation} />
         <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+          {/* <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
             <div className="flex items-center gap-2 px-4">
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-2 h-4" />
@@ -162,8 +169,8 @@ const App: React.FC = () => {
             <div className="ml-auto px-4">
               <ThemeToggle />
             </div>
-          </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          </header> */}
+          <div className="flex flex-1 flex-col gap-4 p-4 w-full max-w-[1440px] mx-auto">
             {renderContent()}
           </div>
         </SidebarInset>
