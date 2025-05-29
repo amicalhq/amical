@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Amical Electron application",
   "main": ".vite/build/main.js",
+  "productName": "Amical",
   "scripts": {
     "start": "pnpm build:swift-helper && electron-forge start",
     "package": "pnpm build:swift-helper && electron-forge package",
