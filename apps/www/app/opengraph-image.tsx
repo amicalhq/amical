@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 export const runtime = 'nodejs';
 export const dynamic = 'force-static';
 
-export const alt = 'Amical - Open Source Speech-to-Text App powered by Gen AI';
+export const alt = 'Amical - Open Source AI Dictation App';
 export const size = {
   width: 1200,
   height: 630,
@@ -54,7 +54,7 @@ export default async function Image() {
             fontFamily: geist.style.fontFamily,
           }}
         >
-          Open Source Speech-to-Text App powered by Gen AI
+          Open Source AI Dictation App
         </div>
       </div>
     ),

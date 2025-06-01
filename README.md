@@ -38,7 +38,7 @@
 
 ## 🔮 Overview
 
-Open Source Speech-to-Text App powered by Gen AI\
+Open Source AI Dictation App\
 Type 10x faster, no keyboard needed. Fast, Accurate, Context-aware and Private.
 
 ## ✨ Features
