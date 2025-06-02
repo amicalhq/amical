@@ -57,15 +57,16 @@ export default function ComparisonTraditional() {
         </div>
 
         <Card className="bg-[#18181B] border border-[#232329] p-0 shadow-lg overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#232329]">
+          {/* Desktop Layout */}
+          <div className="hidden md:grid md:grid-cols-2 md:divide-x divide-[#232329]">
             {/* Header Row */}
-            <div className="p-8 flex items-center gap-2">
-              <Check className="w-5 h-5 text-emerald-500" />
-              <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-emerald-500 to-purple-500 bg-clip-text text-transparent">Amical Dictation</span>
+            <div className="p-8 flex items-center gap-2 bg-gradient-to-r from-emerald-950/50 to-emerald-900/30 border-b border-emerald-500/20">
+              <Check className="w-5 h-5 text-emerald-400" />
+              <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">Amical Dictation</span>
             </div>
-            <div className="p-8 flex items-center gap-2">
+            <div className="p-8 flex items-center gap-2 bg-gradient-to-r from-gray-900/50 to-gray-800/30 border-b border-gray-600/20">
               <X className="w-5 h-5 text-gray-400" />
-              <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Mac/Windows Native Dictation</span>
+              <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-gray-300 to-gray-500 bg-clip-text text-transparent">Mac/Windows Native Dictation</span>
             </div>
             {/* Feature Rows */}
             {features.map((f, i) => (
@@ -87,6 +88,39 @@ export default function ComparisonTraditional() {
                   </div>
                 </div>
               </React.Fragment>
+            ))}
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="md:hidden">
+            {/* First Column - Amical Dictation */}
+            <div className="p-6 flex items-center gap-2 bg-gradient-to-r from-emerald-950/60 to-emerald-900/40 border-b-2 border-emerald-500/30">
+              <Check className="w-5 h-5 text-emerald-400" />
+              <span className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">Amical Dictation</span>
+            </div>
+            {features.map((f, i) => (
+              <div key={`positive-${i}`} className="p-6 flex items-start gap-3 border-b border-[#232329]">
+                {f.icon}
+                <div>
+                  <span className="text-white font-semibold text-base">{f.title}</span>
+                  <div className="text-gray-400 text-sm mt-1">{f.description}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Second Column - Mac/Windows Native Dictation */}
+            <div className="p-6 flex items-center gap-2 bg-gradient-to-r from-gray-900/60 to-gray-800/40 border-b-2 border-gray-600/30 mt-6">
+              <X className="w-5 h-5 text-gray-400" />
+              <span className="text-xl font-bold bg-gradient-to-r from-gray-300 to-gray-500 bg-clip-text text-transparent">Mac/Windows Native Dictation</span>
+            </div>
+            {features.map((f, i) => (
+              <div key={`negative-${i}`} className="p-6 flex items-start gap-3 border-b border-[#232329] last:border-b-0">
+                {f.negativeIcon}
+                <div>
+                  <span className="text-white font-semibold text-base">{f.negativeTitle}</span>
+                  <div className="text-gray-400 text-sm mt-1">{f.negativeDescription}</div>
+                </div>
+              </div>
             ))}
           </div>
         </Card>
