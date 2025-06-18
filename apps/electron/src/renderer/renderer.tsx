@@ -26,7 +26,7 @@
  * ```
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button } from '@/components/ui/button';
 import '@/styles/globals.css';
@@ -40,6 +40,23 @@ const NUM_WAVEFORM_BARS = 10; // This might be unused now
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
+  const [token, setToken] = useState<unknown>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  // Register OAuth callbacks once
+  useEffect(() => {
+    const offSuccess = window.electronAPI.onOauthSuccess((tok) => {
+      setToken(tok);
+      setOauthError(null);
+    });
+    const offError = window.electronAPI.onOauthError((msg) => {
+      setOauthError(msg);
+    });
+    return () => {
+      offSuccess?.();
+      offError?.();
+    };
+  }, []);
 
   const handleApiKeyChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setApiKey(event.target.value);
@@ -50,12 +67,17 @@ const App: React.FC = () => {
     alert('API Key sent to main process!');
   };
 
+  const handleLogin = () => {
+    window.electronAPI.oauthLogin();
+  };
+
   return (
     <div className="flex-1 space-y-4 p-8 pt-6">
       <Tabs defaultValue="dictionary" className="w-[400px]">
         <TabsList>
           <TabsTrigger value="dictionary">Dictionary</TabsTrigger>
           <TabsTrigger value="api">Configure API Key</TabsTrigger>
+          <TabsTrigger value="auth">Auth</TabsTrigger>
         </TabsList>
         <TabsContent value="dictionary">Dictionary Tab Content</TabsContent>
         <TabsContent value="api">API Key Configuration Content</TabsContent>
@@ -72,6 +94,19 @@ const App: React.FC = () => {
             />
             <Button onClick={handleSaveApiKey}>Save API Key</Button>
           </div>
+        </TabsContent>
+        <TabsContent value="auth">
+          {token ? (
+            <div className="space-y-2">
+              <p className="text-green-600">Logged in!</p>
+              <pre className="bg-muted p-2 text-xs overflow-x-auto max-h-40">{JSON.stringify(token, null, 2)}</pre>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Button onClick={handleLogin}>Sign in with Provider</Button>
+              {oauthError && <p className="text-red-600 text-sm">{oauthError}</p>}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

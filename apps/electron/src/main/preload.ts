@@ -50,6 +50,19 @@ const api: ElectronAPI = {
   //   ipcRenderer.removeAllListeners('global-shortcut-event');
   // }
   setApiKey: (apiKey: string) => ipcRenderer.invoke('set-api-key', apiKey),
+
+  /* ----------------------- OAuth ------------------------- */
+  oauthLogin: (): Promise<void> => ipcRenderer.invoke('oauth-login'),
+  onOauthSuccess: (callback: (token: unknown) => void) => {
+    const handler = (_event: IpcRendererEvent, token: unknown) => callback(token);
+    ipcRenderer.on('oauth-success', handler);
+    return () => ipcRenderer.removeListener('oauth-success', handler);
+  },
+  onOauthError: (callback: (msg: string) => void) => {
+    const handler = (_event: IpcRendererEvent, msg: string) => callback(msg);
+    ipcRenderer.on('oauth-error', handler);
+    return () => ipcRenderer.removeListener('oauth-error', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

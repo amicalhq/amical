@@ -18,4 +18,9 @@ export interface ElectronAPI {
 
   // New method for setting the API key
   setApiKey: (apiKey: string) => Promise<void>;
+
+  // OAuth PKCE
+  oauthLogin: () => Promise<void>;
+  onOauthSuccess: (callback: (token: unknown) => void) => (() => void) | void;
+  onOauthError: (callback: (msg: string) => void) => (() => void) | void;
 }

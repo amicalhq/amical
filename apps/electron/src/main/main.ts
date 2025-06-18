@@ -14,6 +14,7 @@ import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 //import { runMigrations } from '../db/migrate';
 import { HelperEvent, KeyEventPayload } from '@amical/types';
+//import crypto from 'node:crypto'; // For PKCE helpers
 
 dotenv.config(); // Load .env file
 import { AudioCapture } from '../modules/audio/audio-capture';
@@ -21,6 +22,8 @@ import { setupApplicationMenu } from './menu';
 import { OpenAIWhisperClient } from '../modules/ai/openai-whisper-client';
 import { AiService } from '../modules/ai/ai-service';
 import { SwiftIOBridge } from './swift-io-bridge'; // Added import
+import { registerDeepLinkHandlers } from './deep-link';
+import { initOAuth } from './oauth/flow';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -41,11 +44,21 @@ let openAiApiKey: string | null = null;
 let currentWindowDisplayId: number | null = null; // For tracking current display
 let activeSpaceChangeSubscriptionId: number | null = null; // For display change notifications
 
+// (pendingDeepLink logic moved to deep-link.ts)
+
+// OAuth logic has been moved to ./oauth/flow.ts
+
 interface StoreSchema {
   'openai-api-key': string;
 }
 
 const store = new Store<StoreSchema>();
+
+// Initialise the modular OAuth handler and receive the deep-link callback.
+const handleDeepLink = initOAuth(store, () => mainWindow);
+
+// Register OS-level deep-link/instance handlers.
+registerDeepLinkHandlers(handleDeepLink);
 
 ipcMain.handle('set-api-key', (event, apiKey: string) => {
   console.log('Main: Received set-api-key', event, ' API key:', apiKey);
