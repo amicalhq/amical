@@ -28,20 +28,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { ThemeProvider } from '@/components/theme-provider';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { VocabularyManager } from '@/components/vocabulary-manager';
-import { TranscriptionsTable } from '@/components/transcriptions-table';
-import '@/styles/globals.css';
-import ShortcutIndicator from '../components/ShortcutIndicator';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
 import { TitleBar } from '@/components/title-bar';
+import { DashboardView } from '@/components/dashboard-view';
+import { VoiceRecordingView } from '@/components/voice-recording-view';
+import { TranscriptionsView } from '@/components/transcriptions-view';
+import { VocabularyView } from '@/components/vocabulary-view';
+import { ModelsView } from '@/components/models-view';
+import { SettingsView } from '@/components/settings-view';
+import { ProfileView } from '@/components/profile-view';
+import '@/styles/globals.css';
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
@@ -75,77 +73,20 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (currentView) {
+      case 'Dashboard':
+        return <DashboardView />;
       case 'Voice Recording':
-        return (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Voice Recording</h2>
-            <p>Voice recording functionality will be implemented here.</p>
-            <ShortcutIndicator />
-          </div>
-        );
+        return <VoiceRecordingView />;
       case 'Transcriptions':
-        return <TranscriptionsTable />;
+        return <TranscriptionsView />;
       case 'Vocabulary':
-        return <VocabularyManager />;
-      case 'History':
-        return (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">History</h2>
-            <p>View your recording history here.</p>
-          </div>
-        );
+        return <VocabularyView />;
+      case 'Models':
+        return <ModelsView />;
       case 'Settings':
-        return (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Settings</h2>
-            <Tabs defaultValue="api" className="w-full">
-              <TabsList>
-                <TabsTrigger value="api">API Configuration</TabsTrigger>
-                <TabsTrigger value="appearance">Appearance</TabsTrigger>
-                <TabsTrigger value="general">General</TabsTrigger>
-              </TabsList>
-              <TabsContent value="api" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="apiKey">OpenAI API Key:</Label>
-                  <input
-                    type="password"
-                    id="apiKey"
-                    name="apiKey"
-                    className="border rounded px-3 py-2 w-full"
-                    value={apiKey}
-                    onChange={handleApiKeyChange}
-                    placeholder="Enter your OpenAI API key"
-                  />
-                  <Button onClick={handleSaveApiKey}>Save API Key</Button>
-                </div>
-              </TabsContent>
-              <TabsContent value="appearance" className="space-y-4">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-lg font-medium">Theme</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Choose your preferred theme or follow system settings.
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Label htmlFor="theme-toggle">Theme:</Label>
-                    <ThemeToggle />
-                  </div>
-                </div>
-              </TabsContent>
-              <TabsContent value="general">
-                <p>General settings will be implemented here.</p>
-              </TabsContent>
-            </Tabs>
-          </div>
-        );
+        return <SettingsView />;
       case 'Profile':
-        return (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Profile</h2>
-            <p>Manage your profile settings here.</p>
-          </div>
-        );
+        return <ProfileView />;
       default:
         return (
           <div className="space-y-4">

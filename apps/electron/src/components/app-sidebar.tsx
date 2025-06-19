@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Mic, Settings, FileText, History, User, Book } from "lucide-react"
+import { Mic, Settings, FileText, History, User, Book, BarChart3, Cpu } from "lucide-react"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -22,6 +22,12 @@ const data = {
   },
   navMain: [
     {
+      title: "Dashboard",
+      url: "#",
+      icon: BarChart3,
+      isActive: false,
+    },
+    {
       title: "Voice Recording",
       url: "#",
       icon: Mic,
@@ -40,9 +46,9 @@ const data = {
       isActive: false,
     },
     {
-      title: "History",
+      title: "Models",
       url: "#",
-      icon: History,
+      icon: Cpu,
       isActive: false,
     },
     {
