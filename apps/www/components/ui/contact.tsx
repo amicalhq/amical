@@ -37,6 +37,13 @@ const Contact = () => {
             <form action="https://submit-form.com/nItcloafD">
               <input type="hidden" name="form_name" value="contact_form" />
               <input type="hidden" name="_redirect" value="https://amical.ai/contact?submission=true" />
+              <input
+                type="checkbox"
+                name="_is_valid_email"
+                className="hidden"
+                tabIndex={-1}
+                autoComplete="off"
+              />
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="grid w-full items-center gap-1.5">
                   <Label htmlFor="firstname">
