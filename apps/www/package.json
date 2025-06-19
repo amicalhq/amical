@@ -3,11 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "pnpm build:sitemap && next build",
+    "build": "pnpm refresh-content && next build && pnpm build:sitemap",
     "build:sitemap": "pnpm exec tsx ./scripts/generate-sitemap.mts",
     "dev": "next dev --turbo",
     "start": "next start",
     "serve": "pnpm dlx serve out -p 3000",
+    "fetch-content": "pnpm exec tsx ./scripts/fetch-content.mts",
+    "cleanup-content": "pnpm exec tsx ./scripts/cleanup-content.mts",
+    "refresh-content": "pnpm cleanup-content && pnpm fetch-content",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
@@ -33,13 +36,16 @@
     "tailwind-merge": "^3.2.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.832.0",
     "@tailwindcss/postcss": "^4.1.5",
     "@types/mdx": "^2.0.13",
     "@types/node": "22.15.12",
     "@types/react": "^19.1.3",
     "@types/react-dom": "^19.1.3",
+    "dotenv": "^16.5.0",
     "globby": "^14.1.0",
     "postcss": "^8.5.3",
+    "rimraf": "^6.0.1",
     "server": "^1.0.41",
     "tailwindcss": "^4.1.5",
     "tsx": "^4.19.4",
