@@ -20,6 +20,28 @@ export interface ElectronAPI {
   setApiKey: (apiKey: string) => Promise<void>;
   getApiKey: () => Promise<string>;
   
+  // Model Management API
+  getAvailableModels: () => Promise<import('../constants/models').Model[]>;
+  getDownloadedModels: () => Promise<Record<string, import('../constants/models').DownloadedModel>>;
+  isModelDownloaded: (modelId: string) => Promise<boolean>;
+  getDownloadProgress: (modelId: string) => Promise<import('../constants/models').DownloadProgress | null>;
+  getActiveDownloads: () => Promise<import('../constants/models').DownloadProgress[]>;
+  downloadModel: (modelId: string) => Promise<void>;
+  cancelDownload: (modelId: string) => Promise<void>;
+  deleteModel: (modelId: string) => Promise<void>;
+  getModelsDirectory: () => Promise<string>;
+  
+  // Local Whisper API
+  isLocalWhisperAvailable: () => Promise<boolean>;
+  getLocalWhisperModels: () => Promise<string[]>;
+  getSelectedModel: () => Promise<string | null>;
+  setSelectedModel: (modelId: string) => Promise<void>;
+  setWhisperExecutablePath: (path: string) => Promise<void>;
+  
+  // Model management event listeners
+  on: (channel: string, callback: (...args: any[]) => void) => void;
+  off: (channel: string, callback: (...args: any[]) => void) => void;
+  
   // Logging API for renderer process
   log: {
     info: (...args: any[]) => void;
