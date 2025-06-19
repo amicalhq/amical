@@ -46,6 +46,13 @@ export function SubscriptionForm({
       <form action="https://submit-form.com/nItcloafD" className={`flex flex-col ${variant === 'blog' ? 'items-center' : ''} gap-4`}>
         <input type="hidden" name="form_name" value={formName} />
         <input type="hidden" name="_redirect" value={redirectUrl} />
+        <input
+          type="checkbox"
+          name="_is_valid_email"
+          className="hidden"
+          tabIndex={-1}
+          autoComplete="off"
+        />
         <div className={`flex ${variant === 'blog' ? 'w-full max-w-md' : ''} gap-2`}>
           <Input placeholder="Enter your email" type="email" name="email" required />
           <Button type="submit">Subscribe</Button>
