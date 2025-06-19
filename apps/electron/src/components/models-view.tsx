@@ -5,8 +5,19 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Label } from './ui/label';
-import { Trash2, Download, X, Loader2 } from 'lucide-react';
-import { Alert, AlertDescription } from './ui/alert';
+import { Trash2, Download, Square, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { 
+  AlertDialog, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogTrigger,
+  AlertDialogAction,
+  AlertDialogCancel
+} from './ui/alert-dialog';
 import { Model, DownloadedModel, DownloadProgress } from '../constants/models';
 
 export const ModelsView: React.FC = () => {
@@ -14,9 +25,10 @@ export const ModelsView: React.FC = () => {
   const [downloadedModels, setDownloadedModels] = useState<Record<string, DownloadedModel>>({});
   const [downloadProgress, setDownloadProgress] = useState<Record<string, DownloadProgress>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isLocalWhisperAvailable, setIsLocalWhisperAvailable] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [modelToDelete, setModelToDelete] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -45,7 +57,7 @@ export const ModelsView: React.FC = () => {
       setDownloadProgress(progressMap);
     } catch (err) {
       console.error('Failed to load models data:', err);
-      setError(`Failed to load models: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error('Failed to load models data');
     } finally {
       setLoading(false);
     }
@@ -117,36 +129,68 @@ export const ModelsView: React.FC = () => {
     };
   }, []);
 
-  const handleDownload = async (modelId: string) => {
+  const handleDownload = async (modelId: string, event?: React.MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    
+    console.log('Start download clicked for:', modelId);
+    
     try {
+      console.log('Downloading model:', modelId);
       await window.electronAPI.downloadModel(modelId);
+      console.log('Start download successful for:', modelId);
     } catch (err) {
       console.error('Failed to start download:', err);
-      setError(`Failed to start download: ${err instanceof Error ? err.message : String(err)}`);
+      
+      // Don't show error for manual cancellations (AbortError)
+      if (err instanceof Error && err.message.includes('AbortError')) {
+        console.log('Download was manually aborted, not showing error');
+        return;
+      }
+      
+      toast.error('Failed to start download');
     }
   };
 
-  const handleCancelDownload = async (modelId: string) => {
+  const handleCancelDownload = async (modelId: string, event?: React.MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    
+    console.log('Cancel download clicked for:', modelId);
+    
     try {
       await window.electronAPI.cancelDownload(modelId);
+      console.log('Cancel download successful for:', modelId);
     } catch (err) {
       console.error('Failed to cancel download:', err);
-      setError(`Failed to cancel download: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error('Failed to cancel download');
     }
   };
 
-  const handleDelete = async (modelId: string) => {
-    if (!window.confirm('Are you sure you want to delete this model? This action cannot be undone.')) {
-      return;
-    }
+  const handleDeleteClick = (modelId: string) => {
+    setModelToDelete(modelId);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!modelToDelete) return;
 
     try {
-      await window.electronAPI.deleteModel(modelId);
+      await window.electronAPI.deleteModel(modelToDelete);
     } catch (err) {
       console.error('Failed to delete model:', err);
-      setError(`Failed to delete model: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error('Failed to delete model');
+    } finally {
+      setShowDeleteDialog(false);
+      setModelToDelete(null);
     }
   };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteDialog(false);
+    setModelToDelete(null);
+  };
+
 
   const handleSelectModel = async (modelId: string) => {
     try {
@@ -154,7 +198,7 @@ export const ModelsView: React.FC = () => {
       setSelectedModel(modelId);
     } catch (err) {
       console.error('Failed to select model:', err);
-      setError(`Failed to select model: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error('Failed to select model');
     }
   };
 
@@ -192,22 +236,6 @@ export const ModelsView: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {error && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertDescription>
-                    {error}
-                    <Button
-                      onClick={() => setError(null)}
-                      variant="outline"
-                      size="sm"
-                      className="ml-2"
-                    >
-                      Dismiss
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              )}
-
               <RadioGroup
                 value={selectedModel || ''}
                 onValueChange={handleSelectModel}
@@ -217,8 +245,6 @@ export const ModelsView: React.FC = () => {
                   const isDownloaded = !!downloadedModels[model.id];
                   const progress = downloadProgress[model.id];
                   const isDownloading = progress?.status === 'downloading';
-                  const isCancelling = progress?.status === 'cancelling';
-                  const hasError = progress?.status === 'error';
 
                   return (
                     <div key={model.id} className="flex items-center justify-between py-3 border-b last:border-b-0">
@@ -233,56 +259,58 @@ export const ModelsView: React.FC = () => {
                             {model.name}
                           </Label>
                           <div className="text-sm text-muted-foreground mt-1">
-                            RAM ~{model.ramUsageFormatted}
+                            {model.description}
                           </div>
-
-                          {/* Error message */}
-                          {hasError && progress?.error && (
-                            <div className="mt-1 text-xs text-red-500">
-                              Error: {progress.error}
-                            </div>
-                          )}
                         </div>
                       </div>
 
                       <div className="flex flex-col items-center space-y-1">
-                        {!isDownloaded && (
+                        {!isDownloaded && !isDownloading && (
+                          <button
+                            onClick={(e) => handleDownload(model.id, e)}
+                            className="w-10 h-10 rounded-full bg-primary hover:bg-primary/90 flex items-center justify-center text-primary-foreground transition-colors"
+                            title="Click to download"
+                          >
+                            <Download className="w-5 h-5" />
+                          </button>
+                        )}
+
+                        {!isDownloaded && isDownloading && (
                           <div className="relative">
                             <button
-                              onClick={() => isDownloading ? handleCancelDownload(model.id) : handleDownload(model.id)}
-                              disabled={isCancelling || hasError}
-                              className="relative w-10 h-10 rounded-full bg-primary hover:bg-primary/90 disabled:bg-muted flex items-center justify-center text-primary-foreground transition-colors"
+                              onClick={(e) => handleCancelDownload(model.id, e)}
+                              className="w-10 h-10 rounded-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center text-white transition-colors"
+                              title="Click to cancel download"
                             >
-                              {isDownloading ? (
-                                <X className="w-5 h-5" />
-                              ) : (
-                                <Download className="w-5 h-5" />
-                              )}
+                              <Square className="w-4 h-4" />
                             </button>
                             
-                            {/* Circular Progress */}
-                            {isDownloading && progress && (
+                            {/* Circular Progress Ring */}
+                            {progress && (
                               <svg
-                                className="absolute inset-0 w-10 h-10 -rotate-90"
+                                className="absolute inset-0 w-10 h-10 -rotate-90 pointer-events-none"
                                 viewBox="0 0 36 36"
                               >
-                                <path
-                                  d="M18 2.0845
-                                    a 15.9155 15.9155 0 0 1 0 31.831
-                                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                                <circle
+                                  cx="18"
+                                  cy="18"
+                                  r="15.9155"
                                   fill="none"
-                                  stroke="hsl(var(--muted))"
-                                  strokeWidth="2"
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                                  strokeDasharray="100 100"
+                                  className="text-muted-foreground/30"
                                 />
-                                <path
-                                  d="M18 2.0845
-                                    a 15.9155 15.9155 0 0 1 0 31.831
-                                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                                <circle
+                                  cx="18"
+                                  cy="18"
+                                  r="15.9155"
                                   fill="none"
-                                  stroke="hsl(var(--primary))"
-                                  strokeWidth="2"
-                                  strokeDasharray={`${progress.progress}, 100`}
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                                  strokeDasharray={`${Math.max(0, Math.min(100, progress.progress))} 100`}
                                   strokeLinecap="round"
+                                  className="text-white transition-all duration-300"
                                 />
                               </svg>
                             )}
@@ -291,8 +319,9 @@ export const ModelsView: React.FC = () => {
 
                         {isDownloaded && (
                           <button
-                            onClick={() => handleDelete(model.id)}
+                            onClick={() => handleDeleteClick(model.id)}
                             className="w-10 h-10 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
+                            title="Click to delete model"
                           >
                             <Trash2 className="w-5 h-5" />
                           </button>
@@ -353,6 +382,23 @@ export const ModelsView: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Model</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this model? This action cannot be undone and you will need to download the model again if you want to use it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-500 hover:bg-red-600">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }; 

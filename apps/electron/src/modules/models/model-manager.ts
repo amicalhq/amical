@@ -249,7 +249,11 @@ class ModelManagerService extends EventEmitter {
     download.status = 'cancelling';
     download.abortController?.abort();
     
-    logger.main.info('Cancelling model download', { modelId });
+    // Immediately remove from active downloads to prevent restart issues
+    this.state.activeDownloads.delete(modelId);
+    
+    logger.main.info('Cancelled model download', { modelId });
+    this.emit('download-cancelled', modelId);
   }
 
   // Delete a downloaded model
