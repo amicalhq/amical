@@ -23,6 +23,9 @@ import { setupApplicationMenu } from './menu';
 import { OpenAIWhisperClient } from '../modules/ai/openai-whisper-client';
 import { AiService } from '../modules/ai/ai-service';
 import { SwiftIOBridge } from './swift-io-bridge'; // Added import
+import { DownloadedModel } from '../constants/models';
+import { ModelManagerService } from '../modules/models/model-manager';
+import { LocalWhisperClient } from '../modules/ai/local-whisper-client';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -39,12 +42,15 @@ let floatingButtonWindow: BrowserWindow | null = null;
 let audioCapture: AudioCapture | null = null;
 let aiService: AiService | null = null;
 let swiftIOBridgeClientInstance: SwiftIOBridge | null = null;
+let modelManagerService: ModelManagerService | null = null;
+let localWhisperClient: LocalWhisperClient | null = null;
 let openAiApiKey: string | null = null;
 let currentWindowDisplayId: number | null = null; // For tracking current display
 let activeSpaceChangeSubscriptionId: number | null = null; // For display change notifications
 
 interface StoreSchema {
   'openai-api-key': string;
+  'downloaded-models': Record<string, DownloadedModel>; // modelId -> DownloadedModel
 }
 
 const store = new Store<StoreSchema>();
@@ -75,6 +81,79 @@ ipcMain.handle('set-api-key', (event, apiKey: string) => {
 
 ipcMain.handle('get-api-key', () => {
   return store.get('openai-api-key', '');
+});
+
+// Model Management IPC Handlers
+ipcMain.handle('get-available-models', () => {
+  return modelManagerService?.getAvailableModels() || [];
+});
+
+ipcMain.handle('get-downloaded-models', () => {
+  return modelManagerService?.getDownloadedModels() || {};
+});
+
+ipcMain.handle('is-model-downloaded', (event, modelId: string) => {
+  return modelManagerService?.isModelDownloaded(modelId) || false;
+});
+
+ipcMain.handle('get-download-progress', (event, modelId: string) => {
+  return modelManagerService?.getDownloadProgress(modelId) || null;
+});
+
+ipcMain.handle('get-active-downloads', () => {
+  return modelManagerService?.getActiveDownloads() || [];
+});
+
+ipcMain.handle('download-model', async (event, modelId: string) => {
+  if (!modelManagerService) {
+    throw new Error('Model manager service not initialized');
+  }
+  return await modelManagerService.downloadModel(modelId);
+});
+
+ipcMain.handle('cancel-download', (event, modelId: string) => {
+  if (!modelManagerService) {
+    throw new Error('Model manager service not initialized');
+  }
+  return modelManagerService.cancelDownload(modelId);
+});
+
+ipcMain.handle('delete-model', (event, modelId: string) => {
+  if (!modelManagerService) {
+    throw new Error('Model manager service not initialized');
+  }
+  return modelManagerService.deleteModel(modelId);
+});
+
+ipcMain.handle('get-models-directory', () => {
+  return modelManagerService?.getModelsDirectory() || '';
+});
+
+// Local Whisper IPC Handlers
+ipcMain.handle('is-local-whisper-available', () => {
+  return localWhisperClient ? localWhisperClient.isAvailable() : false;
+});
+
+ipcMain.handle('get-local-whisper-models', () => {
+  return localWhisperClient ? localWhisperClient.getAvailableModels() : [];
+});
+
+ipcMain.handle('get-selected-model', () => {
+  return localWhisperClient ? localWhisperClient.getSelectedModel() : null;
+});
+
+ipcMain.handle('set-selected-model', (event, modelId: string) => {
+  if (!localWhisperClient) {
+    throw new Error('Local whisper client not initialized');
+  }
+  return localWhisperClient.setSelectedModel(modelId);
+});
+
+ipcMain.handle('set-whisper-executable-path', (event, path: string) => {
+  if (!localWhisperClient) {
+    throw new Error('Local whisper client not initialized');
+  }
+  return localWhisperClient.setWhisperExecutablePath(path);
 });
 
 const requestPermissions = async () => {
@@ -197,6 +276,44 @@ app.on('ready', async () => {
   }
 
   audioCapture = new AudioCapture();
+
+  // Initialize Model Manager Service
+  modelManagerService = new ModelManagerService(store);
+
+  // Initialize Local Whisper Client
+  localWhisperClient = new LocalWhisperClient(modelManagerService);
+
+  // Set up model manager event listeners
+  modelManagerService.on('download-progress', (modelId, progress) => {
+    // Send progress updates to all windows
+    BrowserWindow.getAllWindows().forEach(window => {
+      window.webContents.send('model-download-progress', modelId, progress);
+    });
+  });
+
+  modelManagerService.on('download-complete', (modelId, downloadedModel) => {
+    BrowserWindow.getAllWindows().forEach(window => {
+      window.webContents.send('model-download-complete', modelId, downloadedModel);
+    });
+  });
+
+  modelManagerService.on('download-error', (modelId, error) => {
+    BrowserWindow.getAllWindows().forEach(window => {
+      window.webContents.send('model-download-error', modelId, error.message);
+    });
+  });
+
+  modelManagerService.on('download-cancelled', (modelId) => {
+    BrowserWindow.getAllWindows().forEach(window => {
+      window.webContents.send('model-download-cancelled', modelId);
+    });
+  });
+
+  modelManagerService.on('model-deleted', (modelId) => {
+    BrowserWindow.getAllWindows().forEach(window => {
+      window.webContents.send('model-deleted', modelId);
+    });
+  });
 
   // Initialize AI service with the appropriate client based on configuration
   try {
@@ -415,6 +532,10 @@ app.on('will-quit', () => {
   if (swiftIOBridgeClientInstance) {
     console.log('Main: Stopping Swift helper...');
     swiftIOBridgeClientInstance.stopHelper();
+  }
+  if (modelManagerService) {
+    console.log('Main: Cleaning up model downloads...');
+    modelManagerService.cleanup();
   }
   if (process.platform === 'darwin' && activeSpaceChangeSubscriptionId !== null) {
     systemPreferences.unsubscribeWorkspaceNotification(activeSpaceChangeSubscriptionId);

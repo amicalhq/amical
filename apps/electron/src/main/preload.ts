@@ -53,6 +53,32 @@ const api: ElectronAPI = {
   setApiKey: (apiKey: string) => ipcRenderer.invoke('set-api-key', apiKey),
   getApiKey: () => ipcRenderer.invoke('get-api-key'),
   
+  // Model Management API
+  getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
+  getDownloadedModels: () => ipcRenderer.invoke('get-downloaded-models'),
+  isModelDownloaded: (modelId: string) => ipcRenderer.invoke('is-model-downloaded', modelId),
+  getDownloadProgress: (modelId: string) => ipcRenderer.invoke('get-download-progress', modelId),
+  getActiveDownloads: () => ipcRenderer.invoke('get-active-downloads'),
+  downloadModel: (modelId: string) => ipcRenderer.invoke('download-model', modelId),
+  cancelDownload: (modelId: string) => ipcRenderer.invoke('cancel-download', modelId),
+  deleteModel: (modelId: string) => ipcRenderer.invoke('delete-model', modelId),
+  getModelsDirectory: () => ipcRenderer.invoke('get-models-directory'),
+  
+  // Local Whisper API
+  isLocalWhisperAvailable: () => ipcRenderer.invoke('is-local-whisper-available'),
+  getLocalWhisperModels: () => ipcRenderer.invoke('get-local-whisper-models'),
+  getSelectedModel: () => ipcRenderer.invoke('get-selected-model'),
+  setSelectedModel: (modelId: string) => ipcRenderer.invoke('set-selected-model', modelId),
+  setWhisperExecutablePath: (path: string) => ipcRenderer.invoke('set-whisper-executable-path', path),
+  
+  // Model management event listeners
+  on: (channel: string, callback: (...args: any[]) => void) => {
+    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+  },
+  off: (channel: string, callback: (...args: any[]) => void) => {
+    ipcRenderer.removeListener(channel, callback);
+  },
+  
   // Logging API for renderer process
   log: {
     info: (...args: any[]) => log.info(...args),
