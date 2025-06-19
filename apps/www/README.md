@@ -17,6 +17,10 @@ Open http://localhost:3000 with your browser to see the result.
 
 ## Content Management
 
+### Docs
+
+Docs are written in MDX in the contents/docs folder.
+
 ### Fetching Blog Content
 
 This project includes a script to fetch blog content and images from an S3-compatible storage (Wasabi):
