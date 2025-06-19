@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import log from 'electron-log';
 import { app } from 'electron';
 import path from 'node:path';
@@ -40,14 +43,58 @@ if (!isDev) {
   // log.transports.remote.url = 'your-logging-service-url';
 }
 
+// -----------------------------------------------
+// Debug-scope configuration
+// -----------------------------------------------
+// `DEBUG_SCOPES` can be a comma-separated list of scope names (main,ai,swift)
+// or regex patterns wrapped in slashes (e.g. /ai.*/, /.*/)
+const rawDebugScopes = (process.env.DEBUG_SCOPES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
+// Utility: escape regex special chars for exact-match tokens
+function escapeRegExp(str: string) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const debugScopePatterns: RegExp[] = rawDebugScopes.map((token) => {
+  if (token.startsWith('/') && token.endsWith('/') && token.length > 1) {
+    // Regex pattern (strip the leading & trailing slashes)
+    const pattern = token.slice(1, -1);
+    try {
+      return new RegExp(pattern, 'i');
+    } catch {
+      // Fall through to exact match if regex is invalid
+    }
+  }
+  // Treat as exact scope name
+  return new RegExp(`^${escapeRegExp(token)}$`, 'i');
+});
+
+export function isScopeDebug(scope: string): boolean {
+  return debugScopePatterns.some((re) => re.test(scope));
+}
+// -----------------------------------------------
+
+// Helper to create a scoped logger that respects DEBUG_SCOPES
+function createLoggerForScope(scope: string) {
+  const scopedLogger = log.scope(scope);
+  if (isScopeDebug(scope)) {
+    (scopedLogger as any).transports.console.level = 'debug';
+    (scopedLogger as any).transports.file.level = 'debug';
+  }
+  return scopedLogger;
+}
+
 // Create scoped loggers for different modules
 export const logger = {
-  main: log.scope('main'),
-  audio: log.scope('audio'),
-  ai: log.scope('ai'),
-  swift: log.scope('swift'),
-  ui: log.scope('ui'),
-  db: log.scope('db'),
+  main: createLoggerForScope('main'),
+  ipc: createLoggerForScope('ipc'),
+  renderer: createLoggerForScope('renderer'),
+  network: createLoggerForScope('network'),
+  audio: createLoggerForScope('audio'),
+  ai: createLoggerForScope('ai'),
+  swift: createLoggerForScope('swift'),
+  ui: createLoggerForScope('ui'),
+  db: createLoggerForScope('db'),
 };
 
 // Log startup information
@@ -67,7 +114,7 @@ export { log };
 
 // Utility function to create custom scoped loggers
 export function createScopedLogger(scope: string) {
-  return log.scope(scope);
+  return createLoggerForScope(scope);
 }
 
 // Error handling utilities

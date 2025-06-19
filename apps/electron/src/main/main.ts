@@ -332,20 +332,20 @@ app.on('ready', async () => {
       }
       case 'keyDown': {
         const payload = event.payload;
-        console.log(`Main: Received keyDown for key: ${payload?.key}.`);
+        // console.log(`Main: Received keyDown for key: ${payload?.key}.`);
         // Keep keyDown handling as fallback, but flagsChanged should be primary
         if (payload?.key?.toLowerCase() === 'fn') {
-          console.log('Main: Fn keyDown detected (fallback)');
+          // console.log('Main: Fn keyDown detected (fallback)');
           // Don't send recording-state-changed here as flagsChanged should handle it
         }
         break;
       }
       case 'keyUp': {
         const payload = event.payload;
-        console.log(`Main: Received keyUp for key: ${payload?.key}.`);
+        // console.log(`Main: Received keyUp for key: ${payload?.key}.`);
         // Keep keyUp handling as fallback, but flagsChanged should be primary
         if (payload?.key?.toLowerCase() === 'fn') {
-          console.log('Main: Fn keyUp detected (fallback)');
+          // console.log('Main: Fn keyUp detected (fallback)');
           // Don't send recording-state-changed here as flagsChanged should handle it
         }
         break;
@@ -458,11 +458,11 @@ app.on('activate', () => {
 async function logAccessibilityTree() {
   if (swiftIOBridgeClientInstance && swiftIOBridgeClientInstance.isHelperRunning()) {
     try {
-      console.log('Main: Requesting full accessibility tree...');
+      // console.log('Main: Requesting full accessibility tree...');
       // Call with empty params for the whole tree, as per schema for GetAccessibilityTreeDetailsParams
       const result = await swiftIOBridgeClientInstance.call('getAccessibilityTreeDetails', {});
       // Using JSON.stringify to see the whole structure since it's 'any' for now
-      console.log('Main: Accessibility tree received:', JSON.stringify(result, null, 2));
+      // console.log('Main: Accessibility tree received:', JSON.stringify(result, null, 2));
     } catch (error) {
       console.error('Main: Error calling getAccessibilityTreeDetails:', error);
     }
