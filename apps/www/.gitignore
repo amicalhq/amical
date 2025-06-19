@@ -29,3 +29,8 @@ next-env.d.ts
 
 # sitemap
 /public/sitemap.xml
+
+# remote blog content
+/content/blogs/*
+/public/blog/*
+/content/tmp/*

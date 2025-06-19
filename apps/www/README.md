@@ -15,31 +15,29 @@ yarn dev
 
 Open http://localhost:3000 with your browser to see the result.
 
-## Explore
+## Content Management
 
-In the project, you can see:
+### Fetching Blog Content
 
-- `lib/source.ts`: Code for content source adapter, [`loader()`](https://fumadocs.dev/docs/headless/source-api) provides the interface to access your content.
-- `app/layout.config.tsx`: Shared options for layouts, optional but preferred to keep.
+This project includes a script to fetch blog content and images from an S3-compatible storage (Wasabi):
 
-| Route                     | Description                                            |
-| ------------------------- | ------------------------------------------------------ |
-| `app/(home)`              | The route group for your landing page and other pages. |
-| `app/docs`                | The documentation layout and pages.                    |
-| `app/api/search/route.ts` | The Route Handler for search.                          |
+```bash
+# Set up environment variables (see .env.example)
+pnpm fetch-content
+```
 
-### Fumadocs MDX
+The script will:
+- Fetch MDX files from the `blog/` folder in the S3 bucket and save them to `content/blogs/`
+- Fetch images from the `blog-images/` folder in the S3 bucket and save them to `public/blog/`
 
-A `source.config.ts` config file has been included, you can customise different options like frontmatter schema.
+### Building the Application
 
-Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
+The build process includes fetching content from S3:
 
-## Learn More
+```bash
+pnpm build
+```
 
-To learn more about Next.js and Fumadocs, take a look at the following
-resources:
+The build will fail if the content fetch fails. This ensures that the site is always built with the latest content and that any issues with the content fetch process are immediately apparent.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js
-  features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [Fumadocs](https://fumadocs.vercel.app) - learn about Fumadocs
+To use this in CI/CD environments, make sure to configure the appropriate AWS credentials as environment variables.
