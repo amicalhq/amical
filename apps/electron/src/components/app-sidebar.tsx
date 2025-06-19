@@ -75,7 +75,7 @@ export function AppSidebar({ onNavigate, ...props }: AppSidebarProps) {
   return (
     <Sidebar
       collapsible="icon"
-      className="!w-[calc(var(--sidebar-width-icon)_+_1px)] border-r"
+      className="!w-[calc(var(--sidebar-width-icon)_+_1px)] [&>div]:pt-14"
       {...props}
     >
       <SidebarHeader>

@@ -111,7 +111,9 @@ const createOrShowMainWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    frame: true,
+    frame: false,
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 12, y: 20 },
     useContentSize: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

@@ -41,6 +41,7 @@ import '@/styles/globals.css';
 import ShortcutIndicator from '../components/ShortcutIndicator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { TitleBar } from '@/components/title-bar';
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
@@ -157,6 +158,7 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
+      <TitleBar />
       <SidebarProvider defaultOpen={false}>
         <AppSidebar onNavigate={handleNavigation} />
         <SidebarInset>
@@ -170,7 +172,7 @@ const App: React.FC = () => {
               <ThemeToggle />
             </div>
           </header> */}
-          <div className="flex flex-1 flex-col gap-4 p-4 w-full max-w-[1440px] mx-auto">
+          <div className="flex flex-1 flex-col gap-4 p-4 w-full max-w-[1440px] mx-auto pt-14">
             {renderContent()}
           </div>
         </SidebarInset>
