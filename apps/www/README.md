@@ -30,8 +30,6 @@ The script will:
 - Fetch MDX files from the `blog/` folder in the S3 bucket and save them to `content/blogs/`
 - Fetch images from the `blog-images/` folder in the S3 bucket and save them to `public/blog/`
 
-For more details, see the [scripts README](./scripts/README.md).
-
 ### Building the Application
 
 The build process includes fetching content from S3:
