@@ -11,7 +11,9 @@
     "fetch-content": "pnpm exec tsx ./scripts/fetch-content.mts",
     "cleanup-content": "pnpm exec tsx ./scripts/cleanup-content.mts",
     "refresh-content": "pnpm cleanup-content && pnpm fetch-content",
-    "postinstall": "fumadocs-mdx"
+    "postinstall": "fumadocs-mdx",
+    "deploy": "wrangler deploy",
+    "dev:wrangler": "wrangler dev"
   },
   "dependencies": {
     "@next/third-parties": "^15.3.2",
@@ -50,6 +52,7 @@
     "tailwindcss": "^4.1.5",
     "tsx": "^4.19.4",
     "tw-animate-css": "^1.2.9",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "wrangler": "^4.20.3"
   }
 }
