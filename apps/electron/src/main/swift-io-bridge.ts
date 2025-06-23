@@ -63,7 +63,7 @@ interface SwiftIOBridgeEvents {
 
 export class SwiftIOBridge extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams | null = null;
-  private pending = new Map<string, (resp: RpcResponse) => void>();
+  private pending = new Map<string, { callback: (resp: RpcResponse) => void; startTime: number }>();
   private helperPath: string;
   private logger = createScopedLogger('swift-bridge');
 
@@ -112,8 +112,8 @@ export class SwiftIOBridge extends EventEmitter {
         if (responseValidation.success) {
           const rpcResponse = responseValidation.data;
           if (this.pending.has(rpcResponse.id)) {
-            const handler = this.pending.get(rpcResponse.id);
-            handler!(rpcResponse); // Non-null assertion as we checked with has()
+            const pendingItem = this.pending.get(rpcResponse.id);
+            pendingItem!.callback(rpcResponse); // Non-null assertion as we checked with has()
             return; // Handled as an RPC response
           }
         }
@@ -172,6 +172,7 @@ export class SwiftIOBridge extends EventEmitter {
     }
 
     const id = uuid();
+    const startTime = Date.now();
     const requestPayload: RpcRequest = { id, method, params };
 
     // Validate request payload before sending
@@ -186,7 +187,7 @@ export class SwiftIOBridge extends EventEmitter {
       );
     }
 
-    this.logger.debug('Sending RPC request', { method, id });
+    this.logger.debug('Sending RPC request', { method, id, startedAt: new Date(startTime).toISOString() });
     this.proc.stdin.write(JSON.stringify(requestPayload) + '\n', (err) => {
       if (err) {
         this.logger.error('Error writing to helper stdin', { method, id, error: err });
@@ -198,25 +199,34 @@ export class SwiftIOBridge extends EventEmitter {
     });
 
     const responsePromise = new Promise<RPCMethods[M]['result']>((resolve, reject) => {
-      this.pending.set(id, (resp: RpcResponse) => {
-        this.pending.delete(id); // Clean up immediately
-        if (resp.error) {
-          const error = new Error(resp.error.message);
-          (error as any).code = resp.error.code;
-          (error as any).data = resp.error.data;
-          reject(error);
-        } else {
-          // Log the raw resp.result before resolving
-          this.logger.debug('Raw RPC response result received', {
-            method,
-            id,
-            result: resp.result
-          });
-          // Here, we might need to validate resp.result against the specific method's result schema
-          // For now, casting as any, but for type safety, validation is better.
-          // Example: const resultValidation = RPCMethods[method].resultSchema.safeParse(resp.result);
-          resolve(resp.result as any);
-        }
+      this.pending.set(id, {
+        callback: (resp: RpcResponse) => {
+          this.pending.delete(id); // Clean up immediately
+          const completedAt = Date.now();
+          const duration = completedAt - startTime;
+          
+          if (resp.error) {
+            const error = new Error(resp.error.message);
+            (error as any).code = resp.error.code;
+            (error as any).data = resp.error.data;
+            reject(error);
+          } else {
+            // Log the raw resp.result with timing information
+            this.logger.debug('Raw RPC response result received', {
+              method,
+              id,
+              result: resp.result,
+              startedAt: new Date(startTime).toISOString(),
+              completedAt: new Date(completedAt).toISOString(),
+              durationMs: duration
+            });
+            // Here, we might need to validate resp.result against the specific method's result schema
+            // For now, casting as any, but for type safety, validation is better.
+            // Example: const resultValidation = RPCMethods[method].resultSchema.safeParse(resp.result);
+            resolve(resp.result as any);
+          }
+        },
+        startTime
       });
     });
 
@@ -225,9 +235,11 @@ export class SwiftIOBridge extends EventEmitter {
         if (this.pending.has(id)) {
           // Check if still pending before rejecting
           this.pending.delete(id);
+          const timedOutAt = Date.now();
+          const duration = timedOutAt - startTime;
           reject(
             new Error(
-              `SwiftIOBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms`
+              `SwiftIOBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms (duration: ${duration}ms, started: ${new Date(startTime).toISOString()})`
             )
           );
         }

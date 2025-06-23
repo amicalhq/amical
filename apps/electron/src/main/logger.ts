@@ -18,7 +18,7 @@ log.transports.console.level = envLogLevel || defaultConsoleLevel;
 
 // Configure file transport
 log.transports.file.maxSize = 10 * 1024 * 1024; // 10MB
-log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] [{scope}] {text}';
 
 // Set custom log file path
 const logPath = isDev 
@@ -29,10 +29,10 @@ log.transports.file.resolvePathFn = () => logPath;
 
 // Configure console transport for better development experience
 if (isDev) {
-  log.transports.console.format = '[{level}] {text}';
+  log.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] [{scope}] {text}';
   log.transports.console.useStyles = true;
 } else {
-  log.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}] [{level}] {text}';
+  log.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] [{scope}] {text}';
   log.transports.console.useStyles = false;
 }
 
@@ -46,9 +46,9 @@ if (!isDev) {
 // -----------------------------------------------
 // Debug-scope configuration
 // -----------------------------------------------
-// `DEBUG_SCOPES` can be a comma-separated list of scope names (main,ai,swift)
+// `LOG_DEBUG_SCOPES` can be a comma-separated list of scope names (main,ai,swift)
 // or regex patterns wrapped in slashes (e.g. /ai.*/, /.*/)
-const rawDebugScopes = (process.env.DEBUG_SCOPES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const rawDebugScopes = (process.env.LOG_DEBUG_SCOPES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 // Utility: escape regex special chars for exact-match tokens
 function escapeRegExp(str: string) {
@@ -72,16 +72,29 @@ const debugScopePatterns: RegExp[] = rawDebugScopes.map((token) => {
 export function isScopeDebug(scope: string): boolean {
   return debugScopePatterns.some((re) => re.test(scope));
 }
+
+// Set up hooks to handle scope-based debug filtering
+if (debugScopePatterns.length > 0) {
+  log.hooks.push((message) => {
+    // Only filter debug messages
+    if (message.level !== 'debug') return message;
+
+    // Check if this scope should have debug enabled
+    const scope = message.scope;
+    if (scope && isScopeDebug(scope)) {
+      return message; // Allow debug messages for this scope
+    }
+
+    // Block debug messages for scopes not in the debug list
+    return false;
+  });
+}
 // -----------------------------------------------
 
-// Helper to create a scoped logger that respects DEBUG_SCOPES
+// Helper to create a scoped logger
+log.scope.labelPadding = false;
 function createLoggerForScope(scope: string) {
-  const scopedLogger = log.scope(scope);
-  if (isScopeDebug(scope)) {
-    (scopedLogger as any).transports.console.level = 'debug';
-    (scopedLogger as any).transports.file.level = 'debug';
-  }
-  return scopedLogger;
+  return log.scope(scope);
 }
 
 // Create scoped loggers for different modules
