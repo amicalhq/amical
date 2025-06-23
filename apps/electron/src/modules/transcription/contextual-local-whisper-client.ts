@@ -25,7 +25,7 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
     }
 
     try {
-      this.whisperInstance = new Whisper(modelPath, { gpu: false }); // Start with CPU, can be configured later
+      this.whisperInstance = new Whisper(modelPath);
       logger.ai.info('Smart-whisper initialized for contextual transcription', { modelPath });
     } catch (error) {
       logger.ai.error('Failed to initialize smart-whisper for contextual transcription', { 

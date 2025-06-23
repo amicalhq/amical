@@ -477,8 +477,8 @@ app.on('ready', async () => {
     
     // Get accessibility context when recording starts
     try {
-      const accessibilityContext = await swiftIOBridgeClientInstance!.call('getAccessibilityContext', { editableOnly: true });
-      console.log('Main: Accessibility context captured:', JSON.stringify(accessibilityContext, null, 2));
+      //const accessibilityContext = await swiftIOBridgeClientInstance!.call('getAccessibilityContext', { editableOnly: true });
+      //console.log('Main: Accessibility context captured:', JSON.stringify(accessibilityContext, null, 2));
     } catch (error) {
       console.error('Main: Error getting accessibility context:', error);
     }
