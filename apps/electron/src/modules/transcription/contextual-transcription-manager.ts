@@ -5,6 +5,7 @@ import { createScopedLogger } from '../../main/logger';
 
 export class ContextualTranscriptionManager {
   private logger = createScopedLogger('contextual-transcription-manager');
+  private defaultClient: ContextualLocalWhisperClient | null = null;
 
   constructor(
     private modelManagerService: ModelManagerService | null = null
@@ -37,6 +38,37 @@ export class ContextualTranscriptionManager {
 
   // Create default client with current configuration
   createDefaultClient(): ContextualTranscriptionClient {
-    return this.createTranscriptionClient('local');
+    if (!this.defaultClient) {
+      this.defaultClient = this.createTranscriptionClient('local') as ContextualLocalWhisperClient;
+    }
+    return this.defaultClient;
+  }
+
+  // Preload the model for faster transcription
+  async preloadModel(): Promise<void> {
+    const client = this.createDefaultClient() as ContextualLocalWhisperClient;
+    await client.loadModel();
+    this.logger.info('Model preloaded for contextual transcription');
+  }
+
+  // Free the model to save memory
+  async freeModel(): Promise<void> {
+    if (this.defaultClient) {
+      await this.defaultClient.freeModel();
+      this.logger.info('Model freed for contextual transcription');
+    }
+  }
+
+  // Check if model is loaded
+  isModelLoaded(): boolean {
+    return this.defaultClient ? this.defaultClient.isModelLoaded() : false;
+  }
+
+  // Cleanup resources
+  async dispose(): Promise<void> {
+    if (this.defaultClient) {
+      await this.defaultClient.dispose();
+      this.defaultClient = null;
+    }
   }
 }

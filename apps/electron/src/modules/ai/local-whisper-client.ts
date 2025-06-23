@@ -25,7 +25,7 @@ export class LocalWhisperClient implements TranscriptionClient {
 
     try {
       const { Whisper } = await import('smart-whisper');
-      this.whisperInstance = new Whisper(modelPath, { gpu: false }); // Start with CPU, can be configured later
+      this.whisperInstance = new Whisper(modelPath, { gpu: true });
       logger.ai.info('Smart-whisper initialized', { modelPath });
     } catch (error) {
       logger.ai.error('Failed to initialize smart-whisper', { 
@@ -182,4 +182,3 @@ export class LocalWhisperClient implements TranscriptionClient {
     }
   }
 }
- 

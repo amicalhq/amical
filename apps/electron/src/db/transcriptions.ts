@@ -92,7 +92,7 @@ export async function deleteTranscription(id: string) {
 
 // Get transcriptions count
 export async function getTranscriptionsCount(search?: string) {
-  let baseQuery = db.select({ count: count() }).from(transcriptions);
+  const baseQuery = db.select({ count: count() }).from(transcriptions);
   
   const result = search
     ? await baseQuery.where(like(transcriptions.text, `%${search}%`))
