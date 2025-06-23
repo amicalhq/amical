@@ -126,7 +126,7 @@ export async function deleteVocabulary(id: number) {
 
 // Get vocabulary count
 export async function getVocabularyCount(search?: string, category?: string) {
-  let baseQuery = db.select({ count: count() }).from(vocabulary);
+  const baseQuery = db.select({ count: count() }).from(vocabulary);
   
   const conditions = [];
   

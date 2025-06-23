@@ -2,12 +2,15 @@ import { ContextualTranscriptionClient } from './transcription-session';
 import * as fs from 'fs';
 import { logger } from '../../main/logger';
 import { ModelManagerService } from '../models/model-manager';
-import { Whisper } from 'smart-whisper';
+import { TranscribeFormat, TranscribeParams, Whisper } from 'smart-whisper';
 
 export class ContextualLocalWhisperClient implements ContextualTranscriptionClient {
   private modelManager: ModelManagerService;
   private selectedModelId: string | null = null;
-  private whisperInstance: any = null; // Will be imported from smart-whisper
+  private whisperInstance : Whisper | null = null; // Will be imported from smart-whisper
+  private lastUsedTimestamp: number = 0;
+  private cleanupTimer: NodeJS.Timeout | null = null;
+  private readonly MODEL_CLEANUP_DELAY_MS = 30000; // 30 seconds after last use (configurable)
 
   constructor(modelManager: ModelManagerService, selectedModelId?: string) {
     this.modelManager = modelManager;
@@ -25,20 +28,25 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
     }
 
     try {
-      this.whisperInstance = new Whisper(modelPath);
-      logger.ai.info('Smart-whisper initialized for contextual transcription', { modelPath });
+      //! esure gpu is used if available
+      this.whisperInstance = new Whisper(modelPath, { gpu: true });
+      logger.ai.info('Smart-whisper instance created for contextual transcription', { modelPath });
+      // Actually load the model into memory
+      await this.whisperInstance.load();
+      logger.ai.info('Smart-whisper model loaded into memory for contextual transcription', { modelPath });
     } catch (error) {
-      logger.ai.error('Failed to initialize smart-whisper for contextual transcription', { 
+      logger.ai.error('Failed to initialize and load smart-whisper for contextual transcription', { 
         error: error instanceof Error ? error.message : String(error),
         modelPath 
       });
-      throw new Error(`Failed to initialize smart-whisper: ${error}`);
+      throw new Error(`Failed to initialize and load smart-whisper: ${error}`);
     }
   }
 
   async transcribeWithContext(audioData: Buffer, previousContext: string): Promise<string> {
     try {
       await this.initializeWhisper();
+      this.updateLastUsedTimestamp(); // Update timestamp when model is used
 
       // Convert audio buffer to the format expected by smart-whisper
       const audioFloat32Array = await this.convertAudioBuffer(audioData);
@@ -47,22 +55,25 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
       let prompt = '';
       if (previousContext && previousContext.trim().length > 0) {
         // Use last ~50 words as context/prompt
-        const contextWords = previousContext.trim().split(/\\s+/);
+        const contextWords = previousContext.trim().split(/\s+/);
         const maxWords = 50;
         prompt = contextWords.length > maxWords 
           ? contextWords.slice(-maxWords).join(' ')
           : previousContext.trim();
       }
 
+      const modelInfo = this.getCurrentModelInfo();
       logger.ai.info('Starting smart-whisper contextual transcription', { 
         audioDataSize: audioData.length,
         convertedSize: audioFloat32Array.length,
         hasContext: prompt.length > 0,
-        contextLength: prompt.length
+        contextLength: prompt.length,
+        modelId: modelInfo.modelId,
+        modelPath: modelInfo.modelPath
       });
 
       // Transcribe using smart-whisper with initial prompt for context
-      const transcriptionOptions: any = { 
+      const transcriptionOptions: Partial<TranscribeParams<TranscribeFormat>> = { 
         language: 'auto'
       };
       
@@ -71,15 +82,21 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
         transcriptionOptions.initial_prompt = prompt;
       }
 
-      const { result } = await this.whisperInstance.transcribe(audioFloat32Array, transcriptionOptions);
+      const { result } = await this.whisperInstance!.transcribe(audioFloat32Array, transcriptionOptions);
       const transcription = await result;
       
+      // Extract text from the result object
+      const transcriptionText = transcription.reduce((acc, curr) => acc + curr.text, '');
+      
       logger.ai.info('Smart-whisper contextual transcription completed', { 
-        resultLength: transcription.length,
-        hadContext: prompt.length > 0
+        resultLength: transcriptionText.length,
+        hadContext: prompt.length > 0,
+        resultType: typeof result,
+        modelId: modelInfo.modelId,
+        modelPath: modelInfo.modelPath
       });
 
-      return transcription;
+      return transcriptionText;
     } catch (error) {
       logger.ai.error('Smart-whisper contextual transcription failed', { 
         error: error instanceof Error ? error.message : String(error)
@@ -90,34 +107,64 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
 
   private async convertAudioBuffer(audioData: Buffer): Promise<Float32Array> {
     // Smart-whisper expects Float32Array with 16kHz mono audio
-    // This is a simplified conversion - you may need more sophisticated audio processing
+    // Now we're receiving raw Float32Array data from Web Audio API
+    
+    logger.ai.info('Converting audio buffer', {
+      bufferLength: audioData.length,
+      expectedFloat32Length: audioData.length / 4
+    });
+    
     try {
-      // For now, assume the audio data is already in the correct format
-      // In a real implementation, you'd use an audio processing library like node-wav
-      // to properly decode and resample the audio
-      
-      // Convert buffer to Float32Array (simplified)
-      const float32Array = new Float32Array(audioData.length / 4);
-      for (let i = 0; i < float32Array.length; i++) {
-        // Read 32-bit float from buffer (little-endian)
-        float32Array[i] = audioData.readFloatLE(i * 4);
+      // The audioData should now be raw Float32Array from Web Audio API (16kHz, mono)
+      // Check if buffer length is divisible by 4 (Float32 = 4 bytes)
+      if (audioData.length % 4 !== 0) {
+        logger.ai.warn('Audio buffer length not divisible by 4, may not be Float32Array', {
+          length: audioData.length,
+          remainder: audioData.length % 4
+        });
       }
       
+      // Convert buffer back to Float32Array
+      const float32Array = new Float32Array(
+        audioData.buffer, 
+        audioData.byteOffset, 
+        audioData.length / 4
+      );
+      
+      logger.ai.info('Successfully converted audio buffer', { 
+        sampleCount: float32Array.length,
+        sampleRate: '16kHz (assumed)',
+        format: 'Float32Array'
+      });
+      
       return float32Array;
+      
     } catch (error) {
-      logger.ai.warn('Audio conversion failed, trying alternative method', { 
+      logger.ai.error('Audio conversion failed', { 
         error: error instanceof Error ? error.message : String(error) 
       });
       
-      // Fallback: convert as if it's PCM data
-      const samples = new Float32Array(audioData.length / 2);
-      for (let i = 0; i < samples.length; i++) {
-        // Convert 16-bit signed PCM to float (-1 to 1)
-        const sample = audioData.readInt16LE(i * 2);
-        samples[i] = sample / 32768.0;
+      // Fallback: try to interpret as different formats
+      try {
+        // Try as 16-bit PCM
+        const samples = new Float32Array(audioData.length / 2);
+        for (let i = 0; i < samples.length; i++) {
+          const sample = audioData.readInt16LE(i * 2);
+          samples[i] = sample / 32768.0;
+        }
+        
+        logger.ai.info('Fallback: converted as 16-bit PCM', { sampleCount: samples.length });
+        return samples;
+        
+      } catch (fallbackError) {
+        logger.ai.error('All audio conversion methods failed', { 
+          originalError: error instanceof Error ? error.message : String(error),
+          fallbackError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+        });
+        
+        // Return empty array as last resort
+        return new Float32Array(0);
       }
-      
-      return samples;
     }
   }
 
@@ -182,8 +229,62 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
     );
   }
 
+  // Get current model information for logging
+  getCurrentModelInfo(): { modelId: string | null; modelPath: string | null } {
+    const downloadedModels = this.modelManager.getDownloadedModels();
+    
+    // If a specific model is selected and available, use it
+    if (this.selectedModelId && downloadedModels[this.selectedModelId]) {
+      const model = downloadedModels[this.selectedModelId];
+      if (fs.existsSync(model.localPath)) {
+        return {
+          modelId: this.selectedModelId,
+          modelPath: model.localPath
+        };
+      }
+    }
+
+    // Otherwise, find the best available model (same logic as getBestAvailableModel)
+    const preferredOrder = ['whisper-large-v1', 'whisper-medium', 'whisper-small', 'whisper-base', 'whisper-tiny'];
+    
+    for (const modelId of preferredOrder) {
+      const model = downloadedModels[modelId];
+      if (model && fs.existsSync(model.localPath)) {
+        return {
+          modelId: modelId,
+          modelPath: model.localPath
+        };
+      }
+    }
+
+    return { modelId: null, modelPath: null };
+  }
+
+  // Public method to preload the model
+  async loadModel(): Promise<void> {
+    await this.initializeWhisper();
+    this.updateLastUsedTimestamp();
+    logger.ai.info('Model preloaded successfully', {
+      modelLoaded: this.isModelLoaded(),
+      cleanupDelayMs: this.MODEL_CLEANUP_DELAY_MS
+    });
+  }
+
+  // Public method to free the model
+  async freeModel(): Promise<void> {
+    this.clearCleanupTimer();
+    await this.freeWhisperInstance();
+    logger.ai.info('Model freed manually');
+  }
+
+  // Check if model is currently loaded
+  isModelLoaded(): boolean {
+    return this.whisperInstance !== null;
+  }
+
   // Free resources
   async dispose(): Promise<void> {
+    this.clearCleanupTimer();
     await this.freeWhisperInstance();
   }
 
@@ -199,6 +300,38 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
       } finally {
         this.whisperInstance = null;
       }
+    }
+  }
+
+  private updateLastUsedTimestamp(): void {
+    this.lastUsedTimestamp = Date.now();
+    this.scheduleCleanup();
+  }
+
+  private scheduleCleanup(): void {
+    this.clearCleanupTimer();
+    
+    this.cleanupTimer = setTimeout(async () => {
+      const timeSinceLastUse = Date.now() - this.lastUsedTimestamp;
+      
+      if (timeSinceLastUse >= this.MODEL_CLEANUP_DELAY_MS) {
+        logger.ai.info('Auto-freeing model after inactivity', {
+          inactiveTimeMs: timeSinceLastUse,
+          thresholdMs: this.MODEL_CLEANUP_DELAY_MS
+        });
+        await this.freeWhisperInstance();
+      } else {
+        // Reschedule if model was used recently
+        const remainingTime = this.MODEL_CLEANUP_DELAY_MS - timeSinceLastUse;
+        this.cleanupTimer = setTimeout(() => this.scheduleCleanup(), remainingTime);
+      }
+    }, this.MODEL_CLEANUP_DELAY_MS);
+  }
+
+  private clearCleanupTimer(): void {
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer);
+      this.cleanupTimer = null;
     }
   }
 }

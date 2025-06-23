@@ -50,7 +50,7 @@ let activeSpaceChangeSubscriptionId: number | null = null; // For display change
 
 // New chunk-based transcription variables
 let contextualTranscriptionManager: ContextualTranscriptionManager | null = null;
-let activeTranscriptionSessions: Map<string, TranscriptionSession> = new Map();
+const activeTranscriptionSessions: Map<string, TranscriptionSession> = new Map();
 
 interface StoreSchema {
   'downloaded-models': Record<string, DownloadedModel>; // modelId -> DownloadedModel
@@ -475,6 +475,23 @@ app.on('ready', async () => {
   ipcMain.handle('recording-starting', async () => {
     console.log('Main: Received recording-starting event.');
     
+    // Preload the transcription model for fast processing
+    try {
+      if (contextualTranscriptionManager) {
+        if (!contextualTranscriptionManager.isModelLoaded()) {
+          logger.ai.info('Preloading transcription model for recording session');
+          await contextualTranscriptionManager.preloadModel();
+          logger.ai.info('Transcription model preloaded successfully');
+        } else {
+          logger.ai.info('Transcription model already loaded');
+        }
+      }
+    } catch (error) {
+      logger.ai.error('Error preloading transcription model', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
     // Get accessibility context when recording starts
     try {
       //const accessibilityContext = await swiftIOBridgeClientInstance!.call('getAccessibilityContext', { editableOnly: true });
@@ -599,6 +616,10 @@ app.on('will-quit', () => {
   if (modelManagerService) {
     console.log('Main: Cleaning up model downloads...');
     modelManagerService.cleanup();
+  }
+  if (contextualTranscriptionManager) {
+    console.log('Main: Cleaning up transcription models...');
+    contextualTranscriptionManager.dispose();
   }
   if (process.platform === 'darwin' && activeSpaceChangeSubscriptionId !== null) {
     systemPreferences.unsubscribeWorkspaceNotification(activeSpaceChangeSubscriptionId);

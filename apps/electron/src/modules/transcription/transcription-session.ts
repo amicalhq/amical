@@ -12,10 +12,17 @@ export interface ChunkResult {
   chunkId: number;
   text: string;
   processingTimeMs: number;
+  startTime: number;
+  endTime: number;
+  modelInfo?: {
+    modelId: string | null;
+    modelPath: string | null;
+  };
 }
 
 export interface ContextualTranscriptionClient {
   transcribeWithContext(audioData: Buffer, previousContext: string): Promise<string>;
+  getCurrentModelInfo?: () => { modelId: string | null; modelPath: string | null };
 }
 
 export class TranscriptionSession extends EventEmitter {
@@ -29,12 +36,19 @@ export class TranscriptionSession extends EventEmitter {
   private isProcessing: boolean = false;
   private expectedChunkId: number = 1;
   private isComplete: boolean = false;
+  private sessionStartTime: number;
 
   constructor(sessionId: string, transcriptionClient: ContextualTranscriptionClient) {
     super();
     this.sessionId = sessionId;
     this.transcriptionClient = transcriptionClient;
-    this.logger.info('TranscriptionSession created', { sessionId });
+    this.sessionStartTime = Date.now();
+    
+    this.logger.info('TranscriptionSession created', { 
+      sessionId,
+      sessionStartTime: this.sessionStartTime,
+      sessionStartTimeISO: new Date(this.sessionStartTime).toISOString()
+    });
   }
 
   public addChunk(chunkData: ChunkData): void {
@@ -109,25 +123,45 @@ export class TranscriptionSession extends EventEmitter {
 
   private async transcribeChunk(chunk: ChunkData): Promise<void> {
     const startTime = Date.now();
+    const modelInfo = this.transcriptionClient.getCurrentModelInfo ? 
+      this.transcriptionClient.getCurrentModelInfo() : 
+      { modelId: null, modelPath: null };
 
     this.logger.info('Starting transcription for chunk', {
       sessionId: this.sessionId,
       chunkId: chunk.chunkId,
       audioDataSize: chunk.audioData.length,
-      contextLength: this.accumulatedText.length
+      contextLength: this.accumulatedText.length,
+      startTime,
+      startTimeISO: new Date(startTime).toISOString(),
+      modelId: modelInfo.modelId,
+      modelPath: modelInfo.modelPath
     });
 
     // Skip transcription for empty chunks (but still process them for completion)
     if (chunk.audioData.length === 0) {
+      const endTime = Date.now();
+      const processingTimeMs = endTime - startTime;
+      
       this.logger.info('Skipping transcription for empty chunk', {
         sessionId: this.sessionId,
-        chunkId: chunk.chunkId
+        chunkId: chunk.chunkId,
+        startTime,
+        endTime,
+        processingTimeMs,
+        startTimeISO: new Date(startTime).toISOString(),
+        endTimeISO: new Date(endTime).toISOString(),
+        modelId: modelInfo.modelId,
+        modelPath: modelInfo.modelPath
       });
       
       const result: ChunkResult = {
         chunkId: chunk.chunkId,
         text: '',
-        processingTimeMs: Date.now() - startTime
+        processingTimeMs,
+        startTime,
+        endTime,
+        modelInfo
       };
       
       this.results.push(result);
@@ -140,12 +174,18 @@ export class TranscriptionSession extends EventEmitter {
       this.accumulatedText
     );
 
-    const processingTimeMs = Date.now() - startTime;
+    console.error('transcriptionText result ', transcriptionText);
+
+    const endTime = Date.now();
+    const processingTimeMs = endTime - startTime;
 
     const result: ChunkResult = {
       chunkId: chunk.chunkId,
       text: transcriptionText,
-      processingTimeMs
+      processingTimeMs,
+      startTime,
+      endTime,
+      modelInfo
     };
 
     // Accumulate the transcription text for context
@@ -153,12 +193,18 @@ export class TranscriptionSession extends EventEmitter {
 
     this.results.push(result);
 
-    this.logger.info('Chunk transcription completed', {
+    this.logger.error('Chunk transcription completed', {
       sessionId: this.sessionId,
       chunkId: chunk.chunkId,
       textLength: transcriptionText.length,
       processingTimeMs,
-      accumulatedTextLength: this.accumulatedText.length
+      startTime,
+      endTime,
+      startTimeISO: new Date(startTime).toISOString(),
+      endTimeISO: new Date(endTime).toISOString(),
+      accumulatedTextLength: this.accumulatedText.length,
+      modelId: modelInfo.modelId,
+      modelPath: modelInfo.modelPath
     });
 
     this.emit('chunk-completed', result);
@@ -167,20 +213,45 @@ export class TranscriptionSession extends EventEmitter {
   private completeSession(): void {
     this.isComplete = true;
     
+    const sessionEndTime = Date.now();
+    const totalSessionTimeMs = sessionEndTime - this.sessionStartTime;
     const totalProcessingTime = this.results.reduce((sum, result) => sum + result.processingTimeMs, 0);
     
-    this.logger.info('Transcription session completed', {
+    // Get model info from the last successful chunk result
+    const lastChunkWithModel = this.results.find(r => r.modelInfo);
+    const sessionModelInfo = lastChunkWithModel?.modelInfo || { modelId: null, modelPath: null };
+    
+    this.logger.error('Transcription session completed', {
       sessionId: this.sessionId,
       totalChunks: this.results.length,
       finalTextLength: this.accumulatedText.length,
-      totalProcessingTimeMs: totalProcessingTime
+      sessionStartTime: this.sessionStartTime,
+      sessionEndTime,
+      sessionStartTimeISO: new Date(this.sessionStartTime).toISOString(),
+      sessionEndTimeISO: new Date(sessionEndTime).toISOString(),
+      totalSessionTimeMs,
+      totalProcessingTimeMs: totalProcessingTime,
+      averageProcessingTimePerChunkMs: this.results.length > 0 ? Math.round(totalProcessingTime / this.results.length) : 0,
+      processingEfficiency: totalSessionTimeMs > 0 ? Math.round((totalProcessingTime / totalSessionTimeMs) * 100) : 0,
+      modelId: sessionModelInfo.modelId,
+      modelPath: sessionModelInfo.modelPath,
+      chunkTimings: this.results.map(r => ({
+        chunkId: r.chunkId,
+        processingTimeMs: r.processingTimeMs,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        textLength: r.text.length
+      }))
     });
 
     this.emit('session-completed', {
       sessionId: this.sessionId,
       finalText: this.accumulatedText,
       chunkResults: this.results,
-      totalProcessingTimeMs: totalProcessingTime
+      totalProcessingTimeMs: totalProcessingTime,
+      totalSessionTimeMs,
+      sessionStartTime: this.sessionStartTime,
+      sessionEndTime
     });
   }
 
