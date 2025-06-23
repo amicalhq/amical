@@ -20,12 +20,13 @@ import { HelperEvent, KeyEventPayload } from '@amical/types';
 import { logger, logError, logPerformance } from './logger';
 import { AudioCapture } from '../modules/audio/audio-capture';
 import { setupApplicationMenu } from './menu';
-import { OpenAIWhisperClient } from '../modules/ai/openai-whisper-client';
 import { AiService } from '../modules/ai/ai-service';
 import { SwiftIOBridge } from './swift-io-bridge'; // Added import
 import { DownloadedModel } from '../constants/models';
 import { ModelManagerService } from '../modules/models/model-manager';
 import { LocalWhisperClient } from '../modules/ai/local-whisper-client';
+import { TranscriptionSession, ChunkData } from '../modules/transcription/transcription-session';
+import { ContextualTranscriptionManager } from '../modules/transcription/contextual-transcription-manager';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -44,44 +45,28 @@ let aiService: AiService | null = null;
 let swiftIOBridgeClientInstance: SwiftIOBridge | null = null;
 let modelManagerService: ModelManagerService | null = null;
 let localWhisperClient: LocalWhisperClient | null = null;
-let openAiApiKey: string | null = null;
 let currentWindowDisplayId: number | null = null; // For tracking current display
 let activeSpaceChangeSubscriptionId: number | null = null; // For display change notifications
 
+// New chunk-based transcription variables
+let contextualTranscriptionManager: ContextualTranscriptionManager | null = null;
+let activeTranscriptionSessions: Map<string, TranscriptionSession> = new Map();
+
 interface StoreSchema {
-  'openai-api-key': string;
   'downloaded-models': Record<string, DownloadedModel>; // modelId -> DownloadedModel
 }
 
 const store = new Store<StoreSchema>();
 
-// Function to create the appropriate transcription client based on configuration
+// Function to create the local transcription client
 const createTranscriptionClient = () => {
-  // Check environment variable or use OpenAI as default
-  const useCloudInference = true;
-  
-  if (useCloudInference) {
-    logger.ai.info('Using Amical Cloud inference (via USE_CLOUD_INFERENCE=true)');
-    return new AmicalCloudClient();
-  } else {
-    logger.ai.info('Using OpenAI inference (default or USE_CLOUD_INFERENCE=false)');
-    const apiKey = store.get('openai-api-key') || process.env.OPENAI_API_KEY || null;
-    if (!apiKey) {
-      throw new Error('OpenAI API key is required when using OpenAI inference. Set it via UI or OPENAI_API_KEY env var.');
-    }
-    return new OpenAIWhisperClient(apiKey);
+  logger.ai.info('Using local Whisper inference');
+  if (!localWhisperClient) {
+    throw new Error('Local Whisper client not initialized');
   }
+  return localWhisperClient;
 };
 
-ipcMain.handle('set-api-key', (event, apiKey: string) => {
-  logger.main.info('Received set-api-key request', { hasApiKey: !!apiKey });
-  openAiApiKey = apiKey;
-  store.set('openai-api-key', apiKey);
-});
-
-ipcMain.handle('get-api-key', () => {
-  return store.get('openai-api-key', '');
-});
 
 // Model Management IPC Handlers
 ipcMain.handle('get-available-models', () => {
@@ -153,7 +138,8 @@ ipcMain.handle('set-whisper-executable-path', (event, path: string) => {
   if (!localWhisperClient) {
     throw new Error('Local whisper client not initialized');
   }
-  return localWhisperClient.setWhisperExecutablePath(path);
+  // Executable path setting is no longer needed with smart-whisper
+  logger.ai.info('Whisper executable path setting skipped - using smart-whisper integration');
 });
 
 const requestPermissions = async () => {
@@ -283,6 +269,9 @@ app.on('ready', async () => {
   // Initialize Local Whisper Client
   localWhisperClient = new LocalWhisperClient(modelManagerService);
 
+  // Initialize Contextual Transcription Manager
+  contextualTranscriptionManager = new ContextualTranscriptionManager(modelManagerService);
+
   // Set up model manager event listeners
   modelManagerService.on('download-progress', (modelId, progress) => {
     // Send progress updates to all windows
@@ -319,9 +308,8 @@ app.on('ready', async () => {
   try {
     const transcriptionClient = createTranscriptionClient();
     aiService = new AiService(transcriptionClient);
-    const useCloudInference = process.env.USE_CLOUD_INFERENCE === 'true';
     logger.ai.info('AI Service initialized', { 
-      client: useCloudInference ? 'Amical Cloud' : 'OpenAI' 
+      client: 'Local Whisper' 
     });
   } catch (error) {
     logError(error instanceof Error ? error : new Error(String(error)), 'initializing AI Service');
@@ -335,9 +323,8 @@ app.on('ready', async () => {
       try {
         const transcriptionClient = createTranscriptionClient();
         aiService = new AiService(transcriptionClient);
-        const useCloudInference = process.env.USE_CLOUD_INFERENCE === 'true';
         logger.ai.info('AI Service reinitialized', { 
-          client: useCloudInference ? 'Amical Cloud' : 'OpenAI' 
+          client: 'Local Whisper' 
         });
       } catch (error) {
         logError(error instanceof Error ? error : new Error(String(error)), 'reinitializing AI Service');
@@ -386,6 +373,82 @@ app.on('ready', async () => {
 
   audioCapture.on('recording-error', (error: Error) => {
     console.error('Main: Received recording error from AudioCapture:', error);
+  });
+
+  // Handle individual audio chunks for real-time transcription
+  audioCapture.on('chunk-ready', async (chunkData: ChunkData) => {
+    logger.audio.info('Received chunk for transcription', {
+      sessionId: chunkData.sessionId,
+      chunkId: chunkData.chunkId,
+      audioDataSize: chunkData.audioData.length,
+      isFinalChunk: chunkData.isFinalChunk
+    });
+
+    try {
+      // Get or create transcription session for this recording session
+      let transcriptionSession = activeTranscriptionSessions.get(chunkData.sessionId);
+      
+      if (!transcriptionSession) {
+        // Create new transcription session
+        const transcriptionClient = contextualTranscriptionManager!.createDefaultClient();
+        
+        transcriptionSession = new TranscriptionSession(chunkData.sessionId, transcriptionClient);
+        activeTranscriptionSessions.set(chunkData.sessionId, transcriptionSession);
+        
+        // Set up session event handlers
+        transcriptionSession.on('chunk-completed', (result) => {
+          logger.ai.info('Chunk transcription completed', {
+            sessionId: chunkData.sessionId,
+            chunkId: result.chunkId,
+            textLength: result.text.length,
+            processingTimeMs: result.processingTimeMs
+          });
+        });
+        
+        transcriptionSession.on('session-completed', (sessionResult) => {
+          logger.ai.info('Transcription session completed', {
+            sessionId: sessionResult.sessionId,
+            finalTextLength: sessionResult.finalText.length,
+            totalChunks: sessionResult.chunkResults.length,
+            totalProcessingTimeMs: sessionResult.totalProcessingTimeMs
+          });
+          
+          // Paste the final result to active application
+          if (sessionResult.finalText && sessionResult.finalText.trim().length > 0) {
+            logger.main.info('Final transcription pasted to active application', {
+              textLength: sessionResult.finalText.length
+            });
+            swiftIOBridgeClientInstance!.call('pasteText', { transcript: sessionResult.finalText });
+          } else {
+            logger.main.warn('Final transcription was empty, not pasting');
+          }
+          
+          // Clean up completed session
+          activeTranscriptionSessions.delete(chunkData.sessionId);
+        });
+        
+        transcriptionSession.on('chunk-error', (errorInfo) => {
+          logger.ai.error('Chunk transcription error', {
+            sessionId: chunkData.sessionId,
+            chunkId: errorInfo.chunkId,
+            error: errorInfo.error
+          });
+          // Continue processing other chunks even if one fails
+        });
+        
+        logger.ai.info('Created new transcription session', { sessionId: chunkData.sessionId });
+      }
+      
+      // Add chunk to session for processing
+      transcriptionSession.addChunk(chunkData);
+      
+    } catch (error) {
+      logger.ai.error('Error handling chunk-ready event', {
+        sessionId: chunkData.sessionId,
+        chunkId: chunkData.chunkId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   });
 
   // Handle audio data chunks from renderer

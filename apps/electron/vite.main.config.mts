@@ -5,7 +5,7 @@ import { resolve } from 'path';
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ['better-sqlite3'],
+      external: ['better-sqlite3', 'smart-whisper'],
     },
   },
   resolve: {
@@ -14,6 +14,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['better-sqlite3'],
+    exclude: ['better-sqlite3', 'smart-whisper'],
   },
 });

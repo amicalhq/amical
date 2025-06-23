@@ -47,7 +47,6 @@ import '@/styles/globals.css';
 const NUM_WAVEFORM_BARS = 10; // This might be unused now
 
 const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState('');
   const [currentView, setCurrentView] = useState(() => {
     // Try to restore the view from localStorage, fallback to default
     if (typeof window !== 'undefined') {
@@ -56,14 +55,6 @@ const App: React.FC = () => {
     return 'Voice Recording';
   });
 
-  const handleApiKeyChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setApiKey(event.target.value);
-  };
-
-  const handleSaveApiKey = () => {
-    window.electronAPI.setApiKey(apiKey);
-    alert('API Key sent to main process!');
-  };
 
   const handleNavigation = (item: any) => {
     setCurrentView(item.title);

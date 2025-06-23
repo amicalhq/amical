@@ -1,9 +1,10 @@
-import { TranscriptionClient } from './transcription-client';
+import { ContextualTranscriptionClient } from './transcription-session';
 import * as fs from 'fs';
 import { logger } from '../../main/logger';
 import { ModelManagerService } from '../models/model-manager';
+import { Whisper } from 'smart-whisper';
 
-export class LocalWhisperClient implements TranscriptionClient {
+export class ContextualLocalWhisperClient implements ContextualTranscriptionClient {
   private modelManager: ModelManagerService;
   private selectedModelId: string | null = null;
   private whisperInstance: any = null; // Will be imported from smart-whisper
@@ -24,11 +25,10 @@ export class LocalWhisperClient implements TranscriptionClient {
     }
 
     try {
-      const { Whisper } = await import('smart-whisper');
       this.whisperInstance = new Whisper(modelPath, { gpu: false }); // Start with CPU, can be configured later
-      logger.ai.info('Smart-whisper initialized', { modelPath });
+      logger.ai.info('Smart-whisper initialized for contextual transcription', { modelPath });
     } catch (error) {
-      logger.ai.error('Failed to initialize smart-whisper', { 
+      logger.ai.error('Failed to initialize smart-whisper for contextual transcription', { 
         error: error instanceof Error ? error.message : String(error),
         modelPath 
       });
@@ -36,35 +36,55 @@ export class LocalWhisperClient implements TranscriptionClient {
     }
   }
 
-  async transcribe(audioData: Buffer): Promise<string> {
+  async transcribeWithContext(audioData: Buffer, previousContext: string): Promise<string> {
     try {
       await this.initializeWhisper();
 
       // Convert audio buffer to the format expected by smart-whisper
       const audioFloat32Array = await this.convertAudioBuffer(audioData);
 
-      logger.ai.info('Starting smart-whisper transcription', { 
+      // Prepare initial prompt with context for better continuity
+      let prompt = '';
+      if (previousContext && previousContext.trim().length > 0) {
+        // Use last ~50 words as context/prompt
+        const contextWords = previousContext.trim().split(/\\s+/);
+        const maxWords = 50;
+        prompt = contextWords.length > maxWords 
+          ? contextWords.slice(-maxWords).join(' ')
+          : previousContext.trim();
+      }
+
+      logger.ai.info('Starting smart-whisper contextual transcription', { 
         audioDataSize: audioData.length,
-        convertedSize: audioFloat32Array.length
+        convertedSize: audioFloat32Array.length,
+        hasContext: prompt.length > 0,
+        contextLength: prompt.length
       });
 
-      // Transcribe using smart-whisper
-      const { result } = await this.whisperInstance.transcribe(audioFloat32Array, { 
-        language: 'auto' 
-      });
+      // Transcribe using smart-whisper with initial prompt for context
+      const transcriptionOptions: any = { 
+        language: 'auto'
+      };
       
+      // Add initial prompt if we have context
+      if (prompt) {
+        transcriptionOptions.initial_prompt = prompt;
+      }
+
+      const { result } = await this.whisperInstance.transcribe(audioFloat32Array, transcriptionOptions);
       const transcription = await result;
       
-      logger.ai.info('Smart-whisper transcription completed', { 
-        resultLength: transcription.length
+      logger.ai.info('Smart-whisper contextual transcription completed', { 
+        resultLength: transcription.length,
+        hadContext: prompt.length > 0
       });
 
       return transcription;
     } catch (error) {
-      logger.ai.error('Smart-whisper transcription failed', { 
+      logger.ai.error('Smart-whisper contextual transcription failed', { 
         error: error instanceof Error ? error.message : String(error)
       });
-      throw new Error(`Transcription failed: ${error}`);
+      throw new Error(`Contextual transcription failed: ${error}`);
     }
   }
 
@@ -138,7 +158,7 @@ export class LocalWhisperClient implements TranscriptionClient {
     }
     
     this.selectedModelId = modelId;
-    logger.ai.info('Selected model for transcription', { modelId });
+    logger.ai.info('Selected model for contextual transcription', { modelId });
   }
 
   // Get the currently selected model
@@ -171,9 +191,9 @@ export class LocalWhisperClient implements TranscriptionClient {
     if (this.whisperInstance) {
       try {
         await this.whisperInstance.free();
-        logger.ai.info('Smart-whisper instance freed');
+        logger.ai.info('Smart-whisper contextual instance freed');
       } catch (error) {
-        logger.ai.warn('Error freeing smart-whisper instance', { 
+        logger.ai.warn('Error freeing smart-whisper contextual instance', { 
           error: error instanceof Error ? error.message : String(error) 
         });
       } finally {
@@ -182,4 +202,3 @@ export class LocalWhisperClient implements TranscriptionClient {
     }
   }
 }
- 

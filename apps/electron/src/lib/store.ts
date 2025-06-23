@@ -35,11 +35,6 @@ interface StoreSchema {
     customVocabularyEnabled: boolean;
   };
   
-  // API keys and credentials (encrypted)
-  credentials: {
-    openaiApiKey?: string;
-    // Add other API keys as needed
-  };
   
   // UI state
   ui: {
@@ -100,8 +95,8 @@ export const store = new Store<StoreSchema>({
     },
     
     transcription: {
-      provider: 'openai',
-      model: 'whisper-1',
+      provider: 'local',
+      model: 'whisper-large-v1',
       language: 'en',
       autoTranscribe: true,
       confidenceThreshold: 0.8,
@@ -109,8 +104,6 @@ export const store = new Store<StoreSchema>({
       enableTimestamps: false,
       customVocabularyEnabled: true,
     },
-    
-    credentials: {},
     
     ui: {
       sidebarOpen: false,
@@ -174,6 +167,34 @@ export const store = new Store<StoreSchema>({
         customVocabularyEnabled: { type: 'boolean' },
       },
     },
+    ui: {
+      type: 'object',
+      properties: {
+        sidebarOpen: { type: 'boolean' },
+        currentView: { type: 'string' },
+        windowBounds: { type: 'object' },
+        columnWidths: { type: 'object' },
+        lastUsedPaths: { type: 'object' },
+      },
+    },
+    recent: {
+      type: 'object',
+      properties: {
+        searchTerms: { type: 'array', items: { type: 'string' } },
+        exportFormats: { type: 'array', items: { type: 'string' } },
+        languages: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    app: {
+      type: 'object',
+      properties: {
+        firstRun: { type: 'boolean' },
+        lastVersion: { type: 'string' },
+        installDate: { type: 'string' },
+        lastUpdateCheck: { type: 'string' },
+        telemetryEnabled: { type: 'boolean' },
+      },
+    },
   },
 });
 
@@ -181,32 +202,35 @@ export const store = new Store<StoreSchema>({
 export const storeHelpers = {
   // Get a preference value
   getPreference<K extends keyof StoreSchema['preferences']>(key: K): StoreSchema['preferences'][K] {
-    return store.get(`preferences.${key}`);
+    return store.get('preferences')[key];
   },
   
   // Set a preference value
   setPreference<K extends keyof StoreSchema['preferences']>(key: K, value: StoreSchema['preferences'][K]) {
-    store.set(`preferences.${key}`, value);
+    const preferences = store.get('preferences');
+    store.set('preferences', { ...preferences, [key]: value });
   },
   
   // Get recording settings
   getRecordingSetting<K extends keyof StoreSchema['recording']>(key: K): StoreSchema['recording'][K] {
-    return store.get(`recording.${key}`);
+    return store.get('recording')[key];
   },
   
   // Set recording settings
   setRecordingSetting<K extends keyof StoreSchema['recording']>(key: K, value: StoreSchema['recording'][K]) {
-    store.set(`recording.${key}`, value);
+    const recording = store.get('recording');
+    store.set('recording', { ...recording, [key]: value });
   },
   
   // Get transcription settings
   getTranscriptionSetting<K extends keyof StoreSchema['transcription']>(key: K): StoreSchema['transcription'][K] {
-    return store.get(`transcription.${key}`);
+    return store.get('transcription')[key];
   },
   
   // Set transcription settings
   setTranscriptionSetting<K extends keyof StoreSchema['transcription']>(key: K, value: StoreSchema['transcription'][K]) {
-    store.set(`transcription.${key}`, value);
+    const transcription = store.get('transcription');
+    store.set('transcription', { ...transcription, [key]: value });
   },
   
   // Window bounds management
@@ -225,14 +249,6 @@ export const storeHelpers = {
     store.set('recent.searchTerms', updated);
   },
   
-  // API key management (encrypted)
-  setApiKey(provider: keyof StoreSchema['credentials'], key: string) {
-    store.set(`credentials.${provider}`, key);
-  },
-  
-  getApiKey(provider: keyof StoreSchema['credentials']): string | undefined {
-    return store.get(`credentials.${provider}`);
-  },
   
   // Clear all data
   clearAll() {
@@ -241,7 +257,7 @@ export const storeHelpers = {
   
   // Reset to defaults
   resetToDefaults() {
-    store.store = store.defaults;
+    store.clear();
   },
 };
 

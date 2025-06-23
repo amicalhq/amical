@@ -6,6 +6,8 @@ import { EventEmitter } from 'node:events';
 export class AudioCapture extends EventEmitter {
   private currentRecordingPath: string | null = null;
   private writableStream: fs.WriteStream | null = null;
+  private chunkCounter: number = 0;
+  private sessionId: string | null = null;
 
   constructor() {
     super();
@@ -61,6 +63,8 @@ export class AudioCapture extends EventEmitter {
         // Only nullify currentRecordingPath if it matches the one being finalized.
         if (this.currentRecordingPath === recordingPathToFinalize) {
           this.currentRecordingPath = null;
+          this.sessionId = null;
+          this.chunkCounter = 0;
         }
       }
     });
@@ -73,6 +77,8 @@ export class AudioCapture extends EventEmitter {
       // Clean up path if still relevant, though .end() callback should handle primary cleanup.
       if (this.currentRecordingPath === recordingPathToFinalize) {
         this.currentRecordingPath = null;
+        this.sessionId = null;
+        this.chunkCounter = 0;
       }
     });
     // Note: The 'error' handler for streamToClose was set up when it was created.
@@ -85,6 +91,8 @@ export class AudioCapture extends EventEmitter {
       if (chunk.length > 0) {
         // First non-empty chunk: Start a new recording
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        this.sessionId = `session-${timestamp}`;
+        this.chunkCounter = 0;
         this.currentRecordingPath = path.join(
           app.getPath('userData'),
           'recordings',
@@ -142,6 +150,17 @@ export class AudioCapture extends EventEmitter {
             }
             return; // Don't proceed to final chunk logic if initial write fails
           }
+          
+          // Emit chunk-ready event for immediate transcription
+          this.chunkCounter++;
+          console.log(`AudioCapture: Emitting chunk-ready for chunk ${this.chunkCounter}`);
+          this.emit('chunk-ready', {
+            sessionId: this.sessionId,
+            chunkId: this.chunkCounter,
+            audioData: chunk,
+            isFinalChunk: isFinalChunk
+          });
+          
           // If this very first chunk is also the final chunk
           if (isFinalChunk) {
             console.log(
@@ -184,9 +203,21 @@ export class AudioCapture extends EventEmitter {
             // If `isFinalChunk` was true, `finalizeRecording` won't be called due to return/error.
             // Consider calling finalizeRecording or a similar cleanup if write error on final chunk.
             // For now, relying on the stream's 'error' event for full cleanup.
-          } else if (isFinalChunk) {
-            console.log('AudioCapture: Final chunk written successfully. Finalizing recording.');
-            this.finalizeRecording();
+          } else {
+            // Emit chunk-ready event for immediate transcription
+            this.chunkCounter++;
+            console.log(`AudioCapture: Emitting chunk-ready for chunk ${this.chunkCounter}`);
+            this.emit('chunk-ready', {
+              sessionId: this.sessionId,
+              chunkId: this.chunkCounter,
+              audioData: chunk,
+              isFinalChunk: isFinalChunk
+            });
+            
+            if (isFinalChunk) {
+              console.log('AudioCapture: Final chunk written successfully. Finalizing recording.');
+              this.finalizeRecording();
+            }
           }
         });
       } else {
@@ -198,6 +229,13 @@ export class AudioCapture extends EventEmitter {
           console.log(
             'AudioCapture: Empty final chunk received during active recording. Finalizing recording.'
           );
+          // Still emit the final chunk event even if empty
+          this.emit('chunk-ready', {
+            sessionId: this.sessionId,
+            chunkId: this.chunkCounter, // Don't increment for empty chunks
+            audioData: chunk,
+            isFinalChunk: true
+          });
           this.finalizeRecording();
         }
       }

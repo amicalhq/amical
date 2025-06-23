@@ -1,4 +1,4 @@
-import { eq, desc, asc, like, count, and } from 'drizzle-orm';
+import { eq, desc, asc, like, count, and, isNotNull } from 'drizzle-orm';
 import { db } from './config';
 import { vocabulary, type Vocabulary, type NewVocabulary } from './schema';
 
@@ -35,9 +35,7 @@ export async function getVocabulary(options: {
     category,
   } = options;
 
-  let query = db.select().from(vocabulary);
-
-  // Add filters
+  // Build conditions
   const conditions = [];
   
   if (search) {
@@ -48,11 +46,7 @@ export async function getVocabulary(options: {
     conditions.push(eq(vocabulary.category, category));
   }
 
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions));
-  }
-
-  // Add sorting
+  // Determine sort column
   let sortColumn;
   switch (sortBy) {
     case 'word':
@@ -72,12 +66,24 @@ export async function getVocabulary(options: {
   }
   
   const orderFn = sortOrder === 'asc' ? asc : desc;
-  query = query.orderBy(orderFn(sortColumn));
 
-  // Add pagination
-  query = query.limit(limit).offset(offset);
-
-  return await query;
+  // Build and execute query
+  if (conditions.length > 0) {
+    return await db
+      .select()
+      .from(vocabulary)
+      .where(and(...conditions))
+      .orderBy(orderFn(sortColumn))
+      .limit(limit)
+      .offset(offset);
+  } else {
+    return await db
+      .select()
+      .from(vocabulary)
+      .orderBy(orderFn(sortColumn))
+      .limit(limit)
+      .offset(offset);
+  }
 }
 
 // Get vocabulary word by ID
@@ -120,7 +126,7 @@ export async function deleteVocabulary(id: number) {
 
 // Get vocabulary count
 export async function getVocabularyCount(search?: string, category?: string) {
-  let query = db.select({ count: count() }).from(vocabulary);
+  let baseQuery = db.select({ count: count() }).from(vocabulary);
   
   const conditions = [];
   
@@ -132,11 +138,9 @@ export async function getVocabularyCount(search?: string, category?: string) {
     conditions.push(eq(vocabulary.category, category));
   }
 
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions));
-  }
-  
-  const result = await query;
+  const result = conditions.length > 0
+    ? await baseQuery.where(and(...conditions))
+    : await baseQuery;
   return result[0]?.count || 0;
 }
 
@@ -184,7 +188,7 @@ export async function getVocabularyCategories() {
   const result = await db
     .selectDistinct({ category: vocabulary.category })
     .from(vocabulary)
-    .where(eq(vocabulary.category, null)); // Only non-null categories
+    .where(isNotNull(vocabulary.category)); // Only non-null categories
   
   return result.map(row => row.category).filter(Boolean);
 }

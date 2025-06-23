@@ -27,7 +27,13 @@
       "esbuild",
       "keytar",
       "protobufjs",
-      "sharp"
+      "sharp",
+      "smart-whisper"
+    ],
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-winstaller",
+      "smart-whisper"
     ]
   }
 }
