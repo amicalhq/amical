@@ -48,11 +48,8 @@ export const ModelsView: React.FC = () => {
 
       // Set up active downloads progress
       const progressMap: Record<string, DownloadProgress> = {};
-      for (const modelId of activeDownloads) {
-        const progress = await window.electronAPI.getDownloadProgress(modelId);
-        if (progress) {
-          progressMap[modelId] = progress;
-        }
+      for (const downloadProgress of activeDownloads) {
+        progressMap[downloadProgress.modelId] = downloadProgress;
       }
       setDownloadProgress(progressMap);
     } catch (err) {
@@ -222,9 +219,8 @@ export const ModelsView: React.FC = () => {
   return (
     <div className="h-full p-6">
       <Tabs defaultValue="speech-recognition" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-1">
           <TabsTrigger value="speech-recognition">Speech Recognition</TabsTrigger>
-          <TabsTrigger value="formatting-llm">Formatting LLM</TabsTrigger>
         </TabsList>
 
         <TabsContent value="speech-recognition" className="space-y-6 mt-6">
@@ -339,48 +335,6 @@ export const ModelsView: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="formatting-llm" className="space-y-6 mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Formatting Model</CardTitle>
-              <CardDescription>
-                Configure your language model for post-processing transcriptions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="provider" className="text-sm font-medium">
-                    Provider
-                  </Label>
-                  <select
-                    id="provider"
-                    className="w-full mt-1 px-3 py-2 border border-input bg-background rounded-md text-sm"
-                    defaultValue="openai"
-                  >
-                    <option value="openai">OpenAI</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <Label htmlFor="api-key" className="text-sm font-medium">
-                    API Key or local model name
-                  </Label>
-                  <input
-                    type="text"
-                    id="api-key"
-                    placeholder="API Key or local model name"
-                    className="w-full mt-1 px-3 py-2 border border-input bg-background rounded-md text-sm"
-                  />
-                </div>
-
-                <Button className="w-full bg-primary text-primary-foreground">
-                  Save
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

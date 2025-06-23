@@ -12,7 +12,7 @@
     "generate:json-schemas": "tsx scripts/generate-json-schemas.ts",
     "generate:swift": "tsx scripts/generate-swift-models.ts", 
     "generate:all": "pnpm run generate:json-schemas && pnpm run generate:swift",
-    "lint": "eslint --ext .ts .",
+    "lint": "eslint .",
     "check-types": "tsc --noEmit"
   },
   "keywords": ["amical", "types", "schemas", "rpc"],

@@ -16,9 +16,6 @@ export interface ElectronAPI {
   onRecordingStarting: () => Promise<void>;
   onRecordingStopping: () => Promise<void>;
 
-  // New method for setting the API key
-  setApiKey: (apiKey: string) => Promise<void>;
-  getApiKey: () => Promise<string>;
   
   // Model Management API
   getAvailableModels: () => Promise<import('../constants/models').Model[]>;

@@ -50,8 +50,6 @@ const api: ElectronAPI = {
   // removeAllGlobalShortcutListeners: () => {
   //   ipcRenderer.removeAllListeners('global-shortcut-event');
   // }
-  setApiKey: (apiKey: string) => ipcRenderer.invoke('set-api-key', apiKey),
-  getApiKey: () => ipcRenderer.invoke('get-api-key'),
   
   // Model Management API
   getAvailableModels: () => ipcRenderer.invoke('get-available-models'),

@@ -36,23 +36,26 @@ export async function getTranscriptions(options: {
     search,
   } = options;
 
-  let query = db.select().from(transcriptions);
-
-  // Add search filter if provided
-  if (search) {
-    query = query.where(like(transcriptions.text, `%${search}%`));
-  }
-
-  // Add sorting
+  // Build query step by step
   const sortColumn = sortBy === 'timestamp' ? transcriptions.timestamp : transcriptions.createdAt;
   const orderFn = sortOrder === 'asc' ? asc : desc;
   
-  query = query.orderBy(orderFn(sortColumn));
-
-  // Add pagination
-  query = query.limit(limit).offset(offset);
-
-  return await query;
+  if (search) {
+    return await db
+      .select()
+      .from(transcriptions)
+      .where(like(transcriptions.text, `%${search}%`))
+      .orderBy(orderFn(sortColumn))
+      .limit(limit)
+      .offset(offset);
+  } else {
+    return await db
+      .select()
+      .from(transcriptions)
+      .orderBy(orderFn(sortColumn))
+      .limit(limit)
+      .offset(offset);
+  }
 }
 
 // Get transcription by ID
@@ -89,13 +92,11 @@ export async function deleteTranscription(id: string) {
 
 // Get transcriptions count
 export async function getTranscriptionsCount(search?: string) {
-  let query = db.select({ count: count() }).from(transcriptions);
+  let baseQuery = db.select({ count: count() }).from(transcriptions);
   
-  if (search) {
-    query = query.where(like(transcriptions.text, `%${search}%`));
-  }
-  
-  const result = await query;
+  const result = search
+    ? await baseQuery.where(like(transcriptions.text, `%${search}%`))
+    : await baseQuery;
   return result[0]?.count || 0;
 }
 
