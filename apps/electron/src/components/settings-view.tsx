@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { FormatterConfig } from '@/modules/formatter';
+import { api } from '@/trpc/react';
+import { trpcClient } from '@/trpc/react';
 
 // OpenRouter models list
 const OPENROUTER_MODELS = [
@@ -27,6 +29,10 @@ export function SettingsView() {
   const [openrouterApiKey, setOpenrouterApiKey] = useState('');
   const [formatterEnabled, setFormatterEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // tRPC test state
+  const [trpcTestResult, setTrpcTestResult] = useState<string>('');
+  const [trpcTestLoading, setTrpcTestLoading] = useState(false);
 
   // Load configuration on component mount
   useEffect(() => {
@@ -68,6 +74,42 @@ export function SettingsView() {
     }
   };
 
+  const testTrpcConnection = async () => {
+    setTrpcTestLoading(true);
+    setTrpcTestResult('');
+    
+    try {
+      // Test ping procedure
+      const pingResult = await trpcClient.ping.query();
+      
+      // Test greeting procedure
+      const greetingResult = await trpcClient.greeting.query({ name: 'Amical User' });
+      
+      // Test echo mutation
+      const echoResult = await trpcClient.echo.mutate({ message: 'tRPC is working!' });
+      
+      // Test vocabulary router
+      const vocabularyCount = await trpcClient.vocabulary.getVocabularyCount.query({});
+      
+      setTrpcTestResult(`✅ tRPC Connection Test Results:
+      
+Ping: ${pingResult.message}
+Timestamp: ${pingResult.timestamp.toLocaleString()}
+
+Greeting: ${greetingResult.text}
+Timestamp: ${greetingResult.timestamp.toLocaleString()}
+
+Echo: ${echoResult.echo}
+Timestamp: ${echoResult.timestamp.toLocaleString()}
+
+Vocabulary Count: ${vocabularyCount} words in database`);
+    } catch (error) {
+      setTrpcTestResult(`❌ tRPC Connection Failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setTrpcTestLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
@@ -76,6 +118,7 @@ export function SettingsView() {
           <TabsTrigger value="microphone">Microphone</TabsTrigger>
           <TabsTrigger value="shortcuts">Shortcuts</TabsTrigger>
           <TabsTrigger value="formatter">Formatter</TabsTrigger>
+          <TabsTrigger value="trpc-test">tRPC Test</TabsTrigger>
           <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
         
@@ -242,6 +285,38 @@ export function SettingsView() {
                   {isLoading ? 'Saving...' : 'Save Configuration'}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="trpc-test" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>tRPC Connection Test</CardTitle>
+              <CardDescription>Test the tRPC connection between renderer and main process</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  This test verifies that tRPC is properly configured and working between the renderer and main processes.
+                </p>
+              </div>
+              
+              <Button 
+                onClick={testTrpcConnection}
+                disabled={trpcTestLoading}
+                variant="outline"
+              >
+                {trpcTestLoading ? 'Testing...' : 'Test tRPC Connection'}
+              </Button>
+              
+              {trpcTestResult && (
+                <div className="mt-4 p-4 border rounded-md">
+                  <pre className="whitespace-pre-wrap text-sm font-mono">
+                    {trpcTestResult}
+                  </pre>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -3,6 +3,7 @@
 
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import log from 'electron-log/renderer';
+import { exposeElectronTRPC } from 'electron-trpc-experimental/preload';
 import type { ElectronAPI } from '../types/electron-api';
 import type { FormatterConfig } from '../modules/formatter';
 import type { Transcription, NewTranscription, Vocabulary, NewVocabulary } from '../db/schema';
@@ -145,3 +146,8 @@ const api: ElectronAPI = {
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
+
+// Expose tRPC for electron-trpc-experimental
+process.once('loaded', async () => {
+  exposeElectronTRPC();
+});
