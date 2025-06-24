@@ -75,7 +75,6 @@ const App: React.FC = () => {
     return 'Voice Recording';
   });
 
-
   const handleNavigation = (item: any) => {
     setCurrentView(item.title);
     // Save to localStorage to preserve during HMR
@@ -115,38 +114,38 @@ const App: React.FC = () => {
           <SidebarProvider
             style={
               {
-                "--sidebar-width": "calc(var(--spacing) * 72)",
-                "--header-height": "calc(var(--spacing) * 12)",
+                '--sidebar-width': 'calc(var(--spacing) * 72)',
+                '--header-height': 'calc(var(--spacing) * 12)',
               } as React.CSSProperties
             }
           >
-        <div className="flex h-screen w-screen flex-col">
-          {/* Header spans full width with traffic light spacing */}
-          <SiteHeader currentView={currentView} />
-          
-          <div className="flex flex-1">
-            <AppSidebar 
-              variant="inset" 
-              onNavigate={handleNavigation}
-              currentView={currentView}
-            />
-            <SidebarInset>
-              <div className="flex flex-1 flex-col">
-                <div className="@container/main flex flex-1 flex-col">
-                  <div 
-                    className="mx-auto w-full flex flex-col gap-4 md:gap-6"
-                    style={{
-                      maxWidth: 'var(--content-max-width)',
-                      padding: 'var(--content-padding)'
-                    }}
-                  >
-                    {renderContent()}
+            <div className="flex h-screen w-screen flex-col">
+              {/* Header spans full width with traffic light spacing */}
+              <SiteHeader currentView={currentView} />
+
+              <div className="flex flex-1">
+                <AppSidebar
+                  variant="inset"
+                  onNavigate={handleNavigation}
+                  currentView={currentView}
+                />
+                <SidebarInset>
+                  <div className="flex flex-1 flex-col">
+                    <div className="@container/main flex flex-1 flex-col">
+                      <div
+                        className="mx-auto w-full flex flex-col gap-4 md:gap-6"
+                        style={{
+                          maxWidth: 'var(--content-max-width)',
+                          padding: 'var(--content-padding)',
+                        }}
+                      >
+                        {renderContent()}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </SidebarInset>
               </div>
-            </SidebarInset>
-          </div>
-        </div>
+            </div>
           </SidebarProvider>
         </ThemeProvider>
       </QueryClientProvider>

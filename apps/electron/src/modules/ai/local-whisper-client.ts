@@ -28,9 +28,9 @@ export class LocalWhisperClient implements TranscriptionClient {
       this.whisperInstance = new Whisper(modelPath, { gpu: true });
       logger.ai.info('Smart-whisper initialized', { modelPath });
     } catch (error) {
-      logger.ai.error('Failed to initialize smart-whisper', { 
+      logger.ai.error('Failed to initialize smart-whisper', {
         error: error instanceof Error ? error.message : String(error),
-        modelPath 
+        modelPath,
       });
       throw new Error(`Failed to initialize smart-whisper: ${error}`);
     }
@@ -43,26 +43,26 @@ export class LocalWhisperClient implements TranscriptionClient {
       // Convert audio buffer to the format expected by smart-whisper
       const audioFloat32Array = await this.convertAudioBuffer(audioData);
 
-      logger.ai.info('Starting smart-whisper transcription', { 
+      logger.ai.info('Starting smart-whisper transcription', {
         audioDataSize: audioData.length,
-        convertedSize: audioFloat32Array.length
+        convertedSize: audioFloat32Array.length,
       });
 
       // Transcribe using smart-whisper
-      const { result } = await this.whisperInstance.transcribe(audioFloat32Array, { 
-        language: 'auto' 
+      const { result } = await this.whisperInstance.transcribe(audioFloat32Array, {
+        language: 'auto',
       });
-      
+
       const transcription = await result;
-      
-      logger.ai.info('Smart-whisper transcription completed', { 
-        resultLength: transcription.length
+
+      logger.ai.info('Smart-whisper transcription completed', {
+        resultLength: transcription.length,
       });
 
       return transcription;
     } catch (error) {
-      logger.ai.error('Smart-whisper transcription failed', { 
-        error: error instanceof Error ? error.message : String(error)
+      logger.ai.error('Smart-whisper transcription failed', {
+        error: error instanceof Error ? error.message : String(error),
       });
       throw new Error(`Transcription failed: ${error}`);
     }
@@ -75,20 +75,20 @@ export class LocalWhisperClient implements TranscriptionClient {
       // For now, assume the audio data is already in the correct format
       // In a real implementation, you'd use an audio processing library like node-wav
       // to properly decode and resample the audio
-      
+
       // Convert buffer to Float32Array (simplified)
       const float32Array = new Float32Array(audioData.length / 4);
       for (let i = 0; i < float32Array.length; i++) {
         // Read 32-bit float from buffer (little-endian)
         float32Array[i] = audioData.readFloatLE(i * 4);
       }
-      
+
       return float32Array;
     } catch (error) {
-      logger.ai.warn('Audio conversion failed, trying alternative method', { 
-        error: error instanceof Error ? error.message : String(error) 
+      logger.ai.warn('Audio conversion failed, trying alternative method', {
+        error: error instanceof Error ? error.message : String(error),
       });
-      
+
       // Fallback: convert as if it's PCM data
       const samples = new Float32Array(audioData.length / 2);
       for (let i = 0; i < samples.length; i++) {
@@ -96,14 +96,14 @@ export class LocalWhisperClient implements TranscriptionClient {
         const sample = audioData.readInt16LE(i * 2);
         samples[i] = sample / 32768.0;
       }
-      
+
       return samples;
     }
   }
 
   private async getBestAvailableModel(): Promise<string | null> {
     const downloadedModels = await this.modelManager.getDownloadedModels();
-    
+
     // If a specific model is selected and available, use it
     if (this.selectedModelId && downloadedModels[this.selectedModelId]) {
       const model = downloadedModels[this.selectedModelId];
@@ -113,8 +113,14 @@ export class LocalWhisperClient implements TranscriptionClient {
     }
 
     // Otherwise, find the best available model (prioritize by quality)
-    const preferredOrder = ['whisper-large-v1', 'whisper-medium', 'whisper-small', 'whisper-base', 'whisper-tiny'];
-    
+    const preferredOrder = [
+      'whisper-large-v1',
+      'whisper-medium',
+      'whisper-small',
+      'whisper-base',
+      'whisper-tiny',
+    ];
+
     for (const modelId of preferredOrder) {
       const model = downloadedModels[modelId];
       if (model && fs.existsSync(model.localPath)) {
@@ -131,12 +137,12 @@ export class LocalWhisperClient implements TranscriptionClient {
     if (!downloadedModels[modelId]) {
       throw new Error(`Model not downloaded: ${modelId}`);
     }
-    
+
     // If we're changing models, free the current instance
     if (this.selectedModelId !== modelId && this.whisperInstance) {
       this.freeWhisperInstance();
     }
-    
+
     this.selectedModelId = modelId;
     logger.ai.info('Selected model for transcription', { modelId });
   }
@@ -149,7 +155,7 @@ export class LocalWhisperClient implements TranscriptionClient {
   // Check if whisper is available
   async isAvailable(): Promise<boolean> {
     const downloadedModels = await this.modelManager.getDownloadedModels();
-    return Object.keys(downloadedModels).some(modelId => 
+    return Object.keys(downloadedModels).some((modelId) =>
       fs.existsSync(downloadedModels[modelId].localPath)
     );
   }
@@ -157,7 +163,7 @@ export class LocalWhisperClient implements TranscriptionClient {
   // Get available models
   async getAvailableModels(): Promise<string[]> {
     const downloadedModels = await this.modelManager.getDownloadedModels();
-    return Object.keys(downloadedModels).filter(modelId => 
+    return Object.keys(downloadedModels).filter((modelId) =>
       fs.existsSync(downloadedModels[modelId].localPath)
     );
   }
@@ -173,8 +179,8 @@ export class LocalWhisperClient implements TranscriptionClient {
         await this.whisperInstance.free();
         logger.ai.info('Smart-whisper instance freed');
       } catch (error) {
-        logger.ai.warn('Error freeing smart-whisper instance', { 
-          error: error instanceof Error ? error.message : String(error) 
+        logger.ai.warn('Error freeing smart-whisper instance', {
+          error: error instanceof Error ? error.message : String(error),
         });
       } finally {
         this.whisperInstance = null;

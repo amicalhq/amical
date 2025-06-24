@@ -7,22 +7,19 @@ export class ContextualTranscriptionManager {
   private logger = createScopedLogger('contextual-transcription-manager');
   private defaultClient: ContextualLocalWhisperClient | null = null;
 
-  constructor(
-    private modelManagerService: ModelManagerService | null = null
-  ) {}
+  constructor(private modelManagerService: ModelManagerService | null = null) {}
 
   createTranscriptionClient(
     provider: 'local',
     options: { modelId?: string } = {}
   ): ContextualTranscriptionClient {
-    
     switch (provider) {
       case 'local':
         if (!this.modelManagerService) {
           throw new Error('ModelManagerService is required for local transcription client');
         }
         this.logger.info('Creating local Whisper contextual transcription client', {
-          selectedModelId: options.modelId
+          selectedModelId: options.modelId,
         });
         return new ContextualLocalWhisperClient(this.modelManagerService, options.modelId);
 

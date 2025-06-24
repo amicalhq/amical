@@ -14,13 +14,13 @@ export class AiService {
     if (!this.transcriptionClient) {
       throw new Error('Transcription client is not initialized.');
     }
-    
+
     // Step 1: Transcribe audio
     const transcribedText = await this.transcriptionClient.transcribe(audioData);
-    
+
     // Step 2: Format the transcribed text if formatter is enabled
     const formattedText = await this.formatterService.formatText(transcribedText);
-    
+
     return formattedText;
   }
 

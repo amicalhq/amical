@@ -18,10 +18,7 @@ export interface UseRecordingOutput {
   stopRecording: () => Promise<void>;
 }
 
-const cleanupMediaResources = (
-  vadInstance: MicVAD | null,
-  streamInstance: MediaStream | null
-) => {
+const cleanupMediaResources = (vadInstance: MicVAD | null, streamInstance: MediaStream | null) => {
   if (vadInstance) {
     try {
       vadInstance.destroy();
@@ -60,7 +57,7 @@ export const useRecording = ({
     async (callStopCallback: boolean) => {
       // This function assumes mutex is already acquired or not needed (e.g. unmount)
       console.log('Hook: Internal: Stopping recording and sending final chunk...');
-      
+
       // Send final audio chunk before cleanup
       try {
         // Access the sendAudioChunk function from the current recording session
@@ -73,13 +70,10 @@ export const useRecording = ({
       } catch (error) {
         console.error('Hook: Error sending final audio chunk:', error);
       }
-      
+
       // Cleanup all resources
-      cleanupMediaResources(
-        vadRef.current,
-        streamRef.current
-      );
-      
+      cleanupMediaResources(vadRef.current, streamRef.current);
+
       // Clear Web Audio API resources
       const cleanup = (window as any).currentWebAudioCleanup;
       if (cleanup) {
@@ -87,13 +81,13 @@ export const useRecording = ({
         (window as any).currentWebAudioCleanup = null;
         (window as any).currentSendAudioChunk = null;
       }
-      
+
       vadRef.current = null;
       streamRef.current = null;
 
       setRecordingStatus('idle');
       setVoiceDetected(false);
-      
+
       if (callStopCallback && onRecordingStopCallback) {
         try {
           await onRecordingStopCallback();
@@ -132,37 +126,37 @@ export const useRecording = ({
 
         // Use Web Audio API with AudioWorklet for raw PCM data
         const audioContext = new AudioContext({ sampleRate: 16000 });
-        
+
         let audioWorkletNode: AudioWorkletNode | null = null;
         let source: MediaStreamAudioSourceNode | null = null;
         let chunkTimer: NodeJS.Timeout | null = null;
         let pendingAudioChunks: Float32Array[] = [];
-        
+
         // Load AudioWorklet module
         await audioContext.audioWorklet.addModule('/audio-recorder-worklet.js');
         console.log('Hook: AudioWorklet module loaded successfully');
-        
+
         source = audioContext.createMediaStreamSource(localStream);
-        
+
         // Create AudioWorklet node
         audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
-        
+
         // Handle messages from AudioWorklet
         audioWorkletNode.port.onmessage = (event) => {
           if (event.data.type === 'audioData') {
             const audioData = event.data.audioData as Float32Array;
             const isFinal = event.data.isFinal as boolean;
-            
+
             // Store the audio chunk
             pendingAudioChunks.push(audioData);
-            
+
             if (isFinal) {
               // Send final chunk immediately
               sendAudioChunk(true);
             }
           }
         };
-        
+
         // Create function to send accumulated chunks
         const sendAudioChunk = async (isFinal = false) => {
           if (pendingAudioChunks.length > 0) {
@@ -170,38 +164,40 @@ export const useRecording = ({
             const totalLength = pendingAudioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
             const combinedChunk = new Float32Array(totalLength);
             let offset = 0;
-            
+
             for (const chunk of pendingAudioChunks) {
               combinedChunk.set(chunk, offset);
               offset += chunk.length;
             }
-            
+
             // Convert Float32Array to ArrayBuffer for IPC
             const arrayBuffer = combinedChunk.buffer.slice(
               combinedChunk.byteOffset,
               combinedChunk.byteOffset + combinedChunk.byteLength
             );
-            
+
             try {
               await onAudioChunk(arrayBuffer, isFinal);
-              console.log(`Hook: Sent audio chunk: ${combinedChunk.length} samples, final: ${isFinal}`);
+              console.log(
+                `Hook: Sent audio chunk: ${combinedChunk.length} samples, final: ${isFinal}`
+              );
             } catch (error) {
               console.error('Hook: Error processing audio chunk:', error);
             }
-            
+
             pendingAudioChunks = []; // Clear chunks after sending
           }
         };
-        
+
         // Set up periodic chunk sending
         chunkTimer = setInterval(() => {
           sendAudioChunk(false);
         }, chunkDurationMs);
-        
+
         // Connect the audio processing chain
         source.connect(audioWorkletNode);
         console.log('Hook: Connected AudioWorklet processing chain');
-        
+
         // Store cleanup functions for Web Audio API
         const cleanup = () => {
           if (chunkTimer) {
@@ -223,14 +219,12 @@ export const useRecording = ({
           }
           console.log('Hook: Cleaned up AudioWorklet resources');
         };
-        
+
         // Store references for cleanup and final chunk sending
         (window as any).currentWebAudioCleanup = cleanup;
         (window as any).currentSendAudioChunk = sendAudioChunk;
-        
-        console.log(
-          `Hook: AudioWorklet recording started, chunk duration ${chunkDurationMs}ms.`
-        );
+
+        console.log(`Hook: AudioWorklet recording started, chunk duration ${chunkDurationMs}ms.`);
 
         localVad = await MicVAD.new({
           stream: localStream,
@@ -317,7 +311,7 @@ export const useRecording = ({
 
       // Clean up VAD and Stream.
       cleanupMediaResources(vad, str);
-      
+
       // Clean up Web Audio API resources
       const cleanup = (window as any).currentWebAudioCleanup;
       if (cleanup) {

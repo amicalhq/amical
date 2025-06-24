@@ -1,5 +1,10 @@
 import { FormatterConfig } from '../formatter';
-import { getSettingsSection, updateSettingsSection, getAppSettings, updateAppSettings } from '../../db/app-settings';
+import {
+  getSettingsSection,
+  updateSettingsSection,
+  getAppSettings,
+  updateAppSettings,
+} from '../../db/app-settings';
 import type { AppSettingsData } from '../../db/schema';
 
 /**
@@ -70,7 +75,9 @@ export class SettingsService {
   /**
    * Update transcription settings
    */
-  async setTranscriptionSettings(transcriptionSettings: AppSettingsData['transcription']): Promise<void> {
+  async setTranscriptionSettings(
+    transcriptionSettings: AppSettingsData['transcription']
+  ): Promise<void> {
     await updateSettingsSection('transcription', transcriptionSettings);
   }
 

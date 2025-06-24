@@ -3,9 +3,11 @@ import { db } from './config';
 import { vocabulary, type Vocabulary, type NewVocabulary } from './schema';
 
 // Create a new vocabulary word
-export async function createVocabularyWord(data: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>) {
+export async function createVocabularyWord(
+  data: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>
+) {
   const now = new Date();
-  
+
   const newWord: NewVocabulary = {
     ...data,
     dateAdded: data.dateAdded || now,
@@ -18,20 +20,16 @@ export async function createVocabularyWord(data: Omit<NewVocabulary, 'id' | 'cre
 }
 
 // Get all vocabulary words with pagination and sorting
-export async function getVocabulary(options: {
-  limit?: number;
-  offset?: number;
-  sortBy?: 'word' | 'dateAdded' | 'usageCount';
-  sortOrder?: 'asc' | 'desc';
-  search?: string;
-} = {}) {
-  const {
-    limit = 50,
-    offset = 0,
-    sortBy = 'dateAdded',
-    sortOrder = 'desc',
-    search,
-  } = options;
+export async function getVocabulary(
+  options: {
+    limit?: number;
+    offset?: number;
+    sortBy?: 'word' | 'dateAdded' | 'usageCount';
+    sortOrder?: 'asc' | 'desc';
+    search?: string;
+  } = {}
+) {
+  const { limit = 50, offset = 0, sortBy = 'dateAdded', sortOrder = 'desc', search } = options;
 
   // Determine sort column
   let sortColumn;
@@ -45,10 +43,10 @@ export async function getVocabulary(options: {
     default:
       sortColumn = vocabulary.dateAdded;
   }
-  
+
   const orderFn = sortOrder === 'asc' ? asc : desc;
 
-  // Build query with conditional where clause  
+  // Build query with conditional where clause
   if (search) {
     return await db
       .select()
@@ -80,7 +78,10 @@ export async function getVocabularyByWord(word: string) {
 }
 
 // Update vocabulary word
-export async function updateVocabulary(id: number, data: Partial<Omit<Vocabulary, 'id' | 'createdAt'>>) {
+export async function updateVocabulary(
+  id: number,
+  data: Partial<Omit<Vocabulary, 'id' | 'createdAt'>>
+) {
   const updateData = {
     ...data,
     updatedAt: new Date(),
@@ -91,17 +92,14 @@ export async function updateVocabulary(id: number, data: Partial<Omit<Vocabulary
     .set(updateData)
     .where(eq(vocabulary.id, id))
     .returning();
-  
+
   return result[0] || null;
 }
 
 // Delete vocabulary word
 export async function deleteVocabulary(id: number) {
-  const result = await db
-    .delete(vocabulary)
-    .where(eq(vocabulary.id, id))
-    .returning();
-  
+  const result = await db.delete(vocabulary).where(eq(vocabulary.id, id)).returning();
+
   return result[0] || null;
 }
 
@@ -114,9 +112,7 @@ export async function getVocabularyCount(search?: string) {
       .where(like(vocabulary.word, `%${search}%`));
     return result[0]?.count || 0;
   } else {
-    const result = await db
-      .select({ count: count() })
-      .from(vocabulary);
+    const result = await db.select({ count: count() }).from(vocabulary);
     return result[0]?.count || 0;
   }
 }
@@ -132,7 +128,7 @@ export async function trackWordUsage(word: string) {
     })
     .where(eq(vocabulary.word, word.toLowerCase()))
     .returning();
-  
+
   return result[0] || null;
 }
 
@@ -146,7 +142,6 @@ export async function getMostUsedWords(limit = 10) {
     .limit(limit);
 }
 
-
 // Search vocabulary words
 export async function searchVocabulary(searchTerm: string, limit = 20) {
   return await db
@@ -158,10 +153,12 @@ export async function searchVocabulary(searchTerm: string, limit = 20) {
 }
 
 // Bulk import vocabulary words
-export async function bulkImportVocabulary(words: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>[]) {
+export async function bulkImportVocabulary(
+  words: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>[]
+) {
   const now = new Date();
-  
-  const vocabularyWords = words.map(word => ({
+
+  const vocabularyWords = words.map((word) => ({
     ...word,
     dateAdded: word.dateAdded || now,
     createdAt: now,
@@ -169,4 +166,4 @@ export async function bulkImportVocabulary(words: Omit<NewVocabulary, 'id' | 'cr
   }));
 
   return await db.insert(vocabulary).values(vocabularyWords).returning();
-} 
+}

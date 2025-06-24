@@ -3,9 +3,11 @@ import { db } from './config';
 import { transcriptions, type Transcription, type NewTranscription } from './schema';
 
 // Create a new transcription
-export async function createTranscription(data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>) {
+export async function createTranscription(
+  data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>
+) {
   const now = new Date();
-  
+
   const newTranscription: NewTranscription = {
     ...data,
     timestamp: data.timestamp || now,
@@ -18,25 +20,21 @@ export async function createTranscription(data: Omit<NewTranscription, 'id' | 'c
 }
 
 // Get all transcriptions with pagination and sorting
-export async function getTranscriptions(options: {
-  limit?: number;
-  offset?: number;
-  sortBy?: 'timestamp' | 'createdAt';
-  sortOrder?: 'asc' | 'desc';
-  search?: string;
-} = {}) {
-  const {
-    limit = 50,
-    offset = 0,
-    sortBy = 'timestamp',
-    sortOrder = 'desc',
-    search,
-  } = options;
+export async function getTranscriptions(
+  options: {
+    limit?: number;
+    offset?: number;
+    sortBy?: 'timestamp' | 'createdAt';
+    sortOrder?: 'asc' | 'desc';
+    search?: string;
+  } = {}
+) {
+  const { limit = 50, offset = 0, sortBy = 'timestamp', sortOrder = 'desc', search } = options;
 
   // Build query with conditional where clause
   const sortColumn = sortBy === 'timestamp' ? transcriptions.timestamp : transcriptions.createdAt;
   const orderFn = sortOrder === 'asc' ? asc : desc;
-  
+
   if (search) {
     return await db
       .select()
@@ -62,7 +60,10 @@ export async function getTranscriptionById(id: number) {
 }
 
 // Update transcription
-export async function updateTranscription(id: number, data: Partial<Omit<Transcription, 'id' | 'createdAt'>>) {
+export async function updateTranscription(
+  id: number,
+  data: Partial<Omit<Transcription, 'id' | 'createdAt'>>
+) {
   const updateData = {
     ...data,
     updatedAt: new Date(),
@@ -73,17 +74,14 @@ export async function updateTranscription(id: number, data: Partial<Omit<Transcr
     .set(updateData)
     .where(eq(transcriptions.id, id))
     .returning();
-  
+
   return result[0] || null;
 }
 
 // Delete transcription
 export async function deleteTranscription(id: number) {
-  const result = await db
-    .delete(transcriptions)
-    .where(eq(transcriptions.id, id))
-    .returning();
-  
+  const result = await db.delete(transcriptions).where(eq(transcriptions.id, id)).returning();
+
   return result[0] || null;
 }
 
@@ -96,9 +94,7 @@ export async function getTranscriptionsCount(search?: string) {
       .where(like(transcriptions.text, `%${search}%`));
     return result[0]?.count || 0;
   } else {
-    const result = await db
-      .select({ count: count() })
-      .from(transcriptions);
+    const result = await db.select({ count: count() }).from(transcriptions);
     return result[0]?.count || 0;
   }
 }
@@ -108,12 +104,7 @@ export async function getTranscriptionsByDateRange(startDate: Date, endDate: Dat
   return await db
     .select()
     .from(transcriptions)
-    .where(
-      and(
-        gte(transcriptions.timestamp, startDate),
-        lte(transcriptions.timestamp, endDate)
-      )
-    )
+    .where(and(gte(transcriptions.timestamp, startDate), lte(transcriptions.timestamp, endDate)))
     .orderBy(desc(transcriptions.timestamp));
 }
 
@@ -134,4 +125,4 @@ export async function searchTranscriptions(searchTerm: string, limit = 20) {
     .where(like(transcriptions.text, `%${searchTerm}%`))
     .orderBy(desc(transcriptions.timestamp))
     .limit(limit);
-} 
+}

@@ -21,7 +21,7 @@ log.transports.file.maxSize = 10 * 1024 * 1024; // 10MB
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] [{scope}] {text}';
 
 // Set custom log file path
-const logPath = isDev 
+const logPath = isDev
   ? path.join(app.getPath('userData'), 'logs', 'amical-dev.log')
   : path.join(app.getPath('logs'), 'amical.log');
 
@@ -48,7 +48,10 @@ if (!isDev) {
 // -----------------------------------------------
 // `LOG_DEBUG_SCOPES` can be a comma-separated list of scope names (main,ai,swift)
 // or regex patterns wrapped in slashes (e.g. /ai.*/, /.*/)
-const rawDebugScopes = (process.env.LOG_DEBUG_SCOPES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const rawDebugScopes = (process.env.LOG_DEBUG_SCOPES ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 // Utility: escape regex special chars for exact-match tokens
 function escapeRegExp(str: string) {
@@ -139,11 +142,15 @@ export function logError(error: Error, context?: string, metadata?: Record<strin
     context,
     ...metadata,
   };
-  
+
   logger?.main.error('Error occurred:', errorInfo);
 }
 
-export function logPerformance(operation: string, startTime: number, metadata?: Record<string, any>) {
+export function logPerformance(
+  operation: string,
+  startTime: number,
+  metadata?: Record<string, any>
+) {
   const duration = Date.now() - startTime;
   logger?.main.info(`Performance: ${operation}`, {
     duration: `${duration}ms`,

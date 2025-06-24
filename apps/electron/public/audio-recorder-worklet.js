@@ -9,7 +9,7 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     this.bufferSize = 4096;
     this.buffer = new Float32Array(this.bufferSize);
     this.bufferIndex = 0;
-    
+
     // Listen for messages from main thread
     this.port.onmessage = (event) => {
       if (event.data.command === 'stop') {
@@ -20,16 +20,16 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
 
   process(inputs, _outputs, _parameters) {
     const input = inputs[0];
-    
+
     // Check if we have input audio
     if (input && input.length > 0) {
       const inputChannel = input[0]; // Get first (mono) channel
-      
+
       // Buffer the audio data
       for (let i = 0; i < inputChannel.length; i++) {
         this.buffer[this.bufferIndex] = inputChannel[i];
         this.bufferIndex++;
-        
+
         // When buffer is full, send it to main thread
         if (this.bufferIndex >= this.bufferSize) {
           this.sendBufferedAudio(false);
@@ -37,22 +37,22 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
         }
       }
     }
-    
+
     // Keep the processor alive
     return true;
   }
-  
+
   sendBufferedAudio(isFinal) {
     if (this.bufferIndex > 0 || isFinal) {
       // Create a copy of the current buffer data
       const audioData = new Float32Array(this.bufferIndex);
       audioData.set(this.buffer.subarray(0, this.bufferIndex));
-      
+
       // Send to main thread
       this.port.postMessage({
         type: 'audioData',
         audioData: audioData,
-        isFinal: isFinal
+        isFinal: isFinal,
       });
     }
   }

@@ -10,21 +10,17 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    name: "Amical",
-    executableName: "Amical",
-    icon: "./assets/logo", // Path to your icon file (without extension)
+    name: 'Amical',
+    executableName: 'Amical',
+    icon: './assets/logo', // Path to your icon file (without extension)
     extraResource: ['../../packages/native-helpers/swift-helper/bin'],
     extendInfo: {
-      NSMicrophoneUsageDescription: "This app needs access to your microphone to record audio for transcription.",
+      NSMicrophoneUsageDescription:
+        'This app needs access to your microphone to record audio for transcription.',
     },
   },
   rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
-  ],
+  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
