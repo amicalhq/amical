@@ -38,7 +38,41 @@ export interface ElectronAPI {
   getFormatterConfig: () => Promise<import('../modules/formatter').FormatterConfig | null>;
   setFormatterConfig: (config: import('../modules/formatter').FormatterConfig) => Promise<void>;
   
-  // Model management event listeners
+    
+    // Transcription Database API
+    getTranscriptions: (options?: {
+      limit?: number;
+      offset?: number;
+      sortBy?: 'timestamp' | 'createdAt';
+      sortOrder?: 'asc' | 'desc';
+      search?: string;
+    }) => Promise<import('../db/schema').Transcription[]>;
+    getTranscriptionById: (id: number) => Promise<import('../db/schema').Transcription | null>;
+    createTranscription: (data: Omit<import('../db/schema').NewTranscription, 'id' | 'createdAt' | 'updatedAt'>) => Promise<import('../db/schema').Transcription>;
+    updateTranscription: (id: number, data: Partial<Omit<import('../db/schema').Transcription, 'id' | 'createdAt'>>) => Promise<import('../db/schema').Transcription | null>;
+    deleteTranscription: (id: number) => Promise<import('../db/schema').Transcription | null>;
+    getTranscriptionsCount: (search?: string) => Promise<number>;
+    searchTranscriptions: (searchTerm: string, limit?: number) => Promise<import('../db/schema').Transcription[]>;  
+    
+      
+      // Vocabulary Database API
+      getVocabulary: (options?: {
+        limit?: number;
+        offset?: number;
+        sortBy?: 'word' | 'dateAdded' | 'usageCount';
+        sortOrder?: 'asc' | 'desc';
+        search?: string;
+      }) => Promise<import('../db/schema').Vocabulary[]>;
+      getVocabularyById: (id: number) => Promise<import('../db/schema').Vocabulary | null>;
+      getVocabularyByWord: (word: string) => Promise<import('../db/schema').Vocabulary | null>;
+      createVocabularyWord: (data: Omit<import('../db/schema').NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>) => Promise<import('../db/schema').Vocabulary>;
+      updateVocabulary: (id: number, data: Partial<Omit<import('../db/schema').Vocabulary, 'id' | 'createdAt'>>) => Promise<import('../db/schema').Vocabulary | null>;
+      deleteVocabulary: (id: number) => Promise<import('../db/schema').Vocabulary | null>;
+      getVocabularyCount: (search?: string) => Promise<number>;
+      searchVocabulary: (searchTerm: string, limit?: number) => Promise<import('../db/schema').Vocabulary[]>;
+      bulkImportVocabulary: (words: Omit<import('../db/schema').NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<import('../db/schema').Vocabulary[]>;
+      trackWordUsage: (word: string) => Promise<import('../db/schema').Vocabulary | null>;
+      getMostUsedWords: (limit?: number) => Promise<import('../db/schema').Vocabulary[]>;  // Model management event listeners
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;
   
