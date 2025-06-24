@@ -166,8 +166,188 @@ ipcMain.handle('set-formatter-config', async (event, config) => {
     throw error;
   }
 });
-
-const requestPermissions = async () => {
+                                       
+                                         // Transcription Database API
+                                         ipcMain.handle('get-transcriptions', async (event, options = {}) => {
+                                           try {
+                                             const { getTranscriptions } = await import('../db/transcriptions');
+                                             return await getTranscriptions(options);
+                                           } catch (error) {
+                                             logger.db.error('Error getting transcriptions', { error: error instanceof Error ? error.message : String(error) });
+                                             throw error;
+                                           }
+                                         });
+                                       
+                                         ipcMain.handle('get-transcription-by-id', async (event, id: number) => {
+                                           try {
+                                             const { getTranscriptionById } = await import('../db/transcriptions');
+                                             return await getTranscriptionById(id);
+                                           } catch (error) {
+                                             logger.db.error('Error getting transcription by ID', { id, error: error instanceof Error ? error.message : String(error) });
+                                             throw error;
+                                           }
+                                         });
+                                       
+                                         ipcMain.handle('create-transcription', async (event, data) => {
+                                           try {
+                                             const { createTranscription } = await import('../db/transcriptions');
+                                             return await createTranscription(data);
+                                           } catch (error) {
+                                             logger.db.error('Error creating transcription', { error: error instanceof Error ? error.message : String(error) });
+                                             throw error;
+                                           }
+                                         });
+                                       
+                                         ipcMain.handle('update-transcription', async (event, id: number, data) => {
+                                           try {
+                                             const { updateTranscription } = await import('../db/transcriptions');
+                                             return await updateTranscription(id, data);
+                                           } catch (error) {
+                                             logger.db.error('Error updating transcription', { id, error: error instanceof Error ? error.message : String(error) });
+                                             throw error;
+                                           }
+                                         });
+                                       
+                                         ipcMain.handle('delete-transcription', async (event, id: number) => {
+                                           try {
+                                             const { deleteTranscription } = await import('../db/transcriptions');
+                                             return await deleteTranscription(id);
+                                           } catch (error) {
+                                             logger.db.error('Error deleting transcription', { id, error: error instanceof Error ? error.message : String(error) });
+                                             throw error;
+                                           }
+                                         });
+                                       
+                                         ipcMain.handle('get-transcriptions-count', async (event, search?: string) => {
+                                           try {
+                                             const { getTranscriptionsCount } = await import('../db/transcriptions');
+                                             return await getTranscriptionsCount(search);
+                                           } catch (error) {
+                                             logger.db.error('Error getting transcriptions count', { error: error instanceof Error ? error.message : String(error) });
+                                             throw error;
+                                           }
+                                         });
+                                       
+                                         ipcMain.handle('search-transcriptions', async (event, searchTerm: string, limit = 20) => {
+                                           try {
+                                             const { searchTranscriptions } = await import('../db/transcriptions');
+                                             return await searchTranscriptions(searchTerm, limit);
+                                           } catch (error) {
+                                             logger.db.error('Error searching transcriptions', { searchTerm, error: error instanceof Error ? error.message : String(error) });
+                                             throw error;
+                                           }
+                                         });
+                                                                                 
+                                                                                   // Vocabulary Database API
+                                                                                   ipcMain.handle('get-vocabulary', async (event, options = {}) => {
+                                                                                     try {
+                                                                                       const { getVocabulary } = await import('../db/vocabulary');
+                                                                                       return await getVocabulary(options);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error getting vocabulary', { error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('get-vocabulary-by-id', async (event, id: number) => {
+                                                                                     try {
+                                                                                       const { getVocabularyById } = await import('../db/vocabulary');
+                                                                                       return await getVocabularyById(id);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error getting vocabulary by ID', { id, error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('get-vocabulary-by-word', async (event, word: string) => {
+                                                                                     try {
+                                                                                       const { getVocabularyByWord } = await import('../db/vocabulary');
+                                                                                       return await getVocabularyByWord(word);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error getting vocabulary by word', { word, error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('create-vocabulary-word', async (event, data) => {
+                                                                                     try {
+                                                                                       const { createVocabularyWord } = await import('../db/vocabulary');
+                                                                                       return await createVocabularyWord(data);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error creating vocabulary word', { error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('update-vocabulary', async (event, id: number, data) => {
+                                                                                     try {
+                                                                                       const { updateVocabulary } = await import('../db/vocabulary');
+                                                                                       return await updateVocabulary(id, data);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error updating vocabulary', { id, error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('delete-vocabulary', async (event, id: number) => {
+                                                                                     try {
+                                                                                       const { deleteVocabulary } = await import('../db/vocabulary');
+                                                                                       return await deleteVocabulary(id);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error deleting vocabulary', { id, error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('get-vocabulary-count', async (event, search?: string) => {
+                                                                                     try {
+                                                                                       const { getVocabularyCount } = await import('../db/vocabulary');
+                                                                                       return await getVocabularyCount(search);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error getting vocabulary count', { error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('search-vocabulary', async (event, searchTerm: string, limit = 20) => {
+                                                                                     try {
+                                                                                       const { searchVocabulary } = await import('../db/vocabulary');
+                                                                                       return await searchVocabulary(searchTerm, limit);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error searching vocabulary', { searchTerm, error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('bulk-import-vocabulary', async (event, words) => {
+                                                                                     try {
+                                                                                       const { bulkImportVocabulary } = await import('../db/vocabulary');
+                                                                                       return await bulkImportVocabulary(words);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error bulk importing vocabulary', { error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('track-word-usage', async (event, word: string) => {
+                                                                                     try {
+                                                                                       const { trackWordUsage } = await import('../db/vocabulary');
+                                                                                       return await trackWordUsage(word);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error tracking word usage', { word, error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });
+                                                                                 
+                                                                                   ipcMain.handle('get-most-used-words', async (event, limit = 10) => {
+                                                                                     try {
+                                                                                       const { getMostUsedWords } = await import('../db/vocabulary');
+                                                                                       return await getMostUsedWords(limit);
+                                                                                     } catch (error) {
+                                                                                       logger.db.error('Error getting most used words', { limit, error: error instanceof Error ? error.message : String(error) });
+                                                                                       throw error;
+                                                                                     }
+                                                                                   });const requestPermissions = async () => {
   try {
     // Request accessibility permissions
     if (process.platform === 'darwin') {

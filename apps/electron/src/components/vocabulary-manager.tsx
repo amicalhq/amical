@@ -1,4 +1,6 @@
 import * as React from "react"
+import type { Vocabulary } from "@/db/schema"
+import { format } from "date-fns"
 import { Plus, Trash2, Edit, Book } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,68 +21,77 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-// Mock data for vocabulary words
-const mockVocabulary = [
-  {
-    id: 1,
-    word: "Amical",
-    dateAdded: "2024-01-15",
-  },
-  {
-    id: 2,
-    word: "API",
-    dateAdded: "2024-01-10",
-  },
-  {
-    id: 3,
-    word: "TypeScript",
-    dateAdded: "2024-01-08",
-  },
-  {
-    id: 4,
-    word: "Electron",
-    dateAdded: "2024-01-05",
-  },
-  {
-    id: 5,
-    word: "macOS",
-    dateAdded: "2024-01-03",
-  },
-]
-
 export function VocabularyManager() {
-  const [vocabulary, setVocabulary] = React.useState(mockVocabulary)
+  const [vocabulary, setVocabulary] = React.useState<Vocabulary[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [totalCount, setTotalCount] = React.useState(0)
   const [isAddDialogOpen, setIsAddDialogOpen] = React.useState(false)
   const [newWord, setNewWord] = React.useState({
     word: "",
   })
 
-  const handleAddWord = () => {
-    if (newWord.word.trim()) {
-      const newVocabItem = {
-        id: Date.now(),
-        ...newWord,
-        dateAdded: new Date().toISOString().split('T')[0],
+  // Load vocabulary from database
+  const loadVocabulary = async () => {
+    setLoading(true)
+    try {
+      const options = {
+        limit: 100,
+        offset: 0,
+        sortBy: 'dateAdded' as const,
+        sortOrder: 'desc' as const,
       }
-      setVocabulary([newVocabItem, ...vocabulary])
-      setNewWord({ word: "" })
-      setIsAddDialogOpen(false)
+      
+      const [vocabularyData, count] = await Promise.all([
+        window.electronAPI.getVocabulary(options),
+        window.electronAPI.getVocabularyCount(),
+      ])
+      
+      setVocabulary(vocabularyData)
+      setTotalCount(count)
+    } catch (error) {
+      console.error('Error loading vocabulary:', error)
+      setVocabulary([])
+      setTotalCount(0)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleDeleteWord = (id: number) => {
-    setVocabulary(vocabulary.filter(item => item.id !== id))
+  // Load vocabulary on component mount
+  React.useEffect(() => {
+    loadVocabulary()
+  }, [])
+
+  const handleAddWord = async () => {
+    if (newWord.word.trim()) {
+      try {
+        await window.electronAPI.createVocabularyWord({
+          word: newWord.word.trim().toLowerCase(),
+        })
+        setNewWord({ word: "" })
+        setIsAddDialogOpen(false)
+        // Reload vocabulary after adding
+        await loadVocabulary()
+      } catch (error) {
+        console.error('Error adding word:', error)
+      }
+    }
+  }
+
+  const handleDeleteWord = async (id: number) => {
+    try {
+      await window.electronAPI.deleteVocabulary(id)
+      // Reload vocabulary after deletion
+      await loadVocabulary()
+    } catch (error) {
+      console.error('Error deleting word:', error)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Custom Vocabulary</h2>
-          <p className="text-muted-foreground mt-1">
-            Manage words that transcription should recognize accurately
-          </p>
-        </div>
+        <div></div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="h-10">
@@ -123,7 +134,16 @@ export function VocabularyManager() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {vocabulary.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center py-12">
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
+                    <p className="text-sm text-muted-foreground">Loading vocabulary...</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : vocabulary.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={3} className="text-center py-12 text-muted-foreground">
                   <div className="flex flex-col items-center space-y-2">
@@ -137,7 +157,9 @@ export function VocabularyManager() {
               vocabulary.map((item) => (
                 <TableRow key={item.id} className="hover:bg-muted/50">
                   <TableCell className="font-medium py-4">{item.word}</TableCell>
-                  <TableCell className="text-muted-foreground py-4 text-sm">{item.dateAdded}</TableCell>
+                  <TableCell className="text-muted-foreground py-4 text-sm">
+                    {format(new Date(item.dateAdded), 'MMM d, yyyy')}
+                  </TableCell>
                   <TableCell className="py-4">
                     <div className="flex justify-end space-x-1">
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -162,13 +184,13 @@ export function VocabularyManager() {
         </Table>
       </div>
 
-      {vocabulary.length > 0 && (
+      {!loading && vocabulary.length > 0 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Showing {vocabulary.length} of {vocabulary.length} word{vocabulary.length !== 1 ? 's' : ''}
+            Showing {vocabulary.length} of {totalCount} word{totalCount !== 1 ? 's' : ''}
           </span>
           <span>
-            Total: {vocabulary.length} custom word{vocabulary.length !== 1 ? 's' : ''}
+            Total: {totalCount} custom word{totalCount !== 1 ? 's' : ''}
           </span>
         </div>
       )}

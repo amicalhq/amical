@@ -4,6 +4,8 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import log from 'electron-log/renderer';
 import type { ElectronAPI } from '../types/electron-api';
+import type { FormatterConfig } from '../modules/formatter';
+import type { Transcription, NewTranscription, Vocabulary, NewVocabulary } from '../db/schema';
 
 interface ShortcutData {
   shortcut: string;
@@ -71,14 +73,65 @@ const api: ElectronAPI = {
   
   // Formatter Configuration API
   getFormatterConfig: () => ipcRenderer.invoke('get-formatter-config'),
-  setFormatterConfig: (config: any) => ipcRenderer.invoke('set-formatter-config', config),
+  setFormatterConfig: (config: FormatterConfig) => ipcRenderer.invoke('set-formatter-config', config),
   
-  // Model management event listeners
+    
+    // Transcription Database API
+    getTranscriptions: (options?: {
+      limit?: number;
+      offset?: number;
+      sortBy?: 'timestamp' | 'createdAt';
+      sortOrder?: 'asc' | 'desc';
+      search?: string;
+    }) => ipcRenderer.invoke('get-transcriptions', options),
+    getTranscriptionById: (id: number) => ipcRenderer.invoke('get-transcription-by-id', id),
+    createTranscription: (data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>) => ipcRenderer.invoke('create-transcription', data),
+    updateTranscription: (id: number, data: Partial<Omit<Transcription, 'id' | 'createdAt'>>) => ipcRenderer.invoke('update-transcription', id, data),
+    deleteTranscription: (id: number) => ipcRenderer.invoke('delete-transcription', id),
+    getTranscriptionsCount: (search?: string) => ipcRenderer.invoke('get-transcriptions-count', search),
+    searchTranscriptions: (searchTerm: string, limit?: number) => ipcRenderer.invoke('search-transcriptions', searchTerm, limit),  
+    
+      
+      // Vocabulary Database API
+      getVocabulary: (options?: {
+        limit?: number;
+        offset?: number;
+        sortBy?: 'word' | 'dateAdded' | 'usageCount';
+        sortOrder?: 'asc' | 'desc';
+        search?: string;
+      }) => ipcRenderer.invoke('get-vocabulary', options),
+      getVocabularyById: (id: number) => ipcRenderer.invoke('get-vocabulary-by-id', id),
+      getVocabularyByWord: (word: string) => ipcRenderer.invoke('get-vocabulary-by-word', word),
+      createVocabularyWord: (data: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>) => ipcRenderer.invoke('create-vocabulary-word', data),
+      updateVocabulary: (id: number, data: Partial<Omit<Vocabulary, 'id' | 'createdAt'>>) => ipcRenderer.invoke('update-vocabulary', id, data),
+      deleteVocabulary: (id: number) => ipcRenderer.invoke('delete-vocabulary', id),
+      getVocabularyCount: (search?: string) => ipcRenderer.invoke('get-vocabulary-count', search),
+      searchVocabulary: (searchTerm: string, limit?: number) => ipcRenderer.invoke('search-vocabulary', searchTerm, limit),
+      bulkImportVocabulary: (words: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>[]) => ipcRenderer.invoke('bulk-import-vocabulary', words),
+      trackWordUsage: (word: string) => ipcRenderer.invoke('track-word-usage', word),
+      getMostUsedWords: (limit?: number) => ipcRenderer.invoke('get-most-used-words', limit),  // Model management event listeners
   on: (channel: string, callback: (...args: any[]) => void) => {
-    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
+    ipcRenderer.on(channel, handler);
+    // Store the handler mapping for proper cleanup
+    if (!(window as any).__electronEventHandlers) {
+      (window as any).__electronEventHandlers = new Map();
+    }
+    if (!(window as any).__electronEventHandlers.has(channel)) {
+      (window as any).__electronEventHandlers.set(channel, []);
+    }
+    (window as any).__electronEventHandlers.get(channel).push({ original: callback, handler });
   },
   off: (channel: string, callback: (...args: any[]) => void) => {
-    ipcRenderer.removeListener(channel, callback);
+    if ((window as any).__electronEventHandlers && (window as any).__electronEventHandlers.has(channel)) {
+      const handlers = (window as any).__electronEventHandlers.get(channel);
+      const handlerInfo = handlers.find((h: any) => h.original === callback);
+      if (handlerInfo) {
+        ipcRenderer.removeListener(channel, handlerInfo.handler);
+        const index = handlers.indexOf(handlerInfo);
+        handlers.splice(index, 1);
+      }
+    }
   },
   
   // Logging API for renderer process

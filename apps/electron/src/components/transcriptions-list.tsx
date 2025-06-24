@@ -1,15 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import type { Transcription } from '@/db/schema';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
+
 import {
   Tooltip,
   TooltipContent,
@@ -17,7 +11,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Copy, Play, Trash2, Download, FileText, Search, Filter, MoreHorizontal } from 'lucide-react';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
@@ -28,60 +22,52 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-interface Transcription {
-  id: string;
-  text: string;
-  timestamp: Date;
-  language?: string;
-  audioFile?: string;
-}
-
-// Mock data - this would come from your actual data source
-const mockTranscriptions: Transcription[] = [
-  {
-    id: '1',
-    text: 'Team Sync 19 Jun 2025 - Discussion about the upcoming product launch, marketing strategies, and resource allocation for Q3. We covered the budget requirements, timeline milestones, and key stakeholder responsibilities.',
-    timestamp: new Date('2025-06-19T10:42:00'),
-    language: 'en',
-    audioFile: 'team-sync-19-jun.wav'
-  },
-  {
-    id: '2', 
-    text: 'Investor Pitch Draft - Comprehensive overview of our business model, market opportunity, competitive landscape, and financial projections. Highlighted key metrics and growth trajectory for potential investors.',
-    timestamp: new Date('2025-06-18T18:01:00'),
-    language: 'en',
-    audioFile: 'investor-pitch-draft.wav'
-  },
-  {
-    id: '3',
-    text: 'Client Meeting Notes - Detailed discussion with ABC Corp regarding their requirements for the new software integration. Covered technical specifications, timeline expectations, and budget considerations.',
-    timestamp: new Date('2025-06-17T14:30:00'),
-    language: 'en',
-    audioFile: 'client-meeting-abc.wav'
-  },
-  {
-    id: '4',
-    text: 'Product Roadmap Review - Strategic planning session covering feature prioritization, development timelines, and resource allocation for the next quarter. Discussed user feedback and market demands.',
-    timestamp: new Date('2025-06-16T09:15:00'),
-    language: 'en',
-    audioFile: 'product-roadmap.wav'
-  },
-  {
-    id: '5',
-    text: 'Weekly Standup - Quick update on current project status, blockers, and upcoming deliverables. Team coordination and sprint planning discussion.',
-    timestamp: new Date('2025-06-15T11:00:00'),
-    language: 'en',
-    audioFile: 'weekly-standup.wav'
-  },
-];
+// Using database Transcription type from schema
 
 export const TranscriptionsList: React.FC = () => {
-  const [transcriptions, setTranscriptions] = useState<Transcription[]>(mockTranscriptions);
+  const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const truncateText = (text: string, maxLength: number = 100) => {
-    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  // Load transcriptions from database
+  const loadTranscriptions = async (search?: string) => {
+    setLoading(true);
+    try {
+      const options = {
+        limit: 50,
+        offset: 0,
+        sortBy: 'timestamp' as const,
+        sortOrder: 'desc' as const,
+        search: search || undefined,
+      };
+      
+      const [transcriptionsData, count] = await Promise.all([
+        window.electronAPI.getTranscriptions(options),
+        window.electronAPI.getTranscriptionsCount(search),
+      ]);
+      
+      setTranscriptions(transcriptionsData);
+      setTotalCount(count);
+    } catch (error) {
+      console.error('Error loading transcriptions:', error);
+      // Fallback to empty array on error
+      setTranscriptions([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Load transcriptions on component mount and when search term changes
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      loadTranscriptions(searchTerm);
+    }, searchTerm ? 300 : 0); // Debounce search
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
+
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -93,8 +79,14 @@ export const TranscriptionsList: React.FC = () => {
     }
   };
 
-  const handleDelete = (id: string) => {
-    setTranscriptions(prev => prev.filter(t => t.id !== id));
+  const handleDelete = async (id: number) => {
+    try {
+      await window.electronAPI.deleteTranscription(id);
+      // Reload transcriptions after deletion
+      await loadTranscriptions(searchTerm);
+    } catch (error) {
+      console.error('Error deleting transcription:', error);
+    }
   };
 
   const handlePlayAudio = (audioFile: string) => {
@@ -113,9 +105,8 @@ export const TranscriptionsList: React.FC = () => {
     document.body.removeChild(element);
   };
 
-  const filteredTranscriptions = transcriptions.filter(transcription =>
-    transcription.text.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Since we're already filtering on the backend, use all transcriptions
+  const filteredTranscriptions = transcriptions;
 
   const getTitle = (text: string) => {
     const firstSentence = text.split('.')[0];
@@ -129,12 +120,7 @@ export const TranscriptionsList: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Transcriptions</h2>
-          <p className="text-muted-foreground mt-1">
-            View and manage your voice recording transcriptions
-          </p>
-        </div>
+        <div></div>
         <div className="flex items-center space-x-2">
           <Button variant="outline">Export All</Button>
           <Button>New Recording</Button>
@@ -159,7 +145,16 @@ export const TranscriptionsList: React.FC = () => {
       </div>
 
       {/* Transcriptions Grid */}
-      {filteredTranscriptions.length === 0 ? (
+      {loading ? (
+        <Card>
+          <CardContent className="py-12">
+            <div className="flex flex-col items-center space-y-2 text-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
+              <p className="text-sm text-muted-foreground">Loading transcriptions...</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : filteredTranscriptions.length === 0 ? (
         <Card>
           <CardContent className="py-12">
             <div className="flex flex-col items-center space-y-2 text-center">
@@ -189,8 +184,8 @@ export const TranscriptionsList: React.FC = () => {
                         <Badge variant="secondary" className="text-xs">
                           {getWordCount(transcription.text)} words
                         </Badge>
-                        <span>{format(transcription.timestamp, 'MMM d')}</span>
-                        <span>{format(transcription.timestamp, 'h:mm a')}</span>
+                        <span>{format(new Date(transcription.timestamp), 'MMM d')}</span>
+                        <span>{format(new Date(transcription.timestamp), 'h:mm a')}</span>
                         <Badge variant="outline" className="text-xs">
                           {transcription.language?.toUpperCase() || 'EN'}
                         </Badge>
@@ -263,10 +258,10 @@ export const TranscriptionsList: React.FC = () => {
         </div>
       )}
 
-      {filteredTranscriptions.length > 0 && (
+      {!loading && filteredTranscriptions.length > 0 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Showing {filteredTranscriptions.length} of {transcriptions.length} transcription{transcriptions.length !== 1 ? 's' : ''}
+            Showing {filteredTranscriptions.length} of {totalCount} transcription{totalCount !== 1 ? 's' : ''}
           </span>
           <span>
             Total: {transcriptions.reduce((acc, t) => acc + getWordCount(t.text), 0)} words
