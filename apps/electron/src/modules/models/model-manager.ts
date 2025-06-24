@@ -3,14 +3,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { app } from 'electron';
-import Store from 'electron-store';
 import { 
   Model, 
-  DownloadedModel, 
   DownloadProgress, 
   ModelManagerState,
   AVAILABLE_MODELS 
 } from '../../constants/models';
+import { DownloadedModel } from '../../db/schema';
+import { 
+  getDownloadedModelsRecord,
+  createDownloadedModel,
+  deleteDownloadedModel,
+  validateDownloadedModels,
+  validateModelFile,
+  getValidDownloadedModels
+} from '../../db/downloaded-models';
 import { logger } from '../../main/logger';
 
 interface ModelManagerEvents {
@@ -33,13 +40,11 @@ declare interface ModelManagerService {
 }
 
 class ModelManagerService extends EventEmitter {
-  private store: Store<any>;
   private state: ModelManagerState;
   private modelsDirectory: string;
 
-  constructor(store: Store<any>) {
+  constructor() {
     super();
-    this.store = store;
     this.state = {
       activeDownloads: new Map()
     };
@@ -47,6 +52,28 @@ class ModelManagerService extends EventEmitter {
     // Create models directory in app data
     this.modelsDirectory = path.join(app.getPath('userData'), 'models');
     this.ensureModelsDirectory();
+  }
+
+  // Initialize and validate models on startup
+  async initialize(): Promise<void> {
+    try {
+      const validation = await validateDownloadedModels();
+      
+      if (validation.cleaned > 0) {
+        logger.main.info('Cleaned up missing model records', {
+          cleaned: validation.cleaned,
+          valid: validation.valid.length,
+          missing: validation.missing.map(m => ({ id: m.id, path: m.localPath }))
+        });
+      }
+      
+      logger.main.info('Model manager initialized', {
+        validModels: validation.valid.length,
+        cleanedRecords: validation.cleaned
+      });
+    } catch (error) {
+      logger.main.error('Error initializing model manager', { error });
+    }
   }
 
   private ensureModelsDirectory(): void {
@@ -61,20 +88,26 @@ class ModelManagerService extends EventEmitter {
     return AVAILABLE_MODELS;
   }
 
-  // Get downloaded models from store
-  getDownloadedModels(): Record<string, DownloadedModel> {
-    return this.store.get('downloaded-models', {});
+  // Get downloaded models from database
+  async getDownloadedModels(): Promise<Record<string, DownloadedModel>> {
+    return await getDownloadedModelsRecord();
   }
 
-  // Check if a model is downloaded
-  isModelDownloaded(modelId: string): boolean {
-    const downloadedModels = this.getDownloadedModels();
-    const downloadedModel = downloadedModels[modelId];
+  // Get only valid downloaded models (files that exist on disk)
+  async getValidDownloadedModels(): Promise<Record<string, DownloadedModel>> {
+    const validModels = await getValidDownloadedModels();
+    const record: Record<string, DownloadedModel> = {};
     
-    if (!downloadedModel) return false;
+    for (const model of validModels) {
+      record[model.id] = model;
+    }
     
-    // Verify file still exists
-    return fs.existsSync(downloadedModel.localPath);
+    return record;
+  }
+
+  // Check if a model is downloaded and file exists
+  async isModelDownloaded(modelId: string): Promise<boolean> {
+    return await validateModelFile(modelId);
   }
 
   // Get download progress for a model
@@ -94,7 +127,7 @@ class ModelManagerService extends EventEmitter {
       throw new Error(`Model not found: ${modelId}`);
     }
 
-    if (this.isModelDownloaded(modelId)) {
+    if (await this.isModelDownloaded(modelId)) {
       throw new Error(`Model already downloaded: ${modelId}`);
     }
 
@@ -190,21 +223,16 @@ class ModelManagerService extends EventEmitter {
         }
       }
 
-      // Create downloaded model record
-      const downloadedModel: DownloadedModel = {
+      // Create downloaded model record in database
+      const downloadedModel = await createDownloadedModel({
         id: model.id,
         name: model.name,
         type: model.type,
         localPath: downloadPath,
-        downloadedAt: new Date().toISOString(),
+        downloadedAt: new Date(),
         size: stats.size,
         checksum: model.checksum
-      };
-
-      // Save to store
-      const downloadedModels = this.getDownloadedModels();
-      downloadedModels[modelId] = downloadedModel;
-      this.store.set('downloaded-models', downloadedModels);
+      });
 
       // Clean up active download
       this.state.activeDownloads.delete(modelId);
@@ -257,8 +285,8 @@ class ModelManagerService extends EventEmitter {
   }
 
   // Delete a downloaded model
-  deleteModel(modelId: string): void {
-    const downloadedModels = this.getDownloadedModels();
+  async deleteModel(modelId: string): Promise<void> {
+    const downloadedModels = await this.getDownloadedModels();
     const downloadedModel = downloadedModels[modelId];
     
     if (!downloadedModel) {
@@ -274,9 +302,8 @@ class ModelManagerService extends EventEmitter {
       });
     }
 
-    // Remove from store
-    delete downloadedModels[modelId];
-    this.store.set('downloaded-models', downloadedModels);
+    // Remove from database
+    await deleteDownloadedModel(modelId);
 
     this.emit('model-deleted', modelId);
   }
@@ -296,6 +323,28 @@ class ModelManagerService extends EventEmitter {
   // Get models directory path
   getModelsDirectory(): string {
     return this.modelsDirectory;
+  }
+
+  // Validate and clean up stale model records (can be called periodically)
+  async validateAndCleanup(): Promise<{ cleaned: number; valid: number }> {
+    try {
+      const validation = await validateDownloadedModels();
+      
+      if (validation.cleaned > 0) {
+        logger.main.info('Periodic cleanup completed', {
+          cleaned: validation.cleaned,
+          valid: validation.valid.length
+        });
+      }
+      
+      return {
+        cleaned: validation.cleaned,
+        valid: validation.valid.length
+      };
+    } catch (error) {
+      logger.main.error('Error during model validation cleanup', { error });
+      return { cleaned: 0, valid: 0 };
+    }
   }
 
   // Cleanup - cancel all active downloads

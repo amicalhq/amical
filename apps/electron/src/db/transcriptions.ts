@@ -1,16 +1,13 @@
-import { eq, desc, asc, and, like, count } from 'drizzle-orm';
+import { eq, desc, asc, and, like, count, gte, lte } from 'drizzle-orm';
 import { db } from './config';
 import { transcriptions, type Transcription, type NewTranscription } from './schema';
-import { v4 as uuidv4 } from 'uuid';
 
 // Create a new transcription
 export async function createTranscription(data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>) {
-  const id = uuidv4();
   const now = new Date();
   
   const newTranscription: NewTranscription = {
     ...data,
-    id,
     timestamp: data.timestamp || now,
     createdAt: now,
     updatedAt: now,
@@ -36,7 +33,7 @@ export async function getTranscriptions(options: {
     search,
   } = options;
 
-  // Build query step by step
+  // Build query with conditional where clause
   const sortColumn = sortBy === 'timestamp' ? transcriptions.timestamp : transcriptions.createdAt;
   const orderFn = sortOrder === 'asc' ? asc : desc;
   
@@ -59,13 +56,13 @@ export async function getTranscriptions(options: {
 }
 
 // Get transcription by ID
-export async function getTranscriptionById(id: string) {
+export async function getTranscriptionById(id: number) {
   const result = await db.select().from(transcriptions).where(eq(transcriptions.id, id));
   return result[0] || null;
 }
 
 // Update transcription
-export async function updateTranscription(id: string, data: Partial<Omit<Transcription, 'id' | 'createdAt'>>) {
+export async function updateTranscription(id: number, data: Partial<Omit<Transcription, 'id' | 'createdAt'>>) {
   const updateData = {
     ...data,
     updatedAt: new Date(),
@@ -81,7 +78,7 @@ export async function updateTranscription(id: string, data: Partial<Omit<Transcr
 }
 
 // Delete transcription
-export async function deleteTranscription(id: string) {
+export async function deleteTranscription(id: number) {
   const result = await db
     .delete(transcriptions)
     .where(eq(transcriptions.id, id))
@@ -92,12 +89,18 @@ export async function deleteTranscription(id: string) {
 
 // Get transcriptions count
 export async function getTranscriptionsCount(search?: string) {
-  const baseQuery = db.select({ count: count() }).from(transcriptions);
-  
-  const result = search
-    ? await baseQuery.where(like(transcriptions.text, `%${search}%`))
-    : await baseQuery;
-  return result[0]?.count || 0;
+  if (search) {
+    const result = await db
+      .select({ count: count() })
+      .from(transcriptions)
+      .where(like(transcriptions.text, `%${search}%`));
+    return result[0]?.count || 0;
+  } else {
+    const result = await db
+      .select({ count: count() })
+      .from(transcriptions);
+    return result[0]?.count || 0;
+  }
 }
 
 // Get transcriptions by date range
@@ -107,8 +110,8 @@ export async function getTranscriptionsByDateRange(startDate: Date, endDate: Dat
     .from(transcriptions)
     .where(
       and(
-        eq(transcriptions.timestamp, startDate),
-        eq(transcriptions.timestamp, endDate)
+        gte(transcriptions.timestamp, startDate),
+        lte(transcriptions.timestamp, endDate)
       )
     )
     .orderBy(desc(transcriptions.timestamp));

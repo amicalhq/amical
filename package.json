@@ -20,7 +20,6 @@
   "pnpm": {
     "ignoredBuiltDependencies": [
       "@tailwindcss/oxide",
-      "better-sqlite3",
       "core-js-pure",
       "electron",
       "electron-winstaller",
@@ -28,12 +27,16 @@
       "keytar",
       "protobufjs",
       "sharp",
-      "smart-whisper"
+      "smart-whisper",
+      "drizzle-orm/libsql",
+      "@libsql"
     ],
     "onlyBuiltDependencies": [
       "electron",
       "electron-winstaller",
-      "smart-whisper"
+      "smart-whisper",
+      "drizzle-orm/libsql",
+      "@libsql"
     ]
   }
 }

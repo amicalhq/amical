@@ -22,8 +22,9 @@ export interface ChunkResult {
 
 export interface ContextualTranscriptionClient {
   transcribeWithContext(audioData: Buffer, previousContext: string): Promise<string>;
-  getCurrentModelInfo?: () => { modelId: string | null; modelPath: string | null };
+  getCurrentModelInfo?: () => Promise<{ modelId: string | null; modelPath: string | null }>;
 }
+
 
 export class TranscriptionSession extends EventEmitter {
   private logger = createScopedLogger('transcription-session');
@@ -124,7 +125,7 @@ export class TranscriptionSession extends EventEmitter {
   private async transcribeChunk(chunk: ChunkData): Promise<void> {
     const startTime = Date.now();
     const modelInfo = this.transcriptionClient.getCurrentModelInfo ? 
-      this.transcriptionClient.getCurrentModelInfo() : 
+      await this.transcriptionClient.getCurrentModelInfo() : 
       { modelId: null, modelPath: null };
 
     this.logger.info('Starting transcription for chunk', {

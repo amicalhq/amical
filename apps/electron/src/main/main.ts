@@ -14,8 +14,7 @@ import {
 import path from 'node:path';
 import fsPromises from 'node:fs/promises'; // For reading the audio file (async)
 import started from 'electron-squirrel-startup';
-import Store from 'electron-store';
-//import { runMigrations } from '../db/migrate';
+import { initializeDatabase } from '../db/config';
 import { HelperEvent, KeyEventPayload } from '@amical/types';
 import { logger, logError, logPerformance } from './logger';
 import { AudioCapture } from '../modules/audio/audio-capture';
@@ -27,6 +26,7 @@ import { ModelManagerService } from '../modules/models/model-manager';
 import { LocalWhisperClient } from '../modules/ai/local-whisper-client';
 import { TranscriptionSession, ChunkData } from '../modules/transcription/transcription-session';
 import { ContextualTranscriptionManager } from '../modules/transcription/contextual-transcription-manager';
+import { SettingsService } from '../modules/settings';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -52,11 +52,7 @@ let activeSpaceChangeSubscriptionId: number | null = null; // For display change
 let contextualTranscriptionManager: ContextualTranscriptionManager | null = null;
 const activeTranscriptionSessions: Map<string, TranscriptionSession> = new Map();
 
-interface StoreSchema {
-  'downloaded-models': Record<string, DownloadedModel>; // modelId -> DownloadedModel
-}
-
-const store = new Store<StoreSchema>();
+// Store is imported from '../lib/store' and is database-backed
 
 // Function to create the local transcription client
 const createTranscriptionClient = () => {
@@ -73,12 +69,12 @@ ipcMain.handle('get-available-models', () => {
   return modelManagerService?.getAvailableModels() || [];
 });
 
-ipcMain.handle('get-downloaded-models', () => {
-  return modelManagerService?.getDownloadedModels() || {};
+ipcMain.handle('get-downloaded-models', async () => {
+  return modelManagerService ? await modelManagerService.getDownloadedModels() : {};
 });
 
-ipcMain.handle('is-model-downloaded', (event, modelId: string) => {
-  return modelManagerService?.isModelDownloaded(modelId) || false;
+ipcMain.handle('is-model-downloaded', async (event, modelId: string) => {
+  return modelManagerService ? await modelManagerService.isModelDownloaded(modelId) : false;
 });
 
 ipcMain.handle('get-download-progress', (event, modelId: string) => {
@@ -115,23 +111,23 @@ ipcMain.handle('get-models-directory', () => {
 });
 
 // Local Whisper IPC Handlers
-ipcMain.handle('is-local-whisper-available', () => {
-  return localWhisperClient ? localWhisperClient.isAvailable() : false;
+ipcMain.handle('is-local-whisper-available', async () => {
+  return localWhisperClient ? await localWhisperClient.isAvailable() : false;
 });
 
-ipcMain.handle('get-local-whisper-models', () => {
-  return localWhisperClient ? localWhisperClient.getAvailableModels() : [];
+ipcMain.handle('get-local-whisper-models', async () => {
+  return localWhisperClient ? await localWhisperClient.getAvailableModels() : [];
 });
 
 ipcMain.handle('get-selected-model', () => {
   return localWhisperClient ? localWhisperClient.getSelectedModel() : null;
 });
 
-ipcMain.handle('set-selected-model', (event, modelId: string) => {
+ipcMain.handle('set-selected-model', async (event, modelId: string) => {
   if (!localWhisperClient) {
     throw new Error('Local whisper client not initialized');
   }
-  return localWhisperClient.setSelectedModel(modelId);
+  return await localWhisperClient.setSelectedModel(modelId);
 });
 
 ipcMain.handle('set-whisper-executable-path', (event, path: string) => {
@@ -140,6 +136,35 @@ ipcMain.handle('set-whisper-executable-path', (event, path: string) => {
   }
   // Executable path setting is no longer needed with smart-whisper
   logger.ai.info('Whisper executable path setting skipped - using smart-whisper integration');
+});
+
+// Formatter Configuration IPC Handlers
+ipcMain.handle('get-formatter-config', async () => {
+  try {
+    const settingsService = SettingsService.getInstance();
+    return await settingsService.getFormatterConfig();
+  } catch (error) {
+    logger.ai.error('Error getting formatter config:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('set-formatter-config', async (event, config) => {
+  try {
+    const settingsService = SettingsService.getInstance();
+    await settingsService.setFormatterConfig(config);
+    
+    // Update AI service with new formatter configuration
+    if (aiService) {
+      aiService.configureFormatter(config);
+      logger.ai.info('Formatter configuration updated');
+    }
+    
+    return true;
+  } catch (error) {
+    logger.ai.error('Error setting formatter config:', error);
+    throw error;
+  }
 });
 
 const requestPermissions = async () => {
@@ -245,12 +270,12 @@ const createFloatingButtonWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
-  // Run database migrations first
+  // Initialize database and run migrations first
   try {
-    //runMigrations();
-    logger.db.info('Database migrations completed successfully');
+    await initializeDatabase();
+    logger.db.info('Database initialized and migrations completed successfully');
   } catch (error) {
-    logError(error instanceof Error ? error : new Error(String(error)), 'running database migrations');
+    logError(error instanceof Error ? error : new Error(String(error)), 'initializing database');
     // You might want to handle this error differently, perhaps showing a dialog to the user
   }
 
@@ -264,7 +289,8 @@ app.on('ready', async () => {
   audioCapture = new AudioCapture();
 
   // Initialize Model Manager Service
-  modelManagerService = new ModelManagerService(store);
+  modelManagerService = new ModelManagerService();
+  await modelManagerService.initialize();
 
   // Initialize Local Whisper Client
   localWhisperClient = new LocalWhisperClient(modelManagerService);
@@ -308,6 +334,19 @@ app.on('ready', async () => {
   try {
     const transcriptionClient = createTranscriptionClient();
     aiService = new AiService(transcriptionClient);
+    
+    // Load and configure formatter
+    try {
+      const settingsService = SettingsService.getInstance();
+      const formatterConfig = await settingsService.getFormatterConfig();
+      if (formatterConfig) {
+        aiService.configureFormatter(formatterConfig);
+        logger.ai.info('Formatter configured', { provider: formatterConfig.provider, enabled: formatterConfig.enabled });
+      }
+    } catch (formatterError) {
+      logger.ai.warn('Failed to load formatter configuration:', formatterError);
+    }
+    
     logger.ai.info('AI Service initialized', { 
       client: 'Local Whisper' 
     });
@@ -323,6 +362,19 @@ app.on('ready', async () => {
       try {
         const transcriptionClient = createTranscriptionClient();
         aiService = new AiService(transcriptionClient);
+        
+        // Load and configure formatter
+        try {
+          const settingsService = SettingsService.getInstance();
+          const formatterConfig = await settingsService.getFormatterConfig();
+          if (formatterConfig) {
+            aiService.configureFormatter(formatterConfig);
+            logger.ai.info('Formatter reconfigured', { provider: formatterConfig.provider, enabled: formatterConfig.enabled });
+          }
+        } catch (formatterError) {
+          logger.ai.warn('Failed to reload formatter configuration:', formatterError);
+        }
+        
         logger.ai.info('AI Service reinitialized', { 
           client: 'Local Whisper' 
         });
