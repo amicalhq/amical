@@ -1,4 +1,4 @@
-import { eq, desc, asc, like, count, and, isNotNull } from 'drizzle-orm';
+import { eq, desc, asc, like, count, gt, sql } from 'drizzle-orm';
 import { db } from './config';
 import { vocabulary, type Vocabulary, type NewVocabulary } from './schema';
 
@@ -21,10 +21,9 @@ export async function createVocabularyWord(data: Omit<NewVocabulary, 'id' | 'cre
 export async function getVocabulary(options: {
   limit?: number;
   offset?: number;
-  sortBy?: 'word' | 'dateAdded' | 'lastUsed' | 'usageCount' | 'priority';
+  sortBy?: 'word' | 'dateAdded' | 'usageCount';
   sortOrder?: 'asc' | 'desc';
   search?: string;
-  category?: string;
 } = {}) {
   const {
     limit = 50,
@@ -32,19 +31,7 @@ export async function getVocabulary(options: {
     sortBy = 'dateAdded',
     sortOrder = 'desc',
     search,
-    category,
   } = options;
-
-  // Build conditions
-  const conditions = [];
-  
-  if (search) {
-    conditions.push(like(vocabulary.word, `%${search}%`));
-  }
-  
-  if (category) {
-    conditions.push(eq(vocabulary.category, category));
-  }
 
   // Determine sort column
   let sortColumn;
@@ -52,14 +39,8 @@ export async function getVocabulary(options: {
     case 'word':
       sortColumn = vocabulary.word;
       break;
-    case 'lastUsed':
-      sortColumn = vocabulary.lastUsed;
-      break;
     case 'usageCount':
       sortColumn = vocabulary.usageCount;
-      break;
-    case 'priority':
-      sortColumn = vocabulary.priority;
       break;
     default:
       sortColumn = vocabulary.dateAdded;
@@ -67,12 +48,12 @@ export async function getVocabulary(options: {
   
   const orderFn = sortOrder === 'asc' ? asc : desc;
 
-  // Build and execute query
-  if (conditions.length > 0) {
+  // Build query with conditional where clause  
+  if (search) {
     return await db
       .select()
       .from(vocabulary)
-      .where(and(...conditions))
+      .where(like(vocabulary.word, `%${search}%`))
       .orderBy(orderFn(sortColumn))
       .limit(limit)
       .offset(offset);
@@ -125,43 +106,34 @@ export async function deleteVocabulary(id: number) {
 }
 
 // Get vocabulary count
-export async function getVocabularyCount(search?: string, category?: string) {
-  const baseQuery = db.select({ count: count() }).from(vocabulary);
-  
-  const conditions = [];
-  
+export async function getVocabularyCount(search?: string) {
   if (search) {
-    conditions.push(like(vocabulary.word, `%${search}%`));
+    const result = await db
+      .select({ count: count() })
+      .from(vocabulary)
+      .where(like(vocabulary.word, `%${search}%`));
+    return result[0]?.count || 0;
+  } else {
+    const result = await db
+      .select({ count: count() })
+      .from(vocabulary);
+    return result[0]?.count || 0;
   }
-  
-  if (category) {
-    conditions.push(eq(vocabulary.category, category));
-  }
-
-  const result = conditions.length > 0
-    ? await baseQuery.where(and(...conditions))
-    : await baseQuery;
-  return result[0]?.count || 0;
 }
 
-// Track word usage - increment usage count and update last used timestamp
+// Track word usage - increment usage count atomically
 export async function trackWordUsage(word: string) {
-  const existingWord = await getVocabularyByWord(word);
+  // Use atomic update with SQL increment to avoid race conditions
+  const result = await db
+    .update(vocabulary)
+    .set({
+      usageCount: sql`${vocabulary.usageCount} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(vocabulary.word, word.toLowerCase()))
+    .returning();
   
-  if (existingWord) {
-    await db
-      .update(vocabulary)
-      .set({
-        usageCount: (existingWord.usageCount || 0) + 1,
-        lastUsed: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(vocabulary.id, existingWord.id));
-    
-    return existingWord;
-  }
-  
-  return null;
+  return result[0] || null;
 }
 
 // Get most frequently used words
@@ -169,29 +141,11 @@ export async function getMostUsedWords(limit = 10) {
   return await db
     .select()
     .from(vocabulary)
-    .where(eq(vocabulary.usageCount, 0)) // Only words that have been used
+    .where(gt(vocabulary.usageCount, 0)) // Only words that have been used
     .orderBy(desc(vocabulary.usageCount))
     .limit(limit);
 }
 
-// Get high priority words
-export async function getHighPriorityWords() {
-  return await db
-    .select()
-    .from(vocabulary)
-    .where(eq(vocabulary.priority, 3)) // Priority 3 and above
-    .orderBy(desc(vocabulary.priority));
-}
-
-// Get vocabulary categories
-export async function getVocabularyCategories() {
-  const result = await db
-    .selectDistinct({ category: vocabulary.category })
-    .from(vocabulary)
-    .where(isNotNull(vocabulary.category)); // Only non-null categories
-  
-  return result.map(row => row.category).filter(Boolean);
-}
 
 // Search vocabulary words
 export async function searchVocabulary(searchTerm: string, limit = 20) {

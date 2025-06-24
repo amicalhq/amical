@@ -1,3 +1,0 @@
-CREATE TABLE `recordings` (
-	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL
-);

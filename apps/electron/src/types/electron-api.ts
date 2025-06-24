@@ -35,6 +35,10 @@ export interface ElectronAPI {
   setSelectedModel: (modelId: string) => Promise<void>;
   setWhisperExecutablePath: (path: string) => Promise<void>;
   
+  // Formatter Configuration API
+  getFormatterConfig: () => Promise<import('../modules/formatter').FormatterConfig | null>;
+  setFormatterConfig: (config: import('../modules/formatter').FormatterConfig) => Promise<void>;
+  
   // Model management event listeners
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;

@@ -62,7 +62,7 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
           : previousContext.trim();
       }
 
-      const modelInfo = this.getCurrentModelInfo();
+      const modelInfo = await this.getCurrentModelInfo();
       logger.ai.info('Starting smart-whisper contextual transcription', { 
         audioDataSize: audioData.length,
         convertedSize: audioFloat32Array.length,
@@ -169,7 +169,7 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
   }
 
   private async getBestAvailableModel(): Promise<string | null> {
-    const downloadedModels = this.modelManager.getDownloadedModels();
+    const downloadedModels = await this.modelManager.getDownloadedModels();
     
     // If a specific model is selected and available, use it
     if (this.selectedModelId && downloadedModels[this.selectedModelId]) {
@@ -193,20 +193,21 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
   }
 
   // Set the model to use for transcription
-  setSelectedModel(modelId: string): void {
-    const downloadedModels = this.modelManager.getDownloadedModels();
-    if (!downloadedModels[modelId]) {
-      throw new Error(`Model not downloaded: ${modelId}`);
+  async setSelectedModel(modelId: string): Promise<void> {
+      const downloadedModels = await this.modelManager.getDownloadedModels();
+      if (!downloadedModels[modelId]) {
+        throw new Error(`Model not downloaded: ${modelId}`);
+      }
+      
+      // If we're changing models, free the current instance
+      if (this.selectedModelId !== modelId && this.whisperInstance) {
+        this.freeWhisperInstance();
+      }
+      
+      this.selectedModelId = modelId;
+      logger.ai.info('Selected model for contextual transcription', { modelId });
     }
-    
-    // If we're changing models, free the current instance
-    if (this.selectedModelId !== modelId && this.whisperInstance) {
-      this.freeWhisperInstance();
-    }
-    
-    this.selectedModelId = modelId;
-    logger.ai.info('Selected model for contextual transcription', { modelId });
-  }
+
 
   // Get the currently selected model
   getSelectedModel(): string | null {
@@ -214,51 +215,54 @@ export class ContextualLocalWhisperClient implements ContextualTranscriptionClie
   }
 
   // Check if whisper is available
-  isAvailable(): boolean {
-    const downloadedModels = this.modelManager.getDownloadedModels();
-    return Object.keys(downloadedModels).some(modelId => 
-      fs.existsSync(downloadedModels[modelId].localPath)
-    );
-  }
+  async isAvailable(): Promise<boolean> {
+      const downloadedModels = await this.modelManager.getDownloadedModels();
+      return Object.keys(downloadedModels).some(modelId => 
+        fs.existsSync(downloadedModels[modelId].localPath)
+      );
+    }
+
 
   // Get available models
-  getAvailableModels(): string[] {
-    const downloadedModels = this.modelManager.getDownloadedModels();
-    return Object.keys(downloadedModels).filter(modelId => 
-      fs.existsSync(downloadedModels[modelId].localPath)
-    );
-  }
+  async getAvailableModels(): Promise<string[]> {
+      const downloadedModels = await this.modelManager.getDownloadedModels();
+      return Object.keys(downloadedModels).filter(modelId => 
+        fs.existsSync(downloadedModels[modelId].localPath)
+      );
+    }
+
 
   // Get current model information for logging
-  getCurrentModelInfo(): { modelId: string | null; modelPath: string | null } {
-    const downloadedModels = this.modelManager.getDownloadedModels();
-    
-    // If a specific model is selected and available, use it
-    if (this.selectedModelId && downloadedModels[this.selectedModelId]) {
-      const model = downloadedModels[this.selectedModelId];
-      if (fs.existsSync(model.localPath)) {
-        return {
-          modelId: this.selectedModelId,
-          modelPath: model.localPath
-        };
+  async getCurrentModelInfo(): Promise<{ modelId: string | null; modelPath: string | null }> {
+      const downloadedModels = await this.modelManager.getDownloadedModels();
+      
+      // If a specific model is selected and available, use it
+      if (this.selectedModelId && downloadedModels[this.selectedModelId]) {
+        const model = downloadedModels[this.selectedModelId];
+        if (fs.existsSync(model.localPath)) {
+          return {
+            modelId: this.selectedModelId,
+            modelPath: model.localPath
+          };
+        }
       }
+  
+      // Otherwise, find the best available model (same logic as getBestAvailableModel)
+      const preferredOrder = ['whisper-large-v1', 'whisper-medium', 'whisper-small', 'whisper-base', 'whisper-tiny'];
+      
+      for (const modelId of preferredOrder) {
+        const model = downloadedModels[modelId];
+        if (model && fs.existsSync(model.localPath)) {
+          return {
+            modelId: modelId,
+            modelPath: model.localPath
+          };
+        }
+      }
+  
+      return { modelId: null, modelPath: null };
     }
 
-    // Otherwise, find the best available model (same logic as getBestAvailableModel)
-    const preferredOrder = ['whisper-large-v1', 'whisper-medium', 'whisper-small', 'whisper-base', 'whisper-tiny'];
-    
-    for (const modelId of preferredOrder) {
-      const model = downloadedModels[modelId];
-      if (model && fs.existsSync(model.localPath)) {
-        return {
-          modelId: modelId,
-          modelPath: model.localPath
-        };
-      }
-    }
-
-    return { modelId: null, modelPath: null };
-  }
 
   // Public method to preload the model
   async loadModel(): Promise<void> {

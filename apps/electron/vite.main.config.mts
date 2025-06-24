@@ -5,7 +5,19 @@ import { resolve } from 'path';
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ['better-sqlite3', 'smart-whisper'],
+      external: [
+        'better-sqlite3', 
+        'smart-whisper',
+        '@libsql/client',
+        '@libsql/darwin-arm64',
+        '@libsql/darwin-x64',
+        '@libsql/linux-x64-gnu',
+        '@libsql/linux-x64-musl',
+        '@libsql/win32-x64-msvc',
+        'libsql',
+        /^node:/,
+        /^electron$/,
+      ],
     },
   },
   resolve: {
@@ -14,6 +26,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['better-sqlite3', 'smart-whisper'],
+    exclude: ['better-sqlite3', 'smart-whisper', 'drizzle-orm', '@libsql/client'],
   },
 });

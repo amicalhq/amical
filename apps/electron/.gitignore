@@ -94,3 +94,6 @@ out/
 # Swift Build
 .build/
 bin/
+
+# VSCode
+.vscode/

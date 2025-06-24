@@ -102,7 +102,7 @@ export class LocalWhisperClient implements TranscriptionClient {
   }
 
   private async getBestAvailableModel(): Promise<string | null> {
-    const downloadedModels = this.modelManager.getDownloadedModels();
+    const downloadedModels = await this.modelManager.getDownloadedModels();
     
     // If a specific model is selected and available, use it
     if (this.selectedModelId && downloadedModels[this.selectedModelId]) {
@@ -126,8 +126,8 @@ export class LocalWhisperClient implements TranscriptionClient {
   }
 
   // Set the model to use for transcription
-  setSelectedModel(modelId: string): void {
-    const downloadedModels = this.modelManager.getDownloadedModels();
+  async setSelectedModel(modelId: string): Promise<void> {
+    const downloadedModels = await this.modelManager.getDownloadedModels();
     if (!downloadedModels[modelId]) {
       throw new Error(`Model not downloaded: ${modelId}`);
     }
@@ -147,16 +147,16 @@ export class LocalWhisperClient implements TranscriptionClient {
   }
 
   // Check if whisper is available
-  isAvailable(): boolean {
-    const downloadedModels = this.modelManager.getDownloadedModels();
+  async isAvailable(): Promise<boolean> {
+    const downloadedModels = await this.modelManager.getDownloadedModels();
     return Object.keys(downloadedModels).some(modelId => 
       fs.existsSync(downloadedModels[modelId].localPath)
     );
   }
 
   // Get available models
-  getAvailableModels(): string[] {
-    const downloadedModels = this.modelManager.getDownloadedModels();
+  async getAvailableModels(): Promise<string[]> {
+    const downloadedModels = await this.modelManager.getDownloadedModels();
     return Object.keys(downloadedModels).filter(modelId => 
       fs.existsSync(downloadedModels[modelId].localPath)
     );

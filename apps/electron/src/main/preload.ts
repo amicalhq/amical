@@ -69,6 +69,10 @@ const api: ElectronAPI = {
   setSelectedModel: (modelId: string) => ipcRenderer.invoke('set-selected-model', modelId),
   setWhisperExecutablePath: (path: string) => ipcRenderer.invoke('set-whisper-executable-path', path),
   
+  // Formatter Configuration API
+  getFormatterConfig: () => ipcRenderer.invoke('get-formatter-config'),
+  setFormatterConfig: (config: any) => ipcRenderer.invoke('set-formatter-config', config),
+  
   // Model management event listeners
   on: (channel: string, callback: (...args: any[]) => void) => {
     ipcRenderer.on(channel, (_event, ...args) => callback(...args));
