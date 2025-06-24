@@ -40,6 +40,7 @@ import { ModelsView } from '@/components/models-view';
 import { SettingsView } from '@/components/settings-view';
 import { ProfileView } from '@/components/profile-view';
 import '@/styles/globals.css';
+import { SiteHeader } from '@/components/site-header';
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
@@ -90,24 +91,41 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <TitleBar />
-      <SidebarProvider defaultOpen={false}>
-        <AppSidebar onNavigate={handleNavigation} />
-        <SidebarInset>
-          {/* <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-            <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <h1 className="text-lg font-semibold">{currentView}</h1>
-            </div>
-            <div className="ml-auto px-4">
-              <ThemeToggle />
-            </div>
-          </header> */}
-          <div className="flex flex-1 flex-col gap-4 p-4 w-full max-w-[1440px] mx-auto pt-14">
-            {renderContent()}
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as React.CSSProperties
+        }
+      >
+        <div className="flex h-screen w-screen flex-col">
+          {/* Header spans full width with traffic light spacing */}
+          <SiteHeader currentView={currentView} />
+          
+          <div className="flex flex-1">
+            <AppSidebar 
+              variant="inset" 
+              onNavigate={handleNavigation}
+              currentView={currentView}
+            />
+            <SidebarInset>
+              <div className="flex flex-1 flex-col">
+                <div className="@container/main flex flex-1 flex-col">
+                  <div 
+                    className="mx-auto w-full flex flex-col gap-4 md:gap-6"
+                    style={{
+                      maxWidth: 'var(--content-max-width)',
+                      padding: 'var(--content-padding)'
+                    }}
+                  >
+                    {renderContent()}
+                  </div>
+                </div>
+              </div>
+            </SidebarInset>
           </div>
-        </SidebarInset>
+        </div>
       </SidebarProvider>
     </ThemeProvider>
   );

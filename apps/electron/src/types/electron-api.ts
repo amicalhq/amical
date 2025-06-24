@@ -16,7 +16,6 @@ export interface ElectronAPI {
   onRecordingStarting: () => Promise<void>;
   onRecordingStopping: () => Promise<void>;
 
-  
   // Model Management API
   getAvailableModels: () => Promise<import('../constants/models').Model[]>;
   getDownloadedModels: () => Promise<Record<string, import('../constants/models').DownloadedModel>>;
