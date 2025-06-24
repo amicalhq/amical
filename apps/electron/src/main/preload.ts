@@ -53,7 +53,7 @@ const api: ElectronAPI = {
   // removeAllGlobalShortcutListeners: () => {
   //   ipcRenderer.removeAllListeners('global-shortcut-event');
   // }
-  
+
   // Model Management API
   getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
   getDownloadedModels: () => ipcRenderer.invoke('get-downloaded-models'),
@@ -64,53 +64,61 @@ const api: ElectronAPI = {
   cancelDownload: (modelId: string) => ipcRenderer.invoke('cancel-download', modelId),
   deleteModel: (modelId: string) => ipcRenderer.invoke('delete-model', modelId),
   getModelsDirectory: () => ipcRenderer.invoke('get-models-directory'),
-  
+
   // Local Whisper API
   isLocalWhisperAvailable: () => ipcRenderer.invoke('is-local-whisper-available'),
   getLocalWhisperModels: () => ipcRenderer.invoke('get-local-whisper-models'),
   getSelectedModel: () => ipcRenderer.invoke('get-selected-model'),
   setSelectedModel: (modelId: string) => ipcRenderer.invoke('set-selected-model', modelId),
-  setWhisperExecutablePath: (path: string) => ipcRenderer.invoke('set-whisper-executable-path', path),
-  
+  setWhisperExecutablePath: (path: string) =>
+    ipcRenderer.invoke('set-whisper-executable-path', path),
+
   // Formatter Configuration API
   getFormatterConfig: () => ipcRenderer.invoke('get-formatter-config'),
-  setFormatterConfig: (config: FormatterConfig) => ipcRenderer.invoke('set-formatter-config', config),
-  
-    
-    // Transcription Database API
-    getTranscriptions: (options?: {
-      limit?: number;
-      offset?: number;
-      sortBy?: 'timestamp' | 'createdAt';
-      sortOrder?: 'asc' | 'desc';
-      search?: string;
-    }) => ipcRenderer.invoke('get-transcriptions', options),
-    getTranscriptionById: (id: number) => ipcRenderer.invoke('get-transcription-by-id', id),
-    createTranscription: (data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>) => ipcRenderer.invoke('create-transcription', data),
-    updateTranscription: (id: number, data: Partial<Omit<Transcription, 'id' | 'createdAt'>>) => ipcRenderer.invoke('update-transcription', id, data),
-    deleteTranscription: (id: number) => ipcRenderer.invoke('delete-transcription', id),
-    getTranscriptionsCount: (search?: string) => ipcRenderer.invoke('get-transcriptions-count', search),
-    searchTranscriptions: (searchTerm: string, limit?: number) => ipcRenderer.invoke('search-transcriptions', searchTerm, limit),  
-    
-      
-      // Vocabulary Database API
-      getVocabulary: (options?: {
-        limit?: number;
-        offset?: number;
-        sortBy?: 'word' | 'dateAdded' | 'usageCount';
-        sortOrder?: 'asc' | 'desc';
-        search?: string;
-      }) => ipcRenderer.invoke('get-vocabulary', options),
-      getVocabularyById: (id: number) => ipcRenderer.invoke('get-vocabulary-by-id', id),
-      getVocabularyByWord: (word: string) => ipcRenderer.invoke('get-vocabulary-by-word', word),
-      createVocabularyWord: (data: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>) => ipcRenderer.invoke('create-vocabulary-word', data),
-      updateVocabulary: (id: number, data: Partial<Omit<Vocabulary, 'id' | 'createdAt'>>) => ipcRenderer.invoke('update-vocabulary', id, data),
-      deleteVocabulary: (id: number) => ipcRenderer.invoke('delete-vocabulary', id),
-      getVocabularyCount: (search?: string) => ipcRenderer.invoke('get-vocabulary-count', search),
-      searchVocabulary: (searchTerm: string, limit?: number) => ipcRenderer.invoke('search-vocabulary', searchTerm, limit),
-      bulkImportVocabulary: (words: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>[]) => ipcRenderer.invoke('bulk-import-vocabulary', words),
-      trackWordUsage: (word: string) => ipcRenderer.invoke('track-word-usage', word),
-      getMostUsedWords: (limit?: number) => ipcRenderer.invoke('get-most-used-words', limit),  // Model management event listeners
+  setFormatterConfig: (config: FormatterConfig) =>
+    ipcRenderer.invoke('set-formatter-config', config),
+
+  // Transcription Database API
+  getTranscriptions: (options?: {
+    limit?: number;
+    offset?: number;
+    sortBy?: 'timestamp' | 'createdAt';
+    sortOrder?: 'asc' | 'desc';
+    search?: string;
+  }) => ipcRenderer.invoke('get-transcriptions', options),
+  getTranscriptionById: (id: number) => ipcRenderer.invoke('get-transcription-by-id', id),
+  createTranscription: (data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>) =>
+    ipcRenderer.invoke('create-transcription', data),
+  updateTranscription: (id: number, data: Partial<Omit<Transcription, 'id' | 'createdAt'>>) =>
+    ipcRenderer.invoke('update-transcription', id, data),
+  deleteTranscription: (id: number) => ipcRenderer.invoke('delete-transcription', id),
+  getTranscriptionsCount: (search?: string) =>
+    ipcRenderer.invoke('get-transcriptions-count', search),
+  searchTranscriptions: (searchTerm: string, limit?: number) =>
+    ipcRenderer.invoke('search-transcriptions', searchTerm, limit),
+
+  // Vocabulary Database API
+  getVocabulary: (options?: {
+    limit?: number;
+    offset?: number;
+    sortBy?: 'word' | 'dateAdded' | 'usageCount';
+    sortOrder?: 'asc' | 'desc';
+    search?: string;
+  }) => ipcRenderer.invoke('get-vocabulary', options),
+  getVocabularyById: (id: number) => ipcRenderer.invoke('get-vocabulary-by-id', id),
+  getVocabularyByWord: (word: string) => ipcRenderer.invoke('get-vocabulary-by-word', word),
+  createVocabularyWord: (data: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>) =>
+    ipcRenderer.invoke('create-vocabulary-word', data),
+  updateVocabulary: (id: number, data: Partial<Omit<Vocabulary, 'id' | 'createdAt'>>) =>
+    ipcRenderer.invoke('update-vocabulary', id, data),
+  deleteVocabulary: (id: number) => ipcRenderer.invoke('delete-vocabulary', id),
+  getVocabularyCount: (search?: string) => ipcRenderer.invoke('get-vocabulary-count', search),
+  searchVocabulary: (searchTerm: string, limit?: number) =>
+    ipcRenderer.invoke('search-vocabulary', searchTerm, limit),
+  bulkImportVocabulary: (words: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>[]) =>
+    ipcRenderer.invoke('bulk-import-vocabulary', words),
+  trackWordUsage: (word: string) => ipcRenderer.invoke('track-word-usage', word),
+  getMostUsedWords: (limit?: number) => ipcRenderer.invoke('get-most-used-words', limit), // Model management event listeners
   on: (channel: string, callback: (...args: any[]) => void) => {
     const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
     ipcRenderer.on(channel, handler);
@@ -124,7 +132,10 @@ const api: ElectronAPI = {
     (window as any).__electronEventHandlers.get(channel).push({ original: callback, handler });
   },
   off: (channel: string, callback: (...args: any[]) => void) => {
-    if ((window as any).__electronEventHandlers && (window as any).__electronEventHandlers.has(channel)) {
+    if (
+      (window as any).__electronEventHandlers &&
+      (window as any).__electronEventHandlers.has(channel)
+    ) {
       const handlers = (window as any).__electronEventHandlers.get(channel);
       const handlerInfo = handlers.find((h: any) => h.original === callback);
       if (handlerInfo) {
@@ -134,7 +145,7 @@ const api: ElectronAPI = {
       }
     }
   },
-  
+
   // Logging API for renderer process
   log: {
     info: (...args: any[]) => log.info(...args),

@@ -36,22 +36,21 @@ const defaultSettings: AppSettingsData = {
 
 // Get all app settings
 export async function getAppSettings(): Promise<AppSettingsData> {
-  const result = await db
-    .select()
-    .from(appSettings)
-    .where(eq(appSettings.id, SETTINGS_ID));
-  
+  const result = await db.select().from(appSettings).where(eq(appSettings.id, SETTINGS_ID));
+
   if (result.length === 0) {
     // Create default settings if none exist
     await createDefaultSettings();
     return defaultSettings;
   }
-  
+
   return result[0].data;
 }
 
 // Update app settings (merges with existing settings)
-export async function updateAppSettings(newSettings: Partial<AppSettingsData>): Promise<AppSettingsData> {
+export async function updateAppSettings(
+  newSettings: Partial<AppSettingsData>
+): Promise<AppSettingsData> {
   const currentSettings = await getAppSettings();
   const mergedSettings: AppSettingsData = {
     ...currentSettings,
@@ -88,7 +87,7 @@ export async function updateAppSettings(newSettings: Partial<AppSettingsData>): 
   }
 
   const now = new Date();
-  
+
   await db
     .update(appSettings)
     .set({
@@ -103,7 +102,7 @@ export async function updateAppSettings(newSettings: Partial<AppSettingsData>): 
 // Replace all app settings (complete override)
 export async function replaceAppSettings(newSettings: AppSettingsData): Promise<AppSettingsData> {
   const now = new Date();
-  
+
   await db
     .update(appSettings)
     .set({
@@ -139,7 +138,7 @@ export async function resetAppSettings(): Promise<AppSettingsData> {
 // Create default settings (internal helper)
 async function createDefaultSettings(): Promise<void> {
   const now = new Date();
-  
+
   const newSettings: NewAppSettings = {
     id: SETTINGS_ID,
     data: defaultSettings,

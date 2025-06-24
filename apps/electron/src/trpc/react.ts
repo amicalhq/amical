@@ -10,4 +10,4 @@ export const api = createTRPCReact<AppRouter>();
 // Create the vanilla tRPC client (for use outside React components)
 export const trpcClient = createTRPCProxyClient<AppRouter>({
   links: [ipcLink({ transformer: superjson })],
-}); 
+});

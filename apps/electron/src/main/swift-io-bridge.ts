@@ -11,7 +11,7 @@ import { createScopedLogger } from './logger';
 import {
   RpcRequestSchema,
   RpcRequest,
-  RpcResponseSchema, 
+  RpcResponseSchema,
   RpcResponse,
   HelperEventSchema,
   HelperEvent,
@@ -77,17 +77,25 @@ export class SwiftIOBridge extends EventEmitter {
     const helperName = 'SwiftHelper'; // Swift native helper executable
     return electronApp.isPackaged
       ? path.join(process.resourcesPath, 'bin', helperName)
-      : path.join(electronApp.getAppPath(), '..', '..', 'packages', 'native-helpers', 'swift-helper', 'bin', helperName);
+      : path.join(
+          electronApp.getAppPath(),
+          '..',
+          '..',
+          'packages',
+          'native-helpers',
+          'swift-helper',
+          'bin',
+          helperName
+        );
   }
 
   private startHelperProcess(): void {
     try {
       fs.accessSync(this.helperPath, fs.constants.X_OK);
     } catch (err) {
-      this.logger.error(
-        'SwiftHelper executable not found or not executable', 
-        { helperPath: this.helperPath }
-      );
+      this.logger.error('SwiftHelper executable not found or not executable', {
+        helperPath: this.helperPath,
+      });
       this.emit(
         'error',
         new Error(
@@ -180,14 +188,18 @@ export class SwiftIOBridge extends EventEmitter {
     if (!validationResult.success) {
       this.logger.error('Invalid RPC request payload', {
         method,
-        error: validationResult.error.flatten()
+        error: validationResult.error.flatten(),
       });
       return Promise.reject(
         new Error(`Invalid RPC request payload: ${validationResult.error.message}`)
       );
     }
 
-    this.logger.debug('Sending RPC request', { method, id, startedAt: new Date(startTime).toISOString() });
+    this.logger.debug('Sending RPC request', {
+      method,
+      id,
+      startedAt: new Date(startTime).toISOString(),
+    });
     this.proc.stdin.write(JSON.stringify(requestPayload) + '\n', (err) => {
       if (err) {
         this.logger.error('Error writing to helper stdin', { method, id, error: err });
@@ -204,7 +216,7 @@ export class SwiftIOBridge extends EventEmitter {
           this.pending.delete(id); // Clean up immediately
           const completedAt = Date.now();
           const duration = completedAt - startTime;
-          
+
           if (resp.error) {
             const error = new Error(resp.error.message);
             (error as any).code = resp.error.code;
@@ -218,7 +230,7 @@ export class SwiftIOBridge extends EventEmitter {
               result: resp.result,
               startedAt: new Date(startTime).toISOString(),
               completedAt: new Date(completedAt).toISOString(),
-              durationMs: duration
+              durationMs: duration,
             });
             // Here, we might need to validate resp.result against the specific method's result schema
             // For now, casting as any, but for type safety, validation is better.
@@ -226,7 +238,7 @@ export class SwiftIOBridge extends EventEmitter {
             resolve(resp.result as any);
           }
         },
-        startTime
+        startTime,
       });
     });
 

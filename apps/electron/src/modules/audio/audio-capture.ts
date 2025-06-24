@@ -150,7 +150,7 @@ export class AudioCapture extends EventEmitter {
             }
             return; // Don't proceed to final chunk logic if initial write fails
           }
-          
+
           // Emit chunk-ready event for immediate transcription
           this.chunkCounter++;
           console.log(`AudioCapture: Emitting chunk-ready for chunk ${this.chunkCounter}`);
@@ -158,9 +158,9 @@ export class AudioCapture extends EventEmitter {
             sessionId: this.sessionId,
             chunkId: this.chunkCounter,
             audioData: chunk,
-            isFinalChunk: isFinalChunk
+            isFinalChunk: isFinalChunk,
           });
-          
+
           // If this very first chunk is also the final chunk
           if (isFinalChunk) {
             console.log(
@@ -211,9 +211,9 @@ export class AudioCapture extends EventEmitter {
               sessionId: this.sessionId,
               chunkId: this.chunkCounter,
               audioData: chunk,
-              isFinalChunk: isFinalChunk
+              isFinalChunk: isFinalChunk,
             });
-            
+
             if (isFinalChunk) {
               console.log('AudioCapture: Final chunk written successfully. Finalizing recording.');
               this.finalizeRecording();
@@ -234,7 +234,7 @@ export class AudioCapture extends EventEmitter {
             sessionId: this.sessionId,
             chunkId: this.chunkCounter, // Don't increment for empty chunks
             audioData: chunk,
-            isFinalChunk: true
+            isFinalChunk: true,
           });
           this.finalizeRecording();
         }

@@ -5,7 +5,9 @@ import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 export const transcriptions = sqliteTable('transcriptions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   text: text('text').notNull(),
-  timestamp: integer('timestamp', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  timestamp: integer('timestamp', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
   language: text('language').default('en'),
   audioFile: text('audio_file'), // Path to the audio file
   confidence: real('confidence'), // AI confidence score (0-1)
@@ -13,20 +15,29 @@ export const transcriptions = sqliteTable('transcriptions', {
   speechModel: text('speech_model'), // Model used for speech recognition
   formattingModel: text('formatting_model'), // Model used for formatting
   meta: text('meta', { mode: 'json' }), // Additional metadata as JSON
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
 });
 
 // Vocabulary table
 export const vocabulary = sqliteTable('vocabulary', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   word: text('word').notNull().unique(),
-  dateAdded: integer('date_added', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  dateAdded: integer('date_added', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
   usageCount: integer('usage_count').default(0), // How many times this word appeared in transcriptions
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
 });
-
 
 // Downloaded models table
 export const downloadedModels = sqliteTable('downloaded_models', {
@@ -34,11 +45,17 @@ export const downloadedModels = sqliteTable('downloaded_models', {
   name: text('name').notNull(),
   type: text('type').notNull(), // 'whisper', 'llama', etc.
   localPath: text('local_path').notNull(),
-  downloadedAt: integer('downloaded_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  downloadedAt: integer('downloaded_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
   size: integer('size').notNull(), // File size in bytes
   checksum: text('checksum'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
 });
 
 // App settings table with typed JSON
@@ -46,8 +63,12 @@ export const appSettings = sqliteTable('app_settings', {
   id: integer('id').primaryKey(),
   data: text('data', { mode: 'json' }).$type<AppSettingsData>().notNull(),
   version: integer('version').notNull().default(1), // For migrations
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
 });
 
 // Define the shape of our settings JSON

@@ -65,7 +65,6 @@ const createTranscriptionClient = () => {
   return localWhisperClient;
 };
 
-
 // Model Management IPC Handlers
 ipcMain.handle('get-available-models', () => {
   return modelManagerService?.getAvailableModels() || [];
@@ -155,201 +154,249 @@ ipcMain.handle('set-formatter-config', async (event, config) => {
   try {
     const settingsService = SettingsService.getInstance();
     await settingsService.setFormatterConfig(config);
-    
+
     // Update AI service with new formatter configuration
     if (aiService) {
       aiService.configureFormatter(config);
       logger.ai.info('Formatter configuration updated');
     }
-    
+
     return true;
   } catch (error) {
     logger.ai.error('Error setting formatter config:', error);
     throw error;
   }
 });
-                                       
-                                         // Transcription Database API
-                                         ipcMain.handle('get-transcriptions', async (event, options = {}) => {
-                                           try {
-                                             const { getTranscriptions } = await import('../db/transcriptions');
-                                             return await getTranscriptions(options);
-                                           } catch (error) {
-                                             logger.db.error('Error getting transcriptions', { error: error instanceof Error ? error.message : String(error) });
-                                             throw error;
-                                           }
-                                         });
-                                       
-                                         ipcMain.handle('get-transcription-by-id', async (event, id: number) => {
-                                           try {
-                                             const { getTranscriptionById } = await import('../db/transcriptions');
-                                             return await getTranscriptionById(id);
-                                           } catch (error) {
-                                             logger.db.error('Error getting transcription by ID', { id, error: error instanceof Error ? error.message : String(error) });
-                                             throw error;
-                                           }
-                                         });
-                                       
-                                         ipcMain.handle('create-transcription', async (event, data) => {
-                                           try {
-                                             const { createTranscription } = await import('../db/transcriptions');
-                                             return await createTranscription(data);
-                                           } catch (error) {
-                                             logger.db.error('Error creating transcription', { error: error instanceof Error ? error.message : String(error) });
-                                             throw error;
-                                           }
-                                         });
-                                       
-                                         ipcMain.handle('update-transcription', async (event, id: number, data) => {
-                                           try {
-                                             const { updateTranscription } = await import('../db/transcriptions');
-                                             return await updateTranscription(id, data);
-                                           } catch (error) {
-                                             logger.db.error('Error updating transcription', { id, error: error instanceof Error ? error.message : String(error) });
-                                             throw error;
-                                           }
-                                         });
-                                       
-                                         ipcMain.handle('delete-transcription', async (event, id: number) => {
-                                           try {
-                                             const { deleteTranscription } = await import('../db/transcriptions');
-                                             return await deleteTranscription(id);
-                                           } catch (error) {
-                                             logger.db.error('Error deleting transcription', { id, error: error instanceof Error ? error.message : String(error) });
-                                             throw error;
-                                           }
-                                         });
-                                       
-                                         ipcMain.handle('get-transcriptions-count', async (event, search?: string) => {
-                                           try {
-                                             const { getTranscriptionsCount } = await import('../db/transcriptions');
-                                             return await getTranscriptionsCount(search);
-                                           } catch (error) {
-                                             logger.db.error('Error getting transcriptions count', { error: error instanceof Error ? error.message : String(error) });
-                                             throw error;
-                                           }
-                                         });
-                                       
-                                         ipcMain.handle('search-transcriptions', async (event, searchTerm: string, limit = 20) => {
-                                           try {
-                                             const { searchTranscriptions } = await import('../db/transcriptions');
-                                             return await searchTranscriptions(searchTerm, limit);
-                                           } catch (error) {
-                                             logger.db.error('Error searching transcriptions', { searchTerm, error: error instanceof Error ? error.message : String(error) });
-                                             throw error;
-                                           }
-                                         });
-                                                                                 
-                                                                                   // Vocabulary Database API
-                                                                                   ipcMain.handle('get-vocabulary', async (event, options = {}) => {
-                                                                                     try {
-                                                                                       const { getVocabulary } = await import('../db/vocabulary');
-                                                                                       return await getVocabulary(options);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error getting vocabulary', { error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('get-vocabulary-by-id', async (event, id: number) => {
-                                                                                     try {
-                                                                                       const { getVocabularyById } = await import('../db/vocabulary');
-                                                                                       return await getVocabularyById(id);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error getting vocabulary by ID', { id, error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('get-vocabulary-by-word', async (event, word: string) => {
-                                                                                     try {
-                                                                                       const { getVocabularyByWord } = await import('../db/vocabulary');
-                                                                                       return await getVocabularyByWord(word);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error getting vocabulary by word', { word, error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('create-vocabulary-word', async (event, data) => {
-                                                                                     try {
-                                                                                       const { createVocabularyWord } = await import('../db/vocabulary');
-                                                                                       return await createVocabularyWord(data);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error creating vocabulary word', { error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('update-vocabulary', async (event, id: number, data) => {
-                                                                                     try {
-                                                                                       const { updateVocabulary } = await import('../db/vocabulary');
-                                                                                       return await updateVocabulary(id, data);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error updating vocabulary', { id, error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('delete-vocabulary', async (event, id: number) => {
-                                                                                     try {
-                                                                                       const { deleteVocabulary } = await import('../db/vocabulary');
-                                                                                       return await deleteVocabulary(id);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error deleting vocabulary', { id, error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('get-vocabulary-count', async (event, search?: string) => {
-                                                                                     try {
-                                                                                       const { getVocabularyCount } = await import('../db/vocabulary');
-                                                                                       return await getVocabularyCount(search);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error getting vocabulary count', { error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('search-vocabulary', async (event, searchTerm: string, limit = 20) => {
-                                                                                     try {
-                                                                                       const { searchVocabulary } = await import('../db/vocabulary');
-                                                                                       return await searchVocabulary(searchTerm, limit);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error searching vocabulary', { searchTerm, error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('bulk-import-vocabulary', async (event, words) => {
-                                                                                     try {
-                                                                                       const { bulkImportVocabulary } = await import('../db/vocabulary');
-                                                                                       return await bulkImportVocabulary(words);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error bulk importing vocabulary', { error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('track-word-usage', async (event, word: string) => {
-                                                                                     try {
-                                                                                       const { trackWordUsage } = await import('../db/vocabulary');
-                                                                                       return await trackWordUsage(word);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error tracking word usage', { word, error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });
-                                                                                 
-                                                                                   ipcMain.handle('get-most-used-words', async (event, limit = 10) => {
-                                                                                     try {
-                                                                                       const { getMostUsedWords } = await import('../db/vocabulary');
-                                                                                       return await getMostUsedWords(limit);
-                                                                                     } catch (error) {
-                                                                                       logger.db.error('Error getting most used words', { limit, error: error instanceof Error ? error.message : String(error) });
-                                                                                       throw error;
-                                                                                     }
-                                                                                   });const requestPermissions = async () => {
+
+// Transcription Database API
+ipcMain.handle('get-transcriptions', async (event, options = {}) => {
+  try {
+    const { getTranscriptions } = await import('../db/transcriptions');
+    return await getTranscriptions(options);
+  } catch (error) {
+    logger.db.error('Error getting transcriptions', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-transcription-by-id', async (event, id: number) => {
+  try {
+    const { getTranscriptionById } = await import('../db/transcriptions');
+    return await getTranscriptionById(id);
+  } catch (error) {
+    logger.db.error('Error getting transcription by ID', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('create-transcription', async (event, data) => {
+  try {
+    const { createTranscription } = await import('../db/transcriptions');
+    return await createTranscription(data);
+  } catch (error) {
+    logger.db.error('Error creating transcription', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('update-transcription', async (event, id: number, data) => {
+  try {
+    const { updateTranscription } = await import('../db/transcriptions');
+    return await updateTranscription(id, data);
+  } catch (error) {
+    logger.db.error('Error updating transcription', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('delete-transcription', async (event, id: number) => {
+  try {
+    const { deleteTranscription } = await import('../db/transcriptions');
+    return await deleteTranscription(id);
+  } catch (error) {
+    logger.db.error('Error deleting transcription', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-transcriptions-count', async (event, search?: string) => {
+  try {
+    const { getTranscriptionsCount } = await import('../db/transcriptions');
+    return await getTranscriptionsCount(search);
+  } catch (error) {
+    logger.db.error('Error getting transcriptions count', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('search-transcriptions', async (event, searchTerm: string, limit = 20) => {
+  try {
+    const { searchTranscriptions } = await import('../db/transcriptions');
+    return await searchTranscriptions(searchTerm, limit);
+  } catch (error) {
+    logger.db.error('Error searching transcriptions', {
+      searchTerm,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+// Vocabulary Database API
+ipcMain.handle('get-vocabulary', async (event, options = {}) => {
+  try {
+    const { getVocabulary } = await import('../db/vocabulary');
+    return await getVocabulary(options);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-vocabulary-by-id', async (event, id: number) => {
+  try {
+    const { getVocabularyById } = await import('../db/vocabulary');
+    return await getVocabularyById(id);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary by ID', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-vocabulary-by-word', async (event, word: string) => {
+  try {
+    const { getVocabularyByWord } = await import('../db/vocabulary');
+    return await getVocabularyByWord(word);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary by word', {
+      word,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('create-vocabulary-word', async (event, data) => {
+  try {
+    const { createVocabularyWord } = await import('../db/vocabulary');
+    return await createVocabularyWord(data);
+  } catch (error) {
+    logger.db.error('Error creating vocabulary word', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('update-vocabulary', async (event, id: number, data) => {
+  try {
+    const { updateVocabulary } = await import('../db/vocabulary');
+    return await updateVocabulary(id, data);
+  } catch (error) {
+    logger.db.error('Error updating vocabulary', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('delete-vocabulary', async (event, id: number) => {
+  try {
+    const { deleteVocabulary } = await import('../db/vocabulary');
+    return await deleteVocabulary(id);
+  } catch (error) {
+    logger.db.error('Error deleting vocabulary', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-vocabulary-count', async (event, search?: string) => {
+  try {
+    const { getVocabularyCount } = await import('../db/vocabulary');
+    return await getVocabularyCount(search);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary count', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('search-vocabulary', async (event, searchTerm: string, limit = 20) => {
+  try {
+    const { searchVocabulary } = await import('../db/vocabulary');
+    return await searchVocabulary(searchTerm, limit);
+  } catch (error) {
+    logger.db.error('Error searching vocabulary', {
+      searchTerm,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('bulk-import-vocabulary', async (event, words) => {
+  try {
+    const { bulkImportVocabulary } = await import('../db/vocabulary');
+    return await bulkImportVocabulary(words);
+  } catch (error) {
+    logger.db.error('Error bulk importing vocabulary', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('track-word-usage', async (event, word: string) => {
+  try {
+    const { trackWordUsage } = await import('../db/vocabulary');
+    return await trackWordUsage(word);
+  } catch (error) {
+    logger.db.error('Error tracking word usage', {
+      word,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-most-used-words', async (event, limit = 10) => {
+  try {
+    const { getMostUsedWords } = await import('../db/vocabulary');
+    return await getMostUsedWords(limit);
+  } catch (error) {
+    logger.db.error('Error getting most used words', {
+      limit,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+const requestPermissions = async () => {
   try {
     // Request accessibility permissions
     if (process.platform === 'darwin') {
@@ -403,9 +450,9 @@ const createOrShowMainWindow = () => {
   });
 
   // Update tRPC handler to include the main window
-  createIPCHandler({ 
-    router, 
-    windows: [mainWindow, floatingButtonWindow].filter(Boolean) as BrowserWindow[]
+  createIPCHandler({
+    router,
+    windows: [mainWindow, floatingButtonWindow].filter(Boolean) as BrowserWindow[],
   });
 };
 
@@ -471,9 +518,9 @@ app.on('ready', async () => {
   createFloatingButtonWindow();
 
   // Setup tRPC IPC handler
-  createIPCHandler({ 
-    router, 
-    windows: [floatingButtonWindow] 
+  createIPCHandler({
+    router,
+    windows: [floatingButtonWindow],
   });
 
   if (process.platform === 'darwin' && app.dock) {
@@ -495,31 +542,31 @@ app.on('ready', async () => {
   // Set up model manager event listeners
   modelManagerService.on('download-progress', (modelId, progress) => {
     // Send progress updates to all windows
-    BrowserWindow.getAllWindows().forEach(window => {
+    BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('model-download-progress', modelId, progress);
     });
   });
 
   modelManagerService.on('download-complete', (modelId, downloadedModel) => {
-    BrowserWindow.getAllWindows().forEach(window => {
+    BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('model-download-complete', modelId, downloadedModel);
     });
   });
 
   modelManagerService.on('download-error', (modelId, error) => {
-    BrowserWindow.getAllWindows().forEach(window => {
+    BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('model-download-error', modelId, error.message);
     });
   });
 
   modelManagerService.on('download-cancelled', (modelId) => {
-    BrowserWindow.getAllWindows().forEach(window => {
+    BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('model-download-cancelled', modelId);
     });
   });
 
   modelManagerService.on('model-deleted', (modelId) => {
-    BrowserWindow.getAllWindows().forEach(window => {
+    BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('model-deleted', modelId);
     });
   });
@@ -528,21 +575,24 @@ app.on('ready', async () => {
   try {
     const transcriptionClient = createTranscriptionClient();
     aiService = new AiService(transcriptionClient);
-    
+
     // Load and configure formatter
     try {
       const settingsService = SettingsService.getInstance();
       const formatterConfig = await settingsService.getFormatterConfig();
       if (formatterConfig) {
         aiService.configureFormatter(formatterConfig);
-        logger.ai.info('Formatter configured', { provider: formatterConfig.provider, enabled: formatterConfig.enabled });
+        logger.ai.info('Formatter configured', {
+          provider: formatterConfig.provider,
+          enabled: formatterConfig.enabled,
+        });
       }
     } catch (formatterError) {
       logger.ai.warn('Failed to load formatter configuration:', formatterError);
     }
-    
-    logger.ai.info('AI Service initialized', { 
-      client: 'Local Whisper' 
+
+    logger.ai.info('AI Service initialized', {
+      client: 'Local Whisper',
     });
   } catch (error) {
     logError(error instanceof Error ? error : new Error(String(error)), 'initializing AI Service');
@@ -556,24 +606,30 @@ app.on('ready', async () => {
       try {
         const transcriptionClient = createTranscriptionClient();
         aiService = new AiService(transcriptionClient);
-        
+
         // Load and configure formatter
         try {
           const settingsService = SettingsService.getInstance();
           const formatterConfig = await settingsService.getFormatterConfig();
           if (formatterConfig) {
             aiService.configureFormatter(formatterConfig);
-            logger.ai.info('Formatter reconfigured', { provider: formatterConfig.provider, enabled: formatterConfig.enabled });
+            logger.ai.info('Formatter reconfigured', {
+              provider: formatterConfig.provider,
+              enabled: formatterConfig.enabled,
+            });
           }
         } catch (formatterError) {
           logger.ai.warn('Failed to reload formatter configuration:', formatterError);
         }
-        
-        logger.ai.info('AI Service reinitialized', { 
-          client: 'Local Whisper' 
+
+        logger.ai.info('AI Service reinitialized', {
+          client: 'Local Whisper',
         });
       } catch (error) {
-        logError(error instanceof Error ? error : new Error(String(error)), 'reinitializing AI Service');
+        logError(
+          error instanceof Error ? error : new Error(String(error)),
+          'reinitializing AI Service'
+        );
       }
     }
 
@@ -582,19 +638,19 @@ app.on('ready', async () => {
       try {
         const startTime = Date.now();
         const audioBuffer = await fsPromises.readFile(filePath);
-        logger.audio.info('Audio file read', { 
+        logger.audio.info('Audio file read', {
           size: audioBuffer.length,
-          sizeKB: Math.round(audioBuffer.length / 1024)
+          sizeKB: Math.round(audioBuffer.length / 1024),
         });
-        
+
         const transcription = await aiService.transcribeAudio(audioBuffer);
-        logPerformance('audio transcription', startTime, { 
+        logPerformance('audio transcription', startTime, {
           audioSizeKB: Math.round(audioBuffer.length / 1024),
-          transcriptionLength: transcription?.length || 0
+          transcriptionLength: transcription?.length || 0,
         });
-        logger.ai.info('Transcription completed', { 
+        logger.ai.info('Transcription completed', {
           resultLength: transcription?.length || 0,
-          hasResult: !!transcription
+          hasResult: !!transcription,
         });
 
         // Copy transcription to clipboard
@@ -610,7 +666,10 @@ app.on('ready', async () => {
         // await fs.unlink(filePath);
         // console.log(`Main: Deleted audio file: ${filePath}`);
       } catch (error) {
-        logError(error instanceof Error ? error : new Error(String(error)), 'transcription or file handling');
+        logError(
+          error instanceof Error ? error : new Error(String(error)),
+          'transcription or file handling'
+        );
       }
     } else {
       logger.ai.warn('AI Service not available, cannot transcribe audio');
@@ -627,72 +686,71 @@ app.on('ready', async () => {
       sessionId: chunkData.sessionId,
       chunkId: chunkData.chunkId,
       audioDataSize: chunkData.audioData.length,
-      isFinalChunk: chunkData.isFinalChunk
+      isFinalChunk: chunkData.isFinalChunk,
     });
 
     try {
       // Get or create transcription session for this recording session
       let transcriptionSession = activeTranscriptionSessions.get(chunkData.sessionId);
-      
+
       if (!transcriptionSession) {
         // Create new transcription session
         const transcriptionClient = contextualTranscriptionManager!.createDefaultClient();
-        
+
         transcriptionSession = new TranscriptionSession(chunkData.sessionId, transcriptionClient);
         activeTranscriptionSessions.set(chunkData.sessionId, transcriptionSession);
-        
+
         // Set up session event handlers
         transcriptionSession.on('chunk-completed', (result) => {
           logger.ai.info('Chunk transcription completed', {
             sessionId: chunkData.sessionId,
             chunkId: result.chunkId,
             textLength: result.text.length,
-            processingTimeMs: result.processingTimeMs
+            processingTimeMs: result.processingTimeMs,
           });
         });
-        
+
         transcriptionSession.on('session-completed', (sessionResult) => {
           logger.ai.info('Transcription session completed', {
             sessionId: sessionResult.sessionId,
             finalTextLength: sessionResult.finalText.length,
             totalChunks: sessionResult.chunkResults.length,
-            totalProcessingTimeMs: sessionResult.totalProcessingTimeMs
+            totalProcessingTimeMs: sessionResult.totalProcessingTimeMs,
           });
-          
+
           // Paste the final result to active application
           if (sessionResult.finalText && sessionResult.finalText.trim().length > 0) {
             logger.main.info('Final transcription pasted to active application', {
-              textLength: sessionResult.finalText.length
+              textLength: sessionResult.finalText.length,
             });
             swiftIOBridgeClientInstance!.call('pasteText', { transcript: sessionResult.finalText });
           } else {
             logger.main.warn('Final transcription was empty, not pasting');
           }
-          
+
           // Clean up completed session
           activeTranscriptionSessions.delete(chunkData.sessionId);
         });
-        
+
         transcriptionSession.on('chunk-error', (errorInfo) => {
           logger.ai.error('Chunk transcription error', {
             sessionId: chunkData.sessionId,
             chunkId: errorInfo.chunkId,
-            error: errorInfo.error
+            error: errorInfo.error,
           });
           // Continue processing other chunks even if one fails
         });
-        
+
         logger.ai.info('Created new transcription session', { sessionId: chunkData.sessionId });
       }
-      
+
       // Add chunk to session for processing
       transcriptionSession.addChunk(chunkData);
-      
     } catch (error) {
       logger.ai.error('Error handling chunk-ready event', {
         sessionId: chunkData.sessionId,
         chunkId: chunkData.chunkId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   });
@@ -720,7 +778,7 @@ app.on('ready', async () => {
 
   ipcMain.handle('recording-starting', async () => {
     console.log('Main: Received recording-starting event.');
-    
+
     // Preload the transcription model for fast processing
     try {
       if (contextualTranscriptionManager) {
@@ -734,10 +792,10 @@ app.on('ready', async () => {
       }
     } catch (error) {
       logger.ai.error('Error preloading transcription model', {
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
     }
-    
+
     // Get accessibility context when recording starts
     try {
       //const accessibilityContext = await swiftIOBridgeClientInstance!.call('getAccessibilityContext', { editableOnly: true });
@@ -745,7 +803,7 @@ app.on('ready', async () => {
     } catch (error) {
       console.error('Main: Error getting accessibility context:', error);
     }
-    
+
     await swiftIOBridgeClientInstance!.call('muteSystemAudio', {});
   });
 
@@ -763,8 +821,8 @@ app.on('ready', async () => {
     switch (event.type) {
       case 'flagsChanged': {
         const payload = event.payload;
-        logger.swift.debug('Received flagsChanged event', { 
-          fnKeyPressed: payload?.fnKeyPressed 
+        logger.swift.debug('Received flagsChanged event', {
+          fnKeyPressed: payload?.fnKeyPressed,
         });
         // Use flagsChanged for more reliable Fn key state tracking
         if (payload?.fnKeyPressed !== undefined) {
@@ -814,8 +872,8 @@ app.on('ready', async () => {
 
   if (process.platform === 'darwin') {
     try {
-      console.log("Main: Setting up display change notifications");
-      
+      console.log('Main: Setting up display change notifications');
+
       activeSpaceChangeSubscriptionId = systemPreferences.subscribeWorkspaceNotification(
         'NSWorkspaceActiveDisplayDidChangeNotification',
         () => {
@@ -896,7 +954,7 @@ app.on('activate', () => {
     } else {
       floatingButtonWindow.show();
     }
-    
+
     // Always show/create the main window when dock icon is clicked
     createOrShowMainWindow();
   }

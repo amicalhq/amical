@@ -3,20 +3,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { app } from 'electron';
-import { 
-  Model, 
-  DownloadProgress, 
+import {
+  Model,
+  DownloadProgress,
   ModelManagerState,
-  AVAILABLE_MODELS 
+  AVAILABLE_MODELS,
 } from '../../constants/models';
 import { DownloadedModel } from '../../db/schema';
-import { 
+import {
   getDownloadedModelsRecord,
   createDownloadedModel,
   deleteDownloadedModel,
   validateDownloadedModels,
   validateModelFile,
-  getValidDownloadedModels
+  getValidDownloadedModels,
 } from '../../db/downloaded-models';
 import { logger } from '../../main/logger';
 
@@ -29,12 +29,9 @@ interface ModelManagerEvents {
 }
 
 declare interface ModelManagerService {
-  on<U extends keyof ModelManagerEvents>(
-    event: U, 
-    listener: ModelManagerEvents[U]
-  ): this;
+  on<U extends keyof ModelManagerEvents>(event: U, listener: ModelManagerEvents[U]): this;
   emit<U extends keyof ModelManagerEvents>(
-    event: U, 
+    event: U,
     ...args: Parameters<ModelManagerEvents[U]>
   ): boolean;
 }
@@ -46,9 +43,9 @@ class ModelManagerService extends EventEmitter {
   constructor() {
     super();
     this.state = {
-      activeDownloads: new Map()
+      activeDownloads: new Map(),
     };
-    
+
     // Create models directory in app data
     this.modelsDirectory = path.join(app.getPath('userData'), 'models');
     this.ensureModelsDirectory();
@@ -58,18 +55,18 @@ class ModelManagerService extends EventEmitter {
   async initialize(): Promise<void> {
     try {
       const validation = await validateDownloadedModels();
-      
+
       if (validation.cleaned > 0) {
         logger.main.info('Cleaned up missing model records', {
           cleaned: validation.cleaned,
           valid: validation.valid.length,
-          missing: validation.missing.map(m => ({ id: m.id, path: m.localPath }))
+          missing: validation.missing.map((m) => ({ id: m.id, path: m.localPath })),
         });
       }
-      
+
       logger.main.info('Model manager initialized', {
         validModels: validation.valid.length,
-        cleanedRecords: validation.cleaned
+        cleanedRecords: validation.cleaned,
       });
     } catch (error) {
       logger.main.error('Error initializing model manager', { error });
@@ -97,11 +94,11 @@ class ModelManagerService extends EventEmitter {
   async getValidDownloadedModels(): Promise<Record<string, DownloadedModel>> {
     const validModels = await getValidDownloadedModels();
     const record: Record<string, DownloadedModel> = {};
-    
+
     for (const model of validModels) {
       record[model.id] = model;
     }
-    
+
     return record;
   }
 
@@ -122,7 +119,7 @@ class ModelManagerService extends EventEmitter {
 
   // Download a model
   async downloadModel(modelId: string): Promise<void> {
-    const model = AVAILABLE_MODELS.find(m => m.id === modelId);
+    const model = AVAILABLE_MODELS.find((m) => m.id === modelId);
     if (!model) {
       throw new Error(`Model not found: ${modelId}`);
     }
@@ -137,28 +134,28 @@ class ModelManagerService extends EventEmitter {
 
     const abortController = new AbortController();
     const downloadPath = path.join(this.modelsDirectory, model.filename);
-    
+
     const progress: DownloadProgress = {
       modelId,
       progress: 0,
       status: 'downloading',
       bytesDownloaded: 0,
       totalBytes: model.size,
-      abortController
+      abortController,
     };
 
     this.state.activeDownloads.set(modelId, progress);
     this.emit('download-progress', modelId, progress);
 
     try {
-      logger.main.info('Starting model download', { 
-        modelId, 
+      logger.main.info('Starting model download', {
+        modelId,
         size: model.sizeFormatted,
-        url: model.downloadUrl 
+        url: model.downloadUrl,
       });
 
       const response = await fetch(model.downloadUrl, {
-        signal: abortController.signal
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -179,9 +176,9 @@ class ModelManagerService extends EventEmitter {
 
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         if (abortController.signal.aborted) {
           fileStream.close();
           fs.unlinkSync(downloadPath);
@@ -190,28 +187,30 @@ class ModelManagerService extends EventEmitter {
 
         fileStream.write(value);
         bytesDownloaded += value.length;
-        
+
         progress.bytesDownloaded = bytesDownloaded;
         progress.progress = Math.round((bytesDownloaded / totalBytes) * 100);
-        
+
         // Emit progress every 1% or 1MB to avoid too many events
         const progressPercent = progress.progress;
-        if (progressPercent - lastProgressEmit >= 1 || 
-            bytesDownloaded - (lastProgressEmit * totalBytes / 100) >= 1024 * 1024) {
+        if (
+          progressPercent - lastProgressEmit >= 1 ||
+          bytesDownloaded - (lastProgressEmit * totalBytes) / 100 >= 1024 * 1024
+        ) {
           this.emit('download-progress', modelId, { ...progress });
           lastProgressEmit = progressPercent;
         }
       }
 
       fileStream.end();
-      
+
       // Get actual file size (no validation against expected size)
       const stats = fs.statSync(downloadPath);
-      logger.main.info('Download completed', { 
-        modelId, 
+      logger.main.info('Download completed', {
+        modelId,
         expectedSize: totalBytes,
         actualSize: stats.size,
-        sizeDifference: Math.abs(stats.size - totalBytes)
+        sizeDifference: Math.abs(stats.size - totalBytes),
       });
 
       // Verify checksum if provided
@@ -231,30 +230,29 @@ class ModelManagerService extends EventEmitter {
         localPath: downloadPath,
         downloadedAt: new Date(),
         size: stats.size,
-        checksum: model.checksum
+        checksum: model.checksum,
       });
 
       // Clean up active download
       this.state.activeDownloads.delete(modelId);
 
-      logger.main.info('Model download completed', { 
-        modelId, 
+      logger.main.info('Model download completed', {
+        modelId,
         path: downloadPath,
-        size: stats.size 
+        size: stats.size,
       });
 
       this.emit('download-complete', modelId, downloadedModel);
-
     } catch (error) {
       // Clean up on error
       this.state.activeDownloads.delete(modelId);
-      
+
       if (fs.existsSync(downloadPath)) {
         fs.unlinkSync(downloadPath);
       }
 
       const err = error instanceof Error ? error : new Error(String(error));
-      
+
       if (abortController.signal.aborted) {
         logger.main.info('Model download cancelled', { modelId });
         this.emit('download-cancelled', modelId);
@@ -262,7 +260,7 @@ class ModelManagerService extends EventEmitter {
         logger.main.error('Model download failed', { modelId, error: err.message });
         this.emit('download-error', modelId, err);
       }
-      
+
       throw err;
     }
   }
@@ -276,10 +274,10 @@ class ModelManagerService extends EventEmitter {
 
     download.status = 'cancelling';
     download.abortController?.abort();
-    
+
     // Immediately remove from active downloads to prevent restart issues
     this.state.activeDownloads.delete(modelId);
-    
+
     logger.main.info('Cancelled model download', { modelId });
     this.emit('download-cancelled', modelId);
   }
@@ -288,7 +286,7 @@ class ModelManagerService extends EventEmitter {
   async deleteModel(modelId: string): Promise<void> {
     const downloadedModels = await this.getDownloadedModels();
     const downloadedModel = downloadedModels[modelId];
-    
+
     if (!downloadedModel) {
       throw new Error(`Model not found: ${modelId}`);
     }
@@ -296,9 +294,9 @@ class ModelManagerService extends EventEmitter {
     // Delete file
     if (fs.existsSync(downloadedModel.localPath)) {
       fs.unlinkSync(downloadedModel.localPath);
-      logger.main.info('Deleted model file', { 
-        modelId, 
-        path: downloadedModel.localPath 
+      logger.main.info('Deleted model file', {
+        modelId,
+        path: downloadedModel.localPath,
       });
     }
 
@@ -313,7 +311,7 @@ class ModelManagerService extends EventEmitter {
     return new Promise((resolve, reject) => {
       const hash = crypto.createHash('sha1');
       const stream = fs.createReadStream(filePath);
-      
+
       stream.on('data', (data) => hash.update(data));
       stream.on('end', () => resolve(hash.digest('hex')));
       stream.on('error', reject);
@@ -329,17 +327,17 @@ class ModelManagerService extends EventEmitter {
   async validateAndCleanup(): Promise<{ cleaned: number; valid: number }> {
     try {
       const validation = await validateDownloadedModels();
-      
+
       if (validation.cleaned > 0) {
         logger.main.info('Periodic cleanup completed', {
           cleaned: validation.cleaned,
-          valid: validation.valid.length
+          valid: validation.valid.length,
         });
       }
-      
+
       return {
         cleaned: validation.cleaned,
-        valid: validation.valid.length
+        valid: validation.valid.length,
       };
     } catch (error) {
       logger.main.error('Error during model validation cleanup', { error });
@@ -349,21 +347,21 @@ class ModelManagerService extends EventEmitter {
 
   // Cleanup - cancel all active downloads
   cleanup(): void {
-    logger.main.info('Cleaning up model downloads', { 
-      activeDownloads: this.state.activeDownloads.size 
+    logger.main.info('Cleaning up model downloads', {
+      activeDownloads: this.state.activeDownloads.size,
     });
-    
+
     for (const [modelId] of this.state.activeDownloads) {
       try {
         this.cancelDownload(modelId);
       } catch (error) {
-        logger.main.warn('Error cancelling download during cleanup', { 
-          modelId, 
-          error: error instanceof Error ? error.message : String(error) 
+        logger.main.warn('Error cancelling download during cleanup', {
+          modelId,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
   }
 }
 
-export { ModelManagerService }; 
+export { ModelManagerService };

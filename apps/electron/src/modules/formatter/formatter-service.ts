@@ -13,7 +13,7 @@ export class FormatterService {
    */
   configure(config: FormatterConfig): void {
     this.config = config;
-    
+
     if (!config.enabled) {
       this.client = null;
       return;

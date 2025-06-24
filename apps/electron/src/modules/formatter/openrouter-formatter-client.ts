@@ -11,13 +11,13 @@ export class OpenRouterFormatterClient extends FormatterClient {
 
   constructor(apiKey: string, model: string) {
     super();
-    
+
     // Configure OpenRouter provider
     this.provider = createOpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
       apiKey: apiKey,
     });
-    
+
     this.model = model;
   }
 
@@ -38,12 +38,12 @@ Please:
 5. Remove unnecessary filler words (um, uh, etc.) but keep natural speech patterns
 6. Maintain the speaker's original tone and style
 
-Return only the formatted text without any explanations or additional commentary.`
+Return only the formatted text without any explanations or additional commentary.`,
           },
           {
             role: 'user',
-            content: `Please format this transcribed text:\n\n${text}`
-          }
+            content: `Please format this transcribed text:\n\n${text}`,
+          },
         ],
         temperature: 0.1, // Low temperature for consistent formatting
         maxTokens: 2000,
