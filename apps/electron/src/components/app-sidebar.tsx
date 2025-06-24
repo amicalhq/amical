@@ -1,166 +1,127 @@
 import * as React from "react"
-import { Mic, Settings, FileText, History, User, Book, BarChart3, Cpu } from "lucide-react"
+import {
+  IconDatabase,
+  IconFileDescription,
+  IconFileWord,
+  IconReport,
+  IconSettings,
+  IconBookFilled,
+} from "@tabler/icons-react"
+
+import { NavMain } from "@/components/nav-main"
+import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-// Sample data for Amical app
+// Custom Discord icon component
+const DiscordIcon = ({ className }: { className?: string }) => (
+  <img 
+    src="assets/discord-icon.svg" 
+    alt="Discord" 
+    className={`w-4 h-4 ${className || ''}`}
+  />
+)
+
 const data = {
   user: {
-    name: "Amical User",
-    email: "user@amical.app",
-    avatar: "/avatars/user.jpg",
+    name: "shadcn",
+    email: "m@example.com",
+    avatar: "/avatars/shadcn.jpg",
   },
   navMain: [
     {
-      title: "Dashboard",
-      url: "#",
-      icon: BarChart3,
-      isActive: false,
-    },
-    {
-      title: "Voice Recording",
-      url: "#",
-      icon: Mic,
-      isActive: true,
-    },
-    {
       title: "Transcriptions",
       url: "#",
-      icon: FileText,
-      isActive: false,
+      icon: IconFileDescription,
     },
     {
       title: "Vocabulary",
       url: "#",
-      icon: Book,
-      isActive: false,
+      icon: IconFileWord,
     },
     {
       title: "Models",
       url: "#",
-      icon: Cpu,
-      isActive: false,
+      icon: IconDatabase,
     },
     {
       title: "Settings",
       url: "#",
-      icon: Settings,
-      isActive: false,
+      icon: IconSettings,
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Docs",
+      url: "https://amical.ai/docs",
+      icon: IconBookFilled,
+      external: true,
     },
     {
-      title: "Profile",
+      title: "Community",
+      url: "https://amical.ai/community",
+      icon: DiscordIcon,
+      external: true,
+    },
+  ],
+  documents: [
+    {
+      name: "Data Library",
       url: "#",
-      icon: User,
-      isActive: false,
+      icon: IconDatabase,
+    },
+    {
+      name: "Reports",
+      url: "#",
+      icon: IconReport,
+    },
+    {
+      name: "Word Assistant",
+      url: "#",
+      icon: IconFileWord,
     },
   ],
 }
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  onNavigate?: (item: typeof data.navMain[0]) => void
+  onNavigate?: (item: { title: string }) => void;
+  currentView?: string;
 }
 
-export function AppSidebar({ onNavigate, ...props }: AppSidebarProps) {
-  const [activeItem, setActiveItem] = React.useState(data.navMain[0])
-
-  const handleItemClick = (item: typeof data.navMain[0]) => {
-    setActiveItem(item)
-    onNavigate?.(item)
-  }
-
+export function AppSidebar({ onNavigate, currentView, ...props }: AppSidebarProps) {
   return (
-    <Sidebar
-      collapsible="icon"
-      className="!w-[calc(var(--sidebar-width-icon)_+_1px)] [&>div]:pt-14"
-      {...props}
-    >
-      <SidebarHeader>
+    <Sidebar collapsible="offcanvas" {...props}>
+      <div className="h-[var(--header-height)]"></div>
+      <SidebarHeader className="py-0 -mb-1">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-              <a href="#">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <img 
-                    src="/assets/logo.svg" 
-                    alt="Amical" 
-                    className="size-8"
-                    onError={(e) => {
-                      // Fallback to PNG if SVG fails
-                      e.currentTarget.src = "/assets/logo-32.png";
-                    }}
-                  />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">Amical</span>
-                  <span className="truncate text-xs">Voice Assistant</span>
-                </div>
+            <SidebarMenuButton
+              asChild
+              className="data-[slot=sidebar-menu-button]:!p-1.5"
+            >
+              <a href="#" className="inline-flex items-center gap-2.5 font-semibold">
+                <img src="assets/logo.svg" alt="Amical Logo" className="!size-7" />
+                <span className="font-semibold">Amical</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent className="px-1.5 md:px-0">
-            <SidebarMenu>
-              {data.navMain.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    tooltip={{
-                      children: item.title,
-                      hidden: false,
-                    }}
-                    onClick={() => handleItemClick(item)}
-                    isActive={activeItem?.title === item.title}
-                    className="px-2.5 md:px-2"
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavMain items={data.navMain} onNavigate={onNavigate} currentView={currentView} />
+        <NavSecondary items={data.navSecondary} onNavigate={onNavigate} currentView={currentView} className="mt-auto" />
       </SidebarContent>
-      <SidebarFooter className="gap-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="flex items-center justify-center size-8"
-              tooltip={{
-                children: "Join Discord Community",
-                hidden: false,
-              }}
-            >
-              <a 
-                href="https://amical.ai/community" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <img 
-                  src="/assets/discord-icon.svg" 
-                  alt="Discord" 
-                  className="w-5 h-5"
-                />
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <NavUser user={data.user} />
+      <SidebarFooter>
+        {/* <NavUser user={data.user} /> */}
       </SidebarFooter>
     </Sidebar>
   )
-} 
+}

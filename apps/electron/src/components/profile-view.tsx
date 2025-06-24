@@ -6,8 +6,6 @@ import { Label } from '@/components/ui/label';
 export function ProfileView() {
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold">Profile</h2>
-      
       <Card>
         <CardHeader>
           <CardTitle>User Profile</CardTitle>

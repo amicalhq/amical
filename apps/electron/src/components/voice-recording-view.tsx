@@ -8,8 +8,7 @@ import ShortcutIndicator from './ShortcutIndicator';
 export function VoiceRecordingView() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold">Voice Recording</h2>
+      <div className="flex items-center justify-end">
         <div className="flex items-center space-x-2">
           <span className="text-sm text-muted-foreground">Global Shortcut:</span>
           <kbd className="px-2 py-1 bg-muted rounded text-sm">Ctrl+Shift+Space</kbd>

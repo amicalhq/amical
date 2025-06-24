@@ -8,7 +8,6 @@ export function VocabularyView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold">Vocabulary</h2>
           <p className="text-muted-foreground">Manage custom vocabulary to boost speech recognition for company-specific terms.</p>
         </div>
         <Button>Import</Button>

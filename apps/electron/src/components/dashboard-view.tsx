@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 export function DashboardView() {
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold">Dashboard</h2>
       
       <div className="grid gap-6 md:grid-cols-3">
         <Card>
