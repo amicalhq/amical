@@ -27,6 +27,8 @@ import { LocalWhisperClient } from '../modules/ai/local-whisper-client';
 import { TranscriptionSession, ChunkData } from '../modules/transcription/transcription-session';
 import { ContextualTranscriptionManager } from '../modules/transcription/contextual-transcription-manager';
 import { SettingsService } from '../modules/settings';
+import { createIPCHandler } from 'electron-trpc-experimental/main';
+import { router } from '../trpc/router';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -399,6 +401,12 @@ const createOrShowMainWindow = () => {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Update tRPC handler to include the main window
+  createIPCHandler({ 
+    router, 
+    windows: [mainWindow, floatingButtonWindow].filter(Boolean) as BrowserWindow[]
+  });
 };
 
 const createFloatingButtonWindow = () => {
@@ -461,6 +469,12 @@ app.on('ready', async () => {
 
   await requestPermissions();
   createFloatingButtonWindow();
+
+  // Setup tRPC IPC handler
+  createIPCHandler({ 
+    router, 
+    windows: [floatingButtonWindow] 
+  });
 
   if (process.platform === 'darwin' && app.dock) {
     app.dock.show();

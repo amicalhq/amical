@@ -2,6 +2,7 @@ import * as React from "react"
 import type { Vocabulary } from "@/db/schema"
 import { format } from "date-fns"
 import { Plus, Trash2, Edit, Book } from "lucide-react"
+import { api } from "@/trpc/react"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -22,71 +23,62 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export function VocabularyManager() {
-  const [vocabulary, setVocabulary] = React.useState<Vocabulary[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [totalCount, setTotalCount] = React.useState(0)
   const [isAddDialogOpen, setIsAddDialogOpen] = React.useState(false)
   const [newWord, setNewWord] = React.useState({
     word: "",
   })
 
-  // Load vocabulary from database
-  const loadVocabulary = async () => {
-    setLoading(true)
-    try {
-      const options = {
-        limit: 100,
-        offset: 0,
-        sortBy: 'dateAdded' as const,
-        sortOrder: 'desc' as const,
-      }
-      
-      const [vocabularyData, count] = await Promise.all([
-        window.electronAPI.getVocabulary(options),
-        window.electronAPI.getVocabularyCount(),
-      ])
-      
-      setVocabulary(vocabularyData)
-      setTotalCount(count)
-    } catch (error) {
-      console.error('Error loading vocabulary:', error)
-      setVocabulary([])
-      setTotalCount(0)
-    } finally {
-      setLoading(false)
-    }
-  }
+  // tRPC React Query hooks
+  const vocabularyQuery = api.vocabulary.getVocabulary.useQuery({
+    limit: 100,
+    offset: 0,
+    sortBy: 'dateAdded',
+    sortOrder: 'desc',
+  })
 
-  // Load vocabulary on component mount
-  React.useEffect(() => {
-    loadVocabulary()
-  }, [])
+  const vocabularyCountQuery = api.vocabulary.getVocabularyCount.useQuery({})
+
+  const utils = api.useUtils()
+
+  const createVocabularyMutation = api.vocabulary.createVocabularyWord.useMutation({
+    onSuccess: () => {
+      // Invalidate and refetch vocabulary data
+      utils.vocabulary.getVocabulary.invalidate()
+      utils.vocabulary.getVocabularyCount.invalidate()
+      setNewWord({ word: "" })
+      setIsAddDialogOpen(false)
+    },
+    onError: (error) => {
+      console.error('Error adding word:', error)
+    }
+  })
+
+  const deleteVocabularyMutation = api.vocabulary.deleteVocabulary.useMutation({
+    onSuccess: () => {
+      // Invalidate and refetch vocabulary data
+      utils.vocabulary.getVocabulary.invalidate()
+      utils.vocabulary.getVocabularyCount.invalidate()
+    },
+    onError: (error) => {
+      console.error('Error deleting word:', error)
+    }
+  })
 
   const handleAddWord = async () => {
     if (newWord.word.trim()) {
-      try {
-        await window.electronAPI.createVocabularyWord({
-          word: newWord.word.trim().toLowerCase(),
-        })
-        setNewWord({ word: "" })
-        setIsAddDialogOpen(false)
-        // Reload vocabulary after adding
-        await loadVocabulary()
-      } catch (error) {
-        console.error('Error adding word:', error)
-      }
+      createVocabularyMutation.mutate({
+        word: newWord.word.trim().toLowerCase(),
+      })
     }
   }
 
   const handleDeleteWord = async (id: number) => {
-    try {
-      await window.electronAPI.deleteVocabulary(id)
-      // Reload vocabulary after deletion
-      await loadVocabulary()
-    } catch (error) {
-      console.error('Error deleting word:', error)
-    }
+    deleteVocabularyMutation.mutate({ id })
   }
+
+  const vocabulary = vocabularyQuery.data || []
+  const totalCount = vocabularyCountQuery.data || 0
+  const loading = vocabularyQuery.isLoading || vocabularyCountQuery.isLoading
 
   return (
     <div className="space-y-6">
@@ -117,7 +109,12 @@ export function VocabularyManager() {
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleAddWord}>Add Word</Button>
+                <Button 
+                  onClick={handleAddWord}
+                  disabled={createVocabularyMutation.isPending || !newWord.word.trim()}
+                >
+                  {createVocabularyMutation.isPending ? 'Adding...' : 'Add Word'}
+                </Button>
               </div>
             </div>
           </DialogContent>
@@ -171,6 +168,7 @@ export function VocabularyManager() {
                         size="sm" 
                         className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                         onClick={() => handleDeleteWord(item.id)}
+                        disabled={deleteVocabularyMutation.isPending}
                       >
                         <Trash2 className="h-4 w-4" />
                         <span className="sr-only">Delete word</span>

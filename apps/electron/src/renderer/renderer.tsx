@@ -28,6 +28,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ipcLink } from 'electron-trpc-experimental/renderer';
+import superjson from 'superjson';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { ThemeProvider } from '@/components/theme-provider';
@@ -41,11 +44,27 @@ import { SettingsView } from '@/components/settings-view';
 import { ProfileView } from '@/components/profile-view';
 import '@/styles/globals.css';
 import { SiteHeader } from '@/components/site-header';
+import { api } from '@/trpc/react';
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
 
 const NUM_WAVEFORM_BARS = 10; // This might be unused now
+
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+// Create tRPC client
+const trpcClient = api.createClient({
+  links: [ipcLink({ transformer: superjson })],
+});
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState(() => {
@@ -90,15 +109,17 @@ const App: React.FC = () => {
   };
 
   return (
-    <ThemeProvider>
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
-            "--header-height": "calc(var(--spacing) * 12)",
-          } as React.CSSProperties
-        }
-      >
+    <api.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SidebarProvider
+            style={
+              {
+                "--sidebar-width": "calc(var(--spacing) * 72)",
+                "--header-height": "calc(var(--spacing) * 12)",
+              } as React.CSSProperties
+            }
+          >
         <div className="flex h-screen w-screen flex-col">
           {/* Header spans full width with traffic light spacing */}
           <SiteHeader currentView={currentView} />
@@ -126,8 +147,10 @@ const App: React.FC = () => {
             </SidebarInset>
           </div>
         </div>
-      </SidebarProvider>
-    </ThemeProvider>
+          </SidebarProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </api.Provider>
   );
 };
 
