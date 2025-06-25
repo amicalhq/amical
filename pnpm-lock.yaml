@@ -18,11 +18,11 @@ importers:
         specifier: 5.8.2
         version: 5.8.2
 
-  apps/electron:
+  apps/desktop:
     dependencies:
       '@ai-sdk/openai':
         specifier: ^1.3.22
-        version: 1.3.22(zod@3.25.24)
+        version: 1.3.22(zod@3.25.67)
       '@amical/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
@@ -154,7 +154,7 @@ importers:
         version: 10.0.0
       ai:
         specifier: ^4.3.16
-        version: 4.3.16(react@19.1.0)(zod@3.25.24)
+        version: 4.3.16(react@19.1.0)(zod@3.25.67)
       async-mutex:
         specifier: ^0.5.0
         version: 0.5.0
@@ -211,7 +211,7 @@ importers:
         version: 0.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       openai:
         specifier: ^4.98.0
-        version: 4.103.0(encoding@0.1.13)(ws@8.18.0)(zod@3.25.24)
+        version: 4.103.0(encoding@0.1.13)(ws@8.18.0)(zod@3.25.67)
       react:
         specifier: ^19.1.0
         version: 19.1.0
@@ -256,7 +256,7 @@ importers:
         version: 1.1.2(@types/react-dom@19.1.5(@types/react@19.1.5))(@types/react@19.1.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       zod:
         specifier: ^3.25.24
-        version: 3.25.24
+        version: 3.25.67
     devDependencies:
       '@electron-forge/cli':
         specifier: ^7.8.1
@@ -8081,39 +8081,39 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/openai@1.3.22(zod@3.25.24)':
+  '@ai-sdk/openai@1.3.22(zod@3.25.67)':
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.24)
-      zod: 3.25.24
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.67)
+      zod: 3.25.67
 
-  '@ai-sdk/provider-utils@2.2.8(zod@3.25.24)':
+  '@ai-sdk/provider-utils@2.2.8(zod@3.25.67)':
     dependencies:
       '@ai-sdk/provider': 1.1.3
       nanoid: 3.3.11
       secure-json-parse: 2.7.0
-      zod: 3.25.24
+      zod: 3.25.67
 
   '@ai-sdk/provider@1.1.3':
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/react@1.2.12(react@19.1.0)(zod@3.25.24)':
+  '@ai-sdk/react@1.2.12(react@19.1.0)(zod@3.25.67)':
     dependencies:
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.24)
-      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.24)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.67)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.67)
       react: 19.1.0
       swr: 2.3.3(react@19.1.0)
       throttleit: 2.1.0
     optionalDependencies:
-      zod: 3.25.24
+      zod: 3.25.67
 
-  '@ai-sdk/ui-utils@1.2.11(zod@3.25.24)':
+  '@ai-sdk/ui-utils@1.2.11(zod@3.25.67)':
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.24)
-      zod: 3.25.24
-      zod-to-json-schema: 3.24.5(zod@3.25.24)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.67)
+      zod: 3.25.67
+      zod-to-json-schema: 3.24.5(zod@3.25.67)
 
   '@alloc/quick-lru@5.2.0': {}
 
@@ -9621,7 +9621,7 @@ snapshots:
   '@libsql/isomorphic-ws@0.1.5':
     dependencies:
       '@types/ws': 8.18.1
-      ws: 8.17.1
+      ws: 8.18.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -11381,15 +11381,15 @@ snapshots:
       clean-stack: 2.2.0
       indent-string: 4.0.0
 
-  ai@4.3.16(react@19.1.0)(zod@3.25.24):
+  ai@4.3.16(react@19.1.0)(zod@3.25.67):
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.24)
-      '@ai-sdk/react': 1.2.12(react@19.1.0)(zod@3.25.24)
-      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.24)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.67)
+      '@ai-sdk/react': 1.2.12(react@19.1.0)(zod@3.25.67)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.67)
       '@opentelemetry/api': 1.9.0
       jsondiffpatch: 0.6.0
-      zod: 3.25.24
+      zod: 3.25.67
     optionalDependencies:
       react: 19.1.0
 
@@ -14973,7 +14973,7 @@ snapshots:
       onnxruntime-common: 1.14.0
       platform: 1.3.6
 
-  openai@4.103.0(encoding@0.1.13)(ws@8.18.0)(zod@3.25.24):
+  openai@4.103.0(encoding@0.1.13)(ws@8.18.0)(zod@3.25.67):
     dependencies:
       '@types/node': 18.19.103
       '@types/node-fetch': 2.6.12
@@ -14984,7 +14984,7 @@ snapshots:
       node-fetch: 2.7.0(encoding@0.1.13)
     optionalDependencies:
       ws: 8.18.0
-      zod: 3.25.24
+      zod: 3.25.67
     transitivePeerDependencies:
       - encoding
 
@@ -17095,11 +17095,14 @@ snapshots:
     dependencies:
       zod: 3.25.24
 
+  zod-to-json-schema@3.24.5(zod@3.25.67):
+    dependencies:
+      zod: 3.25.67
+
   zod@3.22.3: {}
 
   zod@3.25.24: {}
 
-  zod@3.25.67:
-    optional: true
+  zod@3.25.67: {}
 
   zwitch@2.0.4: {}
