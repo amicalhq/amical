@@ -2,6 +2,9 @@ import { initTRPC } from '@trpc/server';
 import superjson from 'superjson';
 import { z } from 'zod';
 import { vocabularyRouter } from './routers/vocabulary';
+import { transcriptionsRouter } from './routers/transcriptions';
+import { modelsRouter } from './routers/models';
+import { settingsRouter } from './routers/settings';
 
 const t = initTRPC.create({
   isServer: true,
@@ -35,6 +38,15 @@ export const router = t.router({
 
   // Vocabulary router
   vocabulary: vocabularyRouter,
+  
+  // Transcriptions router
+  transcriptions: transcriptionsRouter,
+  
+  // Models router
+  models: modelsRouter,
+  
+  // Settings router
+  settings: settingsRouter,
 });
 
 export type AppRouter = typeof router;

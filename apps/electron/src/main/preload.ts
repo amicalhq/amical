@@ -6,7 +6,7 @@ import log from 'electron-log/renderer';
 import { exposeElectronTRPC } from 'electron-trpc-experimental/preload';
 import type { ElectronAPI } from '../types/electron-api';
 import type { FormatterConfig } from '../modules/formatter';
-import type { Transcription, NewTranscription, Vocabulary, NewVocabulary } from '../db/schema';
+import type { Transcription, NewTranscription } from '../db/schema';
 
 interface ShortcutData {
   shortcut: string;
@@ -98,27 +98,6 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('search-transcriptions', searchTerm, limit),
 
   // Vocabulary Database API
-  getVocabulary: (options?: {
-    limit?: number;
-    offset?: number;
-    sortBy?: 'word' | 'dateAdded' | 'usageCount';
-    sortOrder?: 'asc' | 'desc';
-    search?: string;
-  }) => ipcRenderer.invoke('get-vocabulary', options),
-  getVocabularyById: (id: number) => ipcRenderer.invoke('get-vocabulary-by-id', id),
-  getVocabularyByWord: (word: string) => ipcRenderer.invoke('get-vocabulary-by-word', word),
-  createVocabularyWord: (data: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>) =>
-    ipcRenderer.invoke('create-vocabulary-word', data),
-  updateVocabulary: (id: number, data: Partial<Omit<Vocabulary, 'id' | 'createdAt'>>) =>
-    ipcRenderer.invoke('update-vocabulary', id, data),
-  deleteVocabulary: (id: number) => ipcRenderer.invoke('delete-vocabulary', id),
-  getVocabularyCount: (search?: string) => ipcRenderer.invoke('get-vocabulary-count', search),
-  searchVocabulary: (searchTerm: string, limit?: number) =>
-    ipcRenderer.invoke('search-vocabulary', searchTerm, limit),
-  bulkImportVocabulary: (words: Omit<NewVocabulary, 'id' | 'createdAt' | 'updatedAt'>[]) =>
-    ipcRenderer.invoke('bulk-import-vocabulary', words),
-  trackWordUsage: (word: string) => ipcRenderer.invoke('track-word-usage', word),
-  getMostUsedWords: (limit?: number) => ipcRenderer.invoke('get-most-used-words', limit), // Model management event listeners
   on: (channel: string, callback: (...args: any[]) => void) => {
     const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
     ipcRenderer.on(channel, handler);
