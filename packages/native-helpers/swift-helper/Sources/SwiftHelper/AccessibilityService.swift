@@ -46,10 +46,22 @@ struct AccessibilityElementNode: Codable {
 class AccessibilityService {
 
     private let maxDepth = 10 // To prevent excessively deep recursion and large payloads
+    private let dateFormatter: DateFormatter
 
     // Properties to store original audio states
     private var originalSystemMuteState: Bool?
     private var originalSystemVolume: Float32?
+
+    init() {
+        self.dateFormatter = DateFormatter()
+        self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+    }
+    
+    private func logToStderr(_ message: String) {
+        let timestamp = dateFormatter.string(from: Date())
+        let logMessage = "[\(timestamp)] \(message)\n"
+        FileHandle.standardError.write(logMessage.data(using: .utf8)!)
+    }
 
     // Fetches a value for a given accessibility attribute from an element.
     private func getAttributeValue(element: AXUIElement, attribute: String) -> String? {
@@ -94,7 +106,7 @@ class AccessibilityService {
         if status == noErr && deviceID != kAudioObjectUnknown {
             return deviceID
         } else {
-            FileHandle.standardError.write("[AccessibilityService] Error getting default output device: \(status).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Error getting default output device: \(status).")
             return nil
         }
     }
@@ -111,7 +123,7 @@ class AccessibilityService {
         var isSettable: DarwinBoolean = false
         let infoStatus = AudioObjectIsPropertySettable(deviceID, &propertyAddress, &isSettable)
         if infoStatus != noErr || !isSettable.boolValue {
-            FileHandle.standardError.write("[AccessibilityService] Mute property not supported or not settable for device \(deviceID).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Mute property not supported or not settable for device \(deviceID).")
             return nil 
         }
 
@@ -127,7 +139,7 @@ class AccessibilityService {
         if status == noErr {
             return isMuted == 1
         } else {
-            FileHandle.standardError.write("[AccessibilityService] Error getting mute state for device \(deviceID): \(status).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Error getting mute state for device \(deviceID): \(status).")
             return nil
         }
     }
@@ -144,11 +156,11 @@ class AccessibilityService {
         var isSettable: DarwinBoolean = false
         let infoStatus = AudioObjectIsPropertySettable(deviceID, &propertyAddress, &isSettable)
         if infoStatus != noErr {
-            FileHandle.standardError.write("[AccessibilityService] Error checking if mute is settable for device \(deviceID): \(infoStatus).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Error checking if mute is settable for device \(deviceID): \(infoStatus).")
             return infoStatus
         }
         if !isSettable.boolValue {
-            FileHandle.standardError.write("[AccessibilityService] Mute property is not settable for device \(deviceID).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Mute property is not settable for device \(deviceID).")
             return kAudioHardwareUnsupportedOperationError
         }
 
@@ -161,7 +173,7 @@ class AccessibilityService {
             &muteVal
         )
         if status != noErr {
-            FileHandle.standardError.write("[AccessibilityService] Error setting mute state for device \(deviceID) to \(mute): \(status).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Error setting mute state for device \(deviceID) to \(mute): \(status).")
         }
         return status
     }
@@ -176,7 +188,7 @@ class AccessibilityService {
         var propertySize = UInt32(MemoryLayout<Float32>.size)
 
         if AudioObjectHasProperty(deviceID, &propertyAddress) == false {
-            FileHandle.standardError.write("[AccessibilityService] Volume scalar property not supported for device \(deviceID).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Volume scalar property not supported for device \(deviceID).")
             return nil
         }
 
@@ -192,7 +204,7 @@ class AccessibilityService {
         if status == noErr {
             return volume
         } else {
-            FileHandle.standardError.write("[AccessibilityService] Error getting volume for device \(deviceID): \(status).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Error getting volume for device \(deviceID): \(status).")
             return nil
         }
     }
@@ -209,11 +221,11 @@ class AccessibilityService {
         var isSettable: DarwinBoolean = false
         let infoStatus = AudioObjectIsPropertySettable(deviceID, &propertyAddress, &isSettable)
          if infoStatus != noErr {
-            FileHandle.standardError.write("[AccessibilityService] Error checking if volume is settable for device \(deviceID): \(infoStatus).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Error checking if volume is settable for device \(deviceID): \(infoStatus).")
             return infoStatus
         }
         if !isSettable.boolValue {
-            FileHandle.standardError.write("[AccessibilityService] Volume property is not settable for device \(deviceID).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Volume property is not settable for device \(deviceID).")
             return kAudioHardwareUnsupportedOperationError
         }
 
@@ -226,7 +238,7 @@ class AccessibilityService {
             &newVolume
         )
         if status != noErr {
-            FileHandle.standardError.write("[AccessibilityService] Error setting volume for device \(deviceID) to \(newVolume): \(status).\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Error setting volume for device \(deviceID) to \(newVolume): \(status).")
         }
         return status
     }
@@ -277,53 +289,53 @@ class AccessibilityService {
     // For `rootId`: if nil, gets system-wide. If "focused", gets the focused application.
     // Otherwise, it could be a bundle identifier (not implemented here yet).
     public func fetchFullAccessibilityTree(rootId: String?) -> AccessibilityElementNode? {
-        FileHandle.standardError.write("[AccessibilityService] Starting fetchFullAccessibilityTree. rootId: \(rootId ?? "nil")\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] Starting fetchFullAccessibilityTree. rootId: \(rootId ?? "nil")")
         
         var rootElement: AXUIElement?
 
         if let id = rootId, id.lowercased() == "focusedapp" {
             // Get the focused application
             guard let frontmostApp = NSWorkspace.shared.frontmostApplication else {
-                FileHandle.standardError.write("[AccessibilityService] Could not get frontmost application.\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] Could not get frontmost application.")
                 return nil
             }
             rootElement = AXUIElementCreateApplication(frontmostApp.processIdentifier)
-             FileHandle.standardError.write("[AccessibilityService] Targeting focused app: \(frontmostApp.localizedName ?? "Unknown App") (PID: \(frontmostApp.processIdentifier))\n".data(using: .utf8)!)
+             logToStderr("[AccessibilityService] Targeting focused app: \(frontmostApp.localizedName ?? "Unknown App") (PID: \(frontmostApp.processIdentifier))")
         } else if let id = rootId, !id.isEmpty {
             // Basic PID lookup if rootId is a number (representing a PID)
             // More robust app lookup by bundle ID would be better for non-PID rootIds.
             if let pid = Int32(id) {
                 rootElement = AXUIElementCreateApplication(pid)
-                FileHandle.standardError.write("[AccessibilityService] Targeting PID: \(pid)\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] Targeting PID: \(pid)")
             } else {
-                FileHandle.standardError.write("[AccessibilityService] rootId '\(id)' is not 'focusedapp' or a valid PID. Falling back to system-wide (or implement bundle ID lookup).\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] rootId '\(id)' is not 'focusedapp' or a valid PID. Falling back to system-wide (or implement bundle ID lookup).")
                 // Fallback or specific error for unhandled rootId format
                 // For now, let's try system-wide if rootId isn't 'focusedapp' or PID.
                  rootElement = AXUIElementCreateSystemWide()
-                 FileHandle.standardError.write("[AccessibilityService] Defaulting to system-wide due to unhandled rootId.\n".data(using: .utf8)!)
+                 logToStderr("[AccessibilityService] Defaulting to system-wide due to unhandled rootId.")
             }
         } else {
             // Default to system-wide if rootId is nil or empty
             rootElement = AXUIElementCreateSystemWide()
-            FileHandle.standardError.write("[AccessibilityService] Targeting system-wide accessibility tree.\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Targeting system-wide accessibility tree.")
         }
 
         guard let element = rootElement else {
-            FileHandle.standardError.write("[AccessibilityService] Failed to create root AXUIElement.\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Failed to create root AXUIElement.")
             return nil
         }
         
         let tree = buildTree(fromElement: element, currentDepth: 0)
-        FileHandle.standardError.write("[AccessibilityService] Finished buildTree. Result is \(tree == nil ? "nil" : "not nil").\\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] Finished buildTree. Result is \(tree == nil ? "nil" : "not nil").")
         return tree
     }
 
     // MARK: - System Audio Control
 
     public func muteSystemAudio() -> Bool {
-        FileHandle.standardError.write("[AccessibilityService] Attempting to mute system audio.\\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] Attempting to mute system audio.")
         guard let deviceID = getDefaultOutputDeviceID() else {
-            FileHandle.standardError.write("[AccessibilityService] Could not get default output device to mute audio.\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Could not get default output device to mute audio.")
             return false
         }
 
@@ -331,38 +343,38 @@ class AccessibilityService {
         self.originalSystemMuteState = isDeviceMuted(deviceID: deviceID)
         self.originalSystemVolume = getDeviceVolume(deviceID: deviceID)
 
-        FileHandle.standardError.write("[AccessibilityService] Original mute state: \(String(describing: self.originalSystemMuteState)), Original volume: \(String(describing: self.originalSystemVolume)).\\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] Original mute state: \(String(describing: self.originalSystemMuteState)), Original volume: \(String(describing: self.originalSystemVolume)).")
 
         // Attempt to mute
         let muteStatus = setDeviceMute(deviceID: deviceID, mute: true)
         if muteStatus == noErr {
-            FileHandle.standardError.write("[AccessibilityService] System audio muted successfully via mute property.\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] System audio muted successfully via mute property.")
             return true
         } else {
-            FileHandle.standardError.write("[AccessibilityService] Failed to set mute property (status: \(muteStatus)). Attempting to set volume to 0.\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Failed to set mute property (status: \(muteStatus)). Attempting to set volume to 0.")
             let volumeStatus = setDeviceVolume(deviceID: deviceID, volume: 0.0)
             if volumeStatus == noErr {
-                FileHandle.standardError.write("[AccessibilityService] System audio silenced by setting volume to 0.\\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] System audio silenced by setting volume to 0.")
             } else {
-                FileHandle.standardError.write("[AccessibilityService] Failed to silence system audio by setting volume to 0 (status: \(volumeStatus)).\\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] Failed to silence system audio by setting volume to 0 (status: \(volumeStatus)).")
             }
             return false
         }
     }
 
     public func restoreSystemAudio() -> Bool {
-        FileHandle.standardError.write("[AccessibilityService] Attempting to restore system audio.\\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] Attempting to restore system audio.")
         guard let deviceID = getDefaultOutputDeviceID() else {
-            FileHandle.standardError.write("[AccessibilityService] Could not get default output device to restore audio.\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Could not get default output device to restore audio.")
             return false
         }
 
         if let originalMute = self.originalSystemMuteState {
             let muteStatus = setDeviceMute(deviceID: deviceID, mute: originalMute)
             if muteStatus == noErr {
-                FileHandle.standardError.write("[AccessibilityService] System mute state restored to \(originalMute).\\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] System mute state restored to \(originalMute).")
             } else {
-                 FileHandle.standardError.write("[AccessibilityService] Failed to restore original mute state (status: \(muteStatus)).\\n".data(using: .utf8)!)
+                 logToStderr("[AccessibilityService] Failed to restore original mute state (status: \(muteStatus)).")
             }
         }
 
@@ -371,21 +383,21 @@ class AccessibilityService {
         if shouldRestoreVolume, let originalVolume = self.originalSystemVolume {
             let volumeStatus = setDeviceVolume(deviceID: deviceID, volume: originalVolume)
              if volumeStatus == noErr {
-                FileHandle.standardError.write("[AccessibilityService] System volume restored to \(originalVolume).\\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] System volume restored to \(originalVolume).")
             } else {
-                FileHandle.standardError.write("[AccessibilityService] Failed to restore original volume (status: \(volumeStatus)).\\n".data(using: .utf8)!)
+                logToStderr("[AccessibilityService] Failed to restore original volume (status: \(volumeStatus)).")
             }
         }
 
         self.originalSystemMuteState = nil
         self.originalSystemVolume = nil
-        FileHandle.standardError.write("[AccessibilityService] System audio restoration attempt complete. Stored states cleared.\\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] System audio restoration attempt complete. Stored states cleared.")
         return true
     }
 
     // Pastes the given text into the active application
     public func pasteText(transcript: String) -> Bool {
-        FileHandle.standardError.write("[AccessibilityService] Attempting to paste transcript: \(transcript).\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] Attempting to paste transcript: \(transcript).")
 
         let pasteboard = NSPasteboard.general
         let originalPasteboardItems = pasteboard.pasteboardItems?.compactMap { item -> NSPasteboardItem? in
@@ -406,7 +418,7 @@ class AccessibilityService {
         let success = pasteboard.setString(transcript, forType: .string)
 
         if !success {
-            FileHandle.standardError.write("[AccessibilityService] Failed to set string on pasteboard.\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Failed to set string on pasteboard.")
             // Restore original content before returning
             restorePasteboard(pasteboard: pasteboard, items: originalPasteboardItems, originalChangeCount: originalChangeCount)
             return false
@@ -432,7 +444,7 @@ class AccessibilityService {
         // No flags needed for key up typically, or just .maskCommand if it was held
 
         if cmdDown == nil || vDown == nil || vUp == nil || cmdUp == nil {
-            FileHandle.standardError.write("[AccessibilityService] Failed to create CGEvent for paste.\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Failed to create CGEvent for paste.")
             restorePasteboard(pasteboard: pasteboard, items: originalPasteboardItems, originalChangeCount: originalChangeCount)
             return false
         }
@@ -444,7 +456,7 @@ class AccessibilityService {
         vUp!.post(tap: loc)
         cmdUp!.post(tap: loc)
         
-        FileHandle.standardError.write("[AccessibilityService] Paste keyboard events posted.\\n".data(using: .utf8)!)
+        logToStderr("[AccessibilityService] Paste keyboard events posted.")
 
         // Restore the original pasteboard content after a short delay
         // to allow the paste action to complete.
@@ -464,12 +476,12 @@ class AccessibilityService {
             if !items.isEmpty {
                  pasteboard.writeObjects(items)
             }
-             FileHandle.standardError.write("[AccessibilityService] Original pasteboard content restored.\\n".data(using: .utf8)!)
+             logToStderr("[AccessibilityService] Original pasteboard content restored.")
         } else {
             // If changeCount is different, it means another app or the user has modified the pasteboard
             // after we set our transcript but before this restoration block was executed.
             // In this case, we should not interfere with the new pasteboard content.
-            FileHandle.standardError.write("[AccessibilityService] Pasteboard changed by another process or a new copy occurred (expected changeCount: \(originalChangeCount + 1), current: \(pasteboard.changeCount)); not restoring original content to avoid conflict.\\n".data(using: .utf8)!)
+            logToStderr("[AccessibilityService] Pasteboard changed by another process or a new copy occurred (expected changeCount: \(originalChangeCount + 1), current: \(pasteboard.changeCount)); not restoring original content to avoid conflict.")
         }
     }
 
@@ -484,29 +496,29 @@ class AccessibilityService {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
         // Uncomment for verbose logging from Swift helper:
-        // FileHandle.standardError.write("[AccessibilityService] shouldForwardKeyboardEvent: type=\(type.rawValue), keyCode=\(keyCode), flags=\(event.flags.rawValue)\n".data(using: .utf8)!)
+        // logToStderr("[AccessibilityService] shouldForwardKeyboardEvent: type=\(type.rawValue), keyCode=\(keyCode), flags=\(event.flags.rawValue)")
 
         if type == .flagsChanged {
             // Always forward flagsChanged events. These are crucial for Electron to know
             // the state of modifier keys, including when the Fn key itself is pressed or released,
             // which is used to control recording.
-            // FileHandle.standardError.write("[AccessibilityService] Forwarding flagsChanged event.\n".data(using: .utf8)!)
+            // logToStderr("[AccessibilityService] Forwarding flagsChanged event.")
             return true
         }
 
         if type == .keyDown || type == .keyUp {
             // For keyDown and keyUp events, only forward if the event is FOR THE Fn KEY ITSELF.
             if keyCode == kVK_Function {
-                // FileHandle.standardError.write("[AccessibilityService] Forwarding \(type == .keyDown ? "keyDown" : "keyUp") event because it IS the Fn key (keyCode: \(keyCode)).\n".data(using: .utf8)!)
+                // logToStderr("[AccessibilityService] Forwarding \(type == .keyDown ? "keyDown" : "keyUp") event because it IS the Fn key (keyCode: \(keyCode)).")
                 return true
             } else {
-                // FileHandle.standardError.write("[AccessibilityService] Suppressing \(type == .keyDown ? "keyDown" : "keyUp") event for keyCode \(keyCode) because it is NOT the Fn key.\n".data(using: .utf8)!)
+                // logToStderr("[AccessibilityService] Suppressing \(type == .keyDown ? "keyDown" : "keyUp") event for keyCode \(keyCode) because it is NOT the Fn key.")
                 return false
             }
         }
 
         // For any other event types (e.g., mouse events, system-defined), don't forward by default.
-        // FileHandle.standardError.write("[AccessibilityService] Suppressing event of unhandled type: \(type.rawValue).\n".data(using: .utf8)!)
+        // logToStderr("[AccessibilityService] Suppressing event of unhandled type: \(type.rawValue).")
         return false
     }
 }

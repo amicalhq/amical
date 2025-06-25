@@ -7,15 +7,18 @@ import split2 from 'split2';
 import { v4 as uuid } from 'uuid';
 
 import { EventEmitter } from 'events';
+import { createScopedLogger } from './logger';
 import {
   RpcRequestSchema,
   RpcRequest,
-  RpcResponseSchema, 
+  RpcResponseSchema,
   RpcResponse,
   HelperEventSchema,
   HelperEvent,
   GetAccessibilityTreeDetailsParams,
   GetAccessibilityTreeDetailsResult,
+  GetAccessibilityContextParams,
+  GetAccessibilityContextResult,
   PasteTextParams,
   PasteTextResult,
   MuteSystemAudioParams,
@@ -29,6 +32,10 @@ interface RPCMethods {
   getAccessibilityTreeDetails: {
     params: GetAccessibilityTreeDetailsParams;
     result: GetAccessibilityTreeDetailsResult;
+  };
+  getAccessibilityContext: {
+    params: GetAccessibilityContextParams;
+    result: GetAccessibilityContextResult;
   };
   pasteText: {
     params: PasteTextParams;
@@ -56,8 +63,9 @@ interface SwiftIOBridgeEvents {
 
 export class SwiftIOBridge extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams | null = null;
-  private pending = new Map<string, (resp: RpcResponse) => void>();
+  private pending = new Map<string, { callback: (resp: RpcResponse) => void; startTime: number }>();
   private helperPath: string;
+  private logger = createScopedLogger('swift-bridge');
 
   constructor() {
     super();
@@ -69,16 +77,25 @@ export class SwiftIOBridge extends EventEmitter {
     const helperName = 'SwiftHelper'; // Swift native helper executable
     return electronApp.isPackaged
       ? path.join(process.resourcesPath, 'bin', helperName)
-      : path.join(electronApp.getAppPath(), '..', '..', 'packages', 'native-helpers', 'swift-helper', 'bin', helperName);
+      : path.join(
+          electronApp.getAppPath(),
+          '..',
+          '..',
+          'packages',
+          'native-helpers',
+          'swift-helper',
+          'bin',
+          helperName
+        );
   }
 
   private startHelperProcess(): void {
     try {
       fs.accessSync(this.helperPath, fs.constants.X_OK);
     } catch (err) {
-      console.error(
-        `SwiftIOBridge: SwiftHelper executable not found or not executable at ${this.helperPath}.`
-      );
+      this.logger.error('SwiftHelper executable not found or not executable', {
+        helperPath: this.helperPath,
+      });
       this.emit(
         'error',
         new Error(
@@ -89,22 +106,22 @@ export class SwiftIOBridge extends EventEmitter {
       return;
     }
 
-    console.log(`SwiftIOBridge: Spawning SwiftHelper from: ${this.helperPath}`);
+    this.logger.info('Spawning SwiftHelper', { helperPath: this.helperPath });
     this.proc = spawn(this.helperPath, [], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     this.proc.stdout.pipe(split2()).on('data', (line: string) => {
       if (!line.trim()) return; // Ignore empty lines
       try {
         const message = JSON.parse(line);
-        console.log('SwiftIOBridge: Received message from helper:', message);
+        this.logger.debug('Received message from helper', { message });
 
         // Try to parse as RpcResponse first
         const responseValidation = RpcResponseSchema.safeParse(message);
         if (responseValidation.success) {
           const rpcResponse = responseValidation.data;
           if (this.pending.has(rpcResponse.id)) {
-            const handler = this.pending.get(rpcResponse.id);
-            handler!(rpcResponse); // Non-null assertion as we checked with has()
+            const pendingItem = this.pending.get(rpcResponse.id);
+            pendingItem!.callback(rpcResponse); // Non-null assertion as we checked with has()
             return; // Handled as an RPC response
           }
         }
@@ -118,30 +135,28 @@ export class SwiftIOBridge extends EventEmitter {
         }
 
         // If it's neither a recognized RPC response nor a helper event
-        console.warn('SwiftIOBridge: Received unknown message from helper:', message);
+        this.logger.warn('Received unknown message from helper', { message });
       } catch (e) {
-        console.error('SwiftIOBridge: Error parsing JSON from helper:', e, 'Received line:', line);
+        this.logger.error('Error parsing JSON from helper', { error: e, line });
         this.emit('error', new Error(`Error parsing JSON from helper: ${line}`));
       }
     });
 
     this.proc.stderr.on('data', (data: Buffer) => {
       const errorMsg = data.toString();
-      console.error(`SwiftIOBridge: SwiftHelper stderr: ${errorMsg}`);
+      this.logger.warn('SwiftHelper stderr output', { message: errorMsg });
       // Don't emit as error since stderr is often just debug info
       // this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
     });
 
     this.proc.on('error', (err) => {
-      console.error('SwiftIOBridge: Failed to start SwiftHelper process:', err);
+      this.logger.error('Failed to start SwiftHelper process', { error: err });
       this.emit('error', err);
       this.proc = null;
     });
 
     this.proc.on('close', (code, signal) => {
-      console.log(
-        `SwiftIOBridge: SwiftHelper process exited with code ${code} and signal ${signal}`
-      );
+      this.logger.info('SwiftHelper process exited', { code, signal });
       this.emit('close', code, signal);
       this.proc = null;
       // Optionally, implement retry logic or notify further
@@ -150,7 +165,7 @@ export class SwiftIOBridge extends EventEmitter {
     process.nextTick(() => {
       this.emit('ready'); // Emit ready on next tick
     });
-    console.log('SwiftIOBridge: Helper process started and listeners attached.');
+    this.logger.info('Helper process started and listeners attached');
   }
 
   public call<M extends keyof RPCMethods>(
@@ -165,50 +180,65 @@ export class SwiftIOBridge extends EventEmitter {
     }
 
     const id = uuid();
+    const startTime = Date.now();
     const requestPayload: RpcRequest = { id, method, params };
 
     // Validate request payload before sending
     const validationResult = RpcRequestSchema.safeParse(requestPayload);
     if (!validationResult.success) {
-      console.error(
-        'SwiftIOBridge: Invalid RPC request payload:',
-        validationResult.error.flatten()
-      );
+      this.logger.error('Invalid RPC request payload', {
+        method,
+        error: validationResult.error.flatten(),
+      });
       return Promise.reject(
         new Error(`Invalid RPC request payload: ${validationResult.error.message}`)
       );
     }
 
-    console.log(`SwiftIOBridge: Sending RPC request: ${method} (id: ${id})`);
+    this.logger.debug('Sending RPC request', {
+      method,
+      id,
+      startedAt: new Date(startTime).toISOString(),
+    });
     this.proc.stdin.write(JSON.stringify(requestPayload) + '\n', (err) => {
       if (err) {
-        console.error('SwiftIOBridge: Error writing to helper stdin:', err);
+        this.logger.error('Error writing to helper stdin', { method, id, error: err });
         // Note: The promise might have already been set up, consider how to reject it.
         // For now, this error will be logged. The timeout will eventually reject.
       } else {
-        console.log(`SwiftIOBridge: Successfully sent RPC request: ${method} (id: ${id})`);
+        this.logger.debug('Successfully sent RPC request', { method, id });
       }
     });
 
     const responsePromise = new Promise<RPCMethods[M]['result']>((resolve, reject) => {
-      this.pending.set(id, (resp: RpcResponse) => {
-        this.pending.delete(id); // Clean up immediately
-        if (resp.error) {
-          const error = new Error(resp.error.message);
-          (error as any).code = resp.error.code;
-          (error as any).data = resp.error.data;
-          reject(error);
-        } else {
-          // Log the raw resp.result before resolving
-          console.log(
-            'SwiftIOBridge: Raw resp.result received:',
-            JSON.stringify(resp.result, null, 2)
-          );
-          // Here, we might need to validate resp.result against the specific method's result schema
-          // For now, casting as any, but for type safety, validation is better.
-          // Example: const resultValidation = RPCMethods[method].resultSchema.safeParse(resp.result);
-          resolve(resp.result as any);
-        }
+      this.pending.set(id, {
+        callback: (resp: RpcResponse) => {
+          this.pending.delete(id); // Clean up immediately
+          const completedAt = Date.now();
+          const duration = completedAt - startTime;
+
+          if (resp.error) {
+            const error = new Error(resp.error.message);
+            (error as any).code = resp.error.code;
+            (error as any).data = resp.error.data;
+            reject(error);
+          } else {
+            // Log the raw resp.result with timing information
+            this.logger.debug('Raw RPC response result received', {
+              method,
+              id,
+              result: resp.result,
+              startedAt: new Date(startTime).toISOString(),
+              completedAt: new Date(completedAt).toISOString(),
+              durationMs: duration,
+            });
+            // Here, we might need to validate resp.result against the specific method's result schema
+            // For now, casting as any, but for type safety, validation is better.
+            // Example: const resultValidation = RPCMethods[method].resultSchema.safeParse(resp.result);
+            resolve(resp.result as any);
+          }
+        },
+        startTime,
       });
     });
 
@@ -217,9 +247,11 @@ export class SwiftIOBridge extends EventEmitter {
         if (this.pending.has(id)) {
           // Check if still pending before rejecting
           this.pending.delete(id);
+          const timedOutAt = Date.now();
+          const duration = timedOutAt - startTime;
           reject(
             new Error(
-              `SwiftIOBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms`
+              `SwiftIOBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms (duration: ${duration}ms, started: ${new Date(startTime).toISOString()})`
             )
           );
         }
@@ -235,7 +267,7 @@ export class SwiftIOBridge extends EventEmitter {
 
   public stopHelper(): void {
     if (this.proc) {
-      console.log('SwiftIOBridge: Stopping SwiftHelper process...');
+      this.logger.info('Stopping SwiftHelper process');
       this.proc.kill();
       this.proc = null;
     }

@@ -21,6 +21,8 @@ try {
       'generated/json-schemas/rpc/rpc-response.schema.json ' +
       'generated/json-schemas/methods/get-accessibility-tree-details-params.schema.json ' +
       'generated/json-schemas/methods/get-accessibility-tree-details-result.schema.json ' +
+      'generated/json-schemas/methods/get-accessibility-context-params.schema.json ' +
+      'generated/json-schemas/methods/get-accessibility-context-result.schema.json ' +
       'generated/json-schemas/methods/paste-text-params.schema.json ' +
       'generated/json-schemas/methods/paste-text-result.schema.json ' +
       'generated/json-schemas/methods/mute-system-audio-params.schema.json ' +

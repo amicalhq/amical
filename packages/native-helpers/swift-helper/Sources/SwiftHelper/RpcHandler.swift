@@ -7,18 +7,28 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
     private let accessibilityService: AccessibilityService
     private var audioPlayer: AVAudioPlayer?
     private var audioCompletionHandler: (() -> Void)?
+    private let dateFormatter: DateFormatter
 
     init(jsonEncoder: JSONEncoder, jsonDecoder: JSONDecoder) {
         self.jsonEncoder = jsonEncoder
         self.jsonDecoder = jsonDecoder
         self.accessibilityService = AccessibilityService()
+        self.dateFormatter = DateFormatter()
+        self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        super.init()
+    }
+    
+    private func logToStderr(_ message: String) {
+        let timestamp = dateFormatter.string(from: Date())
+        let logMessage = "[\(timestamp)] \(message)\n"
+        FileHandle.standardError.write(logMessage.data(using: .utf8)!)
     }
 
     private func playSound(named soundName: String, completion: (() -> Void)? = nil) {
-        FileHandle.standardError.write("[IOBridge] playSound called with soundName: \(soundName)\n".data(using: .utf8)!)
+        logToStderr("[IOBridge] playSound called with soundName: \(soundName)")
         
         if audioPlayer?.isPlaying == true {
-            FileHandle.standardError.write("[IOBridge] Sound '\(audioPlayer?.url?.lastPathComponent ?? "previous")' is playing. Stopping it before playing \(soundName).\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Sound '\(audioPlayer?.url?.lastPathComponent ?? "previous")' is playing. Stopping it before playing \(soundName).")
             audioPlayer?.delegate = nil
             audioPlayer?.stop()
         }
@@ -32,20 +42,20 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
         do {
             switch soundName {
             case "rec-start":
-                FileHandle.standardError.write("[IOBridge] Attempting to load rec-start.mp3 from PackageResources\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Attempting to load rec-start.mp3 from PackageResources")
                 audioData = PackageResources.rec_start_mp3
-                FileHandle.standardError.write("[IOBridge] Successfully loaded rec-start.mp3, data size: \(audioData.count) bytes\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Successfully loaded rec-start.mp3, data size: \(audioData.count) bytes")
             case "rec-stop":
-                FileHandle.standardError.write("[IOBridge] Attempting to load rec-stop.mp3 from PackageResources\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Attempting to load rec-stop.mp3 from PackageResources")
                 audioData = PackageResources.rec_stop_mp3
-                FileHandle.standardError.write("[IOBridge] Successfully loaded rec-stop.mp3, data size: \(audioData.count) bytes\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Successfully loaded rec-stop.mp3, data size: \(audioData.count) bytes")
             default:
-                FileHandle.standardError.write("[IOBridge] Error: Unknown sound name '\(soundName)'. Completion will not be called.\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Error: Unknown sound name '\(soundName)'. Completion will not be called.")
                 self.audioCompletionHandler = nil
                 return
             }
         } catch {
-            FileHandle.standardError.write("[IOBridge] Error loading embedded audio data for '\(soundName)': \(error.localizedDescription). Completion will not be called.\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Error loading embedded audio data for '\(soundName)': \(error.localizedDescription). Completion will not be called.")
             self.audioCompletionHandler = nil
             return
         }
@@ -59,13 +69,13 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
             audioPlayer?.delegate = self
 
             if audioPlayer?.play() == true {
-                FileHandle.standardError.write("[IOBridge] Playing embedded sound: \(soundName).mp3. Delegate will handle completion.\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Playing embedded sound: \(soundName).mp3. Delegate will handle completion.")
             } else {
-                FileHandle.standardError.write("[IOBridge] Failed to start playing embedded sound: \(soundName).mp3 (audioPlayer.play() returned false or player is nil). Completion will not be called.\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Failed to start playing embedded sound: \(soundName).mp3 (audioPlayer.play() returned false or player is nil). Completion will not be called.")
                 self.audioCompletionHandler = nil
             }
         } catch {
-            FileHandle.standardError.write("[IOBridge] Error initializing AVAudioPlayer for embedded \(soundName).mp3: \(error.localizedDescription). Completion will not be called.\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Error initializing AVAudioPlayer for embedded \(soundName).mp3: \(error.localizedDescription). Completion will not be called.")
             self.audioCompletionHandler = nil
         }
     }
@@ -77,14 +87,14 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
         switch request.method {
         case .getAccessibilityTreeDetails:
             var accessibilityParams: GetAccessibilityTreeDetailsParamsSchema? = nil
-            FileHandle.standardError.write("[IOBridge] Handling getAccessibilityTreeDetails for ID: \(request.id)\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Handling getAccessibilityTreeDetails for ID: \(request.id)")
             if let paramsAnyCodable = request.params {
                 do {
                     let paramsData = try jsonEncoder.encode(paramsAnyCodable)
                     accessibilityParams = try jsonDecoder.decode(GetAccessibilityTreeDetailsParamsSchema.self, from: paramsData)
-                    FileHandle.standardError.write("[IOBridge] Decoded accessibilityParams.rootID: \(accessibilityParams?.rootID ?? "nil") for ID: \(request.id)\n".data(using: .utf8)!)
+                    logToStderr("[IOBridge] Decoded accessibilityParams.rootID: \(accessibilityParams?.rootID ?? "nil") for ID: \(request.id)")
                 } catch {
-                    FileHandle.standardError.write("[IOBridge] Error decoding getAccessibilityTreeDetails params: \(error.localizedDescription)\n".data(using: .utf8)!)
+                    logToStderr("[IOBridge] Error decoding getAccessibilityTreeDetails params: \(error.localizedDescription)")
                     let errPayload = Error(code: -32602, data: request.params, message: "Invalid params: \(error.localizedDescription)")
                     rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
                     sendRpcResponse(rpcResponse)
@@ -95,7 +105,7 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
             // Fetch REAL accessibility tree data using the service
             let actualTreeData: AccessibilityElementNode? = accessibilityService.fetchFullAccessibilityTree(rootId: accessibilityParams?.rootID)
 
-            FileHandle.standardError.write("[IOBridge] Fetched actualTreeData from AccessibilityService. Is nil? \(actualTreeData == nil). For ID: \(request.id)\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Fetched actualTreeData from AccessibilityService. Is nil? \(actualTreeData == nil). For ID: \(request.id)")
 
             var treeAsJsonAny: JSONAny? = nil
             if let dataToEncode = actualTreeData { // dataToEncode is AccessibilityElementNode?
@@ -103,10 +113,10 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
                     let encodedData = try jsonEncoder.encode(dataToEncode) // Encodes AccessibilityElementNode
                     treeAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: encodedData)
                     if let treeDataForLog = try? jsonEncoder.encode(treeAsJsonAny), let treeStringForLog = String(data: treeDataForLog, encoding: .utf8) {
-                        FileHandle.standardError.write("[IOBridge] treeAsJsonAny (after encoding actualTreeData): \(treeStringForLog) for ID: \(request.id)\n".data(using: .utf8)!)
+                        logToStderr("[IOBridge] treeAsJsonAny (after encoding actualTreeData): \(treeStringForLog) for ID: \(request.id)")
                     }
                 } catch {
-                    FileHandle.standardError.write("[IOBridge] Error encoding actualTreeData to JSONAny: \(error.localizedDescription) for ID: \(request.id)\n".data(using: .utf8)!)
+                    logToStderr("[IOBridge] Error encoding actualTreeData to JSONAny: \(error.localizedDescription) for ID: \(request.id)")
                 }
             }
             
@@ -114,10 +124,10 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
             do {
                 let resultPayloadForLogData = try jsonEncoder.encode(resultPayload)
                 if let resultPayloadStringForLog = String(data: resultPayloadForLogData, encoding: .utf8) {
-                    FileHandle.standardError.write("[IOBridge] GetAccessibilityTreeDetailsResultSchema (resultPayload) before final encoding: \(resultPayloadStringForLog) for ID: \(request.id)\n".data(using: .utf8)!)
+                    logToStderr("[IOBridge] GetAccessibilityTreeDetailsResultSchema (resultPayload) before final encoding: \(resultPayloadStringForLog) for ID: \(request.id)")
                 }
             } catch {
-                 FileHandle.standardError.write("[IOBridge] Error encoding resultPayload for logging: \(error.localizedDescription) for ID: \(request.id)\n".data(using: .utf8)!)
+                 logToStderr("[IOBridge] Error encoding resultPayload for logging: \(error.localizedDescription) for ID: \(request.id)")
             }
             
             var resultAsJsonAny: JSONAny? = nil
@@ -125,12 +135,58 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
                 let resultPayloadData = try jsonEncoder.encode(resultPayload)
                 resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultPayloadData)
             } catch {
-                 FileHandle.standardError.write("Error encoding GetAccessibilityTreeDetailsResultSchema to JSONAny: \(error.localizedDescription)\n".data(using: .utf8)!)
+                 logToStderr("Error encoding GetAccessibilityTreeDetailsResultSchema to JSONAny: \(error.localizedDescription)")
+            }
+            rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+        
+        case .getAccessibilityContext:
+            var contextParams: GetAccessibilityContextParamsSchema? = nil
+            logToStderr("[IOBridge] Handling getAccessibilityContext for ID: \(request.id)")
+            if let paramsAnyCodable = request.params {
+                do {
+                    let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                    contextParams = try jsonDecoder.decode(GetAccessibilityContextParamsSchema.self, from: paramsData)
+                    logToStderr("[IOBridge] Decoded contextParams.editableOnly: \(contextParams?.editableOnly ?? false) for ID: \(request.id)")
+                } catch {
+                    logToStderr("[IOBridge] Error decoding getAccessibilityContext params: \(error.localizedDescription)")
+                    let errPayload = Error(code: -32602, data: request.params, message: "Invalid params: \(error.localizedDescription)")
+                    rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                    sendRpcResponse(rpcResponse)
+                    return
+                }
+            }
+            
+            // Get accessibility context using the new service
+            let editableOnly = contextParams?.editableOnly ?? false
+            let contextData = AccessibilityContextService.getAccessibilityContext(editableOnly: editableOnly)
+            
+            logToStderr("[IOBridge] Fetched contextData from AccessibilityContextService. Is nil? \(contextData == nil). For ID: \(request.id)")
+            
+            var contextAsJsonAny: JSONAny? = nil
+            if let dataToEncode = contextData {
+                do {
+                    let encodedData = try jsonEncoder.encode(dataToEncode)
+                    contextAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: encodedData)
+                    if let contextDataForLog = try? jsonEncoder.encode(contextAsJsonAny), let contextStringForLog = String(data: contextDataForLog, encoding: .utf8) {
+                        logToStderr("[IOBridge] contextAsJsonAny (after encoding contextData): \(contextStringForLog) for ID: \(request.id)")
+                    }
+                } catch {
+                    logToStderr("[IOBridge] Error encoding contextData to JSONAny: \(error.localizedDescription) for ID: \(request.id)")
+                }
+            }
+            
+            let resultPayload = GetAccessibilityContextResultSchema(context: contextData)
+            var resultAsJsonAny: JSONAny? = nil
+            do {
+                let resultPayloadData = try jsonEncoder.encode(resultPayload)
+                resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultPayloadData)
+            } catch {
+                logToStderr("Error encoding GetAccessibilityContextResultSchema to JSONAny: \(error.localizedDescription)")
             }
             rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
         
         case .pasteText: // Corrected to use enum case
-            FileHandle.standardError.write("[IOBridge] Handling pasteText for ID: \(request.id)\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Handling pasteText for ID: \(request.id)")
             guard let paramsAnyCodable = request.params else {
                 let errPayload = Error(code: -32602, data: nil, message: "Missing params for pasteText")
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
@@ -142,7 +198,7 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
                 let paramsData = try jsonEncoder.encode(paramsAnyCodable)
                 // Corrected to use generated Swift model name from models.swift
                 let pasteParams = try jsonDecoder.decode(PasteTextParamsSchema.self, from: paramsData) 
-                FileHandle.standardError.write("[IOBridge] Decoded pasteParams.transcript for ID: \(request.id)\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Decoded pasteParams.transcript for ID: \(request.id)")
                 
                 // Call the actual paste function (to be implemented in AccessibilityService or similar)
                 let success = accessibilityService.pasteText(transcript: pasteParams.transcript)
@@ -154,21 +210,23 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
                 rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
 
             } catch {
-                FileHandle.standardError.write("[IOBridge] Error processing pasteText params or operation: \(error.localizedDescription) for ID: \(request.id)\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Error processing pasteText params or operation: \(error.localizedDescription) for ID: \(request.id)")
                 let errPayload = Error(code: -32602, data: request.params, message: "Invalid params or error during paste: \(error.localizedDescription)")
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
         
         case .muteSystemAudio:
-            FileHandle.standardError.write("[IOBridge] Handling muteSystemAudio for ID: \(request.id)\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Handling muteSystemAudio for ID: \(request.id)")
             
             playSound(named: "rec-start") { [weak self] in
                 guard let self = self else {
-                    FileHandle.standardError.write("[IOBridge] self is nil in playSound completion for muteSystemAudio. ID: \(request.id)\n".data(using: .utf8)!)
+                    let timestamp = DateFormatter().string(from: Date())
+                    let logMessage = "[\(timestamp)] [IOBridge] self is nil in playSound completion for muteSystemAudio. ID: \(request.id)\n"
+                    FileHandle.standardError.write(logMessage.data(using: .utf8)!)
                     return
                 }
 
-                FileHandle.standardError.write("[IOBridge] rec-start.mp3 finished playing successfully. Proceeding to mute system audio. ID: \(request.id)\n".data(using: .utf8)!)
+                self.logToStderr("[IOBridge] rec-start.mp3 finished playing successfully. Proceeding to mute system audio. ID: \(request.id)")
                 let success = self.accessibilityService.muteSystemAudio()
                 let resultPayload = MuteSystemAudioResultSchema(message: success ? "Mute command sent" : "Failed to send mute command", success: success)
                 
@@ -178,7 +236,7 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
                     let resultAsJsonAny = try self.jsonDecoder.decode(JSONAny.self, from: resultData)
                     responseToSend = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
                 } catch {
-                    FileHandle.standardError.write("[IOBridge] Error encoding muteSystemAudio result: \(error.localizedDescription) for ID: \(request.id)\n".data(using: .utf8)!)
+                    self.logToStderr("[IOBridge] Error encoding muteSystemAudio result: \(error.localizedDescription) for ID: \(request.id)")
                     let errPayload = Error(code: -32603, data: nil, message: "Error encoding result: \(error.localizedDescription)")
                     responseToSend = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
                 }
@@ -187,7 +245,7 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
             return
 
         case .restoreSystemAudio:
-            FileHandle.standardError.write("[IOBridge] Handling restoreSystemAudio for ID: \(request.id)\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Handling restoreSystemAudio for ID: \(request.id)")
             
             let success = accessibilityService.restoreSystemAudio()
             if success { // Play sound only if restore was successful
@@ -200,13 +258,13 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
                 let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
                 rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
             } catch {
-                FileHandle.standardError.write("[IOBridge] Error encoding pauseSystemAudio result: \(error.localizedDescription) for ID: \(request.id)\n".data(using: .utf8)!)
+                logToStderr("[IOBridge] Error encoding pauseSystemAudio result: \(error.localizedDescription) for ID: \(request.id)")
                 let errPayload = Error(code: -32603, data: nil, message: "Error encoding result: \(error.localizedDescription)")
                 rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: nil)
             }
 
         default:
-            FileHandle.standardError.write("[IOBridge] Method not found: \(request.method) for ID: \(request.id)\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Method not found: \(request.method) for ID: \(request.id)")
             let errPayload = Error(code: -32601, data: nil, message: "Method not found: \(request.method)")
             rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
         }
@@ -217,48 +275,48 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
         do {
             let responseData = try jsonEncoder.encode(response)
             if let responseString = String(data: responseData, encoding: .utf8) {
-                FileHandle.standardError.write("[Swift Biz Logic] FINAL JSON RESPONSE to stdout: \(responseString)\n".data(using: .utf8)!)
+                logToStderr("[Swift Biz Logic] FINAL JSON RESPONSE to stdout: \(responseString)")
                 print(responseString)
                 fflush(stdout)
             }
         } catch {
-            FileHandle.standardError.write("Error encoding RpcResponse: \(error.localizedDescription)\n".data(using: .utf8)!)
+            logToStderr("Error encoding RpcResponse: \(error.localizedDescription)")
         }
     }
 
     // Main loop for processing RPC requests from stdin
     func processRpcRequests() {
-        FileHandle.standardError.write("IOBridge: Starting RPC request processing loop.\n".data(using: .utf8)!)
+        logToStderr("IOBridge: Starting RPC request processing loop.")
         while let line = readLine(strippingNewline: true) {
             guard !line.isEmpty, let data = line.data(using: .utf8) else {
-                FileHandle.standardError.write("Warning: Received empty or non-UTF8 line on stdin.\n".data(using: .utf8)!)
+                logToStderr("Warning: Received empty or non-UTF8 line on stdin.")
                 continue
             }
 
             do {
                 let rpcRequest = try jsonDecoder.decode(RPCRequestSchema.self, from: data)
-                FileHandle.standardError.write("IOBridge: Received RPC Request ID \(rpcRequest.id), Method: \(rpcRequest.method)\n".data(using: .utf8)!)
+                logToStderr("IOBridge: Received RPC Request ID \(rpcRequest.id), Method: \(rpcRequest.method)")
                 handleRpcRequest(rpcRequest)
             } catch {
-                FileHandle.standardError.write("Error decoding RpcRequest from stdin: \(error.localizedDescription). Line: \(line)\n".data(using: .utf8)!)
+                logToStderr("Error decoding RpcRequest from stdin: \(error.localizedDescription). Line: \(line)")
                 // Consider sending a parse error if ID can be extracted
             }
         }
-        FileHandle.standardError.write("IOBridge: RPC request processing loop finished (stdin closed).\n".data(using: .utf8)!)
+        logToStderr("IOBridge: RPC request processing loop finished (stdin closed).")
     }
 
     // MARK: - AVAudioPlayerDelegate
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        FileHandle.standardError.write("[IOBridge] Sound playback finished (player URL: \(player.url?.lastPathComponent ?? "unknown"), successfully: \(flag)).\n".data(using: .utf8)!)
+        logToStderr("[IOBridge] Sound playback finished (player URL: \(player.url?.lastPathComponent ?? "unknown"), successfully: \(flag)).")
         
         let handlerToCall = audioCompletionHandler
         audioCompletionHandler = nil
 
         if flag {
-            FileHandle.standardError.write("[IOBridge] Sound finished successfully. Executing completion handler.\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Sound finished successfully. Executing completion handler.")
             handlerToCall?()
         } else {
-            FileHandle.standardError.write("[IOBridge] Sound did not finish successfully (e.g., stopped or error). Not executing completion handler.\n".data(using: .utf8)!)
+            logToStderr("[IOBridge] Sound did not finish successfully (e.g., stopped or error). Not executing completion handler.")
         }
     }
 }

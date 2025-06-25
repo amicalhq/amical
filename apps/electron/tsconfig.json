@@ -14,10 +14,11 @@
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "strict": true,
     "baseUrl": ".",
+    "noEmit": true,
     "paths": {
       "@/*": ["src/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*", "forge.config.ts", "vite.*.config.mts", "drizzle.config.ts"],
+  "exclude": ["node_modules", "dist", ".vite", "out"]
 }

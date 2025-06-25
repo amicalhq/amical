@@ -1,3 +1,7 @@
+// Load .env file FIRST before any other imports
+import dotenv from 'dotenv';
+dotenv.config();
+
 import {
   app,
   BrowserWindow,
@@ -9,18 +13,22 @@ import {
 } from 'electron';
 import path from 'node:path';
 import fsPromises from 'node:fs/promises'; // For reading the audio file (async)
-import dotenv from 'dotenv';
 import started from 'electron-squirrel-startup';
-import Store from 'electron-store';
-//import { runMigrations } from '../db/migrate';
+import { initializeDatabase } from '../db/config';
 import { HelperEvent, KeyEventPayload } from '@amical/types';
-
-dotenv.config(); // Load .env file
+import { logger, logError, logPerformance } from './logger';
 import { AudioCapture } from '../modules/audio/audio-capture';
 import { setupApplicationMenu } from './menu';
-import { OpenAIWhisperClient } from '../modules/ai/openai-whisper-client';
 import { AiService } from '../modules/ai/ai-service';
 import { SwiftIOBridge } from './swift-io-bridge'; // Added import
+import { DownloadedModel } from '../constants/models';
+import { ModelManagerService } from '../modules/models/model-manager';
+import { LocalWhisperClient } from '../modules/ai/local-whisper-client';
+import { TranscriptionSession, ChunkData } from '../modules/transcription/transcription-session';
+import { ContextualTranscriptionManager } from '../modules/transcription/contextual-transcription-manager';
+import { SettingsService } from '../modules/settings';
+import { createIPCHandler } from 'electron-trpc-experimental/main';
+import { router } from '../trpc/router';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -37,22 +45,357 @@ let floatingButtonWindow: BrowserWindow | null = null;
 let audioCapture: AudioCapture | null = null;
 let aiService: AiService | null = null;
 let swiftIOBridgeClientInstance: SwiftIOBridge | null = null;
-let openAiApiKey: string | null = null;
+let modelManagerService: ModelManagerService | null = null;
+let localWhisperClient: LocalWhisperClient | null = null;
 let currentWindowDisplayId: number | null = null; // For tracking current display
 let activeSpaceChangeSubscriptionId: number | null = null; // For display change notifications
 
-interface StoreSchema {
-  'openai-api-key': string;
-}
+// New chunk-based transcription variables
+let contextualTranscriptionManager: ContextualTranscriptionManager | null = null;
+const activeTranscriptionSessions: Map<string, TranscriptionSession> = new Map();
 
-const store = new Store<StoreSchema>();
+// Store is imported from '../lib/store' and is database-backed
 
-ipcMain.handle('set-api-key', (event, apiKey: string) => {
-  console.log('Main: Received set-api-key', event, ' API key:', apiKey);
-  openAiApiKey = apiKey;
-  store.set('openai-api-key', apiKey);
+// Function to create the local transcription client
+const createTranscriptionClient = () => {
+  logger.ai.info('Using local Whisper inference');
+  if (!localWhisperClient) {
+    throw new Error('Local Whisper client not initialized');
+  }
+  return localWhisperClient;
+};
+
+// Model Management IPC Handlers
+ipcMain.handle('get-available-models', () => {
+  return modelManagerService?.getAvailableModels() || [];
 });
 
+ipcMain.handle('get-downloaded-models', async () => {
+  return modelManagerService ? await modelManagerService.getDownloadedModels() : {};
+});
+
+ipcMain.handle('is-model-downloaded', async (event, modelId: string) => {
+  return modelManagerService ? await modelManagerService.isModelDownloaded(modelId) : false;
+});
+
+ipcMain.handle('get-download-progress', (event, modelId: string) => {
+  return modelManagerService?.getDownloadProgress(modelId) || null;
+});
+
+ipcMain.handle('get-active-downloads', () => {
+  return modelManagerService?.getActiveDownloads() || [];
+});
+
+ipcMain.handle('download-model', async (event, modelId: string) => {
+  if (!modelManagerService) {
+    throw new Error('Model manager service not initialized');
+  }
+  return await modelManagerService.downloadModel(modelId);
+});
+
+ipcMain.handle('cancel-download', (event, modelId: string) => {
+  if (!modelManagerService) {
+    throw new Error('Model manager service not initialized');
+  }
+  return modelManagerService.cancelDownload(modelId);
+});
+
+ipcMain.handle('delete-model', (event, modelId: string) => {
+  if (!modelManagerService) {
+    throw new Error('Model manager service not initialized');
+  }
+  return modelManagerService.deleteModel(modelId);
+});
+
+ipcMain.handle('get-models-directory', () => {
+  return modelManagerService?.getModelsDirectory() || '';
+});
+
+// Local Whisper IPC Handlers
+ipcMain.handle('is-local-whisper-available', async () => {
+  return localWhisperClient ? await localWhisperClient.isAvailable() : false;
+});
+
+ipcMain.handle('get-local-whisper-models', async () => {
+  return localWhisperClient ? await localWhisperClient.getAvailableModels() : [];
+});
+
+ipcMain.handle('get-selected-model', () => {
+  return localWhisperClient ? localWhisperClient.getSelectedModel() : null;
+});
+
+ipcMain.handle('set-selected-model', async (event, modelId: string) => {
+  if (!localWhisperClient) {
+    throw new Error('Local whisper client not initialized');
+  }
+  return await localWhisperClient.setSelectedModel(modelId);
+});
+
+ipcMain.handle('set-whisper-executable-path', (event, path: string) => {
+  if (!localWhisperClient) {
+    throw new Error('Local whisper client not initialized');
+  }
+  // Executable path setting is no longer needed with smart-whisper
+  logger.ai.info('Whisper executable path setting skipped - using smart-whisper integration');
+});
+
+// Formatter Configuration IPC Handlers
+ipcMain.handle('get-formatter-config', async () => {
+  try {
+    const settingsService = SettingsService.getInstance();
+    return await settingsService.getFormatterConfig();
+  } catch (error) {
+    logger.ai.error('Error getting formatter config:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('set-formatter-config', async (event, config) => {
+  try {
+    const settingsService = SettingsService.getInstance();
+    await settingsService.setFormatterConfig(config);
+
+    // Update AI service with new formatter configuration
+    if (aiService) {
+      aiService.configureFormatter(config);
+      logger.ai.info('Formatter configuration updated');
+    }
+
+    return true;
+  } catch (error) {
+    logger.ai.error('Error setting formatter config:', error);
+    throw error;
+  }
+});
+
+// Transcription Database API
+ipcMain.handle('get-transcriptions', async (event, options = {}) => {
+  try {
+    const { getTranscriptions } = await import('../db/transcriptions');
+    return await getTranscriptions(options);
+  } catch (error) {
+    logger.db.error('Error getting transcriptions', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-transcription-by-id', async (event, id: number) => {
+  try {
+    const { getTranscriptionById } = await import('../db/transcriptions');
+    return await getTranscriptionById(id);
+  } catch (error) {
+    logger.db.error('Error getting transcription by ID', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('create-transcription', async (event, data) => {
+  try {
+    const { createTranscription } = await import('../db/transcriptions');
+    return await createTranscription(data);
+  } catch (error) {
+    logger.db.error('Error creating transcription', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('update-transcription', async (event, id: number, data) => {
+  try {
+    const { updateTranscription } = await import('../db/transcriptions');
+    return await updateTranscription(id, data);
+  } catch (error) {
+    logger.db.error('Error updating transcription', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('delete-transcription', async (event, id: number) => {
+  try {
+    const { deleteTranscription } = await import('../db/transcriptions');
+    return await deleteTranscription(id);
+  } catch (error) {
+    logger.db.error('Error deleting transcription', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-transcriptions-count', async (event, search?: string) => {
+  try {
+    const { getTranscriptionsCount } = await import('../db/transcriptions');
+    return await getTranscriptionsCount(search);
+  } catch (error) {
+    logger.db.error('Error getting transcriptions count', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('search-transcriptions', async (event, searchTerm: string, limit = 20) => {
+  try {
+    const { searchTranscriptions } = await import('../db/transcriptions');
+    return await searchTranscriptions(searchTerm, limit);
+  } catch (error) {
+    logger.db.error('Error searching transcriptions', {
+      searchTerm,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+// Vocabulary Database API
+ipcMain.handle('get-vocabulary', async (event, options = {}) => {
+  try {
+    const { getVocabulary } = await import('../db/vocabulary');
+    return await getVocabulary(options);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-vocabulary-by-id', async (event, id: number) => {
+  try {
+    const { getVocabularyById } = await import('../db/vocabulary');
+    return await getVocabularyById(id);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary by ID', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-vocabulary-by-word', async (event, word: string) => {
+  try {
+    const { getVocabularyByWord } = await import('../db/vocabulary');
+    return await getVocabularyByWord(word);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary by word', {
+      word,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('create-vocabulary-word', async (event, data) => {
+  try {
+    const { createVocabularyWord } = await import('../db/vocabulary');
+    return await createVocabularyWord(data);
+  } catch (error) {
+    logger.db.error('Error creating vocabulary word', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('update-vocabulary', async (event, id: number, data) => {
+  try {
+    const { updateVocabulary } = await import('../db/vocabulary');
+    return await updateVocabulary(id, data);
+  } catch (error) {
+    logger.db.error('Error updating vocabulary', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('delete-vocabulary', async (event, id: number) => {
+  try {
+    const { deleteVocabulary } = await import('../db/vocabulary');
+    return await deleteVocabulary(id);
+  } catch (error) {
+    logger.db.error('Error deleting vocabulary', {
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-vocabulary-count', async (event, search?: string) => {
+  try {
+    const { getVocabularyCount } = await import('../db/vocabulary');
+    return await getVocabularyCount(search);
+  } catch (error) {
+    logger.db.error('Error getting vocabulary count', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('search-vocabulary', async (event, searchTerm: string, limit = 20) => {
+  try {
+    const { searchVocabulary } = await import('../db/vocabulary');
+    return await searchVocabulary(searchTerm, limit);
+  } catch (error) {
+    logger.db.error('Error searching vocabulary', {
+      searchTerm,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('bulk-import-vocabulary', async (event, words) => {
+  try {
+    const { bulkImportVocabulary } = await import('../db/vocabulary');
+    return await bulkImportVocabulary(words);
+  } catch (error) {
+    logger.db.error('Error bulk importing vocabulary', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('track-word-usage', async (event, word: string) => {
+  try {
+    const { trackWordUsage } = await import('../db/vocabulary');
+    return await trackWordUsage(word);
+  } catch (error) {
+    logger.db.error('Error tracking word usage', {
+      word,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+ipcMain.handle('get-most-used-words', async (event, limit = 10) => {
+  try {
+    const { getMostUsedWords } = await import('../db/vocabulary');
+    return await getMostUsedWords(limit);
+  } catch (error) {
+    logger.db.error('Error getting most used words', {
+      limit,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
 const requestPermissions = async () => {
   try {
     // Request accessibility permissions
@@ -69,25 +412,28 @@ const requestPermissions = async () => {
 
     // Request microphone permissions
     const microphoneEnabled = systemPreferences.getMediaAccessStatus('microphone');
-    console.log('Main: Microphone access status:', microphoneEnabled);
+    logger.main.info('Microphone access status:', { status: microphoneEnabled });
     if (microphoneEnabled !== 'granted') {
       await systemPreferences.askForMediaAccess('microphone');
     }
   } catch (error) {
-    console.error('Error requesting permissions:', error);
+    logError(error instanceof Error ? error : new Error(String(error)), 'requesting permissions');
   }
 };
 
-const createOrShowSettingsWindow = () => {
+const createOrShowMainWindow = () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     mainWindow.focus();
     return;
   }
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    frame: true,
+    width: 1200,
+    height: 800,
+    frame: false,
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 20, y: 16 },
+    useContentSize: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -101,6 +447,12 @@ const createOrShowSettingsWindow = () => {
   }
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Update tRPC handler to include the main window
+  createIPCHandler({
+    router,
+    windows: [mainWindow, floatingButtonWindow].filter(Boolean) as BrowserWindow[],
   });
 };
 
@@ -153,17 +505,23 @@ const createFloatingButtonWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
-  // Run database migrations first
+  // Initialize database and run migrations first
   try {
-    //runMigrations();
-    console.log('Database migrations completed successfully');
+    await initializeDatabase();
+    logger.db.info('Database initialized and migrations completed successfully');
   } catch (error) {
-    console.error('Failed to run database migrations:', error);
+    logError(error instanceof Error ? error : new Error(String(error)), 'initializing database');
     // You might want to handle this error differently, perhaps showing a dialog to the user
   }
 
   await requestPermissions();
   createFloatingButtonWindow();
+
+  // Setup tRPC IPC handler
+  createIPCHandler({
+    router,
+    windows: [floatingButtonWindow],
+  });
 
   if (process.platform === 'darwin' && app.dock) {
     app.dock.show();
@@ -171,60 +529,230 @@ app.on('ready', async () => {
 
   audioCapture = new AudioCapture();
 
-  openAiApiKey = store.get('openai-api-key') || null;
-  if (openAiApiKey) {
-    console.log('Main: Loaded API key from store.');
-  } else {
-    console.log('Main: No API key found in store.');
-  }
+  // Initialize Model Manager Service
+  modelManagerService = new ModelManagerService();
+  await modelManagerService.initialize();
 
-  if (!openAiApiKey) {
-    console.warn('OPENAI_API_KEY not provided. Transcription will not work.');
-  } else {
+  // Initialize Local Whisper Client
+  localWhisperClient = new LocalWhisperClient(modelManagerService);
+
+  // Initialize Contextual Transcription Manager
+  contextualTranscriptionManager = new ContextualTranscriptionManager(modelManagerService);
+
+  // Set up model manager event listeners
+  modelManagerService.on('download-progress', (modelId, progress) => {
+    // Send progress updates to all windows
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('model-download-progress', modelId, progress);
+    });
+  });
+
+  modelManagerService.on('download-complete', (modelId, downloadedModel) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('model-download-complete', modelId, downloadedModel);
+    });
+  });
+
+  modelManagerService.on('download-error', (modelId, error) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('model-download-error', modelId, error.message);
+    });
+  });
+
+  modelManagerService.on('download-cancelled', (modelId) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('model-download-cancelled', modelId);
+    });
+  });
+
+  modelManagerService.on('model-deleted', (modelId) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('model-deleted', modelId);
+    });
+  });
+
+  // Initialize AI service with the appropriate client based on configuration
+  try {
+    const transcriptionClient = createTranscriptionClient();
+    aiService = new AiService(transcriptionClient);
+
+    // Load and configure formatter
     try {
-      const whisperClient = new OpenAIWhisperClient(openAiApiKey);
-      aiService = new AiService(whisperClient);
-      console.log('AI Service initialized with OpenAI Whisper client.');
-    } catch (error) {
-      console.error('Failed to initialize AI Service:', error);
+      const settingsService = SettingsService.getInstance();
+      const formatterConfig = await settingsService.getFormatterConfig();
+      if (formatterConfig) {
+        aiService.configureFormatter(formatterConfig);
+        logger.ai.info('Formatter configured', {
+          provider: formatterConfig.provider,
+          enabled: formatterConfig.enabled,
+        });
+      }
+    } catch (formatterError) {
+      logger.ai.warn('Failed to load formatter configuration:', formatterError);
     }
+
+    logger.ai.info('AI Service initialized', {
+      client: 'Local Whisper',
+    });
+  } catch (error) {
+    logError(error instanceof Error ? error : new Error(String(error)), 'initializing AI Service');
+    logger.ai.warn('Transcription will not work until configuration is fixed');
+    aiService = null;
   }
 
   audioCapture.on('recording-finished', async (filePath: string) => {
-    openAiApiKey = store.get('openai-api-key') || 'test123'; // Ensure there is a fallback or handle error
-    const whisperClient = new OpenAIWhisperClient(openAiApiKey); // Re-init or ensure client is valid
-    aiService = new AiService(whisperClient); // Re-init or ensure service is valid
+    // Ensure AI service is available and up-to-date
+    if (!aiService) {
+      try {
+        const transcriptionClient = createTranscriptionClient();
+        aiService = new AiService(transcriptionClient);
 
-    console.log(`Main: Recording finished, file available at: ${filePath}`);
+        // Load and configure formatter
+        try {
+          const settingsService = SettingsService.getInstance();
+          const formatterConfig = await settingsService.getFormatterConfig();
+          if (formatterConfig) {
+            aiService.configureFormatter(formatterConfig);
+            logger.ai.info('Formatter reconfigured', {
+              provider: formatterConfig.provider,
+              enabled: formatterConfig.enabled,
+            });
+          }
+        } catch (formatterError) {
+          logger.ai.warn('Failed to reload formatter configuration:', formatterError);
+        }
+
+        logger.ai.info('AI Service reinitialized', {
+          client: 'Local Whisper',
+        });
+      } catch (error) {
+        logError(
+          error instanceof Error ? error : new Error(String(error)),
+          'reinitializing AI Service'
+        );
+      }
+    }
+
+    logger.audio.info('Recording finished', { filePath });
     if (aiService) {
       try {
+        const startTime = Date.now();
         const audioBuffer = await fsPromises.readFile(filePath);
-        console.log(`Main: Read audio file of size: ${audioBuffer.length} bytes. Transcribing...`);
+        logger.audio.info('Audio file read', {
+          size: audioBuffer.length,
+          sizeKB: Math.round(audioBuffer.length / 1024),
+        });
+
         const transcription = await aiService.transcribeAudio(audioBuffer);
-        console.log('Main: Transcription result:', transcription);
+        logPerformance('audio transcription', startTime, {
+          audioSizeKB: Math.round(audioBuffer.length / 1024),
+          transcriptionLength: transcription?.length || 0,
+        });
+        logger.ai.info('Transcription completed', {
+          resultLength: transcription?.length || 0,
+          hasResult: !!transcription,
+        });
 
         // Copy transcription to clipboard
         if (transcription && typeof transcription === 'string') {
-          console.log('Main: Transcription copied to clipboard.');
+          logger.main.info('Transcription pasted to active application');
           // Attempt to paste into the active application
           swiftIOBridgeClientInstance!.call('pasteText', { transcript: transcription });
         } else {
-          console.warn('Main: Transcription result was empty or not a string, not copying.');
+          logger.main.warn('Transcription result was empty or not a string, not copying');
         }
 
         // Optionally, delete the audio file after processing
         // await fs.unlink(filePath);
         // console.log(`Main: Deleted audio file: ${filePath}`);
       } catch (error) {
-        console.error('Main: Error during transcription or file handling:', error);
+        logError(
+          error instanceof Error ? error : new Error(String(error)),
+          'transcription or file handling'
+        );
       }
     } else {
-      console.warn('Main: AI Service not available, cannot transcribe audio.');
+      logger.ai.warn('AI Service not available, cannot transcribe audio');
     }
   });
 
   audioCapture.on('recording-error', (error: Error) => {
     console.error('Main: Received recording error from AudioCapture:', error);
+  });
+
+  // Handle individual audio chunks for real-time transcription
+  audioCapture.on('chunk-ready', async (chunkData: ChunkData) => {
+    logger.audio.info('Received chunk for transcription', {
+      sessionId: chunkData.sessionId,
+      chunkId: chunkData.chunkId,
+      audioDataSize: chunkData.audioData.length,
+      isFinalChunk: chunkData.isFinalChunk,
+    });
+
+    try {
+      // Get or create transcription session for this recording session
+      let transcriptionSession = activeTranscriptionSessions.get(chunkData.sessionId);
+
+      if (!transcriptionSession) {
+        // Create new transcription session
+        const transcriptionClient = contextualTranscriptionManager!.createDefaultClient();
+
+        transcriptionSession = new TranscriptionSession(chunkData.sessionId, transcriptionClient);
+        activeTranscriptionSessions.set(chunkData.sessionId, transcriptionSession);
+
+        // Set up session event handlers
+        transcriptionSession.on('chunk-completed', (result) => {
+          logger.ai.info('Chunk transcription completed', {
+            sessionId: chunkData.sessionId,
+            chunkId: result.chunkId,
+            textLength: result.text.length,
+            processingTimeMs: result.processingTimeMs,
+          });
+        });
+
+        transcriptionSession.on('session-completed', (sessionResult) => {
+          logger.ai.info('Transcription session completed', {
+            sessionId: sessionResult.sessionId,
+            finalTextLength: sessionResult.finalText.length,
+            totalChunks: sessionResult.chunkResults.length,
+            totalProcessingTimeMs: sessionResult.totalProcessingTimeMs,
+          });
+
+          // Paste the final result to active application
+          if (sessionResult.finalText && sessionResult.finalText.trim().length > 0) {
+            logger.main.info('Final transcription pasted to active application', {
+              textLength: sessionResult.finalText.length,
+            });
+            swiftIOBridgeClientInstance!.call('pasteText', { transcript: sessionResult.finalText });
+          } else {
+            logger.main.warn('Final transcription was empty, not pasting');
+          }
+
+          // Clean up completed session
+          activeTranscriptionSessions.delete(chunkData.sessionId);
+        });
+
+        transcriptionSession.on('chunk-error', (errorInfo) => {
+          logger.ai.error('Chunk transcription error', {
+            sessionId: chunkData.sessionId,
+            chunkId: errorInfo.chunkId,
+            error: errorInfo.error,
+          });
+          // Continue processing other chunks even if one fails
+        });
+
+        logger.ai.info('Created new transcription session', { sessionId: chunkData.sessionId });
+      }
+
+      // Add chunk to session for processing
+      transcriptionSession.addChunk(chunkData);
+    } catch (error) {
+      logger.ai.error('Error handling chunk-ready event', {
+        sessionId: chunkData.sessionId,
+        chunkId: chunkData.chunkId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   // Handle audio data chunks from renderer
@@ -250,6 +778,32 @@ app.on('ready', async () => {
 
   ipcMain.handle('recording-starting', async () => {
     console.log('Main: Received recording-starting event.');
+
+    // Preload the transcription model for fast processing
+    try {
+      if (contextualTranscriptionManager) {
+        if (!contextualTranscriptionManager.isModelLoaded()) {
+          logger.ai.info('Preloading transcription model for recording session');
+          await contextualTranscriptionManager.preloadModel();
+          logger.ai.info('Transcription model preloaded successfully');
+        } else {
+          logger.ai.info('Transcription model already loaded');
+        }
+      }
+    } catch (error) {
+      logger.ai.error('Error preloading transcription model', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Get accessibility context when recording starts
+    try {
+      //const accessibilityContext = await swiftIOBridgeClientInstance!.call('getAccessibilityContext', { editableOnly: true });
+      //console.log('Main: Accessibility context captured:', JSON.stringify(accessibilityContext, null, 2));
+    } catch (error) {
+      console.error('Main: Error getting accessibility context:', error);
+    }
+
     await swiftIOBridgeClientInstance!.call('muteSystemAudio', {});
   });
 
@@ -262,38 +816,37 @@ app.on('ready', async () => {
   swiftIOBridgeClientInstance = new SwiftIOBridge();
 
   swiftIOBridgeClientInstance.on('helperEvent', (event: HelperEvent) => {
-    console.log('Main: Received helperEvent from SwiftIOBridge:', JSON.stringify(event, null, 2));
+    logger.swift.debug('Received helperEvent from SwiftIOBridge', { event });
 
     switch (event.type) {
       case 'flagsChanged': {
         const payload = event.payload;
-        console.log(
-          'Main: Received flagsChanged event. Fn key pressed state:',
-          payload?.fnKeyPressed
-        );
+        logger.swift.debug('Received flagsChanged event', {
+          fnKeyPressed: payload?.fnKeyPressed,
+        });
         // Use flagsChanged for more reliable Fn key state tracking
         if (payload?.fnKeyPressed !== undefined) {
-          console.log(`Main: Setting recording state to: ${payload.fnKeyPressed}`);
+          logger.swift.info('Setting recording state', { state: payload.fnKeyPressed });
           floatingButtonWindow!.webContents.send('recording-state-changed', payload.fnKeyPressed);
         }
         break;
       }
       case 'keyDown': {
         const payload = event.payload;
-        console.log(`Main: Received keyDown for key: ${payload?.key}.`);
+        // console.log(`Main: Received keyDown for key: ${payload?.key}.`);
         // Keep keyDown handling as fallback, but flagsChanged should be primary
         if (payload?.key?.toLowerCase() === 'fn') {
-          console.log('Main: Fn keyDown detected (fallback)');
+          // console.log('Main: Fn keyDown detected (fallback)');
           // Don't send recording-state-changed here as flagsChanged should handle it
         }
         break;
       }
       case 'keyUp': {
         const payload = event.payload;
-        console.log(`Main: Received keyUp for key: ${payload?.key}.`);
+        // console.log(`Main: Received keyUp for key: ${payload?.key}.`);
         // Keep keyUp handling as fallback, but flagsChanged should be primary
         if (payload?.key?.toLowerCase() === 'fn') {
-          console.log('Main: Fn keyUp detected (fallback)');
+          // console.log('Main: Fn keyUp detected (fallback)');
           // Don't send recording-state-changed here as flagsChanged should handle it
         }
         break;
@@ -306,21 +859,21 @@ app.on('ready', async () => {
   });
 
   swiftIOBridgeClientInstance.on('error', (error) => {
-    console.error('Main: SwiftIOBridge error:', error);
+    logError(error instanceof Error ? error : new Error(String(error)), 'SwiftIOBridge error');
     // Potentially notify the user or attempt to restart
   });
 
   swiftIOBridgeClientInstance.on('close', (code) => {
-    console.log(`Main: Swift helper process closed with code: ${code}`);
+    logger.swift.warn('Swift helper process closed', { code });
     // Handle unexpected close, maybe attempt restart
   });
 
-  setupApplicationMenu(createOrShowSettingsWindow);
+  setupApplicationMenu(createOrShowMainWindow);
 
   if (process.platform === 'darwin') {
     try {
-      console.log("Main: Setting up display change notifications");
-      
+      console.log('Main: Setting up display change notifications');
+
       activeSpaceChangeSubscriptionId = systemPreferences.subscribeWorkspaceNotification(
         'NSWorkspaceActiveDisplayDidChangeNotification',
         () => {
@@ -364,6 +917,14 @@ app.on('will-quit', () => {
     console.log('Main: Stopping Swift helper...');
     swiftIOBridgeClientInstance.stopHelper();
   }
+  if (modelManagerService) {
+    console.log('Main: Cleaning up model downloads...');
+    modelManagerService.cleanup();
+  }
+  if (contextualTranscriptionManager) {
+    console.log('Main: Cleaning up transcription models...');
+    contextualTranscriptionManager.dispose();
+  }
   if (process.platform === 'darwin' && activeSpaceChangeSubscriptionId !== null) {
     systemPreferences.unsubscribeWorkspaceNotification(activeSpaceChangeSubscriptionId);
     console.log('Main: Unsubscribed from display change notifications');
@@ -384,7 +945,7 @@ app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    // If no windows are open, just re-create the FAB. Settings window should be opened via menu.
+    // If no windows are open, create both FAB and main window
     createFloatingButtonWindow();
   } else {
     // If there are windows, ensure FAB is visible.
@@ -393,11 +954,9 @@ app.on('activate', () => {
     } else {
       floatingButtonWindow.show();
     }
-    // Optionally, if main window exists and is minimized, it could be shown,
-    // but the primary action of dock click is usually for the main app presence,
-    // which is now the FAB by default.
-    // If mainWindow and !mainWindow.isDestroyed() and mainWindow.isMinimized()
-    // mainWindow.restore();
+
+    // Always show/create the main window when dock icon is clicked
+    createOrShowMainWindow();
   }
 });
 
@@ -408,11 +967,11 @@ app.on('activate', () => {
 async function logAccessibilityTree() {
   if (swiftIOBridgeClientInstance && swiftIOBridgeClientInstance.isHelperRunning()) {
     try {
-      console.log('Main: Requesting full accessibility tree...');
+      // console.log('Main: Requesting full accessibility tree...');
       // Call with empty params for the whole tree, as per schema for GetAccessibilityTreeDetailsParams
       const result = await swiftIOBridgeClientInstance.call('getAccessibilityTreeDetails', {});
       // Using JSON.stringify to see the whole structure since it's 'any' for now
-      console.log('Main: Accessibility tree received:', JSON.stringify(result, null, 2));
+      // console.log('Main: Accessibility tree received:', JSON.stringify(result, null, 2));
     } catch (error) {
       console.error('Main: Error calling getAccessibilityTreeDetails:', error);
     }

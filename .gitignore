@@ -36,6 +36,8 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+CLAUDE.md
+.serena
 
 # Temp files
 /tmp

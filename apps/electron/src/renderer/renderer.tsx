@@ -26,55 +26,120 @@
  * ```
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Button } from '@/components/ui/button';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ipcLink } from 'electron-trpc-experimental/renderer';
+import superjson from 'superjson';
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/app-sidebar';
+import { ThemeProvider } from '@/components/theme-provider';
+import { TranscriptionsView } from '@/components/transcriptions-view';
+import { VocabularyView } from '@/components/vocabulary-view';
+import { ModelsView } from '@/components/models-view';
+import { SettingsView } from '@/components/settings-view';
 import '@/styles/globals.css';
-import ShortcutIndicator from '../components/ShortcutIndicator';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { SiteHeader } from '@/components/site-header';
+import { api } from '@/trpc/react';
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
 
 const NUM_WAVEFORM_BARS = 10; // This might be unused now
 
-const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState('');
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
-  const handleApiKeyChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setApiKey(event.target.value);
+// Create tRPC client
+const trpcClient = api.createClient({
+  links: [ipcLink({ transformer: superjson })],
+});
+
+const App: React.FC = () => {
+  const [currentView, setCurrentView] = useState(() => {
+    // Try to restore the view from localStorage, fallback to default
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('amical-current-view') || 'Voice Recording';
+    }
+    return 'Voice Recording';
+  });
+
+  const handleNavigation = (item: any) => {
+    setCurrentView(item.title);
+    // Save to localStorage to preserve during HMR
+    localStorage.setItem('amical-current-view', item.title);
   };
 
-  const handleSaveApiKey = () => {
-    window.electronAPI.setApiKey(apiKey);
-    alert('API Key sent to main process!');
+  const renderContent = () => {
+    switch (currentView) {
+      case 'Transcriptions':
+        return <TranscriptionsView />;
+      case 'Vocabulary':
+        return <VocabularyView />;
+      case 'Models':
+        return <ModelsView />;
+      case 'Settings':
+        return <SettingsView />;
+      default:
+        return (
+          <div className="space-y-4">
+            <h2 className="text-2xl font-bold">Welcome to Amical</h2>
+            <p>Select an option from the sidebar to get started.</p>
+          </div>
+        );
+    }
   };
 
   return (
-    <div className="flex-1 space-y-4 p-8 pt-6">
-      <Tabs defaultValue="dictionary" className="w-[400px]">
-        <TabsList>
-          <TabsTrigger value="dictionary">Dictionary</TabsTrigger>
-          <TabsTrigger value="api">Configure API Key</TabsTrigger>
-        </TabsList>
-        <TabsContent value="dictionary">Dictionary Tab Content</TabsContent>
-        <TabsContent value="api">API Key Configuration Content</TabsContent>
-        <TabsContent value="api">
-          <div>
-            <label htmlFor="apiKey">API Key:</label>
-            <input
-              type="password"
-              id="apiKey"
-              name="apiKey"
-              className="border rounded px-2 py-1"
-              value={apiKey}
-              onChange={handleApiKeyChange}
-            />
-            <Button onClick={handleSaveApiKey}>Save API Key</Button>
-          </div>
-        </TabsContent>
-      </Tabs>
-    </div>
+    <api.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SidebarProvider
+            style={
+              {
+                '--sidebar-width': 'calc(var(--spacing) * 72)',
+                '--header-height': 'calc(var(--spacing) * 12)',
+              } as React.CSSProperties
+            }
+          >
+            <div className="flex h-screen w-screen flex-col">
+              {/* Header spans full width with traffic light spacing */}
+              <SiteHeader currentView={currentView} />
+
+              <div className="flex flex-1">
+                <AppSidebar
+                  variant="inset"
+                  onNavigate={handleNavigation}
+                  currentView={currentView}
+                />
+                <SidebarInset>
+                  <div className="flex flex-1 flex-col">
+                    <div className="@container/main flex flex-1 flex-col">
+                      <div
+                        className="mx-auto w-full flex flex-col gap-4 md:gap-6"
+                        style={{
+                          maxWidth: 'var(--content-max-width)',
+                          padding: 'var(--content-padding)',
+                        }}
+                      >
+                        {renderContent()}
+                      </div>
+                    </div>
+                  </div>
+                </SidebarInset>
+              </div>
+            </div>
+          </SidebarProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </api.Provider>
   );
 };
 

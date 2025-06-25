@@ -18,12 +18,7 @@ export interface UseRecordingOutput {
   stopRecording: () => Promise<void>;
 }
 
-const cleanupMediaResources = (
-  vadInstance: MicVAD | null,
-  streamInstance: MediaStream | null,
-  mediaRecorderInstance: MediaRecorder | null,
-  onDataHandler: ((event: BlobEvent) => Promise<void>) | null
-) => {
+const cleanupMediaResources = (vadInstance: MicVAD | null, streamInstance: MediaStream | null) => {
   if (vadInstance) {
     try {
       vadInstance.destroy();
@@ -40,27 +35,18 @@ const cleanupMediaResources = (
       }
     });
   }
-  if (mediaRecorderInstance && onDataHandler) {
-    try {
-      mediaRecorderInstance.removeEventListener('dataavailable', onDataHandler);
-    } catch (e) {
-      console.error('Error removing dataavailable listener:', e);
-    }
-  }
   console.log('Helper: Media resources cleaned up.');
 };
 
 export const useRecording = ({
   onAudioChunk,
-  chunkDurationMs = 2000,
+  chunkDurationMs = 28000,
   onRecordingStartCallback,
   onRecordingStopCallback,
 }: UseRecordingParams): UseRecordingOutput => {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
   const [voiceDetected, setVoiceDetected] = useState(false);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const onDataHandlerRef = useRef<((event: BlobEvent) => Promise<void>) | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const vadRef = useRef<MicVAD | null>(null);
 
@@ -70,35 +56,46 @@ export const useRecording = ({
   const internalStopRecording = useCallback(
     async (callStopCallback: boolean) => {
       // This function assumes mutex is already acquired or not needed (e.g. unmount)
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        console.log('Hook: Internal: Calling mediaRecorder.stop().');
-        mediaRecorderRef.current.stop(); // Triggers final 'dataavailable'
-        // onRecordingStopCallback will be called by handleDataAvailable
-      } else {
-        // If no active media recorder, or already inactive
-        cleanupMediaResources(
-          vadRef.current,
-          streamRef.current,
-          mediaRecorderRef.current,
-          onDataHandlerRef.current
-        );
-        vadRef.current = null;
-        streamRef.current = null;
-        mediaRecorderRef.current = null;
-        onDataHandlerRef.current = null;
+      console.log('Hook: Internal: Stopping recording and sending final chunk...');
 
-        setRecordingStatus('idle');
-        setVoiceDetected(false);
-        if (callStopCallback && onRecordingStopCallback) {
-          try {
-            await onRecordingStopCallback();
-            console.log('Hook: onRecordingStopCallback executed (no active recorder).');
-          } catch (e) {
-            console.error('Hook: Error in onRecordingStopCallback (no active recorder):', e);
-          }
+      // Send final audio chunk before cleanup
+      try {
+        // Access the sendAudioChunk function from the current recording session
+        // We need to store this reference when starting recording
+        const sendFinalChunk = (window as any).currentSendAudioChunk;
+        if (sendFinalChunk) {
+          await sendFinalChunk(true); // Send final chunk
+          console.log('Hook: Final audio chunk sent.');
+        }
+      } catch (error) {
+        console.error('Hook: Error sending final audio chunk:', error);
+      }
+
+      // Cleanup all resources
+      cleanupMediaResources(vadRef.current, streamRef.current);
+
+      // Clear Web Audio API resources
+      const cleanup = (window as any).currentWebAudioCleanup;
+      if (cleanup) {
+        cleanup();
+        (window as any).currentWebAudioCleanup = null;
+        (window as any).currentSendAudioChunk = null;
+      }
+
+      vadRef.current = null;
+      streamRef.current = null;
+
+      setRecordingStatus('idle');
+      setVoiceDetected(false);
+
+      if (callStopCallback && onRecordingStopCallback) {
+        try {
+          await onRecordingStopCallback();
+          console.log('Hook: onRecordingStopCallback executed.');
+        } catch (e) {
+          console.error('Hook: Error in onRecordingStopCallback:', e);
         }
       }
-      // isRecording is set to false by the public stopRecording or by handleDataAvailable
     },
     [onRecordingStopCallback]
   );
@@ -116,8 +113,6 @@ export const useRecording = ({
 
       let localStream: MediaStream | null = null;
       let localVad: MicVAD | null = null;
-      let localMediaRecorder: MediaRecorder | null = null;
-      let localOnDataHandler: ((event: BlobEvent) => Promise<void>) | null = null;
 
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -129,52 +124,107 @@ export const useRecording = ({
 
         streamRef.current = localStream; // Assign to ref after callback
 
-        localMediaRecorder = new MediaRecorder(localStream);
-        mediaRecorderRef.current = localMediaRecorder;
+        // Use Web Audio API with AudioWorklet for raw PCM data
+        const audioContext = new AudioContext({ sampleRate: 16000 });
 
-        localOnDataHandler = async (event: BlobEvent) => {
-          const isFinalEvent = mediaRecorderRef.current?.state === 'inactive';
-          if (event.data.size > 0) {
-            const arrayBuffer = await event.data.arrayBuffer();
-            try {
-              await onAudioChunk(arrayBuffer, isFinalEvent);
-            } catch (error) {
-              console.error('Hook: Error processing audio chunk:', error);
-            }
-          }
+        let audioWorkletNode: AudioWorkletNode | null = null;
+        let source: MediaStreamAudioSourceNode | null = null;
+        let chunkTimer: NodeJS.Timeout | null = null;
+        let pendingAudioChunks: Float32Array[] = [];
 
-          if (isFinalEvent) {
-            console.log('Hook: MediaRecorder inactive, final chunk processed.');
-            // Mutex should not be needed here as this is event-driven from an existing recorder
-            cleanupMediaResources(
-              vadRef.current,
-              streamRef.current,
-              mediaRecorderRef.current,
-              onDataHandlerRef.current
-            );
-            vadRef.current = null;
-            streamRef.current = null;
-            mediaRecorderRef.current = null;
-            onDataHandlerRef.current = null;
+        // Load AudioWorklet module
+        await audioContext.audioWorklet.addModule('/audio-recorder-worklet.js');
+        console.log('Hook: AudioWorklet module loaded successfully');
 
-            setRecordingStatus('idle');
-            setVoiceDetected(false);
-            if (onRecordingStopCallback) {
-              try {
-                await onRecordingStopCallback();
-                console.log('Hook: onRecordingStopCallback executed after final chunk.');
-              } catch (e) {
-                console.error('Hook: Error in onRecordingStopCallback after final chunk:', e);
-              }
+        source = audioContext.createMediaStreamSource(localStream);
+
+        // Create AudioWorklet node
+        audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
+
+        // Handle messages from AudioWorklet
+        audioWorkletNode.port.onmessage = (event) => {
+          if (event.data.type === 'audioData') {
+            const audioData = event.data.audioData as Float32Array;
+            const isFinal = event.data.isFinal as boolean;
+
+            // Store the audio chunk
+            pendingAudioChunks.push(audioData);
+
+            if (isFinal) {
+              // Send final chunk immediately
+              sendAudioChunk(true);
             }
           }
         };
-        onDataHandlerRef.current = localOnDataHandler;
-        localMediaRecorder.addEventListener('dataavailable', localOnDataHandler);
-        localMediaRecorder.start(chunkDurationMs);
-        console.log(
-          `Hook: MediaRecorder started (status: starting), chunk duration ${chunkDurationMs}ms.`
-        );
+
+        // Create function to send accumulated chunks
+        const sendAudioChunk = async (isFinal = false) => {
+          if (pendingAudioChunks.length > 0) {
+            // Combine all pending chunks into one array
+            const totalLength = pendingAudioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+            const combinedChunk = new Float32Array(totalLength);
+            let offset = 0;
+
+            for (const chunk of pendingAudioChunks) {
+              combinedChunk.set(chunk, offset);
+              offset += chunk.length;
+            }
+
+            // Convert Float32Array to ArrayBuffer for IPC
+            const arrayBuffer = combinedChunk.buffer.slice(
+              combinedChunk.byteOffset,
+              combinedChunk.byteOffset + combinedChunk.byteLength
+            );
+
+            try {
+              await onAudioChunk(arrayBuffer, isFinal);
+              console.log(
+                `Hook: Sent audio chunk: ${combinedChunk.length} samples, final: ${isFinal}`
+              );
+            } catch (error) {
+              console.error('Hook: Error processing audio chunk:', error);
+            }
+
+            pendingAudioChunks = []; // Clear chunks after sending
+          }
+        };
+
+        // Set up periodic chunk sending
+        chunkTimer = setInterval(() => {
+          sendAudioChunk(false);
+        }, chunkDurationMs);
+
+        // Connect the audio processing chain
+        source.connect(audioWorkletNode);
+        console.log('Hook: Connected AudioWorklet processing chain');
+
+        // Store cleanup functions for Web Audio API
+        const cleanup = () => {
+          if (chunkTimer) {
+            clearInterval(chunkTimer);
+            chunkTimer = null;
+          }
+          if (audioWorkletNode) {
+            // Send stop command to worklet
+            audioWorkletNode.port.postMessage({ command: 'stop' });
+            audioWorkletNode.disconnect();
+            audioWorkletNode = null;
+          }
+          if (source) {
+            source.disconnect();
+            source = null;
+          }
+          if (audioContext && audioContext.state !== 'closed') {
+            audioContext.close();
+          }
+          console.log('Hook: Cleaned up AudioWorklet resources');
+        };
+
+        // Store references for cleanup and final chunk sending
+        (window as any).currentWebAudioCleanup = cleanup;
+        (window as any).currentSendAudioChunk = sendAudioChunk;
+
+        console.log(`Hook: AudioWorklet recording started, chunk duration ${chunkDurationMs}ms.`);
 
         localVad = await MicVAD.new({
           stream: localStream,
@@ -196,11 +246,9 @@ export const useRecording = ({
         console.log('Hook: Recording fully started (status: recording).');
       } catch (err) {
         console.error('Hook: Error starting recording:', err);
-        cleanupMediaResources(localVad, localStream, localMediaRecorder, localOnDataHandler);
+        cleanupMediaResources(localVad, localStream);
         streamRef.current = null; // Ensure refs are cleared on error
         vadRef.current = null;
-        mediaRecorderRef.current = null;
-        onDataHandlerRef.current = null;
 
         setRecordingStatus('error');
         setVoiceDetected(false);
@@ -240,12 +288,8 @@ export const useRecording = ({
 
   useEffect(() => {
     // Capture refs and callbacks needed for cleanup at the time the effect is established.
-    const capturedOperationMutex = operationMutexRef.current;
-    const capturedMediaRecorderRef = mediaRecorderRef;
     const capturedStreamRef = streamRef;
     const capturedVadRef = vadRef;
-    const capturedOnDataHandlerRef = onDataHandlerRef;
-    const capturedOnRecordingStopCallback = onRecordingStopCallback;
 
     // We need to know if recording was active *at the time of unmount setup*
     // to decide if onRecordingStopCallback should be called.
@@ -262,27 +306,23 @@ export const useRecording = ({
 
       // Directly clean up resources using captured refs.
       // This avoids issues with stale state in async mutex operations during unmount.
-      const mr = capturedMediaRecorderRef.current;
       const str = capturedStreamRef.current;
       const vad = capturedVadRef.current;
-      const odh = capturedOnDataHandlerRef.current;
 
-      if (mr && mr.state !== 'inactive') {
-        console.log('Hook: Unmount: Active MediaRecorder found. Attempting to stop.');
-        try {
-          mr.stop(); // Best effort to trigger final data
-        } catch (e) {
-          console.error('Hook: Unmount: Error stopping media recorder:', e);
-        }
+      // Clean up VAD and Stream.
+      cleanupMediaResources(vad, str);
+
+      // Clean up Web Audio API resources
+      const cleanup = (window as any).currentWebAudioCleanup;
+      if (cleanup) {
+        cleanup();
+        (window as any).currentWebAudioCleanup = null;
+        (window as any).currentSendAudioChunk = null;
       }
-      // Regardless of MediaRecorder state, clean up VAD and Stream.
-      cleanupMediaResources(vad, str, mr, odh);
 
       // Nullify refs after cleanup
-      capturedMediaRecorderRef.current = null;
       capturedStreamRef.current = null;
       capturedVadRef.current = null;
-      capturedOnDataHandlerRef.current = null;
 
       // Note: Calling setIsRecording(false) etc. here has no effect as the component is unmounted.
       // onRecordingStopCallback might not be reliably called here if stop() was async and didn't complete.

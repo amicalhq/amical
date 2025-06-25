@@ -5,6 +5,6 @@ export default {
   out: './src/db/migrations',
   dialect: 'sqlite',
   dbCredentials: {
-    url: 'file:./db.sqlite',
+    url: 'file:./amical.db',
   },
 } satisfies Config;
