@@ -12,7 +12,7 @@
   <a href='http://makeapullrequest.com'>
     <img alt='PRs Welcome' src='https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=shields'/>
   </a>
-  <a href="https://opensource.org/license/agpl-v3/">
+  <a href="https://opensource.org/license/MIT/">
     <img src="https://img.shields.io/github/license/amicalhq/amical?logo=opensourceinitiative&logoColor=white&label=License&color=8A2BE2" alt="license">
   </a>
   <br>
@@ -38,8 +38,8 @@
 
 ## 🔮 Overview
 
-Open Source AI Dictation App\
-Type 10x faster, no keyboard needed. Fast, Accurate, Context-aware and Private.
+Open source AI Dictation and Note-taking\
+Dictate hands-free, transcribe meetings, and capture notes effortlessly - powered by Gen AI
 
 ## ✨ Features
 > ✔︎ - Done, ◑ - In Progress, ◯ - Planned
@@ -54,23 +54,27 @@ Type 10x faster, no keyboard needed. Fast, Accurate, Context-aware and Private.
 
 ### ⚡ Core Features
 
-◑<kbd>Context-Awareness</kbd>\
+✔︎<kbd>Context-Awareness</kbd>\
 <sup>Recognize context based on the apps being used in the background to customize transcription based on use case.</sup>\
+◑<kbd>Note Taking</kbd>\
+<sup>Take quick notes with voice within the app.</sup>\
+◑<kbd>Meeting Transcription</kbd>\
+<sup>Record live meetings with both mic and system audio for seamless transcription.</sup>
+◑<kbd>Automatic Meeting Notes</kbd>\
+<sup>Generate meeting notes using transcriptions and templates</sup>
 ◑<kbd>Custom Hotkeys</kbd>\
 <sup>Configure your own keyboard shortcuts for common transcription actions (start/stop, commands).</sup>\
-◑<kbd>Desktop Widget</kbd>\
+✔︎<kbd>Desktop Widget</kbd>\
 <sup>A floating, easily accessible widget to control transcription without leaving your workflow.</sup>\
-◑<kbd>Multi-Language Support</kbd>\
+✔︎<kbd>Multi-Language Support</kbd>\
 <sup>Support for multiple languages and dialects for global usability.</sup>\
-◯<kbd>Audio/Video Transcription</kbd>\
-<sup>Transcribe uploaded audio and video files into text.</sup>\
-◯<kbd>Custom Vocabulary</kbd>\
+✔︎<kbd>Custom Vocabulary</kbd>\
 <sup>Add custom terms, such as names, technical terms, or slang, for better accuracy.</sup>\
 ◯<kbd>Automatic Vocabulary</kbd>\
 <sup>Dynamically learn new words based on usage.</sup>\
-◯<kbd>Bring Your Own Key</kbd>\
+◑<kbd>Bring Your Own Key</kbd>\
 <sup>Use your own API keys for AI models within the app.</sup>\
-◯<kbd>Bring Your Own Model</kbd>\
+✔︎<kbd>Bring Your Own Model (Ollama)</kbd>\
 <sup>Point to any AI model within the app.</sup>
 
 ### 🔗 Integrations & Workflow
@@ -88,12 +92,8 @@ Type 10x faster, no keyboard needed. Fast, Accurate, Context-aware and Private.
 <sup>Inline editing of transcribed text via voice commands.</sup>\
 ◯<kbd>Transcription History</kbd>\
 <sup>Maintain an easily searchable history of transcribed texts, with export options.</sup>\
-◯<kbd>Note Taking</kbd>\
-<sup>Take quick notes with voice within the app.</sup>\
 ◯<kbd>Custom Prompts</kbd>\
 <sup>Custom prompts for AI to pre and post-process transcription to support use cases like custom formatting, summaries, etc.</sup>\
-◯<kbd>Meeting Transcription</kbd>\
-<sup>Record live meetings with both mic and system audio for seamless transcription.</sup>
 
 ## 🔰 Tech Stack
 
@@ -118,7 +118,7 @@ Contributions are welcome! Please read the [Contributing Guide][contributing] to
 
 # 🎗 License
 
-Released under [AGPLv3][license].
+Released under [MIT][license].
 
 <!-- REFERENCE LINKS -->
 [contributing]: https://github.com/amicalhq/amical/blob/main/CONTRIBUTING.md
