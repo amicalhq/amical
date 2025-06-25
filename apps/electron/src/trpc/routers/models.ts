@@ -101,4 +101,150 @@ export const modelsRouter = t.router({
       }
       return await globalThis.localWhisperClient.setSelectedModel(input.modelId);
     }),
-}); 
+
+  // Subscriptions using async generators
+  onDownloadProgress: t.procedure.subscription(async function* () {
+    if (!globalThis.modelManagerService) {
+      throw new Error('Model manager service not initialized');
+    }
+
+    const eventQueue: Array<{ modelId: string; progress: DownloadProgress }> = [];
+
+    const handleDownloadProgress = (modelId: string, progress: DownloadProgress) => {
+      eventQueue.push({ modelId, progress });
+    };
+
+    globalThis.modelManagerService.on('download-progress', handleDownloadProgress);
+
+    try {
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        while (eventQueue.length > 0) {
+          const event = eventQueue.shift();
+          if (event) {
+            yield event;
+          }
+        }
+      }
+    } finally {
+      globalThis.modelManagerService?.off('download-progress', handleDownloadProgress);
+    }
+  }),
+
+  onDownloadComplete: t.procedure.subscription(async function* () {
+    if (!globalThis.modelManagerService) {
+      throw new Error('Model manager service not initialized');
+    }
+
+    const eventQueue: Array<{ modelId: string; downloadedModel: DownloadedModel }> = [];
+
+    const handleDownloadComplete = (modelId: string, downloadedModel: DownloadedModel) => {
+      eventQueue.push({ modelId, downloadedModel });
+    };
+
+    globalThis.modelManagerService.on('download-complete', handleDownloadComplete);
+
+    try {
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        while (eventQueue.length > 0) {
+          const event = eventQueue.shift();
+          if (event) {
+            yield event;
+          }
+        }
+      }
+    } finally {
+      globalThis.modelManagerService?.off('download-complete', handleDownloadComplete);
+    }
+  }),
+
+  onDownloadError: t.procedure.subscription(async function* () {
+    if (!globalThis.modelManagerService) {
+      throw new Error('Model manager service not initialized');
+    }
+
+    const eventQueue: Array<{ modelId: string; error: string }> = [];
+
+    const handleDownloadError = (modelId: string, error: Error) => {
+      eventQueue.push({ modelId, error: error.message });
+    };
+
+    globalThis.modelManagerService.on('download-error', handleDownloadError);
+
+    try {
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        while (eventQueue.length > 0) {
+          const event = eventQueue.shift();
+          if (event) {
+            yield event;
+          }
+        }
+      }
+    } finally {
+      globalThis.modelManagerService?.off('download-error', handleDownloadError);
+    }
+  }),
+
+  onDownloadCancelled: t.procedure.subscription(async function* () {
+    if (!globalThis.modelManagerService) {
+      throw new Error('Model manager service not initialized');
+    }
+
+    const eventQueue: Array<{ modelId: string }> = [];
+
+    const handleDownloadCancelled = (modelId: string) => {
+      eventQueue.push({ modelId });
+    };
+
+    globalThis.modelManagerService.on('download-cancelled', handleDownloadCancelled);
+
+    try {
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        while (eventQueue.length > 0) {
+          const event = eventQueue.shift();
+          if (event) {
+            yield event;
+          }
+        }
+      }
+    } finally {
+      globalThis.modelManagerService?.off('download-cancelled', handleDownloadCancelled);
+    }
+  }),
+
+  onModelDeleted: t.procedure.subscription(async function* () {
+    if (!globalThis.modelManagerService) {
+      throw new Error('Model manager service not initialized');
+    }
+
+    const eventQueue: Array<{ modelId: string }> = [];
+
+    const handleModelDeleted = (modelId: string) => {
+      eventQueue.push({ modelId });
+    };
+
+    globalThis.modelManagerService.on('model-deleted', handleModelDeleted);
+
+    try {
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        while (eventQueue.length > 0) {
+          const event = eventQueue.shift();
+          if (event) {
+            yield event;
+          }
+        }
+      }
+    } finally {
+      globalThis.modelManagerService?.off('model-deleted', handleModelDeleted);
+    }
+  }),
+});

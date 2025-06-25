@@ -216,38 +216,6 @@ app.on('ready', async () => {
   // Initialize Contextual Transcription Manager
   contextualTranscriptionManager = new ContextualTranscriptionManager(modelManagerService);
 
-  // Set up model manager event listeners
-  modelManagerService.on('download-progress', (modelId, progress) => {
-    // Send progress updates to all windows
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('model-download-progress', modelId, progress);
-    });
-  });
-
-  modelManagerService.on('download-complete', (modelId, downloadedModel) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('model-download-complete', modelId, downloadedModel);
-    });
-  });
-
-  modelManagerService.on('download-error', (modelId, error) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('model-download-error', modelId, error.message);
-    });
-  });
-
-  modelManagerService.on('download-cancelled', (modelId) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('model-download-cancelled', modelId);
-    });
-  });
-
-  modelManagerService.on('model-deleted', (modelId) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('model-deleted', modelId);
-    });
-  });
-
   // Initialize AI service with the appropriate client based on configuration
   try {
     const transcriptionClient = createTranscriptionClient();

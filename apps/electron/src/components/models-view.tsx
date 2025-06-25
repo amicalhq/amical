@@ -96,13 +96,18 @@ export const ModelsView: React.FC = () => {
     }
   }, [activeDownloadsQuery.data]);
 
-  // Set up event listeners for real-time download updates
-  useEffect(() => {
-    const handleDownloadProgress = (modelId: string, progress: DownloadProgress) => {
+  // Set up tRPC subscriptions for real-time download updates
+  api.models.onDownloadProgress.useSubscription(undefined, {
+    onData: ({ modelId, progress }) => {
       setDownloadProgress(prev => ({ ...prev, [modelId]: progress }));
-    };
+    },
+    onError: (error) => {
+      console.error('Download progress subscription error:', error);
+    }
+  });
 
-    const handleDownloadComplete = (modelId: string, downloadedModel: DownloadedModel) => {
+  api.models.onDownloadComplete.useSubscription(undefined, {
+    onData: ({ modelId, downloadedModel }) => {
       setDownloadProgress(prev => {
         const newProgress = { ...prev };
         delete newProgress[modelId];
@@ -110,47 +115,49 @@ export const ModelsView: React.FC = () => {
       });
       utils.models.getDownloadedModels.invalidate();
       utils.models.getActiveDownloads.invalidate();
-    };
+    },
+    onError: (error) => {
+      console.error('Download complete subscription error:', error);
+    }
+  });
 
-    const handleDownloadError = (modelId: string, errorMessage: string) => {
+  api.models.onDownloadError.useSubscription(undefined, {
+    onData: ({ modelId, error }) => {
       setDownloadProgress(prev => {
         const newProgress = { ...prev };
         delete newProgress[modelId];
         return newProgress;
       });
-      toast.error(`Download failed: ${errorMessage}`);
+      toast.error(`Download failed: ${error}`);
       utils.models.getActiveDownloads.invalidate();
-    };
+    },
+    onError: (error) => {
+      console.error('Download error subscription error:', error);
+    }
+  });
 
-    const handleDownloadCancelled = (modelId: string) => {
+  api.models.onDownloadCancelled.useSubscription(undefined, {
+    onData: ({ modelId }) => {
       setDownloadProgress(prev => {
         const newProgress = { ...prev };
         delete newProgress[modelId];
         return newProgress;
       });
       utils.models.getActiveDownloads.invalidate();
-    };
+    },
+    onError: (error) => {
+      console.error('Download cancelled subscription error:', error);
+    }
+  });
 
-    const handleModelDeleted = (modelId: string) => {
+  api.models.onModelDeleted.useSubscription(undefined, {
+    onData: ({ modelId }) => {
       utils.models.getDownloadedModels.invalidate();
-    };
-
-    // Set up IPC listeners for real-time events
-    window.electronAPI.on('model-download-progress', handleDownloadProgress);
-    window.electronAPI.on('model-download-complete', handleDownloadComplete);
-    window.electronAPI.on('model-download-error', handleDownloadError);
-    window.electronAPI.on('model-download-cancelled', handleDownloadCancelled);
-    window.electronAPI.on('model-deleted', handleModelDeleted);
-
-    return () => {
-      // Cleanup event listeners
-      window.electronAPI.off('model-download-progress', handleDownloadProgress);
-      window.electronAPI.off('model-download-complete', handleDownloadComplete);
-      window.electronAPI.off('model-download-error', handleDownloadError);
-      window.electronAPI.off('model-download-cancelled', handleDownloadCancelled);
-      window.electronAPI.off('model-deleted', handleModelDeleted);
-    };
-  }, [utils]);
+    },
+    onError: (error) => {
+      console.error('Model deleted subscription error:', error);
+    }
+  });
 
   const handleDownload = async (modelId: string, event?: React.MouseEvent) => {
     if (event) {

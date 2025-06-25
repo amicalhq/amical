@@ -20,7 +20,7 @@ const t = initTRPC.create({
 const GetTranscriptionsSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
-  sortBy: z.enum(['id', 'timestamp', 'text', 'language']).optional(),
+  sortBy: z.enum(['timestamp', 'createdAt']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
   search: z.string().optional(),
 });
