@@ -19,97 +19,123 @@ import {
   AlertDialogCancel
 } from './ui/alert-dialog';
 import { Model, DownloadedModel, DownloadProgress } from '../constants/models';
+import { api } from '@/trpc/react';
 
 export const ModelsView: React.FC = () => {
-  const [availableModels, setAvailableModels] = useState<Model[]>([]);
-  const [downloadedModels, setDownloadedModels] = useState<Record<string, DownloadedModel>>({});
   const [downloadProgress, setDownloadProgress] = useState<Record<string, DownloadProgress>>({});
-  const [loading, setLoading] = useState(true);
-  const [isLocalWhisperAvailable, setIsLocalWhisperAvailable] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<string | null>(null);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [available, downloaded, activeDownloads, whisperAvailable, currentSelectedModel] = await Promise.all([
-        window.electronAPI.getAvailableModels(),
-        window.electronAPI.getDownloadedModels(),
-        window.electronAPI.getActiveDownloads(),
-        window.electronAPI.isLocalWhisperAvailable(),
-        window.electronAPI.getSelectedModel(),
-      ]);
+  // tRPC queries
+  const availableModelsQuery = api.models.getAvailableModels.useQuery();
+  const downloadedModelsQuery = api.models.getDownloadedModels.useQuery();
+  const activeDownloadsQuery = api.models.getActiveDownloads.useQuery();
+  const isLocalWhisperAvailableQuery = api.models.isLocalWhisperAvailable.useQuery();
+  const selectedModelQuery = api.models.getSelectedModel.useQuery();
 
-      setAvailableModels(available);
-      setDownloadedModels(downloaded);
-      setIsLocalWhisperAvailable(whisperAvailable);
-      setSelectedModel(currentSelectedModel);
+  const utils = api.useUtils();
 
-      // Set up active downloads progress
-      const progressMap: Record<string, DownloadProgress> = {};
-      for (const downloadProgress of activeDownloads) {
-        progressMap[downloadProgress.modelId] = downloadProgress;
+  // tRPC mutations
+  const downloadModelMutation = api.models.downloadModel.useMutation({
+    onSuccess: () => {
+      utils.models.getDownloadedModels.invalidate();
+      utils.models.getActiveDownloads.invalidate();
+    },
+    onError: (error) => {
+      console.error('Failed to start download:', error);
+      if (error instanceof Error && error.message.includes('AbortError')) {
+        console.log('Download was manually aborted, not showing error');
+        return;
       }
-      setDownloadProgress(progressMap);
-    } catch (err) {
-      console.error('Failed to load models data:', err);
-      toast.error('Failed to load models data');
-    } finally {
-      setLoading(false);
+      toast.error('Failed to start download');
     }
-  };
+  });
 
+  const cancelDownloadMutation = api.models.cancelDownload.useMutation({
+    onSuccess: () => {
+      utils.models.getActiveDownloads.invalidate();
+    },
+    onError: (error) => {
+      console.error('Failed to cancel download:', error);
+      toast.error('Failed to cancel download');
+    }
+  });
+
+  const deleteModelMutation = api.models.deleteModel.useMutation({
+    onSuccess: () => {
+      utils.models.getDownloadedModels.invalidate();
+      setShowDeleteDialog(false);
+      setModelToDelete(null);
+    },
+    onError: (error) => {
+      console.error('Failed to delete model:', error);
+      toast.error('Failed to delete model');
+      setShowDeleteDialog(false);
+      setModelToDelete(null);
+    }
+  });
+
+  const setSelectedModelMutation = api.models.setSelectedModel.useMutation({
+    onSuccess: () => {
+      utils.models.getSelectedModel.invalidate();
+    },
+    onError: (error) => {
+      console.error('Failed to select model:', error);
+      toast.error('Failed to select model');
+    }
+  });
+
+  // Initialize active downloads progress on load
   useEffect(() => {
-    loadData();
+    if (activeDownloadsQuery.data) {
+      const progressMap: Record<string, DownloadProgress> = {};
+      activeDownloadsQuery.data.forEach((download) => {
+        progressMap[download.modelId] = download;
+      });
+      setDownloadProgress(progressMap);
+    }
+  }, [activeDownloadsQuery.data]);
 
+  // Set up event listeners for real-time download updates
+  useEffect(() => {
     const handleDownloadProgress = (modelId: string, progress: DownloadProgress) => {
-      setDownloadProgress(prev => ({
-        ...prev,
-        [modelId]: progress
-      }));
+      setDownloadProgress(prev => ({ ...prev, [modelId]: progress }));
     };
 
     const handleDownloadComplete = (modelId: string, downloadedModel: DownloadedModel) => {
-      setDownloadedModels(prev => ({
-        ...prev,
-        [modelId]: downloadedModel
-      }));
       setDownloadProgress(prev => {
-        const updated = { ...prev };
-        delete updated[modelId];
-        return updated;
+        const newProgress = { ...prev };
+        delete newProgress[modelId];
+        return newProgress;
       });
+      utils.models.getDownloadedModels.invalidate();
+      utils.models.getActiveDownloads.invalidate();
     };
 
     const handleDownloadError = (modelId: string, errorMessage: string) => {
-      setDownloadProgress(prev => ({
-        ...prev,
-        [modelId]: {
-          ...prev[modelId],
-          status: 'error',
-          error: errorMessage
-        }
-      }));
+      setDownloadProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[modelId];
+        return newProgress;
+      });
+      toast.error(`Download failed: ${errorMessage}`);
+      utils.models.getActiveDownloads.invalidate();
     };
 
     const handleDownloadCancelled = (modelId: string) => {
       setDownloadProgress(prev => {
-        const updated = { ...prev };
-        delete updated[modelId];
-        return updated;
+        const newProgress = { ...prev };
+        delete newProgress[modelId];
+        return newProgress;
       });
+      utils.models.getActiveDownloads.invalidate();
     };
 
     const handleModelDeleted = (modelId: string) => {
-      setDownloadedModels(prev => {
-        const updated = { ...prev };
-        delete updated[modelId];
-        return updated;
-      });
+      utils.models.getDownloadedModels.invalidate();
     };
 
-    // Listen to events from main process
+    // Set up IPC listeners for real-time events
     window.electronAPI.on('model-download-progress', handleDownloadProgress);
     window.electronAPI.on('model-download-complete', handleDownloadComplete);
     window.electronAPI.on('model-download-error', handleDownloadError);
@@ -124,43 +150,35 @@ export const ModelsView: React.FC = () => {
       window.electronAPI.off('model-download-cancelled', handleDownloadCancelled);
       window.electronAPI.off('model-deleted', handleModelDeleted);
     };
-  }, []);
+  }, [utils]);
 
   const handleDownload = async (modelId: string, event?: React.MouseEvent) => {
-    event?.preventDefault();
-    event?.stopPropagation();
-    
-    console.log('Start download clicked for:', modelId);
-    
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     try {
-      console.log('Downloading model:', modelId);
-      await window.electronAPI.downloadModel(modelId);
-      console.log('Start download successful for:', modelId);
+      await downloadModelMutation.mutateAsync({ modelId });
+      console.log('Download started for:', modelId);
     } catch (err) {
       console.error('Failed to start download:', err);
-      
-      // Don't show error for manual cancellations (AbortError)
-      if (err instanceof Error && err.message.includes('AbortError')) {
-        console.log('Download was manually aborted, not showing error');
-        return;
-      }
-      
-      toast.error('Failed to start download');
+      // Error is already handled by the mutation's onError
     }
   };
 
   const handleCancelDownload = async (modelId: string, event?: React.MouseEvent) => {
-    event?.preventDefault();
-    event?.stopPropagation();
-    
-    console.log('Cancel download clicked for:', modelId);
-    
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     try {
-      await window.electronAPI.cancelDownload(modelId);
+      await cancelDownloadMutation.mutateAsync({ modelId });
       console.log('Cancel download successful for:', modelId);
     } catch (err) {
       console.error('Failed to cancel download:', err);
-      toast.error('Failed to cancel download');
+      // Error is already handled by the mutation's onError
     }
   };
 
@@ -173,13 +191,10 @@ export const ModelsView: React.FC = () => {
     if (!modelToDelete) return;
 
     try {
-      await window.electronAPI.deleteModel(modelToDelete);
+      await deleteModelMutation.mutateAsync({ modelId: modelToDelete });
     } catch (err) {
       console.error('Failed to delete model:', err);
-      toast.error('Failed to delete model');
-    } finally {
-      setShowDeleteDialog(false);
-      setModelToDelete(null);
+      // Error is already handled by the mutation's onError
     }
   };
 
@@ -188,14 +203,12 @@ export const ModelsView: React.FC = () => {
     setModelToDelete(null);
   };
 
-
   const handleSelectModel = async (modelId: string) => {
     try {
-      await window.electronAPI.setSelectedModel(modelId);
-      setSelectedModel(modelId);
+      await setSelectedModelMutation.mutateAsync({ modelId });
     } catch (err) {
       console.error('Failed to select model:', err);
-      toast.error('Failed to select model');
+      // Error is already handled by the mutation's onError
     }
   };
 
@@ -206,6 +219,16 @@ export const ModelsView: React.FC = () => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
+
+  // Loading state
+  const loading = availableModelsQuery.isLoading || downloadedModelsQuery.isLoading || 
+                 isLocalWhisperAvailableQuery.isLoading || selectedModelQuery.isLoading;
+
+  // Data from queries
+  const availableModels = availableModelsQuery.data || [];
+  const downloadedModels = downloadedModelsQuery.data || {};
+  const isLocalWhisperAvailable = isLocalWhisperAvailableQuery.data || false;
+  const selectedModel = selectedModelQuery.data;
 
   if (loading) {
     return (

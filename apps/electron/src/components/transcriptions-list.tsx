@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { Transcription } from '@/db/schema';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { api } from '@/trpc/react';
 
 import {
   Tooltip,
@@ -22,57 +23,42 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-// Using database Transcription type from schema
-
 export const TranscriptionsList: React.FC = () => {
-  const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [totalCount, setTotalCount] = useState(0);
 
-  // Load transcriptions from database
-  const loadTranscriptions = async (search?: string) => {
-    setLoading(true);
-    try {
-      const options = {
-        limit: 50,
-        offset: 0,
-        sortBy: 'timestamp' as const,
-        sortOrder: 'desc' as const,
-        search: search || undefined,
-      };
-      
-      const [transcriptionsData, count] = await Promise.all([
-        window.electronAPI.getTranscriptions(options),
-        window.electronAPI.getTranscriptionsCount(search),
-      ]);
-      
-      setTranscriptions(transcriptionsData);
-      setTotalCount(count);
-    } catch (error) {
-      console.error('Error loading transcriptions:', error);
-      // Fallback to empty array on error
-      setTranscriptions([]);
-      setTotalCount(0);
-    } finally {
-      setLoading(false);
+  // tRPC React Query hooks
+  const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery({
+    limit: 50,
+    offset: 0,
+    sortBy: 'timestamp',
+    sortOrder: 'desc',
+    search: searchTerm || undefined,
+  });
+
+  const transcriptionsCountQuery = api.transcriptions.getTranscriptionsCount.useQuery({
+    search: searchTerm || undefined,
+  });
+
+  const utils = api.useUtils();
+
+  const deleteTranscriptionMutation = api.transcriptions.deleteTranscription.useMutation({
+    onSuccess: () => {
+      // Invalidate and refetch transcriptions data
+      utils.transcriptions.getTranscriptions.invalidate();
+      utils.transcriptions.getTranscriptionsCount.invalidate();
+    },
+    onError: (error) => {
+      console.error('Error deleting transcription:', error);
     }
-  };
+  });
 
-  // Load transcriptions on component mount and when search term changes
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      loadTranscriptions(searchTerm);
-    }, searchTerm ? 300 : 0); // Debounce search
-
-    return () => clearTimeout(timeoutId);
-  }, [searchTerm]);
-
+  const transcriptions = transcriptionsQuery.data || [];
+  const totalCount = transcriptionsCountQuery.data || 0;
+  const loading = transcriptionsQuery.isLoading || transcriptionsCountQuery.isLoading;
 
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      // You could add a toast notification here
       console.log('Copied to clipboard');
     } catch (err) {
       console.error('Failed to copy text: ', err);
@@ -80,13 +66,7 @@ export const TranscriptionsList: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    try {
-      await window.electronAPI.deleteTranscription(id);
-      // Reload transcriptions after deletion
-      await loadTranscriptions(searchTerm);
-    } catch (error) {
-      console.error('Error deleting transcription:', error);
-    }
+    deleteTranscriptionMutation.mutate({ id });
   };
 
   const handlePlayAudio = (audioFile: string) => {
@@ -104,9 +84,6 @@ export const TranscriptionsList: React.FC = () => {
     element.click();
     document.body.removeChild(element);
   };
-
-  // Since we're already filtering on the backend, use all transcriptions
-  const filteredTranscriptions = transcriptions;
 
   const getTitle = (text: string) => {
     const firstSentence = text.split('.')[0];
@@ -154,7 +131,7 @@ export const TranscriptionsList: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-      ) : filteredTranscriptions.length === 0 ? (
+      ) : transcriptions.length === 0 ? (
         <Card>
           <CardContent className="py-12">
             <div className="flex flex-col items-center space-y-2 text-center">
@@ -171,7 +148,7 @@ export const TranscriptionsList: React.FC = () => {
         </Card>
       ) : (
         <div className="grid gap-3">
-          {filteredTranscriptions.map((transcription) => (
+          {transcriptions.map((transcription) => (
             <Card key={transcription.id} className="hover:shadow-md transition-shadow">
               <CardContent className="px-4 py-0">
                 <div className="flex items-center justify-between">
@@ -244,6 +221,7 @@ export const TranscriptionsList: React.FC = () => {
                         <DropdownMenuItem 
                           onClick={() => handleDelete(transcription.id)}
                           className="text-destructive"
+                          disabled={deleteTranscriptionMutation.isPending}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
@@ -258,10 +236,10 @@ export const TranscriptionsList: React.FC = () => {
         </div>
       )}
 
-      {!loading && filteredTranscriptions.length > 0 && (
+      {!loading && transcriptions.length > 0 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Showing {filteredTranscriptions.length} of {totalCount} transcription{totalCount !== 1 ? 's' : ''}
+            Showing {transcriptions.length} of {totalCount} transcription{totalCount !== 1 ? 's' : ''}
           </span>
           <span>
             Total: {transcriptions.reduce((acc, t) => acc + getWordCount(t.text), 0)} words
