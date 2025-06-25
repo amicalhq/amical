@@ -59,9 +59,9 @@ Dictate hands-free, transcribe meetings, and capture notes effortlessly - powere
 ◑<kbd>Note Taking</kbd>\
 <sup>Take quick notes with voice within the app.</sup>\
 ◑<kbd>Meeting Transcription</kbd>\
-<sup>Record live meetings with both mic and system audio for seamless transcription.</sup>
+<sup>Record live meetings with both mic and system audio for seamless transcription.</sup>\
 ◑<kbd>Automatic Meeting Notes</kbd>\
-<sup>Generate meeting notes using transcriptions and templates</sup>
+<sup>Generate meeting notes using transcriptions and templates</sup>\
 ◑<kbd>Custom Hotkeys</kbd>\
 <sup>Configure your own keyboard shortcuts for common transcription actions (start/stop, commands).</sup>\
 ✔︎<kbd>Desktop Widget</kbd>\
