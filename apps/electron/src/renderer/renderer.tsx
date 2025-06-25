@@ -34,14 +34,10 @@ import superjson from 'superjson';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { ThemeProvider } from '@/components/theme-provider';
-import { TitleBar } from '@/components/title-bar';
-import { DashboardView } from '@/components/dashboard-view';
-import { VoiceRecordingView } from '@/components/voice-recording-view';
 import { TranscriptionsView } from '@/components/transcriptions-view';
 import { VocabularyView } from '@/components/vocabulary-view';
 import { ModelsView } from '@/components/models-view';
 import { SettingsView } from '@/components/settings-view';
-import { ProfileView } from '@/components/profile-view';
 import '@/styles/globals.css';
 import { SiteHeader } from '@/components/site-header';
 import { api } from '@/trpc/react';
@@ -83,10 +79,6 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (currentView) {
-      case 'Dashboard':
-        return <DashboardView />;
-      case 'Voice Recording':
-        return <VoiceRecordingView />;
       case 'Transcriptions':
         return <TranscriptionsView />;
       case 'Vocabulary':
@@ -95,8 +87,6 @@ const App: React.FC = () => {
         return <ModelsView />;
       case 'Settings':
         return <SettingsView />;
-      case 'Profile':
-        return <ProfileView />;
       default:
         return (
           <div className="space-y-4">
