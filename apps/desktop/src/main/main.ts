@@ -37,8 +37,7 @@ if (started) {
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
-
-const WIDGET_WINDOW_VITE_NAME = 'widget_window';
+declare const WIDGET_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | null = null;
 let floatingButtonWindow: BrowserWindow | null = null;
@@ -158,7 +157,7 @@ const createFloatingButtonWindow = () => {
     floatingButtonWindow.loadURL(devUrl.toString());
   } else {
     floatingButtonWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/fab.html`)
+      path.join(__dirname, `../renderer/${WIDGET_WINDOW_VITE_NAME}/fab.html`)
     );
   }
 

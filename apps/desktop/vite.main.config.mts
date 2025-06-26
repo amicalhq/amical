@@ -6,7 +6,6 @@ export default defineConfig({
   build: {
     rollupOptions: {
       external: [
-        'better-sqlite3', 
         'smart-whisper',
         '@libsql/client',
         '@libsql/darwin-arm64',
