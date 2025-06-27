@@ -31,15 +31,8 @@ export async function initializeDatabase() {
       // Development: use source path relative to the app's working directory
       migrationsPath = path.join(process.cwd(), 'src', 'db', 'migrations');
     } else {
-      // Production: migrations should be in app resources
-      migrationsPath = path.join(
-        process.resourcesPath,
-        'app.asar.unpacked',
-        'dist',
-        'main',
-        'db',
-        'migrations'
-      );
+      // Production: migrations are copied to resources via extraResource
+      migrationsPath = path.join(process.resourcesPath, 'migrations');
     }
 
     console.log('Attempting to run migrations from:', migrationsPath);

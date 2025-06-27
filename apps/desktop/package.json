@@ -8,6 +8,7 @@
     "start": "pnpm build:swift-helper && electron-forge start",
     "package": "pnpm build:swift-helper && electron-forge package",
     "make": "pnpm build:swift-helper && electron-forge make",
+    "make:dmg": "pnpm build:swift-helper && electron-forge make --targets=@electron-forge/maker-dmg --platform=darwin --arch=arm64",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@electron-forge/cli": "^7.8.1",
     "@electron-forge/maker-deb": "^7.8.1",
+    "@electron-forge/maker-dmg": "^7.8.1",
     "@electron-forge/maker-rpm": "^7.8.1",
     "@electron-forge/maker-squirrel": "^7.8.1",
     "@electron-forge/maker-zip": "^7.8.1",
@@ -39,6 +41,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.4.0",
+    "flora-colossus": "^2.0.0",
     "prettier": "^3.5.3",
     "tailwindcss": "^4.1.6",
     "tsx": "^4.19.4",

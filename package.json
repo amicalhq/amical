@@ -28,15 +28,16 @@
       "protobufjs",
       "sharp",
       "smart-whisper",
-      "drizzle-orm/libsql",
-      "@libsql"
+      "drizzle-orm/libsql"
     ],
     "onlyBuiltDependencies": [
       "electron",
       "electron-winstaller",
       "smart-whisper",
       "drizzle-orm/libsql",
-      "@libsql"
+      "@libsql",
+      "macos-alias",
+      "fs-xattr"
     ]
   }
 }
