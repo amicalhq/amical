@@ -92,29 +92,7 @@ const api: ElectronAPI = {
   setFormatterConfig: (config: FormatterConfig) =>
     ipcRenderer.invoke("set-formatter-config", config),
 
-  // Transcription Database API
-  getTranscriptions: (options?: {
-    limit?: number;
-    offset?: number;
-    sortBy?: "timestamp" | "createdAt";
-    sortOrder?: "asc" | "desc";
-    search?: string;
-  }) => ipcRenderer.invoke("get-transcriptions", options),
-  getTranscriptionById: (id: number) =>
-    ipcRenderer.invoke("get-transcription-by-id", id),
-  createTranscription: (
-    data: Omit<NewTranscription, "id" | "createdAt" | "updatedAt">,
-  ) => ipcRenderer.invoke("create-transcription", data),
-  updateTranscription: (
-    id: number,
-    data: Partial<Omit<Transcription, "id" | "createdAt">>,
-  ) => ipcRenderer.invoke("update-transcription", id, data),
-  deleteTranscription: (id: number) =>
-    ipcRenderer.invoke("delete-transcription", id),
-  getTranscriptionsCount: (search?: string) =>
-    ipcRenderer.invoke("get-transcriptions-count", search),
-  searchTranscriptions: (searchTerm: string, limit?: number) =>
-    ipcRenderer.invoke("search-transcriptions", searchTerm, limit),
+  // Transcription Database API (moved to tRPC)
 
   // Vocabulary Database API
   on: (channel: string, callback: (...args: any[]) => void) => {

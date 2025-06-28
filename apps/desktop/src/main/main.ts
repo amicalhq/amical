@@ -351,6 +351,35 @@ app.on("ready", async () => {
           hasResult: !!transcription,
         });
 
+        // Save transcription to database
+        if (
+          transcription &&
+          typeof transcription === "string" &&
+          transcription.trim().length > 0
+        ) {
+          try {
+            const { createTranscription } = await import(
+              "../db/transcriptions.js"
+            );
+            const savedTranscription = await createTranscription({
+              text: transcription,
+              timestamp: new Date(),
+              audioFile: filePath,
+              language: "en", // Default to English, could be made configurable
+            });
+            logger.db.info("Transcription saved to database", {
+              transcriptionId: savedTranscription.id,
+              textLength: transcription.length,
+              audioFile: filePath,
+            });
+          } catch (dbError) {
+            logError(
+              dbError instanceof Error ? dbError : new Error(String(dbError)),
+              "saving transcription to database",
+            );
+          }
+        }
+
         // Copy transcription to clipboard
         if (transcription && typeof transcription === "string") {
           logger.main.info("Transcription pasted to active application");
@@ -421,7 +450,7 @@ app.on("ready", async () => {
           });
         });
 
-        transcriptionSession.on("session-completed", (sessionResult) => {
+        transcriptionSession.on("session-completed", async (sessionResult) => {
           logger.ai.info("Transcription session completed", {
             sessionId: sessionResult.sessionId,
             finalTextLength: sessionResult.finalText.length,
@@ -429,15 +458,40 @@ app.on("ready", async () => {
             totalProcessingTimeMs: sessionResult.totalProcessingTimeMs,
           });
 
-          // Paste the final result to active application
+          // Save chunk-based transcription to database
           if (
             sessionResult.finalText &&
             sessionResult.finalText.trim().length > 0
           ) {
+            try {
+              const { createTranscription } = await import(
+                "../db/transcriptions.js"
+              );
+              const savedTranscription = await createTranscription({
+                text: sessionResult.finalText,
+                timestamp: new Date(),
+                audioFile: null, // Chunk-based transcriptions don't have a single audio file
+                language: "en", // Default to English, could be made configurable
+              });
+              logger.db.info("Chunk-based transcription saved to database", {
+                transcriptionId: savedTranscription.id,
+                sessionId: sessionResult.sessionId,
+                textLength: sessionResult.finalText.length,
+                totalChunks: sessionResult.chunkResults.length,
+              });
+            } catch (dbError) {
+              logError(
+                dbError instanceof Error ? dbError : new Error(String(dbError)),
+                "saving chunk-based transcription to database",
+              );
+            }
+
+            // Paste the final result to active application
             logger.main.info(
               "Final transcription pasted to active application",
               {
                 textLength: sessionResult.finalText.length,
+                sessionId: sessionResult.sessionId,
               },
             );
             swiftIOBridgeClientInstance!.call("pasteText", {

@@ -52,37 +52,7 @@ export interface ElectronAPI {
     config: import("../modules/formatter").FormatterConfig,
   ) => Promise<void>;
 
-  // Transcription Database API
-  getTranscriptions: (options?: {
-    limit?: number;
-    offset?: number;
-    sortBy?: "timestamp" | "createdAt";
-    sortOrder?: "asc" | "desc";
-    search?: string;
-  }) => Promise<import("../db/schema").Transcription[]>;
-  getTranscriptionById: (
-    id: number,
-  ) => Promise<import("../db/schema").Transcription | null>;
-  createTranscription: (
-    data: Omit<
-      import("../db/schema").NewTranscription,
-      "id" | "createdAt" | "updatedAt"
-    >,
-  ) => Promise<import("../db/schema").Transcription>;
-  updateTranscription: (
-    id: number,
-    data: Partial<
-      Omit<import("../db/schema").Transcription, "id" | "createdAt">
-    >,
-  ) => Promise<import("../db/schema").Transcription | null>;
-  deleteTranscription: (
-    id: number,
-  ) => Promise<import("../db/schema").Transcription | null>;
-  getTranscriptionsCount: (search?: string) => Promise<number>;
-  searchTranscriptions: (
-    searchTerm: string,
-    limit?: number,
-  ) => Promise<import("../db/schema").Transcription[]>;
+  // Transcription Database API (moved to tRPC)
 
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;

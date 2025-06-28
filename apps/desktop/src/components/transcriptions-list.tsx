@@ -36,18 +36,28 @@ export const TranscriptionsList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   // tRPC React Query hooks
-  const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery({
-    limit: 50,
-    offset: 0,
-    sortBy: "timestamp",
-    sortOrder: "desc",
-    search: searchTerm || undefined,
-  });
+  const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
+    {
+      limit: 50,
+      offset: 0,
+      sortBy: "timestamp",
+      sortOrder: "desc",
+      search: searchTerm || undefined,
+    },
+    {
+      refetchInterval: 2000, // Poll every 2 seconds, auto-pauses when out of focus
+    },
+  );
 
   const transcriptionsCountQuery =
-    api.transcriptions.getTranscriptionsCount.useQuery({
-      search: searchTerm || undefined,
-    });
+    api.transcriptions.getTranscriptionsCount.useQuery(
+      {
+        search: searchTerm || undefined,
+      },
+      {
+        refetchInterval: 2000, // Poll every 2 seconds, auto-pauses when out of focus
+      },
+    );
 
   const utils = api.useUtils();
 
@@ -110,14 +120,6 @@ export const TranscriptionsList: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div></div>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline">Export All</Button>
-          <Button>New Recording</Button>
-        </div>
-      </div>
-
       {/* Search and Filter Bar */}
       <div className="flex items-center space-x-4">
         <div className="relative flex-1 max-w-sm">
@@ -129,10 +131,6 @@ export const TranscriptionsList: React.FC = () => {
             className="pl-10"
           />
         </div>
-        <Button variant="outline" size="sm">
-          <Filter className="h-4 w-4 mr-2" />
-          Filter
-        </Button>
       </div>
 
       {/* Transcriptions Grid */}
