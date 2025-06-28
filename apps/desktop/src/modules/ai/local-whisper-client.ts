@@ -1,7 +1,7 @@
-import { TranscriptionClient } from './transcription-client';
-import * as fs from 'fs';
-import { logger } from '../../main/logger';
-import { ModelManagerService } from '../models/model-manager';
+import { TranscriptionClient } from "./transcription-client";
+import * as fs from "fs";
+import { logger } from "../../main/logger";
+import { ModelManagerService } from "../models/model-manager";
 
 export class LocalWhisperClient implements TranscriptionClient {
   private modelManager: ModelManagerService;
@@ -20,15 +20,17 @@ export class LocalWhisperClient implements TranscriptionClient {
 
     const modelPath = await this.getBestAvailableModel();
     if (!modelPath) {
-      throw new Error('No Whisper models available. Please download a model first.');
+      throw new Error(
+        "No Whisper models available. Please download a model first.",
+      );
     }
 
     try {
-      const { Whisper } = await import('smart-whisper');
+      const { Whisper } = await import("smart-whisper");
       this.whisperInstance = new Whisper(modelPath, { gpu: true });
-      logger.ai.info('Smart-whisper initialized', { modelPath });
+      logger.ai.info("Smart-whisper initialized", { modelPath });
     } catch (error) {
-      logger.ai.error('Failed to initialize smart-whisper', {
+      logger.ai.error("Failed to initialize smart-whisper", {
         error: error instanceof Error ? error.message : String(error),
         modelPath,
       });
@@ -43,25 +45,28 @@ export class LocalWhisperClient implements TranscriptionClient {
       // Convert audio buffer to the format expected by smart-whisper
       const audioFloat32Array = await this.convertAudioBuffer(audioData);
 
-      logger.ai.info('Starting smart-whisper transcription', {
+      logger.ai.info("Starting smart-whisper transcription", {
         audioDataSize: audioData.length,
         convertedSize: audioFloat32Array.length,
       });
 
       // Transcribe using smart-whisper
-      const { result } = await this.whisperInstance.transcribe(audioFloat32Array, {
-        language: 'auto',
-      });
+      const { result } = await this.whisperInstance.transcribe(
+        audioFloat32Array,
+        {
+          language: "auto",
+        },
+      );
 
       const transcription = await result;
 
-      logger.ai.info('Smart-whisper transcription completed', {
+      logger.ai.info("Smart-whisper transcription completed", {
         resultLength: transcription.length,
       });
 
       return transcription;
     } catch (error) {
-      logger.ai.error('Smart-whisper transcription failed', {
+      logger.ai.error("Smart-whisper transcription failed", {
         error: error instanceof Error ? error.message : String(error),
       });
       throw new Error(`Transcription failed: ${error}`);
@@ -85,7 +90,7 @@ export class LocalWhisperClient implements TranscriptionClient {
 
       return float32Array;
     } catch (error) {
-      logger.ai.warn('Audio conversion failed, trying alternative method', {
+      logger.ai.warn("Audio conversion failed, trying alternative method", {
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -114,11 +119,11 @@ export class LocalWhisperClient implements TranscriptionClient {
 
     // Otherwise, find the best available model (prioritize by quality)
     const preferredOrder = [
-      'whisper-large-v1',
-      'whisper-medium',
-      'whisper-small',
-      'whisper-base',
-      'whisper-tiny',
+      "whisper-large-v1",
+      "whisper-medium",
+      "whisper-small",
+      "whisper-base",
+      "whisper-tiny",
     ];
 
     for (const modelId of preferredOrder) {
@@ -144,7 +149,7 @@ export class LocalWhisperClient implements TranscriptionClient {
     }
 
     this.selectedModelId = modelId;
-    logger.ai.info('Selected model for transcription', { modelId });
+    logger.ai.info("Selected model for transcription", { modelId });
   }
 
   // Get the currently selected model
@@ -156,7 +161,7 @@ export class LocalWhisperClient implements TranscriptionClient {
   async isAvailable(): Promise<boolean> {
     const downloadedModels = await this.modelManager.getDownloadedModels();
     return Object.keys(downloadedModels).some((modelId) =>
-      fs.existsSync(downloadedModels[modelId].localPath)
+      fs.existsSync(downloadedModels[modelId].localPath),
     );
   }
 
@@ -164,7 +169,7 @@ export class LocalWhisperClient implements TranscriptionClient {
   async getAvailableModels(): Promise<string[]> {
     const downloadedModels = await this.modelManager.getDownloadedModels();
     return Object.keys(downloadedModels).filter((modelId) =>
-      fs.existsSync(downloadedModels[modelId].localPath)
+      fs.existsSync(downloadedModels[modelId].localPath),
     );
   }
 
@@ -177,9 +182,9 @@ export class LocalWhisperClient implements TranscriptionClient {
     if (this.whisperInstance) {
       try {
         await this.whisperInstance.free();
-        logger.ai.info('Smart-whisper instance freed');
+        logger.ai.info("Smart-whisper instance freed");
       } catch (error) {
-        logger.ai.warn('Error freeing smart-whisper instance', {
+        logger.ai.warn("Error freeing smart-whisper instance", {
           error: error instanceof Error ? error.message : String(error),
         });
       } finally {

@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { type Icon } from "@tabler/icons-react"
+import * as React from "react";
+import { type Icon } from "@tabler/icons-react";
 
 import {
   SidebarGroup,
@@ -9,7 +9,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
 export function NavSecondary({
   items,
@@ -18,13 +18,13 @@ export function NavSecondary({
   ...props
 }: {
   items: {
-    title: string
-    url: string
-    icon: Icon
-    external?: boolean
-  }[]
-  onNavigate?: (item: { title: string }) => void
-  currentView?: string
+    title: string;
+    url: string;
+    icon: Icon;
+    external?: boolean;
+  }[];
+  onNavigate?: (item: { title: string }) => void;
+  currentView?: string;
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
   return (
     <SidebarGroup {...props}>
@@ -32,7 +32,7 @@ export function NavSecondary({
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton 
+              <SidebarMenuButton
                 isActive={currentView === item.title}
                 onClick={() => onNavigate?.(item)}
               >
@@ -44,5 +44,5 @@ export function NavSecondary({
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
-  )
+  );
 }

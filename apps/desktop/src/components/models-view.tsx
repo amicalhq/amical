@@ -1,28 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from './ui/button';
-import { Progress } from './ui/progress';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { RadioGroup, RadioGroupItem } from './ui/radio-group';
-import { Label } from './ui/label';
-import { Trash2, Download, Square, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { 
-  AlertDialog, 
-  AlertDialogContent, 
-  AlertDialogDescription, 
-  AlertDialogFooter, 
-  AlertDialogHeader, 
-  AlertDialogTitle, 
+import React, { useState, useEffect } from "react";
+import { Button } from "./ui/button";
+import { Progress } from "./ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Label } from "./ui/label";
+import { Trash2, Download, Square, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   AlertDialogTrigger,
   AlertDialogAction,
-  AlertDialogCancel
-} from './ui/alert-dialog';
-import { Model, DownloadedModel, DownloadProgress } from '../constants/models';
-import { api } from '@/trpc/react';
+  AlertDialogCancel,
+} from "./ui/alert-dialog";
+import { Model, DownloadedModel, DownloadProgress } from "../constants/models";
+import { api } from "@/trpc/react";
 
 export const ModelsView: React.FC = () => {
-  const [downloadProgress, setDownloadProgress] = useState<Record<string, DownloadProgress>>({});
+  const [downloadProgress, setDownloadProgress] = useState<
+    Record<string, DownloadProgress>
+  >({});
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<string | null>(null);
 
@@ -30,7 +38,8 @@ export const ModelsView: React.FC = () => {
   const availableModelsQuery = api.models.getAvailableModels.useQuery();
   const downloadedModelsQuery = api.models.getDownloadedModels.useQuery();
   const activeDownloadsQuery = api.models.getActiveDownloads.useQuery();
-  const isLocalWhisperAvailableQuery = api.models.isLocalWhisperAvailable.useQuery();
+  const isLocalWhisperAvailableQuery =
+    api.models.isLocalWhisperAvailable.useQuery();
   const selectedModelQuery = api.models.getSelectedModel.useQuery();
 
   const utils = api.useUtils();
@@ -42,13 +51,13 @@ export const ModelsView: React.FC = () => {
       utils.models.getActiveDownloads.invalidate();
     },
     onError: (error) => {
-      console.error('Failed to start download:', error);
-      if (error instanceof Error && error.message.includes('AbortError')) {
-        console.log('Download was manually aborted, not showing error');
+      console.error("Failed to start download:", error);
+      if (error instanceof Error && error.message.includes("AbortError")) {
+        console.log("Download was manually aborted, not showing error");
         return;
       }
-      toast.error('Failed to start download');
-    }
+      toast.error("Failed to start download");
+    },
   });
 
   const cancelDownloadMutation = api.models.cancelDownload.useMutation({
@@ -56,9 +65,9 @@ export const ModelsView: React.FC = () => {
       utils.models.getActiveDownloads.invalidate();
     },
     onError: (error) => {
-      console.error('Failed to cancel download:', error);
-      toast.error('Failed to cancel download');
-    }
+      console.error("Failed to cancel download:", error);
+      toast.error("Failed to cancel download");
+    },
   });
 
   const deleteModelMutation = api.models.deleteModel.useMutation({
@@ -68,11 +77,11 @@ export const ModelsView: React.FC = () => {
       setModelToDelete(null);
     },
     onError: (error) => {
-      console.error('Failed to delete model:', error);
-      toast.error('Failed to delete model');
+      console.error("Failed to delete model:", error);
+      toast.error("Failed to delete model");
       setShowDeleteDialog(false);
       setModelToDelete(null);
-    }
+    },
   });
 
   const setSelectedModelMutation = api.models.setSelectedModel.useMutation({
@@ -80,9 +89,9 @@ export const ModelsView: React.FC = () => {
       utils.models.getSelectedModel.invalidate();
     },
     onError: (error) => {
-      console.error('Failed to select model:', error);
-      toast.error('Failed to select model');
-    }
+      console.error("Failed to select model:", error);
+      toast.error("Failed to select model");
+    },
   });
 
   // Initialize active downloads progress on load
@@ -99,16 +108,16 @@ export const ModelsView: React.FC = () => {
   // Set up tRPC subscriptions for real-time download updates
   api.models.onDownloadProgress.useSubscription(undefined, {
     onData: ({ modelId, progress }) => {
-      setDownloadProgress(prev => ({ ...prev, [modelId]: progress }));
+      setDownloadProgress((prev) => ({ ...prev, [modelId]: progress }));
     },
     onError: (error) => {
-      console.error('Download progress subscription error:', error);
-    }
+      console.error("Download progress subscription error:", error);
+    },
   });
 
   api.models.onDownloadComplete.useSubscription(undefined, {
     onData: ({ modelId, downloadedModel }) => {
-      setDownloadProgress(prev => {
+      setDownloadProgress((prev) => {
         const newProgress = { ...prev };
         delete newProgress[modelId];
         return newProgress;
@@ -117,13 +126,13 @@ export const ModelsView: React.FC = () => {
       utils.models.getActiveDownloads.invalidate();
     },
     onError: (error) => {
-      console.error('Download complete subscription error:', error);
-    }
+      console.error("Download complete subscription error:", error);
+    },
   });
 
   api.models.onDownloadError.useSubscription(undefined, {
     onData: ({ modelId, error }) => {
-      setDownloadProgress(prev => {
+      setDownloadProgress((prev) => {
         const newProgress = { ...prev };
         delete newProgress[modelId];
         return newProgress;
@@ -132,13 +141,13 @@ export const ModelsView: React.FC = () => {
       utils.models.getActiveDownloads.invalidate();
     },
     onError: (error) => {
-      console.error('Download error subscription error:', error);
-    }
+      console.error("Download error subscription error:", error);
+    },
   });
 
   api.models.onDownloadCancelled.useSubscription(undefined, {
     onData: ({ modelId }) => {
-      setDownloadProgress(prev => {
+      setDownloadProgress((prev) => {
         const newProgress = { ...prev };
         delete newProgress[modelId];
         return newProgress;
@@ -146,8 +155,8 @@ export const ModelsView: React.FC = () => {
       utils.models.getActiveDownloads.invalidate();
     },
     onError: (error) => {
-      console.error('Download cancelled subscription error:', error);
-    }
+      console.error("Download cancelled subscription error:", error);
+    },
   });
 
   api.models.onModelDeleted.useSubscription(undefined, {
@@ -155,8 +164,8 @@ export const ModelsView: React.FC = () => {
       utils.models.getDownloadedModels.invalidate();
     },
     onError: (error) => {
-      console.error('Model deleted subscription error:', error);
-    }
+      console.error("Model deleted subscription error:", error);
+    },
   });
 
   const handleDownload = async (modelId: string, event?: React.MouseEvent) => {
@@ -167,14 +176,17 @@ export const ModelsView: React.FC = () => {
 
     try {
       await downloadModelMutation.mutateAsync({ modelId });
-      console.log('Download started for:', modelId);
+      console.log("Download started for:", modelId);
     } catch (err) {
-      console.error('Failed to start download:', err);
+      console.error("Failed to start download:", err);
       // Error is already handled by the mutation's onError
     }
   };
 
-  const handleCancelDownload = async (modelId: string, event?: React.MouseEvent) => {
+  const handleCancelDownload = async (
+    modelId: string,
+    event?: React.MouseEvent,
+  ) => {
     if (event) {
       event.preventDefault();
       event.stopPropagation();
@@ -182,9 +194,9 @@ export const ModelsView: React.FC = () => {
 
     try {
       await cancelDownloadMutation.mutateAsync({ modelId });
-      console.log('Cancel download successful for:', modelId);
+      console.log("Cancel download successful for:", modelId);
     } catch (err) {
-      console.error('Failed to cancel download:', err);
+      console.error("Failed to cancel download:", err);
       // Error is already handled by the mutation's onError
     }
   };
@@ -200,7 +212,7 @@ export const ModelsView: React.FC = () => {
     try {
       await deleteModelMutation.mutateAsync({ modelId: modelToDelete });
     } catch (err) {
-      console.error('Failed to delete model:', err);
+      console.error("Failed to delete model:", err);
       // Error is already handled by the mutation's onError
     }
   };
@@ -214,22 +226,25 @@ export const ModelsView: React.FC = () => {
     try {
       await setSelectedModelMutation.mutateAsync({ modelId });
     } catch (err) {
-      console.error('Failed to select model:', err);
+      console.error("Failed to select model:", err);
       // Error is already handled by the mutation's onError
     }
   };
 
   const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return "0 B";
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
   // Loading state
-  const loading = availableModelsQuery.isLoading || downloadedModelsQuery.isLoading || 
-                 isLocalWhisperAvailableQuery.isLoading || selectedModelQuery.isLoading;
+  const loading =
+    availableModelsQuery.isLoading ||
+    downloadedModelsQuery.isLoading ||
+    isLocalWhisperAvailableQuery.isLoading ||
+    selectedModelQuery.isLoading;
 
   // Data from queries
   const availableModels = availableModelsQuery.data || [];
@@ -250,7 +265,9 @@ export const ModelsView: React.FC = () => {
     <div className="h-full p-6">
       <Tabs defaultValue="speech-recognition" className="w-full">
         <TabsList className="grid w-full grid-cols-1">
-          <TabsTrigger value="speech-recognition">Speech Recognition</TabsTrigger>
+          <TabsTrigger value="speech-recognition">
+            Speech Recognition
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="speech-recognition" className="space-y-6 mt-6">
@@ -263,17 +280,20 @@ export const ModelsView: React.FC = () => {
             </CardHeader>
             <CardContent>
               <RadioGroup
-                value={selectedModel || ''}
+                value={selectedModel || ""}
                 onValueChange={handleSelectModel}
                 className="space-y-4"
               >
                 {availableModels.map((model) => {
                   const isDownloaded = !!downloadedModels[model.id];
                   const progress = downloadProgress[model.id];
-                  const isDownloading = progress?.status === 'downloading';
+                  const isDownloading = progress?.status === "downloading";
 
                   return (
-                    <div key={model.id} className="flex items-center justify-between py-3 border-b last:border-b-0">
+                    <div
+                      key={model.id}
+                      className="flex items-center justify-between py-3 border-b last:border-b-0"
+                    >
                       <div className="flex items-center space-x-3">
                         <RadioGroupItem
                           value={model.id}
@@ -281,7 +301,10 @@ export const ModelsView: React.FC = () => {
                           disabled={!isDownloaded || !isLocalWhisperAvailable}
                         />
                         <div className="flex-1">
-                          <Label htmlFor={model.id} className="text-base font-medium cursor-pointer">
+                          <Label
+                            htmlFor={model.id}
+                            className="text-base font-medium cursor-pointer"
+                          >
                             {model.name}
                           </Label>
                           <div className="text-sm text-muted-foreground mt-1">
@@ -310,7 +333,7 @@ export const ModelsView: React.FC = () => {
                             >
                               <Square className="w-4 h-4" />
                             </button>
-                            
+
                             {/* Circular Progress Ring */}
                             {progress && (
                               <svg
@@ -352,7 +375,7 @@ export const ModelsView: React.FC = () => {
                             <Trash2 className="w-5 h-5" />
                           </button>
                         )}
-                        
+
                         <div className="text-xs text-muted-foreground text-center">
                           {model.sizeFormatted}
                         </div>
@@ -364,7 +387,6 @@ export const ModelsView: React.FC = () => {
             </CardContent>
           </Card>
         </TabsContent>
-
       </Tabs>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
@@ -372,12 +394,19 @@ export const ModelsView: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Model</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this model? This action cannot be undone and you will need to download the model again if you want to use it.
+              Are you sure you want to delete this model? This action cannot be
+              undone and you will need to download the model again if you want
+              to use it.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-500 hover:bg-red-600">
+            <AlertDialogCancel onClick={handleDeleteCancel}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-500 hover:bg-red-600"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -385,4 +414,4 @@ export const ModelsView: React.FC = () => {
       </AlertDialog>
     </div>
   );
-}; 
+};

@@ -1,10 +1,14 @@
-import { eq, desc, asc, and, like, count, gte, lte } from 'drizzle-orm';
-import { db } from './config';
-import { transcriptions, type Transcription, type NewTranscription } from './schema';
+import { eq, desc, asc, and, like, count, gte, lte } from "drizzle-orm";
+import { db } from "./config";
+import {
+  transcriptions,
+  type Transcription,
+  type NewTranscription,
+} from "./schema";
 
 // Create a new transcription
 export async function createTranscription(
-  data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>
+  data: Omit<NewTranscription, "id" | "createdAt" | "updatedAt">,
 ) {
   const now = new Date();
 
@@ -15,7 +19,10 @@ export async function createTranscription(
     updatedAt: now,
   };
 
-  const result = await db.insert(transcriptions).values(newTranscription).returning();
+  const result = await db
+    .insert(transcriptions)
+    .values(newTranscription)
+    .returning();
   return result[0];
 }
 
@@ -24,16 +31,25 @@ export async function getTranscriptions(
   options: {
     limit?: number;
     offset?: number;
-    sortBy?: 'timestamp' | 'createdAt';
-    sortOrder?: 'asc' | 'desc';
+    sortBy?: "timestamp" | "createdAt";
+    sortOrder?: "asc" | "desc";
     search?: string;
-  } = {}
+  } = {},
 ) {
-  const { limit = 50, offset = 0, sortBy = 'timestamp', sortOrder = 'desc', search } = options;
+  const {
+    limit = 50,
+    offset = 0,
+    sortBy = "timestamp",
+    sortOrder = "desc",
+    search,
+  } = options;
 
   // Build query with conditional where clause
-  const sortColumn = sortBy === 'timestamp' ? transcriptions.timestamp : transcriptions.createdAt;
-  const orderFn = sortOrder === 'asc' ? asc : desc;
+  const sortColumn =
+    sortBy === "timestamp"
+      ? transcriptions.timestamp
+      : transcriptions.createdAt;
+  const orderFn = sortOrder === "asc" ? asc : desc;
 
   if (search) {
     return await db
@@ -55,14 +71,17 @@ export async function getTranscriptions(
 
 // Get transcription by ID
 export async function getTranscriptionById(id: number) {
-  const result = await db.select().from(transcriptions).where(eq(transcriptions.id, id));
+  const result = await db
+    .select()
+    .from(transcriptions)
+    .where(eq(transcriptions.id, id));
   return result[0] || null;
 }
 
 // Update transcription
 export async function updateTranscription(
   id: number,
-  data: Partial<Omit<Transcription, 'id' | 'createdAt'>>
+  data: Partial<Omit<Transcription, "id" | "createdAt">>,
 ) {
   const updateData = {
     ...data,
@@ -80,7 +99,10 @@ export async function updateTranscription(
 
 // Delete transcription
 export async function deleteTranscription(id: number) {
-  const result = await db.delete(transcriptions).where(eq(transcriptions.id, id)).returning();
+  const result = await db
+    .delete(transcriptions)
+    .where(eq(transcriptions.id, id))
+    .returning();
 
   return result[0] || null;
 }
@@ -100,11 +122,19 @@ export async function getTranscriptionsCount(search?: string) {
 }
 
 // Get transcriptions by date range
-export async function getTranscriptionsByDateRange(startDate: Date, endDate: Date) {
+export async function getTranscriptionsByDateRange(
+  startDate: Date,
+  endDate: Date,
+) {
   return await db
     .select()
     .from(transcriptions)
-    .where(and(gte(transcriptions.timestamp, startDate), lte(transcriptions.timestamp, endDate)))
+    .where(
+      and(
+        gte(transcriptions.timestamp, startDate),
+        lte(transcriptions.timestamp, endDate),
+      ),
+    )
     .orderBy(desc(transcriptions.timestamp));
 }
 

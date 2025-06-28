@@ -19,6 +19,11 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*", "forge.config.ts", "vite.*.config.mts", "drizzle.config.ts"],
+  "include": [
+    "src/**/*",
+    "forge.config.ts",
+    "vite.*.config.mts",
+    "drizzle.config.ts"
+  ],
   "exclude": ["node_modules", "dist", ".vite", "out"]
 }

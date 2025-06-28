@@ -1,6 +1,6 @@
-import { initTRPC } from '@trpc/server';
-import superjson from 'superjson';
-import { z } from 'zod';
+import { initTRPC } from "@trpc/server";
+import superjson from "superjson";
+import { z } from "zod";
 import {
   getVocabulary,
   getVocabularyById,
@@ -13,7 +13,7 @@ import {
   bulkImportVocabulary,
   trackWordUsage,
   getMostUsedWords,
-} from '../../db/vocabulary';
+} from "../../db/vocabulary";
 
 const t = initTRPC.create({
   isServer: true,
@@ -24,8 +24,8 @@ const t = initTRPC.create({
 const GetVocabularySchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
-  sortBy: z.enum(['word', 'dateAdded', 'usageCount']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional(),
+  sortBy: z.enum(["word", "dateAdded", "usageCount"]).optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
   search: z.string().optional(),
 });
 
@@ -44,14 +44,16 @@ const BulkImportSchema = z.array(
   z.object({
     word: z.string().min(1),
     dateAdded: z.date().optional(),
-  })
+  }),
 );
 
 export const vocabularyRouter = t.router({
   // Get vocabulary list with pagination and filtering
-  getVocabulary: t.procedure.input(GetVocabularySchema).query(async ({ input }) => {
-    return await getVocabulary(input);
-  }),
+  getVocabulary: t.procedure
+    .input(GetVocabularySchema)
+    .query(async ({ input }) => {
+      return await getVocabulary(input);
+    }),
 
   // Get vocabulary count
   getVocabularyCount: t.procedure
@@ -61,9 +63,11 @@ export const vocabularyRouter = t.router({
     }),
 
   // Get vocabulary by ID
-  getVocabularyById: t.procedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
-    return await getVocabularyById(input.id);
-  }),
+  getVocabularyById: t.procedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return await getVocabularyById(input.id);
+    }),
 
   // Get vocabulary by word
   getVocabularyByWord: t.procedure
@@ -78,7 +82,7 @@ export const vocabularyRouter = t.router({
       z.object({
         searchTerm: z.string(),
         limit: z.number().optional(),
-      })
+      }),
     )
     .query(async ({ input }) => {
       return await searchVocabulary(input.searchTerm, input.limit);
@@ -92,9 +96,11 @@ export const vocabularyRouter = t.router({
     }),
 
   // Create vocabulary word
-  createVocabularyWord: t.procedure.input(CreateVocabularySchema).mutation(async ({ input }) => {
-    return await createVocabularyWord(input);
-  }),
+  createVocabularyWord: t.procedure
+    .input(CreateVocabularySchema)
+    .mutation(async ({ input }) => {
+      return await createVocabularyWord(input);
+    }),
 
   // Update vocabulary word
   updateVocabulary: t.procedure
@@ -102,24 +108,30 @@ export const vocabularyRouter = t.router({
       z.object({
         id: z.number(),
         data: UpdateVocabularySchema,
-      })
+      }),
     )
     .mutation(async ({ input }) => {
       return await updateVocabulary(input.id, input.data);
     }),
 
   // Delete vocabulary word
-  deleteVocabulary: t.procedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
-    return await deleteVocabulary(input.id);
-  }),
+  deleteVocabulary: t.procedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return await deleteVocabulary(input.id);
+    }),
 
   // Track word usage
-  trackWordUsage: t.procedure.input(z.object({ word: z.string() })).mutation(async ({ input }) => {
-    return await trackWordUsage(input.word);
-  }),
+  trackWordUsage: t.procedure
+    .input(z.object({ word: z.string() }))
+    .mutation(async ({ input }) => {
+      return await trackWordUsage(input.word);
+    }),
 
   // Bulk import vocabulary
-  bulkImportVocabulary: t.procedure.input(BulkImportSchema).mutation(async ({ input }) => {
-    return await bulkImportVocabulary(input);
-  }),
+  bulkImportVocabulary: t.procedure
+    .input(BulkImportSchema)
+    .mutation(async ({ input }) => {
+      return await bulkImportVocabulary(input);
+    }),
 });

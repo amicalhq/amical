@@ -1,11 +1,11 @@
-import { initTRPC } from '@trpc/server';
-import superjson from 'superjson';
-import { z } from 'zod';
-import { vocabularyRouter } from './routers/vocabulary';
-import { transcriptionsRouter } from './routers/transcriptions';
-import { modelsRouter } from './routers/models';
-import { settingsRouter } from './routers/settings';
-import { updaterRouter } from './routers/updater';
+import { initTRPC } from "@trpc/server";
+import superjson from "superjson";
+import { z } from "zod";
+import { vocabularyRouter } from "./routers/vocabulary";
+import { transcriptionsRouter } from "./routers/transcriptions";
+import { modelsRouter } from "./routers/models";
+import { settingsRouter } from "./routers/settings";
+import { updaterRouter } from "./routers/updater";
 
 const t = initTRPC.create({
   isServer: true,
@@ -24,7 +24,7 @@ export const router = t.router({
   // Example of a simple procedure without input
   ping: t.procedure.query(() => {
     return {
-      message: 'pong',
+      message: "pong",
       timestamp: new Date(),
     };
   }),
@@ -39,16 +39,16 @@ export const router = t.router({
 
   // Vocabulary router
   vocabulary: vocabularyRouter,
-  
+
   // Transcriptions router
   transcriptions: transcriptionsRouter,
-  
+
   // Models router
   models: modelsRouter,
-  
+
   // Settings router
   settings: settingsRouter,
-  
+
   // Auto-updater router
   updater: updaterRouter,
 });

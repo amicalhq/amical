@@ -1,5 +1,5 @@
-import { FormatterClient, FormatterConfig } from './formatter-client';
-import { OpenRouterFormatterClient } from './openrouter-formatter-client';
+import { FormatterClient, FormatterConfig } from "./formatter-client";
+import { OpenRouterFormatterClient } from "./openrouter-formatter-client";
 
 /**
  * Main formatter service that manages different formatting providers
@@ -20,8 +20,11 @@ export class FormatterService {
     }
 
     switch (config.provider) {
-      case 'openrouter':
-        this.client = new OpenRouterFormatterClient(config.apiKey, config.model);
+      case "openrouter":
+        this.client = new OpenRouterFormatterClient(
+          config.apiKey,
+          config.model,
+        );
         break;
       default:
         throw new Error(`Unsupported formatter provider: ${config.provider}`);
@@ -40,7 +43,7 @@ export class FormatterService {
     try {
       return await this.client.formatText(text);
     } catch (error) {
-      console.error('Error in formatter service:', error);
+      console.error("Error in formatter service:", error);
       // Return original text if formatting fails
       return text;
     }

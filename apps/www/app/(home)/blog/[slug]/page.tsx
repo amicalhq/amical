@@ -1,14 +1,14 @@
-import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
-import Link from 'next/link';
-import Image from 'next/image';
-import { InlineTOC } from 'fumadocs-ui/components/inline-toc';
-import defaultMdxComponents from 'fumadocs-ui/mdx';
-import { blog } from '@/lib/source';
-import { File, Files, Folder } from 'fumadocs-ui/components/files';
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
-import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { InlineTOC } from "fumadocs-ui/components/inline-toc";
+import defaultMdxComponents from "fumadocs-ui/mdx";
+import { blog } from "@/lib/source";
+import { File, Files, Folder } from "fumadocs-ui/components/files";
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export async function generateMetadata(props: {
   params: Promise<{ slug: string }>;
@@ -20,19 +20,22 @@ export async function generateMetadata(props: {
 
   return {
     title: {
-      absolute: `${page.data.title} | Amical`
+      absolute: `${page.data.title} | Amical`,
     },
-    description: page.data.description ?? 'A blog about Amical, Productivity and AI',
+    description:
+      page.data.description ?? "A blog about Amical, Productivity and AI",
     openGraph: {
       title: `${page.data.title}`,
-      description: page.data.description ?? 'A blog about Amical, Productivity and AI',
-      type: 'article',
+      description:
+        page.data.description ?? "A blog about Amical, Productivity and AI",
+      type: "article",
       images: page.data.image ? [{ url: page.data.image }] : undefined,
     },
     twitter: {
-      card: 'summary_large_image',
+      card: "summary_large_image",
       title: `${page.data.title}`,
-      description: page.data.description ?? 'A blog about Amical, Productivity and AI',
+      description:
+        page.data.description ?? "A blog about Amical, Productivity and AI",
       images: page.data.image ? [page.data.image] : undefined,
     },
   };
@@ -99,6 +102,6 @@ export default async function Page(props: {
 
 export function generateStaticParams(): { slug: string }[] {
   return blog.getPages().map((page) => ({
-    slug: page.slugs[0] || '',
+    slug: page.slugs[0] || "",
   }));
 }

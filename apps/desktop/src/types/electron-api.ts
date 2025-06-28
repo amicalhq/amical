@@ -6,8 +6,12 @@ declare global {
 
 export interface ElectronAPI {
   // Listeners remain the same (two-way to renderer)
-  onRecordingStateChanged: (callback: (newState: boolean) => void) => (() => void) | void;
-  onGlobalShortcut: (callback: (data: { shortcut: string }) => void) => (() => void) | void;
+  onRecordingStateChanged: (
+    callback: (newState: boolean) => void,
+  ) => (() => void) | void;
+  onGlobalShortcut: (
+    callback: (data: { shortcut: string }) => void,
+  ) => (() => void) | void;
   onKeyEvent: (callback: (keyEvent: unknown) => void) => (() => void) | void;
   onForceStopMediaRecorder: (callback: () => void) => (() => void) | void;
 
@@ -17,13 +21,17 @@ export interface ElectronAPI {
   onRecordingStopping: () => Promise<void>;
 
   // Model Management API
-  getAvailableModels: () => Promise<import('../constants/models').Model[]>;
-  getDownloadedModels: () => Promise<Record<string, import('../constants/models').DownloadedModel>>;
+  getAvailableModels: () => Promise<import("../constants/models").Model[]>;
+  getDownloadedModels: () => Promise<
+    Record<string, import("../constants/models").DownloadedModel>
+  >;
   isModelDownloaded: (modelId: string) => Promise<boolean>;
   getDownloadProgress: (
-    modelId: string
-  ) => Promise<import('../constants/models').DownloadProgress | null>;
-  getActiveDownloads: () => Promise<import('../constants/models').DownloadProgress[]>;
+    modelId: string,
+  ) => Promise<import("../constants/models").DownloadProgress | null>;
+  getActiveDownloads: () => Promise<
+    import("../constants/models").DownloadProgress[]
+  >;
   downloadModel: (modelId: string) => Promise<void>;
   cancelDownload: (modelId: string) => Promise<void>;
   deleteModel: (modelId: string) => Promise<void>;
@@ -37,32 +45,44 @@ export interface ElectronAPI {
   setWhisperExecutablePath: (path: string) => Promise<void>;
 
   // Formatter Configuration API
-  getFormatterConfig: () => Promise<import('../modules/formatter').FormatterConfig | null>;
-  setFormatterConfig: (config: import('../modules/formatter').FormatterConfig) => Promise<void>;
+  getFormatterConfig: () => Promise<
+    import("../modules/formatter").FormatterConfig | null
+  >;
+  setFormatterConfig: (
+    config: import("../modules/formatter").FormatterConfig,
+  ) => Promise<void>;
 
   // Transcription Database API
   getTranscriptions: (options?: {
     limit?: number;
     offset?: number;
-    sortBy?: 'timestamp' | 'createdAt';
-    sortOrder?: 'asc' | 'desc';
+    sortBy?: "timestamp" | "createdAt";
+    sortOrder?: "asc" | "desc";
     search?: string;
-  }) => Promise<import('../db/schema').Transcription[]>;
-  getTranscriptionById: (id: number) => Promise<import('../db/schema').Transcription | null>;
+  }) => Promise<import("../db/schema").Transcription[]>;
+  getTranscriptionById: (
+    id: number,
+  ) => Promise<import("../db/schema").Transcription | null>;
   createTranscription: (
-    data: Omit<import('../db/schema').NewTranscription, 'id' | 'createdAt' | 'updatedAt'>
-  ) => Promise<import('../db/schema').Transcription>;
+    data: Omit<
+      import("../db/schema").NewTranscription,
+      "id" | "createdAt" | "updatedAt"
+    >,
+  ) => Promise<import("../db/schema").Transcription>;
   updateTranscription: (
     id: number,
-    data: Partial<Omit<import('../db/schema').Transcription, 'id' | 'createdAt'>>
-  ) => Promise<import('../db/schema').Transcription | null>;
-  deleteTranscription: (id: number) => Promise<import('../db/schema').Transcription | null>;
+    data: Partial<
+      Omit<import("../db/schema").Transcription, "id" | "createdAt">
+    >,
+  ) => Promise<import("../db/schema").Transcription | null>;
+  deleteTranscription: (
+    id: number,
+  ) => Promise<import("../db/schema").Transcription | null>;
   getTranscriptionsCount: (search?: string) => Promise<number>;
   searchTranscriptions: (
     searchTerm: string,
-    limit?: number
-  ) => Promise<import('../db/schema').Transcription[]>;
-
+    limit?: number,
+  ) => Promise<import("../db/schema").Transcription[]>;
 
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;

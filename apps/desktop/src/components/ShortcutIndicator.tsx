@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 
 const ShortcutIndicator: React.FC = () => {
   const [isPressed, setIsPressed] = useState(false);
@@ -20,9 +20,9 @@ const ShortcutIndicator: React.FC = () => {
 
   return (
     <div
-      className={`w-[100px] h-[100px] ${isPressed ? 'bg-red-500' : 'bg-transparent'} border-2 border-gray-300 rounded-lg transition-colors duration-100 flex items-center justify-center ${isPressed ? 'text-white' : 'text-gray-600'} text-sm`}
+      className={`w-[100px] h-[100px] ${isPressed ? "bg-red-500" : "bg-transparent"} border-2 border-gray-300 rounded-lg transition-colors duration-100 flex items-center justify-center ${isPressed ? "text-white" : "text-gray-600"} text-sm`}
     >
-      {isPressed ? 'Pressed!' : 'Alt+Space'}
+      {isPressed ? "Pressed!" : "Alt+Space"}
     </div>
   );
 };

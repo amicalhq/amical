@@ -1,7 +1,11 @@
-import { initTRPC } from '@trpc/server';
-import superjson from 'superjson';
-import { z } from 'zod';
-import type { Model, DownloadedModel, DownloadProgress } from '../../constants/models';
+import { initTRPC } from "@trpc/server";
+import superjson from "superjson";
+import { z } from "zod";
+import type {
+  Model,
+  DownloadedModel,
+  DownloadProgress,
+} from "../../constants/models";
 
 const t = initTRPC.create({
   isServer: true,
@@ -24,45 +28,62 @@ export const modelsRouter = t.router({
   }),
 
   // Get downloaded models
-  getDownloadedModels: t.procedure.query(async (): Promise<Record<string, DownloadedModel>> => {
-    return globalThis.modelManagerService ? await globalThis.modelManagerService.getDownloadedModels() : {};
-  }),
+  getDownloadedModels: t.procedure.query(
+    async (): Promise<Record<string, DownloadedModel>> => {
+      return globalThis.modelManagerService
+        ? await globalThis.modelManagerService.getDownloadedModels()
+        : {};
+    },
+  ),
 
   // Check if model is downloaded
   isModelDownloaded: t.procedure
     .input(z.object({ modelId: z.string() }))
     .query(async ({ input }) => {
-      return globalThis.modelManagerService ? await globalThis.modelManagerService.isModelDownloaded(input.modelId) : false;
+      return globalThis.modelManagerService
+        ? await globalThis.modelManagerService.isModelDownloaded(input.modelId)
+        : false;
     }),
 
   // Get download progress
   getDownloadProgress: t.procedure
     .input(z.object({ modelId: z.string() }))
     .query(async ({ input }) => {
-      return globalThis.modelManagerService?.getDownloadProgress(input.modelId) || null;
+      return (
+        globalThis.modelManagerService?.getDownloadProgress(input.modelId) ||
+        null
+      );
     }),
 
   // Get active downloads
-  getActiveDownloads: t.procedure.query(async (): Promise<DownloadProgress[]> => {
-    return globalThis.modelManagerService?.getActiveDownloads() || [];
-  }),
+  getActiveDownloads: t.procedure.query(
+    async (): Promise<DownloadProgress[]> => {
+      return globalThis.modelManagerService?.getActiveDownloads() || [];
+    },
+  ),
 
   // Get models directory
   getModelsDirectory: t.procedure.query(async () => {
-    return globalThis.modelManagerService?.getModelsDirectory() || '';
+    return globalThis.modelManagerService?.getModelsDirectory() || "";
   }),
 
   // Local Whisper methods
   isLocalWhisperAvailable: t.procedure.query(async () => {
-    return globalThis.localWhisperClient ? await globalThis.localWhisperClient.isAvailable() : false;
+    return globalThis.localWhisperClient
+      ? await globalThis.localWhisperClient.isAvailable()
+      : false;
   }),
 
   getLocalWhisperModels: t.procedure.query(async () => {
-    return globalThis.localWhisperClient ? await globalThis.localWhisperClient.getAvailableModels() : [];
+    return globalThis.localWhisperClient
+      ? await globalThis.localWhisperClient.getAvailableModels()
+      : [];
   }),
 
   getSelectedModel: t.procedure.query(async () => {
-    return globalThis.localWhisperClient ? globalThis.localWhisperClient.getSelectedModel() : null;
+    return globalThis.localWhisperClient
+      ? globalThis.localWhisperClient.getSelectedModel()
+      : null;
   }),
 
   // Mutations
@@ -70,7 +91,7 @@ export const modelsRouter = t.router({
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input }) => {
       if (!globalThis.modelManagerService) {
-        throw new Error('Model manager service not initialized');
+        throw new Error("Model manager service not initialized");
       }
       return await globalThis.modelManagerService.downloadModel(input.modelId);
     }),
@@ -79,7 +100,7 @@ export const modelsRouter = t.router({
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input }) => {
       if (!globalThis.modelManagerService) {
-        throw new Error('Model manager service not initialized');
+        throw new Error("Model manager service not initialized");
       }
       return globalThis.modelManagerService.cancelDownload(input.modelId);
     }),
@@ -88,7 +109,7 @@ export const modelsRouter = t.router({
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input }) => {
       if (!globalThis.modelManagerService) {
-        throw new Error('Model manager service not initialized');
+        throw new Error("Model manager service not initialized");
       }
       return globalThis.modelManagerService.deleteModel(input.modelId);
     }),
@@ -97,29 +118,38 @@ export const modelsRouter = t.router({
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input }) => {
       if (!globalThis.localWhisperClient) {
-        throw new Error('Local whisper client not initialized');
+        throw new Error("Local whisper client not initialized");
       }
-      return await globalThis.localWhisperClient.setSelectedModel(input.modelId);
+      return await globalThis.localWhisperClient.setSelectedModel(
+        input.modelId,
+      );
     }),
 
   // Subscriptions using async generators
   onDownloadProgress: t.procedure.subscription(async function* () {
     if (!globalThis.modelManagerService) {
-      throw new Error('Model manager service not initialized');
+      throw new Error("Model manager service not initialized");
     }
 
-    const eventQueue: Array<{ modelId: string; progress: DownloadProgress }> = [];
+    const eventQueue: Array<{ modelId: string; progress: DownloadProgress }> =
+      [];
 
-    const handleDownloadProgress = (modelId: string, progress: DownloadProgress) => {
+    const handleDownloadProgress = (
+      modelId: string,
+      progress: DownloadProgress,
+    ) => {
       eventQueue.push({ modelId, progress });
     };
 
-    globalThis.modelManagerService.on('download-progress', handleDownloadProgress);
+    globalThis.modelManagerService.on(
+      "download-progress",
+      handleDownloadProgress,
+    );
 
     try {
       while (true) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         while (eventQueue.length > 0) {
           const event = eventQueue.shift();
           if (event) {
@@ -128,27 +158,39 @@ export const modelsRouter = t.router({
         }
       }
     } finally {
-      globalThis.modelManagerService?.off('download-progress', handleDownloadProgress);
+      globalThis.modelManagerService?.off(
+        "download-progress",
+        handleDownloadProgress,
+      );
     }
   }),
 
   onDownloadComplete: t.procedure.subscription(async function* () {
     if (!globalThis.modelManagerService) {
-      throw new Error('Model manager service not initialized');
+      throw new Error("Model manager service not initialized");
     }
 
-    const eventQueue: Array<{ modelId: string; downloadedModel: DownloadedModel }> = [];
+    const eventQueue: Array<{
+      modelId: string;
+      downloadedModel: DownloadedModel;
+    }> = [];
 
-    const handleDownloadComplete = (modelId: string, downloadedModel: DownloadedModel) => {
+    const handleDownloadComplete = (
+      modelId: string,
+      downloadedModel: DownloadedModel,
+    ) => {
       eventQueue.push({ modelId, downloadedModel });
     };
 
-    globalThis.modelManagerService.on('download-complete', handleDownloadComplete);
+    globalThis.modelManagerService.on(
+      "download-complete",
+      handleDownloadComplete,
+    );
 
     try {
       while (true) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         while (eventQueue.length > 0) {
           const event = eventQueue.shift();
           if (event) {
@@ -157,13 +199,16 @@ export const modelsRouter = t.router({
         }
       }
     } finally {
-      globalThis.modelManagerService?.off('download-complete', handleDownloadComplete);
+      globalThis.modelManagerService?.off(
+        "download-complete",
+        handleDownloadComplete,
+      );
     }
   }),
 
   onDownloadError: t.procedure.subscription(async function* () {
     if (!globalThis.modelManagerService) {
-      throw new Error('Model manager service not initialized');
+      throw new Error("Model manager service not initialized");
     }
 
     const eventQueue: Array<{ modelId: string; error: string }> = [];
@@ -172,12 +217,12 @@ export const modelsRouter = t.router({
       eventQueue.push({ modelId, error: error.message });
     };
 
-    globalThis.modelManagerService.on('download-error', handleDownloadError);
+    globalThis.modelManagerService.on("download-error", handleDownloadError);
 
     try {
       while (true) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         while (eventQueue.length > 0) {
           const event = eventQueue.shift();
           if (event) {
@@ -186,13 +231,16 @@ export const modelsRouter = t.router({
         }
       }
     } finally {
-      globalThis.modelManagerService?.off('download-error', handleDownloadError);
+      globalThis.modelManagerService?.off(
+        "download-error",
+        handleDownloadError,
+      );
     }
   }),
 
   onDownloadCancelled: t.procedure.subscription(async function* () {
     if (!globalThis.modelManagerService) {
-      throw new Error('Model manager service not initialized');
+      throw new Error("Model manager service not initialized");
     }
 
     const eventQueue: Array<{ modelId: string }> = [];
@@ -201,12 +249,15 @@ export const modelsRouter = t.router({
       eventQueue.push({ modelId });
     };
 
-    globalThis.modelManagerService.on('download-cancelled', handleDownloadCancelled);
+    globalThis.modelManagerService.on(
+      "download-cancelled",
+      handleDownloadCancelled,
+    );
 
     try {
       while (true) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         while (eventQueue.length > 0) {
           const event = eventQueue.shift();
           if (event) {
@@ -215,13 +266,16 @@ export const modelsRouter = t.router({
         }
       }
     } finally {
-      globalThis.modelManagerService?.off('download-cancelled', handleDownloadCancelled);
+      globalThis.modelManagerService?.off(
+        "download-cancelled",
+        handleDownloadCancelled,
+      );
     }
   }),
 
   onModelDeleted: t.procedure.subscription(async function* () {
     if (!globalThis.modelManagerService) {
-      throw new Error('Model manager service not initialized');
+      throw new Error("Model manager service not initialized");
     }
 
     const eventQueue: Array<{ modelId: string }> = [];
@@ -230,12 +284,12 @@ export const modelsRouter = t.router({
       eventQueue.push({ modelId });
     };
 
-    globalThis.modelManagerService.on('model-deleted', handleModelDeleted);
+    globalThis.modelManagerService.on("model-deleted", handleModelDeleted);
 
     try {
       while (true) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         while (eventQueue.length > 0) {
           const event = eventQueue.shift();
           if (event) {
@@ -244,7 +298,7 @@ export const modelsRouter = t.router({
         }
       }
     } finally {
-      globalThis.modelManagerService?.off('model-deleted', handleModelDeleted);
+      globalThis.modelManagerService?.off("model-deleted", handleModelDeleted);
     }
   }),
 });

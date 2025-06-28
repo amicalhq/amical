@@ -1,5 +1,5 @@
-import { TranscriptionClient } from './transcription-client';
-import { FormatterService } from '../formatter';
+import { TranscriptionClient } from "./transcription-client";
+import { FormatterService } from "../formatter";
 
 export class AiService {
   private transcriptionClient: TranscriptionClient;
@@ -12,14 +12,16 @@ export class AiService {
 
   async transcribeAudio(audioData: Buffer): Promise<string> {
     if (!this.transcriptionClient) {
-      throw new Error('Transcription client is not initialized.');
+      throw new Error("Transcription client is not initialized.");
     }
 
     // Step 1: Transcribe audio
-    const transcribedText = await this.transcriptionClient.transcribe(audioData);
+    const transcribedText =
+      await this.transcriptionClient.transcribe(audioData);
 
     // Step 2: Format the transcribed text if formatter is enabled
-    const formattedText = await this.formatterService.formatText(transcribedText);
+    const formattedText =
+      await this.formatterService.formatText(transcribedText);
 
     return formattedText;
   }

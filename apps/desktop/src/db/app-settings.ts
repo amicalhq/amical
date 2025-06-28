@@ -1,6 +1,10 @@
-import { eq } from 'drizzle-orm';
-import { db } from './config';
-import { appSettings, type NewAppSettings, type AppSettingsData } from './schema';
+import { eq } from "drizzle-orm";
+import { db } from "./config";
+import {
+  appSettings,
+  type NewAppSettings,
+  type AppSettingsData,
+} from "./schema";
 
 // Singleton ID for app settings (we only have one settings record)
 const SETTINGS_ID = 1;
@@ -8,25 +12,25 @@ const SETTINGS_ID = 1;
 // Default settings
 const defaultSettings: AppSettingsData = {
   formatterConfig: {
-    provider: 'openrouter',
-    model: 'anthropic/claude-3-haiku',
-    apiKey: '',
+    provider: "openrouter",
+    model: "anthropic/claude-3-haiku",
+    apiKey: "",
     enabled: false,
   },
   ui: {
-    theme: 'system',
+    theme: "system",
     sidebarOpen: false,
-    currentView: 'Voice Recording',
+    currentView: "Voice Recording",
   },
   transcription: {
-    language: 'en',
+    language: "en",
     autoTranscribe: true,
     confidenceThreshold: 0.8,
     enablePunctuation: true,
     enableTimestamps: false,
   },
   recording: {
-    defaultFormat: 'wav',
+    defaultFormat: "wav",
     sampleRate: 16000,
     autoStopSilence: true,
     silenceThreshold: 3,
@@ -36,7 +40,10 @@ const defaultSettings: AppSettingsData = {
 
 // Get all app settings
 export async function getAppSettings(): Promise<AppSettingsData> {
-  const result = await db.select().from(appSettings).where(eq(appSettings.id, SETTINGS_ID));
+  const result = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.id, SETTINGS_ID));
 
   if (result.length === 0) {
     // Create default settings if none exist
@@ -49,7 +56,7 @@ export async function getAppSettings(): Promise<AppSettingsData> {
 
 // Update app settings (merges with existing settings)
 export async function updateAppSettings(
-  newSettings: Partial<AppSettingsData>
+  newSettings: Partial<AppSettingsData>,
 ): Promise<AppSettingsData> {
   const currentSettings = await getAppSettings();
   const mergedSettings: AppSettingsData = {
@@ -100,7 +107,9 @@ export async function updateAppSettings(
 }
 
 // Replace all app settings (complete override)
-export async function replaceAppSettings(newSettings: AppSettingsData): Promise<AppSettingsData> {
+export async function replaceAppSettings(
+  newSettings: AppSettingsData,
+): Promise<AppSettingsData> {
   const now = new Date();
 
   await db
@@ -116,7 +125,7 @@ export async function replaceAppSettings(newSettings: AppSettingsData): Promise<
 
 // Get a specific setting section
 export async function getSettingsSection<K extends keyof AppSettingsData>(
-  section: K
+  section: K,
 ): Promise<AppSettingsData[K]> {
   const settings = await getAppSettings();
   return settings[section];
@@ -125,9 +134,11 @@ export async function getSettingsSection<K extends keyof AppSettingsData>(
 // Update a specific setting section
 export async function updateSettingsSection<K extends keyof AppSettingsData>(
   section: K,
-  newData: AppSettingsData[K]
+  newData: AppSettingsData[K],
 ): Promise<AppSettingsData> {
-  return await updateAppSettings({ [section]: newData } as Partial<AppSettingsData>);
+  return await updateAppSettings({
+    [section]: newData,
+  } as Partial<AppSettingsData>);
 }
 
 // Reset settings to defaults

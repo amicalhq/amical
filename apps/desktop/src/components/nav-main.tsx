@@ -1,13 +1,13 @@
-import { IconCirclePlusFilled, IconMail, type Icon } from "@tabler/icons-react"
+import { IconCirclePlusFilled, IconMail, type Icon } from "@tabler/icons-react";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
 export function NavMain({
   items,
@@ -15,12 +15,12 @@ export function NavMain({
   currentView,
 }: {
   items: {
-    title: string
-    url: string
-    icon?: Icon
-  }[]
-  onNavigate?: (item: { title: string }) => void
-  currentView?: string
+    title: string;
+    url: string;
+    icon?: Icon;
+  }[];
+  onNavigate?: (item: { title: string }) => void;
+  currentView?: string;
 }) {
   return (
     <SidebarGroup>
@@ -28,7 +28,7 @@ export function NavMain({
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton 
+              <SidebarMenuButton
                 tooltip={item.title}
                 isActive={currentView === item.title}
                 onClick={() => onNavigate?.(item)}
@@ -41,5 +41,5 @@ export function NavMain({
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
-  )
+  );
 }

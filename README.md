@@ -7,7 +7,6 @@
 </picture>
 </div>
 
-
 <p align="center">
   <a href='http://makeapullrequest.com'>
     <img alt='PRs Welcome' src='https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=shields'/>
@@ -42,6 +41,7 @@ Open source AI Dictation and Note-taking\
 Dictate hands-free, transcribe meetings, and capture notes effortlessly - powered by Gen AI
 
 ## ✨ Features
+
 > ✔︎ - Done, ◑ - In Progress, ◯ - Planned
 
 ### 📱 Apps
@@ -121,6 +121,7 @@ Contributions are welcome! Please read the [Contributing Guide][contributing] to
 Released under [MIT][license].
 
 <!-- REFERENCE LINKS -->
+
 [contributing]: https://github.com/amicalhq/amical/blob/main/CONTRIBUTING.md
 [license]: https://github.com/amicalhq/amical/blob/main/LICENSE
 [discussions]: https://discuss.amical.ai

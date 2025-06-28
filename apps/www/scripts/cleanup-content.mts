@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import { rimraf } from 'rimraf';
+import { promises as fs } from "fs";
+import path from "path";
+import { rimraf } from "rimraf";
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const DRY_RUN = args.includes('--dry-run');
-const VERBOSE = args.includes('--verbose');
+const DRY_RUN = args.includes("--dry-run");
+const VERBOSE = args.includes("--verbose");
 
 // Configuration - use the same paths as in fetch-content.mts
-const CONTENT_DIR = path.join(process.cwd(), 'content');
-const PUBLIC_DIR = path.join(process.cwd(), 'public');
-const LOCAL_BLOG_DIR = path.join(CONTENT_DIR, 'blogs');
-const LOCAL_BLOG_IMAGES_DIR = path.join(PUBLIC_DIR, 'blog');
+const CONTENT_DIR = path.join(process.cwd(), "content");
+const PUBLIC_DIR = path.join(process.cwd(), "public");
+const LOCAL_BLOG_DIR = path.join(CONTENT_DIR, "blogs");
+const LOCAL_BLOG_IMAGES_DIR = path.join(PUBLIC_DIR, "blog");
 
 /**
  * Checks if a directory exists
@@ -49,9 +49,9 @@ async function removeDirectory(directory: string): Promise<void> {
  * Cleans up the blog content and images
  */
 async function cleanupContent(): Promise<void> {
-  console.log('Starting content cleanup...');
+  console.log("Starting content cleanup...");
   if (DRY_RUN) {
-    console.log('*** DRY RUN MODE - No files will be deleted ***');
+    console.log("*** DRY RUN MODE - No files will be deleted ***");
   }
 
   try {
@@ -68,12 +68,14 @@ async function cleanupContent(): Promise<void> {
       console.log(`Found blog images directory: ${LOCAL_BLOG_IMAGES_DIR}`);
       await removeDirectory(LOCAL_BLOG_IMAGES_DIR);
     } else if (VERBOSE) {
-      console.log(`Blog images directory does not exist: ${LOCAL_BLOG_IMAGES_DIR}`);
+      console.log(
+        `Blog images directory does not exist: ${LOCAL_BLOG_IMAGES_DIR}`,
+      );
     }
 
-    console.log('Content cleanup completed successfully!');
+    console.log("Content cleanup completed successfully!");
   } catch (error) {
-    console.error('Error during cleanup:', error);
+    console.error("Error during cleanup:", error);
     process.exit(1);
   }
 }

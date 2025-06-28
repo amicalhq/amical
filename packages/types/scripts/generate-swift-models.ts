@@ -1,8 +1,9 @@
-import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
+import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
 
-const generatedDir = '../native-helpers/swift-helper/Sources/SwiftHelper/models/generated';
+const generatedDir =
+  "../native-helpers/swift-helper/Sources/SwiftHelper/models/generated";
 
 try {
   // Remove existing generated models and create the directory
@@ -11,37 +12,37 @@ try {
   }
   fs.mkdirSync(generatedDir, { recursive: true });
 
-  console.log('Directory created/cleaned successfully.');
+  console.log("Directory created/cleaned successfully.");
 
   // Generate Swift models from JSON schemas using quicktype
   const commands = [
-    'quicktype --src-lang schema --lang swift ' +
+    "quicktype --src-lang schema --lang swift " +
       `-o ${generatedDir}/models.swift ` +
-      'generated/json-schemas/rpc/rpc-request.schema.json ' +
-      'generated/json-schemas/rpc/rpc-response.schema.json ' +
-      'generated/json-schemas/methods/get-accessibility-tree-details-params.schema.json ' +
-      'generated/json-schemas/methods/get-accessibility-tree-details-result.schema.json ' +
-      'generated/json-schemas/methods/get-accessibility-context-params.schema.json ' +
-      'generated/json-schemas/methods/get-accessibility-context-result.schema.json ' +
-      'generated/json-schemas/methods/paste-text-params.schema.json ' +
-      'generated/json-schemas/methods/paste-text-result.schema.json ' +
-      'generated/json-schemas/methods/mute-system-audio-params.schema.json ' +
-      'generated/json-schemas/methods/mute-system-audio-result.schema.json ' +
-      'generated/json-schemas/methods/restore-system-audio-params.schema.json ' +
-      'generated/json-schemas/methods/restore-system-audio-result.schema.json ' +
-      'generated/json-schemas/events/key-down-event.schema.json ' +
-      'generated/json-schemas/events/key-up-event.schema.json ' +
-      'generated/json-schemas/events/flags-changed-event.schema.json ' +
-      'generated/json-schemas/events/helper-event.schema.json',
+      "generated/json-schemas/rpc/rpc-request.schema.json " +
+      "generated/json-schemas/rpc/rpc-response.schema.json " +
+      "generated/json-schemas/methods/get-accessibility-tree-details-params.schema.json " +
+      "generated/json-schemas/methods/get-accessibility-tree-details-result.schema.json " +
+      "generated/json-schemas/methods/get-accessibility-context-params.schema.json " +
+      "generated/json-schemas/methods/get-accessibility-context-result.schema.json " +
+      "generated/json-schemas/methods/paste-text-params.schema.json " +
+      "generated/json-schemas/methods/paste-text-result.schema.json " +
+      "generated/json-schemas/methods/mute-system-audio-params.schema.json " +
+      "generated/json-schemas/methods/mute-system-audio-result.schema.json " +
+      "generated/json-schemas/methods/restore-system-audio-params.schema.json " +
+      "generated/json-schemas/methods/restore-system-audio-result.schema.json " +
+      "generated/json-schemas/events/key-down-event.schema.json " +
+      "generated/json-schemas/events/key-up-event.schema.json " +
+      "generated/json-schemas/events/flags-changed-event.schema.json " +
+      "generated/json-schemas/events/helper-event.schema.json",
   ];
 
   commands.forEach((command) => {
     console.log(`Executing: ${command}`);
-    execSync(command, { stdio: 'inherit' });
+    execSync(command, { stdio: "inherit" });
   });
 
-  console.log('Swift models generated successfully.');
+  console.log("Swift models generated successfully.");
 } catch (error) {
-  console.error('Error generating Swift models:', error);
+  console.error("Error generating Swift models:", error);
   process.exit(1);
-} 
+}

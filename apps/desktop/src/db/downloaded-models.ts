@@ -1,11 +1,15 @@
-import { eq, desc } from 'drizzle-orm';
-import * as fs from 'fs';
-import { db } from './config';
-import { downloadedModels, type DownloadedModel, type NewDownloadedModel } from './schema';
+import { eq, desc } from "drizzle-orm";
+import * as fs from "fs";
+import { db } from "./config";
+import {
+  downloadedModels,
+  type DownloadedModel,
+  type NewDownloadedModel,
+} from "./schema";
 
 // Create a new downloaded model record
 export async function createDownloadedModel(
-  data: Omit<NewDownloadedModel, 'createdAt' | 'updatedAt'>
+  data: Omit<NewDownloadedModel, "createdAt" | "updatedAt">,
 ) {
   const now = new Date();
 
@@ -21,12 +25,18 @@ export async function createDownloadedModel(
 
 // Get all downloaded models
 export async function getDownloadedModels() {
-  return await db.select().from(downloadedModels).orderBy(desc(downloadedModels.downloadedAt));
+  return await db
+    .select()
+    .from(downloadedModels)
+    .orderBy(desc(downloadedModels.downloadedAt));
 }
 
 // Get downloaded model by ID
 export async function getDownloadedModelById(id: string) {
-  const result = await db.select().from(downloadedModels).where(eq(downloadedModels.id, id));
+  const result = await db
+    .select()
+    .from(downloadedModels)
+    .where(eq(downloadedModels.id, id));
   return result[0] || null;
 }
 
@@ -39,7 +49,7 @@ export async function isModelDownloaded(modelId: string) {
 // Update downloaded model
 export async function updateDownloadedModel(
   id: string,
-  data: Partial<Omit<DownloadedModel, 'id' | 'createdAt'>>
+  data: Partial<Omit<DownloadedModel, "id" | "createdAt">>,
 ) {
   const updateData = {
     ...data,
@@ -57,13 +67,18 @@ export async function updateDownloadedModel(
 
 // Delete downloaded model
 export async function deleteDownloadedModel(id: string) {
-  const result = await db.delete(downloadedModels).where(eq(downloadedModels.id, id)).returning();
+  const result = await db
+    .delete(downloadedModels)
+    .where(eq(downloadedModels.id, id))
+    .returning();
 
   return result[0] || null;
 }
 
 // Get downloaded models as a record (for backward compatibility)
-export async function getDownloadedModelsRecord(): Promise<Record<string, DownloadedModel>> {
+export async function getDownloadedModelsRecord(): Promise<
+  Record<string, DownloadedModel>
+> {
   const models = await getDownloadedModels();
   const record: Record<string, DownloadedModel> = {};
 

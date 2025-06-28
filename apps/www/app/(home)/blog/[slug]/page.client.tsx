@@ -1,13 +1,13 @@
-'use client';
-import { Share } from 'lucide-react';
+"use client";
+import { Share } from "lucide-react";
 import {
   TooltipContent,
   Tooltip,
   TooltipTrigger,
-} from '@radix-ui/react-tooltip';
-import { useState } from 'react';
-import { cn } from '@/lib/cn';
-import { buttonVariants } from '@/components/ui/button';
+} from "@radix-ui/react-tooltip";
+import { useState } from "react";
+import { cn } from "@/lib/cn";
+import { buttonVariants } from "@/components/ui/button";
 
 export function Control({ url }: { url: string }): React.ReactElement {
   const [open, setOpen] = useState(false);
@@ -20,7 +20,7 @@ export function Control({ url }: { url: string }): React.ReactElement {
     <Tooltip open={open} onOpenChange={setOpen}>
       <TooltipTrigger
         className={cn(
-          buttonVariants({ className: 'gap-2', variant: 'secondary' }),
+          buttonVariants({ className: "gap-2", variant: "secondary" }),
         )}
         onClick={onClick}
       >

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 // Request params
 export const PasteTextParamsSchema = z.object({
@@ -11,4 +11,4 @@ export const PasteTextResultSchema = z.object({
   success: z.boolean(),
   message: z.string().optional(), // Optional message for errors or status
 });
-export type PasteTextResult = z.infer<typeof PasteTextResultSchema>; 
+export type PasteTextResult = z.infer<typeof PasteTextResultSchema>;

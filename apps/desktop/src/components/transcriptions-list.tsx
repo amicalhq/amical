@@ -1,19 +1,28 @@
-import React, { useState } from 'react';
-import type { Transcription } from '@/db/schema';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { api } from '@/trpc/react';
+import React, { useState } from "react";
+import type { Transcription } from "@/db/schema";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { api } from "@/trpc/react";
 
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { Copy, Play, Trash2, Download, FileText, Search, Filter, MoreHorizontal } from 'lucide-react';
-import { format } from 'date-fns';
-import { Input } from '@/components/ui/input';
+} from "@/components/ui/tooltip";
+import {
+  Copy,
+  Play,
+  Trash2,
+  Download,
+  FileText,
+  Search,
+  Filter,
+  MoreHorizontal,
+} from "lucide-react";
+import { format } from "date-fns";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,47 +30,50 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 
 export const TranscriptionsList: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
 
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery({
     limit: 50,
     offset: 0,
-    sortBy: 'timestamp',
-    sortOrder: 'desc',
+    sortBy: "timestamp",
+    sortOrder: "desc",
     search: searchTerm || undefined,
   });
 
-  const transcriptionsCountQuery = api.transcriptions.getTranscriptionsCount.useQuery({
-    search: searchTerm || undefined,
-  });
+  const transcriptionsCountQuery =
+    api.transcriptions.getTranscriptionsCount.useQuery({
+      search: searchTerm || undefined,
+    });
 
   const utils = api.useUtils();
 
-  const deleteTranscriptionMutation = api.transcriptions.deleteTranscription.useMutation({
-    onSuccess: () => {
-      // Invalidate and refetch transcriptions data
-      utils.transcriptions.getTranscriptions.invalidate();
-      utils.transcriptions.getTranscriptionsCount.invalidate();
-    },
-    onError: (error) => {
-      console.error('Error deleting transcription:', error);
-    }
-  });
+  const deleteTranscriptionMutation =
+    api.transcriptions.deleteTranscription.useMutation({
+      onSuccess: () => {
+        // Invalidate and refetch transcriptions data
+        utils.transcriptions.getTranscriptions.invalidate();
+        utils.transcriptions.getTranscriptionsCount.invalidate();
+      },
+      onError: (error) => {
+        console.error("Error deleting transcription:", error);
+      },
+    });
 
   const transcriptions = transcriptionsQuery.data || [];
   const totalCount = transcriptionsCountQuery.data || 0;
-  const loading = transcriptionsQuery.isLoading || transcriptionsCountQuery.isLoading;
+  const loading =
+    transcriptionsQuery.isLoading || transcriptionsCountQuery.isLoading;
 
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      console.log('Copied to clipboard');
+      console.log("Copied to clipboard");
     } catch (err) {
-      console.error('Failed to copy text: ', err);
+      console.error("Failed to copy text: ", err);
     }
   };
 
@@ -71,13 +83,13 @@ export const TranscriptionsList: React.FC = () => {
 
   const handlePlayAudio = (audioFile: string) => {
     // Implement audio playback functionality
-    console.log('Playing audio:', audioFile);
+    console.log("Playing audio:", audioFile);
   };
 
   const handleDownload = (transcription: Transcription) => {
     // Create and download a text file with the transcription
-    const element = document.createElement('a');
-    const file = new Blob([transcription.text], { type: 'text/plain' });
+    const element = document.createElement("a");
+    const file = new Blob([transcription.text], { type: "text/plain" });
     element.href = URL.createObjectURL(file);
     element.download = `transcription-${transcription.id}.txt`;
     document.body.appendChild(element);
@@ -86,12 +98,14 @@ export const TranscriptionsList: React.FC = () => {
   };
 
   const getTitle = (text: string) => {
-    const firstSentence = text.split('.')[0];
-    return firstSentence.length > 50 ? firstSentence.substring(0, 50) + '...' : firstSentence;
+    const firstSentence = text.split(".")[0];
+    return firstSentence.length > 50
+      ? firstSentence.substring(0, 50) + "..."
+      : firstSentence;
   };
 
   const getWordCount = (text: string) => {
-    return text.split(' ').length;
+    return text.split(" ").length;
   };
 
   return (
@@ -127,7 +141,9 @@ export const TranscriptionsList: React.FC = () => {
           <CardContent className="py-12">
             <div className="flex flex-col items-center space-y-2 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
-              <p className="text-sm text-muted-foreground">Loading transcriptions...</p>
+              <p className="text-sm text-muted-foreground">
+                Loading transcriptions...
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -138,18 +154,21 @@ export const TranscriptionsList: React.FC = () => {
               <FileText className="h-12 w-12 text-muted-foreground/50" />
               <h3 className="text-lg font-medium">No transcriptions found</h3>
               <p className="text-sm text-muted-foreground max-w-sm">
-                {searchTerm ? 'Try adjusting your search terms.' : 'Start recording to see your transcriptions here.'}
+                {searchTerm
+                  ? "Try adjusting your search terms."
+                  : "Start recording to see your transcriptions here."}
               </p>
-              {!searchTerm && (
-                <Button className="mt-4">Start Recording</Button>
-              )}
+              {!searchTerm && <Button className="mt-4">Start Recording</Button>}
             </div>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-3">
           {transcriptions.map((transcription) => (
-            <Card key={transcription.id} className="hover:shadow-md transition-shadow">
+            <Card
+              key={transcription.id}
+              className="hover:shadow-md transition-shadow"
+            >
               <CardContent className="px-4 py-0">
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0 mr-4">
@@ -161,15 +180,19 @@ export const TranscriptionsList: React.FC = () => {
                         <Badge variant="secondary" className="text-xs">
                           {getWordCount(transcription.text)} words
                         </Badge>
-                        <span>{format(new Date(transcription.timestamp), 'MMM d')}</span>
-                        <span>{format(new Date(transcription.timestamp), 'h:mm a')}</span>
+                        <span>
+                          {format(new Date(transcription.timestamp), "MMM d")}
+                        </span>
+                        <span>
+                          {format(new Date(transcription.timestamp), "h:mm a")}
+                        </span>
                         <Badge variant="outline" className="text-xs">
-                          {transcription.language?.toUpperCase() || 'EN'}
+                          {transcription.language?.toUpperCase() || "EN"}
                         </Badge>
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-1">
                     <TooltipProvider>
                       <Tooltip>
@@ -195,7 +218,9 @@ export const TranscriptionsList: React.FC = () => {
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
-                              onClick={() => handlePlayAudio(transcription.audioFile!)}
+                              onClick={() =>
+                                handlePlayAudio(transcription.audioFile!)
+                              }
                             >
                               <Play className="h-4 w-4" />
                             </Button>
@@ -207,18 +232,24 @@ export const TranscriptionsList: React.FC = () => {
 
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                        >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleDownload(transcription)}>
+                        <DropdownMenuItem
+                          onClick={() => handleDownload(transcription)}
+                        >
                           <Download className="h-4 w-4 mr-2" />
                           Download
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => handleDelete(transcription.id)}
                           className="text-destructive"
                           disabled={deleteTranscriptionMutation.isPending}
@@ -239,13 +270,16 @@ export const TranscriptionsList: React.FC = () => {
       {!loading && transcriptions.length > 0 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Showing {transcriptions.length} of {totalCount} transcription{totalCount !== 1 ? 's' : ''}
+            Showing {transcriptions.length} of {totalCount} transcription
+            {totalCount !== 1 ? "s" : ""}
           </span>
           <span>
-            Total: {transcriptions.reduce((acc, t) => acc + getWordCount(t.text), 0)} words
+            Total:{" "}
+            {transcriptions.reduce((acc, t) => acc + getWordCount(t.text), 0)}{" "}
+            words
           </span>
         </div>
       )}
     </div>
   );
-}; 
+};

@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React from "react";
+import { motion } from "framer-motion";
 
 interface WaveformProps {
   index: number;
@@ -42,11 +42,11 @@ export function Waveform({
       }}
       transition={{
         duration: voiceDetected ? 0.8 : 0.3,
-        ease: 'easeInOut',
+        ease: "easeInOut",
         repeat: voiceDetected ? Number.POSITIVE_INFINITY : 0,
-        repeatType: 'loop',
+        repeatType: "loop",
         delay: index * 0.06,
-        type: 'tween',
+        type: "tween",
       }}
     />
   );

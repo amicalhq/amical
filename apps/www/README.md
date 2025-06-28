@@ -31,6 +31,7 @@ pnpm fetch-content
 ```
 
 The script will:
+
 - Fetch MDX files from the `blog/` folder in the S3 bucket and save them to `content/blogs/`
 - Fetch images from the `blog-images/` folder in the S3 bucket and save them to `public/blog/`
 

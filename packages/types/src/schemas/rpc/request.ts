@@ -1,15 +1,15 @@
-import { z } from 'zod';
-import { GetAccessibilityTreeDetailsParamsSchema } from '../methods/get-accessibility-tree-details.js';
-import { GetAccessibilityContextParamsSchema } from '../methods/get-accessibility-context.js';
-import { PasteTextParamsSchema } from '../methods/paste-text.js';
+import { z } from "zod";
+import { GetAccessibilityTreeDetailsParamsSchema } from "../methods/get-accessibility-tree-details.js";
+import { GetAccessibilityContextParamsSchema } from "../methods/get-accessibility-context.js";
+import { PasteTextParamsSchema } from "../methods/paste-text.js";
 
 // Define a union of all possible RPC method names
 const RPCMethodNameSchema = z.union([
-  z.literal('getAccessibilityTreeDetails'),
-  z.literal('getAccessibilityContext'),
-  z.literal('pasteText'),
-  z.literal('muteSystemAudio'),
-  z.literal('restoreSystemAudio'),
+  z.literal("getAccessibilityTreeDetails"),
+  z.literal("getAccessibilityContext"),
+  z.literal("pasteText"),
+  z.literal("muteSystemAudio"),
+  z.literal("restoreSystemAudio"),
   // Add other method names here
 ]);
 
@@ -25,16 +25,18 @@ export type RpcRequest = z.infer<typeof RpcRequestSchema>;
 
 // --- Specific Request Schemas (Optional but good for clarity and potential future use) ---
 
-export const GetAccessibilityTreeDetailsRequestSchema = RpcRequestSchema.extend({
-  method: z.literal('getAccessibilityTreeDetails'),
-  params: GetAccessibilityTreeDetailsParamsSchema.optional(),
-});
+export const GetAccessibilityTreeDetailsRequestSchema = RpcRequestSchema.extend(
+  {
+    method: z.literal("getAccessibilityTreeDetails"),
+    params: GetAccessibilityTreeDetailsParamsSchema.optional(),
+  },
+);
 export type GetAccessibilityTreeDetailsRequest = z.infer<
   typeof GetAccessibilityTreeDetailsRequestSchema
 >;
 
 export const GetAccessibilityContextRequestSchema = RpcRequestSchema.extend({
-  method: z.literal('getAccessibilityContext'),
+  method: z.literal("getAccessibilityContext"),
   params: GetAccessibilityContextParamsSchema.optional(),
 });
 export type GetAccessibilityContextRequest = z.infer<
@@ -42,22 +44,26 @@ export type GetAccessibilityContextRequest = z.infer<
 >;
 
 export const PasteTextRequestSchema = RpcRequestSchema.extend({
-  method: z.literal('pasteText'),
+  method: z.literal("pasteText"),
   params: PasteTextParamsSchema, // Assuming pasteText always requires params
 });
 export type PasteTextRequest = z.infer<typeof PasteTextRequestSchema>;
 
 export const PlaySystemAudioRequestSchema = RpcRequestSchema.extend({
-  method: z.literal('playSystemAudio'),
+  method: z.literal("playSystemAudio"),
   params: z.null(),
 });
-export type PlaySystemAudioRequest = z.infer<typeof PlaySystemAudioRequestSchema>;
+export type PlaySystemAudioRequest = z.infer<
+  typeof PlaySystemAudioRequestSchema
+>;
 
 export const PauseSystemAudioRequestSchema = RpcRequestSchema.extend({
-  method: z.literal('pauseSystemAudio'),
+  method: z.literal("pauseSystemAudio"),
   params: z.null(),
 });
-export type PauseSystemAudioRequest = z.infer<typeof PauseSystemAudioRequestSchema>;
+export type PauseSystemAudioRequest = z.infer<
+  typeof PauseSystemAudioRequestSchema
+>;
 
 // Example for another method if you had one:
 /*
@@ -67,4 +73,4 @@ export const SetLogLevelRequestSchema = RpcRequestSchema.extend({
   params: SetLogLevelParamsSchema,
 });
 export type SetLogLevelRequest = z.infer<typeof SetLogLevelRequestSchema>;
-*/ 
+*/

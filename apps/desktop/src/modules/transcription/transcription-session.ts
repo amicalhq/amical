@@ -1,5 +1,5 @@
-import { EventEmitter } from 'node:events';
-import { createScopedLogger } from '../../main/logger';
+import { EventEmitter } from "node:events";
+import { createScopedLogger } from "../../main/logger";
 
 export interface ChunkData {
   sessionId: string;
@@ -21,30 +21,39 @@ export interface ChunkResult {
 }
 
 export interface ContextualTranscriptionClient {
-  transcribeWithContext(audioData: Buffer, previousContext: string): Promise<string>;
-  getCurrentModelInfo?: () => Promise<{ modelId: string | null; modelPath: string | null }>;
+  transcribeWithContext(
+    audioData: Buffer,
+    previousContext: string,
+  ): Promise<string>;
+  getCurrentModelInfo?: () => Promise<{
+    modelId: string | null;
+    modelPath: string | null;
+  }>;
 }
 
 export class TranscriptionSession extends EventEmitter {
-  private logger = createScopedLogger('transcription-session');
+  private logger = createScopedLogger("transcription-session");
   private sessionId: string;
   private transcriptionClient: ContextualTranscriptionClient;
 
   private chunkQueue: ChunkData[] = [];
   private results: ChunkResult[] = [];
-  private accumulatedText: string = '';
+  private accumulatedText: string = "";
   private isProcessing: boolean = false;
   private expectedChunkId: number = 1;
   private isComplete: boolean = false;
   private sessionStartTime: number;
 
-  constructor(sessionId: string, transcriptionClient: ContextualTranscriptionClient) {
+  constructor(
+    sessionId: string,
+    transcriptionClient: ContextualTranscriptionClient,
+  ) {
     super();
     this.sessionId = sessionId;
     this.transcriptionClient = transcriptionClient;
     this.sessionStartTime = Date.now();
 
-    this.logger.info('TranscriptionSession created', {
+    this.logger.info("TranscriptionSession created", {
       sessionId,
       sessionStartTime: this.sessionStartTime,
       sessionStartTimeISO: new Date(this.sessionStartTime).toISOString(),
@@ -53,7 +62,7 @@ export class TranscriptionSession extends EventEmitter {
 
   public addChunk(chunkData: ChunkData): void {
     if (chunkData.sessionId !== this.sessionId) {
-      this.logger.warn('Received chunk for different session', {
+      this.logger.warn("Received chunk for different session", {
         expected: this.sessionId,
         received: chunkData.sessionId,
       });
@@ -61,14 +70,14 @@ export class TranscriptionSession extends EventEmitter {
     }
 
     if (this.isComplete) {
-      this.logger.warn('Session already complete, ignoring chunk', {
+      this.logger.warn("Session already complete, ignoring chunk", {
         sessionId: this.sessionId,
         chunkId: chunkData.chunkId,
       });
       return;
     }
 
-    this.logger.info('Adding chunk to queue', {
+    this.logger.info("Adding chunk to queue", {
       sessionId: this.sessionId,
       chunkId: chunkData.chunkId,
       isFinalChunk: chunkData.isFinalChunk,
@@ -86,11 +95,11 @@ export class TranscriptionSession extends EventEmitter {
 
     // Find the next expected chunk in sequence
     const nextChunkIndex = this.chunkQueue.findIndex(
-      (chunk) => chunk.chunkId === this.expectedChunkId
+      (chunk) => chunk.chunkId === this.expectedChunkId,
     );
 
     if (nextChunkIndex === -1) {
-      this.logger.debug('Next expected chunk not yet available', {
+      this.logger.debug("Next expected chunk not yet available", {
         expectedChunkId: this.expectedChunkId,
         availableChunks: this.chunkQueue.map((c) => c.chunkId),
       });
@@ -103,12 +112,12 @@ export class TranscriptionSession extends EventEmitter {
     try {
       await this.transcribeChunk(chunk);
     } catch (error) {
-      this.logger.error('Error processing chunk', {
+      this.logger.error("Error processing chunk", {
         sessionId: this.sessionId,
         chunkId: chunk.chunkId,
         error: error instanceof Error ? error.message : String(error),
       });
-      this.emit('chunk-error', { chunkId: chunk.chunkId, error });
+      this.emit("chunk-error", { chunkId: chunk.chunkId, error });
     } finally {
       this.isProcessing = false;
       this.expectedChunkId++;
@@ -129,7 +138,7 @@ export class TranscriptionSession extends EventEmitter {
       ? await this.transcriptionClient.getCurrentModelInfo()
       : { modelId: null, modelPath: null };
 
-    this.logger.info('Starting transcription for chunk', {
+    this.logger.info("Starting transcription for chunk", {
       sessionId: this.sessionId,
       chunkId: chunk.chunkId,
       audioDataSize: chunk.audioData.length,
@@ -145,7 +154,7 @@ export class TranscriptionSession extends EventEmitter {
       const endTime = Date.now();
       const processingTimeMs = endTime - startTime;
 
-      this.logger.info('Skipping transcription for empty chunk', {
+      this.logger.info("Skipping transcription for empty chunk", {
         sessionId: this.sessionId,
         chunkId: chunk.chunkId,
         startTime,
@@ -159,7 +168,7 @@ export class TranscriptionSession extends EventEmitter {
 
       const result: ChunkResult = {
         chunkId: chunk.chunkId,
-        text: '',
+        text: "",
         processingTimeMs,
         startTime,
         endTime,
@@ -167,16 +176,17 @@ export class TranscriptionSession extends EventEmitter {
       };
 
       this.results.push(result);
-      this.emit('chunk-completed', result);
+      this.emit("chunk-completed", result);
       return;
     }
 
-    const transcriptionText = await this.transcriptionClient.transcribeWithContext(
-      chunk.audioData,
-      this.accumulatedText
-    );
+    const transcriptionText =
+      await this.transcriptionClient.transcribeWithContext(
+        chunk.audioData,
+        this.accumulatedText,
+      );
 
-    console.error('transcriptionText result ', transcriptionText);
+    console.error("transcriptionText result ", transcriptionText);
 
     const endTime = Date.now();
     const processingTimeMs = endTime - startTime;
@@ -191,11 +201,12 @@ export class TranscriptionSession extends EventEmitter {
     };
 
     // Accumulate the transcription text for context
-    this.accumulatedText += (this.accumulatedText ? ' ' : '') + transcriptionText;
+    this.accumulatedText +=
+      (this.accumulatedText ? " " : "") + transcriptionText;
 
     this.results.push(result);
 
-    this.logger.error('Chunk transcription completed', {
+    this.logger.error("Chunk transcription completed", {
       sessionId: this.sessionId,
       chunkId: chunk.chunkId,
       textLength: transcriptionText.length,
@@ -209,7 +220,7 @@ export class TranscriptionSession extends EventEmitter {
       modelPath: modelInfo.modelPath,
     });
 
-    this.emit('chunk-completed', result);
+    this.emit("chunk-completed", result);
   }
 
   private completeSession(): void {
@@ -219,14 +230,17 @@ export class TranscriptionSession extends EventEmitter {
     const totalSessionTimeMs = sessionEndTime - this.sessionStartTime;
     const totalProcessingTime = this.results.reduce(
       (sum, result) => sum + result.processingTimeMs,
-      0
+      0,
     );
 
     // Get model info from the last successful chunk result
     const lastChunkWithModel = this.results.find((r) => r.modelInfo);
-    const sessionModelInfo = lastChunkWithModel?.modelInfo || { modelId: null, modelPath: null };
+    const sessionModelInfo = lastChunkWithModel?.modelInfo || {
+      modelId: null,
+      modelPath: null,
+    };
 
-    this.logger.error('Transcription session completed', {
+    this.logger.error("Transcription session completed", {
       sessionId: this.sessionId,
       totalChunks: this.results.length,
       finalTextLength: this.accumulatedText.length,
@@ -237,9 +251,13 @@ export class TranscriptionSession extends EventEmitter {
       totalSessionTimeMs,
       totalProcessingTimeMs: totalProcessingTime,
       averageProcessingTimePerChunkMs:
-        this.results.length > 0 ? Math.round(totalProcessingTime / this.results.length) : 0,
+        this.results.length > 0
+          ? Math.round(totalProcessingTime / this.results.length)
+          : 0,
       processingEfficiency:
-        totalSessionTimeMs > 0 ? Math.round((totalProcessingTime / totalSessionTimeMs) * 100) : 0,
+        totalSessionTimeMs > 0
+          ? Math.round((totalProcessingTime / totalSessionTimeMs) * 100)
+          : 0,
       modelId: sessionModelInfo.modelId,
       modelPath: sessionModelInfo.modelPath,
       chunkTimings: this.results.map((r) => ({
@@ -251,7 +269,7 @@ export class TranscriptionSession extends EventEmitter {
       })),
     });
 
-    this.emit('session-completed', {
+    this.emit("session-completed", {
       sessionId: this.sessionId,
       finalText: this.accumulatedText,
       chunkResults: this.results,

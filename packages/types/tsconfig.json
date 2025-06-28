@@ -9,4 +9,4 @@
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "generated", "scripts"]
-} 
+}

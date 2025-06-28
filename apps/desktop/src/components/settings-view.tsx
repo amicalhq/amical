@@ -1,50 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { FormatterConfig } from '@/modules/formatter';
-import { api } from '@/trpc/react';
-import { toast } from 'sonner';
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { FormatterConfig } from "@/modules/formatter";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 // OpenRouter models list
 const OPENROUTER_MODELS = [
-  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
-  { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku' },
-  { value: 'openai/gpt-4o', label: 'GPT-4o' },
-  { value: 'openai/gpt-4o-mini', label: 'GPT-4o mini' },
-  { value: 'openai/gpt-4-turbo', label: 'GPT-4 Turbo' },
-  { value: 'meta-llama/llama-3.1-8b-instruct', label: 'Llama 3.1 8B' },
-  { value: 'meta-llama/llama-3.1-70b-instruct', label: 'Llama 3.1 70B' },
-  { value: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5' },
+  { value: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet" },
+  { value: "anthropic/claude-3-haiku", label: "Claude 3 Haiku" },
+  { value: "openai/gpt-4o", label: "GPT-4o" },
+  { value: "openai/gpt-4o-mini", label: "GPT-4o mini" },
+  { value: "openai/gpt-4-turbo", label: "GPT-4 Turbo" },
+  { value: "meta-llama/llama-3.1-8b-instruct", label: "Llama 3.1 8B" },
+  { value: "meta-llama/llama-3.1-70b-instruct", label: "Llama 3.1 70B" },
+  { value: "google/gemini-pro-1.5", label: "Gemini Pro 1.5" },
 ];
 
 export function SettingsView() {
-  const [formatterProvider, setFormatterProvider] = useState<'openrouter'>('openrouter');
-  const [openrouterModel, setOpenrouterModel] = useState('');
-  const [openrouterApiKey, setOpenrouterApiKey] = useState('');
+  const [formatterProvider, setFormatterProvider] =
+    useState<"openrouter">("openrouter");
+  const [openrouterModel, setOpenrouterModel] = useState("");
+  const [openrouterApiKey, setOpenrouterApiKey] = useState("");
   const [formatterEnabled, setFormatterEnabled] = useState(false);
-  
-
 
   // tRPC queries and mutations
   const formatterConfigQuery = api.settings.getFormatterConfig.useQuery();
   const utils = api.useUtils();
 
-  const setFormatterConfigMutation = api.settings.setFormatterConfig.useMutation({
-    onSuccess: () => {
-      toast.success('Configuration saved successfully!');
-      utils.settings.getFormatterConfig.invalidate();
-    },
-    onError: (error) => {
-      console.error('Failed to save formatter config:', error);
-      toast.error('Failed to save configuration. Please try again.');
-    }
-  });
+  const setFormatterConfigMutation =
+    api.settings.setFormatterConfig.useMutation({
+      onSuccess: () => {
+        toast.success("Configuration saved successfully!");
+        utils.settings.getFormatterConfig.invalidate();
+      },
+      onError: (error) => {
+        console.error("Failed to save formatter config:", error);
+        toast.error("Failed to save configuration. Please try again.");
+      },
+    });
 
   // Load configuration when query data is available
   useEffect(() => {
@@ -68,8 +80,6 @@ export function SettingsView() {
     setFormatterConfigMutation.mutate(config);
   };
 
-
-
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
@@ -80,61 +90,81 @@ export function SettingsView() {
           <TabsTrigger value="formatter">Formatter</TabsTrigger>
           <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="general" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>General Settings</CardTitle>
-              <CardDescription>Configure your general preferences</CardDescription>
+              <CardDescription>
+                Configure your general preferences
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="launch-login">Launch at Login</Label>
-                  <p className="text-sm text-muted-foreground">Start Amical when you log in</p>
+                  <p className="text-sm text-muted-foreground">
+                    Start Amical when you log in
+                  </p>
                 </div>
                 <Switch id="launch-login" />
               </div>
-              
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="minimize-tray">Minimize to Tray</Label>
-                  <p className="text-sm text-muted-foreground">Keep running in system tray when closed</p>
+                  <p className="text-sm text-muted-foreground">
+                    Keep running in system tray when closed
+                  </p>
                 </div>
                 <Switch id="minimize-tray" />
               </div>
-              
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="theme-toggle">Theme</Label>
-                  <p className="text-sm text-muted-foreground">Choose your preferred theme</p>
+                  <p className="text-sm text-muted-foreground">
+                    Choose your preferred theme
+                  </p>
                 </div>
                 <ThemeToggle />
               </div>
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent value="microphone" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Microphone Settings</CardTitle>
-              <CardDescription>Configure your microphone preferences</CardDescription>
+              <CardDescription>
+                Configure your microphone preferences
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="microphone-select">Microphone</Label>
-                <select id="microphone-select" className="w-full border rounded px-3 py-2">
+                <select
+                  id="microphone-select"
+                  className="w-full border rounded px-3 py-2"
+                >
                   <option>System Default</option>
                   <option>Built-in Microphone</option>
                 </select>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="input-volume">Input Volume</Label>
-                <input type="range" id="input-volume" className="w-full" min="0" max="100" defaultValue="75" />
+                <input
+                  type="range"
+                  id="input-volume"
+                  className="w-full"
+                  min="0"
+                  max="100"
+                  defaultValue="75"
+                />
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <Switch id="noise-reduction" />
                 <Label htmlFor="noise-reduction">Enable noise reduction</Label>
@@ -142,45 +172,62 @@ export function SettingsView() {
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent value="shortcuts" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Keyboard Shortcuts</CardTitle>
-              <CardDescription>Customize your keyboard shortcuts</CardDescription>
+              <CardDescription>
+                Customize your keyboard shortcuts
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Global Shortcut</Label>
-                  <p className="text-sm text-muted-foreground">Start/stop recording</p>
+                  <p className="text-sm text-muted-foreground">
+                    Start/stop recording
+                  </p>
                 </div>
-                <kbd className="px-2 py-1 bg-muted rounded text-sm">Ctrl+Shift+Space</kbd>
+                <kbd className="px-2 py-1 bg-muted rounded text-sm">
+                  Ctrl+Shift+Space
+                </kbd>
               </div>
-              
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Toggle Window</Label>
-                  <p className="text-sm text-muted-foreground">Show/hide main window</p>
+                  <p className="text-sm text-muted-foreground">
+                    Show/hide main window
+                  </p>
                 </div>
-                <kbd className="px-2 py-1 bg-muted rounded text-sm">Ctrl+Shift+A</kbd>
+                <kbd className="px-2 py-1 bg-muted rounded text-sm">
+                  Ctrl+Shift+A
+                </kbd>
               </div>
-              
+
               <Button variant="outline">Customize Shortcuts</Button>
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent value="formatter" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Text Formatting Configuration</CardTitle>
-              <CardDescription>Configure AI-powered post-processing of transcriptions</CardDescription>
+              <CardDescription>
+                Configure AI-powered post-processing of transcriptions
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="formatter-provider">Provider</Label>
-                <Select value={formatterProvider} onValueChange={(value: 'openrouter') => setFormatterProvider(value)}>
+                <Select
+                  value={formatterProvider}
+                  onValueChange={(value: "openrouter") =>
+                    setFormatterProvider(value)
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a provider" />
                   </SelectTrigger>
@@ -189,12 +236,15 @@ export function SettingsView() {
                   </SelectContent>
                 </Select>
               </div>
-              
-              {formatterProvider === 'openrouter' && (
+
+              {formatterProvider === "openrouter" && (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="openrouter-model">Model</Label>
-                    <Select value={openrouterModel} onValueChange={setOpenrouterModel}>
+                    <Select
+                      value={openrouterModel}
+                      onValueChange={setOpenrouterModel}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a model" />
                       </SelectTrigger>
@@ -207,7 +257,7 @@ export function SettingsView() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="openrouter-api-key">API Key</Label>
                     <Input
@@ -218,38 +268,52 @@ export function SettingsView() {
                       onChange={(e) => setOpenrouterApiKey(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Get your API key from <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline">openrouter.ai</a>
+                      Get your API key from{" "}
+                      <a
+                        href="https://openrouter.ai"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                      >
+                        openrouter.ai
+                      </a>
                     </p>
                   </div>
                 </>
               )}
-              
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="enable-formatter">Enable Formatter</Label>
-                  <p className="text-sm text-muted-foreground">Apply AI formatting to transcriptions</p>
+                  <p className="text-sm text-muted-foreground">
+                    Apply AI formatting to transcriptions
+                  </p>
                 </div>
-                <Switch 
-                  id="enable-formatter" 
+                <Switch
+                  id="enable-formatter"
                   checked={formatterEnabled}
                   onCheckedChange={setFormatterEnabled}
                 />
               </div>
-              
+
               <div className="pt-4">
-                <Button 
+                <Button
                   onClick={saveFormatterConfig}
-                  disabled={setFormatterConfigMutation.isPending || !openrouterModel || !openrouterApiKey}
+                  disabled={
+                    setFormatterConfigMutation.isPending ||
+                    !openrouterModel ||
+                    !openrouterApiKey
+                  }
                 >
-                  {setFormatterConfigMutation.isPending ? 'Saving...' : 'Save Configuration'}
+                  {setFormatterConfigMutation.isPending
+                    ? "Saving..."
+                    : "Save Configuration"}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
-        
 
-        
         <TabsContent value="advanced" className="space-y-6">
           <Card>
             <CardHeader>
@@ -260,25 +324,29 @@ export function SettingsView() {
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="debug-mode">Debug Mode</Label>
-                  <p className="text-sm text-muted-foreground">Enable detailed logging</p>
+                  <p className="text-sm text-muted-foreground">
+                    Enable detailed logging
+                  </p>
                 </div>
                 <Switch id="debug-mode" />
               </div>
-              
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="auto-update">Auto Updates</Label>
-                  <p className="text-sm text-muted-foreground">Automatically check for updates</p>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically check for updates
+                  </p>
                 </div>
                 <Switch id="auto-update" defaultChecked />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="data-location">Data Location</Label>
                 <div className="flex space-x-2">
-                  <input 
-                    type="text" 
-                    id="data-location" 
+                  <input
+                    type="text"
+                    id="data-location"
                     className="flex-1 border rounded px-3 py-2"
                     value="~/Documents/Amical"
                     readOnly
@@ -292,4 +360,4 @@ export function SettingsView() {
       </Tabs>
     </div>
   );
-} 
+}

@@ -1,5 +1,5 @@
 // Load .env file FIRST before any other imports
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
 import {
@@ -10,26 +10,29 @@ import {
   ipcMain,
   screen,
   clipboard,
-} from 'electron';
-import path from 'node:path';
-import fsPromises from 'node:fs/promises'; // For reading the audio file (async)
-import started from 'electron-squirrel-startup';
-import { initializeDatabase } from '../db/config';
-import { HelperEvent, KeyEventPayload } from '@amical/types';
-import { logger, logError, logPerformance } from './logger';
-import { AudioCapture } from '../modules/audio/audio-capture';
-import { setupApplicationMenu } from './menu';
-import { AiService } from '../modules/ai/ai-service';
-import { SwiftIOBridge } from './swift-io-bridge'; // Added import
-import { DownloadedModel } from '../constants/models';
-import { ModelManagerService } from '../modules/models/model-manager';
-import { LocalWhisperClient } from '../modules/ai/local-whisper-client';
-import { TranscriptionSession, ChunkData } from '../modules/transcription/transcription-session';
-import { ContextualTranscriptionManager } from '../modules/transcription/contextual-transcription-manager';
-import { SettingsService } from '../modules/settings';
-import { createIPCHandler } from 'electron-trpc-experimental/main';
-import { router } from '../trpc/router';
-import { AutoUpdaterService } from './services/auto-updater';
+} from "electron";
+import path from "node:path";
+import fsPromises from "node:fs/promises"; // For reading the audio file (async)
+import started from "electron-squirrel-startup";
+import { initializeDatabase } from "../db/config";
+import { HelperEvent, KeyEventPayload } from "@amical/types";
+import { logger, logError, logPerformance } from "./logger";
+import { AudioCapture } from "../modules/audio/audio-capture";
+import { setupApplicationMenu } from "./menu";
+import { AiService } from "../modules/ai/ai-service";
+import { SwiftIOBridge } from "./swift-io-bridge"; // Added import
+import { DownloadedModel } from "../constants/models";
+import { ModelManagerService } from "../modules/models/model-manager";
+import { LocalWhisperClient } from "../modules/ai/local-whisper-client";
+import {
+  TranscriptionSession,
+  ChunkData,
+} from "../modules/transcription/transcription-session";
+import { ContextualTranscriptionManager } from "../modules/transcription/contextual-transcription-manager";
+import { SettingsService } from "../modules/settings";
+import { createIPCHandler } from "electron-trpc-experimental/main";
+import { router } from "../trpc/router";
+import { AutoUpdaterService } from "./services/auto-updater";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -51,17 +54,19 @@ let currentWindowDisplayId: number | null = null; // For tracking current displa
 let activeSpaceChangeSubscriptionId: number | null = null; // For display change notifications
 
 // New chunk-based transcription variables
-let contextualTranscriptionManager: ContextualTranscriptionManager | null = null;
-const activeTranscriptionSessions: Map<string, TranscriptionSession> = new Map();
+let contextualTranscriptionManager: ContextualTranscriptionManager | null =
+  null;
+const activeTranscriptionSessions: Map<string, TranscriptionSession> =
+  new Map();
 let autoUpdaterService: AutoUpdaterService | null = null;
 
 // Store is imported from '../lib/store' and is database-backed
 
 // Function to create the local transcription client
 const createTranscriptionClient = () => {
-  logger.ai.info('Using local Whisper inference');
+  logger.ai.info("Using local Whisper inference");
   if (!localWhisperClient) {
-    throw new Error('Local Whisper client not initialized');
+    throw new Error("Local Whisper client not initialized");
   }
   return localWhisperClient;
 };
@@ -71,25 +76,32 @@ const createTranscriptionClient = () => {
 const requestPermissions = async () => {
   try {
     // Request accessibility permissions
-    if (process.platform === 'darwin') {
-      const accessibilityEnabled = systemPreferences.isTrustedAccessibilityClient(false);
+    if (process.platform === "darwin") {
+      const accessibilityEnabled =
+        systemPreferences.isTrustedAccessibilityClient(false);
       if (!accessibilityEnabled) {
         // On macOS, we need to use a different approach for accessibility permissions
         // The user will need to grant accessibility permissions through System Preferences
         console.log(
-          'Please enable accessibility permissions in System Preferences > Security & Privacy > Privacy > Accessibility'
+          "Please enable accessibility permissions in System Preferences > Security & Privacy > Privacy > Accessibility",
         );
       }
     }
 
     // Request microphone permissions
-    const microphoneEnabled = systemPreferences.getMediaAccessStatus('microphone');
-    logger.main.info('Microphone access status:', { status: microphoneEnabled });
-    if (microphoneEnabled !== 'granted') {
-      await systemPreferences.askForMediaAccess('microphone');
+    const microphoneEnabled =
+      systemPreferences.getMediaAccessStatus("microphone");
+    logger.main.info("Microphone access status:", {
+      status: microphoneEnabled,
+    });
+    if (microphoneEnabled !== "granted") {
+      await systemPreferences.askForMediaAccess("microphone");
     }
   } catch (error) {
-    logError(error instanceof Error ? error : new Error(String(error)), 'requesting permissions');
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      "requesting permissions",
+    );
   }
 };
 
@@ -103,11 +115,11 @@ const createOrShowMainWindow = () => {
     width: 1200,
     height: 800,
     frame: false,
-    titleBarStyle: 'hidden',
+    titleBarStyle: "hidden",
     trafficLightPosition: { x: 20, y: 16 },
     useContentSize: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -115,9 +127,11 @@ const createOrShowMainWindow = () => {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    mainWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    );
   }
-  mainWindow.on('closed', () => {
+  mainWindow.on("closed", () => {
     mainWindow = null;
     if (autoUpdaterService) {
       autoUpdaterService.setMainWindow(null);
@@ -127,7 +141,9 @@ const createOrShowMainWindow = () => {
   // Update tRPC handler to include the main window
   createIPCHandler({
     router,
-    windows: [mainWindow, floatingButtonWindow].filter(Boolean) as BrowserWindow[],
+    windows: [mainWindow, floatingButtonWindow].filter(
+      Boolean,
+    ) as BrowserWindow[],
   });
 
   // Set main window reference for auto-updater
@@ -152,7 +168,7 @@ const createFloatingButtonWindow = () => {
     focusable: false,
     hasShadow: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -163,18 +179,20 @@ const createFloatingButtonWindow = () => {
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const devUrl = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    devUrl.pathname = 'fab.html';
+    devUrl.pathname = "fab.html";
     floatingButtonWindow.loadURL(devUrl.toString());
   } else {
     floatingButtonWindow.loadFile(
-      path.join(__dirname, `../renderer/${WIDGET_WINDOW_VITE_NAME}/fab.html`)
+      path.join(__dirname, `../renderer/${WIDGET_WINDOW_VITE_NAME}/fab.html`),
     );
   }
 
   // Set a higher level for macOS to stay on top of fullscreen apps
-  if (process.platform === 'darwin') {
-    floatingButtonWindow.setAlwaysOnTop(true, 'floating', 1);
-    floatingButtonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (process.platform === "darwin") {
+    floatingButtonWindow.setAlwaysOnTop(true, "floating", 1);
+    floatingButtonWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+    });
     floatingButtonWindow.setHiddenInMissionControl(true);
   }
 
@@ -184,13 +202,18 @@ const createFloatingButtonWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', async () => {
+app.on("ready", async () => {
   // Initialize database and run migrations first
   try {
     await initializeDatabase();
-    logger.db.info('Database initialized and migrations completed successfully');
+    logger.db.info(
+      "Database initialized and migrations completed successfully",
+    );
   } catch (error) {
-    logError(error instanceof Error ? error : new Error(String(error)), 'initializing database');
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      "initializing database",
+    );
     // You might want to handle this error differently, perhaps showing a dialog to the user
   }
 
@@ -203,7 +226,7 @@ app.on('ready', async () => {
     windows: [floatingButtonWindow!],
   });
 
-  if (process.platform === 'darwin' && app.dock) {
+  if (process.platform === "darwin" && app.dock) {
     app.dock.show();
   }
 
@@ -223,11 +246,13 @@ app.on('ready', async () => {
   (globalThis as any).logger = logger;
 
   // Initialize Contextual Transcription Manager
-  contextualTranscriptionManager = new ContextualTranscriptionManager(modelManagerService);
+  contextualTranscriptionManager = new ContextualTranscriptionManager(
+    modelManagerService,
+  );
 
   // Initialize Auto-Updater Service
   autoUpdaterService = new AutoUpdaterService();
-  
+
   // Make auto-updater service available globally for tRPC
   (globalThis as any).autoUpdaterService = autoUpdaterService;
 
@@ -249,25 +274,28 @@ app.on('ready', async () => {
       const formatterConfig = await settingsService.getFormatterConfig();
       if (formatterConfig) {
         aiService.configureFormatter(formatterConfig);
-        logger.ai.info('Formatter configured', {
+        logger.ai.info("Formatter configured", {
           provider: formatterConfig.provider,
           enabled: formatterConfig.enabled,
         });
       }
     } catch (formatterError) {
-      logger.ai.warn('Failed to load formatter configuration:', formatterError);
+      logger.ai.warn("Failed to load formatter configuration:", formatterError);
     }
 
-    logger.ai.info('AI Service initialized', {
-      client: 'Local Whisper',
+    logger.ai.info("AI Service initialized", {
+      client: "Local Whisper",
     });
   } catch (error) {
-    logError(error instanceof Error ? error : new Error(String(error)), 'initializing AI Service');
-    logger.ai.warn('Transcription will not work until configuration is fixed');
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      "initializing AI Service",
+    );
+    logger.ai.warn("Transcription will not work until configuration is fixed");
     aiService = null;
   }
 
-  audioCapture.on('recording-finished', async (filePath: string) => {
+  audioCapture.on("recording-finished", async (filePath: string) => {
     // Ensure AI service is available and up-to-date
     if (!aiService) {
       try {
@@ -280,53 +308,60 @@ app.on('ready', async () => {
           const formatterConfig = await settingsService.getFormatterConfig();
           if (formatterConfig) {
             aiService.configureFormatter(formatterConfig);
-            logger.ai.info('Formatter reconfigured', {
+            logger.ai.info("Formatter reconfigured", {
               provider: formatterConfig.provider,
               enabled: formatterConfig.enabled,
             });
           }
         } catch (formatterError) {
-          logger.ai.warn('Failed to reload formatter configuration:', formatterError);
+          logger.ai.warn(
+            "Failed to reload formatter configuration:",
+            formatterError,
+          );
         }
 
-        logger.ai.info('AI Service reinitialized', {
-          client: 'Local Whisper',
+        logger.ai.info("AI Service reinitialized", {
+          client: "Local Whisper",
         });
       } catch (error) {
         logError(
           error instanceof Error ? error : new Error(String(error)),
-          'reinitializing AI Service'
+          "reinitializing AI Service",
         );
       }
     }
 
-    logger.audio.info('Recording finished', { filePath });
+    logger.audio.info("Recording finished", { filePath });
     if (aiService) {
       try {
         const startTime = Date.now();
         const audioBuffer = await fsPromises.readFile(filePath);
-        logger.audio.info('Audio file read', {
+        logger.audio.info("Audio file read", {
           size: audioBuffer.length,
           sizeKB: Math.round(audioBuffer.length / 1024),
         });
 
         const transcription = await aiService.transcribeAudio(audioBuffer);
-        logPerformance('audio transcription', startTime, {
+        logPerformance("audio transcription", startTime, {
           audioSizeKB: Math.round(audioBuffer.length / 1024),
           transcriptionLength: transcription?.length || 0,
         });
-        logger.ai.info('Transcription completed', {
+        logger.ai.info("Transcription completed", {
           resultLength: transcription?.length || 0,
           hasResult: !!transcription,
         });
 
         // Copy transcription to clipboard
-        if (transcription && typeof transcription === 'string') {
-          logger.main.info('Transcription pasted to active application');
+        if (transcription && typeof transcription === "string") {
+          logger.main.info("Transcription pasted to active application");
           // Attempt to paste into the active application
-          swiftIOBridgeClientInstance!.call('pasteText', { transcript: transcription });
+          swiftIOBridgeClientInstance!.call("pasteText", {
+            transcript: transcription,
+          });
         } else {
-          logger.main.warn('Transcription result was empty or not a string, not copying');
+          logger.main.warn(
+            "Transcription result was empty or not a string, not copying",
+          );
         }
 
         // Optionally, delete the audio file after processing
@@ -335,21 +370,21 @@ app.on('ready', async () => {
       } catch (error) {
         logError(
           error instanceof Error ? error : new Error(String(error)),
-          'transcription or file handling'
+          "transcription or file handling",
         );
       }
     } else {
-      logger.ai.warn('AI Service not available, cannot transcribe audio');
+      logger.ai.warn("AI Service not available, cannot transcribe audio");
     }
   });
 
-  audioCapture.on('recording-error', (error: Error) => {
-    console.error('Main: Received recording error from AudioCapture:', error);
+  audioCapture.on("recording-error", (error: Error) => {
+    console.error("Main: Received recording error from AudioCapture:", error);
   });
 
   // Handle individual audio chunks for real-time transcription
-  audioCapture.on('chunk-ready', async (chunkData: ChunkData) => {
-    logger.audio.info('Received chunk for transcription', {
+  audioCapture.on("chunk-ready", async (chunkData: ChunkData) => {
+    logger.audio.info("Received chunk for transcription", {
       sessionId: chunkData.sessionId,
       chunkId: chunkData.chunkId,
       audioDataSize: chunkData.audioData.length,
@@ -358,18 +393,27 @@ app.on('ready', async () => {
 
     try {
       // Get or create transcription session for this recording session
-      let transcriptionSession = activeTranscriptionSessions.get(chunkData.sessionId);
+      let transcriptionSession = activeTranscriptionSessions.get(
+        chunkData.sessionId,
+      );
 
       if (!transcriptionSession) {
         // Create new transcription session
-        const transcriptionClient = contextualTranscriptionManager!.createDefaultClient();
+        const transcriptionClient =
+          contextualTranscriptionManager!.createDefaultClient();
 
-        transcriptionSession = new TranscriptionSession(chunkData.sessionId, transcriptionClient);
-        activeTranscriptionSessions.set(chunkData.sessionId, transcriptionSession);
+        transcriptionSession = new TranscriptionSession(
+          chunkData.sessionId,
+          transcriptionClient,
+        );
+        activeTranscriptionSessions.set(
+          chunkData.sessionId,
+          transcriptionSession,
+        );
 
         // Set up session event handlers
-        transcriptionSession.on('chunk-completed', (result) => {
-          logger.ai.info('Chunk transcription completed', {
+        transcriptionSession.on("chunk-completed", (result) => {
+          logger.ai.info("Chunk transcription completed", {
             sessionId: chunkData.sessionId,
             chunkId: result.chunkId,
             textLength: result.text.length,
@@ -377,8 +421,8 @@ app.on('ready', async () => {
           });
         });
 
-        transcriptionSession.on('session-completed', (sessionResult) => {
-          logger.ai.info('Transcription session completed', {
+        transcriptionSession.on("session-completed", (sessionResult) => {
+          logger.ai.info("Transcription session completed", {
             sessionId: sessionResult.sessionId,
             finalTextLength: sessionResult.finalText.length,
             totalChunks: sessionResult.chunkResults.length,
@@ -386,21 +430,29 @@ app.on('ready', async () => {
           });
 
           // Paste the final result to active application
-          if (sessionResult.finalText && sessionResult.finalText.trim().length > 0) {
-            logger.main.info('Final transcription pasted to active application', {
-              textLength: sessionResult.finalText.length,
+          if (
+            sessionResult.finalText &&
+            sessionResult.finalText.trim().length > 0
+          ) {
+            logger.main.info(
+              "Final transcription pasted to active application",
+              {
+                textLength: sessionResult.finalText.length,
+              },
+            );
+            swiftIOBridgeClientInstance!.call("pasteText", {
+              transcript: sessionResult.finalText,
             });
-            swiftIOBridgeClientInstance!.call('pasteText', { transcript: sessionResult.finalText });
           } else {
-            logger.main.warn('Final transcription was empty, not pasting');
+            logger.main.warn("Final transcription was empty, not pasting");
           }
 
           // Clean up completed session
           activeTranscriptionSessions.delete(chunkData.sessionId);
         });
 
-        transcriptionSession.on('chunk-error', (errorInfo) => {
-          logger.ai.error('Chunk transcription error', {
+        transcriptionSession.on("chunk-error", (errorInfo) => {
+          logger.ai.error("Chunk transcription error", {
             sessionId: chunkData.sessionId,
             chunkId: errorInfo.chunkId,
             error: errorInfo.error,
@@ -408,13 +460,15 @@ app.on('ready', async () => {
           // Continue processing other chunks even if one fails
         });
 
-        logger.ai.info('Created new transcription session', { sessionId: chunkData.sessionId });
+        logger.ai.info("Created new transcription session", {
+          sessionId: chunkData.sessionId,
+        });
       }
 
       // Add chunk to session for processing
       transcriptionSession.addChunk(chunkData);
     } catch (error) {
-      logger.ai.error('Error handling chunk-ready event', {
+      logger.ai.error("Error handling chunk-ready event", {
         sessionId: chunkData.sessionId,
         chunkId: chunkData.chunkId,
         error: error instanceof Error ? error.message : String(error),
@@ -423,42 +477,47 @@ app.on('ready', async () => {
   });
 
   // Handle audio data chunks from renderer
-  ipcMain.handle('audio-data-chunk', (event, chunk: ArrayBuffer, isFinalChunk: boolean) => {
-    if (chunk instanceof ArrayBuffer) {
-      console.log(
-        `Main: IPC received audio-data-chunk (ArrayBuffer) of size: ${chunk.byteLength} bytes. isFinalChunk: ${isFinalChunk}`
-      );
-      const buffer = Buffer.from(chunk);
-      if (buffer.length === 0) {
-        console.warn('Main: Received an empty audio chunk after conversion.');
+  ipcMain.handle(
+    "audio-data-chunk",
+    (event, chunk: ArrayBuffer, isFinalChunk: boolean) => {
+      if (chunk instanceof ArrayBuffer) {
+        console.log(
+          `Main: IPC received audio-data-chunk (ArrayBuffer) of size: ${chunk.byteLength} bytes. isFinalChunk: ${isFinalChunk}`,
+        );
+        const buffer = Buffer.from(chunk);
+        if (buffer.length === 0) {
+          console.warn("Main: Received an empty audio chunk after conversion.");
+        }
+        // The AudioCapture class will now need to handle buffering and the isFinalChunk flag
+        audioCapture?.handleAudioChunk(buffer, isFinalChunk);
+      } else {
+        console.error(
+          "Main: Received audio chunk, but it is not an ArrayBuffer. Type:",
+          typeof chunk,
+        );
+        throw new Error("Invalid audio chunk type received.");
       }
-      // The AudioCapture class will now need to handle buffering and the isFinalChunk flag
-      audioCapture?.handleAudioChunk(buffer, isFinalChunk);
-    } else {
-      console.error(
-        'Main: Received audio chunk, but it is not an ArrayBuffer. Type:',
-        typeof chunk
-      );
-      throw new Error('Invalid audio chunk type received.');
-    }
-  });
+    },
+  );
 
-  ipcMain.handle('recording-starting', async () => {
-    console.log('Main: Received recording-starting event.');
+  ipcMain.handle("recording-starting", async () => {
+    console.log("Main: Received recording-starting event.");
 
     // Preload the transcription model for fast processing
     try {
       if (contextualTranscriptionManager) {
         if (!contextualTranscriptionManager.isModelLoaded()) {
-          logger.ai.info('Preloading transcription model for recording session');
+          logger.ai.info(
+            "Preloading transcription model for recording session",
+          );
           await contextualTranscriptionManager.preloadModel();
-          logger.ai.info('Transcription model preloaded successfully');
+          logger.ai.info("Transcription model preloaded successfully");
         } else {
-          logger.ai.info('Transcription model already loaded');
+          logger.ai.info("Transcription model already loaded");
         }
       }
     } catch (error) {
-      logger.ai.error('Error preloading transcription model', {
+      logger.ai.error("Error preloading transcription model", {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -468,52 +527,56 @@ app.on('ready', async () => {
       //const accessibilityContext = await swiftIOBridgeClientInstance!.call('getAccessibilityContext', { editableOnly: true });
       //console.log('Main: Accessibility context captured:', JSON.stringify(accessibilityContext, null, 2));
     } catch (error) {
-      console.error('Main: Error getting accessibility context:', error);
+      console.error("Main: Error getting accessibility context:", error);
     }
 
-    await swiftIOBridgeClientInstance!.call('muteSystemAudio', {});
+    await swiftIOBridgeClientInstance!.call("muteSystemAudio", {});
   });
 
-  ipcMain.handle('recording-stopping', async () => {
-    console.log('Main: Received recording-stopping event.');
-    await swiftIOBridgeClientInstance!.call('restoreSystemAudio', {});
+  ipcMain.handle("recording-stopping", async () => {
+    console.log("Main: Received recording-stopping event.");
+    await swiftIOBridgeClientInstance!.call("restoreSystemAudio", {});
   });
-
 
   // Initialize the SwiftIOBridgeClient
   swiftIOBridgeClientInstance = new SwiftIOBridge();
 
-  swiftIOBridgeClientInstance.on('helperEvent', (event: HelperEvent) => {
-    logger.swift.debug('Received helperEvent from SwiftIOBridge', { event });
+  swiftIOBridgeClientInstance.on("helperEvent", (event: HelperEvent) => {
+    logger.swift.debug("Received helperEvent from SwiftIOBridge", { event });
 
     switch (event.type) {
-      case 'flagsChanged': {
+      case "flagsChanged": {
         const payload = event.payload;
-        logger.swift.debug('Received flagsChanged event', {
+        logger.swift.debug("Received flagsChanged event", {
           fnKeyPressed: payload?.fnKeyPressed,
         });
         // Use flagsChanged for more reliable Fn key state tracking
         if (payload?.fnKeyPressed !== undefined) {
-          logger.swift.info('Setting recording state', { state: payload.fnKeyPressed });
-          floatingButtonWindow!.webContents.send('recording-state-changed', payload.fnKeyPressed);
+          logger.swift.info("Setting recording state", {
+            state: payload.fnKeyPressed,
+          });
+          floatingButtonWindow!.webContents.send(
+            "recording-state-changed",
+            payload.fnKeyPressed,
+          );
         }
         break;
       }
-      case 'keyDown': {
+      case "keyDown": {
         const payload = event.payload;
         // console.log(`Main: Received keyDown for key: ${payload?.key}.`);
         // Keep keyDown handling as fallback, but flagsChanged should be primary
-        if (payload?.key?.toLowerCase() === 'fn') {
+        if (payload?.key?.toLowerCase() === "fn") {
           // console.log('Main: Fn keyDown detected (fallback)');
           // Don't send recording-state-changed here as flagsChanged should handle it
         }
         break;
       }
-      case 'keyUp': {
+      case "keyUp": {
         const payload = event.payload;
         // console.log(`Main: Received keyUp for key: ${payload?.key}.`);
         // Keep keyUp handling as fallback, but flagsChanged should be primary
-        if (payload?.key?.toLowerCase() === 'fn') {
+        if (payload?.key?.toLowerCase() === "fn") {
           // console.log('Main: Fn keyUp detected (fallback)');
           // Don't send recording-state-changed here as flagsChanged should handle it
         }
@@ -526,13 +589,16 @@ app.on('ready', async () => {
     }
   });
 
-  swiftIOBridgeClientInstance.on('error', (error) => {
-    logError(error instanceof Error ? error : new Error(String(error)), 'SwiftIOBridge error');
+  swiftIOBridgeClientInstance.on("error", (error) => {
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      "SwiftIOBridge error",
+    );
     // Potentially notify the user or attempt to restart
   });
 
-  swiftIOBridgeClientInstance.on('close', (code) => {
-    logger.swift.warn('Swift helper process closed', { code });
+  swiftIOBridgeClientInstance.on("close", (code) => {
+    logger.swift.warn("Swift helper process closed", { code });
     // Handle unexpected close, maybe attempt restart
   });
 
@@ -542,64 +608,84 @@ app.on('ready', async () => {
     }
   });
 
-  if (process.platform === 'darwin') {
+  if (process.platform === "darwin") {
     try {
-      console.log('Main: Setting up display change notifications');
+      console.log("Main: Setting up display change notifications");
 
-      activeSpaceChangeSubscriptionId = systemPreferences.subscribeWorkspaceNotification(
-        'NSWorkspaceActiveDisplayDidChangeNotification',
-        () => {
-          if (floatingButtonWindow && !floatingButtonWindow.isDestroyed()) {
-            try {
-              const cursorPoint = screen.getCursorScreenPoint();
-              const displayForCursor = screen.getDisplayNearestPoint(cursorPoint);
-              if (currentWindowDisplayId !== displayForCursor.id) {
-                console.log(
-                  `[Main Process] Moving floating window to display ID: ${displayForCursor.id}`
+      activeSpaceChangeSubscriptionId =
+        systemPreferences.subscribeWorkspaceNotification(
+          "NSWorkspaceActiveDisplayDidChangeNotification",
+          () => {
+            if (floatingButtonWindow && !floatingButtonWindow.isDestroyed()) {
+              try {
+                const cursorPoint = screen.getCursorScreenPoint();
+                const displayForCursor =
+                  screen.getDisplayNearestPoint(cursorPoint);
+                if (currentWindowDisplayId !== displayForCursor.id) {
+                  console.log(
+                    `[Main Process] Moving floating window to display ID: ${displayForCursor.id}`,
+                  );
+                  floatingButtonWindow.setBounds(displayForCursor.workArea);
+                  currentWindowDisplayId = displayForCursor.id;
+                }
+              } catch (error) {
+                console.warn(
+                  "[Main Process] Error handling display change:",
+                  error,
                 );
-                floatingButtonWindow.setBounds(displayForCursor.workArea);
-                currentWindowDisplayId = displayForCursor.id;
               }
-            } catch (error) {
-              console.warn('[Main Process] Error handling display change:', error);
             }
-          }
-        }
-      );
+          },
+        );
 
-      if (activeSpaceChangeSubscriptionId !== undefined && activeSpaceChangeSubscriptionId >= 0) {
-        console.log(`Main: Successfully subscribed to display change notifications`);
+      if (
+        activeSpaceChangeSubscriptionId !== undefined &&
+        activeSpaceChangeSubscriptionId >= 0
+      ) {
+        console.log(
+          `Main: Successfully subscribed to display change notifications`,
+        );
       } else {
-        console.error('Main: Failed to subscribe to display change notifications');
+        console.error(
+          "Main: Failed to subscribe to display change notifications",
+        );
       }
     } catch (e) {
-      console.error('Main: Error during subscription to display notifications:', e);
+      console.error(
+        "Main: Error during subscription to display notifications:",
+        e,
+      );
       activeSpaceChangeSubscriptionId = null;
     }
   } else {
-    console.log('Main: Display change tracking is a macOS-only feature');
+    console.log("Main: Display change tracking is a macOS-only feature");
   }
 });
 
 // Clean up intervals and subscriptions
-app.on('will-quit', () => {
+app.on("will-quit", () => {
   // globalShortcut.unregisterAll();
   globalShortcut.unregisterAll();
   if (swiftIOBridgeClientInstance) {
-    console.log('Main: Stopping Swift helper...');
+    console.log("Main: Stopping Swift helper...");
     swiftIOBridgeClientInstance.stopHelper();
   }
   if (modelManagerService) {
-    console.log('Main: Cleaning up model downloads...');
+    console.log("Main: Cleaning up model downloads...");
     modelManagerService.cleanup();
   }
   if (contextualTranscriptionManager) {
-    console.log('Main: Cleaning up transcription models...');
+    console.log("Main: Cleaning up transcription models...");
     contextualTranscriptionManager.dispose();
   }
-  if (process.platform === 'darwin' && activeSpaceChangeSubscriptionId !== null) {
-    systemPreferences.unsubscribeWorkspaceNotification(activeSpaceChangeSubscriptionId);
-    console.log('Main: Unsubscribed from display change notifications');
+  if (
+    process.platform === "darwin" &&
+    activeSpaceChangeSubscriptionId !== null
+  ) {
+    systemPreferences.unsubscribeWorkspaceNotification(
+      activeSpaceChangeSubscriptionId,
+    );
+    console.log("Main: Unsubscribed from display change notifications");
     activeSpaceChangeSubscriptionId = null;
   }
 });
@@ -607,13 +693,13 @@ app.on('will-quit', () => {
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
-app.on('activate', () => {
+app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -637,19 +723,25 @@ app.on('activate', () => {
 
 // Function to log the accessibility tree (added)
 async function logAccessibilityTree() {
-  if (swiftIOBridgeClientInstance && swiftIOBridgeClientInstance.isHelperRunning()) {
+  if (
+    swiftIOBridgeClientInstance &&
+    swiftIOBridgeClientInstance.isHelperRunning()
+  ) {
     try {
       // console.log('Main: Requesting full accessibility tree...');
       // Call with empty params for the whole tree, as per schema for GetAccessibilityTreeDetailsParams
-      const result = await swiftIOBridgeClientInstance.call('getAccessibilityTreeDetails', {});
+      const result = await swiftIOBridgeClientInstance.call(
+        "getAccessibilityTreeDetails",
+        {},
+      );
       // Using JSON.stringify to see the whole structure since it's 'any' for now
       // console.log('Main: Accessibility tree received:', JSON.stringify(result, null, 2));
     } catch (error) {
-      console.error('Main: Error calling getAccessibilityTreeDetails:', error);
+      console.error("Main: Error calling getAccessibilityTreeDetails:", error);
     }
   } else {
     console.warn(
-      'Main: SwiftIOBridge not ready or helper not running, cannot log accessibility tree.'
+      "Main: SwiftIOBridge not ready or helper not running, cannot log accessibility tree.",
     );
   }
 }

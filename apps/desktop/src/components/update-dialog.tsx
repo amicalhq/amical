@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,12 +8,12 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from './ui/alert-dialog';
-import { Progress } from './ui/progress';
-import { Button } from './ui/button';
-import { Download, RefreshCw, CheckCircle } from 'lucide-react';
-import { api } from '@/trpc/react';
-import { toast } from 'sonner';
+} from "./ui/alert-dialog";
+import { Progress } from "./ui/progress";
+import { Button } from "./ui/button";
+import { Download, RefreshCw, CheckCircle } from "lucide-react";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 interface UpdateDialogProps {
   isOpen: boolean;
@@ -24,7 +24,11 @@ interface UpdateDialogProps {
   };
 }
 
-export function UpdateDialog({ isOpen, onClose, updateInfo }: UpdateDialogProps) {
+export function UpdateDialog({
+  isOpen,
+  onClose,
+  updateInfo,
+}: UpdateDialogProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
 
@@ -33,42 +37,45 @@ export function UpdateDialog({ isOpen, onClose, updateInfo }: UpdateDialogProps)
     enabled: isOpen,
     refetchInterval: isOpen ? 1000 : false, // Poll every second when dialog is open
   });
-  const isUpdateAvailableQuery = api.updater.isUpdateAvailable.useQuery(undefined, {
-    enabled: isOpen,
-    refetchInterval: isOpen ? 1000 : false,
-  });
+  const isUpdateAvailableQuery = api.updater.isUpdateAvailable.useQuery(
+    undefined,
+    {
+      enabled: isOpen,
+      refetchInterval: isOpen ? 1000 : false,
+    },
+  );
 
   const utils = api.useUtils();
 
   // tRPC mutations
   const checkForUpdatesMutation = api.updater.checkForUpdates.useMutation({
     onSuccess: () => {
-      toast.success('Update check completed');
+      toast.success("Update check completed");
       utils.updater.isUpdateAvailable.invalidate();
       utils.updater.isCheckingForUpdate.invalidate();
     },
     onError: (error) => {
-      console.error('Error checking for updates:', error);
-      toast.error('Failed to check for updates');
-    }
+      console.error("Error checking for updates:", error);
+      toast.error("Failed to check for updates");
+    },
   });
 
   const downloadUpdateMutation = api.updater.downloadUpdate.useMutation({
     onSuccess: () => {
-      toast.success('Update download started');
+      toast.success("Update download started");
     },
     onError: (error) => {
-      console.error('Error downloading update:', error);
-      toast.error('Failed to download update');
+      console.error("Error downloading update:", error);
+      toast.error("Failed to download update");
       setIsDownloading(false);
-    }
+    },
   });
 
   const quitAndInstallMutation = api.updater.quitAndInstall.useMutation({
     onError: (error) => {
-      console.error('Error installing update:', error);
-      toast.error('Failed to install update');
-    }
+      console.error("Error installing update:", error);
+      toast.error("Failed to install update");
+    },
   });
 
   // Get status from queries
@@ -82,8 +89,8 @@ export function UpdateDialog({ isOpen, onClose, updateInfo }: UpdateDialogProps)
       setDownloadProgress(Math.round(progress.percent || 0));
     },
     onError: (error) => {
-      console.error('Download progress subscription error:', error);
-    }
+      console.error("Download progress subscription error:", error);
+    },
   });
 
   const handleCheckForUpdates = async () => {
@@ -188,14 +195,16 @@ export function UpdateDialog({ isOpen, onClose, updateInfo }: UpdateDialogProps)
             <AlertDialogDescription>
               {updateInfo?.version && (
                 <>
-                  Version {updateInfo.version} has been downloaded and is ready to install.
-                  The app will restart to complete the installation.
+                  Version {updateInfo.version} has been downloaded and is ready
+                  to install. The app will restart to complete the installation.
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={onClose}>Install Later</AlertDialogCancel>
+            <AlertDialogCancel onClick={onClose}>
+              Install Later
+            </AlertDialogCancel>
             <AlertDialogAction onClick={handleInstallUpdate}>
               Restart & Install
             </AlertDialogAction>

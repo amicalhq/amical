@@ -1,13 +1,25 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
-  "globalEnv": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "S3_BUCKET_NAME", "S3_ENDPOINT"],
+  "globalEnv": [
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_REGION",
+    "S3_BUCKET_NAME",
+    "S3_ENDPOINT"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "!.next/cache/**", "bin/**", "out/**"],
-      "env": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "S3_BUCKET_NAME", "S3_ENDPOINT"]
+      "env": [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_REGION",
+        "S3_BUCKET_NAME",
+        "S3_ENDPOINT"
+      ]
     },
     "build:native": {
       "dependsOn": [],
@@ -15,8 +27,7 @@
       "outputs": ["bin/**"],
       "cache": true
     },
-    "format:check": {
-    },
+    "format:check": {},
     "lint": {
       "dependsOn": ["format:check"]
     },

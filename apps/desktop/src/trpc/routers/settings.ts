@@ -1,7 +1,7 @@
-import { initTRPC } from '@trpc/server';
-import superjson from 'superjson';
-import { z } from 'zod';
-import { SettingsService } from '../../modules/settings';
+import { initTRPC } from "@trpc/server";
+import superjson from "superjson";
+import { z } from "zod";
+import { SettingsService } from "../../modules/settings";
 
 const t = initTRPC.create({
   isServer: true,
@@ -10,7 +10,7 @@ const t = initTRPC.create({
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
-  provider: z.literal('openrouter'),
+  provider: z.literal("openrouter"),
   model: z.string(),
   apiKey: z.string(),
   enabled: z.boolean(),
@@ -30,7 +30,7 @@ export const settingsRouter = t.router({
       return await settingsService.getFormatterConfig();
     } catch (error) {
       if (globalThis.logger) {
-        globalThis.logger.ai.error('Error getting formatter config:', error);
+        globalThis.logger.ai.error("Error getting formatter config:", error);
       }
       return null;
     }
@@ -48,16 +48,16 @@ export const settingsRouter = t.router({
         if (globalThis.aiService) {
           globalThis.aiService.configureFormatter(input);
           if (globalThis.logger) {
-            globalThis.logger.ai.info('Formatter configuration updated');
+            globalThis.logger.ai.info("Formatter configuration updated");
           }
         }
 
         return true;
       } catch (error) {
         if (globalThis.logger) {
-          globalThis.logger.ai.error('Error setting formatter config:', error);
+          globalThis.logger.ai.error("Error setting formatter config:", error);
         }
         throw error;
       }
     }),
-}); 
+});

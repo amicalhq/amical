@@ -26,21 +26,25 @@
  * ```
  */
 
-import React, { useState, useEffect } from 'react';
-import { createRoot } from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ipcLink } from 'electron-trpc-experimental/renderer';
-import superjson from 'superjson';
-import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/app-sidebar';
-import { ThemeProvider } from '@/components/theme-provider';
-import { TranscriptionsView } from '@/components/transcriptions-view';
-import { VocabularyView } from '@/components/vocabulary-view';
-import { ModelsView } from '@/components/models-view';
-import { SettingsView } from '@/components/settings-view';
-import '@/styles/globals.css';
-import { SiteHeader } from '@/components/site-header';
-import { api } from '@/trpc/react';
+import React, { useState, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ipcLink } from "electron-trpc-experimental/renderer";
+import superjson from "superjson";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { ThemeProvider } from "@/components/theme-provider";
+import { TranscriptionsView } from "@/components/transcriptions-view";
+import { VocabularyView } from "@/components/vocabulary-view";
+import { ModelsView } from "@/components/models-view";
+import { SettingsView } from "@/components/settings-view";
+import "@/styles/globals.css";
+import { SiteHeader } from "@/components/site-header";
+import { api } from "@/trpc/react";
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
@@ -65,27 +69,27 @@ const trpcClient = api.createClient({
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState(() => {
     // Try to restore the view from localStorage, fallback to default
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('amical-current-view') || 'Voice Recording';
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("amical-current-view") || "Voice Recording";
     }
-    return 'Voice Recording';
+    return "Voice Recording";
   });
 
   const handleNavigation = (item: any) => {
     setCurrentView(item.title);
     // Save to localStorage to preserve during HMR
-    localStorage.setItem('amical-current-view', item.title);
+    localStorage.setItem("amical-current-view", item.title);
   };
 
   const renderContent = () => {
     switch (currentView) {
-      case 'Transcriptions':
+      case "Transcriptions":
         return <TranscriptionsView />;
-      case 'Vocabulary':
+      case "Vocabulary":
         return <VocabularyView />;
-      case 'Models':
+      case "Models":
         return <ModelsView />;
-      case 'Settings':
+      case "Settings":
         return <SettingsView />;
       default:
         return (
@@ -104,8 +108,8 @@ const App: React.FC = () => {
           <SidebarProvider
             style={
               {
-                '--sidebar-width': 'calc(var(--spacing) * 72)',
-                '--header-height': 'calc(var(--spacing) * 12)',
+                "--sidebar-width": "calc(var(--spacing) * 72)",
+                "--header-height": "calc(var(--spacing) * 12)",
               } as React.CSSProperties
             }
           >
@@ -125,8 +129,8 @@ const App: React.FC = () => {
                       <div
                         className="mx-auto w-full flex flex-col gap-4 md:gap-6"
                         style={{
-                          maxWidth: 'var(--content-max-width)',
-                          padding: 'var(--content-padding)',
+                          maxWidth: "var(--content-max-width)",
+                          padding: "var(--content-padding)",
                         }}
                       >
                         {renderContent()}
@@ -143,7 +147,7 @@ const App: React.FC = () => {
   );
 };
 
-const container = document.getElementById('root');
+const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
   root.render(<App />);

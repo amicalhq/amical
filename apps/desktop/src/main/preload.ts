@@ -1,12 +1,12 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-import log from 'electron-log/renderer';
-import { exposeElectronTRPC } from 'electron-trpc-experimental/preload';
-import type { ElectronAPI } from '../types/electron-api';
-import type { FormatterConfig } from '../modules/formatter';
-import type { Transcription, NewTranscription } from '../db/schema';
+import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
+import log from "electron-log/renderer";
+import { exposeElectronTRPC } from "electron-trpc-experimental/preload";
+import type { ElectronAPI } from "../types/electron-api";
+import type { FormatterConfig } from "../modules/formatter";
+import type { Transcription, NewTranscription } from "../db/schema";
 
 interface ShortcutData {
   shortcut: string;
@@ -14,39 +14,47 @@ interface ShortcutData {
 }
 
 const api: ElectronAPI = {
-  onRecordingStarting: async () => await ipcRenderer.invoke('recording-starting'),
-  onRecordingStopping: async () => await ipcRenderer.invoke('recording-stopping'),
-  sendAudioChunk: (chunk: ArrayBuffer, isFinalChunk: boolean = false): Promise<void> =>
-    ipcRenderer.invoke('audio-data-chunk', chunk, isFinalChunk),
+  onRecordingStarting: async () =>
+    await ipcRenderer.invoke("recording-starting"),
+  onRecordingStopping: async () =>
+    await ipcRenderer.invoke("recording-stopping"),
+  sendAudioChunk: (
+    chunk: ArrayBuffer,
+    isFinalChunk: boolean = false,
+  ): Promise<void> =>
+    ipcRenderer.invoke("audio-data-chunk", chunk, isFinalChunk),
 
   onRecordingStateChanged: (callback: (newState: boolean) => void) => {
-    const handler = (_event: IpcRendererEvent, newState: boolean) => callback(newState);
-    ipcRenderer.on('recording-state-changed', handler);
+    const handler = (_event: IpcRendererEvent, newState: boolean) =>
+      callback(newState);
+    ipcRenderer.on("recording-state-changed", handler);
     return () => {
-      ipcRenderer.removeListener('recording-state-changed', handler);
+      ipcRenderer.removeListener("recording-state-changed", handler);
     };
   },
   // Switched to invoke/handle for request-response
   onGlobalShortcut: (callback: (data: ShortcutData) => void) => {
-    const handler = (_event: IpcRendererEvent, data: ShortcutData) => callback(data);
-    ipcRenderer.on('global-shortcut-event', handler);
+    const handler = (_event: IpcRendererEvent, data: ShortcutData) =>
+      callback(data);
+    ipcRenderer.on("global-shortcut-event", handler);
     // Optional: Return a cleanup function to remove the listener
     return () => {
-      ipcRenderer.removeListener('global-shortcut-event', handler);
+      ipcRenderer.removeListener("global-shortcut-event", handler);
     };
   },
   onKeyEvent: (callback: (keyEvent: unknown) => void) => {
-    const handler = (_event: IpcRendererEvent, keyEvent: unknown) => callback(keyEvent);
-    ipcRenderer.on('key-event', handler);
+    const handler = (_event: IpcRendererEvent, keyEvent: unknown) =>
+      callback(keyEvent);
+    ipcRenderer.on("key-event", handler);
     return () => {
-      ipcRenderer.removeListener('key-event', handler);
+      ipcRenderer.removeListener("key-event", handler);
     };
   },
   onForceStopMediaRecorder: (callback: () => void) => {
     const handler = () => callback();
-    ipcRenderer.on('force-stop-mediarecorder', handler);
+    ipcRenderer.on("force-stop-mediarecorder", handler);
     return () => {
-      ipcRenderer.removeListener('force-stop-mediarecorder', handler);
+      ipcRenderer.removeListener("force-stop-mediarecorder", handler);
     };
   },
   // If you want a way to remove all listeners for this event from renderer:
@@ -55,52 +63,63 @@ const api: ElectronAPI = {
   // }
 
   // Model Management API
-  getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
-  getDownloadedModels: () => ipcRenderer.invoke('get-downloaded-models'),
-  isModelDownloaded: (modelId: string) => ipcRenderer.invoke('is-model-downloaded', modelId),
-  getDownloadProgress: (modelId: string) => ipcRenderer.invoke('get-download-progress', modelId),
-  getActiveDownloads: () => ipcRenderer.invoke('get-active-downloads'),
-  downloadModel: (modelId: string) => ipcRenderer.invoke('download-model', modelId),
-  cancelDownload: (modelId: string) => ipcRenderer.invoke('cancel-download', modelId),
-  deleteModel: (modelId: string) => ipcRenderer.invoke('delete-model', modelId),
-  getModelsDirectory: () => ipcRenderer.invoke('get-models-directory'),
+  getAvailableModels: () => ipcRenderer.invoke("get-available-models"),
+  getDownloadedModels: () => ipcRenderer.invoke("get-downloaded-models"),
+  isModelDownloaded: (modelId: string) =>
+    ipcRenderer.invoke("is-model-downloaded", modelId),
+  getDownloadProgress: (modelId: string) =>
+    ipcRenderer.invoke("get-download-progress", modelId),
+  getActiveDownloads: () => ipcRenderer.invoke("get-active-downloads"),
+  downloadModel: (modelId: string) =>
+    ipcRenderer.invoke("download-model", modelId),
+  cancelDownload: (modelId: string) =>
+    ipcRenderer.invoke("cancel-download", modelId),
+  deleteModel: (modelId: string) => ipcRenderer.invoke("delete-model", modelId),
+  getModelsDirectory: () => ipcRenderer.invoke("get-models-directory"),
 
   // Local Whisper API
-  isLocalWhisperAvailable: () => ipcRenderer.invoke('is-local-whisper-available'),
-  getLocalWhisperModels: () => ipcRenderer.invoke('get-local-whisper-models'),
-  getSelectedModel: () => ipcRenderer.invoke('get-selected-model'),
-  setSelectedModel: (modelId: string) => ipcRenderer.invoke('set-selected-model', modelId),
+  isLocalWhisperAvailable: () =>
+    ipcRenderer.invoke("is-local-whisper-available"),
+  getLocalWhisperModels: () => ipcRenderer.invoke("get-local-whisper-models"),
+  getSelectedModel: () => ipcRenderer.invoke("get-selected-model"),
+  setSelectedModel: (modelId: string) =>
+    ipcRenderer.invoke("set-selected-model", modelId),
   setWhisperExecutablePath: (path: string) =>
-    ipcRenderer.invoke('set-whisper-executable-path', path),
+    ipcRenderer.invoke("set-whisper-executable-path", path),
 
   // Formatter Configuration API
-  getFormatterConfig: () => ipcRenderer.invoke('get-formatter-config'),
+  getFormatterConfig: () => ipcRenderer.invoke("get-formatter-config"),
   setFormatterConfig: (config: FormatterConfig) =>
-    ipcRenderer.invoke('set-formatter-config', config),
+    ipcRenderer.invoke("set-formatter-config", config),
 
   // Transcription Database API
   getTranscriptions: (options?: {
     limit?: number;
     offset?: number;
-    sortBy?: 'timestamp' | 'createdAt';
-    sortOrder?: 'asc' | 'desc';
+    sortBy?: "timestamp" | "createdAt";
+    sortOrder?: "asc" | "desc";
     search?: string;
-  }) => ipcRenderer.invoke('get-transcriptions', options),
-  getTranscriptionById: (id: number) => ipcRenderer.invoke('get-transcription-by-id', id),
-  createTranscription: (data: Omit<NewTranscription, 'id' | 'createdAt' | 'updatedAt'>) =>
-    ipcRenderer.invoke('create-transcription', data),
-  updateTranscription: (id: number, data: Partial<Omit<Transcription, 'id' | 'createdAt'>>) =>
-    ipcRenderer.invoke('update-transcription', id, data),
-  deleteTranscription: (id: number) => ipcRenderer.invoke('delete-transcription', id),
+  }) => ipcRenderer.invoke("get-transcriptions", options),
+  getTranscriptionById: (id: number) =>
+    ipcRenderer.invoke("get-transcription-by-id", id),
+  createTranscription: (
+    data: Omit<NewTranscription, "id" | "createdAt" | "updatedAt">,
+  ) => ipcRenderer.invoke("create-transcription", data),
+  updateTranscription: (
+    id: number,
+    data: Partial<Omit<Transcription, "id" | "createdAt">>,
+  ) => ipcRenderer.invoke("update-transcription", id, data),
+  deleteTranscription: (id: number) =>
+    ipcRenderer.invoke("delete-transcription", id),
   getTranscriptionsCount: (search?: string) =>
-    ipcRenderer.invoke('get-transcriptions-count', search),
+    ipcRenderer.invoke("get-transcriptions-count", search),
   searchTranscriptions: (searchTerm: string, limit?: number) =>
-    ipcRenderer.invoke('search-transcriptions', searchTerm, limit),
-
+    ipcRenderer.invoke("search-transcriptions", searchTerm, limit),
 
   // Vocabulary Database API
   on: (channel: string, callback: (...args: any[]) => void) => {
-    const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
+    const handler = (_event: IpcRendererEvent, ...args: any[]) =>
+      callback(...args);
     ipcRenderer.on(channel, handler);
     // Store the handler mapping for proper cleanup
     if (!(window as any).__electronEventHandlers) {
@@ -109,7 +128,9 @@ const api: ElectronAPI = {
     if (!(window as any).__electronEventHandlers.has(channel)) {
       (window as any).__electronEventHandlers.set(channel, []);
     }
-    (window as any).__electronEventHandlers.get(channel).push({ original: callback, handler });
+    (window as any).__electronEventHandlers
+      .get(channel)
+      .push({ original: callback, handler });
   },
   off: (channel: string, callback: (...args: any[]) => void) => {
     if (
@@ -136,9 +157,9 @@ const api: ElectronAPI = {
   },
 };
 
-contextBridge.exposeInMainWorld('electronAPI', api);
+contextBridge.exposeInMainWorld("electronAPI", api);
 
 // Expose tRPC for electron-trpc-experimental
-process.once('loaded', async () => {
+process.once("loaded", async () => {
   exposeElectronTRPC();
 });

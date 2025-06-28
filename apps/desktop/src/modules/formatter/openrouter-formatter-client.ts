@@ -1,6 +1,6 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateText } from 'ai';
-import { FormatterClient } from './formatter-client';
+import { createOpenAI } from "@ai-sdk/openai";
+import { generateText } from "ai";
+import { FormatterClient } from "./formatter-client";
 
 /**
  * OpenRouter-based text formatter client
@@ -14,7 +14,7 @@ export class OpenRouterFormatterClient extends FormatterClient {
 
     // Configure OpenRouter provider
     this.provider = createOpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
+      baseURL: "https://openrouter.ai/api/v1",
       apiKey: apiKey,
     });
 
@@ -27,7 +27,7 @@ export class OpenRouterFormatterClient extends FormatterClient {
         model: this.provider(this.model),
         messages: [
           {
-            role: 'system',
+            role: "system",
             content: `You are a professional text formatter. Your task is to clean up and improve the formatting of transcribed text while preserving the original meaning and content.
 
 Please:
@@ -41,7 +41,7 @@ Please:
 Return only the formatted text without any explanations or additional commentary.`,
           },
           {
-            role: 'user',
+            role: "user",
             content: `Please format this transcribed text:\n\n${text}`,
           },
         ],
@@ -51,7 +51,7 @@ Return only the formatted text without any explanations or additional commentary
 
       return formattedText;
     } catch (error) {
-      console.error('Error formatting text with OpenRouter:', error);
+      console.error("Error formatting text with OpenRouter:", error);
       // Return original text if formatting fails
       return text;
     }

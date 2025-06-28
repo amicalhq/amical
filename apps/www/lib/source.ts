@@ -1,11 +1,11 @@
-import { docs, meta, blog as blogPosts } from '@/.source';
-import { loader } from 'fumadocs-core/source';
-import { icons } from 'lucide-react';
-import { createElement } from 'react';
-import { createMDXSource } from 'fumadocs-mdx';
+import { docs, meta, blog as blogPosts } from "@/.source";
+import { loader } from "fumadocs-core/source";
+import { icons } from "lucide-react";
+import { createElement } from "react";
+import { createMDXSource } from "fumadocs-mdx";
 
 export const source = loader({
-  baseUrl: '/docs',
+  baseUrl: "/docs",
   icon(icon) {
     if (icon && icon in icons)
       return createElement(icons[icon as keyof typeof icons]);
@@ -14,6 +14,6 @@ export const source = loader({
 });
 
 export const blog = loader({
-  baseUrl: '/blog',
+  baseUrl: "/blog",
   source: createMDXSource(blogPosts, meta),
 });

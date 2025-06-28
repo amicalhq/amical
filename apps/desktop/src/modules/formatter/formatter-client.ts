@@ -9,7 +9,7 @@ export abstract class FormatterClient {
  * Configuration interface for formatter clients
  */
 export interface FormatterConfig {
-  provider: 'openrouter';
+  provider: "openrouter";
   model: string;
   apiKey: string;
   enabled: boolean;
