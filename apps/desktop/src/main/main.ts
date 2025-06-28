@@ -479,32 +479,6 @@ app.on('ready', async () => {
     await swiftIOBridgeClientInstance!.call('restoreSystemAudio', {});
   });
 
-  // Auto-Update IPC handlers
-  ipcMain.handle('check-for-updates', async () => {
-    if (autoUpdaterService) {
-      await autoUpdaterService.checkForUpdates(true);
-    }
-  });
-
-  ipcMain.handle('download-update', async () => {
-    if (autoUpdaterService) {
-      await autoUpdaterService.downloadUpdate();
-    }
-  });
-
-  ipcMain.handle('quit-and-install', () => {
-    if (autoUpdaterService) {
-      autoUpdaterService.quitAndInstall();
-    }
-  });
-
-  ipcMain.handle('is-checking-for-update', () => {
-    return autoUpdaterService ? autoUpdaterService.isCheckingForUpdate() : false;
-  });
-
-  ipcMain.handle('is-update-available', () => {
-    return autoUpdaterService ? autoUpdaterService.isUpdateAvailable() : false;
-  });
 
   // Initialize the SwiftIOBridgeClient
   swiftIOBridgeClientInstance = new SwiftIOBridge();

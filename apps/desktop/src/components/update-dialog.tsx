@@ -12,6 +12,8 @@ import {
 import { Progress } from './ui/progress';
 import { Button } from './ui/button';
 import { Download, RefreshCw, CheckCircle } from 'lucide-react';
+import { api } from '@/trpc/react';
+import { toast } from 'sonner';
 
 interface UpdateDialogProps {
   isOpen: boolean;
@@ -25,26 +27,58 @@ interface UpdateDialogProps {
 export function UpdateDialog({ isOpen, onClose, updateInfo }: UpdateDialogProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  // tRPC queries for update status
+  const isCheckingQuery = api.updater.isCheckingForUpdate.useQuery(undefined, {
+    enabled: isOpen,
+    refetchInterval: isOpen ? 1000 : false, // Poll every second when dialog is open
+  });
+  const isUpdateAvailableQuery = api.updater.isUpdateAvailable.useQuery(undefined, {
+    enabled: isOpen,
+    refetchInterval: isOpen ? 1000 : false,
+  });
+
+  const utils = api.useUtils();
+
+  // tRPC mutations
+  const checkForUpdatesMutation = api.updater.checkForUpdates.useMutation({
+    onSuccess: () => {
+      toast.success('Update check completed');
+      utils.updater.isUpdateAvailable.invalidate();
+      utils.updater.isCheckingForUpdate.invalidate();
+    },
+    onError: (error) => {
+      console.error('Error checking for updates:', error);
+      toast.error('Failed to check for updates');
+    }
+  });
+
+  const downloadUpdateMutation = api.updater.downloadUpdate.useMutation({
+    onSuccess: () => {
+      toast.success('Update download started');
+    },
+    onError: (error) => {
+      console.error('Error downloading update:', error);
+      toast.error('Failed to download update');
+      setIsDownloading(false);
+    }
+  });
+
+  const quitAndInstallMutation = api.updater.quitAndInstall.useMutation({
+    onError: (error) => {
+      console.error('Error installing update:', error);
+      toast.error('Failed to install update');
+    }
+  });
+
+  // Get status from queries
+  const isCheckingForUpdates = isCheckingQuery.data || false;
+  const updateAvailable = isUpdateAvailableQuery.data || false;
 
   useEffect(() => {
     if (!isOpen) return;
 
-    const checkUpdateStatus = async () => {
-      try {
-        const checking = await window.electronAPI.isCheckingForUpdate();
-        const available = await window.electronAPI.isUpdateAvailable();
-        setIsCheckingForUpdates(checking);
-        setUpdateAvailable(available);
-      } catch (error) {
-        console.error('Error checking update status:', error);
-      }
-    };
-
-    checkUpdateStatus();
-
-    // Set up download progress listener
+    // Set up download progress listener (still uses electronAPI for events)
     const removeProgressListener = window.electronAPI.onUpdateDownloadProgress((progress) => {
       setDownloadProgress(Math.round(progress.percent || 0));
     });
@@ -55,39 +89,17 @@ export function UpdateDialog({ isOpen, onClose, updateInfo }: UpdateDialogProps)
   }, [isOpen]);
 
   const handleCheckForUpdates = async () => {
-    try {
-      setIsCheckingForUpdates(true);
-      await window.electronAPI.checkForUpdates();
-      
-      // Check status after a brief delay
-      setTimeout(async () => {
-        const available = await window.electronAPI.isUpdateAvailable();
-        setUpdateAvailable(available);
-        setIsCheckingForUpdates(false);
-      }, 1000);
-    } catch (error) {
-      console.error('Error checking for updates:', error);
-      setIsCheckingForUpdates(false);
-    }
+    checkForUpdatesMutation.mutate({ userInitiated: true });
   };
 
   const handleDownloadUpdate = async () => {
-    try {
-      setIsDownloading(true);
-      setDownloadProgress(0);
-      await window.electronAPI.downloadUpdate();
-    } catch (error) {
-      console.error('Error downloading update:', error);
-      setIsDownloading(false);
-    }
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    downloadUpdateMutation.mutate();
   };
 
   const handleInstallUpdate = async () => {
-    try {
-      await window.electronAPI.quitAndInstall();
-    } catch (error) {
-      console.error('Error installing update:', error);
-    }
+    quitAndInstallMutation.mutate();
   };
 
   if (!updateAvailable && !isCheckingForUpdates && !isDownloading) {

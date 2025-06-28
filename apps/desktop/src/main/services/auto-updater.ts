@@ -8,7 +8,12 @@ export class AutoUpdaterService {
   private mainWindow: BrowserWindow | null = null;
 
   constructor() {
-    this.setupAutoUpdater();
+    // Only set up auto-updater in production
+    if (process.env.NODE_ENV !== 'development' && app.isPackaged) {
+      this.setupAutoUpdater();
+    } else {
+      logger.updater.info('Auto-updater disabled in development mode');
+    }
   }
 
   setMainWindow(window: BrowserWindow | null) {
@@ -126,6 +131,20 @@ export class AutoUpdaterService {
   }
 
   async checkForUpdates(userInitiated = false): Promise<void> {
+    // Skip in development
+    if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+      logger.updater.info('Skipping update check in development mode');
+      if (userInitiated && this.mainWindow && !this.mainWindow.isDestroyed()) {
+        dialog.showMessageBox(this.mainWindow, {
+          type: 'info',
+          title: 'Development Mode',
+          message: 'Update checking is disabled in development mode.',
+          buttons: ['OK']
+        });
+      }
+      return;
+    }
+
     if (this.checkingForUpdate) {
       logger.updater.info('Already checking for updates');
       return;
@@ -146,6 +165,12 @@ export class AutoUpdaterService {
   }
 
   async checkForUpdatesAndNotify(): Promise<void> {
+    // Skip in development
+    if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+      logger.updater.info('Skipping background update check in development mode');
+      return;
+    }
+
     try {
       await autoUpdater.checkForUpdatesAndNotify();
     } catch (error) {
@@ -164,6 +189,12 @@ export class AutoUpdaterService {
   }
 
   async downloadUpdate(): Promise<void> {
+    // Skip in development
+    if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+      logger.updater.info('Skipping update download in development mode');
+      throw new Error('Update downloads are disabled in development mode');
+    }
+
     if (!this.updateAvailable) {
       throw new Error('No update available to download');
     }
@@ -179,6 +210,12 @@ export class AutoUpdaterService {
   }
 
   quitAndInstall(): void {
+    // Skip in development
+    if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+      logger.updater.info('Skipping quit and install in development mode');
+      return;
+    }
+
     autoUpdater.quitAndInstall();
   }
 }

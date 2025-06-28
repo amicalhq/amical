@@ -97,12 +97,7 @@ const api: ElectronAPI = {
   searchTranscriptions: (searchTerm: string, limit?: number) =>
     ipcRenderer.invoke('search-transcriptions', searchTerm, limit),
 
-  // Auto-Update API
-  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-  downloadUpdate: () => ipcRenderer.invoke('download-update'),
-  quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
-  isCheckingForUpdate: () => ipcRenderer.invoke('is-checking-for-update'),
-  isUpdateAvailable: () => ipcRenderer.invoke('is-update-available'),
+  // Auto-Update download progress listener (still needed for events from main process)
   onUpdateDownloadProgress: (callback: (progress: any) => void) => {
     const handler = (_event: IpcRendererEvent, progress: any) => callback(progress);
     ipcRenderer.on('update-download-progress', handler);
