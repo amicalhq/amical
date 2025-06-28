@@ -29,6 +29,7 @@ import { ContextualTranscriptionManager } from '../modules/transcription/context
 import { SettingsService } from '../modules/settings';
 import { createIPCHandler } from 'electron-trpc-experimental/main';
 import { router } from '../trpc/router';
+import { AutoUpdaterService } from './services/auto-updater';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -52,6 +53,7 @@ let activeSpaceChangeSubscriptionId: number | null = null; // For display change
 // New chunk-based transcription variables
 let contextualTranscriptionManager: ContextualTranscriptionManager | null = null;
 const activeTranscriptionSessions: Map<string, TranscriptionSession> = new Map();
+let autoUpdaterService: AutoUpdaterService | null = null;
 
 // Store is imported from '../lib/store' and is database-backed
 
@@ -117,6 +119,9 @@ const createOrShowMainWindow = () => {
   }
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (autoUpdaterService) {
+      autoUpdaterService.setMainWindow(null);
+    }
   });
 
   // Update tRPC handler to include the main window
@@ -124,6 +129,11 @@ const createOrShowMainWindow = () => {
     router,
     windows: [mainWindow, floatingButtonWindow].filter(Boolean) as BrowserWindow[],
   });
+
+  // Set main window reference for auto-updater
+  if (autoUpdaterService) {
+    autoUpdaterService.setMainWindow(mainWindow);
+  }
 };
 
 const createFloatingButtonWindow = () => {
@@ -214,6 +224,19 @@ app.on('ready', async () => {
 
   // Initialize Contextual Transcription Manager
   contextualTranscriptionManager = new ContextualTranscriptionManager(modelManagerService);
+
+  // Initialize Auto-Updater Service
+  autoUpdaterService = new AutoUpdaterService();
+  
+  // Make auto-updater service available globally for tRPC
+  (globalThis as any).autoUpdaterService = autoUpdaterService;
+
+  // Check for updates on startup (after a brief delay)
+  setTimeout(() => {
+    if (autoUpdaterService) {
+      autoUpdaterService.checkForUpdatesAndNotify();
+    }
+  }, 5000); // Wait 5 seconds after startup
 
   // Initialize AI service with the appropriate client based on configuration
   try {
@@ -456,6 +479,33 @@ app.on('ready', async () => {
     await swiftIOBridgeClientInstance!.call('restoreSystemAudio', {});
   });
 
+  // Auto-Update IPC handlers
+  ipcMain.handle('check-for-updates', async () => {
+    if (autoUpdaterService) {
+      await autoUpdaterService.checkForUpdates(true);
+    }
+  });
+
+  ipcMain.handle('download-update', async () => {
+    if (autoUpdaterService) {
+      await autoUpdaterService.downloadUpdate();
+    }
+  });
+
+  ipcMain.handle('quit-and-install', () => {
+    if (autoUpdaterService) {
+      autoUpdaterService.quitAndInstall();
+    }
+  });
+
+  ipcMain.handle('is-checking-for-update', () => {
+    return autoUpdaterService ? autoUpdaterService.isCheckingForUpdate() : false;
+  });
+
+  ipcMain.handle('is-update-available', () => {
+    return autoUpdaterService ? autoUpdaterService.isUpdateAvailable() : false;
+  });
+
   // Initialize the SwiftIOBridgeClient
   swiftIOBridgeClientInstance = new SwiftIOBridge();
 
@@ -512,7 +562,11 @@ app.on('ready', async () => {
     // Handle unexpected close, maybe attempt restart
   });
 
-  setupApplicationMenu(createOrShowMainWindow);
+  setupApplicationMenu(createOrShowMainWindow, () => {
+    if (autoUpdaterService) {
+      autoUpdaterService.checkForUpdates(true);
+    }
+  });
 
   if (process.platform === 'darwin') {
     try {

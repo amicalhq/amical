@@ -3,7 +3,10 @@ import { app, Menu, MenuItemConstructorOptions, BrowserWindow } from 'electron';
 // Forward declaration or import of the function type if it's complex
 // For simplicity, we assume createOrShowSettingsWindow is a () => void function
 
-export const setupApplicationMenu = (createOrShowSettingsWindow: () => void) => {
+export const setupApplicationMenu = (
+  createOrShowSettingsWindow: () => void,
+  checkForUpdates?: () => void
+) => {
   const menuTemplate: MenuItemConstructorOptions[] = [
     // { role: 'appMenu' } for macOS
     ...(process.platform === 'darwin'
@@ -13,6 +16,10 @@ export const setupApplicationMenu = (createOrShowSettingsWindow: () => void) => 
             submenu: [
               { role: 'about' as const },
               { type: 'separator' as const },
+              ...(checkForUpdates ? [{
+                label: 'Check for Updates...',
+                click: () => checkForUpdates(),
+              } as MenuItemConstructorOptions, { type: 'separator' as const }] : []),
               {
                 label: 'Settings',
                 accelerator: 'CmdOrCtrl+,',
@@ -109,6 +116,10 @@ export const setupApplicationMenu = (createOrShowSettingsWindow: () => void) => 
     {
       role: 'help' as const,
       submenu: [
+        ...(checkForUpdates ? [{
+          label: 'Check for Updates...',
+          click: () => checkForUpdates(),
+        } as MenuItemConstructorOptions, { type: 'separator' as const }] : []),
         {
           label: 'Learn More',
           click: async () => {

@@ -63,6 +63,14 @@ export interface ElectronAPI {
     limit?: number
   ) => Promise<import('../db/schema').Transcription[]>;
 
+  // Auto-Update API
+  checkForUpdates: () => Promise<void>;
+  downloadUpdate: () => Promise<void>;
+  quitAndInstall: () => Promise<void>;
+  isCheckingForUpdate: () => Promise<boolean>;
+  isUpdateAvailable: () => Promise<boolean>;
+  onUpdateDownloadProgress: (callback: (progress: any) => void) => (() => void) | void;
+
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;
 
