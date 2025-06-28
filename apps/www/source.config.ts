@@ -19,17 +19,21 @@ export const { docs, meta } = defineDocs({
   },
 });
 
+// Create a simpler blog schema to avoid deep type instantiation
+const blogSchema = z.object({
+  title: z.string(),
+  description: z.string().optional(),
+  author: z.string(),
+  image: z.string(),
+  date: z.union([z.string(), z.date()]).optional(),
+  priority: z.number().default(0),
+});
 
 export const blog = defineCollections({
   type: 'doc',
   dir: 'content/blogs',
   async: true,
-  schema: frontmatterSchema.extend({
-    author: z.string(),
-    image: z.string(),
-    date: z.string().date().or(z.date()).optional(),
-    priority: z.number().default(0),
-  }),
+  schema: blogSchema,
 });
 
 export default defineConfig({
