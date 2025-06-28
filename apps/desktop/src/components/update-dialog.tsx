@@ -75,18 +75,16 @@ export function UpdateDialog({ isOpen, onClose, updateInfo }: UpdateDialogProps)
   const isCheckingForUpdates = isCheckingQuery.data || false;
   const updateAvailable = isUpdateAvailableQuery.data || false;
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // Set up download progress listener (still uses electronAPI for events)
-    const removeProgressListener = window.electronAPI.onUpdateDownloadProgress((progress) => {
+  // Subscribe to download progress via tRPC
+  api.updater.onDownloadProgress.useSubscription(undefined, {
+    enabled: isOpen && isDownloading,
+    onData: (progress) => {
       setDownloadProgress(Math.round(progress.percent || 0));
-    });
-
-    return () => {
-      if (removeProgressListener) removeProgressListener();
-    };
-  }, [isOpen]);
+    },
+    onError: (error) => {
+      console.error('Download progress subscription error:', error);
+    }
+  });
 
   const handleCheckForUpdates = async () => {
     checkForUpdatesMutation.mutate({ userInitiated: true });

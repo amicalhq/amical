@@ -1,13 +1,16 @@
 import { autoUpdater } from 'electron-updater';
 import { app, dialog, BrowserWindow } from 'electron';
+import { EventEmitter } from 'events';
 import { logger } from '../logger';
 
-export class AutoUpdaterService {
+export class AutoUpdaterService extends EventEmitter {
   private checkingForUpdate = false;
   private updateAvailable = false;
   private mainWindow: BrowserWindow | null = null;
 
   constructor() {
+    super();
+    
     // Only set up auto-updater in production
     if (process.env.NODE_ENV !== 'development' && app.isPackaged) {
       this.setupAutoUpdater();
@@ -72,10 +75,8 @@ export class AutoUpdaterService {
         total: progressObj.total,
       });
       
-      // Send progress to renderer if window exists
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('update-download-progress', progressObj);
-      }
+      // Emit event for tRPC subscription
+      this.emit('download-progress', progressObj);
     });
 
     autoUpdater.on('update-downloaded', (info) => {

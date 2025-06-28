@@ -2,6 +2,14 @@ import { initTRPC } from '@trpc/server';
 import superjson from 'superjson';
 import { z } from 'zod';
 
+// Download progress type from electron-updater
+interface DownloadProgress {
+  bytesPerSecond: number;
+  percent: number;
+  transferred: number;
+  total: number;
+}
+
 const t = initTRPC.create({
   isServer: true,
   transformer: superjson,
@@ -122,6 +130,36 @@ export const updaterRouter = t.router({
         error: error instanceof Error ? error.message : String(error) 
       });
       return false;
+    }
+  }),
+
+  // Subscribe to download progress updates
+  onDownloadProgress: t.procedure.subscription(async function* () {
+    if (!globalThis.autoUpdaterService) {
+      throw new Error('Auto-updater service not initialized');
+    }
+
+    const eventQueue: Array<DownloadProgress> = [];
+
+    const handleDownloadProgress = (progressObj: DownloadProgress) => {
+      eventQueue.push(progressObj);
+    };
+
+    globalThis.autoUpdaterService.on('download-progress', handleDownloadProgress);
+
+    try {
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        while (eventQueue.length > 0) {
+          const progress = eventQueue.shift();
+          if (progress) {
+            yield progress;
+          }
+        }
+      }
+    } finally {
+      globalThis.autoUpdaterService?.off('download-progress', handleDownloadProgress);
     }
   }),
 });

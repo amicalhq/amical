@@ -97,14 +97,6 @@ const api: ElectronAPI = {
   searchTranscriptions: (searchTerm: string, limit?: number) =>
     ipcRenderer.invoke('search-transcriptions', searchTerm, limit),
 
-  // Auto-Update download progress listener (still needed for events from main process)
-  onUpdateDownloadProgress: (callback: (progress: any) => void) => {
-    const handler = (_event: IpcRendererEvent, progress: any) => callback(progress);
-    ipcRenderer.on('update-download-progress', handler);
-    return () => {
-      ipcRenderer.removeListener('update-download-progress', handler);
-    };
-  },
 
   // Vocabulary Database API
   on: (channel: string, callback: (...args: any[]) => void) => {
