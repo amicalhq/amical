@@ -15,8 +15,10 @@
       "outputs": ["bin/**"],
       "cache": true
     },
+    "format:check": {
+    },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["format:check"]
     },
     "check-types": {
       "dependsOn": ["^check-types"]

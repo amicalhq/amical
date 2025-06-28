@@ -1,0 +1,17 @@
+# Ignore shadcn UI components
+src/components/ui/
+apps/*/components/ui/
+
+# Build and dist directories
+out/
+.vite/
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# Generated files
+*.log
+*.lock
+package-lock.json

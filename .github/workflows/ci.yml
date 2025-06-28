@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -43,7 +43,10 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm --filter @amical/www install
+        run: pnpm install
+
+      - name: Lint
+        run: pnpm lint
 
       - name: Build
         run: pnpm --filter @amical/www build

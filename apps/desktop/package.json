@@ -11,7 +11,7 @@
     "make:dmg": "pnpm build:swift-helper && electron-forge make --targets=@electron-forge/maker-dmg --platform=darwin --arch=arm64",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json,mjs,mts,css,mdx}\" --cache --ignore-path=../../.prettierignore",
     "ts:check": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",

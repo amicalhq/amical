@@ -34,6 +34,9 @@ export const config = [
       "out/**",
       "*.min.js",
       "*.bundle.js",
+      // ignore shadcn ui components
+      "src/components/ui/**",
+      "components/ui/**",
     ],
   },
 ];
