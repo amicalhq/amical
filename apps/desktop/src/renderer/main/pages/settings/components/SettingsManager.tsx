@@ -35,7 +35,7 @@ const OPENROUTER_MODELS = [
   { value: "google/gemini-pro-1.5", label: "Gemini Pro 1.5" },
 ];
 
-export function SettingsView() {
+export function SettingsManager() {
   const [formatterProvider, setFormatterProvider] =
     useState<"openrouter">("openrouter");
   const [openrouterModel, setOpenrouterModel] = useState("");

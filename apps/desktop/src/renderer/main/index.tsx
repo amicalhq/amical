@@ -38,10 +38,10 @@ import {
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
-import { TranscriptionsView } from "@/components/transcriptions-view";
-import { VocabularyView } from "@/components/vocabulary-view";
-import { ModelsView } from "@/components/models-view";
-import { SettingsView } from "@/components/settings-view";
+import { TranscriptionsPage } from "./pages/transcriptions";
+import { VocabularyPage } from "./pages/vocabulary";
+import { ModelsPage } from "./pages/models";
+import { SettingsPage } from "./pages/settings";
 import "@/styles/globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { api } from "@/trpc/react";
@@ -84,13 +84,13 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case "Transcriptions":
-        return <TranscriptionsView />;
+        return <TranscriptionsPage />;
       case "Vocabulary":
-        return <VocabularyView />;
+        return <VocabularyPage />;
       case "Models":
-        return <ModelsView />;
+        return <ModelsPage />;
       case "Settings":
-        return <SettingsView />;
+        return <SettingsPage />;
       default:
         return (
           <div className="space-y-4">
@@ -117,23 +117,25 @@ const App: React.FC = () => {
               {/* Header spans full width with traffic light spacing */}
               <SiteHeader currentView={currentView} />
 
-              <div className="flex flex-1">
+              <div className="flex flex-1 min-h-0">
                 <AppSidebar
                   variant="inset"
                   onNavigate={handleNavigation}
                   currentView={currentView}
                 />
                 <SidebarInset>
-                  <div className="flex flex-1 flex-col">
-                    <div className="@container/main flex flex-1 flex-col">
-                      <div
-                        className="mx-auto w-full flex flex-col gap-4 md:gap-6"
-                        style={{
-                          maxWidth: "var(--content-max-width)",
-                          padding: "var(--content-padding)",
-                        }}
-                      >
-                        {renderContent()}
+                  <div className="flex flex-1 flex-col min-h-0">
+                    <div className="@container/main flex flex-1 flex-col min-h-0 overflow-hidden">
+                      <div className="flex-1 overflow-y-auto">
+                        <div
+                          className="mx-auto w-full flex flex-col gap-4 md:gap-6"
+                          style={{
+                            maxWidth: "var(--content-max-width)",
+                            padding: "var(--content-padding)",
+                          }}
+                        >
+                          {renderContent()}
+                        </div>
                       </div>
                     </div>
                   </div>

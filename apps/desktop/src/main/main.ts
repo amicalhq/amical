@@ -179,11 +179,14 @@ const createFloatingButtonWindow = () => {
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const devUrl = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    devUrl.pathname = "fab.html";
+    devUrl.pathname = "widget.html";
     floatingButtonWindow.loadURL(devUrl.toString());
   } else {
     floatingButtonWindow.loadFile(
-      path.join(__dirname, `../renderer/${WIDGET_WINDOW_VITE_NAME}/fab.html`),
+      path.join(
+        __dirname,
+        `../renderer/${WIDGET_WINDOW_VITE_NAME}/widget.html`,
+      ),
     );
   }
 

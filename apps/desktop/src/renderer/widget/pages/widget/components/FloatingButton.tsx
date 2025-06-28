@@ -1,13 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { createRoot } from "react-dom/client";
-import { Waveform } from "../components/Waveform"; // Import Waveform
-import { useRecording, RecordingStatus } from "../hooks/useRecording"; // Import the hook and type
-import "@/styles/globals.css";
+import { Waveform } from "@/components/Waveform";
+import { useRecording, RecordingStatus } from "@/hooks/useRecording";
 
 const NUM_WAVEFORM_BARS = 8; // Fewer bars for a smaller button
 const DEBOUNCE_DELAY = 100; // milliseconds
 
-const FloatingButtonApp: React.FC = () => {
+export const FloatingButton: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const fabRef = useRef<HTMLButtonElement>(null);
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout
@@ -154,13 +152,3 @@ const FloatingButtonApp: React.FC = () => {
     </button>
   );
 };
-
-const container = document.getElementById("root");
-if (container) {
-  const root = createRoot(container);
-  root.render(<FloatingButtonApp />);
-} else {
-  console.error(
-    "FloatingButton: Root element not found in floating-button.html",
-  );
-}

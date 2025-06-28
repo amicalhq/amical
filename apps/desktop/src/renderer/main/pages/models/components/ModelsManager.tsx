@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Button } from "./ui/button";
-import { Progress } from "./ui/progress";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "./ui/card";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Label } from "./ui/label";
+} from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { Trash2, Download, Square, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -23,11 +23,11 @@ import {
   AlertDialogTrigger,
   AlertDialogAction,
   AlertDialogCancel,
-} from "./ui/alert-dialog";
-import { Model, DownloadedModel, DownloadProgress } from "../constants/models";
+} from "@/components/ui/alert-dialog";
+import { Model, DownloadedModel, DownloadProgress } from "@/constants/models";
 import { api } from "@/trpc/react";
 
-export const ModelsView: React.FC = () => {
+export const ModelsManager: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState<
     Record<string, DownloadProgress>
   >({});
@@ -262,7 +262,7 @@ export const ModelsView: React.FC = () => {
   }
 
   return (
-    <div className="h-full p-6">
+    <div className="space-y-6">
       <Tabs defaultValue="speech-recognition" className="w-full">
         <TabsList className="grid w-full grid-cols-1">
           <TabsTrigger value="speech-recognition">

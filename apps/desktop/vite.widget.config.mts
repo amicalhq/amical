@@ -18,7 +18,7 @@ export default defineConfig(async () => {
     build: {
       rollupOptions: {
         input: {
-          main: resolve(__dirname, "fab.html"),
+          main: resolve(__dirname, "widget.html"),
         },
       },
     },
