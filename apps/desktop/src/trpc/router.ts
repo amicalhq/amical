@@ -5,6 +5,7 @@ import { vocabularyRouter } from './routers/vocabulary';
 import { transcriptionsRouter } from './routers/transcriptions';
 import { modelsRouter } from './routers/models';
 import { settingsRouter } from './routers/settings';
+import { updaterRouter } from './routers/updater';
 
 const t = initTRPC.create({
   isServer: true,
@@ -47,6 +48,9 @@ export const router = t.router({
   
   // Settings router
   settings: settingsRouter,
+  
+  // Auto-updater router
+  updater: updaterRouter,
 });
 
 export type AppRouter = typeof router;

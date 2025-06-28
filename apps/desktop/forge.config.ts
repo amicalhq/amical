@@ -6,6 +6,7 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { PublisherGithub } from '@electron-forge/publisher-github';
 import { readdirSync, rmdirSync, statSync, existsSync, mkdirSync, cpSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
@@ -192,6 +193,19 @@ const config: ForgeConfig = {
       NSMicrophoneUsageDescription:
         'This app needs access to your microphone to record audio for transcription.',
     },
+    // Code signing configuration for macOS (configure when ready to sign)
+    // osxSign: {
+    //   identity: process.env.APPLE_SIGNING_IDENTITY,
+    //   'hardened-runtime': true,
+    //   entitlements: './entitlements.plist',
+    //   'entitlements-inherit': './entitlements.plist',
+    // },
+    // Notarization for macOS (configure when ready for distribution)
+    // osxNotarize: {
+    //   appleId: process.env.APPLE_ID,
+    //   appleIdPassword: process.env.APPLE_APP_PASSWORD,
+    //   teamId: process.env.APPLE_TEAM_ID,
+    // },
     //! issues with monorepo setup and module resolutions
     //! when forge walks paths via flora-colossus
     prune: false,
@@ -303,6 +317,16 @@ const config: ForgeConfig = {
       [FuseV1Options.EnableNodeCliInspectArguments]: false,
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
+    }),
+  ],
+  publishers: [
+    new PublisherGithub({
+      repository: {
+        owner: 'amicalhq',
+        name: 'amical',
+      },
+      prerelease: true,
+      draft: true, // Create draft releases first for review
     }),
   ],
 };

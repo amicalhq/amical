@@ -111,6 +111,7 @@ export const logger = {
   swift: createLoggerForScope('swift'),
   ui: createLoggerForScope('ui'),
   db: createLoggerForScope('db'),
+  updater: createLoggerForScope('updater'),
 };
 
 // Log startup information

@@ -97,6 +97,7 @@ const api: ElectronAPI = {
   searchTranscriptions: (searchTerm: string, limit?: number) =>
     ipcRenderer.invoke('search-transcriptions', searchTerm, limit),
 
+
   // Vocabulary Database API
   on: (channel: string, callback: (...args: any[]) => void) => {
     const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);

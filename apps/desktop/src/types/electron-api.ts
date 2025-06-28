@@ -63,6 +63,7 @@ export interface ElectronAPI {
     limit?: number
   ) => Promise<import('../db/schema').Transcription[]>;
 
+
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;
 
