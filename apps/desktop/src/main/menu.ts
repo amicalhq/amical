@@ -6,6 +6,7 @@ import { app, Menu, MenuItemConstructorOptions, BrowserWindow } from "electron";
 export const setupApplicationMenu = (
   createOrShowSettingsWindow: () => void,
   checkForUpdates?: () => void,
+  openAllDevTools?: () => void,
 ) => {
   const menuTemplate: MenuItemConstructorOptions[] = [
     // { role: 'appMenu' } for macOS
@@ -97,6 +98,15 @@ export const setupApplicationMenu = (
         { role: "reload" as const },
         { role: "forceReload" as const },
         { role: "toggleDevTools" as const },
+        ...(openAllDevTools
+          ? [
+              {
+                label: "Open All Dev Tools",
+                accelerator: "CmdOrCtrl+Shift+I",
+                click: () => openAllDevTools(),
+              } as MenuItemConstructorOptions,
+            ]
+          : []),
         { type: "separator" as const },
         { role: "resetZoom" as const },
         { role: "zoomIn" as const },

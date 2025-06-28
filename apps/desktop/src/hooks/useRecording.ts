@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MicVAD } from "@ricky0123/vad-web";
 import { Mutex } from "async-mutex";
+import { audioRecorderWorkletSource } from "./audio-recorder-worklet";
 
 export interface UseRecordingParams {
   onAudioChunk: (
@@ -72,19 +73,6 @@ export const useRecording = ({
         "Hook: Internal: Stopping recording and sending final chunk...",
       );
 
-      // Send final audio chunk before cleanup
-      try {
-        // Access the sendAudioChunk function from the current recording session
-        // We need to store this reference when starting recording
-        const sendFinalChunk = (window as any).currentSendAudioChunk;
-        if (sendFinalChunk) {
-          await sendFinalChunk(true); // Send final chunk
-          console.log("Hook: Final audio chunk sent.");
-        }
-      } catch (error) {
-        console.error("Hook: Error sending final audio chunk:", error);
-      }
-
       // Cleanup all resources
       cleanupMediaResources(vadRef.current, streamRef.current);
 
@@ -148,8 +136,13 @@ export const useRecording = ({
         let chunkTimer: NodeJS.Timeout | null = null;
         let pendingAudioChunks: Float32Array[] = [];
 
-        // Load AudioWorklet module
-        await audioContext.audioWorklet.addModule("/audio-recorder-worklet.js");
+        // Load AudioWorklet module using blob URL
+        const blob = new Blob([audioRecorderWorkletSource], {
+          type: "application/javascript",
+        });
+        const audioWorkletUrl = URL.createObjectURL(blob);
+        await audioContext.audioWorklet.addModule(audioWorkletUrl);
+        URL.revokeObjectURL(audioWorkletUrl); // Clean up blob URL
         console.log("Hook: AudioWorklet module loaded successfully");
 
         source = audioContext.createMediaStreamSource(localStream);

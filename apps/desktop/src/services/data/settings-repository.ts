@@ -1,4 +1,4 @@
-import { FormatterConfig } from "../formatter";
+import { FormatterConfig } from "../../types/formatter";
 import {
   getSettingsSection,
   updateSettingsSection,

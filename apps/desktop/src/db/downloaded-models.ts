@@ -75,7 +75,7 @@ export async function deleteDownloadedModel(id: string) {
   return result[0] || null;
 }
 
-// Get downloaded models as a record (for backward compatibility)
+// Get downloaded models as a record
 export async function getDownloadedModelsRecord(): Promise<
   Record<string, DownloadedModel>
 > {

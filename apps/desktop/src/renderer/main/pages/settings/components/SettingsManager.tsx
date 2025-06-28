@@ -19,12 +19,13 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { FormatterConfig } from "@/modules/formatter";
+import { FormatterConfig } from "@/types/formatter";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
 // OpenRouter models list
 const OPENROUTER_MODELS = [
+  { value: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash" },
   { value: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet" },
   { value: "anthropic/claude-3-haiku", label: "Claude 3 Haiku" },
   { value: "openai/gpt-4o", label: "GPT-4o" },

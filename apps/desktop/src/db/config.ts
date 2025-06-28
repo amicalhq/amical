@@ -17,6 +17,8 @@ export const db = drizzle(`file:${dbPath}`, {
 // Initialize database with migrations
 let isInitialized = false;
 
+import { logger } from "../main/logger";
+
 export async function initializeDatabase() {
   if (isInitialized) {
     return;
@@ -35,10 +37,10 @@ export async function initializeDatabase() {
       migrationsPath = path.join(process.resourcesPath, "migrations");
     }
 
-    console.log("Attempting to run migrations from:", migrationsPath);
-    console.log("__dirname:", __dirname);
-    console.log("process.cwd():", process.cwd());
-    console.log("isDev:", isDev);
+    logger.db.debug("Attempting to run migrations from:", migrationsPath);
+    logger.db.debug("__dirname:", __dirname);
+    logger.db.debug("process.cwd():", process.cwd());
+    logger.db.debug("isDev:", isDev);
 
     // Check if the migrations path exists
     if (!fs.existsSync(migrationsPath)) {
@@ -55,11 +57,13 @@ export async function initializeDatabase() {
       migrationsFolder: migrationsPath,
     });
 
-    console.log("Database initialized and migrations completed successfully");
+    logger.db.info(
+      "Database initialized and migrations completed successfully",
+    );
     isInitialized = true;
   } catch (error) {
-    console.error("FATAL: Error initializing database:", error);
-    console.error(
+    logger.db.error("FATAL: Error initializing database:", error);
+    logger.db.error(
       "Application cannot continue without a working database. Exiting...",
     );
 

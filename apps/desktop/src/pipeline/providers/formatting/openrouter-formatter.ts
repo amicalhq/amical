@@ -1,0 +1,62 @@
+import { FormattingProvider, FormatParams } from "../../core/pipeline-types";
+import { logger } from "../../../main/logger";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { constructFormatterPrompt } from "./formatter-prompt";
+
+import { generateText } from "ai";
+
+export class OpenRouterProvider implements FormattingProvider {
+  readonly name = "openrouter";
+
+  private provider: any;
+  private model: string;
+
+  constructor(apiKey: string, model: string) {
+    // Configure OpenRouter provider
+    this.provider = createOpenRouter({
+      apiKey: apiKey,
+    });
+
+    this.model = model;
+  }
+
+  async format(params: FormatParams): Promise<string> {
+    try {
+      // Extract parameters from the new structure
+      const { text, context } = params;
+
+      // Construct the formatter prompt using the extracted function
+      const { systemPrompt } = constructFormatterPrompt(context);
+
+      // Build user prompt with context
+      const userPrompt = text;
+
+      const { text: formattedText } = await generateText({
+        model: this.provider(this.model),
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: userPrompt,
+          },
+        ],
+        temperature: 0.1, // Low temperature for consistent formatting
+        maxTokens: 2000,
+      });
+
+      logger.pipeline.debug("Formatting completed", {
+        original: text,
+        formatted: formattedText,
+      });
+
+      return formattedText;
+    } catch (error) {
+      logger.pipeline.error("Formatting failed:", error);
+      // Return original text if formatting fails - simple fallback
+      return params.text;
+    }
+  }
+}

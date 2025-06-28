@@ -2,11 +2,9 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
-import log from "electron-log/renderer";
 import { exposeElectronTRPC } from "electron-trpc-experimental/preload";
 import type { ElectronAPI } from "../types/electron-api";
-import type { FormatterConfig } from "../modules/formatter";
-import type { Transcription, NewTranscription } from "../db/schema";
+import type { FormatterConfig } from "../types/formatter";
 
 interface ShortcutData {
   shortcut: string;
@@ -94,7 +92,6 @@ const api: ElectronAPI = {
 
   // Transcription Database API (moved to tRPC)
 
-  // Vocabulary Database API
   on: (channel: string, callback: (...args: any[]) => void) => {
     const handler = (_event: IpcRendererEvent, ...args: any[]) =>
       callback(...args);
@@ -125,13 +122,26 @@ const api: ElectronAPI = {
     }
   },
 
-  // Logging API for renderer process
+  // Logging API for renderer process - sends to main process via IPC
   log: {
-    info: (...args: any[]) => log.info(...args),
-    warn: (...args: any[]) => log.warn(...args),
-    error: (...args: any[]) => log.error(...args),
-    debug: (...args: any[]) => log.debug(...args),
-    scope: (name: string) => log.scope(name),
+    info: (...args: any[]) =>
+      ipcRenderer.invoke("log-message", "info", "renderer", ...args),
+    warn: (...args: any[]) =>
+      ipcRenderer.invoke("log-message", "warn", "renderer", ...args),
+    error: (...args: any[]) =>
+      ipcRenderer.invoke("log-message", "error", "renderer", ...args),
+    debug: (...args: any[]) =>
+      ipcRenderer.invoke("log-message", "debug", "renderer", ...args),
+    scope: (name: string) => ({
+      info: (...args: any[]) =>
+        ipcRenderer.invoke("log-message", "info", name, ...args),
+      warn: (...args: any[]) =>
+        ipcRenderer.invoke("log-message", "warn", name, ...args),
+      error: (...args: any[]) =>
+        ipcRenderer.invoke("log-message", "error", name, ...args),
+      debug: (...args: any[]) =>
+        ipcRenderer.invoke("log-message", "debug", name, ...args),
+    }),
   },
 };
 

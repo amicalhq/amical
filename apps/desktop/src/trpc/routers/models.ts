@@ -18,7 +18,6 @@ const t = initTRPC.create({
 
 declare global {
   var modelManagerService: any;
-  var localWhisperClient: any;
 }
 
 export const modelsRouter = t.router({
@@ -67,22 +66,22 @@ export const modelsRouter = t.router({
     return globalThis.modelManagerService?.getModelsDirectory() || "";
   }),
 
-  // Local Whisper methods
-  isLocalWhisperAvailable: t.procedure.query(async () => {
-    return globalThis.localWhisperClient
-      ? await globalThis.localWhisperClient.isAvailable()
+  // Transcription model selection methods
+  isTranscriptionAvailable: t.procedure.query(async () => {
+    return globalThis.modelManagerService
+      ? await globalThis.modelManagerService.isAvailable()
       : false;
   }),
 
-  getLocalWhisperModels: t.procedure.query(async () => {
-    return globalThis.localWhisperClient
-      ? await globalThis.localWhisperClient.getAvailableModels()
+  getTranscriptionModels: t.procedure.query(async () => {
+    return globalThis.modelManagerService
+      ? await globalThis.modelManagerService.getAvailableModelsForTranscription()
       : [];
   }),
 
   getSelectedModel: t.procedure.query(async () => {
-    return globalThis.localWhisperClient
-      ? globalThis.localWhisperClient.getSelectedModel()
+    return globalThis.modelManagerService
+      ? globalThis.modelManagerService.getSelectedModel()
       : null;
   }),
 
@@ -117,10 +116,10 @@ export const modelsRouter = t.router({
   setSelectedModel: t.procedure
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input }) => {
-      if (!globalThis.localWhisperClient) {
-        throw new Error("Local whisper client not initialized");
+      if (!globalThis.modelManagerService) {
+        throw new Error("Model manager service not initialized");
       }
-      return await globalThis.localWhisperClient.setSelectedModel(
+      return await globalThis.modelManagerService.setSelectedModel(
         input.modelId,
       );
     }),

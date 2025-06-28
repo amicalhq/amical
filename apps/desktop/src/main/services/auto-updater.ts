@@ -2,13 +2,13 @@ import { autoUpdater } from "electron-updater";
 import { app, dialog, BrowserWindow } from "electron";
 import { EventEmitter } from "events";
 import { logger } from "../logger";
+import { WindowManager } from "../core/window-manager";
 
 export class AutoUpdaterService extends EventEmitter {
   private checkingForUpdate = false;
   private updateAvailable = false;
-  private mainWindow: BrowserWindow | null = null;
 
-  constructor() {
+  constructor(private windowManager: WindowManager) {
     super();
 
     // Only set up auto-updater in production
@@ -17,10 +17,6 @@ export class AutoUpdaterService extends EventEmitter {
     } else {
       logger.updater.info("Auto-updater disabled in development mode");
     }
-  }
-
-  setMainWindow(window: BrowserWindow | null) {
-    this.mainWindow = window;
   }
 
   private setupAutoUpdater() {
@@ -62,7 +58,8 @@ export class AutoUpdaterService extends EventEmitter {
       this.checkingForUpdate = false;
 
       // Show error dialog only if user manually checked for updates
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      const mainWindow = this.windowManager.getMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
         dialog.showErrorBox(
           "Update Error",
           `Error checking for updates: ${err.message}`,
@@ -89,11 +86,12 @@ export class AutoUpdaterService extends EventEmitter {
   }
 
   private async showUpdateDialog(info: any) {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+    const mainWindow = this.windowManager.getMainWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) {
       return;
     }
 
-    const result = await dialog.showMessageBox(this.mainWindow, {
+    const result = await dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "Update Available",
       message: `A new version (${info.version}) is available.`,
@@ -113,11 +111,12 @@ export class AutoUpdaterService extends EventEmitter {
   }
 
   private async showInstallDialog(info: any) {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+    const mainWindow = this.windowManager.getMainWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) {
       return;
     }
 
-    const result = await dialog.showMessageBox(this.mainWindow, {
+    const result = await dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "Update Ready",
       message: `Update ${info.version} has been downloaded.`,
@@ -140,13 +139,16 @@ export class AutoUpdaterService extends EventEmitter {
     // Skip in development
     if (process.env.NODE_ENV === "development" || !app.isPackaged) {
       logger.updater.info("Skipping update check in development mode");
-      if (userInitiated && this.mainWindow && !this.mainWindow.isDestroyed()) {
-        dialog.showMessageBox(this.mainWindow, {
-          type: "info",
-          title: "Development Mode",
-          message: "Update checking is disabled in development mode.",
-          buttons: ["OK"],
-        });
+      if (userInitiated) {
+        const mainWindow = this.windowManager.getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          dialog.showMessageBox(mainWindow, {
+            type: "info",
+            title: "Development Mode",
+            message: "Update checking is disabled in development mode.",
+            buttons: ["OK"],
+          });
+        }
       }
       return;
     }
@@ -164,11 +166,14 @@ export class AutoUpdaterService extends EventEmitter {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      if (userInitiated && this.mainWindow && !this.mainWindow.isDestroyed()) {
-        dialog.showErrorBox(
-          "Update Check Failed",
-          "Failed to check for updates. Please try again later.",
-        );
+      if (userInitiated) {
+        const mainWindow = this.windowManager.getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          dialog.showErrorBox(
+            "Update Check Failed",
+            "Failed to check for updates. Please try again later.",
+          );
+        }
       }
     }
   }

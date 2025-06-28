@@ -46,10 +46,10 @@ export interface ElectronAPI {
 
   // Formatter Configuration API
   getFormatterConfig: () => Promise<
-    import("../modules/formatter").FormatterConfig | null
+    import("../types/formatter").FormatterConfig | null
   >;
   setFormatterConfig: (
-    config: import("../modules/formatter").FormatterConfig,
+    config: import("../types/formatter").FormatterConfig,
   ) => Promise<void>;
 
   // Transcription Database API (moved to tRPC)

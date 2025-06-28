@@ -8,8 +8,8 @@ import {
   DownloadProgress,
   ModelManagerState,
   AVAILABLE_MODELS,
-} from "../../constants/models";
-import { DownloadedModel } from "../../db/schema";
+} from "../constants/models";
+import { DownloadedModel } from "../db/schema";
 import {
   getDownloadedModelsRecord,
   createDownloadedModel,
@@ -17,8 +17,8 @@ import {
   validateDownloadedModels,
   validateModelFile,
   getValidDownloadedModels,
-} from "../../db/downloaded-models";
-import { logger } from "../../main/logger";
+} from "../db/downloaded-models";
+import { logger } from "../main/logger";
 
 interface ModelManagerEvents {
   "download-progress": (modelId: string, progress: DownloadProgress) => void;
@@ -29,17 +29,6 @@ interface ModelManagerEvents {
   "download-error": (modelId: string, error: Error) => void;
   "download-cancelled": (modelId: string) => void;
   "model-deleted": (modelId: string) => void;
-}
-
-declare interface ModelManagerService {
-  on<U extends keyof ModelManagerEvents>(
-    event: U,
-    listener: ModelManagerEvents[U],
-  ): this;
-  emit<U extends keyof ModelManagerEvents>(
-    event: U,
-    ...args: Parameters<ModelManagerEvents[U]>
-  ): boolean;
 }
 
 class ModelManagerService extends EventEmitter {
@@ -55,6 +44,35 @@ class ModelManagerService extends EventEmitter {
     // Create models directory in app data
     this.modelsDirectory = path.join(app.getPath("userData"), "models");
     this.ensureModelsDirectory();
+  }
+
+  // Type-safe event emitter methods
+  on<U extends keyof ModelManagerEvents>(
+    event: U,
+    listener: ModelManagerEvents[U],
+  ): this {
+    return super.on(event, listener);
+  }
+
+  emit<U extends keyof ModelManagerEvents>(
+    event: U,
+    ...args: Parameters<ModelManagerEvents[U]>
+  ): boolean {
+    return super.emit(event, ...args);
+  }
+
+  off<U extends keyof ModelManagerEvents>(
+    event: U,
+    listener: ModelManagerEvents[U],
+  ): this {
+    return super.off(event, listener);
+  }
+
+  once<U extends keyof ModelManagerEvents>(
+    event: U,
+    listener: ModelManagerEvents[U],
+  ): this {
+    return super.once(event, listener);
   }
 
   // Initialize and validate models on startup
@@ -362,6 +380,64 @@ class ModelManagerService extends EventEmitter {
       logger.main.error("Error during model validation cleanup", { error });
       return { cleaned: 0, valid: 0 };
     }
+  }
+
+  // Model selection for transcription (moved from LocalWhisperClient)
+  private selectedModelId: string | null = null;
+
+  // Check if any models are available for transcription
+  async isAvailable(): Promise<boolean> {
+    const downloadedModels = await this.getValidDownloadedModels();
+    return Object.keys(downloadedModels).length > 0;
+  }
+
+  // Get available model IDs for transcription
+  async getAvailableModelsForTranscription(): Promise<string[]> {
+    const downloadedModels = await this.getValidDownloadedModels();
+    return Object.keys(downloadedModels);
+  }
+
+  // Get currently selected model for transcription
+  getSelectedModel(): string | null {
+    return this.selectedModelId;
+  }
+
+  // Set selected model for transcription
+  async setSelectedModel(modelId: string): Promise<void> {
+    const downloadedModels = await this.getValidDownloadedModels();
+    if (!downloadedModels[modelId]) {
+      throw new Error(`Model not downloaded: ${modelId}`);
+    }
+    this.selectedModelId = modelId;
+    logger.main.info("Selected model for transcription", { modelId });
+  }
+
+  // Get best available model path for transcription (used by WhisperProvider)
+  async getBestAvailableModelPath(): Promise<string | null> {
+    const downloadedModels = await this.getValidDownloadedModels();
+
+    // If a specific model is selected and available, use it
+    if (this.selectedModelId && downloadedModels[this.selectedModelId]) {
+      return downloadedModels[this.selectedModelId].localPath;
+    }
+
+    // Otherwise, find the best available model (prioritize by quality)
+    const preferredOrder = [
+      "whisper-large-v1",
+      "whisper-medium",
+      "whisper-small",
+      "whisper-base",
+      "whisper-tiny",
+    ];
+
+    for (const modelId of preferredOrder) {
+      const model = downloadedModels[modelId];
+      if (model && fs.existsSync(model.localPath)) {
+        return model.localPath;
+      }
+    }
+
+    return null;
   }
 
   // Cleanup - cancel all active downloads

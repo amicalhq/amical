@@ -38,8 +38,8 @@ export const ModelsManager: React.FC = () => {
   const availableModelsQuery = api.models.getAvailableModels.useQuery();
   const downloadedModelsQuery = api.models.getDownloadedModels.useQuery();
   const activeDownloadsQuery = api.models.getActiveDownloads.useQuery();
-  const isLocalWhisperAvailableQuery =
-    api.models.isLocalWhisperAvailable.useQuery();
+  const isTranscriptionAvailableQuery =
+    api.models.isTranscriptionAvailable.useQuery();
   const selectedModelQuery = api.models.getSelectedModel.useQuery();
 
   const utils = api.useUtils();
@@ -243,13 +243,13 @@ export const ModelsManager: React.FC = () => {
   const loading =
     availableModelsQuery.isLoading ||
     downloadedModelsQuery.isLoading ||
-    isLocalWhisperAvailableQuery.isLoading ||
+    isTranscriptionAvailableQuery.isLoading ||
     selectedModelQuery.isLoading;
 
   // Data from queries
   const availableModels = availableModelsQuery.data || [];
   const downloadedModels = downloadedModelsQuery.data || {};
-  const isLocalWhisperAvailable = isLocalWhisperAvailableQuery.data || false;
+  const isTranscriptionAvailable = isTranscriptionAvailableQuery.data || false;
   const selectedModel = selectedModelQuery.data;
 
   if (loading) {
@@ -298,7 +298,7 @@ export const ModelsManager: React.FC = () => {
                         <RadioGroupItem
                           value={model.id}
                           id={model.id}
-                          disabled={!isDownloaded || !isLocalWhisperAvailable}
+                          disabled={!isDownloaded || !isTranscriptionAvailable}
                         />
                         <div className="flex-1">
                           <Label

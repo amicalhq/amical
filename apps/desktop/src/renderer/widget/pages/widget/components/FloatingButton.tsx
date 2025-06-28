@@ -3,30 +3,39 @@ import { Waveform } from "@/components/Waveform";
 import { useRecording, RecordingStatus } from "@/hooks/useRecording";
 
 const NUM_WAVEFORM_BARS = 8; // Fewer bars for a smaller button
-const DEBOUNCE_DELAY = 100; // milliseconds
+const DEBOUNCE_DELAY = 100; // milliseconds;
 
 export const FloatingButton: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const fabRef = useRef<HTMLButtonElement>(null);
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout
 
+  // Log component initialization
+  useEffect(() => {
+    console.log("FloatingButton component initialized");
+    return () => {
+      console.debug("FloatingButton component unmounting");
+    };
+  }, []);
+
   const handleAudioChunk = useCallback(
     async (audioChunk: ArrayBuffer, isFinalChunk: boolean) => {
       try {
         // Send the audio chunk regardless of whether it's final or not
         await window.electronAPI.sendAudioChunk(audioChunk, isFinalChunk);
-        console.log(`FAB: Sent audio chunk. isFinalChunk: ${isFinalChunk}`);
+        console.debug(`Sent audio chunk`, {
+          chunkSize: audioChunk.byteLength,
+          isFinalChunk,
+        });
 
         if (isFinalChunk) {
-          console.log(
-            "FAB: This was the final chunk. Informing main process to finalize transcription.",
-          );
+          console.log("Final chunk sent to main process");
           // You might want to add a specific IPC call here if the main process needs an explicit signal
           // to finalize transcription, e.g., window.electronAPI.finalizeTranscription();
           // For now, we assume sendAudioChunk is enough and the main process handles the stream end.
         }
       } catch (error) {
-        console.error("FAB: Error sending audio chunk:", error);
+        console.error("Error sending audio chunk:", error);
       }
     },
     [],
@@ -44,15 +53,23 @@ export const FloatingButton: React.FC = () => {
   const isRecording =
     recordingStatus === "recording" || recordingStatus === "starting";
   const isAwaitingFinalChunk = recordingStatus === "stopping";
-  console.log("FAB: recordingStatus:", recordingStatus);
+
+  // Log recording status changes
+  useEffect(() => {
+    console.debug("Recording status changed", { recordingStatus });
+  }, [recordingStatus]);
 
   useEffect(() => {
     const cleanup = window.electronAPI.onRecordingStateChanged(
       (newState: boolean) => {
-        console.log("FAB: Received new recording state:", newState);
+        console.log("Received recording state change from main process", {
+          newState,
+        });
         if (newState) {
+          console.debug("Starting recording via state change");
           startRecording();
         } else {
+          console.debug("Stopping recording via state change");
           stopRecording();
         }
       },
@@ -79,7 +96,7 @@ export const FloatingButton: React.FC = () => {
 
   // Update window size when recording or hover state changes
   useEffect(() => {
-    console.log("is hovered", isHovered);
+    console.debug("Widget state changed", { isHovered, isRecording });
     updateWindowSizeToFab();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRecording, isHovered]);

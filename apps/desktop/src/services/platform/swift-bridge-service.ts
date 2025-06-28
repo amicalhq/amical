@@ -7,7 +7,7 @@ import split2 from "split2";
 import { v4 as uuid } from "uuid";
 
 import { EventEmitter } from "events";
-import { createScopedLogger } from "./logger";
+import { createScopedLogger } from "../../main/logger";
 import {
   RpcRequestSchema,
   RpcRequest,

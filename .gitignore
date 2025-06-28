@@ -38,6 +38,7 @@ yarn-error.log*
 *.pem
 CLAUDE.md
 .serena
+.local
 
 # Temp files
 /tmp

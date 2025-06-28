@@ -4,6 +4,7 @@ dotenv.config();
 import log from "electron-log";
 import { app } from "electron";
 import path from "node:path";
+import colors from "ansi-colors";
 
 // Configure electron-log immediately when module is imported
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
@@ -35,9 +36,53 @@ log.transports.file.resolvePathFn = () => logPath;
 
 // Configure console transport for better development experience
 if (isDev) {
-  log.transports.console.format =
-    "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] [{scope}] {text}";
-  log.transports.console.useStyles = true;
+  // Color functions for different scopes using ansi-colors
+  const scopeColorFunctions: Record<string, (text: string) => string> = {
+    main: colors.blue.bold,
+    audio: colors.green.bold,
+    transcription: colors.magenta.bold,
+    swift: colors.yellow.bold,
+    pipeline: colors.red.bold,
+    widget: colors.cyan.bold,
+    mainWindow: colors.greenBright.bold,
+    renderer: colors.gray.bold,
+    ui: colors.magentaBright.bold,
+    db: colors.cyanBright.bold,
+    network: colors.yellowBright.bold,
+    updater: colors.blueBright.bold,
+    ipc: colors.green.bold,
+    default: colors.gray.bold,
+  };
+
+  // Color functions for different log levels
+  const levelColorFunctions: Record<string, (text: string) => string> = {
+    error: colors.red.bold,
+    warn: colors.yellow.bold,
+    info: colors.blue,
+    verbose: colors.cyan,
+    debug: colors.gray,
+    silly: colors.magenta,
+  };
+
+  // Override console transport with custom colored output
+  log.transports.console.format = "{text}"; // Minimal formatting - just pass through the text
+  log.transports.console.writeFn = (info) => {
+    const { message } = info;
+    const scope = message.scope || "default";
+    const level = message.level;
+
+    // Get color functions
+    const scopeColorFn =
+      scopeColorFunctions[scope] || scopeColorFunctions.default;
+    const levelColorFn = levelColorFunctions[level] || ((text: string) => text);
+
+    const timestamp = `${message.date.getFullYear()}-${String(message.date.getMonth() + 1).padStart(2, "0")}-${String(message.date.getDate()).padStart(2, "0")} ${String(message.date.getHours()).padStart(2, "0")}:${String(message.date.getMinutes()).padStart(2, "0")}:${String(message.date.getSeconds()).padStart(2, "0")}.${String(message.date.getMilliseconds()).padStart(3, "0")}`;
+
+    // Let console.log handle message serialization naturally
+    const prefix = `${colors.dim(`[${timestamp}]`)} ${levelColorFn(`[${level}]`)} ${scopeColorFn(`[${scope}]`)}`;
+
+    console.log(prefix, ...message.data);
+  };
 } else {
   log.transports.console.format =
     "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] [{scope}] {text}";
@@ -115,11 +160,14 @@ export const logger = {
   renderer: createLoggerForScope("renderer"),
   network: createLoggerForScope("network"),
   audio: createLoggerForScope("audio"),
-  ai: createLoggerForScope("ai"),
+  pipeline: createLoggerForScope("pipeline"),
   swift: createLoggerForScope("swift"),
   ui: createLoggerForScope("ui"),
   db: createLoggerForScope("db"),
   updater: createLoggerForScope("updater"),
+  transcription: createLoggerForScope("transcription"),
+  widget: createLoggerForScope("widget"),
+  mainWindow: createLoggerForScope("mainWindow"),
 };
 
 // Log startup information
