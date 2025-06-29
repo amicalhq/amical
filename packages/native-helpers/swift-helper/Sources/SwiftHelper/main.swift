@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 // Import the generated models
 // Note: We'll manually create the proper HelperEvent structure since quicktype doesn't handle discriminated unions well
@@ -20,7 +20,7 @@ struct HelperEvent: Codable {
     let type: String
     let payload: KeyEventPayload
     let timestamp: String?
-    
+
     init(type: String, payload: KeyEventPayload, timestamp: String? = nil) {
         self.type = type
         self.payload = payload
@@ -29,7 +29,9 @@ struct HelperEvent: Codable {
 }
 
 // Function to handle the event tap
-func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+func eventTapCallback(
+    proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
     guard let refcon = refcon else {
         return Unmanaged.passRetained(event)
     }
@@ -38,11 +40,11 @@ func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
     if type == .keyDown || type == .keyUp {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let eventTypeString = (type == .keyDown) ? "keyDown" : "keyUp"
-        
+
         // Create the proper payload structure
         let payload = KeyEventPayload(
-            key: nil, // We could map keyCode to key string if needed
-            code: nil, // We could map keyCode to code string if needed
+            key: nil,  // We could map keyCode to key string if needed
+            code: nil,  // We could map keyCode to code string if needed
             altKey: event.flags.contains(.maskAlternate),
             ctrlKey: event.flags.contains(.maskControl),
             shiftKey: event.flags.contains(.maskShift),
@@ -50,7 +52,7 @@ func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
             keyCode: Int(keyCode),
             fnKeyPressed: event.flags.contains(.maskSecondaryFn)
         )
-        
+
         let helperEvent = HelperEvent(
             type: eventTypeString,
             payload: payload,
@@ -61,7 +63,7 @@ func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
     } else if type == .flagsChanged {
         // Handle flags changed events (like Fn key press/release)
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        
+
         let payload = KeyEventPayload(
             key: nil,
             code: nil,
@@ -72,13 +74,13 @@ func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
             keyCode: Int(keyCode),
             fnKeyPressed: event.flags.contains(.maskSecondaryFn)
         )
-        
+
         let helperEvent = HelperEvent(
             type: "flagsChanged",
             payload: payload,
             timestamp: ISO8601DateFormatter().string(from: Date())
         )
-        
+
         anInstance.sendKeyEvent(helperEvent)
     } else if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
         // Re-enable the tap if it times out or is disabled by user input
@@ -93,7 +95,7 @@ func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
 class SwiftHelper {
     var eventTap: CFMachPort?
     let outputPipe = Pipe()
-    let errorPipe = Pipe() // For logging errors from the helper
+    let errorPipe = Pipe()  // For logging errors from the helper
 
     init() {
         // Redirect stdout to the pipe for IPC
@@ -109,13 +111,13 @@ class SwiftHelper {
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 // Print to stdout, which will be captured by the Electron process
                 print(jsonString)
-                fflush(stdout) // Ensure the output is sent immediately
+                fflush(stdout)  // Ensure the output is sent immediately
             }
         } catch {
             // Log errors to the helper's stderr
             let errorMsg = "Error encoding HelperEvent: \(error)\n"
             if let data = errorMsg.data(using: .utf8) {
-                 FileHandle.standardError.write(data)
+                FileHandle.standardError.write(data)
             }
         }
     }
@@ -127,19 +129,23 @@ class SwiftHelper {
 
         // Create an event tap.
         // We want to listen to keyDown, keyUp, and flagsChanged events.
-        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
+        let eventMask =
+            (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+            | (1 << CGEventType.flagsChanged.rawValue)
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap, // Tap all events in the current session
-            place: .headInsertEventTap, // Insert the tap at the head of the event tap list
-            options: .defaultTap, // Default options
-            eventsOfInterest: CGEventMask(eventMask),
-            callback: eventTapCallback,
-            userInfo: selfPtr // Pass a pointer to the SwiftHelper instance
-        ) else {
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,  // Tap all events in the current session
+                place: .headInsertEventTap,  // Insert the tap at the head of the event tap list
+                options: .defaultTap,  // Default options
+                eventsOfInterest: CGEventMask(eventMask),
+                callback: eventTapCallback,
+                userInfo: selfPtr  // Pass a pointer to the SwiftHelper instance
+            )
+        else {
             let errorMsg = "Failed to create event tap\n"
             if let data = errorMsg.data(using: .utf8) {
-                 FileHandle.standardError.write(data)
+                FileHandle.standardError.write(data)
             }
             exit(1)
         }
@@ -180,8 +186,9 @@ let swiftHelper = SwiftHelper()
 let ioBridge = IOBridge(jsonEncoder: JSONEncoder(), jsonDecoder: JSONDecoder())
 
 // Start RPC processing in a background thread
-DispatchQueue.global(qos: .background).async {
-    FileHandle.standardError.write("Starting IOBridge RPC processing in background thread...\n".data(using: .utf8)!)
+DispatchQueue.global(qos: .userInitiated).async {
+    FileHandle.standardError.write(
+        "Starting IOBridge RPC processing in background thread...\n".data(using: .utf8)!)
     ioBridge.processRpcRequests()
 }
 
