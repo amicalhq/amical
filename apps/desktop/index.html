@@ -15,38 +15,6 @@
   </head>
   <body style="margin: 0; font-family: system-ui, -apple-system, sans-serif;">
     <div id="root"></div>
-    <!-- Loading splash that adapts to system theme -->
-    <div id="loading-splash" style="
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: light-dark(#ffffff, #0a0a0a);
-      color: light-dark(#0a0a0a, #fafafa);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 16px;
-      z-index: 9999;
-    ">
-      <div style="
-        width: 48px;
-        height: 48px;
-        border: 3px solid light-dark(#e4e4e7, #27272a);
-        border-top: 3px solid light-dark(#0a0a0a, #fafafa);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      "></div>
-      <div style="font-size: 14px; opacity: 0.7;">Loading Amical...</div>
-    </div>
-    <style>
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-    </style>
     <script type="module" src="src/renderer/main/index.tsx"></script>
   </body>
 </html>

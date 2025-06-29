@@ -90,6 +90,7 @@ export class AppManager {
 
   private async setupWindows(): Promise<void> {
     this.windowManager.createWidgetWindow();
+    this.windowManager.createOrShowMainWindow();
     this.setupTRPCHandler();
 
     if (process.platform === "darwin" && app.dock) {
