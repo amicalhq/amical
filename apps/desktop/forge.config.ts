@@ -198,7 +198,7 @@ const config: ForgeConfig = {
     asar: true,
     name: "Amical",
     executableName: "Amical",
-    icon: "./assets/logo", // Path to your icon file (without extension)
+    icon: "./assets/logo.icns", // Path to your icon file
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
       "./src/db/migrations",
@@ -289,11 +289,14 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      name: "Amical",
+      setupIcon: "./assets/logo.ico",
+    }),
     new MakerDMG(
       {
         name: "Amical",
-        icon: "./assets/logo.svg",
+        icon: "./assets/logo.icns", // Volume icon (when DMG is mounted)
       },
       ["darwin"],
     ),

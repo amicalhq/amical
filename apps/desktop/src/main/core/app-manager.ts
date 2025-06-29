@@ -13,6 +13,8 @@ import { createIPCHandler } from "electron-trpc-experimental/main";
 import { router } from "../../trpc/router";
 import { EventHandlers } from "./event-handlers";
 
+import path from "path";
+
 export class AppManager {
   private windowManager: WindowManager;
   private serviceManager: ServiceManager;
@@ -28,6 +30,13 @@ export class AppManager {
   async initialize(): Promise<void> {
     try {
       await this.initializeDatabase();
+
+      // Set dock icon in development mode
+      if (process.platform === "darwin" && !app.isPackaged && app.dock) {
+        const iconPath = path.join(app.getAppPath(), "assets/logo.icns");
+        app.dock.setIcon(iconPath);
+        logger.main.debug("Set development dock icon");
+      }
       await this.requestPermissions();
       await this.serviceManager.initialize(this.windowManager);
       this.exposeGlobalServices();
