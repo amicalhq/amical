@@ -13,8 +13,6 @@ import { createIPCHandler } from "electron-trpc-experimental/main";
 import { router } from "../../trpc/router";
 import { EventHandlers } from "./event-handlers";
 
-import path from "path";
-
 export class AppManager {
   private windowManager: WindowManager;
   private serviceManager: ServiceManager;
@@ -31,14 +29,6 @@ export class AppManager {
     try {
       await this.initializeDatabase();
 
-      if (process.platform === "darwin" && app.isPackaged && app.dock) {
-        //! In development, use process.cwd() to get project root, in production use app.getAppPath()
-        //! dev mode throws error even with proper path, so skipping for now
-        const basePath = app.getAppPath();
-        const iconPath = path.join(basePath, "assets/logo.icns");
-        app.dock.setIcon(iconPath);
-        logger.main.debug("Set development dock icon", { iconPath });
-      }
       await this.requestPermissions();
       await this.serviceManager.initialize(this.windowManager);
       this.exposeGlobalServices();
