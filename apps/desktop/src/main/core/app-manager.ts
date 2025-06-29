@@ -31,11 +31,13 @@ export class AppManager {
     try {
       await this.initializeDatabase();
 
-      // Set dock icon in development mode
-      if (process.platform === "darwin" && !app.isPackaged && app.dock) {
-        const iconPath = path.join(app.getAppPath(), "assets/logo.icns");
+      if (process.platform === "darwin" && app.isPackaged && app.dock) {
+        //! In development, use process.cwd() to get project root, in production use app.getAppPath()
+        //! dev mode throws error even with proper path, so skipping for now
+        const basePath = app.getAppPath();
+        const iconPath = path.join(basePath, "assets/logo.icns");
         app.dock.setIcon(iconPath);
-        logger.main.debug("Set development dock icon");
+        logger.main.debug("Set development dock icon", { iconPath });
       }
       await this.requestPermissions();
       await this.serviceManager.initialize(this.windowManager);
