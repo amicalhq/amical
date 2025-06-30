@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Waveform } from "@/components/Waveform";
-import { useRecording, RecordingStatus } from "@/hooks/useRecording";
+import { useRecording } from "@/hooks/useRecording";
+import type { RecordingState } from "@/types/recording";
 
 const NUM_WAVEFORM_BARS = 8; // Fewer bars for a smaller button
 const DEBOUNCE_DELAY = 100; // milliseconds;
@@ -44,10 +45,6 @@ export const FloatingButton: React.FC = () => {
   const { recordingStatus, startRecording, stopRecording, voiceDetected } =
     useRecording({
       onAudioChunk: handleAudioChunk,
-      onRecordingStartCallback: async () =>
-        await window.electronAPI.onRecordingStarting(),
-      onRecordingStopCallback: async () =>
-        await window.electronAPI.onRecordingStopping(),
       // Optionally, set chunkDurationMs here if needed, e.g., chunkDurationMs: 250
     });
   const isRecording =
@@ -59,23 +56,7 @@ export const FloatingButton: React.FC = () => {
     console.debug("Recording status changed", { recordingStatus });
   }, [recordingStatus]);
 
-  useEffect(() => {
-    const cleanup = window.electronAPI.onRecordingStateChanged(
-      (newState: boolean) => {
-        console.log("Received recording state change from main process", {
-          newState,
-        });
-        if (newState) {
-          console.debug("Starting recording via state change");
-          startRecording();
-        } else {
-          console.debug("Stopping recording via state change");
-          stopRecording();
-        }
-      },
-    );
-    return cleanup; // Cleanup the listener when the component unmounts
-  }, [startRecording, stopRecording]);
+  // Recording state is now managed centrally, no need for separate listener
 
   // This handler is for the button click.
   // It now uses the toggleRecording from the hook.

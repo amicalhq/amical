@@ -31,12 +31,15 @@ export class EventHandlers {
               logger.swift.info("Setting recording state", {
                 state: payload.fnKeyPressed,
               });
-              const widgetWindow = windowManager.getWidgetWindow();
-              if (widgetWindow) {
-                widgetWindow.webContents.send(
-                  "recording-state-changed",
-                  payload.fnKeyPressed,
-                );
+
+              // Use RecordingManager to handle state changes
+              const serviceManager = this.appManager.getServiceManager();
+              const recordingManager = serviceManager.getRecordingManager();
+
+              if (payload.fnKeyPressed) {
+                recordingManager.startRecording();
+              } else {
+                recordingManager.stopRecording();
               }
             }
             break;

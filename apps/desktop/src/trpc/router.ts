@@ -6,6 +6,7 @@ import { transcriptionsRouter } from "./routers/transcriptions";
 import { modelsRouter } from "./routers/models";
 import { settingsRouter } from "./routers/settings";
 import { updaterRouter } from "./routers/updater";
+import { recordingRouter } from "./routers/recording";
 
 const t = initTRPC.create({
   isServer: true,
@@ -51,6 +52,9 @@ export const router = t.router({
 
   // Auto-updater router
   updater: updaterRouter,
+
+  // Recording router
+  recording: recordingRouter,
 });
 
 export type AppRouter = typeof router;

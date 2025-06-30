@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WidgetPage } from "./pages/widget";
 import "@/styles/globals.css";
 
@@ -46,10 +47,22 @@ console.debug = (...args: any[]) => {
 // Keep original methods available if needed
 console.original = originalConsole;
 
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
 const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
-  root.render(<WidgetPage />);
+  root.render(
+    <WidgetPage />
+  );
 } else {
   console.error(
     "FloatingButton: Root element not found in floating-button.html",
