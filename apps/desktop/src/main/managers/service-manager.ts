@@ -5,7 +5,7 @@ import { SettingsService } from "../../services/settings-service";
 import { SwiftIOBridge } from "../../services/platform/swift-bridge-service";
 import { AutoUpdaterService } from "../services/auto-updater";
 import { WindowManager } from "../core/window-manager";
-import { RecordingService } from "../../services/recording-service";
+import { RecordingManager } from "./recording-manager";
 
 /**
  * Manages service initialization and lifecycle
@@ -20,7 +20,7 @@ export class ServiceManager {
 
   private swiftIOBridge: SwiftIOBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
-  private recordingService: RecordingService | null = null;
+  private recordingManager: RecordingManager | null = null;
 
   async initialize(windowManager: WindowManager): Promise<void> {
     if (this.isInitialized) {
@@ -35,7 +35,7 @@ export class ServiceManager {
       await this.initializeModelServices();
       this.initializePlatformServices();
       await this.initializeAIServices();
-      this.initializeRecordingService();
+      this.initializeRecordingManager();
       this.initializeAutoUpdater(windowManager);
 
       this.isInitialized = true;
@@ -109,9 +109,9 @@ export class ServiceManager {
     }
   }
 
-  private initializeRecordingService(): void {
-    this.recordingService = new RecordingService(this);
-    logger.main.info("Recording service initialized");
+  private initializeRecordingManager(): void {
+    this.recordingManager = new RecordingManager(this);
+    logger.main.info("Recording manager initialized");
   }
 
   private initializeAutoUpdater(windowManager: WindowManager): void {
@@ -179,10 +179,22 @@ export class ServiceManager {
     return this.autoUpdaterService;
   }
 
+  getRecordingManager(): RecordingManager {
+    if (!this.isInitialized) {
+      throw new Error(
+        "ServiceManager not initialized. Call initialize() first.",
+      );
+    }
+    if (!this.recordingManager) {
+      throw new Error("RecordingManager failed to initialize");
+    }
+    return this.recordingManager;
+  }
+
   async cleanup(): Promise<void> {
-    if (this.recordingService) {
-      logger.main.info("Cleaning up recording service...");
-      await this.recordingService.cleanup();
+    if (this.recordingManager) {
+      logger.main.info("Cleaning up recording manager...");
+      await this.recordingManager.cleanup();
     }
     if (this.modelManagerService) {
       logger.main.info("Cleaning up model downloads...");

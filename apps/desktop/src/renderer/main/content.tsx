@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ipcLink } from "electron-trpc-experimental/renderer";
-import superjson from "superjson";
 import {
   SidebarProvider,
   SidebarInset,
@@ -15,7 +13,7 @@ import { VocabularyPage } from "./pages/vocabulary";
 import { ModelsPage } from "./pages/models";
 import { SettingsPage } from "./pages/settings";
 import { SiteHeader } from "@/components/site-header";
-import { api } from "@/trpc/react";
+import { api, trpcClient } from "@/trpc/react";
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
@@ -30,11 +28,6 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
   },
-});
-
-// Create tRPC client
-const trpcClient = api.createClient({
-  links: [ipcLink({ transformer: superjson })],
 });
 
 const App: React.FC = () => {

@@ -1,4 +1,5 @@
 import { initTRPC } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import superjson from "superjson";
 import { z } from "zod";
 import type {
@@ -124,180 +125,148 @@ export const modelsRouter = t.router({
       );
     }),
 
-  // Subscriptions using async generators
-  onDownloadProgress: t.procedure.subscription(async function* () {
-    if (!globalThis.modelManagerService) {
-      throw new Error("Model manager service not initialized");
-    }
-
-    const eventQueue: Array<{ modelId: string; progress: DownloadProgress }> =
-      [];
-
-    const handleDownloadProgress = (
-      modelId: string,
-      progress: DownloadProgress,
-    ) => {
-      eventQueue.push({ modelId, progress });
-    };
-
-    globalThis.modelManagerService.on(
-      "download-progress",
-      handleDownloadProgress,
-    );
-
-    try {
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        while (eventQueue.length > 0) {
-          const event = eventQueue.shift();
-          if (event) {
-            yield event;
-          }
+  // Subscriptions using Observables
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // Modern Node.js (20+) adds Symbol.asyncDispose to async generators natively,
+  // which conflicts with electron-trpc's attempt to add the same symbol.
+  // While Observables are deprecated in tRPC, they work without this conflict.
+  // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
+  // eslint-disable-next-line deprecation/deprecation
+  onDownloadProgress: t.procedure.subscription(() => {
+    return observable<{ modelId: string; progress: DownloadProgress }>(
+      (emit) => {
+        if (!globalThis.modelManagerService) {
+          throw new Error("Model manager service not initialized");
         }
-      }
-    } finally {
-      globalThis.modelManagerService?.off(
-        "download-progress",
-        handleDownloadProgress,
-      );
-    }
+
+        const handleDownloadProgress = (
+          modelId: string,
+          progress: DownloadProgress,
+        ) => {
+          emit.next({ modelId, progress });
+        };
+
+        globalThis.modelManagerService.on(
+          "download-progress",
+          handleDownloadProgress,
+        );
+
+        // Cleanup function
+        return () => {
+          globalThis.modelManagerService?.off(
+            "download-progress",
+            handleDownloadProgress,
+          );
+        };
+      },
+    );
   }),
 
-  onDownloadComplete: t.procedure.subscription(async function* () {
-    if (!globalThis.modelManagerService) {
-      throw new Error("Model manager service not initialized");
-    }
-
-    const eventQueue: Array<{
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // eslint-disable-next-line deprecation/deprecation
+  onDownloadComplete: t.procedure.subscription(() => {
+    return observable<{
       modelId: string;
       downloadedModel: DownloadedModel;
-    }> = [];
-
-    const handleDownloadComplete = (
-      modelId: string,
-      downloadedModel: DownloadedModel,
-    ) => {
-      eventQueue.push({ modelId, downloadedModel });
-    };
-
-    globalThis.modelManagerService.on(
-      "download-complete",
-      handleDownloadComplete,
-    );
-
-    try {
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        while (eventQueue.length > 0) {
-          const event = eventQueue.shift();
-          if (event) {
-            yield event;
-          }
-        }
+    }>((emit) => {
+      if (!globalThis.modelManagerService) {
+        throw new Error("Model manager service not initialized");
       }
-    } finally {
-      globalThis.modelManagerService?.off(
+
+      const handleDownloadComplete = (
+        modelId: string,
+        downloadedModel: DownloadedModel,
+      ) => {
+        emit.next({ modelId, downloadedModel });
+      };
+
+      globalThis.modelManagerService.on(
         "download-complete",
         handleDownloadComplete,
       );
-    }
+
+      // Cleanup function
+      return () => {
+        globalThis.modelManagerService?.off(
+          "download-complete",
+          handleDownloadComplete,
+        );
+      };
+    });
   }),
 
-  onDownloadError: t.procedure.subscription(async function* () {
-    if (!globalThis.modelManagerService) {
-      throw new Error("Model manager service not initialized");
-    }
-
-    const eventQueue: Array<{ modelId: string; error: string }> = [];
-
-    const handleDownloadError = (modelId: string, error: Error) => {
-      eventQueue.push({ modelId, error: error.message });
-    };
-
-    globalThis.modelManagerService.on("download-error", handleDownloadError);
-
-    try {
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        while (eventQueue.length > 0) {
-          const event = eventQueue.shift();
-          if (event) {
-            yield event;
-          }
-        }
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // eslint-disable-next-line deprecation/deprecation
+  onDownloadError: t.procedure.subscription(() => {
+    return observable<{ modelId: string; error: string }>((emit) => {
+      if (!globalThis.modelManagerService) {
+        throw new Error("Model manager service not initialized");
       }
-    } finally {
-      globalThis.modelManagerService?.off(
-        "download-error",
-        handleDownloadError,
-      );
-    }
+
+      const handleDownloadError = (modelId: string, error: Error) => {
+        emit.next({ modelId, error: error.message });
+      };
+
+      globalThis.modelManagerService.on("download-error", handleDownloadError);
+
+      // Cleanup function
+      return () => {
+        globalThis.modelManagerService?.off(
+          "download-error",
+          handleDownloadError,
+        );
+      };
+    });
   }),
 
-  onDownloadCancelled: t.procedure.subscription(async function* () {
-    if (!globalThis.modelManagerService) {
-      throw new Error("Model manager service not initialized");
-    }
-
-    const eventQueue: Array<{ modelId: string }> = [];
-
-    const handleDownloadCancelled = (modelId: string) => {
-      eventQueue.push({ modelId });
-    };
-
-    globalThis.modelManagerService.on(
-      "download-cancelled",
-      handleDownloadCancelled,
-    );
-
-    try {
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        while (eventQueue.length > 0) {
-          const event = eventQueue.shift();
-          if (event) {
-            yield event;
-          }
-        }
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // eslint-disable-next-line deprecation/deprecation
+  onDownloadCancelled: t.procedure.subscription(() => {
+    return observable<{ modelId: string }>((emit) => {
+      if (!globalThis.modelManagerService) {
+        throw new Error("Model manager service not initialized");
       }
-    } finally {
-      globalThis.modelManagerService?.off(
+
+      const handleDownloadCancelled = (modelId: string) => {
+        emit.next({ modelId });
+      };
+
+      globalThis.modelManagerService.on(
         "download-cancelled",
         handleDownloadCancelled,
       );
-    }
+
+      // Cleanup function
+      return () => {
+        globalThis.modelManagerService?.off(
+          "download-cancelled",
+          handleDownloadCancelled,
+        );
+      };
+    });
   }),
 
-  onModelDeleted: t.procedure.subscription(async function* () {
-    if (!globalThis.modelManagerService) {
-      throw new Error("Model manager service not initialized");
-    }
-
-    const eventQueue: Array<{ modelId: string }> = [];
-
-    const handleModelDeleted = (modelId: string) => {
-      eventQueue.push({ modelId });
-    };
-
-    globalThis.modelManagerService.on("model-deleted", handleModelDeleted);
-
-    try {
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        while (eventQueue.length > 0) {
-          const event = eventQueue.shift();
-          if (event) {
-            yield event;
-          }
-        }
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // eslint-disable-next-line deprecation/deprecation
+  onModelDeleted: t.procedure.subscription(() => {
+    return observable<{ modelId: string }>((emit) => {
+      if (!globalThis.modelManagerService) {
+        throw new Error("Model manager service not initialized");
       }
-    } finally {
-      globalThis.modelManagerService?.off("model-deleted", handleModelDeleted);
-    }
+
+      const handleModelDeleted = (modelId: string) => {
+        emit.next({ modelId });
+      };
+
+      globalThis.modelManagerService.on("model-deleted", handleModelDeleted);
+
+      // Cleanup function
+      return () => {
+        globalThis.modelManagerService?.off(
+          "model-deleted",
+          handleModelDeleted,
+        );
+      };
+    });
   }),
 });
