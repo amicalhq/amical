@@ -1,4 +1,5 @@
 import { initTRPC } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import superjson from "superjson";
 import { ServiceManager } from "../../main/managers/service-manager";
 import type { RecordingStatus } from "../../types/recording";
@@ -29,24 +30,35 @@ export const recordingRouter = t.router({
     return await recordingManager.stopRecording();
   }),
 
-  stateUpdates: t.procedure.subscription(async function* () {
-    const serviceManager = ServiceManager.getInstance();
-    if (!serviceManager) {
-      throw new Error("ServiceManager not initialized");
-    }
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // Modern Node.js (20+) adds Symbol.asyncDispose to async generators natively,
+  // which conflicts with electron-trpc's attempt to add the same symbol.
+  // While Observables are deprecated in tRPC, they work without this conflict.
+  // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
+  // eslint-disable-next-line deprecation/deprecation
+  stateUpdates: t.procedure.subscription(() => {
+    return observable<RecordingStatus>((emit) => {
+      const serviceManager = ServiceManager.getInstance();
+      if (!serviceManager) {
+        throw new Error("ServiceManager not initialized");
+      }
 
-    const recordingManager = serviceManager.getRecordingManager();
+      const recordingManager = serviceManager.getRecordingManager();
 
-    // Yield initial state
-    yield recordingManager.getStatus();
+      // Emit initial state
+      emit.next(recordingManager.getStatus());
 
-    // Since we're using 'once', listeners auto-remove after firing
-    // The only cleanup needed is if subscription closes while waiting
-    while (true) {
-      const status = await new Promise<RecordingStatus>((resolve) => {
-        recordingManager.once("state-changed", resolve);
-      });
-      yield status;
-    }
+      // Set up listener for state changes
+      const handleStateChange = (status: RecordingStatus) => {
+        emit.next(status);
+      };
+
+      recordingManager.on("state-changed", handleStateChange);
+
+      // Cleanup function
+      return () => {
+        recordingManager.off("state-changed", handleStateChange);
+      };
+    });
   }),
 });

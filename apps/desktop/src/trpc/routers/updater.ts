@@ -1,4 +1,5 @@
 import { initTRPC } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import superjson from "superjson";
 import { z } from "zod";
 
@@ -157,38 +158,34 @@ export const updaterRouter = t.router({
   }),
 
   // Subscribe to download progress updates
-  onDownloadProgress: t.procedure.subscription(async function* () {
-    if (!globalThis.autoUpdaterService) {
-      throw new Error("Auto-updater service not initialized");
-    }
-
-    const eventQueue: Array<DownloadProgress> = [];
-
-    const handleDownloadProgress = (progressObj: DownloadProgress) => {
-      eventQueue.push(progressObj);
-    };
-
-    globalThis.autoUpdaterService.on(
-      "download-progress",
-      handleDownloadProgress,
-    );
-
-    try {
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        while (eventQueue.length > 0) {
-          const progress = eventQueue.shift();
-          if (progress) {
-            yield progress;
-          }
-        }
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // Modern Node.js (20+) adds Symbol.asyncDispose to async generators natively,
+  // which conflicts with electron-trpc's attempt to add the same symbol.
+  // While Observables are deprecated in tRPC, they work without this conflict.
+  // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
+  // eslint-disable-next-line deprecation/deprecation
+  onDownloadProgress: t.procedure.subscription(() => {
+    return observable<DownloadProgress>((emit) => {
+      if (!globalThis.autoUpdaterService) {
+        throw new Error("Auto-updater service not initialized");
       }
-    } finally {
-      globalThis.autoUpdaterService?.off(
+
+      const handleDownloadProgress = (progressObj: DownloadProgress) => {
+        emit.next(progressObj);
+      };
+
+      globalThis.autoUpdaterService.on(
         "download-progress",
         handleDownloadProgress,
       );
-    }
+
+      // Cleanup function
+      return () => {
+        globalThis.autoUpdaterService?.off(
+          "download-progress",
+          handleDownloadProgress,
+        );
+      };
+    });
   }),
 });
