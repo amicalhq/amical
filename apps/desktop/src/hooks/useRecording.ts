@@ -37,7 +37,7 @@ export const useRecording = ({
   const isActive =
     recordingStatus === "recording" || recordingStatus === "starting";
 
-  const { voiceDetected, startCapture, stopCapture } = useAudioCapture({
+  const { voiceDetected } = useAudioCapture({
     onAudioChunk,
     chunkDurationMs,
     enabled: isActive,
@@ -69,8 +69,6 @@ export const useRecording = ({
         console.log("Hook: onRecordingStartCallback executed.");
       }
 
-      // Start audio capture
-      await startCapture();
       console.log("Hook: Recording fully started");
     } catch (error) {
       console.error("Hook: Error starting recording:", error);
@@ -97,7 +95,6 @@ export const useRecording = ({
   }, [
     recordingStatus,
     startRecordingMutation,
-    startCapture,
     onRecordingStartCallback,
     onRecordingStopCallback,
     stopRecordingMutation,
@@ -111,9 +108,6 @@ export const useRecording = ({
     }
 
     try {
-      // Stop audio capture first to send final chunk
-      await stopCapture();
-
       // Request main process to stop recording
       await stopRecordingMutation();
 
@@ -127,12 +121,7 @@ export const useRecording = ({
     } catch (error) {
       console.error("Hook: Error stopping recording:", error);
     }
-  }, [
-    recordingStatus,
-    stopCapture,
-    stopRecordingMutation,
-    onRecordingStopCallback,
-  ]);
+  }, [recordingStatus, stopRecordingMutation, onRecordingStopCallback]);
 
   return {
     recordingStatus,
