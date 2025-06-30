@@ -51,7 +51,7 @@ const App: React.FC = () => {
         return <TranscriptionsPage />;
       case "Vocabulary":
         return <VocabularyPage />;
-      case "Models":
+      case "Speech Models":
         return <ModelsPage />;
       case "Settings":
         return <SettingsPage />;

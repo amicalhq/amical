@@ -47,7 +47,7 @@ const data = {
       icon: IconFileWord,
     },
     {
-      title: "Models",
+      title: "Speech Models",
       url: "#",
       icon: IconDatabase,
     },

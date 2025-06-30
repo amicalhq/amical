@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Card,
   CardContent,
@@ -263,131 +262,121 @@ export const ModelsManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="speech-recognition" className="w-full">
-        <TabsList className="grid w-full grid-cols-1">
-          <TabsTrigger value="speech-recognition">
-            Speech Recognition
-          </TabsTrigger>
-        </TabsList>
+      <Card>
+        <CardHeader>
+          <CardTitle>Whisper Speech Models</CardTitle>
+          <CardDescription>
+            Select and manage Whisper models for speech recognition
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup
+            value={selectedModel || ""}
+            onValueChange={handleSelectModel}
+            className="space-y-4"
+          >
+            {availableModels.map((model) => {
+              const isDownloaded = !!downloadedModels[model.id];
+              const progress = downloadProgress[model.id];
+              const isDownloading = progress?.status === "downloading";
 
-        <TabsContent value="speech-recognition" className="space-y-6 mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Whisper Speech Models</CardTitle>
-              <CardDescription>
-                Select and manage Whisper models for speech recognition
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <RadioGroup
-                value={selectedModel || ""}
-                onValueChange={handleSelectModel}
-                className="space-y-4"
-              >
-                {availableModels.map((model) => {
-                  const isDownloaded = !!downloadedModels[model.id];
-                  const progress = downloadProgress[model.id];
-                  const isDownloading = progress?.status === "downloading";
-
-                  return (
-                    <div
-                      key={model.id}
-                      className="flex items-center justify-between py-3 border-b last:border-b-0"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <RadioGroupItem
-                          value={model.id}
-                          id={model.id}
-                          disabled={!isDownloaded || !isTranscriptionAvailable}
-                        />
-                        <div className="flex-1">
-                          <Label
-                            htmlFor={model.id}
-                            className="text-base font-medium cursor-pointer"
-                          >
-                            {model.name}
-                          </Label>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            {model.description}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-center space-y-1">
-                        {!isDownloaded && !isDownloading && (
-                          <button
-                            onClick={(e) => handleDownload(model.id, e)}
-                            className="w-10 h-10 rounded-full bg-primary hover:bg-primary/90 flex items-center justify-center text-primary-foreground transition-colors"
-                            title="Click to download"
-                          >
-                            <Download className="w-5 h-5" />
-                          </button>
-                        )}
-
-                        {!isDownloaded && isDownloading && (
-                          <div className="relative">
-                            <button
-                              onClick={(e) => handleCancelDownload(model.id, e)}
-                              className="w-10 h-10 rounded-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center text-white transition-colors"
-                              title="Click to cancel download"
-                            >
-                              <Square className="w-4 h-4" />
-                            </button>
-
-                            {/* Circular Progress Ring */}
-                            {progress && (
-                              <svg
-                                className="absolute inset-0 w-10 h-10 -rotate-90 pointer-events-none"
-                                viewBox="0 0 36 36"
-                              >
-                                <circle
-                                  cx="18"
-                                  cy="18"
-                                  r="15.9155"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="3"
-                                  strokeDasharray="100 100"
-                                  className="text-muted-foreground/30"
-                                />
-                                <circle
-                                  cx="18"
-                                  cy="18"
-                                  r="15.9155"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="3"
-                                  strokeDasharray={`${Math.max(0, Math.min(100, progress.progress))} 100`}
-                                  strokeLinecap="round"
-                                  className="text-white transition-all duration-300"
-                                />
-                              </svg>
-                            )}
-                          </div>
-                        )}
-
-                        {isDownloaded && (
-                          <button
-                            onClick={() => handleDeleteClick(model.id)}
-                            className="w-10 h-10 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
-                            title="Click to delete model"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        )}
-
-                        <div className="text-xs text-muted-foreground text-center">
-                          {model.sizeFormatted}
-                        </div>
+              return (
+                <div
+                  key={model.id}
+                  className="flex items-center justify-between py-3 border-b last:border-b-0"
+                >
+                  <div className="flex items-center space-x-3">
+                    <RadioGroupItem
+                      value={model.id}
+                      id={model.id}
+                      disabled={!isDownloaded || !isTranscriptionAvailable}
+                    />
+                    <div className="flex-1">
+                      <Label
+                        htmlFor={model.id}
+                        className="text-base font-medium cursor-pointer"
+                      >
+                        {model.name}
+                      </Label>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {model.description}
                       </div>
                     </div>
-                  );
-                })}
-              </RadioGroup>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  </div>
+
+                  <div className="flex flex-col items-center space-y-1">
+                    {!isDownloaded && !isDownloading && (
+                      <button
+                        onClick={(e) => handleDownload(model.id, e)}
+                        className="w-10 h-10 rounded-full bg-primary hover:bg-primary/90 flex items-center justify-center text-primary-foreground transition-colors"
+                        title="Click to download"
+                      >
+                        <Download className="w-5 h-5" />
+                      </button>
+                    )}
+
+                    {!isDownloaded && isDownloading && (
+                      <div className="relative">
+                        <button
+                          onClick={(e) => handleCancelDownload(model.id, e)}
+                          className="w-10 h-10 rounded-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center text-white transition-colors"
+                          title="Click to cancel download"
+                        >
+                          <Square className="w-4 h-4" />
+                        </button>
+
+                        {/* Circular Progress Ring */}
+                        {progress && (
+                          <svg
+                            className="absolute inset-0 w-10 h-10 -rotate-90 pointer-events-none"
+                            viewBox="0 0 36 36"
+                          >
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="15.9155"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              strokeDasharray="100 100"
+                              className="text-muted-foreground/30"
+                            />
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="15.9155"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              strokeDasharray={`${Math.max(0, Math.min(100, progress.progress))} 100`}
+                              strokeLinecap="round"
+                              className="text-white transition-all duration-300"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                    )}
+
+                    {isDownloaded && (
+                      <button
+                        onClick={() => handleDeleteClick(model.id)}
+                        className="w-10 h-10 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
+                        title="Click to delete model"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
+
+                    <div className="text-xs text-muted-foreground text-center">
+                      {model.sizeFormatted}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </RadioGroup>
+        </CardContent>
+      </Card>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
