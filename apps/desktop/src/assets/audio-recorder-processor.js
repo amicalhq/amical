@@ -1,9 +1,5 @@
-// AudioWorklet processor source code
-export const audioRecorderWorkletSource = `
 // AudioWorklet processor for real-time audio capture
 // This runs in the audio rendering thread for low-latency processing
-/* eslint-env worker */
-/* global AudioWorkletProcessor, registerProcessor */
 
 class AudioRecorderProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -62,4 +58,3 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
 
 // Register the processor
 registerProcessor('audio-recorder-processor', AudioRecorderProcessor);
-`;

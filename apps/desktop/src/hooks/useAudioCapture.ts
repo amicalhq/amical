@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { MicVAD } from "@ricky0123/vad-web";
-import { audioRecorderWorkletSource } from "./audio-recorder-worklet";
+import audioWorkletUrl from "@/assets/audio-recorder-processor.js?url";
 
 export interface UseAudioCaptureParams {
   onAudioChunk: (
@@ -131,17 +131,8 @@ export const useAudioCapture = ({
         const audioContext = new AudioContext({ sampleRate: 16000 });
         stateRef.current.audioContext = audioContext;
 
-        // Load AudioWorklet module using blob URL
-        const blob = new Blob([audioRecorderWorkletSource], {
-          type: "application/javascript",
-        });
-        const audioWorkletUrl = URL.createObjectURL(blob);
-
-        try {
-          await audioContext.audioWorklet.addModule(audioWorkletUrl);
-        } finally {
-          URL.revokeObjectURL(audioWorkletUrl);
-        }
+        // Load AudioWorklet module using Vite asset URL
+        await audioContext.audioWorklet.addModule(audioWorkletUrl);
 
         if (isCancelled) {
           await cleanup();
