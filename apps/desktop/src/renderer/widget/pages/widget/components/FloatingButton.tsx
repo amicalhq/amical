@@ -19,24 +19,27 @@ export const FloatingButton: React.FC = () => {
     };
   }, []);
 
-  const handleAudioChunk = useCallback(
-    async (audioChunk: ArrayBuffer, isFinalChunk: boolean) => {
+  const handleAudioFrame = useCallback(
+    async (
+      audioBuffer: ArrayBuffer,
+      speechProbability: number,
+      isFinal: boolean,
+    ) => {
       try {
-        // Send the audio chunk regardless of whether it's final or not
-        await window.electronAPI.sendAudioChunk(audioChunk, isFinalChunk);
-        console.debug(`Sent audio chunk`, {
-          chunkSize: audioChunk.byteLength,
-          isFinalChunk,
+        // Send frame directly to main process
+        // TODO: We need to update the IPC to include speech detection info
+        await window.electronAPI.sendAudioChunk(audioBuffer, isFinal);
+        console.debug(`Sent audio frame`, {
+          size: audioBuffer.byteLength,
+          speechProbability: speechProbability.toFixed(3),
+          isFinal,
         });
 
-        if (isFinalChunk) {
-          console.log("Final chunk sent to main process");
-          // You might want to add a specific IPC call here if the main process needs an explicit signal
-          // to finalize transcription, e.g., window.electronAPI.finalizeTranscription();
-          // For now, we assume sendAudioChunk is enough and the main process handles the stream end.
+        if (isFinal) {
+          console.log("Final frame sent to main process");
         }
       } catch (error) {
-        console.error("Error sending audio chunk:", error);
+        console.error("Error sending audio frame:", error);
       }
     },
     [],
@@ -44,8 +47,7 @@ export const FloatingButton: React.FC = () => {
 
   const { recordingStatus, startRecording, stopRecording, voiceDetected } =
     useRecording({
-      onAudioChunk: handleAudioChunk,
-      // Optionally, set chunkDurationMs here if needed, e.g., chunkDurationMs: 250
+      onAudioFrame: handleAudioFrame,
     });
   const isRecording =
     recordingStatus === "recording" || recordingStatus === "starting";

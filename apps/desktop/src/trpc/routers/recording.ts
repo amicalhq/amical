@@ -3,6 +3,7 @@ import { observable } from "@trpc/server/observable";
 import superjson from "superjson";
 import { ServiceManager } from "../../main/managers/service-manager";
 import type { RecordingStatus } from "../../types/recording";
+import { logger } from "../../main/logger";
 
 const t = initTRPC.create({
   isServer: true,
@@ -58,6 +59,38 @@ export const recordingRouter = t.router({
       // Cleanup function
       return () => {
         recordingManager.off("state-changed", handleStateChange);
+      };
+    });
+  }),
+
+  // Voice detection subscription
+  voiceDetectionUpdates: t.procedure.subscription(() => {
+    return observable<boolean>((emit) => {
+      const serviceManager = ServiceManager.getInstance();
+      if (!serviceManager) {
+        throw new Error("ServiceManager not initialized");
+      }
+
+      const vadService = serviceManager.getVADService();
+      if (!vadService) {
+        logger.main.warn(
+          "VAD service not available for voice detection subscription",
+        );
+        // Emit false and complete immediately if VAD is not available
+        emit.next(false);
+        return () => {};
+      }
+
+      // Set up listener for voice detection changes
+      const handleVoiceDetection = (detected: boolean) => {
+        emit.next(detected);
+      };
+
+      vadService.on("voice-detected", handleVoiceDetection);
+
+      // Cleanup function
+      return () => {
+        vadService.off("voice-detected", handleVoiceDetection);
       };
     });
   }),

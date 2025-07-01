@@ -1,60 +1,56 @@
-// AudioWorklet processor for real-time audio capture
-// This runs in the audio rendering thread for low-latency processing
-
 class AudioRecorderProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.bufferSize = 4096;
-    this.buffer = new Float32Array(this.bufferSize);
-    this.bufferIndex = 0;
-
-    // Listen for messages from main thread
+    this.frameSize = 512; // 32ms at 16kHz
+    this.sampleRate = 16000;
+    this.buffer = [];
+    
+    // Listen for control messages
     this.port.onmessage = (event) => {
-      if (event.data.command === 'stop') {
-        this.sendBufferedAudio(true); // Send final chunk
+      if (event.data.type === 'flush') {
+        this.flushBuffer();
       }
     };
   }
 
-  process(inputs, _outputs, _parameters) {
-    const input = inputs[0];
-
-    // Check if we have input audio
-    if (input && input.length > 0) {
-      const inputChannel = input[0]; // Get first (mono) channel
-
-      // Buffer the audio data
-      for (let i = 0; i < inputChannel.length; i++) {
-        this.buffer[this.bufferIndex] = inputChannel[i];
-        this.bufferIndex++;
-
-        // When buffer is full, send it to main thread
-        if (this.bufferIndex >= this.bufferSize) {
-          this.sendBufferedAudio(false);
-          this.bufferIndex = 0; // Reset buffer
-        }
-      }
-    }
-
-    // Keep the processor alive
-    return true;
+  flushBuffer() {
+    // Always send a final frame to signal end of recording
+    const finalFrame = new Float32Array(this.buffer);
+    this.buffer = [];
+    
+    this.port.postMessage({
+      type: 'audioFrame',
+      frame: finalFrame,
+      isFinal: true
+    });
   }
 
-  sendBufferedAudio(isFinal) {
-    if (this.bufferIndex > 0 || isFinal) {
-      // Create a copy of the current buffer data
-      const audioData = new Float32Array(this.bufferIndex);
-      audioData.set(this.buffer.subarray(0, this.bufferIndex));
+  process(inputs, outputs, parameters) {
+    const input = inputs[0];
+    if (!input || !input[0]) return true;
 
-      // Send to main thread
+    const channelData = input[0];
+    
+    // Add samples to buffer
+    for (let i = 0; i < channelData.length; i++) {
+      this.buffer.push(channelData[i]);
+    }
+
+    // When we have enough samples, send a frame
+    while (this.buffer.length >= this.frameSize) {
+      const frame = this.buffer.slice(0, this.frameSize);
+      this.buffer = this.buffer.slice(this.frameSize);
+
+      // Send frame to main thread
       this.port.postMessage({
-        type: 'audioData',
-        audioData: audioData,
-        isFinal: isFinal,
+        type: 'audioFrame',
+        frame: new Float32Array(frame),
+        isFinal: false
       });
     }
+
+    return true;
   }
 }
 
-// Register the processor
 registerProcessor('audio-recorder-processor', AudioRecorderProcessor);

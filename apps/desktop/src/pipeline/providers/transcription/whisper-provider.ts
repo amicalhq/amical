@@ -12,6 +12,19 @@ export class WhisperProvider implements TranscriptionProvider {
   private modelManager: ModelManagerService;
   private whisperInstance: Whisper | null = null;
 
+  // Frame aggregation state
+  private frameBuffer: Float32Array[] = [];
+  private frameBufferSpeechProbabilities: number[] = []; // Track speech probabilities for each frame
+  private silenceFrameCount = 0;
+  private lastSpeechTimestamp = 0;
+
+  // Configuration
+  private readonly FRAME_SIZE = 512; // 32ms at 16kHz
+  private readonly MIN_SPEECH_DURATION_MS = 500; // Minimum speech duration to transcribe
+  private readonly MAX_SILENCE_DURATION_MS = 2000; // Max silence before cutting
+  private readonly SAMPLE_RATE = 16000;
+  private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
+
   constructor(modelManager: ModelManagerService) {
     this.modelManager = modelManager;
   }
@@ -21,20 +34,53 @@ export class WhisperProvider implements TranscriptionProvider {
       await this.initializeWhisper();
 
       // Extract parameters from the new structure
-      const { audioData, context } = params;
+      const { audioData, speechProbability = 0, context } = params;
       const { vocabulary, previousChunk, aggregatedTranscription } = context;
 
       // Convert audio buffer to the format expected by smart-whisper
       const audioFloat32Array = await this.convertAudioBuffer(audioData);
 
+      // Add frame to buffer with speech probability
+      this.frameBuffer.push(audioFloat32Array);
+      this.frameBufferSpeechProbabilities.push(speechProbability);
+
+      // Consider it speech if probability is above threshold
+      const isSpeech = speechProbability > this.SPEECH_PROBABILITY_THRESHOLD;
+
       logger.transcription.debug(
-        `Starting transcription, audio size: ${audioData.length}`,
-        previousChunk
-          ? `Previous chunk: ${previousChunk.substring(0, 50)}...`
-          : "No previous chunk",
-        aggregatedTranscription
-          ? `Aggregated length: ${aggregatedTranscription.length}`
-          : "No aggregated transcription",
+        `Frame received - SpeechProb: ${speechProbability.toFixed(3)}, Buffer size: ${this.frameBuffer.length}, Silence count: ${this.silenceFrameCount}`,
+      );
+
+      // Handle speech/silence logic
+      if (isSpeech) {
+        this.silenceFrameCount = 0;
+        this.lastSpeechTimestamp = Date.now();
+      } else {
+        this.silenceFrameCount++;
+      }
+
+      // Determine if we should transcribe
+      const shouldTranscribe = this.shouldTranscribe();
+
+      if (!shouldTranscribe) {
+        // Keep buffering
+        return "";
+      }
+
+      // Aggregate buffered frames
+      const aggregatedAudio = this.aggregateFrames();
+
+      // Skip if too short or only silence
+      if (aggregatedAudio.length < this.FRAME_SIZE * 2) {
+        logger.transcription.debug("Skipping transcription - audio too short");
+        this.frameBuffer = [];
+        this.frameBufferSpeechProbabilities = [];
+        this.silenceFrameCount = 0;
+        return "";
+      }
+
+      logger.transcription.debug(
+        `Starting transcription of ${aggregatedAudio.length} samples (${((aggregatedAudio.length / this.SAMPLE_RATE) * 1000).toFixed(0)}ms)`,
       );
 
       // Transcribe using smart-whisper
@@ -49,10 +95,13 @@ export class WhisperProvider implements TranscriptionProvider {
       );
 
       const { result } = await this.whisperInstance.transcribe(
-        audioFloat32Array,
+        aggregatedAudio,
         {
           language: "auto",
           initial_prompt: initialPrompt,
+          suppress_blank: true,
+          suppress_non_speech_tokens: true,
+          no_timestamps: true,
         },
       );
 
@@ -68,11 +117,122 @@ export class WhisperProvider implements TranscriptionProvider {
         `Transcription completed, length: ${text.length}`,
       );
 
+      // Clear buffer after successful transcription
+      this.frameBuffer = [];
+      this.frameBufferSpeechProbabilities = [];
+      this.silenceFrameCount = 0;
+
       return text;
     } catch (error) {
       logger.transcription.error("Transcription failed:", error);
       throw new Error(`Transcription failed: ${error}`);
     }
+  }
+
+  private shouldTranscribe(): boolean {
+    // Transcribe if:
+    // 1. We have significant silence after speech
+    // 2. Buffer is getting too large
+    // 3. Final chunk was received (handled elsewhere)
+
+    const bufferDurationMs =
+      ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
+    const silenceDurationMs =
+      ((this.silenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
+
+    // If we have speech and then significant silence, transcribe
+    if (
+      this.frameBuffer.length > 0 &&
+      silenceDurationMs > this.MAX_SILENCE_DURATION_MS
+    ) {
+      logger.transcription.debug(
+        `Transcribing due to ${silenceDurationMs}ms of silence`,
+      );
+      return true;
+    }
+
+    // If buffer is too large (e.g., 30 seconds), transcribe anyway
+    if (bufferDurationMs > 30000) {
+      logger.transcription.debug(
+        `Transcribing due to buffer size: ${bufferDurationMs}ms`,
+      );
+      return true;
+    }
+
+    logger.transcription.error("Not transcribing", {
+      bufferDurationMs,
+      silenceDurationMs,
+      frameBufferLength: this.frameBuffer.length,
+      silenceFrameCount: this.silenceFrameCount,
+    });
+
+    return false;
+  }
+
+  private aggregateFrames(): Float32Array {
+    // Calculate total size
+    const totalLength = this.frameBuffer.reduce(
+      (sum, frame) => sum + frame.length,
+      0,
+    );
+    const aggregated = new Float32Array(totalLength);
+
+    // Copy all frames into single array
+    let offset = 0;
+    for (const frame of this.frameBuffer) {
+      aggregated.set(frame, offset);
+      offset += frame.length;
+    }
+
+    // Trim silence from beginning and end
+    const trimmed = this.trimSilence(aggregated);
+
+    return trimmed;
+  }
+
+  private trimSilence(audio: Float32Array): Float32Array {
+    // Find first speech frame (probability > threshold)
+    let startIdx = 0;
+    for (let i = 0; i < this.frameBufferSpeechProbabilities.length; i++) {
+      if (
+        this.frameBufferSpeechProbabilities[i] >
+        this.SPEECH_PROBABILITY_THRESHOLD
+      ) {
+        startIdx = i * this.FRAME_SIZE;
+        break;
+      }
+    }
+
+    // Find last speech frame (probability > threshold)
+    let endIdx = audio.length;
+    for (let i = this.frameBufferSpeechProbabilities.length - 1; i >= 0; i--) {
+      if (
+        this.frameBufferSpeechProbabilities[i] >
+        this.SPEECH_PROBABILITY_THRESHOLD
+      ) {
+        endIdx = (i + 1) * this.FRAME_SIZE;
+        break;
+      }
+    }
+
+    return audio.slice(startIdx, Math.min(endIdx, audio.length));
+  }
+
+  // Force transcription of any remaining frames
+  async flush(): Promise<string> {
+    if (this.frameBuffer.length === 0) {
+      return "";
+    }
+
+    logger.transcription.error(`Flushing ${this.frameBuffer.length} frames`);
+
+    // Force transcription by setting high silence count
+    this.silenceFrameCount = 999;
+    return this.transcribe({
+      audioData: Buffer.alloc(0), // Empty buffer, we'll use the buffered frames
+      speechProbability: 0,
+      context: {},
+    });
   }
 
   private generateInitialPrompt(
@@ -163,5 +323,10 @@ export class WhisperProvider implements TranscriptionProvider {
         this.whisperInstance = null;
       }
     }
+
+    // Clear buffers
+    this.frameBuffer = [];
+    this.frameBufferSpeechProbabilities = [];
+    this.silenceFrameCount = 0;
   }
 }

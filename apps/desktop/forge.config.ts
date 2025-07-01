@@ -202,6 +202,7 @@ const config: ForgeConfig = {
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
       "./src/db/migrations",
+      "./src/assets",
     ],
     extendInfo: {
       NSMicrophoneUsageDescription:

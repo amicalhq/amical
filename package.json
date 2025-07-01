@@ -38,7 +38,8 @@
       "drizzle-orm/libsql",
       "@libsql",
       "macos-alias",
-      "fs-xattr"
+      "fs-xattr",
+      "onnxruntime-node"
     ]
   }
 }

@@ -4,11 +4,11 @@ import { useAudioCapture } from "./useAudioCapture";
 import type { RecordingState } from "@/types/recording";
 
 export interface UseRecordingParams {
-  onAudioChunk: (
-    arrayBuffer: ArrayBuffer,
-    isFinalChunk: boolean,
+  onAudioFrame: (
+    audioBuffer: ArrayBuffer,
+    speechProbability: number,
+    isFinal: boolean,
   ) => Promise<void> | void;
-  chunkDurationMs?: number;
   onRecordingStartCallback?: () => Promise<void> | void;
   onRecordingStopCallback?: () => Promise<void> | void;
 }
@@ -21,8 +21,7 @@ export interface UseRecordingOutput {
 }
 
 export const useRecording = ({
-  onAudioChunk,
-  chunkDurationMs = 28000,
+  onAudioFrame,
   onRecordingStartCallback,
   onRecordingStopCallback,
 }: UseRecordingParams): UseRecordingOutput => {
@@ -33,13 +32,25 @@ export const useRecording = ({
     stopRecording: stopRecordingMutation,
   } = useRecordingState();
 
+  // Create handler for audio chunks - just pass through
+  const handleAudioChunk = useCallback(
+    async (
+      arrayBuffer: ArrayBuffer,
+      speechProbability: number,
+      isFinalChunk: boolean,
+    ) => {
+      // Direct pass-through - no aggregation needed
+      await onAudioFrame(arrayBuffer, speechProbability, isFinalChunk);
+    },
+    [onAudioFrame],
+  );
+
   // Manage audio capture when recording is active
   const isActive =
     recordingStatus === "recording" || recordingStatus === "starting";
 
   const { voiceDetected } = useAudioCapture({
-    onAudioChunk,
-    chunkDurationMs,
+    onAudioChunk: handleAudioChunk,
     enabled: isActive,
   });
 
@@ -121,7 +132,12 @@ export const useRecording = ({
     } catch (error) {
       console.error("Hook: Error stopping recording:", error);
     }
-  }, [recordingStatus, stopRecordingMutation, onRecordingStopCallback]);
+  }, [
+    recordingStatus,
+    stopRecordingMutation,
+    onRecordingStopCallback,
+    onAudioFrame,
+  ]);
 
   return {
     recordingStatus,
