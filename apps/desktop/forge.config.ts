@@ -197,7 +197,7 @@ const config: ForgeConfig = {
   },
   packagerConfig: {
     asar: {
-      unpack: "{*.node,*.dylib,*.so,*.dll}"
+      unpack: "{*.node,*.dylib,*.so,*.dll}",
     },
     name: "Amical",
     executableName: "Amical",
