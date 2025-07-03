@@ -47,21 +47,15 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (currentView) {
-      case "Transcriptions":
-        return <TranscriptionsPage />;
       case "Vocabulary":
         return <VocabularyPage />;
-      case "Speech Models":
-        return <ModelsPage />;
       case "Settings":
         return <SettingsPage />;
+      case "Transcriptions":
+        return <TranscriptionsPage />;
+      case "Speech Models":
       default:
-        return (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Welcome to Amical</h2>
-            <p>Select an option from the sidebar to get started.</p>
-          </div>
-        );
+        return <ModelsPage />;
     }
   };
 

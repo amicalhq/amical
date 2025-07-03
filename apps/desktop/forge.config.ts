@@ -14,6 +14,7 @@ import {
   existsSync,
   mkdirSync,
   cpSync,
+  rmSync,
 } from "node:fs";
 import { join, normalize } from "node:path";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
@@ -128,6 +129,46 @@ const config: ForgeConfig = {
           console.error(`Failed to copy ${dep}:`, error);
         }
       }
+
+      // Prune onnxruntime-node to keep only the required binary
+      console.log("Pruning onnxruntime-node binaries...");
+      const onnxBinRoot = join(localNodeModules, "onnxruntime-node", "bin");
+      if (existsSync(onnxBinRoot)) {
+        const napiVersionDirs = readdirSync(onnxBinRoot);
+        for (const napiVersionDir of napiVersionDirs) {
+          const napiVersionPath = join(onnxBinRoot, napiVersionDir);
+          if (!statSync(napiVersionPath).isDirectory()) continue;
+
+          const platformDirs = readdirSync(napiVersionPath);
+          for (const platformDir of platformDirs) {
+            const platformPath = join(napiVersionPath, platformDir);
+            if (!statSync(platformPath).isDirectory()) continue;
+
+            // Delete other platform directories
+            if (platformDir !== process.platform) {
+              console.log(`- Deleting unused platform: ${platformPath}`);
+              rmSync(platformPath, { recursive: true, force: true });
+            } else {
+              // Now in the correct platform dir, prune architectures
+              const archDirs = readdirSync(platformPath);
+              for (const archDir of archDirs) {
+                const archPath = join(platformPath, archDir);
+                if (!statSync(archPath).isDirectory()) continue;
+
+                if (archDir !== process.arch) {
+                  console.log(`- Deleting unused arch: ${archPath}`);
+                  rmSync(archPath, { recursive: true, force: true });
+                }
+              }
+            }
+          }
+        }
+        console.log("✓ Finished pruning onnxruntime-node.");
+      } else {
+        console.log(
+          "Skipping onnxruntime-node pruning, bin directory not found.",
+        );
+      }
     },
     packageAfterPrune: async (_forgeConfig, buildPath) => {
       try {
@@ -211,13 +252,10 @@ const config: ForgeConfig = {
       NSMicrophoneUsageDescription:
         "This app needs access to your microphone to record audio for transcription.",
     },
-    // Code signing configuration for macOS (configure when ready to sign)
-    // osxSign: {
-    //   identity: process.env.APPLE_SIGNING_IDENTITY,
-    //   'hardened-runtime': true,
-    //   entitlements: './entitlements.plist',
-    //   'entitlements-inherit': './entitlements.plist',
-    // },
+    // Code signing configuration for macOS
+    osxSign: {
+      identity: "Developer ID Application: Exa Labs LLC (59CRJ9SJ4N)",
+    },
     // Notarization for macOS (configure when ready for distribution)
     // osxNotarize: {
     //   appleId: process.env.APPLE_ID,
