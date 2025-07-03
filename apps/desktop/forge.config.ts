@@ -34,6 +34,7 @@ export const EXTERNAL_DEPENDENCIES = [
   "@libsql/linux-x64-musl",
   "@libsql/win32-x64-msvc",
   "libsql",
+  "onnxruntime-node",
   // Add any other native modules you need here
 ];
 
@@ -195,13 +196,16 @@ const config: ForgeConfig = {
     },
   },
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: "{*.node,*.dylib,*.so,*.dll}",
+    },
     name: "Amical",
     executableName: "Amical",
     icon: "./assets/logo.icns", // Path to your icon file
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
       "./src/db/migrations",
+      "./src/assets",
     ],
     extendInfo: {
       NSMicrophoneUsageDescription:

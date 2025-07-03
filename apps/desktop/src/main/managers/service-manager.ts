@@ -6,6 +6,7 @@ import { SwiftIOBridge } from "../../services/platform/swift-bridge-service";
 import { AutoUpdaterService } from "../services/auto-updater";
 import { WindowManager } from "../core/window-manager";
 import { RecordingManager } from "./recording-manager";
+import { VADService } from "../../services/vad-service";
 
 /**
  * Manages service initialization and lifecycle
@@ -17,6 +18,7 @@ export class ServiceManager {
   private modelManagerService: ModelManagerService | null = null;
   private transcriptionService: TranscriptionService | null = null;
   private settingsService: SettingsService | null = null;
+  private vadService: VADService | null = null;
 
   private swiftIOBridge: SwiftIOBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
@@ -34,8 +36,9 @@ export class ServiceManager {
       this.initializeSettingsService();
       await this.initializeModelServices();
       this.initializePlatformServices();
+      await this.initializeVADService();
       await this.initializeAIServices();
-      this.initializeRecordingManager();
+      this.initializeRecordingManager(windowManager);
       this.initializeAutoUpdater(windowManager);
 
       this.isInitialized = true;
@@ -57,6 +60,17 @@ export class ServiceManager {
     await this.modelManagerService.initialize();
   }
 
+  private async initializeVADService(): Promise<void> {
+    try {
+      this.vadService = new VADService();
+      await this.vadService.initialize();
+      logger.main.info("VAD service initialized");
+    } catch (error) {
+      logger.main.error("Failed to initialize VAD service:", error);
+      // Don't throw - VAD is not critical for basic functionality
+    }
+  }
+
   private async initializeAIServices(): Promise<void> {
     try {
       if (!this.modelManagerService) {
@@ -65,7 +79,9 @@ export class ServiceManager {
 
       this.transcriptionService = new TranscriptionService(
         this.modelManagerService,
+        this.vadService,
       );
+      await this.transcriptionService.initialize();
 
       // Load and configure formatter
       try {
@@ -109,8 +125,9 @@ export class ServiceManager {
     }
   }
 
-  private initializeRecordingManager(): void {
+  private initializeRecordingManager(windowManager: WindowManager): void {
     this.recordingManager = new RecordingManager(this);
+    this.recordingManager.setWindowManager(windowManager);
     logger.main.info("Recording manager initialized");
   }
 
@@ -191,6 +208,15 @@ export class ServiceManager {
     return this.recordingManager;
   }
 
+  getVADService(): VADService | null {
+    if (!this.isInitialized) {
+      throw new Error(
+        "ServiceManager not initialized. Call initialize() first.",
+      );
+    }
+    return this.vadService;
+  }
+
   async cleanup(): Promise<void> {
     if (this.recordingManager) {
       logger.main.info("Cleaning up recording manager...");
@@ -199,6 +225,11 @@ export class ServiceManager {
     if (this.modelManagerService) {
       logger.main.info("Cleaning up model downloads...");
       this.modelManagerService.cleanup();
+    }
+
+    if (this.vadService) {
+      logger.main.info("Cleaning up VAD service...");
+      await this.vadService.dispose();
     }
 
     if (this.swiftIOBridge) {

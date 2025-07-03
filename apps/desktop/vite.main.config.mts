@@ -14,6 +14,7 @@ export default defineConfig({
         "@libsql/linux-x64-musl",
         "@libsql/win32-x64-msvc",
         "libsql",
+        "onnxruntime-node",
         /^node:/,
         /^electron$/,
       ],

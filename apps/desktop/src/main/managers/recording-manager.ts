@@ -4,6 +4,7 @@ import { logger, logPerformance } from "../logger";
 import { ServiceManager } from "./service-manager";
 import { appContextStore } from "../../stores/app-context";
 import type { RecordingState, RecordingStatus } from "../../types/recording";
+import { WindowManager } from "../core/window-manager";
 
 /**
  * Manages recording state and coordinates audio recording across the application
@@ -13,10 +14,15 @@ export class RecordingManager extends EventEmitter {
   private currentSessionId: string | null = null;
   private recordingState: RecordingState = "idle";
   private lastError: string | undefined;
+  private windowManager: WindowManager | null = null;
 
   constructor(private serviceManager: ServiceManager) {
     super();
     this.setupIPCHandlers();
+  }
+
+  public setWindowManager(windowManager: WindowManager): void {
+    this.windowManager = windowManager;
   }
 
   private setState(newState: RecordingState, error?: string): void {

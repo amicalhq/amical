@@ -7,11 +7,11 @@ import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { ModelManagerService } from "../services/model-manager";
-import { ServiceManager } from "../main/managers/service-manager";
 import { appContextStore } from "../stores/app-context";
 import { createTranscription } from "../db/transcriptions";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
+import { VADService } from "./vad-service";
 
 /**
  * Service for audio transcription and optional formatting
@@ -21,9 +21,23 @@ export class TranscriptionService {
   private openRouterProvider: OpenRouterProvider | null = null;
   private formatterEnabled = false;
   private streamingSessions: Map<string, StreamingSession> = new Map();
+  private vadService: VADService | null = null;
 
-  constructor(modelManagerService: ModelManagerService) {
+  constructor(
+    modelManagerService: ModelManagerService,
+    vadService: VADService | null = null,
+  ) {
     this.whisperProvider = new WhisperProvider(modelManagerService);
+    this.vadService = vadService;
+  }
+
+  async initialize(): Promise<void> {
+    if (this.vadService) {
+      logger.transcription.info("Using VAD service");
+    } else {
+      logger.transcription.warn("VAD service not available");
+    }
+    logger.transcription.info("Transcription service initialized");
   }
 
   /**
@@ -62,6 +76,26 @@ export class TranscriptionService {
     isFinal?: boolean;
   }): Promise<string> {
     const { sessionId, audioChunk, isFinal = false } = options;
+    console.error("processing streaming chunk", {
+      length: audioChunk.length,
+    });
+
+    // Run VAD on the audio chunk
+    let speechProbability = 0;
+    let isSpeaking = false;
+
+    if (audioChunk.length > 0 && this.vadService) {
+      const vadResult = await this.vadService.processAudioFrame(
+        audioChunk.buffer as ArrayBuffer,
+      );
+      speechProbability = vadResult.probability;
+      isSpeaking = vadResult.isSpeaking;
+
+      logger.transcription.debug("VAD result", {
+        probability: speechProbability.toFixed(3),
+        isSpeaking,
+      });
+    }
 
     // Auto-create session if it doesn't exist
     let session = this.streamingSessions.get(sessionId);
@@ -90,7 +124,7 @@ export class TranscriptionService {
 
     // Process chunk if it has content
     if (audioChunk.length > 0) {
-      // Direct provider call - no step wrapper
+      // Direct frame to Whisper - it will handle aggregation and VAD internally
       const previousChunk =
         session.transcriptionResults.length > 0
           ? session.transcriptionResults[
@@ -103,6 +137,7 @@ export class TranscriptionService {
 
       const chunkTranscription = await this.whisperProvider.transcribe({
         audioData: audioChunk,
+        speechProbability: speechProbability, // Now from VAD service
         context: {
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
@@ -111,22 +146,39 @@ export class TranscriptionService {
         },
       });
 
-      // Accumulate the result
+      // Accumulate the result only if Whisper returned something
+      // (it returns empty string while buffering)
       if (chunkTranscription.trim()) {
         session.transcriptionResults.push(chunkTranscription);
+        logger.transcription.info("Whisper returned transcription", {
+          sessionId,
+          transcriptionLength: chunkTranscription.length,
+          totalResults: session.transcriptionResults.length,
+        });
       }
 
-      logger.transcription.debug("Processed chunk", {
+      logger.transcription.error("Processed frame", {
         sessionId,
-        chunkSize: audioChunk.length,
-        transcriptionLength: chunkTranscription.length,
-        totalResults: session.transcriptionResults.length,
+        frameSize: audioChunk.length,
+        hadTranscription: chunkTranscription.length > 0,
         isFinal,
       });
     }
 
-    // If this is the final chunk, apply formatting and save
+    // If this is the final chunk, flush any remaining audio and apply formatting
     if (isFinal) {
+      // Flush any remaining buffered audio in Whisper
+      if (this.whisperProvider.flush) {
+        const flushResult = await this.whisperProvider.flush();
+        if (flushResult.trim()) {
+          session.transcriptionResults.push(flushResult);
+          logger.transcription.info("Flushed final audio", {
+            sessionId,
+            flushLength: flushResult.length,
+          });
+        }
+      }
+
       // Get complete transcription
       let completeTranscription = session.transcriptionResults.join(" ").trim();
 
@@ -137,7 +189,7 @@ export class TranscriptionService {
       });
 
       // Format if enabled
-      if (this.formatterEnabled && this.openRouterProvider) {
+      if (this.formatterEnabled && this.openRouterProvider && false) {
         const style =
           session.context.sharedData.userPreferences?.formattingStyle;
         completeTranscription = await this.openRouterProvider.format({
@@ -188,19 +240,9 @@ export class TranscriptionService {
     // Create default context
     const context = createDefaultContext(uuid());
 
-    // Simple context building - no complex loading
-    const serviceManager = ServiceManager.getInstance();
-    if (serviceManager) {
-      try {
-        const settingsService = serviceManager.getSettingsService();
-        const formatterConfig = await settingsService.getFormatterConfig();
-      } catch (error) {
-        logger.transcription.warn("Failed to load formatter config", { error });
-      }
-    }
-
     // TODO: Load actual vocabulary
     // TODO: Load user preferences from settings
+    // TODO: Load formatter config from settings
 
     return context;
   }
@@ -210,6 +252,7 @@ export class TranscriptionService {
    */
   async dispose(): Promise<void> {
     await this.whisperProvider.dispose();
+    // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }
 }
