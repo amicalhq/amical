@@ -4,6 +4,7 @@ dotenv.config();
 import { app } from "electron";
 import started from "electron-squirrel-startup";
 import { AppManager } from "./core/app-manager";
+import { updateElectronApp } from "update-electron-app";
 
 if (started) {
   app.quit();
@@ -11,7 +12,7 @@ if (started) {
 
 // Set up auto-updater for production builds
 if (app.isPackaged) {
-  require("update-electron-app")();
+  updateElectronApp();
 }
 
 const appManager = new AppManager();

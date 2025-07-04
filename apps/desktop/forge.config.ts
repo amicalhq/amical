@@ -245,6 +245,7 @@ const config: ForgeConfig = {
     name: "Amical",
     executableName: "Amical",
     icon: "./assets/logo.icns", // Path to your icon file
+    appBundleId: "com.amical.desktop", // Proper bundle ID
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
       "./src/db/migrations",
@@ -261,13 +262,17 @@ const config: ForgeConfig = {
           osxSign: {
             identity: process.env.CODESIGNING_IDENTITY,
           },
+          // Notarization for macOS
+          ...(process.env.SKIP_NOTARIZATION === "true"
+            ? {}
+            : {
+                osxNotarize: {
+                  appleId: process.env.APPLE_ID!,
+                  appleIdPassword: process.env.APPLE_APP_PASSWORD!,
+                  teamId: process.env.APPLE_TEAM_ID!,
+                },
+              }),
         }),
-    // Notarization for macOS (configure when ready for distribution)
-    // osxNotarize: {
-    //   appleId: process.env.APPLE_ID,
-    //   appleIdPassword: process.env.APPLE_APP_PASSWORD,
-    //   teamId: process.env.APPLE_TEAM_ID,
-    // },
     //! issues with monorepo setup and module resolutions
     //! when forge walks paths via flora-colossus
     prune: false,

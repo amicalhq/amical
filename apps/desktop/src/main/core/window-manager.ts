@@ -42,10 +42,15 @@ export class WindowManager {
       );
     }
 
-    this.mainWindow.on("closed", () => {
+    this.mainWindow.on("close", () => {
+      // Detach window before it's destroyed
       ServiceManager.getInstance()!
         .getTRPCHandler()!
         .detachWindow(this.mainWindow!);
+    });
+
+    this.mainWindow.on("closed", () => {
+      // Window is already destroyed, just clean up reference
       this.mainWindow = null;
     });
 
@@ -92,10 +97,15 @@ export class WindowManager {
       );
     }
 
-    this.widgetWindow.on("closed", () => {
+    this.widgetWindow.on("close", () => {
+      // Detach window before it's destroyed
       ServiceManager.getInstance()!
         .getTRPCHandler()!
         .detachWindow(this.widgetWindow!);
+    });
+
+    this.widgetWindow.on("closed", () => {
+      // Window is already destroyed, just clean up reference
       this.widgetWindow = null;
     });
 

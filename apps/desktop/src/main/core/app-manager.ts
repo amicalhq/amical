@@ -72,8 +72,11 @@ export class AppManager {
     this.windowManager.createOrShowMainWindow();
     // tRPC handler is now set up in WindowManager when windows are created
 
-    if (process.platform === "darwin" && app.dock) {
+    if (app.dock) {
       app.dock.show();
+      logger.main.info("Explicitly showing app in dock");
+    } else {
+      logger.main.warn("app.dock is not available");
     }
   }
 
