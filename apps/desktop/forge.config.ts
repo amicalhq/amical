@@ -343,14 +343,14 @@ const config: ForgeConfig = {
     }),
     new MakerZIP(
       {
-        // Ensure the ZIP file has the correct naming for update-electron-app
-        // The default pattern should work, but we can customize if needed
+        // macOS ZIP files will be named like: Amical-darwin-arm64-1.0.0.zip
+        // The default naming includes platform and arch, which is good for auto-updates
       },
-      ["darwin"]
+      ["darwin"],
     ), // Required for macOS auto-updates
     new MakerDMG(
       {
-        name: "Amical-${arch}",
+        name: "Amical-{{arch}}",
         icon: "./assets/logo.icns", // Volume icon (when DMG is mounted)
       },
       ["darwin"],

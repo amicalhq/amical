@@ -157,11 +157,11 @@ export class RecordingManager extends EventEmitter {
         logger.main.warn("Swift bridge not available for audio restore");
       }
 
-      this.setState("idle");
-      logger.audio.info("Recording stopped successfully", {
+      logger.audio.info("Recording stop initiated", {
         sessionId: this.currentSessionId,
       });
 
+      // State will transition to "idle" when final chunk is processed
       // Session will be cleared when final chunk is processed
       return this.getStatus();
     } catch (error) {

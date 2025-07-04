@@ -281,6 +281,7 @@ export class WhisperProvider implements TranscriptionProvider {
     try {
       const { Whisper } = await import("smart-whisper");
       this.whisperInstance = new Whisper(modelPath, { gpu: true });
+      this.whisperInstance.load();
       logger.transcription.info(`Initialized with model: ${modelPath}`);
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);

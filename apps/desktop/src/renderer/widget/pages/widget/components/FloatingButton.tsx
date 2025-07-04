@@ -134,19 +134,29 @@ export const FloatingButton: React.FC = () => {
     >
       {expanded && (
         <div className="flex gap-[2px] items-end h-[40%] justify-center w-full">
-          {Array.from({ length: NUM_WAVEFORM_BARS }).map((_, index) => (
-            <Waveform
-              key={index}
-              index={index}
-              isRecording={
-                recordingStatus === "recording" ||
-                recordingStatus === "starting"
-              }
-              voiceDetected={voiceDetected} // Use local state for VAD
-              baseHeight={100} // Percentage of its container (the 40% height div)
-              silentHeight={20} // Percentage
-            />
-          ))}
+          {recordingStatus === "stopping" ? (
+            // Show processing indicator when stopping
+            <div className="flex gap-[4px] items-center justify-center">
+              <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+              <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+              <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce"></div>
+            </div>
+          ) : (
+            // Show waveform for other states
+            Array.from({ length: NUM_WAVEFORM_BARS }).map((_, index) => (
+              <Waveform
+                key={index}
+                index={index}
+                isRecording={
+                  recordingStatus === "recording" ||
+                  recordingStatus === "starting"
+                }
+                voiceDetected={voiceDetected} // Use local state for VAD
+                baseHeight={100} // Percentage of its container (the 40% height div)
+                silentHeight={20} // Percentage
+              />
+            ))
+          )}
         </div>
       )}
     </button>
