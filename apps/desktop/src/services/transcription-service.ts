@@ -12,15 +12,25 @@ import { createTranscription } from "../db/transcriptions";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
+import { app } from "electron";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { convertRawToWav } from "../utils/audio-converter";
 
 /**
  * Service for audio transcription and optional formatting
  */
+interface ExtendedStreamingSession extends StreamingSession {
+  audioFileStream?: fs.WriteStream;
+  audioFilePath?: string;
+  audioBuffers?: Buffer[];
+}
+
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private openRouterProvider: OpenRouterProvider | null = null;
   private formatterEnabled = false;
-  private streamingSessions: Map<string, StreamingSession> = new Map();
+  private streamingSessions: Map<string, ExtendedStreamingSession> = new Map();
   private vadService: VADService | null = null;
 
   constructor(
@@ -65,6 +75,26 @@ export class TranscriptionService {
       this.openRouterProvider = null;
       this.formatterEnabled = false;
     }
+  }
+
+  /**
+   * Create audio file for recording session
+   */
+  private async createAudioFile(sessionId: string): Promise<string> {
+    // Create audio directory in app temp path
+    const audioDir = path.join(app.getPath("temp"), "amical-audio");
+    await fs.promises.mkdir(audioDir, { recursive: true });
+
+    // Create file path
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = path.join(audioDir, `audio-${sessionId}-${timestamp}.wav`);
+
+    logger.transcription.info("Created audio file for session", {
+      sessionId,
+      filePath,
+    });
+
+    return filePath;
   }
 
   /**
@@ -113,13 +143,26 @@ export class TranscriptionService {
       streamingContext.sharedData.accessibilityContext =
         appContextStore.getAccessibilityContext();
 
+      // Create audio file for this session
+      const audioFilePath = await this.createAudioFile(sessionId);
+
       session = {
         context: streamingContext,
         transcriptionResults: [],
+        audioFilePath,
+        audioBuffers: [],
       };
 
       this.streamingSessions.set(sessionId, session);
-      logger.transcription.info("Started streaming session", { sessionId });
+      logger.transcription.info("Started streaming session", {
+        sessionId,
+        audioFilePath,
+      });
+    }
+
+    // Buffer audio chunks - we'll write WAV at the end
+    if (audioChunk.length > 0) {
+      session.audioBuffers!.push(audioChunk);
     }
 
     // Process chunk if it has content
@@ -167,6 +210,12 @@ export class TranscriptionService {
 
     // If this is the final chunk, flush any remaining audio and apply formatting
     if (isFinal) {
+      if (!session) {
+        logger.transcription.error("No session found for final chunk", {
+          sessionId,
+        });
+        return "";
+      }
       // Flush any remaining buffered audio in Whisper
       if (this.whisperProvider.flush) {
         const flushResult = await this.whisperProvider.flush();
@@ -188,7 +237,9 @@ export class TranscriptionService {
         chunkCount: session.transcriptionResults.length,
       });
 
-      // Format if enabled
+      // Format if enabled (currently disabled with && false)
+      // Commenting out to fix TypeScript errors since this code path is never executed
+      /*
       if (this.formatterEnabled && this.openRouterProvider && false) {
         const style =
           session.context.sharedData.userPreferences?.formattingStyle;
@@ -209,14 +260,48 @@ export class TranscriptionService {
           },
         });
       }
+      */
+
+      // Convert buffered audio to WAV and save
+      if (
+        session.audioBuffers &&
+        session.audioBuffers.length > 0 &&
+        session.audioFilePath
+      ) {
+        // Concatenate all audio buffers
+        const totalLength = session.audioBuffers.reduce(
+          (acc, buf) => acc + buf.length,
+          0,
+        );
+        const combinedBuffer = Buffer.concat(session.audioBuffers, totalLength);
+
+        // Convert to WAV
+        const wavBuffer = convertRawToWav(combinedBuffer);
+
+        // Write WAV file
+        await fs.promises.writeFile(session.audioFilePath, wavBuffer);
+
+        logger.transcription.info("Saved audio as WAV file", {
+          sessionId,
+          filePath: session.audioFilePath,
+          size: wavBuffer.length,
+        });
+      }
 
       // Save directly to database
+      logger.transcription.info("Saving transcription with audio file", {
+        sessionId,
+        audioFilePath: session.audioFilePath,
+        hasAudioFile: !!session.audioFilePath,
+      });
+
       await createTranscription({
         text: completeTranscription,
         language: session.context.sharedData.userPreferences?.language || "en",
         duration: session.context.sharedData.audioMetadata?.duration,
         speechModel: "whisper-local",
         formattingModel: this.formatterEnabled ? "openrouter" : undefined,
+        audioFile: session.audioFilePath,
         meta: {
           sessionId,
           source: session.context.sharedData.audioMetadata?.source,
@@ -233,7 +318,7 @@ export class TranscriptionService {
     }
 
     // Return accumulated transcription so far (for UI feedback)
-    return session.transcriptionResults.join(" ");
+    return session ? session.transcriptionResults.join(" ") : "";
   }
 
   private async buildContext(): Promise<PipelineContext> {

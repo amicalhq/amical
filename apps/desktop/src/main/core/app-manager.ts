@@ -1,16 +1,9 @@
-import {
-  app,
-  systemPreferences,
-  BrowserWindow,
-  globalShortcut,
-} from "electron";
+import { app, systemPreferences, globalShortcut } from "electron";
 import { initializeDatabase } from "../../db/config";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
 import { setupApplicationMenu } from "../menu";
 import { ServiceManager } from "../managers/service-manager";
-import { createIPCHandler } from "electron-trpc-experimental/main";
-import { router } from "../../trpc/router";
 import { EventHandlers } from "./event-handlers";
 
 export class AppManager {
@@ -20,9 +13,6 @@ export class AppManager {
   constructor() {
     this.windowManager = new WindowManager();
     this.serviceManager = ServiceManager.createInstance();
-    this.windowManager.setMainWindowCreatedCallback(
-      this.onMainWindowCreated.bind(this),
-    );
   }
 
   async initialize(): Promise<void> {
@@ -30,7 +20,7 @@ export class AppManager {
       await this.initializeDatabase();
 
       await this.requestPermissions();
-      await this.serviceManager.initialize(this.windowManager);
+      await this.serviceManager.initialize();
       this.exposeGlobalServices();
       await this.setupWindows();
       await this.setupMenu();
@@ -80,26 +70,11 @@ export class AppManager {
   private async setupWindows(): Promise<void> {
     this.windowManager.createWidgetWindow();
     this.windowManager.createOrShowMainWindow();
-    this.setupTRPCHandler();
+    // tRPC handler is now set up in WindowManager when windows are created
 
     if (process.platform === "darwin" && app.dock) {
       app.dock.show();
     }
-  }
-
-  private setupTRPCHandler(): Promise<void> {
-    const windows = this.windowManager
-      .getAllWindows()
-      .filter((w): w is BrowserWindow => w !== null);
-    createIPCHandler({ router, windows });
-    return Promise.resolve();
-  }
-
-  updateTRPCHandler(): void {
-    const windows = this.windowManager
-      .getAllWindows()
-      .filter((w): w is BrowserWindow => w !== null);
-    createIPCHandler({ router, windows });
   }
 
   private async setupMenu(): Promise<void> {
@@ -149,10 +124,6 @@ export class AppManager {
 
   getAutoUpdaterService(): any {
     return this.serviceManager.getAutoUpdaterService();
-  }
-
-  private onMainWindowCreated(window: BrowserWindow): void {
-    this.updateTRPCHandler();
   }
 
   async cleanup(): Promise<void> {

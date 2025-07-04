@@ -4,9 +4,11 @@ import { TranscriptionService } from "../../services/transcription-service";
 import { SettingsService } from "../../services/settings-service";
 import { SwiftIOBridge } from "../../services/platform/swift-bridge-service";
 import { AutoUpdaterService } from "../services/auto-updater";
-import { WindowManager } from "../core/window-manager";
 import { RecordingManager } from "./recording-manager";
 import { VADService } from "../../services/vad-service";
+import { createIPCHandler } from "electron-trpc-experimental/main";
+import { router } from "../../trpc/router";
+import { BrowserWindow } from "electron";
 
 /**
  * Manages service initialization and lifecycle
@@ -23,8 +25,9 @@ export class ServiceManager {
   private swiftIOBridge: SwiftIOBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
   private recordingManager: RecordingManager | null = null;
+  private trpcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
-  async initialize(windowManager: WindowManager): Promise<void> {
+  async initialize(): Promise<void> {
     if (this.isInitialized) {
       logger.main.warn(
         "ServiceManager is already initialized, skipping initialization",
@@ -38,8 +41,9 @@ export class ServiceManager {
       this.initializePlatformServices();
       await this.initializeVADService();
       await this.initializeAIServices();
-      this.initializeRecordingManager(windowManager);
-      this.initializeAutoUpdater(windowManager);
+      this.initializeRecordingManager();
+      this.initializeAutoUpdater();
+      this.initializeTRPCHandler();
 
       this.isInitialized = true;
       logger.main.info("Services initialized successfully");
@@ -125,14 +129,19 @@ export class ServiceManager {
     }
   }
 
-  private initializeRecordingManager(windowManager: WindowManager): void {
+  private initializeRecordingManager(): void {
     this.recordingManager = new RecordingManager(this);
-    this.recordingManager.setWindowManager(windowManager);
     logger.main.info("Recording manager initialized");
   }
 
-  private initializeAutoUpdater(windowManager: WindowManager): void {
-    this.autoUpdaterService = new AutoUpdaterService(windowManager);
+  private initializeAutoUpdater(): void {
+    this.autoUpdaterService = new AutoUpdaterService();
+  }
+
+  private initializeTRPCHandler(): void {
+    // Initialize with empty windows array, windows will be added later
+    this.trpcHandler = createIPCHandler({ router, windows: [] });
+    logger.main.info("tRPC handler initialized");
   }
 
   // Getters for other managers to access services
@@ -215,6 +224,18 @@ export class ServiceManager {
       );
     }
     return this.vadService;
+  }
+
+  getTRPCHandler(): ReturnType<typeof createIPCHandler> | null {
+    if (!this.isInitialized) {
+      throw new Error(
+        "ServiceManager not initialized. Call initialize() first.",
+      );
+    }
+    if (!this.trpcHandler) {
+      throw new Error("TRPCHandler failed to initialize");
+    }
+    return this.trpcHandler;
   }
 
   async cleanup(): Promise<void> {

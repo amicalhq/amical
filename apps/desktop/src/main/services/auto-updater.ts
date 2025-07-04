@@ -1,10 +1,9 @@
 import { app } from "electron";
 import { EventEmitter } from "events";
 import { logger } from "../logger";
-import { WindowManager } from "../core/window-manager";
 
 export class AutoUpdaterService extends EventEmitter {
-  constructor(private windowManager: WindowManager) {
+  constructor() {
     super();
   }
 

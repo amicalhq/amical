@@ -1,6 +1,7 @@
 import { BrowserWindow, screen, systemPreferences } from "electron";
 import path from "node:path";
 import { logger } from "../logger";
+import { ServiceManager } from "../managers/service-manager";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -11,7 +12,6 @@ export class WindowManager {
   private widgetWindow: BrowserWindow | null = null;
   private currentWindowDisplayId: number | null = null;
   private activeSpaceChangeSubscriptionId: number | null = null;
-  private onMainWindowCreated?: (window: BrowserWindow) => void;
 
   createOrShowMainWindow(): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -43,12 +43,15 @@ export class WindowManager {
     }
 
     this.mainWindow.on("closed", () => {
+      ServiceManager.getInstance()!
+        .getTRPCHandler()!
+        .detachWindow(this.mainWindow!);
       this.mainWindow = null;
     });
 
-    if (this.onMainWindowCreated) {
-      this.onMainWindowCreated(this.mainWindow);
-    }
+    ServiceManager.getInstance()!
+      .getTRPCHandler()!
+      .attachWindow(this.mainWindow!);
   }
 
   createWidgetWindow(): void {
@@ -89,6 +92,13 @@ export class WindowManager {
       );
     }
 
+    this.widgetWindow.on("closed", () => {
+      ServiceManager.getInstance()!
+        .getTRPCHandler()!
+        .detachWindow(this.widgetWindow!);
+      this.widgetWindow = null;
+    });
+
     if (process.platform === "darwin") {
       this.widgetWindow.setAlwaysOnTop(true, "floating", 1);
       this.widgetWindow.setVisibleOnAllWorkspaces(true, {
@@ -97,6 +107,11 @@ export class WindowManager {
       this.widgetWindow.setHiddenInMissionControl(true);
       this.setupDisplayChangeNotifications();
     }
+
+    // Update tRPC handler with new window
+    ServiceManager.getInstance()!
+      .getTRPCHandler()!
+      .attachWindow(this.widgetWindow!);
   }
 
   private setupDisplayChangeNotifications(): void {
@@ -157,12 +172,6 @@ export class WindowManager {
 
   getAllWindows(): (BrowserWindow | null)[] {
     return [this.mainWindow, this.widgetWindow];
-  }
-
-  setMainWindowCreatedCallback(
-    callback: (window: BrowserWindow) => void,
-  ): void {
-    this.onMainWindowCreated = callback;
   }
 
   openAllDevTools(): void {

@@ -19,6 +19,7 @@ import {
   FileText,
   Search,
   MoreHorizontal,
+  FileAudio,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ import {
 
 export const TranscriptionsList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
 
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
@@ -72,6 +74,13 @@ export const TranscriptionsList: React.FC = () => {
       },
     });
 
+  const downloadAudioMutation =
+    api.transcriptions.downloadAudioFile.useMutation({
+      onError: (error) => {
+        console.error("Error downloading audio:", error);
+      },
+    });
+
   const transcriptions = transcriptionsQuery.data || [];
   const totalCount = transcriptionsCountQuery.data || 0;
   const loading =
@@ -95,15 +104,19 @@ export const TranscriptionsList: React.FC = () => {
     console.log("Playing audio:", audioFile);
   };
 
-  const handleDownload = (transcription: Transcription) => {
-    // Create and download a text file with the transcription
-    const element = document.createElement("a");
-    const file = new Blob([transcription.text], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
-    element.download = `transcription-${transcription.id}.txt`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+  const handleDownloadAudio = async (transcriptionId: number) => {
+    console.log("Downloading audio:", transcriptionId);
+    // Close dropdown first
+    setOpenDropdownId(null);
+
+    // Small delay to ensure dropdown closes before system dialog opens
+    setTimeout(async () => {
+      try {
+        await downloadAudioMutation.mutateAsync({ transcriptionId });
+      } catch (error) {
+        console.error("Failed to download audio:", error);
+      }
+    }, 0);
   };
 
   const getTitle = (text: string) => {
@@ -227,7 +240,12 @@ export const TranscriptionsList: React.FC = () => {
                       </TooltipProvider>
                     )}
 
-                    <DropdownMenu>
+                    <DropdownMenu
+                      open={openDropdownId === transcription.id}
+                      onOpenChange={(open) =>
+                        setOpenDropdownId(open ? transcription.id : null)
+                      }
+                    >
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
@@ -239,12 +257,17 @@ export const TranscriptionsList: React.FC = () => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem
-                          onClick={() => handleDownload(transcription)}
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Download
-                        </DropdownMenuItem>
+                        {transcription.audioFile && (
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleDownloadAudio(transcription.id)
+                            }
+                            disabled={downloadAudioMutation.isPending}
+                          >
+                            <FileAudio className="h-4 w-4 mr-2" />
+                            Download Audio
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => handleDelete(transcription.id)}
