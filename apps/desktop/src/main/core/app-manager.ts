@@ -39,8 +39,7 @@ export class AppManager {
       const eventHandlers = new EventHandlers(this);
       eventHandlers.setupEventHandlers();
 
-      // Schedule auto-update check after startup
-      this.scheduleAutoUpdateCheck();
+      // Auto-update is now handled by update-electron-app in main.ts
 
       logger.main.info("Application initialized successfully");
     } catch (error) {
@@ -150,20 +149,6 @@ export class AppManager {
 
   getAutoUpdaterService(): any {
     return this.serviceManager.getAutoUpdaterService();
-  }
-
-  private scheduleAutoUpdateCheck(): void {
-    // Check for updates on startup (after a brief delay)
-    setTimeout(() => {
-      try {
-        const autoUpdaterService = this.serviceManager.getAutoUpdaterService();
-        autoUpdaterService.checkForUpdatesAndNotify();
-      } catch (error) {
-        logger.main.warn("Auto-update check failed during startup", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }, 5000); // Wait 5 seconds after startup
   }
 
   private onMainWindowCreated(window: BrowserWindow): void {

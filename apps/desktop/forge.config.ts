@@ -1,5 +1,7 @@
+import "dotenv/config";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
+import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerRpm } from "@electron-forge/maker-rpm";
@@ -253,9 +255,13 @@ const config: ForgeConfig = {
         "This app needs access to your microphone to record audio for transcription.",
     },
     // Code signing configuration for macOS
-    osxSign: {
-      identity: "Developer ID Application: Exa Labs LLC (59CRJ9SJ4N)",
-    },
+    ...(process.env.SKIP_CODESIGNING === "true"
+      ? {}
+      : {
+          osxSign: {
+            identity: process.env.CODESIGNING_IDENTITY,
+          },
+        }),
     // Notarization for macOS (configure when ready for distribution)
     // osxNotarize: {
     //   appleId: process.env.APPLE_ID,
@@ -335,9 +341,16 @@ const config: ForgeConfig = {
       name: "Amical",
       setupIcon: "./assets/logo.ico",
     }),
+    new MakerZIP(
+      {
+        // Ensure the ZIP file has the correct naming for update-electron-app
+        // The default pattern should work, but we can customize if needed
+      },
+      ["darwin"]
+    ), // Required for macOS auto-updates
     new MakerDMG(
       {
-        name: "Amical",
+        name: "Amical-${arch}",
         icon: "./assets/logo.icns", // Volume icon (when DMG is mounted)
       },
       ["darwin"],

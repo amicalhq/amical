@@ -9,6 +9,11 @@ if (started) {
   app.quit();
 }
 
+// Set up auto-updater for production builds
+if (app.isPackaged) {
+  require("update-electron-app")();
+}
+
 const appManager = new AppManager();
 
 app.whenReady().then(() => appManager.initialize());
