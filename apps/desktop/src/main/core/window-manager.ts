@@ -23,7 +23,7 @@ export class WindowManager {
     this.mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
-      frame: false,
+      frame: true,
       titleBarStyle: "hidden",
       trafficLightPosition: { x: 20, y: 16 },
       useContentSize: true,

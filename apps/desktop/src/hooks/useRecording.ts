@@ -63,13 +63,7 @@ export const useRecording = ({
 
     try {
       // Request main process to start recording
-      const state = await startRecordingMutation();
-
-      // If main process failed to start, abort
-      if (state !== "recording" && state !== "starting") {
-        console.error("Hook: Main process failed to start recording", state);
-        return;
-      }
+      await startRecordingMutation();
 
       // Call start callback if provided
       if (onRecordingStartCallback) {

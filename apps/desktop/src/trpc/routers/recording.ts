@@ -2,7 +2,7 @@ import { initTRPC } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import superjson from "superjson";
 import { ServiceManager } from "../../main/managers/service-manager";
-import type { RecordingStatus } from "../../types/recording";
+import type { RecordingState } from "../../types/recording";
 import { logger } from "../../main/logger";
 
 const t = initTRPC.create({
@@ -38,7 +38,7 @@ export const recordingRouter = t.router({
   // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
   // eslint-disable-next-line deprecation/deprecation
   stateUpdates: t.procedure.subscription(() => {
-    return observable<RecordingStatus>((emit) => {
+    return observable<RecordingState>((emit) => {
       const serviceManager = ServiceManager.getInstance();
       if (!serviceManager) {
         throw new Error("ServiceManager not initialized");
@@ -50,7 +50,7 @@ export const recordingRouter = t.router({
       emit.next(recordingManager.getState());
 
       // Set up listener for state changes
-      const handleStateChange = (status: RecordingStatus) => {
+      const handleStateChange = (status: RecordingState) => {
         emit.next(status);
       };
 

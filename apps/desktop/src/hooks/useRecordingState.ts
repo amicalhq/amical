@@ -4,8 +4,8 @@ import type { RecordingState } from "@/types/recording";
 
 export interface UseRecordingStateOutput {
   recordingState: RecordingState;
-  startRecording: () => Promise<RecordingState>;
-  stopRecording: () => Promise<RecordingState>;
+  startRecording: () => Promise<void>;
+  stopRecording: () => Promise<void>;
 }
 
 export const useRecordingState = (): UseRecordingStateOutput => {
@@ -27,20 +27,18 @@ export const useRecordingState = (): UseRecordingStateOutput => {
     },
   });
 
-  const startRecording = async (): Promise<RecordingState> => {
+  const startRecording = async (): Promise<void> => {
     try {
-      const status = await startRecordingMutation.mutateAsync();
-      return status;
+      await startRecordingMutation.mutateAsync();
     } catch (error) {
       console.error("Failed to start recording via tRPC", error);
       throw error;
     }
   };
 
-  const stopRecording = async (): Promise<RecordingState> => {
+  const stopRecording = async (): Promise<void> => {
     try {
-      const status = await stopRecordingMutation.mutateAsync();
-      return status;
+      await stopRecordingMutation.mutateAsync();
     } catch (error) {
       console.error("Failed to stop recording via tRPC", error);
       throw error;
