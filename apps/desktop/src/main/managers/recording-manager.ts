@@ -2,8 +2,8 @@ import { ipcMain } from "electron";
 import { EventEmitter } from "node:events";
 import { logger, logPerformance } from "../logger";
 import { ServiceManager } from "./service-manager";
-import { appContextStore } from "../../stores/app-context";
-import type { RecordingState, RecordingStatus } from "../../types/recording";
+import type { RecordingState } from "../../types/recording";
+import { Mutex } from "async-mutex";
 
 /**
  * Manages recording state and coordinates audio recording across the application
@@ -12,42 +12,34 @@ import type { RecordingState, RecordingStatus } from "../../types/recording";
 export class RecordingManager extends EventEmitter {
   private currentSessionId: string | null = null;
   private recordingState: RecordingState = "idle";
-  private lastError: string | undefined;
+  private recordingMutex = new Mutex();
 
   constructor(private serviceManager: ServiceManager) {
     super();
     this.setupIPCHandlers();
   }
 
-  private setState(newState: RecordingState, error?: string): void {
+  private setState(newState: RecordingState): void {
     const oldState = this.recordingState;
     this.recordingState = newState;
-    this.lastError = error;
 
     logger.audio.info("Recording state changed", {
       oldState,
       newState,
       sessionId: this.currentSessionId,
-      error,
     });
 
     // Broadcast state change to all windows
     this.broadcastStateChange();
   }
 
-  private broadcastStateChange(): void {
-    const status = this.getStatus();
-
-    // Emit event for internal listeners (tRPC subscription will pick this up)
-    this.emit("state-changed", status);
+  public getState(): RecordingState {
+    return this.recordingState;
   }
 
-  public getStatus(): RecordingStatus {
-    return {
-      state: this.recordingState,
-      sessionId: this.currentSessionId,
-      error: this.lastError,
-    };
+  private broadcastStateChange(): void {
+    // Emit event for internal listeners (tRPC subscription will pick this up)
+    this.emit("state-changed", this.getState());
   }
 
   private setupIPCHandlers(): void {
@@ -86,16 +78,17 @@ export class RecordingManager extends EventEmitter {
     );
   }
 
-  public async startRecording(): Promise<RecordingStatus> {
-    // Check if already recording
-    if (this.recordingState !== "idle" && this.recordingState !== "error") {
-      logger.audio.warn("Cannot start recording - already in progress", {
-        currentState: this.recordingState,
-      });
-      return this.getStatus();
-    }
+  public async startRecording() {
+    console.error("startRecording");
+    await this.recordingMutex.runExclusive(async () => {
+      // Check if already recording
+      if (this.recordingState !== "idle") {
+        logger.audio.warn("Cannot start recording - already in progress", {
+          currentState: this.recordingState,
+        });
+        return;
+      }
 
-    try {
       this.setState("starting");
 
       // Create session ID
@@ -120,27 +113,20 @@ export class RecordingManager extends EventEmitter {
         sessionId: this.currentSessionId,
       });
 
-      return this.getStatus();
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      logger.audio.error("Failed to start recording", { error: errorMessage });
-      this.setState("error", errorMessage);
-      this.currentSessionId = null;
-      return this.getStatus();
-    }
+      return;
+    });
   }
 
-  public async stopRecording(): Promise<RecordingStatus> {
-    // Check if recording
-    if (this.recordingState !== "recording") {
-      logger.audio.warn("Cannot stop recording - not currently recording", {
-        currentState: this.recordingState,
-      });
-      return this.getStatus();
-    }
+  public async stopRecording() {
+    await this.recordingMutex.runExclusive(async () => {
+      // Check if recording
+      if (this.recordingState !== "recording") {
+        logger.audio.warn("Cannot stop recording - not currently recording", {
+          currentState: this.recordingState,
+        });
+        return;
+      }
 
-    try {
       this.setState("stopping");
 
       // Restore system audio
@@ -157,14 +143,8 @@ export class RecordingManager extends EventEmitter {
 
       // State will transition to "idle" when final chunk is processed
       // Session will be cleared when final chunk is processed
-      return this.getStatus();
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      logger.audio.error("Failed to stop recording", { error: errorMessage });
-      this.setState("error", errorMessage);
-      return this.getStatus();
-    }
+      return;
+    });
   }
 
   private async handleAudioChunk(
@@ -247,10 +227,7 @@ export class RecordingManager extends EventEmitter {
       if (isFinalChunk) {
         // Clean up session on error
         this.currentSessionId = null;
-        this.setState(
-          "error",
-          error instanceof Error ? error.message : String(error),
-        );
+        this.setState("error");
       }
     }
   }

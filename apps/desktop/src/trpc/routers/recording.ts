@@ -47,7 +47,7 @@ export const recordingRouter = t.router({
       const recordingManager = serviceManager.getRecordingManager();
 
       // Emit initial state
-      emit.next(recordingManager.getStatus());
+      emit.next(recordingManager.getState());
 
       // Set up listener for state changes
       const handleStateChange = (status: RecordingStatus) => {

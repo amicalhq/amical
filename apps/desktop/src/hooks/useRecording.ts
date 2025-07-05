@@ -14,7 +14,7 @@ export interface UseRecordingParams {
 }
 
 export interface UseRecordingOutput {
-  recordingStatus: RecordingState;
+  recordingState: RecordingState;
   voiceDetected: boolean;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
@@ -27,7 +27,7 @@ export const useRecording = ({
 }: UseRecordingParams): UseRecordingOutput => {
   // Manage recording state via tRPC
   const {
-    recordingStatus,
+    recordingState,
     startRecording: startRecordingMutation,
     stopRecording: stopRecordingMutation,
   } = useRecordingState();
@@ -47,7 +47,7 @@ export const useRecording = ({
 
   // Manage audio capture when recording is active
   const isActive =
-    recordingStatus === "recording" || recordingStatus === "starting";
+    recordingState === "recording" || recordingState === "starting";
 
   const { voiceDetected } = useAudioCapture({
     onAudioChunk: handleAudioChunk,
@@ -56,21 +56,18 @@ export const useRecording = ({
 
   const startRecording = useCallback(async () => {
     // Check if already recording
-    if (recordingStatus !== "idle" && recordingStatus !== "error") {
-      console.log(`Hook: Start denied. Current status: ${recordingStatus}`);
+    if (recordingState !== "idle" && recordingState !== "error") {
+      console.log(`Hook: Start denied. Current status: ${recordingState}`);
       return;
     }
 
     try {
       // Request main process to start recording
-      const status = await startRecordingMutation();
+      const state = await startRecordingMutation();
 
       // If main process failed to start, abort
-      if (status.state !== "recording" && status.state !== "starting") {
-        console.error(
-          "Hook: Main process failed to start recording",
-          status.error,
-        );
+      if (state !== "recording" && state !== "starting") {
+        console.error("Hook: Main process failed to start recording", state);
         return;
       }
 
@@ -104,7 +101,7 @@ export const useRecording = ({
       }
     }
   }, [
-    recordingStatus,
+    recordingState,
     startRecordingMutation,
     onRecordingStartCallback,
     onRecordingStopCallback,
@@ -113,8 +110,8 @@ export const useRecording = ({
 
   const stopRecording = useCallback(async () => {
     // Check if recording
-    if (recordingStatus !== "recording" && recordingStatus !== "starting") {
-      console.log(`Hook: Stop called but status is ${recordingStatus}.`);
+    if (recordingState !== "recording" && recordingState !== "starting") {
+      console.log(`Hook: Stop called but status is ${recordingState}.`);
       return;
     }
 
@@ -133,14 +130,14 @@ export const useRecording = ({
       console.error("Hook: Error stopping recording:", error);
     }
   }, [
-    recordingStatus,
+    recordingState,
     stopRecordingMutation,
     onRecordingStopCallback,
     onAudioFrame,
   ]);
 
   return {
-    recordingStatus,
+    recordingState,
     voiceDetected,
     startRecording,
     stopRecording,

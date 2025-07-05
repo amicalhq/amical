@@ -4,9 +4,3 @@ export type RecordingState =
   | "recording"
   | "stopping"
   | "error";
-
-export interface RecordingStatus {
-  state: RecordingState;
-  sessionId: string | null;
-  error?: string;
-}

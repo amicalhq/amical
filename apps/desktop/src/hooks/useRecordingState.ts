@@ -1,34 +1,33 @@
 import { useState, useEffect } from "react";
 import { api } from "@/trpc/react";
-import type { RecordingState, RecordingStatus } from "@/types/recording";
+import type { RecordingState } from "@/types/recording";
 
 export interface UseRecordingStateOutput {
-  recordingStatus: RecordingState;
-  startRecording: () => Promise<RecordingStatus>;
-  stopRecording: () => Promise<RecordingStatus>;
+  recordingState: RecordingState;
+  startRecording: () => Promise<RecordingState>;
+  stopRecording: () => Promise<RecordingState>;
 }
 
 export const useRecordingState = (): UseRecordingStateOutput => {
-  const [recordingStatus, setRecordingStatus] =
-    useState<RecordingState>("idle");
+  const [recordingState, setRecordingState] = useState<RecordingState>("idle");
 
-  console.log("recordingStatus", recordingStatus);
+  console.log("recordingState", recordingState);
 
   const startRecordingMutation = api.recording.start.useMutation();
   const stopRecordingMutation = api.recording.stop.useMutation();
 
   // Subscribe to recording state updates via tRPC
   api.recording.stateUpdates.useSubscription(undefined, {
-    onData: (status: RecordingStatus) => {
-      console.log("recordingStatus", status);
-      setRecordingStatus(status.state);
+    onData: (state: RecordingState) => {
+      console.log("recordingStatus", state);
+      setRecordingState(state);
     },
     onError: (error) => {
       console.error("Error subscribing to recording state updates", error);
     },
   });
 
-  const startRecording = async (): Promise<RecordingStatus> => {
+  const startRecording = async (): Promise<RecordingState> => {
     try {
       const status = await startRecordingMutation.mutateAsync();
       return status;
@@ -38,7 +37,7 @@ export const useRecordingState = (): UseRecordingStateOutput => {
     }
   };
 
-  const stopRecording = async (): Promise<RecordingStatus> => {
+  const stopRecording = async (): Promise<RecordingState> => {
     try {
       const status = await stopRecordingMutation.mutateAsync();
       return status;
@@ -49,7 +48,7 @@ export const useRecordingState = (): UseRecordingStateOutput => {
   };
 
   return {
-    recordingStatus,
+    recordingState,
     startRecording,
     stopRecording,
   };
