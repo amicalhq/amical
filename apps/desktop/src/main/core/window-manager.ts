@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, systemPreferences } from "electron";
+import { BrowserWindow, screen, systemPreferences, app } from "electron";
 import path from "node:path";
 import { logger } from "../logger";
 import { ServiceManager } from "../managers/service-manager";
@@ -10,8 +10,8 @@ declare const WIDGET_WINDOW_VITE_NAME: string;
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null;
   private widgetWindow: BrowserWindow | null = null;
-  private currentWindowDisplayId: number | null = null;
-  private activeSpaceChangeSubscriptionId: number | null = null;
+  private widgetDisplayId: number | null = null;
+  private cursorPollingInterval: NodeJS.Timeout | null = null;
 
   createOrShowMainWindow(): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -63,6 +63,12 @@ export class WindowManager {
     const mainScreen = screen.getPrimaryDisplay();
     const { width, height } = mainScreen.workAreaSize;
 
+    logger.main.info("Creating widget window", {
+      display: mainScreen.id,
+      workArea: mainScreen.workArea,
+      size: { width, height },
+    });
+
     this.widgetWindow = new BrowserWindow({
       width,
       height,
@@ -81,20 +87,28 @@ export class WindowManager {
       },
     });
 
-    this.currentWindowDisplayId = mainScreen.id;
+    this.widgetDisplayId = mainScreen.id;
+
+    // Set ignore mouse events with forward option - clicks go through except on widget
     this.widgetWindow.setIgnoreMouseEvents(true, { forward: true });
+
+    logger.main.info("Widget window created", {
+      bounds: this.widgetWindow.getBounds(),
+      isVisible: this.widgetWindow.isVisible(),
+    });
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       const devUrl = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
       devUrl.pathname = "widget.html";
+      logger.main.info("Loading widget from dev server", devUrl.toString());
       this.widgetWindow.loadURL(devUrl.toString());
     } else {
-      this.widgetWindow.loadFile(
-        path.join(
-          __dirname,
-          `../renderer/${WIDGET_WINDOW_VITE_NAME}/widget.html`,
-        ),
+      const widgetPath = path.join(
+        __dirname,
+        `../renderer/${WIDGET_WINDOW_VITE_NAME}/widget.html`,
       );
+      logger.main.info("Loading widget from file", widgetPath);
+      this.widgetWindow.loadFile(widgetPath);
     }
 
     this.widgetWindow.on("close", () => {
@@ -115,61 +129,134 @@ export class WindowManager {
         visibleOnFullScreen: true,
       });
       this.widgetWindow.setHiddenInMissionControl(true);
-      this.setupDisplayChangeNotifications();
     }
+
+    // Set up display change notifications for all platforms
+    this.setupDisplayChangeNotifications();
 
     // Update tRPC handler with new window
     ServiceManager.getInstance()!
       .getTRPCHandler()!
       .attachWindow(this.widgetWindow!);
+
+    // Show the widget window
+    this.widgetWindow.show();
+    logger.main.info("Widget window shown");
   }
 
   private setupDisplayChangeNotifications(): void {
-    if (process.platform !== "darwin") return;
+    // Set up comprehensive display event listeners
+    screen.on("display-added", () => this.handleDisplayChange("display-added"));
+    screen.on("display-removed", () =>
+      this.handleDisplayChange("display-removed"),
+    );
+    screen.on("display-metrics-changed", () =>
+      this.handleDisplayChange("display-metrics-changed"),
+    );
 
-    try {
-      this.activeSpaceChangeSubscriptionId =
+    // Set up focus-based display detection
+    this.setupFocusBasedDisplayDetection();
+
+    // Set up cursor polling to detect when user moves to different display
+    // we want to avoid polling mechanisms, we will get back to this if current soln doesn't work
+    // this.startCursorPolling();
+
+    // macOS-specific workspace change notifications
+    if (process.platform === "darwin") {
+      try {
         systemPreferences.subscribeWorkspaceNotification(
           "NSWorkspaceActiveDisplayDidChangeNotification",
           () => {
-            if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
-              try {
-                const cursorPoint = screen.getCursorScreenPoint();
-                const displayForCursor =
-                  screen.getDisplayNearestPoint(cursorPoint);
-                if (this.currentWindowDisplayId !== displayForCursor.id) {
-                  logger.main.info("Moving floating window to display", {
-                    displayId: displayForCursor.id,
-                  });
-                  this.widgetWindow.setBounds(displayForCursor.workArea);
-                  this.currentWindowDisplayId = displayForCursor.id;
-                }
-              } catch (error) {
-                logger.main.warn("Error handling display change:", error);
-              }
-            }
+            this.handleDisplayChange("workspace-change");
           },
         );
-
-      if (
-        this.activeSpaceChangeSubscriptionId !== undefined &&
-        this.activeSpaceChangeSubscriptionId >= 0
-      ) {
-        logger.main.info(
-          "Successfully subscribed to display change notifications",
-        );
-      } else {
-        logger.main.error(
-          "Failed to subscribe to display change notifications",
+      } catch (error) {
+        logger.main.warn(
+          "Failed to subscribe to workspace notifications:",
+          error,
         );
       }
-    } catch (error) {
-      logger.main.error(
-        "Error during subscription to display notifications:",
-        error,
-      );
-      this.activeSpaceChangeSubscriptionId = null;
     }
+
+    logger.main.info("Set up display change event listeners");
+  }
+
+  private setupFocusBasedDisplayDetection(): void {
+    // Listen for any window focus events to detect active display changes
+    app.on("browser-window-focus", (_event, window) => {
+      if (!window || window.isDestroyed()) return;
+
+      // Get the display where the focused window is located
+      const focusedWindowDisplay = screen.getDisplayMatching(
+        window.getBounds(),
+      );
+
+      if (focusedWindowDisplay.id === this.widgetDisplayId) {
+        return;
+      }
+
+      // If the focused window is on a different display than our current one
+      logger.main.info("Active display changed due to window focus", {
+        previousDisplayId: this.widgetDisplayId,
+        newDisplayId: focusedWindowDisplay.id,
+      });
+
+      this.widgetDisplayId = focusedWindowDisplay.id;
+
+      // Update widget window bounds to new display
+      if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
+        this.widgetWindow.setBounds(focusedWindowDisplay.workArea);
+      }
+    });
+  }
+
+  private startCursorPolling(): void {
+    // Poll cursor position every 500ms to detect display changes
+    this.cursorPollingInterval = setInterval(() => {
+      if (!this.widgetWindow || this.widgetWindow.isDestroyed()) return;
+
+      const cursorPoint = screen.getCursorScreenPoint();
+      const cursorDisplay = screen.getDisplayNearestPoint(cursorPoint);
+
+      if (cursorDisplay.id === this.widgetDisplayId) {
+        return;
+      }
+
+      // If cursor moved to a different display
+      logger.main.info("Active display changed due to cursor movement", {
+        previousDisplayId: this.widgetDisplayId,
+        newDisplayId: cursorDisplay.id,
+        cursorPoint,
+      });
+
+      this.widgetDisplayId = cursorDisplay.id;
+
+      // Update widget window bounds to new display
+      this.widgetWindow.setBounds(cursorDisplay.workArea);
+    }, 500); // Poll every 500ms
+
+    logger.main.info("Started cursor polling for display detection");
+  }
+
+  private handleDisplayChange(event: string): void {
+    logger.main.debug("handleDisplayChange", { event });
+
+    if (!this.widgetWindow || this.widgetWindow.isDestroyed()) return;
+
+    // Get the current display based on cursor position
+    const cursorPoint = screen.getCursorScreenPoint();
+    const currentDisplay = screen.getDisplayNearestPoint(cursorPoint);
+
+    // Update window bounds to match new display's work area
+    this.widgetWindow.setBounds(currentDisplay.workArea);
+    this.widgetDisplayId = currentDisplay.id;
+
+    this.widgetDisplayId = currentDisplay.id;
+    logger.main.info("Display configuration changed", {
+      displayId: currentDisplay.id,
+      workArea: currentDisplay.workArea,
+      event,
+    });
   }
 
   getMainWindow(): BrowserWindow | null {
@@ -200,15 +287,21 @@ export class WindowManager {
   }
 
   cleanup(): void {
-    if (
-      process.platform === "darwin" &&
-      this.activeSpaceChangeSubscriptionId !== null
-    ) {
-      systemPreferences.unsubscribeWorkspaceNotification(
-        this.activeSpaceChangeSubscriptionId,
-      );
-      logger.main.info("Unsubscribed from display change notifications");
-      this.activeSpaceChangeSubscriptionId = null;
+    // Stop cursor polling
+    if (this.cursorPollingInterval) {
+      clearInterval(this.cursorPollingInterval);
+      this.cursorPollingInterval = null;
+      logger.main.info("Stopped cursor polling");
     }
+
+    // Remove display event listeners
+    screen.removeAllListeners("display-added");
+    screen.removeAllListeners("display-removed");
+    screen.removeAllListeners("display-metrics-changed");
+
+    // Remove focus event listener
+    app.removeAllListeners("browser-window-focus");
+
+    logger.main.info("Cleaned up display and focus event listeners");
   }
 }
