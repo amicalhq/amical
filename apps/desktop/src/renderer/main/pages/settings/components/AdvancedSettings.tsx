@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardHeader,
@@ -9,8 +9,44 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 export function AdvancedSettings() {
+  const [preloadWhisperModel, setPreloadWhisperModel] = useState(true);
+
+  // tRPC queries and mutations
+  const settingsQuery = api.settings.getSettings.useQuery();
+  const utils = api.useUtils();
+
+  const updateTranscriptionSettingsMutation =
+    api.settings.updateTranscriptionSettings.useMutation({
+      onSuccess: () => {
+        utils.settings.getSettings.invalidate();
+        toast.success("Settings updated");
+      },
+      onError: (error) => {
+        console.error("Failed to update transcription settings:", error);
+        toast.error("Failed to update settings. Please try again.");
+      },
+    });
+
+  // Load settings when query data is available
+  useEffect(() => {
+    if (settingsQuery.data?.transcription) {
+      setPreloadWhisperModel(
+        settingsQuery.data.transcription.preloadWhisperModel !== false,
+      );
+    }
+  }, [settingsQuery.data]);
+
+  const handlePreloadWhisperModelChange = (checked: boolean) => {
+    setPreloadWhisperModel(checked);
+    updateTranscriptionSettingsMutation.mutate({
+      preloadWhisperModel: checked,
+    });
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -18,6 +54,20 @@ export function AdvancedSettings() {
         <CardDescription>Advanced configuration options</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="preload-whisper">Preload Whisper Model</Label>
+            <p className="text-sm text-muted-foreground">
+              Load AI model at startup for faster transcription
+            </p>
+          </div>
+          <Switch
+            id="preload-whisper"
+            checked={preloadWhisperModel}
+            onCheckedChange={handlePreloadWhisperModelChange}
+          />
+        </div>
+
         <div className="flex items-center justify-between">
           <div>
             <Label htmlFor="debug-mode">Debug Mode</Label>

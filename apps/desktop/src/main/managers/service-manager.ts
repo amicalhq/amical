@@ -87,6 +87,7 @@ export class ServiceManager {
       this.transcriptionService = new TranscriptionService(
         this.modelManagerService,
         this.vadService,
+        this.settingsService,
       );
       await this.transcriptionService.initialize();
 

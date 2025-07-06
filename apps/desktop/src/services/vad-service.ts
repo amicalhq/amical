@@ -55,7 +55,7 @@ export class VADService extends EventEmitter {
 
       // Load ONNX model
       this.session = await ort.InferenceSession.create(this.modelPath, {
-        executionProviders: ["cpu"], // Use CPU provider for compatibility
+        executionProviders: ["coreml", "cpu"],
       });
 
       // Initialize hidden states (h and c)

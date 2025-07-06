@@ -7,6 +7,7 @@ import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { ModelManagerService } from "../services/model-manager";
+import { SettingsService } from "../services/settings-service";
 import { appContextStore } from "../stores/app-context";
 import { createTranscription } from "../db/transcriptions";
 import { logger } from "../main/logger";
@@ -31,14 +32,17 @@ export class TranscriptionService {
   private openRouterProvider: OpenRouterProvider | null = null;
   private formatterEnabled = false;
   private streamingSessions: Map<string, ExtendedStreamingSession> = new Map();
-  private vadService: VADService | null = null;
+  private vadService: VADService;
+  private settingsService: SettingsService;
 
   constructor(
     modelManagerService: ModelManagerService,
-    vadService: VADService | null = null,
+    vadService: VADService,
+    settingsService: SettingsService,
   ) {
     this.whisperProvider = new WhisperProvider(modelManagerService);
     this.vadService = vadService;
+    this.settingsService = settingsService;
   }
 
   async initialize(): Promise<void> {
@@ -47,7 +51,64 @@ export class TranscriptionService {
     } else {
       logger.transcription.warn("VAD service not available");
     }
+
+    // Check if we should preload Whisper model
+    const transcriptionSettings =
+      await this.settingsService.getTranscriptionSettings();
+    const shouldPreload = transcriptionSettings?.preloadWhisperModel !== false; // Default to true
+
+    if (shouldPreload) {
+      logger.transcription.info("Preloading Whisper model...");
+      await this.preloadWhisperModel();
+      logger.transcription.info("Whisper model preloaded successfully");
+    } else {
+      logger.transcription.info("Whisper model preloading disabled");
+    }
+
     logger.transcription.info("Transcription service initialized");
+  }
+
+  /**
+   * Preload Whisper model into memory
+   */
+  async preloadWhisperModel(): Promise<void> {
+    try {
+      // This will trigger the model initialization in WhisperProvider
+      await this.whisperProvider.preloadModel();
+      logger.transcription.info("Whisper model preloaded successfully");
+    } catch (error) {
+      logger.transcription.error("Failed to preload Whisper model:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle model change - dispose old model and load new one if preloading is enabled
+   */
+  async handleModelChange(): Promise<void> {
+    try {
+      // Dispose current model
+      await this.whisperProvider.dispose();
+
+      // Check if preloading is enabled
+      if (this.settingsService) {
+        const transcriptionSettings =
+          await this.settingsService.getTranscriptionSettings();
+        const shouldPreload =
+          transcriptionSettings?.preloadWhisperModel !== false;
+
+        if (shouldPreload) {
+          logger.transcription.info(
+            "Reloading Whisper model after model change...",
+          );
+          await this.whisperProvider.preloadModel();
+          logger.transcription.info("Whisper model reloaded successfully");
+        }
+      }
+    } catch (error) {
+      logger.transcription.error("Failed to handle model change:", error);
+      // Don't throw - model will be loaded on first use
+    }
   }
 
   /**

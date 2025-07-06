@@ -32,6 +32,66 @@ const SetShortcutSchema = z.object({
   shortcut: z.string(),
 });
 export const settingsRouter = t.router({
+  // Get all settings
+  getSettings: t.procedure.query(async () => {
+    try {
+      if (!globalThis.settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      return await globalThis.settingsService.getAllSettings();
+    } catch (error) {
+      if (globalThis.logger) {
+        globalThis.logger.main.error("Error getting settings:", error);
+      }
+      return {};
+    }
+  }),
+
+  // Update transcription settings
+  updateTranscriptionSettings: t.procedure
+    .input(
+      z.object({
+        language: z.string().optional(),
+        autoTranscribe: z.boolean().optional(),
+        confidenceThreshold: z.number().optional(),
+        enablePunctuation: z.boolean().optional(),
+        enableTimestamps: z.boolean().optional(),
+        preloadWhisperModel: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      try {
+        if (!globalThis.settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        // Check if preloadWhisperModel setting is changing
+        const currentSettings =
+          await globalThis.settingsService.getTranscriptionSettings();
+        const preloadChanged =
+          input.preloadWhisperModel !== undefined &&
+          currentSettings &&
+          input.preloadWhisperModel !== currentSettings.preloadWhisperModel;
+
+        await globalThis.settingsService.setTranscriptionSettings(input);
+
+        // Handle model preloading change
+        if (preloadChanged && globalThis.transcriptionService) {
+          await globalThis.transcriptionService.handleModelChange();
+        }
+
+        return true;
+      } catch (error) {
+        if (globalThis.logger) {
+          globalThis.logger.main.error(
+            "Error updating transcription settings:",
+            error,
+          );
+        }
+        throw error;
+      }
+    }),
+
   // Get formatter configuration
   getFormatterConfig: t.procedure.query(async () => {
     try {

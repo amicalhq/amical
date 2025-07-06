@@ -96,6 +96,7 @@ export interface AppSettingsData {
     confidenceThreshold: number;
     enablePunctuation: boolean;
     enableTimestamps: boolean;
+    preloadWhisperModel?: boolean;
   };
   recording?: {
     defaultFormat: "wav" | "mp3" | "flac";

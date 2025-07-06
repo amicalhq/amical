@@ -21,12 +21,19 @@ export class WhisperProvider implements TranscriptionProvider {
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
   private readonly MIN_SPEECH_DURATION_MS = 500; // Minimum speech duration to transcribe
-  private readonly MAX_SILENCE_DURATION_MS = 2000; // Max silence before cutting
+  private readonly MAX_SILENCE_DURATION_MS = 800; // Max silence before cutting
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
 
   constructor(modelManager: ModelManagerService) {
     this.modelManager = modelManager;
+  }
+
+  /**
+   * Preload the Whisper model into memory
+   */
+  async preloadModel(): Promise<void> {
+    await this.initializeWhisper();
   }
 
   async transcribe(params: TranscribeParams): Promise<string> {
@@ -71,13 +78,13 @@ export class WhisperProvider implements TranscriptionProvider {
       const aggregatedAudio = this.aggregateFrames();
 
       // Skip if too short or only silence
-      if (aggregatedAudio.length < this.FRAME_SIZE * 2) {
+      /* if (aggregatedAudio.length < this.FRAME_SIZE * 2) {
         logger.transcription.debug("Skipping transcription - audio too short");
         this.frameBuffer = [];
         this.frameBufferSpeechProbabilities = [];
         this.silenceFrameCount = 0;
         return "";
-      }
+      } */
 
       logger.transcription.debug(
         `Starting transcription of ${aggregatedAudio.length} samples (${((aggregatedAudio.length / this.SAMPLE_RATE) * 1000).toFixed(0)}ms)`,
@@ -266,7 +273,7 @@ export class WhisperProvider implements TranscriptionProvider {
     return prompt;
   }
 
-  private async initializeWhisper(): Promise<void> {
+  async initializeWhisper(): Promise<void> {
     if (this.whisperInstance) {
       return; // Already initialized
     }

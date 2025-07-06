@@ -19,6 +19,7 @@ const t = initTRPC.create({
 
 declare global {
   var modelManagerService: any;
+  var transcriptionService: any;
 }
 
 export const modelsRouter = t.router({
@@ -120,9 +121,14 @@ export const modelsRouter = t.router({
       if (!globalThis.modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
-      return await globalThis.modelManagerService.setSelectedModel(
-        input.modelId,
-      );
+      await globalThis.modelManagerService.setSelectedModel(input.modelId);
+
+      // Notify transcription service about model change
+      if (globalThis.transcriptionService) {
+        await globalThis.transcriptionService.handleModelChange();
+      }
+
+      return true;
     }),
 
   // Subscriptions using Observables
