@@ -32,12 +32,12 @@ export class TranscriptionService {
   private openRouterProvider: OpenRouterProvider | null = null;
   private formatterEnabled = false;
   private streamingSessions: Map<string, ExtendedStreamingSession> = new Map();
-  private vadService: VADService;
+  private vadService: VADService | null;
   private settingsService: SettingsService;
 
   constructor(
     modelManagerService: ModelManagerService,
-    vadService: VADService,
+    vadService: VADService | null,
     settingsService: SettingsService,
   ) {
     this.whisperProvider = new WhisperProvider(modelManagerService);

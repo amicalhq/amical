@@ -125,8 +125,10 @@ export class RecordingManager extends EventEmitter {
 
       // Mute system audio
       try {
-        const swiftBridge = this.serviceManager.getSwiftIOBridge();
-        await swiftBridge.call("muteSystemAudio", {});
+        const swiftBridge = this.serviceManager.getService("swiftIOBridge");
+        if (swiftBridge) {
+          await swiftBridge.call("muteSystemAudio", {});
+        }
       } catch (error) {
         logger.main.warn("Swift bridge not available for audio muting");
       }
@@ -159,8 +161,10 @@ export class RecordingManager extends EventEmitter {
 
       // Restore system audio
       try {
-        const swiftBridge = this.serviceManager.getSwiftIOBridge();
-        await swiftBridge.call("restoreSystemAudio", {});
+        const swiftBridge = this.serviceManager.getService("swiftIOBridge");
+        if (swiftBridge) {
+          await swiftBridge.call("restoreSystemAudio", {});
+        }
       } catch (error) {
         logger.main.warn("Swift bridge not available for audio restore");
       }
@@ -260,8 +264,12 @@ export class RecordingManager extends EventEmitter {
     }
 
     try {
-      const transcriptionService =
-        this.serviceManager.getTranscriptionService();
+      const transcriptionService = this.serviceManager.getService(
+        "transcriptionService",
+      );
+      if (!transcriptionService) {
+        throw new Error("Transcription service not available");
+      }
       const startTime = Date.now();
 
       // Process the chunk - pass isFinal flag
@@ -323,15 +331,17 @@ export class RecordingManager extends EventEmitter {
     }
 
     try {
-      const swiftBridge = this.serviceManager.getSwiftIOBridge();
+      const swiftBridge = this.serviceManager.getService("swiftIOBridge");
 
       logger.main.info("Pasting transcription to active application", {
         textLength: transcription.length,
       });
 
-      swiftBridge.call("pasteText", {
-        transcript: transcription,
-      });
+      if (swiftBridge) {
+        swiftBridge.call("pasteText", {
+          transcript: transcription,
+        });
+      }
     } catch (error) {
       logger.main.warn(
         "Swift bridge not available, cannot paste transcription",

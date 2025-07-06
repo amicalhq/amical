@@ -1,13 +1,6 @@
-import { initTRPC } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import superjson from "superjson";
 import { z } from "zod";
-import { SettingsService } from "../../services/settings-service";
-
-const t = initTRPC.create({
-  isServer: true,
-  transformer: superjson,
-});
+import { createRouter, procedure } from "../router";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
@@ -17,38 +10,32 @@ const FormatterConfigSchema = z.object({
   enabled: z.boolean(),
 });
 
-// We'll need to access these from the main process
-declare global {
-  var transcriptionService: any;
-  var settingsService: any;
-  var logger: any;
-  var appManager: any;
-  var shortcutManager: any;
-}
-
 // Shortcut schema
 const SetShortcutSchema = z.object({
   type: z.enum(["pushToTalk", "toggleRecording"]),
   shortcut: z.string(),
 });
-export const settingsRouter = t.router({
+
+export const settingsRouter = createRouter({
   // Get all settings
-  getSettings: t.procedure.query(async () => {
+  getSettings: procedure.query(async ({ ctx }) => {
     try {
-      if (!globalThis.settingsService) {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
         throw new Error("SettingsService not available");
       }
-      return await globalThis.settingsService.getAllSettings();
+      return await settingsService.getAllSettings();
     } catch (error) {
-      if (globalThis.logger) {
-        globalThis.logger.main.error("Error getting settings:", error);
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error getting settings:", error);
       }
       return {};
     }
   }),
 
   // Update transcription settings
-  updateTranscriptionSettings: t.procedure
+  updateTranscriptionSettings: procedure
     .input(
       z.object({
         language: z.string().optional(),
@@ -59,177 +46,194 @@ export const settingsRouter = t.router({
         preloadWhisperModel: z.boolean().optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        if (!globalThis.settingsService) {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
           throw new Error("SettingsService not available");
         }
 
         // Check if preloadWhisperModel setting is changing
         const currentSettings =
-          await globalThis.settingsService.getTranscriptionSettings();
+          await settingsService.getTranscriptionSettings();
         const preloadChanged =
           input.preloadWhisperModel !== undefined &&
           currentSettings &&
           input.preloadWhisperModel !== currentSettings.preloadWhisperModel;
 
-        await globalThis.settingsService.setTranscriptionSettings(input);
+        // Merge with existing settings to provide all required fields
+        const mergedSettings = {
+          language: "en",
+          autoTranscribe: true,
+          confidenceThreshold: 0.5,
+          enablePunctuation: true,
+          enableTimestamps: false,
+          ...currentSettings,
+          ...input,
+        };
+
+        await settingsService.setTranscriptionSettings(mergedSettings);
 
         // Handle model preloading change
-        if (preloadChanged && globalThis.transcriptionService) {
-          await globalThis.transcriptionService.handleModelChange();
+        if (preloadChanged) {
+          const transcriptionService = ctx.serviceManager.getService(
+            "transcriptionService",
+          );
+          if (transcriptionService) {
+            await transcriptionService.handleModelChange();
+          }
         }
 
         return true;
       } catch (error) {
-        if (globalThis.logger) {
-          globalThis.logger.main.error(
-            "Error updating transcription settings:",
-            error,
-          );
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error updating transcription settings:", error);
         }
         throw error;
       }
     }),
 
   // Get formatter configuration
-  getFormatterConfig: t.procedure.query(async () => {
+  getFormatterConfig: procedure.query(async ({ ctx }) => {
     try {
-      if (!globalThis.settingsService) {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
         throw new Error("SettingsService not available");
       }
-      return await globalThis.settingsService.getFormatterConfig();
+      return await settingsService.getFormatterConfig();
     } catch (error) {
-      if (globalThis.logger) {
-        globalThis.logger.transcription.error(
-          "Error getting formatter config:",
-          error,
-        );
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.transcription.error("Error getting formatter config:", error);
       }
       return null;
     }
   }),
 
   // Set formatter configuration
-  setFormatterConfig: t.procedure
+  setFormatterConfig: procedure
     .input(FormatterConfigSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        if (!globalThis.settingsService) {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
           throw new Error("SettingsService not available");
         }
-        await globalThis.settingsService.setFormatterConfig(input);
+        await settingsService.setFormatterConfig(input);
 
         // Update transcription service with new formatter configuration
-        if (globalThis.transcriptionService) {
-          globalThis.transcriptionService.configureFormatter(input);
-          if (globalThis.logger) {
-            globalThis.logger.transcription.info(
-              "Formatter configuration updated",
-            );
+        const transcriptionService = ctx.serviceManager.getService(
+          "transcriptionService",
+        );
+        if (transcriptionService) {
+          transcriptionService.configureFormatter(input);
+          const logger = ctx.serviceManager.getLogger();
+          if (logger) {
+            logger.transcription.info("Formatter configuration updated");
           }
         }
 
         return true;
       } catch (error) {
-        if (globalThis.logger) {
-          globalThis.logger.transcription.error(
-            "Error setting formatter config:",
-            error,
-          );
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.transcription.error("Error setting formatter config:", error);
         }
         throw error;
       }
     }),
   // Get shortcuts configuration
-  getShortcuts: t.procedure.query(async () => {
-    try {
-      if (!globalThis.settingsService) {
-        throw new Error("SettingsService not available");
-      }
-      return await globalThis.settingsService.getShortcuts();
-    } catch (error) {
-      if (globalThis.logger) {
-        globalThis.logger.main.error("Error getting shortcuts:", error);
-      }
-      return {};
+  getShortcuts: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
     }
+    return await settingsService.getShortcuts();
   }),
-
   // Set individual shortcut
-  setShortcut: t.procedure
+  setShortcut: procedure
     .input(SetShortcutSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        if (!globalThis.settingsService) {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
           throw new Error("SettingsService not available");
         }
 
         // Get current shortcuts and update the specific one
-        const currentShortcuts =
-          await globalThis.settingsService.getShortcuts();
+        const currentShortcuts = await settingsService.getShortcuts();
         const updatedShortcuts = {
           ...currentShortcuts,
           [input.type]: input.shortcut,
         };
 
-        await globalThis.settingsService.setShortcuts(updatedShortcuts);
+        await settingsService.setShortcuts(updatedShortcuts);
 
-        if (globalThis.logger) {
-          globalThis.logger.main.info("Shortcut updated", input);
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Shortcut updated", input);
         }
 
         // Notify shortcut manager to reload shortcuts
-        if (globalThis.shortcutManager) {
-          await globalThis.shortcutManager.reloadShortcuts();
-          globalThis.logger.main.info(
-            "Shortcut manager notified of shortcut change",
-          );
+        const shortcutManager =
+          ctx.serviceManager.getService("shortcutManager");
+        if (shortcutManager) {
+          await shortcutManager.reloadShortcuts();
+          logger.main.info("Shortcut manager notified of shortcut change");
         }
 
         return true;
       } catch (error) {
-        if (globalThis.logger) {
-          globalThis.logger.main.error("Error setting shortcut:", error);
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting shortcut:", error);
         }
         throw error;
       }
     }),
 
   // Set shortcut recording state
-  setShortcutRecordingState: t.procedure
+  setShortcutRecordingState: procedure
     .input(z.boolean())
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        if (!globalThis.shortcutManager) {
+        const shortcutManager =
+          ctx.serviceManager.getService("shortcutManager");
+        if (!shortcutManager) {
           throw new Error("ShortcutManager not available");
         }
 
-        globalThis.shortcutManager.setIsRecordingShortcut(input);
+        shortcutManager.setIsRecordingShortcut(input);
 
-        if (globalThis.logger) {
-          globalThis.logger.main.info("Shortcut recording state updated", {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Shortcut recording state updated", {
             isRecording: input,
           });
         }
 
         return true;
       } catch (error) {
-        if (globalThis.logger) {
-          globalThis.logger.main.error(
-            "Error setting shortcut recording state:",
-            error,
-          );
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting shortcut recording state:", error);
         }
         throw error;
       }
     }),
 
   // Active keys subscription for shortcut recording
-  activeKeysUpdates: t.procedure.subscription(() => {
+  activeKeysUpdates: procedure.subscription(({ ctx }) => {
     return observable<string[]>((emit) => {
-      if (!globalThis.shortcutManager) {
-        globalThis.logger?.main.warn(
+      const shortcutManager = ctx.serviceManager.getService("shortcutManager");
+      const logger = ctx.serviceManager.getLogger();
+
+      if (!shortcutManager) {
+        logger?.main.warn(
           "ShortcutManager not available for activeKeys subscription",
         );
         emit.next([]);
@@ -237,24 +241,18 @@ export const settingsRouter = t.router({
       }
 
       // Emit initial state
-      emit.next(globalThis.shortcutManager.getActiveKeys());
+      emit.next(shortcutManager.getActiveKeys());
 
       // Set up listener for changes
       const handleActiveKeysChanged = (keys: string[]) => {
         emit.next(keys);
       };
 
-      globalThis.shortcutManager.on(
-        "activeKeysChanged",
-        handleActiveKeysChanged,
-      );
+      shortcutManager.on("activeKeysChanged", handleActiveKeysChanged);
 
       // Cleanup function
       return () => {
-        globalThis.shortcutManager.off(
-          "activeKeysChanged",
-          handleActiveKeysChanged,
-        );
+        shortcutManager.off("activeKeysChanged", handleActiveKeysChanged);
       };
     });
   }),

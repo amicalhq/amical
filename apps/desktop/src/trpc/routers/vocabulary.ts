@@ -1,6 +1,5 @@
-import { initTRPC } from "@trpc/server";
-import superjson from "superjson";
 import { z } from "zod";
+import { createRouter, procedure } from "../router";
 import {
   getVocabulary,
   getVocabularyById,
@@ -14,11 +13,6 @@ import {
   trackWordUsage,
   getMostUsedWords,
 } from "../../db/vocabulary";
-
-const t = initTRPC.create({
-  isServer: true,
-  transformer: superjson,
-});
 
 // Input schemas
 const GetVocabularySchema = z.object({
@@ -47,37 +41,37 @@ const BulkImportSchema = z.array(
   }),
 );
 
-export const vocabularyRouter = t.router({
+export const vocabularyRouter = createRouter({
   // Get vocabulary list with pagination and filtering
-  getVocabulary: t.procedure
+  getVocabulary: procedure
     .input(GetVocabularySchema)
     .query(async ({ input }) => {
       return await getVocabulary(input);
     }),
 
   // Get vocabulary count
-  getVocabularyCount: t.procedure
+  getVocabularyCount: procedure
     .input(z.object({ search: z.string().optional() }))
     .query(async ({ input }) => {
       return await getVocabularyCount(input.search);
     }),
 
   // Get vocabulary by ID
-  getVocabularyById: t.procedure
+  getVocabularyById: procedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       return await getVocabularyById(input.id);
     }),
 
   // Get vocabulary by word
-  getVocabularyByWord: t.procedure
+  getVocabularyByWord: procedure
     .input(z.object({ word: z.string() }))
     .query(async ({ input }) => {
       return await getVocabularyByWord(input.word);
     }),
 
   // Search vocabulary
-  searchVocabulary: t.procedure
+  searchVocabulary: procedure
     .input(
       z.object({
         searchTerm: z.string(),
@@ -89,21 +83,21 @@ export const vocabularyRouter = t.router({
     }),
 
   // Get most used words
-  getMostUsedWords: t.procedure
+  getMostUsedWords: procedure
     .input(z.object({ limit: z.number().optional() }))
     .query(async ({ input }) => {
       return await getMostUsedWords(input.limit);
     }),
 
   // Create vocabulary word
-  createVocabularyWord: t.procedure
+  createVocabularyWord: procedure
     .input(CreateVocabularySchema)
     .mutation(async ({ input }) => {
       return await createVocabularyWord(input);
     }),
 
   // Update vocabulary word
-  updateVocabulary: t.procedure
+  updateVocabulary: procedure
     .input(
       z.object({
         id: z.number(),
@@ -115,21 +109,21 @@ export const vocabularyRouter = t.router({
     }),
 
   // Delete vocabulary word
-  deleteVocabulary: t.procedure
+  deleteVocabulary: procedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       return await deleteVocabulary(input.id);
     }),
 
   // Track word usage
-  trackWordUsage: t.procedure
+  trackWordUsage: procedure
     .input(z.object({ word: z.string() }))
     .mutation(async ({ input }) => {
       return await trackWordUsage(input.word);
     }),
 
   // Bulk import vocabulary
-  bulkImportVocabulary: t.procedure
+  bulkImportVocabulary: procedure
     .input(BulkImportSchema)
     .mutation(async ({ input }) => {
       return await bulkImportVocabulary(input);

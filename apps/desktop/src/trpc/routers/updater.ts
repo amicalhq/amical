@@ -1,7 +1,6 @@
-import { initTRPC } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import superjson from "superjson";
 import { z } from "zod";
+import { createRouter, procedure } from "../router";
 
 // Download progress type from electron-updater
 interface DownloadProgress {
@@ -11,86 +10,79 @@ interface DownloadProgress {
   total: number;
 }
 
-const t = initTRPC.create({
-  isServer: true,
-  transformer: superjson,
-});
-
-// We'll need to access the auto-updater service from the main process
-declare global {
-  var autoUpdaterService: any;
-  var logger: any;
-}
-
-export const updaterRouter = t.router({
+export const updaterRouter = createRouter({
   // Check for updates (manual trigger)
-  checkForUpdates: t.procedure
+  checkForUpdates: procedure
     .input(
       z
         .object({ userInitiated: z.boolean().optional().default(false) })
         .optional(),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        if (!globalThis.autoUpdaterService) {
+        const autoUpdaterService =
+          ctx.serviceManager.getService("autoUpdaterService");
+        if (!autoUpdaterService) {
           throw new Error("Auto-updater service not available");
         }
 
         const userInitiated = input?.userInitiated ?? false;
-        await globalThis.autoUpdaterService.checkForUpdates(userInitiated);
-        globalThis.logger?.updater.info("Update check initiated via tRPC", {
+        await autoUpdaterService.checkForUpdates(userInitiated);
+        const logger = ctx.serviceManager.getLogger();
+        logger?.updater.info("Update check initiated via tRPC", {
           userInitiated,
         });
 
         return { success: true };
       } catch (error) {
-        globalThis.logger?.updater.error(
-          "Error checking for updates via tRPC",
-          {
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
+        const logger = ctx.serviceManager.getLogger();
+        logger?.updater.error("Error checking for updates via tRPC", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         throw error;
       }
     }),
 
   // Check for updates and notify (background check)
-  checkForUpdatesAndNotify: t.procedure.mutation(async () => {
+  checkForUpdatesAndNotify: procedure.mutation(async ({ ctx }) => {
     try {
-      if (!globalThis.autoUpdaterService) {
+      const autoUpdaterService =
+        ctx.serviceManager.getService("autoUpdaterService");
+      if (!autoUpdaterService) {
         throw new Error("Auto-updater service not available");
       }
 
-      await globalThis.autoUpdaterService.checkForUpdatesAndNotify();
-      globalThis.logger?.updater.info(
-        "Background update check initiated via tRPC",
-      );
+      await autoUpdaterService.checkForUpdatesAndNotify();
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.info("Background update check initiated via tRPC");
 
       return { success: true };
     } catch (error) {
-      globalThis.logger?.updater.error(
-        "Error in background update check via tRPC",
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.error("Error in background update check via tRPC", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }),
 
   // Download available update
-  downloadUpdate: t.procedure.mutation(async () => {
+  downloadUpdate: procedure.mutation(async ({ ctx }) => {
     try {
-      if (!globalThis.autoUpdaterService) {
+      const autoUpdaterService =
+        ctx.serviceManager.getService("autoUpdaterService");
+      if (!autoUpdaterService) {
         throw new Error("Auto-updater service not available");
       }
 
-      await globalThis.autoUpdaterService.downloadUpdate();
-      globalThis.logger?.updater.info("Update download initiated via tRPC");
+      await autoUpdaterService.downloadUpdate();
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.info("Update download initiated via tRPC");
 
       return { success: true };
     } catch (error) {
-      globalThis.logger?.updater.error("Error downloading update via tRPC", {
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.error("Error downloading update via tRPC", {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -98,61 +90,62 @@ export const updaterRouter = t.router({
   }),
 
   // Quit and install update
-  quitAndInstall: t.procedure.mutation(async () => {
+  quitAndInstall: procedure.mutation(async ({ ctx }) => {
     try {
-      if (!globalThis.autoUpdaterService) {
+      const autoUpdaterService =
+        ctx.serviceManager.getService("autoUpdaterService");
+      if (!autoUpdaterService) {
         throw new Error("Auto-updater service not available");
       }
 
-      globalThis.logger?.updater.info("Quit and install initiated via tRPC");
-      globalThis.autoUpdaterService.quitAndInstall();
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.info("Quit and install initiated via tRPC");
+      autoUpdaterService.quitAndInstall();
 
       return { success: true };
     } catch (error) {
-      globalThis.logger?.updater.error(
-        "Error quitting and installing via tRPC",
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.error("Error quitting and installing via tRPC", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }),
 
   // Get current update checking status
-  isCheckingForUpdate: t.procedure.query(async () => {
+  isCheckingForUpdate: procedure.query(async ({ ctx }) => {
     try {
-      if (!globalThis.autoUpdaterService) {
+      const autoUpdaterService =
+        ctx.serviceManager.getService("autoUpdaterService");
+      if (!autoUpdaterService) {
         return false;
       }
 
-      return globalThis.autoUpdaterService.isCheckingForUpdate();
+      return autoUpdaterService.isCheckingForUpdate();
     } catch (error) {
-      globalThis.logger?.updater.error(
-        "Error getting update checking status via tRPC",
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.error("Error getting update checking status via tRPC", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   }),
 
   // Get current update available status
-  isUpdateAvailable: t.procedure.query(async () => {
+  isUpdateAvailable: procedure.query(async ({ ctx }) => {
     try {
-      if (!globalThis.autoUpdaterService) {
+      const autoUpdaterService =
+        ctx.serviceManager.getService("autoUpdaterService");
+      if (!autoUpdaterService) {
         return false;
       }
 
-      return globalThis.autoUpdaterService.isUpdateAvailable();
+      return autoUpdaterService.isUpdateAvailable();
     } catch (error) {
-      globalThis.logger?.updater.error(
-        "Error getting update available status via tRPC",
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      const logger = ctx.serviceManager.getLogger();
+      logger?.updater.error("Error getting update available status via tRPC", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   }),
@@ -164,9 +157,11 @@ export const updaterRouter = t.router({
   // While Observables are deprecated in tRPC, they work without this conflict.
   // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
   // eslint-disable-next-line deprecation/deprecation
-  onDownloadProgress: t.procedure.subscription(() => {
+  onDownloadProgress: procedure.subscription(({ ctx }) => {
     return observable<DownloadProgress>((emit) => {
-      if (!globalThis.autoUpdaterService) {
+      const autoUpdaterService =
+        ctx.serviceManager.getService("autoUpdaterService");
+      if (!autoUpdaterService) {
         throw new Error("Auto-updater service not initialized");
       }
 
@@ -174,17 +169,11 @@ export const updaterRouter = t.router({
         emit.next(progressObj);
       };
 
-      globalThis.autoUpdaterService.on(
-        "download-progress",
-        handleDownloadProgress,
-      );
+      autoUpdaterService.on("download-progress", handleDownloadProgress);
 
       // Cleanup function
       return () => {
-        globalThis.autoUpdaterService?.off(
-          "download-progress",
-          handleDownloadProgress,
-        );
+        autoUpdaterService?.off("download-progress", handleDownloadProgress);
       };
     });
   }),

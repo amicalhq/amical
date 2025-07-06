@@ -23,7 +23,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { Model, DownloadedModel, DownloadProgress } from "@/constants/models";
+import { DownloadProgress } from "@/constants/models";
 import { api } from "@/trpc/react";
 
 export const ModelsManager: React.FC = () => {

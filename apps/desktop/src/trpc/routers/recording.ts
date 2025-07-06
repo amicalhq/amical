@@ -1,33 +1,21 @@
-import { initTRPC } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import superjson from "superjson";
-import { ServiceManager } from "../../main/managers/service-manager";
+import { createRouter, procedure } from "../router";
 import type { RecordingState } from "../../types/recording";
-import { logger } from "../../main/logger";
 
-const t = initTRPC.create({
-  isServer: true,
-  transformer: superjson,
-});
-
-export const recordingRouter = t.router({
-  start: t.procedure.mutation(async () => {
-    const serviceManager = ServiceManager.getInstance();
-    if (!serviceManager) {
-      throw new Error("ServiceManager not initialized");
+export const recordingRouter = createRouter({
+  start: procedure.mutation(async ({ ctx }) => {
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    if (!recordingManager) {
+      throw new Error("Recording manager not available");
     }
-
-    const recordingManager = serviceManager.getRecordingManager();
     return await recordingManager.startRecording();
   }),
 
-  stop: t.procedure.mutation(async () => {
-    const serviceManager = ServiceManager.getInstance();
-    if (!serviceManager) {
-      throw new Error("ServiceManager not initialized");
+  stop: procedure.mutation(async ({ ctx }) => {
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    if (!recordingManager) {
+      throw new Error("Recording manager not available");
     }
-
-    const recordingManager = serviceManager.getRecordingManager();
     return await recordingManager.stopRecording();
   }),
 
@@ -37,14 +25,13 @@ export const recordingRouter = t.router({
   // While Observables are deprecated in tRPC, they work without this conflict.
   // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
   // eslint-disable-next-line deprecation/deprecation
-  stateUpdates: t.procedure.subscription(() => {
+  stateUpdates: procedure.subscription(({ ctx }) => {
     return observable<RecordingState>((emit) => {
-      const serviceManager = ServiceManager.getInstance();
-      if (!serviceManager) {
-        throw new Error("ServiceManager not initialized");
+      const recordingManager =
+        ctx.serviceManager.getService("recordingManager");
+      if (!recordingManager) {
+        throw new Error("Recording manager not available");
       }
-
-      const recordingManager = serviceManager.getRecordingManager();
 
       // Emit initial state
       emit.next(recordingManager.getState());
@@ -64,14 +51,11 @@ export const recordingRouter = t.router({
   }),
 
   // Voice detection subscription
-  voiceDetectionUpdates: t.procedure.subscription(() => {
+  voiceDetectionUpdates: procedure.subscription(({ ctx }) => {
     return observable<boolean>((emit) => {
-      const serviceManager = ServiceManager.getInstance();
-      if (!serviceManager) {
-        throw new Error("ServiceManager not initialized");
-      }
+      const vadService = ctx.serviceManager.getService("vadService");
+      const logger = ctx.serviceManager.getLogger();
 
-      const vadService = serviceManager.getVADService();
       if (!vadService) {
         logger.main.warn(
           "VAD service not available for voice detection subscription",

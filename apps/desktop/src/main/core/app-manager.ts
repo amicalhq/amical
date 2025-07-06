@@ -22,7 +22,6 @@ export class AppManager {
 
       await this.requestPermissions();
       await this.serviceManager.initialize();
-      this.exposeGlobalServices();
       await this.setupWindows();
       await this.setupMenu();
 
@@ -91,32 +90,14 @@ export class AppManager {
     setupApplicationMenu(
       () => this.windowManager.createOrShowMainWindow(),
       () => {
-        const autoUpdaterService = this.serviceManager.getAutoUpdaterService();
+        const autoUpdaterService =
+          this.serviceManager.getService("autoUpdaterService");
         if (autoUpdaterService) {
           autoUpdaterService.checkForUpdates(true);
         }
       },
       () => this.windowManager.openAllDevTools(),
     );
-  }
-
-  private exposeGlobalServices(): void {
-    // Make services available globally for tRPC (temporary solution)
-    const transcriptionService = this.serviceManager.getTranscriptionService();
-    const autoUpdaterService = this.serviceManager.getAutoUpdaterService();
-    const settingsService = this.serviceManager.getSettingsService();
-    const swiftBridge = this.serviceManager.getSwiftIOBridge();
-    const shortcutManager = this.serviceManager.getShortcutManager();
-
-    (globalThis as any).modelManagerService =
-      this.serviceManager.getModelManagerService();
-    (globalThis as any).transcriptionService = transcriptionService;
-    (globalThis as any).settingsService = settingsService;
-    (globalThis as any).logger = logger;
-    (globalThis as any).autoUpdaterService = autoUpdaterService;
-    (globalThis as any).swiftBridge = swiftBridge;
-    (globalThis as any).shortcutManager = shortcutManager;
-    (globalThis as any).appManager = this;
   }
 
   getWindowManager(): WindowManager {
@@ -127,16 +108,16 @@ export class AppManager {
     return this.serviceManager;
   }
 
-  getTranscriptionService(): any {
-    return this.serviceManager.getTranscriptionService();
+  getTranscriptionService() {
+    return this.serviceManager.getService("transcriptionService");
   }
 
-  getSwiftIOBridge(): any {
-    return this.serviceManager.getSwiftIOBridge();
+  getSwiftIOBridge() {
+    return this.serviceManager.getService("swiftIOBridge");
   }
 
-  getAutoUpdaterService(): any {
-    return this.serviceManager.getAutoUpdaterService();
+  getAutoUpdaterService() {
+    return this.serviceManager.getService("autoUpdaterService");
   }
 
   getEventHandlers(): EventHandlers | null {

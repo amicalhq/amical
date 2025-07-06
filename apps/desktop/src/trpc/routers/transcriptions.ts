@@ -1,9 +1,8 @@
-import { initTRPC } from "@trpc/server";
-import superjson from "superjson";
 import { z } from "zod";
 import { dialog } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createRouter, procedure } from "../router";
 import {
   getTranscriptions,
   getTranscriptionById,
@@ -13,13 +12,7 @@ import {
   getTranscriptionsCount,
   searchTranscriptions,
 } from "../../db/transcriptions.js";
-import { logger } from "../../main/logger.js";
 import { deleteAudioFile } from "../../utils/audio-file-cleanup.js";
-
-const t = initTRPC.create({
-  isServer: true,
-  transformer: superjson,
-});
 
 // Input schemas
 const GetTranscriptionsSchema = z.object({
@@ -44,30 +37,30 @@ const UpdateTranscriptionSchema = z.object({
   language: z.string().optional(),
 });
 
-export const transcriptionsRouter = t.router({
+export const transcriptionsRouter = createRouter({
   // Get transcriptions list with pagination and filtering
-  getTranscriptions: t.procedure
+  getTranscriptions: procedure
     .input(GetTranscriptionsSchema)
     .query(async ({ input }) => {
       return await getTranscriptions(input);
     }),
 
   // Get transcriptions count
-  getTranscriptionsCount: t.procedure
+  getTranscriptionsCount: procedure
     .input(z.object({ search: z.string().optional() }))
     .query(async ({ input }) => {
       return await getTranscriptionsCount(input.search);
     }),
 
   // Get transcription by ID
-  getTranscriptionById: t.procedure
+  getTranscriptionById: procedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       return await getTranscriptionById(input.id);
     }),
 
   // Search transcriptions
-  searchTranscriptions: t.procedure
+  searchTranscriptions: procedure
     .input(
       z.object({
         searchTerm: z.string(),
@@ -79,14 +72,14 @@ export const transcriptionsRouter = t.router({
     }),
 
   // Create transcription
-  createTranscription: t.procedure
+  createTranscription: procedure
     .input(CreateTranscriptionSchema)
     .mutation(async ({ input }) => {
       return await createTranscription(input);
     }),
 
   // Update transcription
-  updateTranscription: t.procedure
+  updateTranscription: procedure
     .input(
       z.object({
         id: z.number(),
@@ -98,9 +91,9 @@ export const transcriptionsRouter = t.router({
     }),
 
   // Delete transcription
-  deleteTranscription: t.procedure
+  deleteTranscription: procedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Get transcription to check for audio file
       const transcription = await getTranscriptionById(input.id);
 
@@ -112,6 +105,7 @@ export const transcriptionsRouter = t.router({
         try {
           await deleteAudioFile(transcription.audioFile);
         } catch (error) {
+          const logger = ctx.serviceManager.getLogger();
           logger.main.warn(
             "Failed to delete audio file during transcription deletion",
             {
@@ -127,9 +121,9 @@ export const transcriptionsRouter = t.router({
     }),
 
   // Get audio file for download
-  getAudioFile: t.procedure
+  getAudioFile: procedure
     .input(z.object({ transcriptionId: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const transcription = await getTranscriptionById(input.transcriptionId);
 
       if (!transcription?.audioFile) {
@@ -150,6 +144,7 @@ export const transcriptionsRouter = t.router({
           mimeType: "audio/webm",
         };
       } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
         logger.main.error("Failed to read audio file", {
           transcriptionId: input.transcriptionId,
           audioFile: transcription.audioFile,
@@ -160,9 +155,9 @@ export const transcriptionsRouter = t.router({
     }),
 
   // Download audio file with save dialog
-  downloadAudioFile: t.procedure
+  downloadAudioFile: procedure
     .input(z.object({ transcriptionId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       console.log("Downloading audio file", input);
       const transcription = await getTranscriptionById(input.transcriptionId);
 
@@ -191,6 +186,7 @@ export const transcriptionsRouter = t.router({
         // Write file to chosen location
         await fs.promises.writeFile(result.filePath, audioData);
 
+        const logger = ctx.serviceManager.getLogger();
         logger.main.info("Audio file downloaded", {
           transcriptionId: input.transcriptionId,
           savedTo: result.filePath,
@@ -202,6 +198,7 @@ export const transcriptionsRouter = t.router({
           filePath: result.filePath,
         };
       } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
         logger.main.error("Failed to download audio file", {
           transcriptionId: input.transcriptionId,
           audioFile: transcription.audioFile,

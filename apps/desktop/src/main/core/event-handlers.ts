@@ -17,6 +17,10 @@ export class EventHandlers {
   private setupSwiftBridgeEventHandlers(): void {
     try {
       const swiftBridge = this.appManager.getSwiftIOBridge();
+      if (!swiftBridge) {
+        logger.main.warn("Swift bridge not available for event handlers");
+        return;
+      }
 
       // Handle non-shortcut related events only
       swiftBridge.on("helperEvent", (event: HelperEvent) => {

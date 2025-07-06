@@ -9,7 +9,22 @@ import { VADService } from "../../services/vad-service";
 import { ShortcutManager } from "../services/shortcut-manager";
 import { createIPCHandler } from "electron-trpc-experimental/main";
 import { router } from "../../trpc/router";
+import { createContext } from "../../trpc/context";
 import { BrowserWindow } from "electron";
+
+/**
+ * Service map for type-safe service access
+ */
+export interface ServiceMap {
+  modelManagerService: ModelManagerService;
+  transcriptionService: TranscriptionService;
+  settingsService: SettingsService;
+  vadService: VADService;
+  swiftIOBridge: SwiftIOBridge;
+  autoUpdaterService: AutoUpdaterService;
+  recordingManager: RecordingManager;
+  shortcutManager: ShortcutManager;
+}
 
 /**
  * Manages service initialization and lifecycle
@@ -84,6 +99,10 @@ export class ServiceManager {
         throw new Error("Model manager service not initialized");
       }
 
+      if (!this.settingsService) {
+        throw new Error("Settings service not initialized");
+      }
+
       this.transcriptionService = new TranscriptionService(
         this.modelManagerService,
         this.vadService,
@@ -93,9 +112,6 @@ export class ServiceManager {
 
       // Load and configure formatter
       try {
-        if (!this.settingsService) {
-          throw new Error("SettingsService not initialized");
-        }
         const formatterConfig = await this.settingsService.getFormatterConfig();
         if (formatterConfig) {
           this.transcriptionService.configureFormatter(formatterConfig);
@@ -159,102 +175,12 @@ export class ServiceManager {
 
   private initializeTRPCHandler(): void {
     // Initialize with empty windows array, windows will be added later
-    this.trpcHandler = createIPCHandler({ router, windows: [] });
+    this.trpcHandler = createIPCHandler({
+      router,
+      windows: [],
+      createContext: async () => createContext(this),
+    });
     logger.main.info("tRPC handler initialized");
-  }
-
-  // Getters for other managers to access services
-  getModelManagerService(): ModelManagerService {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    if (!this.modelManagerService) {
-      throw new Error("ModelManagerService failed to initialize");
-    }
-    return this.modelManagerService;
-  }
-
-  getTranscriptionService(): TranscriptionService {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    if (!this.transcriptionService) {
-      throw new Error("TranscriptionService failed to initialize");
-    }
-    return this.transcriptionService;
-  }
-
-  getSettingsService(): SettingsService {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    if (!this.settingsService) {
-      throw new Error("SettingsService failed to initialize");
-    }
-    return this.settingsService;
-  }
-
-  getSwiftIOBridge(): SwiftIOBridge {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    if (!this.swiftIOBridge) {
-      throw new Error("SwiftIOBridge not available on this platform");
-    }
-    return this.swiftIOBridge;
-  }
-
-  getAutoUpdaterService(): AutoUpdaterService {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    if (!this.autoUpdaterService) {
-      throw new Error("AutoUpdaterService failed to initialize");
-    }
-    return this.autoUpdaterService;
-  }
-
-  getRecordingManager(): RecordingManager {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    if (!this.recordingManager) {
-      throw new Error("RecordingManager failed to initialize");
-    }
-    return this.recordingManager;
-  }
-
-  getVADService(): VADService | null {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    return this.vadService;
-  }
-
-  getShortcutManager(): ShortcutManager {
-    if (!this.isInitialized) {
-      throw new Error(
-        "ServiceManager not initialized. Call initialize() first.",
-      );
-    }
-    if (!this.shortcutManager) {
-      throw new Error("ShortcutManager failed to initialize");
-    }
-    return this.shortcutManager;
   }
 
   getTRPCHandler(): ReturnType<typeof createIPCHandler> | null {
@@ -267,6 +193,31 @@ export class ServiceManager {
       throw new Error("TRPCHandler failed to initialize");
     }
     return this.trpcHandler;
+  }
+
+  getLogger() {
+    return logger;
+  }
+
+  getService<K extends keyof ServiceMap>(serviceName: K): ServiceMap[K] | null {
+    if (!this.isInitialized) {
+      throw new Error(
+        "ServiceManager not initialized. Call initialize() first.",
+      );
+    }
+
+    const services: Partial<ServiceMap> = {
+      modelManagerService: this.modelManagerService ?? undefined,
+      transcriptionService: this.transcriptionService ?? undefined,
+      settingsService: this.settingsService ?? undefined,
+      vadService: this.vadService ?? undefined,
+      swiftIOBridge: this.swiftIOBridge ?? undefined,
+      autoUpdaterService: this.autoUpdaterService ?? undefined,
+      recordingManager: this.recordingManager ?? undefined,
+      shortcutManager: this.shortcutManager ?? undefined,
+    };
+
+    return services[serviceName] ?? null;
   }
 
   async cleanup(): Promise<void> {

@@ -1,131 +1,149 @@
-import { initTRPC } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import superjson from "superjson";
 import { z } from "zod";
-import type {
-  Model,
-  DownloadedModel,
-  DownloadProgress,
-} from "../../constants/models";
+import { createRouter, procedure } from "../router";
+import type { Model, DownloadProgress } from "../../constants/models";
+import type { DownloadedModel } from "../../db/schema";
 
-const t = initTRPC.create({
-  isServer: true,
-  transformer: superjson,
-});
-
-// We'll need to import these services from the main process
-// For now, we'll create placeholders and implement the actual logic
-// by accessing the services from the main process
-
-declare global {
-  var modelManagerService: any;
-  var transcriptionService: any;
-}
-
-export const modelsRouter = t.router({
+export const modelsRouter = createRouter({
   // Get available models
-  getAvailableModels: t.procedure.query(async (): Promise<Model[]> => {
-    return globalThis.modelManagerService?.getAvailableModels() || [];
+  getAvailableModels: procedure.query(async ({ ctx }): Promise<Model[]> => {
+    const modelManagerService = ctx.serviceManager.getService(
+      "modelManagerService",
+    );
+    return modelManagerService?.getAvailableModels() || [];
   }),
 
   // Get downloaded models
-  getDownloadedModels: t.procedure.query(
-    async (): Promise<Record<string, DownloadedModel>> => {
-      return globalThis.modelManagerService
-        ? await globalThis.modelManagerService.getDownloadedModels()
-        : {};
-    },
-  ),
+  getDownloadedModels: procedure.query(async ({ ctx }) => {
+    const modelManagerService = ctx.serviceManager.getService(
+      "modelManagerService",
+    );
+    if (!modelManagerService) {
+      throw new Error("Model manager service not available");
+    }
+    return await modelManagerService.getDownloadedModels();
+  }),
 
   // Check if model is downloaded
-  isModelDownloaded: t.procedure
+  isModelDownloaded: procedure
     .input(z.object({ modelId: z.string() }))
-    .query(async ({ input }) => {
-      return globalThis.modelManagerService
-        ? await globalThis.modelManagerService.isModelDownloaded(input.modelId)
+    .query(async ({ input, ctx }) => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      return modelManagerService
+        ? await modelManagerService.isModelDownloaded(input.modelId)
         : false;
     }),
 
   // Get download progress
-  getDownloadProgress: t.procedure
+  getDownloadProgress: procedure
     .input(z.object({ modelId: z.string() }))
-    .query(async ({ input }) => {
-      return (
-        globalThis.modelManagerService?.getDownloadProgress(input.modelId) ||
-        null
+    .query(async ({ input, ctx }) => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
       );
+      return modelManagerService?.getDownloadProgress(input.modelId) || null;
     }),
 
   // Get active downloads
-  getActiveDownloads: t.procedure.query(
-    async (): Promise<DownloadProgress[]> => {
-      return globalThis.modelManagerService?.getActiveDownloads() || [];
+  getActiveDownloads: procedure.query(
+    async ({ ctx }): Promise<DownloadProgress[]> => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      return modelManagerService?.getActiveDownloads() || [];
     },
   ),
 
   // Get models directory
-  getModelsDirectory: t.procedure.query(async () => {
-    return globalThis.modelManagerService?.getModelsDirectory() || "";
+  getModelsDirectory: procedure.query(async ({ ctx }) => {
+    const modelManagerService = ctx.serviceManager.getService(
+      "modelManagerService",
+    );
+    return modelManagerService?.getModelsDirectory() || "";
   }),
 
   // Transcription model selection methods
-  isTranscriptionAvailable: t.procedure.query(async () => {
-    return globalThis.modelManagerService
-      ? await globalThis.modelManagerService.isAvailable()
+  isTranscriptionAvailable: procedure.query(async ({ ctx }) => {
+    const modelManagerService = ctx.serviceManager.getService(
+      "modelManagerService",
+    );
+    return modelManagerService
+      ? await modelManagerService.isAvailable()
       : false;
   }),
 
-  getTranscriptionModels: t.procedure.query(async () => {
-    return globalThis.modelManagerService
-      ? await globalThis.modelManagerService.getAvailableModelsForTranscription()
+  getTranscriptionModels: procedure.query(async ({ ctx }) => {
+    const modelManagerService = ctx.serviceManager.getService(
+      "modelManagerService",
+    );
+    return modelManagerService
+      ? await modelManagerService.getAvailableModelsForTranscription()
       : [];
   }),
 
-  getSelectedModel: t.procedure.query(async () => {
-    return globalThis.modelManagerService
-      ? globalThis.modelManagerService.getSelectedModel()
-      : null;
+  getSelectedModel: procedure.query(async ({ ctx }) => {
+    const modelManagerService = ctx.serviceManager.getService(
+      "modelManagerService",
+    );
+    return modelManagerService ? modelManagerService.getSelectedModel() : null;
   }),
 
   // Mutations
-  downloadModel: t.procedure
+  downloadModel: procedure
     .input(z.object({ modelId: z.string() }))
-    .mutation(async ({ input }) => {
-      if (!globalThis.modelManagerService) {
+    .mutation(async ({ input, ctx }) => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
-      return await globalThis.modelManagerService.downloadModel(input.modelId);
+      return await modelManagerService.downloadModel(input.modelId);
     }),
 
-  cancelDownload: t.procedure
+  cancelDownload: procedure
     .input(z.object({ modelId: z.string() }))
-    .mutation(async ({ input }) => {
-      if (!globalThis.modelManagerService) {
+    .mutation(async ({ input, ctx }) => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
-      return globalThis.modelManagerService.cancelDownload(input.modelId);
+      return modelManagerService.cancelDownload(input.modelId);
     }),
 
-  deleteModel: t.procedure
+  deleteModel: procedure
     .input(z.object({ modelId: z.string() }))
-    .mutation(async ({ input }) => {
-      if (!globalThis.modelManagerService) {
+    .mutation(async ({ input, ctx }) => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
-      return globalThis.modelManagerService.deleteModel(input.modelId);
+      return modelManagerService.deleteModel(input.modelId);
     }),
 
-  setSelectedModel: t.procedure
+  setSelectedModel: procedure
     .input(z.object({ modelId: z.string() }))
-    .mutation(async ({ input }) => {
-      if (!globalThis.modelManagerService) {
+    .mutation(async ({ input, ctx }) => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
-      await globalThis.modelManagerService.setSelectedModel(input.modelId);
+      await modelManagerService.setSelectedModel(input.modelId);
 
       // Notify transcription service about model change
-      if (globalThis.transcriptionService) {
-        await globalThis.transcriptionService.handleModelChange();
+      const transcriptionService = ctx.serviceManager.getService(
+        "transcriptionService",
+      );
+      if (transcriptionService) {
+        await transcriptionService.handleModelChange();
       }
 
       return true;
@@ -138,10 +156,13 @@ export const modelsRouter = t.router({
   // While Observables are deprecated in tRPC, they work without this conflict.
   // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
   // eslint-disable-next-line deprecation/deprecation
-  onDownloadProgress: t.procedure.subscription(() => {
+  onDownloadProgress: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string; progress: DownloadProgress }>(
       (emit) => {
-        if (!globalThis.modelManagerService) {
+        const modelManagerService = ctx.serviceManager.getService(
+          "modelManagerService",
+        );
+        if (!modelManagerService) {
           throw new Error("Model manager service not initialized");
         }
 
@@ -152,17 +173,11 @@ export const modelsRouter = t.router({
           emit.next({ modelId, progress });
         };
 
-        globalThis.modelManagerService.on(
-          "download-progress",
-          handleDownloadProgress,
-        );
+        modelManagerService.on("download-progress", handleDownloadProgress);
 
         // Cleanup function
         return () => {
-          globalThis.modelManagerService?.off(
-            "download-progress",
-            handleDownloadProgress,
-          );
+          modelManagerService?.off("download-progress", handleDownloadProgress);
         };
       },
     );
@@ -170,12 +185,15 @@ export const modelsRouter = t.router({
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // eslint-disable-next-line deprecation/deprecation
-  onDownloadComplete: t.procedure.subscription(() => {
+  onDownloadComplete: procedure.subscription(({ ctx }) => {
     return observable<{
       modelId: string;
       downloadedModel: DownloadedModel;
     }>((emit) => {
-      if (!globalThis.modelManagerService) {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
 
@@ -186,26 +204,23 @@ export const modelsRouter = t.router({
         emit.next({ modelId, downloadedModel });
       };
 
-      globalThis.modelManagerService.on(
-        "download-complete",
-        handleDownloadComplete,
-      );
+      modelManagerService.on("download-complete", handleDownloadComplete);
 
       // Cleanup function
       return () => {
-        globalThis.modelManagerService?.off(
-          "download-complete",
-          handleDownloadComplete,
-        );
+        modelManagerService?.off("download-complete", handleDownloadComplete);
       };
     });
   }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // eslint-disable-next-line deprecation/deprecation
-  onDownloadError: t.procedure.subscription(() => {
+  onDownloadError: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string; error: string }>((emit) => {
-      if (!globalThis.modelManagerService) {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
 
@@ -213,23 +228,23 @@ export const modelsRouter = t.router({
         emit.next({ modelId, error: error.message });
       };
 
-      globalThis.modelManagerService.on("download-error", handleDownloadError);
+      modelManagerService.on("download-error", handleDownloadError);
 
       // Cleanup function
       return () => {
-        globalThis.modelManagerService?.off(
-          "download-error",
-          handleDownloadError,
-        );
+        modelManagerService?.off("download-error", handleDownloadError);
       };
     });
   }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // eslint-disable-next-line deprecation/deprecation
-  onDownloadCancelled: t.procedure.subscription(() => {
+  onDownloadCancelled: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string }>((emit) => {
-      if (!globalThis.modelManagerService) {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
 
@@ -237,26 +252,23 @@ export const modelsRouter = t.router({
         emit.next({ modelId });
       };
 
-      globalThis.modelManagerService.on(
-        "download-cancelled",
-        handleDownloadCancelled,
-      );
+      modelManagerService.on("download-cancelled", handleDownloadCancelled);
 
       // Cleanup function
       return () => {
-        globalThis.modelManagerService?.off(
-          "download-cancelled",
-          handleDownloadCancelled,
-        );
+        modelManagerService?.off("download-cancelled", handleDownloadCancelled);
       };
     });
   }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // eslint-disable-next-line deprecation/deprecation
-  onModelDeleted: t.procedure.subscription(() => {
+  onModelDeleted: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string }>((emit) => {
-      if (!globalThis.modelManagerService) {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
         throw new Error("Model manager service not initialized");
       }
 
@@ -264,14 +276,11 @@ export const modelsRouter = t.router({
         emit.next({ modelId });
       };
 
-      globalThis.modelManagerService.on("model-deleted", handleModelDeleted);
+      modelManagerService.on("model-deleted", handleModelDeleted);
 
       // Cleanup function
       return () => {
-        globalThis.modelManagerService?.off(
-          "model-deleted",
-          handleModelDeleted,
-        );
+        modelManagerService?.off("model-deleted", handleModelDeleted);
       };
     });
   }),

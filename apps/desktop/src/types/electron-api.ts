@@ -18,7 +18,7 @@ export interface ElectronAPI {
   // Model Management API
   getAvailableModels: () => Promise<import("../constants/models").Model[]>;
   getDownloadedModels: () => Promise<
-    Record<string, import("../constants/models").DownloadedModel>
+    Record<string, import("../db/schema").DownloadedModel>
   >;
   isModelDownloaded: (modelId: string) => Promise<boolean>;
   getDownloadProgress: (

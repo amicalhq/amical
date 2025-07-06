@@ -10,15 +10,7 @@ export interface Model {
   checksum?: string; // Optional checksum for validation
 }
 
-export interface DownloadedModel {
-  id: string;
-  name: string;
-  type: string;
-  localPath: string;
-  downloadedAt: string; // ISO date string
-  size: number;
-  checksum?: string;
-}
+// DownloadedModel type is now imported from the database schema
 
 export interface DownloadProgress {
   modelId: string;

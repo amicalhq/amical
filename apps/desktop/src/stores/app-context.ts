@@ -10,7 +10,11 @@ class AppContextStore {
       const serviceManager = ServiceManager.getInstance();
       if (!serviceManager) return; // Silent fail
 
-      const swiftBridge = serviceManager.getSwiftIOBridge();
+      const swiftBridge = serviceManager.getService("swiftIOBridge");
+      if (!swiftBridge) {
+        logger.main.warn("SwiftIOBridge not available");
+        return;
+      }
       const context = await swiftBridge.call("getAccessibilityContext", {
         editableOnly: false,
       });

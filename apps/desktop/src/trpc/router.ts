@@ -7,8 +7,9 @@ import { modelsRouter } from "./routers/models";
 import { settingsRouter } from "./routers/settings";
 import { updaterRouter } from "./routers/updater";
 import { recordingRouter } from "./routers/recording";
+import type { Context } from "./context";
 
-const t = initTRPC.create({
+const t = initTRPC.context<Context>().create({
   isServer: true,
   transformer: superjson,
 });
@@ -56,5 +57,8 @@ export const router = t.router({
   // Recording router
   recording: recordingRouter,
 });
+
+export const procedure = t.procedure;
+export const createRouter = t.router;
 
 export type AppRouter = typeof router;
