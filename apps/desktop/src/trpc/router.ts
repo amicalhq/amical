@@ -1,5 +1,3 @@
-import { initTRPC } from "@trpc/server";
-import superjson from "superjson";
 import { z } from "zod";
 import { vocabularyRouter } from "./routers/vocabulary";
 import { transcriptionsRouter } from "./routers/transcriptions";
@@ -7,16 +5,11 @@ import { modelsRouter } from "./routers/models";
 import { settingsRouter } from "./routers/settings";
 import { updaterRouter } from "./routers/updater";
 import { recordingRouter } from "./routers/recording";
-import type { Context } from "./context";
+import { createRouter, procedure } from "./trpc";
 
-const t = initTRPC.context<Context>().create({
-  isServer: true,
-  transformer: superjson,
-});
-
-export const router = t.router({
+export const router = createRouter({
   // Test procedures
-  greeting: t.procedure.input(z.object({ name: z.string() })).query((req) => {
+  greeting: procedure.input(z.object({ name: z.string() })).query((req) => {
     return {
       text: `Hello ${req.input.name}`,
       timestamp: new Date(), // Date objects require transformation
@@ -24,7 +17,7 @@ export const router = t.router({
   }),
 
   // Example of a simple procedure without input
-  ping: t.procedure.query(() => {
+  ping: procedure.query(() => {
     return {
       message: "pong",
       timestamp: new Date(),
@@ -32,7 +25,7 @@ export const router = t.router({
   }),
 
   // Example mutation
-  echo: t.procedure.input(z.object({ message: z.string() })).mutation((req) => {
+  echo: procedure.input(z.object({ message: z.string() })).mutation((req) => {
     return {
       echo: req.input.message,
       timestamp: new Date(),
@@ -57,8 +50,5 @@ export const router = t.router({
   // Recording router
   recording: recordingRouter,
 });
-
-export const procedure = t.procedure;
-export const createRouter = t.router;
 
 export type AppRouter = typeof router;

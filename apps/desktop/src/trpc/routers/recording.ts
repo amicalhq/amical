@@ -1,5 +1,5 @@
 import { observable } from "@trpc/server/observable";
-import { createRouter, procedure } from "../router";
+import { createRouter, procedure } from "../trpc";
 import type { RecordingState } from "../../types/recording";
 
 export const recordingRouter = createRouter({

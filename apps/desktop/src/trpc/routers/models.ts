@@ -1,6 +1,6 @@
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
-import { createRouter, procedure } from "../router";
+import { createRouter, procedure } from "../trpc";
 import type { Model, DownloadProgress } from "../../constants/models";
 import type { DownloadedModel } from "../../db/schema";
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { dialog } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createRouter, procedure } from "../router";
+import { createRouter, procedure } from "../trpc";
 import {
   getTranscriptions,
   getTranscriptionById,

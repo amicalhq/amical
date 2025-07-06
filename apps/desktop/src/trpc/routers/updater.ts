@@ -1,6 +1,6 @@
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
-import { createRouter, procedure } from "../router";
+import { createRouter, procedure } from "../trpc";
 
 // Download progress type from electron-updater
 interface DownloadProgress {

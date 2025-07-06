@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, procedure } from "../router";
+import { createRouter, procedure } from "../trpc";
 import {
   getVocabulary,
   getVocabularyById,
