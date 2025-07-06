@@ -25,7 +25,7 @@ import { Mutex } from "async-mutex";
 interface ExtendedStreamingSession extends StreamingSession {
   audioFileStream?: fs.WriteStream;
   audioFilePath?: string;
-  audioBuffers?: Buffer[];
+  audioBuffers?: Float32Array[];
 }
 
 export class TranscriptionService {
@@ -168,7 +168,7 @@ export class TranscriptionService {
    */
   async processStreamingChunk(options: {
     sessionId: string;
-    audioChunk: Buffer;
+    audioChunk: Float32Array;
     isFinal?: boolean;
   }): Promise<string> {
     const { sessionId, audioChunk, isFinal = false } = options;
@@ -181,9 +181,8 @@ export class TranscriptionService {
       // Acquire VAD mutex
       await this.vadMutex.acquire();
 
-      const vadResult = await this.vadService.processAudioFrame(
-        audioChunk.buffer as ArrayBuffer,
-      );
+      // Pass Float32Array directly to VAD
+      const vadResult = await this.vadService.processAudioFrame(audioChunk);
 
       // Release VAD mutex
       this.vadMutex.release();
@@ -331,12 +330,25 @@ export class TranscriptionService {
       session.audioBuffers.length > 0 &&
       session.audioFilePath
     ) {
-      // Concatenate all audio buffers
+      // Concatenate all Float32Arrays
       const totalLength = session.audioBuffers.reduce(
-        (acc, buf) => acc + buf.length,
+        (acc, arr) => acc + arr.length,
         0,
       );
-      const combinedBuffer = Buffer.concat(session.audioBuffers, totalLength);
+      const combinedFloat32 = new Float32Array(totalLength);
+      let offset = 0;
+      for (const arr of session.audioBuffers) {
+        combinedFloat32.set(arr, offset);
+        offset += arr.length;
+      }
+
+      // Convert Float32Array to Buffer for WAV conversion
+      const buffer = Buffer.alloc(combinedFloat32.length * 2);
+      for (let i = 0; i < combinedFloat32.length; i++) {
+        const sample = Math.max(-1, Math.min(1, combinedFloat32[i]));
+        buffer.writeInt16LE(Math.floor(sample * 32767), i * 2);
+      }
+      const combinedBuffer = buffer;
 
       // Convert to WAV
       const wavBuffer = convertRawToWav(combinedBuffer);

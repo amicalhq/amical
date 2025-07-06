@@ -31,6 +31,7 @@ export const useAudioCapture = ({
 
   // Subscribe to voice detection updates via tRPC
   api.recording.voiceDetectionUpdates.useSubscription(undefined, {
+    enabled,
     onData: (detected: boolean) => {
       setVoiceDetected(detected);
     },
@@ -73,6 +74,10 @@ export const useAudioCapture = ({
       workletNodeRef.current.port.onmessage = async (event) => {
         if (event.data.type === "audioFrame") {
           const frame = event.data.frame;
+          console.log("AudioCapture: Received frame", {
+            frameLength: frame.length,
+            isFinal: event.data.isFinal,
+          });
           const isFinal = event.data.isFinal || false;
 
           // Convert to ArrayBuffer for IPC

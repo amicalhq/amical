@@ -13,10 +13,16 @@ interface ShortcutData {
 
 const api: ElectronAPI = {
   sendAudioChunk: (
-    chunk: ArrayBuffer,
+    chunk: Float32Array,
     isFinalChunk: boolean = false,
-  ): Promise<void> =>
-    ipcRenderer.invoke("audio-data-chunk", chunk, isFinalChunk),
+  ): Promise<void> => {
+    // Convert Float32Array to ArrayBuffer for IPC transfer
+    const buffer = chunk.buffer.slice(
+      chunk.byteOffset,
+      chunk.byteOffset + chunk.byteLength,
+    );
+    return ipcRenderer.invoke("audio-data-chunk", buffer, isFinalChunk);
+  },
   // Switched to invoke/handle for request-response
   onGlobalShortcut: (callback: (data: ShortcutData) => void) => {
     const handler = (_event: IpcRendererEvent, data: ShortcutData) =>

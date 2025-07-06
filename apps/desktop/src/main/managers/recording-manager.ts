@@ -82,13 +82,14 @@ export class RecordingManager extends EventEmitter {
           throw new Error("Invalid audio chunk type received.");
         }
 
-        const buffer = Buffer.from(chunk);
+        // Convert ArrayBuffer back to Float32Array
+        const float32Array = new Float32Array(chunk);
         logger.audio.info("Received audio chunk", {
-          size: buffer.byteLength,
+          samples: float32Array.length,
           isFinalChunk,
         });
 
-        await this.handleAudioChunk(buffer, isFinalChunk);
+        await this.handleAudioChunk(float32Array, isFinalChunk);
       },
     );
 
@@ -236,7 +237,7 @@ export class RecordingManager extends EventEmitter {
   }
 
   private async handleAudioChunk(
-    chunk: Buffer,
+    chunk: Float32Array,
     isFinalChunk: boolean,
   ): Promise<void> {
     // Validate we're in a recording state
@@ -280,7 +281,7 @@ export class RecordingManager extends EventEmitter {
           isFinal: isFinalChunk,
         });
 
-      logger.audio.debug("Processed audio chunk", {
+      logger.audio.error("Processed audio chunk", {
         chunkSize: chunk.length,
         processingTimeMs: Date.now() - startTime,
         resultLength: transcriptionResult.length,

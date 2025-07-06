@@ -13,7 +13,7 @@ export class VADService extends EventEmitter {
 
   // Configuration
   private readonly WINDOW_SIZE_SAMPLES = 512; // 32ms at 16kHz
-  private readonly SPEECH_THRESHOLD = 0.2;
+  private readonly SPEECH_THRESHOLD = 0.1;
   private readonly REDEMPTION_FRAMES = 8;
 
   // State
@@ -66,6 +66,10 @@ export class VADService extends EventEmitter {
       logger.main.error("Failed to initialize VAD service:", error);
       throw error;
     }
+  }
+
+  getIsSpeaking(): boolean {
+    return this.isSpeaking;
   }
 
   private resetStates(): void {
@@ -138,14 +142,12 @@ export class VADService extends EventEmitter {
     // Start speaking after enough speech frames
     if (!this.isSpeaking && this.speechFrameCount >= 3) {
       this.isSpeaking = true;
-      logger.main.debug("Speech started");
       this.emit("voice-detected", true);
     }
 
     // Stop speaking after enough silence
     if (this.isSpeaking && this.silenceFrameCount >= this.REDEMPTION_FRAMES) {
       this.isSpeaking = false;
-      logger.main.debug("Speech ended");
       this.emit("voice-detected", false);
     }
 
@@ -153,28 +155,25 @@ export class VADService extends EventEmitter {
   }
 
   async processAudioFrame(
-    audioBuffer: ArrayBuffer,
+    audioData: Float32Array,
   ): Promise<{ probability: number; isSpeaking: boolean }> {
-    // Convert ArrayBuffer to Float32Array
-    const float32Array = new Float32Array(audioBuffer);
-
     // Silero VAD requires exactly 512 samples
-    if (float32Array.length !== this.WINDOW_SIZE_SAMPLES) {
+    if (audioData.length !== this.WINDOW_SIZE_SAMPLES) {
       // If we have fewer samples (e.g., final buffer flush), pad with zeros
-      if (float32Array.length < this.WINDOW_SIZE_SAMPLES) {
+      if (audioData.length < this.WINDOW_SIZE_SAMPLES) {
         const paddedArray = new Float32Array(this.WINDOW_SIZE_SAMPLES);
-        paddedArray.set(float32Array);
+        paddedArray.set(audioData);
         // Rest is already zeros
         return this.processBatch(paddedArray);
       } else {
         // If we have more samples, just process the first 512
-        const truncatedArray = float32Array.slice(0, this.WINDOW_SIZE_SAMPLES);
+        const truncatedArray = audioData.slice(0, this.WINDOW_SIZE_SAMPLES);
         return this.processBatch(truncatedArray);
       }
     }
 
     // Process through VAD
-    return this.processBatch(float32Array);
+    return this.processBatch(audioData);
   }
 
   getSpeechState(): boolean {

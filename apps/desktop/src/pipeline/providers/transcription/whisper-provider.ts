@@ -51,11 +51,10 @@ export class WhisperProvider implements TranscriptionProvider {
       } = params;
       const { vocabulary, previousChunk, aggregatedTranscription } = context;
 
-      // Convert audio buffer to the format expected by smart-whisper
-      const audioFloat32Array = await this.convertAudioBuffer(audioData);
+      // Audio data is already Float32Array
 
       // Add frame to buffer with speech probability
-      this.frameBuffer.push(audioFloat32Array);
+      this.frameBuffer.push(audioData);
       this.frameBufferSpeechProbabilities.push(speechProbability);
 
       // Consider it speech if probability is above threshold
@@ -280,29 +279,6 @@ export class WhisperProvider implements TranscriptionProvider {
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);
       throw new Error(`Failed to initialize smart-whisper: ${error}`);
-    }
-  }
-
-  private async convertAudioBuffer(audioData: Buffer): Promise<Float32Array> {
-    try {
-      // Convert buffer to Float32Array (simplified)
-      const float32Array = new Float32Array(audioData.length / 4);
-      for (let i = 0; i < float32Array.length; i++) {
-        float32Array[i] = audioData.readFloatLE(i * 4);
-      }
-      return float32Array;
-    } catch (error) {
-      logger.transcription.warn(
-        "Audio conversion failed, trying alternative method",
-      );
-
-      // Fallback: convert as if it's PCM data
-      const samples = new Float32Array(audioData.length / 2);
-      for (let i = 0; i < samples.length; i++) {
-        const sample = audioData.readInt16LE(i * 2);
-        samples[i] = sample / 32768.0;
-      }
-      return samples;
     }
   }
 

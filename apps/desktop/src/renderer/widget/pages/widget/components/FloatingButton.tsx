@@ -26,11 +26,14 @@ export const FloatingButton: React.FC = () => {
       isFinal: boolean,
     ) => {
       try {
+        // Convert ArrayBuffer to Float32Array
+        const float32Array = new Float32Array(audioBuffer);
+
         // Send frame directly to main process
         // TODO: We need to update the IPC to include speech detection info
-        await window.electronAPI.sendAudioChunk(audioBuffer, isFinal);
+        await window.electronAPI.sendAudioChunk(float32Array, isFinal);
         console.debug(`Sent audio frame`, {
-          size: audioBuffer.byteLength,
+          samples: float32Array.length,
           speechProbability: speechProbability.toFixed(3),
           isFinal,
         });

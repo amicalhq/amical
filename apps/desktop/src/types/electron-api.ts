@@ -13,7 +13,7 @@ export interface ElectronAPI {
   onForceStopMediaRecorder: (callback: () => void) => (() => void) | void;
 
   // Methods called from renderer to main become async (invoke/handle)
-  sendAudioChunk: (chunk: ArrayBuffer, isFinalChunk: boolean) => Promise<void>;
+  sendAudioChunk: (chunk: Float32Array, isFinalChunk: boolean) => Promise<void>;
 
   // Model Management API
   getAvailableModels: () => Promise<import("../constants/models").Model[]>;

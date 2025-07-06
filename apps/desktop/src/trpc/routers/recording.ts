@@ -65,6 +65,9 @@ export const recordingRouter = createRouter({
         return () => {};
       }
 
+      const isSpeaking = vadService.getIsSpeaking();
+      emit.next(isSpeaking);
+
       // Set up listener for voice detection changes
       const handleVoiceDetection = (detected: boolean) => {
         emit.next(detected);

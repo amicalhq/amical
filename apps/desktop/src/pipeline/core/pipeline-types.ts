@@ -9,7 +9,7 @@ export { PipelineContext, SharedPipelineData } from "./context";
 
 // Transcription input parameters
 export interface TranscribeParams {
-  audioData: Buffer;
+  audioData: Float32Array;
   speechProbability?: number; // Speech probability from frontend VAD (0-1)
   context: {
     vocabulary?: Map<string, string>;
