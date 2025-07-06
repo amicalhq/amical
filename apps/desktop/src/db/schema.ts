@@ -104,6 +104,11 @@ export interface AppSettingsData {
     silenceThreshold: number;
     maxRecordingDuration: number;
   };
+  shortcuts?: {
+    pushToTalk?: string;
+    toggleRecording?: string;
+    toggleWindow?: string;
+  };
 }
 
 // Export types for TypeScript

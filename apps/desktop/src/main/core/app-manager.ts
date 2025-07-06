@@ -1,4 +1,4 @@
-import { app, systemPreferences, globalShortcut } from "electron";
+import { app, systemPreferences } from "electron";
 import { initializeDatabase } from "../../db/config";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
@@ -9,6 +9,7 @@ import { EventHandlers } from "./event-handlers";
 export class AppManager {
   private windowManager: WindowManager;
   private serviceManager: ServiceManager;
+  private eventHandlers: EventHandlers | null = null;
 
   constructor() {
     this.windowManager = new WindowManager();
@@ -26,8 +27,8 @@ export class AppManager {
       await this.setupMenu();
 
       // Setup event handlers
-      const eventHandlers = new EventHandlers(this);
-      eventHandlers.setupEventHandlers();
+      this.eventHandlers = new EventHandlers(this);
+      this.eventHandlers.setupEventHandlers();
 
       // Auto-update is now handled by update-electron-app in main.ts
 
@@ -99,6 +100,7 @@ export class AppManager {
     const autoUpdaterService = this.serviceManager.getAutoUpdaterService();
     const settingsService = this.serviceManager.getSettingsService();
     const swiftBridge = this.serviceManager.getSwiftIOBridge();
+    const shortcutManager = this.serviceManager.getShortcutManager();
 
     (globalThis as any).modelManagerService =
       this.serviceManager.getModelManagerService();
@@ -107,6 +109,8 @@ export class AppManager {
     (globalThis as any).logger = logger;
     (globalThis as any).autoUpdaterService = autoUpdaterService;
     (globalThis as any).swiftBridge = swiftBridge;
+    (globalThis as any).shortcutManager = shortcutManager;
+    (globalThis as any).appManager = this;
   }
 
   getWindowManager(): WindowManager {
@@ -129,8 +133,11 @@ export class AppManager {
     return this.serviceManager.getAutoUpdaterService();
   }
 
+  getEventHandlers(): EventHandlers | null {
+    return this.eventHandlers;
+  }
+
   async cleanup(): Promise<void> {
-    globalShortcut.unregisterAll();
     await this.serviceManager.cleanup();
     if (this.windowManager) {
       this.windowManager.cleanup();

@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 
 // Lazy import the main content
 const Content = React.lazy(
@@ -75,6 +76,7 @@ const App: React.FC = () => {
       <Suspense fallback={<LoadingSpinner />}>
         <Content />
       </Suspense>
+      <Toaster />
     </ThemeProvider>
   );
 };

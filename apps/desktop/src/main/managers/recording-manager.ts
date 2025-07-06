@@ -4,6 +4,9 @@ import { logger, logPerformance } from "../logger";
 import { ServiceManager } from "./service-manager";
 import type { RecordingState } from "../../types/recording";
 import { Mutex } from "async-mutex";
+import type { ShortcutManager } from "../services/shortcut-manager";
+
+export type RecordingMode = "idle" | "ptt" | "handsfree";
 
 /**
  * Manages recording state and coordinates audio recording across the application
@@ -13,10 +16,35 @@ export class RecordingManager extends EventEmitter {
   private currentSessionId: string | null = null;
   private recordingState: RecordingState = "idle";
   private recordingMutex = new Mutex();
+  private recordingMode: RecordingMode = "idle";
 
   constructor(private serviceManager: ServiceManager) {
     super();
     this.setupIPCHandlers();
+  }
+
+  // Setup listeners for shortcut events
+  public setupShortcutListeners(shortcutManager: ShortcutManager) {
+    let lastPTTState = false;
+
+    // Handle PTT state changes
+    shortcutManager.on("ptt-state-changed", async (isPressed: boolean) => {
+      // Only act on state changes
+      if (isPressed !== lastPTTState) {
+        lastPTTState = isPressed;
+
+        if (isPressed) {
+          await this.startPTT();
+        } else {
+          await this.stopPTT();
+        }
+      }
+    });
+
+    // Handle toggle recording
+    shortcutManager.on("toggle-recording-triggered", async () => {
+      await this.toggleHandsFree();
+    });
   }
 
   private setState(newState: RecordingState): void {
@@ -145,6 +173,62 @@ export class RecordingManager extends EventEmitter {
       // Session will be cleared when final chunk is processed
       return;
     });
+  }
+
+  public async toggleRecording() {
+    if (this.recordingState === "idle") {
+      await this.startRecording();
+    } else if (this.recordingState === "recording") {
+      await this.stopRecording();
+    } else {
+      logger.audio.warn("Cannot toggle recording in current state", {
+        currentState: this.recordingState,
+      });
+    }
+  }
+
+  // PTT-specific methods
+  public async startPTT() {
+    // Don't start PTT if already in hands-free mode
+    if (this.recordingMode === "handsfree") {
+      logger.audio.info("Ignoring PTT - already in hands-free mode");
+      return;
+    }
+
+    this.recordingMode = "ptt";
+    await this.startRecording();
+  }
+
+  public async stopPTT() {
+    // Only stop if we're actually in PTT mode
+    if (this.recordingMode === "ptt") {
+      this.recordingMode = "idle";
+      await this.stopRecording();
+    }
+  }
+
+  // Hands-free mode toggle
+  public async toggleHandsFree() {
+    if (this.recordingMode === "handsfree") {
+      this.recordingMode = "idle";
+      await this.stopRecording();
+      logger.audio.info("Hands-free mode disabled");
+    } else {
+      // If in PTT mode, just switch to hands-free without restarting
+      if (this.recordingMode === "ptt") {
+        this.recordingMode = "handsfree";
+        logger.audio.info("Switched from PTT to hands-free mode");
+      } else {
+        this.recordingMode = "handsfree";
+        await this.startRecording();
+        logger.audio.info("Hands-free mode enabled");
+      }
+    }
+  }
+
+  // Get current mode
+  public getRecordingMode(): RecordingMode {
+    return this.recordingMode;
   }
 
   private async handleAudioChunk(

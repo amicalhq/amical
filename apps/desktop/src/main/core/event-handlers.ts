@@ -17,39 +17,15 @@ export class EventHandlers {
   private setupSwiftBridgeEventHandlers(): void {
     try {
       const swiftBridge = this.appManager.getSwiftIOBridge();
-      const windowManager = this.appManager.getWindowManager();
 
+      // Handle non-shortcut related events only
       swiftBridge.on("helperEvent", (event: HelperEvent) => {
         logger.swift.debug("Received helperEvent from SwiftIOBridge", {
           event,
         });
 
-        switch (event.type) {
-          case "flagsChanged": {
-            const payload = event.payload;
-            if (payload?.fnKeyPressed !== undefined) {
-              logger.swift.info("Setting recording state", {
-                state: payload.fnKeyPressed,
-              });
-
-              // Use RecordingManager to handle state changes
-              const serviceManager = this.appManager.getServiceManager();
-              const recordingManager = serviceManager.getRecordingManager();
-
-              if (payload.fnKeyPressed) {
-                recordingManager.startRecording();
-              } else {
-                recordingManager.stopRecording();
-              }
-            }
-            break;
-          }
-          case "keyDown":
-          case "keyUp":
-            break;
-          default:
-            break;
-        }
+        // Let ShortcutManager handle all key-related events
+        // This handler can process other helper events if needed
       });
 
       swiftBridge.on("error", (error: Error) => {

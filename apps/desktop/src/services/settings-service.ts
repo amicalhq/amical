@@ -10,6 +10,11 @@ import type { AppSettingsData } from "../db/schema";
 /**
  * Database-backed settings service with typed configuration
  */
+export interface ShortcutsConfig {
+  pushToTalk: string;
+  toggleRecording: string;
+}
+
 export class SettingsService {
   constructor() {}
 
@@ -88,5 +93,29 @@ export class SettingsService {
     recordingSettings: AppSettingsData["recording"],
   ): Promise<void> {
     await updateSettingsSection("recording", recordingSettings);
+  }
+
+  /**
+   * Get shortcuts configuration with defaults
+   */
+  async getShortcuts(): Promise<ShortcutsConfig> {
+    const shortcuts = await getSettingsSection("shortcuts");
+    // Return defaults if not set
+    return {
+      pushToTalk: shortcuts?.pushToTalk || "Fn",
+      toggleRecording: shortcuts?.toggleRecording || "Fn+Space",
+    };
+  }
+
+  /**
+   * Update shortcuts configuration
+   */
+  async setShortcuts(shortcuts: ShortcutsConfig): Promise<void> {
+    // Store empty strings as undefined to clear shortcuts
+    const dataToStore = {
+      pushToTalk: shortcuts.pushToTalk || undefined,
+      toggleRecording: shortcuts.toggleRecording || undefined,
+    };
+    await updateSettingsSection("shortcuts", dataToStore);
   }
 }

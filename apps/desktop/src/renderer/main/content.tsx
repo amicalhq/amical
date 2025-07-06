@@ -65,7 +65,7 @@ const App: React.FC = () => {
         <SidebarProvider
           style={
             {
-              "--sidebar-width": "calc(var(--spacing) * 72)",
+              "--sidebar-width": "calc(var(--spacing) * 52)",
               "--header-height": "calc(var(--spacing) * 12)",
             } as React.CSSProperties
           }
@@ -80,7 +80,7 @@ const App: React.FC = () => {
                 onNavigate={handleNavigation}
                 currentView={currentView}
               />
-              <SidebarInset>
+              <SidebarInset className="mt-0!">
                 <div className="flex flex-1 flex-col min-h-0">
                   <div className="@container/main flex flex-1 flex-col min-h-0 overflow-hidden">
                     <div className="flex-1 overflow-y-auto">

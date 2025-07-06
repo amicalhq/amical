@@ -1,255 +1,198 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { X, Pencil, AlertCircle, Command } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Pencil, X } from "lucide-react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 interface ShortcutInputProps {
   value?: string;
   onChange: (value: string) => void;
-  placeholder?: string;
-  className?: string;
-  isRecording?: boolean;
-  onRecordingChange?: (recording: boolean) => void;
+  isRecordingShortcut?: boolean;
+  onRecordingShortcutChange: (recording: boolean) => void;
+}
+
+const MODIFIER_KEYS = ["Cmd", "Ctrl", "Alt", "Shift", "Fn"];
+const MAX_KEY_COMBINATION_LENGTH = 3;
+
+type ValidationResult = {
+  valid: boolean;
+  shortcut?: string;
+  error?: string;
+};
+
+function validateShortcut(keys: string[]): ValidationResult {
+  if (keys.length === 0) {
+    return { valid: false, error: "No keys detected" };
+  }
+
+  if (keys.length > MAX_KEY_COMBINATION_LENGTH) {
+    return { valid: false, error: "Maximum 3 keys allowed" };
+  }
+
+  const modifierKeys = keys.filter((key) => MODIFIER_KEYS.includes(key));
+  const regularKeys = keys.filter((key) => !MODIFIER_KEYS.includes(key));
+
+  // Single modifier key (e.g., Fn for PTT)
+  if (keys.length === 1 && modifierKeys.length === 1) {
+    return { valid: true, shortcut: modifierKeys[0] };
+  }
+
+  // Single regular key
+  if (modifierKeys.length === 0 && regularKeys.length === 1) {
+    return { valid: true, shortcut: regularKeys[0] };
+  }
+
+  // Modifier(s) + up to 2 regular keys
+  if (
+    modifierKeys.length > 0 &&
+    regularKeys.length > 0 &&
+    regularKeys.length <= 2
+  ) {
+    return {
+      valid: true,
+      shortcut: [...modifierKeys, ...regularKeys].join("+"),
+    };
+  }
+
+  // Multiple regular keys without modifiers
+  if (modifierKeys.length === 0 && regularKeys.length > 1) {
+    return {
+      valid: false,
+      error:
+        "Multiple keys require at least one modifier (Cmd, Ctrl, Alt, Shift, or Fn)",
+    };
+  }
+
+  return { valid: false, error: "Invalid key combination" };
+}
+
+function RecordingDisplay({
+  activeKeys,
+  onCancel,
+}: {
+  activeKeys: string[];
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="inline-flex items-center gap-2 px-3 py-1 bg-muted rounded-md ring-2 ring-primary"
+      tabIndex={0}
+    >
+      {activeKeys.length > 0 ? (
+        <div className="flex items-center gap-1">
+          {activeKeys.map((key, index) => (
+            <kbd
+              key={index}
+              className="px-1.5 py-0.5 text-xs bg-background rounded border"
+            >
+              {key}
+            </kbd>
+          ))}
+        </div>
+      ) : (
+        <span className="text-sm text-muted-foreground">Press keys...</span>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 w-6 p-0"
+        onClick={onCancel}
+      >
+        <X className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+}
+
+function ShortcutDisplay({
+  value,
+  onEdit,
+}: {
+  value?: string;
+  onEdit: () => void;
+}) {
+  return (
+    <>
+      {value && (
+        <kbd
+          onClick={onEdit}
+          className="inline-flex items-center px-3 py-1 bg-muted hover:bg-muted/70 rounded-md text-sm font-mono cursor-pointer transition-colors"
+        >
+          {value}
+        </kbd>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 w-6 p-0"
+        onClick={onEdit}
+      >
+        <Pencil className="h-3 w-3" />
+      </Button>
+    </>
+  );
 }
 
 export function ShortcutInput({
   value,
   onChange,
-  placeholder = "Not set",
-  className,
-  isRecording = false,
-  onRecordingChange,
+  isRecordingShortcut = false,
+  onRecordingShortcutChange,
 }: ShortcutInputProps) {
-  const [keys, setKeys] = useState<Set<string>>(new Set());
-  const inputRef = useRef<HTMLDivElement>(null);
+  const [activeKeys, setActiveKeys] = useState<string[]>([]);
 
+  const handleStartRecording = () => {
+    onRecordingShortcutChange(true);
+  };
+
+  const handleCancelRecording = () => {
+    onRecordingShortcutChange(false);
+    setActiveKeys([]);
+  };
+
+  // Subscribe to key events when recording
+  api.settings.activeKeysUpdates.useSubscription(undefined, {
+    enabled: isRecordingShortcut,
+    onData: (keys: string[]) => {
+      const previousKeys = activeKeys;
+      setActiveKeys(keys);
+
+      // When any key is released, validate the combination
+      if (previousKeys.length > 0 && keys.length < previousKeys.length) {
+        const result = validateShortcut(previousKeys);
+
+        if (result.valid && result.shortcut) {
+          onChange(result.shortcut);
+        } else {
+          toast.error(result.error || "Invalid key combination");
+        }
+
+        onRecordingShortcutChange(false);
+      }
+    },
+    onError: (error) => {
+      console.error("Error subscribing to active keys", error);
+    },
+  });
+
+  // Reset state when recording starts
   useEffect(() => {
-    if (!isRecording) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      console.log("handleKeyDown", e);
-      e.preventDefault();
-      e.stopPropagation();
-
-      const key = getKeyName(e);
-      if (key) {
-        setKeys((prev) => {
-          const newKeys = new Set(prev);
-          newKeys.add(key);
-          return newKeys;
-        });
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Build the shortcut string
-      const shortcut = buildShortcutString(keys);
-      if (shortcut) {
-        onChange(shortcut);
-      }
-
-      onRecordingChange?.(false);
-      setKeys(new Set());
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [isRecording, keys, onChange, onRecordingChange]);
-
-  const handleClick = () => {
-    onRecordingChange?.(true);
-    setKeys(new Set());
-    inputRef.current?.focus();
-  };
-
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onChange("");
-  };
-
-  const getKeyName = (e: KeyboardEvent): string => {
-    const specialKeys: Record<string, string> = {
-      Control: "Ctrl",
-      Meta: "Cmd",
-      Alt: "Alt",
-      Shift: "Shift",
-      " ": "Space",
-      ArrowUp: "Up",
-      ArrowDown: "Down",
-      ArrowLeft: "Left",
-      ArrowRight: "Right",
-      Enter: "Enter",
-      Tab: "Tab",
-      Escape: "Esc",
-      Backspace: "Backspace",
-      Delete: "Delete",
-      Home: "Home",
-      End: "End",
-      PageUp: "PageUp",
-      PageDown: "PageDown",
-      F1: "F1",
-      F2: "F2",
-      F3: "F3",
-      F4: "F4",
-      F5: "F5",
-      F6: "F6",
-      F7: "F7",
-      F8: "F8",
-      F9: "F9",
-      F10: "F10",
-      F11: "F11",
-      F12: "F12",
-    };
-
-    // Handle modifier keys
-    if (e.ctrlKey) keys.add("Ctrl");
-    if (e.metaKey) keys.add("Cmd");
-    if (e.altKey) keys.add("Alt");
-    if (e.shiftKey) keys.add("Shift");
-
-    if (e.key === "Fn" || e.code === "Fn") {
-      keys.add("Fn");
+    if (isRecordingShortcut) {
+      setActiveKeys([]);
     }
-
-    // Get the main key
-    const key = specialKeys[e.key] || e.key.toUpperCase();
-
-    return key;
-  };
-
-  const buildShortcutString = (keys: Set<string>): string => {
-    const modifiers = ["Cmd", "Ctrl", "Alt", "Shift", "Fn"];
-    const sortedModifiers = modifiers.filter((mod) => keys.has(mod));
-    const mainKeys = Array.from(keys).filter((key) => !modifiers.includes(key));
-
-    if (keys.size === 0) return "";
-
-    // Allow single key shortcuts
-    if (mainKeys.length === 0 && sortedModifiers.length > 0) {
-      return sortedModifiers.join("+");
-    }
-
-    return [...sortedModifiers, ...mainKeys].join("+");
-  };
+  }, [isRecordingShortcut]);
 
   return (
     <TooltipProvider>
-      <div className={cn("inline-flex items-center gap-2", className)}>
-        {isRecording ? (
-          <div
-            ref={inputRef}
-            className="inline-flex items-center gap-2 px-3 py-1 bg-muted rounded-md ring-2 ring-primary"
-            tabIndex={0}
-          >
-            <span className="text-sm text-muted-foreground">Press keys...</span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-6 px-2">
-                  <Command className="h-3 w-3 mr-1" />
-                  Special
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem
-                  onClick={() => {
-                    onChange("Fn");
-                    onRecordingChange?.(false);
-                    setKeys(new Set());
-                  }}
-                >
-                  Fn Key
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    onChange("Fn+Space");
-                    onRecordingChange?.(false);
-                    setKeys(new Set());
-                  }}
-                >
-                  Fn+Space
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+      <div className="inline-flex items-center gap-2">
+        {isRecordingShortcut ? (
+          <RecordingDisplay
+            activeKeys={activeKeys}
+            onCancel={handleCancelRecording}
+          />
         ) : (
-          <>
-            {value ? (
-              <kbd
-                onClick={handleClick}
-                className="inline-flex items-center px-3 py-1 bg-muted hover:bg-muted/70 rounded-md text-sm font-mono cursor-pointer transition-colors"
-              >
-                {value}
-              </kbd>
-            ) : (
-              <span
-                onClick={handleClick}
-                className="inline-flex items-center px-3 py-1 text-sm text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-              >
-                {placeholder}
-              </span>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={handleClick}
-            >
-              <Pencil className="h-3 w-3" />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                  <Command className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem
-                  onClick={() => {
-                    onChange("Fn");
-                  }}
-                >
-                  Set to Fn
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    onChange("Fn+Space");
-                  }}
-                >
-                  Set to Fn+Space
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {value && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0"
-                onClick={handleClear}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            )}
-          </>
+          <ShortcutDisplay value={value} onEdit={handleStartRecording} />
         )}
       </div>
     </TooltipProvider>

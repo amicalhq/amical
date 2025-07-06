@@ -6,6 +6,7 @@ import { SwiftIOBridge } from "../../services/platform/swift-bridge-service";
 import { AutoUpdaterService } from "../services/auto-updater";
 import { RecordingManager } from "./recording-manager";
 import { VADService } from "../../services/vad-service";
+import { ShortcutManager } from "../services/shortcut-manager";
 import { createIPCHandler } from "electron-trpc-experimental/main";
 import { router } from "../../trpc/router";
 import { BrowserWindow } from "electron";
@@ -25,6 +26,7 @@ export class ServiceManager {
   private swiftIOBridge: SwiftIOBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
   private recordingManager: RecordingManager | null = null;
+  private shortcutManager: ShortcutManager | null = null;
   private trpcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
   async initialize(): Promise<void> {
@@ -42,6 +44,7 @@ export class ServiceManager {
       await this.initializeVADService();
       await this.initializeAIServices();
       this.initializeRecordingManager();
+      await this.initializeShortcutManager();
       this.initializeAutoUpdater();
       this.initializeTRPCHandler();
 
@@ -132,6 +135,21 @@ export class ServiceManager {
   private initializeRecordingManager(): void {
     this.recordingManager = new RecordingManager(this);
     logger.main.info("Recording manager initialized");
+  }
+
+  private async initializeShortcutManager(): Promise<void> {
+    if (!this.recordingManager || !this.settingsService) {
+      throw new Error(
+        "RecordingManager and SettingsService must be initialized first",
+      );
+    }
+    this.shortcutManager = new ShortcutManager(this.settingsService);
+    await this.shortcutManager.initialize(this.swiftIOBridge);
+
+    // Connect shortcut events to recording manager
+    this.recordingManager.setupShortcutListeners(this.shortcutManager);
+
+    logger.main.info("Shortcut manager initialized");
   }
 
   private initializeAutoUpdater(): void {
@@ -226,6 +244,18 @@ export class ServiceManager {
     return this.vadService;
   }
 
+  getShortcutManager(): ShortcutManager {
+    if (!this.isInitialized) {
+      throw new Error(
+        "ServiceManager not initialized. Call initialize() first.",
+      );
+    }
+    if (!this.shortcutManager) {
+      throw new Error("ShortcutManager failed to initialize");
+    }
+    return this.shortcutManager;
+  }
+
   getTRPCHandler(): ReturnType<typeof createIPCHandler> | null {
     if (!this.isInitialized) {
       throw new Error(
@@ -239,6 +269,10 @@ export class ServiceManager {
   }
 
   async cleanup(): Promise<void> {
+    if (this.shortcutManager) {
+      logger.main.info("Cleaning up shortcut manager...");
+      this.shortcutManager.cleanup();
+    }
     if (this.recordingManager) {
       logger.main.info("Cleaning up recording manager...");
       await this.recordingManager.cleanup();

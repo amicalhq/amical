@@ -36,6 +36,10 @@ const defaultSettings: AppSettingsData = {
     silenceThreshold: 3,
     maxRecordingDuration: 60,
   },
+  shortcuts: {
+    pushToTalk: "Fn",
+    toggleRecording: "",
+  },
 };
 
 // Get all app settings
@@ -90,6 +94,13 @@ export async function updateAppSettings(
     mergedSettings.recording = {
       ...currentSettings.recording,
       ...newSettings.recording,
+    };
+  }
+
+  if (newSettings.shortcuts && currentSettings.shortcuts) {
+    mergedSettings.shortcuts = {
+      ...currentSettings.shortcuts,
+      ...newSettings.shortcuts,
     };
   }
 
