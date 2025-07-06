@@ -130,6 +130,9 @@ const api: ElectronAPI = {
         ipcRenderer.invoke("log-message", "debug", name, ...args),
     }),
   },
+
+  // External link handling
+  openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

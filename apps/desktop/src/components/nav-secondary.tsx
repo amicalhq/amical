@@ -34,7 +34,13 @@ export function NavSecondary({
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
                 isActive={currentView === item.title}
-                onClick={() => onNavigate?.(item)}
+                onClick={async () => {
+                  if (item.external && item.url) {
+                    await window.electronAPI.openExternal(item.url);
+                  } else {
+                    onNavigate?.(item);
+                  }
+                }}
               >
                 <item.icon />
                 <span>{item.title}</span>

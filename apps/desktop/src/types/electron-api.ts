@@ -65,4 +65,7 @@ export interface ElectronAPI {
       debug: (...args: any[]) => void;
     };
   };
+
+  // External link handling
+  openExternal: (url: string) => Promise<void>;
 }
