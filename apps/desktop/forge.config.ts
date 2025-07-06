@@ -355,8 +355,7 @@ const config: ForgeConfig = {
     ), // Required for macOS auto-updates
     new MakerDMG(
       {
-        name: "Amical-{{arch}}",
-        icon: "./assets/logo.icns", // Volume icon (when DMG is mounted)
+        // macOS DMG files will be named like: Amical-0.0.1-arm64.dmg
       },
       ["darwin"],
     ),
