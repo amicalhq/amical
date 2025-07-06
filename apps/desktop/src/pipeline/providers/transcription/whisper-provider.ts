@@ -36,12 +36,19 @@ export class WhisperProvider implements TranscriptionProvider {
     await this.initializeWhisper();
   }
 
-  async transcribe(params: TranscribeParams): Promise<string> {
+  async transcribe(
+    params: TranscribeParams & { flush?: boolean },
+  ): Promise<string> {
     try {
       await this.initializeWhisper();
 
       // Extract parameters from the new structure
-      const { audioData, speechProbability = 0, context } = params;
+      const {
+        audioData,
+        speechProbability = 0,
+        context,
+        flush = false,
+      } = params;
       const { vocabulary, previousChunk, aggregatedTranscription } = context;
 
       // Convert audio buffer to the format expected by smart-whisper
@@ -67,7 +74,7 @@ export class WhisperProvider implements TranscriptionProvider {
       }
 
       // Determine if we should transcribe
-      const shouldTranscribe = this.shouldTranscribe();
+      const shouldTranscribe = flush || this.shouldTranscribe();
 
       if (!shouldTranscribe) {
         // Keep buffering
@@ -77,12 +84,14 @@ export class WhisperProvider implements TranscriptionProvider {
       // Aggregate buffered frames
       const aggregatedAudio = this.aggregateFrames();
 
+      // Clear buffers immediately after aggregation, before async operations
+      this.frameBuffer = [];
+      this.frameBufferSpeechProbabilities = [];
+      this.silenceFrameCount = 0;
+
       // Skip if too short or only silence
       /* if (aggregatedAudio.length < this.FRAME_SIZE * 2) {
         logger.transcription.debug("Skipping transcription - audio too short");
-        this.frameBuffer = [];
-        this.frameBufferSpeechProbabilities = [];
-        this.silenceFrameCount = 0;
         return "";
       } */
 
@@ -123,11 +132,6 @@ export class WhisperProvider implements TranscriptionProvider {
       logger.transcription.debug(
         `Transcription completed, length: ${text.length}`,
       );
-
-      // Clear buffer after successful transcription
-      this.frameBuffer = [];
-      this.frameBufferSpeechProbabilities = [];
-      this.silenceFrameCount = 0;
 
       return text;
     } catch (error) {
@@ -223,23 +227,6 @@ export class WhisperProvider implements TranscriptionProvider {
     }
 
     return audio.slice(startIdx, Math.min(endIdx, audio.length));
-  }
-
-  // Force transcription of any remaining frames
-  async flush(): Promise<string> {
-    if (this.frameBuffer.length === 0) {
-      return "";
-    }
-
-    logger.transcription.error(`Flushing ${this.frameBuffer.length} frames`);
-
-    // Force transcription by setting high silence count
-    this.silenceFrameCount = 999;
-    return this.transcribe({
-      audioData: Buffer.alloc(0), // Empty buffer, we'll use the buffered frames
-      speechProbability: 0,
-      context: {},
-    });
   }
 
   private generateInitialPrompt(
