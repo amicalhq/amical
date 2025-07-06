@@ -240,7 +240,7 @@ const config: ForgeConfig = {
   },
   packagerConfig: {
     asar: {
-      unpack: "{*.node,*.dylib,*.so,*.dll}",
+      unpack: "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**}",
     },
     name: "Amical",
     executableName: "Amical",
