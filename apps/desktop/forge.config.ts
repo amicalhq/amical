@@ -244,7 +244,7 @@ const config: ForgeConfig = {
     },
     name: "Amical",
     executableName: "Amical",
-    icon: "./assets/logo.icns", // Path to your icon file
+    icon: "./assets/logo", // Path to your icon file
     appBundleId: "com.amical.desktop", // Proper bundle ID
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
