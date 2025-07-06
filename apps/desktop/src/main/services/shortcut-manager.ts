@@ -26,6 +26,7 @@ export class ShortcutManager extends EventEmitter {
   };
   private settingsService: SettingsService;
   private swiftIOBridge: SwiftIOBridge | null = null;
+  private isRecordingShortcut: boolean = false;
 
   constructor(settingsService: SettingsService) {
     super();
@@ -50,6 +51,11 @@ export class ShortcutManager extends EventEmitter {
 
   async reloadShortcuts() {
     await this.loadShortcuts();
+  }
+
+  setIsRecordingShortcut(isRecording: boolean) {
+    this.isRecordingShortcut = isRecording;
+    log.info("Shortcut recording state changed", { isRecording });
   }
 
   private setupEventListeners() {
@@ -139,6 +145,11 @@ export class ShortcutManager extends EventEmitter {
   }
 
   private checkShortcuts() {
+    // Skip shortcut detection when recording shortcuts
+    if (this.isRecordingShortcut) {
+      return;
+    }
+
     // Check PTT shortcut
     const isPTTPressed = this.isPTTShortcutPressed();
     this.emit("ptt-state-changed", isPTTPressed);

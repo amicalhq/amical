@@ -136,6 +136,35 @@ export const settingsRouter = t.router({
       }
     }),
 
+  // Set shortcut recording state
+  setShortcutRecordingState: t.procedure
+    .input(z.boolean())
+    .mutation(async ({ input }) => {
+      try {
+        if (!globalThis.shortcutManager) {
+          throw new Error("ShortcutManager not available");
+        }
+
+        globalThis.shortcutManager.setIsRecordingShortcut(input);
+
+        if (globalThis.logger) {
+          globalThis.logger.main.info("Shortcut recording state updated", {
+            isRecording: input,
+          });
+        }
+
+        return true;
+      } catch (error) {
+        if (globalThis.logger) {
+          globalThis.logger.main.error(
+            "Error setting shortcut recording state:",
+            error,
+          );
+        }
+        throw error;
+      }
+    }),
+
   // Active keys subscription for shortcut recording
   activeKeysUpdates: t.procedure.subscription(() => {
     return observable<string[]>((emit) => {

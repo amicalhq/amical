@@ -141,14 +141,18 @@ export function ShortcutInput({
   onRecordingShortcutChange,
 }: ShortcutInputProps) {
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  const setRecordingStateMutation =
+    api.settings.setShortcutRecordingState.useMutation();
 
   const handleStartRecording = () => {
     onRecordingShortcutChange(true);
+    setRecordingStateMutation.mutate(true);
   };
 
   const handleCancelRecording = () => {
     onRecordingShortcutChange(false);
     setActiveKeys([]);
+    setRecordingStateMutation.mutate(false);
   };
 
   // Subscribe to key events when recording
@@ -169,6 +173,7 @@ export function ShortcutInput({
         }
 
         onRecordingShortcutChange(false);
+        setRecordingStateMutation.mutate(false);
       }
     },
     onError: (error) => {

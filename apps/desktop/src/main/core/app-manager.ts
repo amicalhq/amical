@@ -74,8 +74,14 @@ export class AppManager {
     // tRPC handler is now set up in WindowManager when windows are created
 
     if (app.dock) {
-      app.dock.show();
-      logger.main.info("Explicitly showing app in dock");
+      app.dock
+        .show()
+        .then(() => {
+          logger.main.info("Explicitly showing app in dock");
+        })
+        .catch((error) => {
+          logger.main.error("Error showing app in dock", error);
+        });
     } else {
       logger.main.warn("app.dock is not available");
     }

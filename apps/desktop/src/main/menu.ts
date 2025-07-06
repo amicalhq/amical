@@ -156,4 +156,11 @@ export const setupApplicationMenu = (
 
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
+
+  // Add "Version" prefix on macOS About panel
+  if (process.platform === "darwin") {
+    app.setAboutPanelOptions({
+      applicationVersion: `Version ${app.getVersion()}`,
+    });
+  }
 };
