@@ -11,8 +11,11 @@
   "scripts": {
     "start": "pnpm build:swift-helper && electron-forge start",
     "package": "pnpm build:swift-helper && electron-forge package",
-    "make": "pnpm build:swift-helper && electron-forge make",
+    "make": "pnpm build:swift-helper && electron-forge make --platform=darwin --arch=arm64,x64",
     "make:dmg": "pnpm build:swift-helper && electron-forge make --targets=@electron-forge/maker-dmg --platform=darwin --arch=arm64",
+    "make:dmg:x64": "pnpm build:swift-helper && electron-forge make --targets=@electron-forge/maker-dmg --platform=darwin --arch=x64",
+    "make:zip:x64": "pnpm build:swift-helper && electron-forge make --targets=@electron-forge/maker-zip --platform=darwin --arch=x64",
+    "package:x64": "pnpm build:swift-helper && electron-forge package --platform=darwin --arch=x64",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json,mjs,mts,css,mdx}\" --cache --ignore-path=../../.prettierignore",

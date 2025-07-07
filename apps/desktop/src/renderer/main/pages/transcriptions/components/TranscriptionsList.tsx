@@ -123,10 +123,7 @@ export const TranscriptionsList: React.FC = () => {
     if (!text || text.trim() === "") {
       return `no words detected`;
     }
-    const firstSentence = text.split(".")[0];
-    return firstSentence.length > 50
-      ? firstSentence.substring(0, 50) + "..."
-      : firstSentence;
+    return text;
   };
 
   const getWordCount = (text: string) => {
