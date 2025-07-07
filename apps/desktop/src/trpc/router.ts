@@ -5,6 +5,7 @@ import { modelsRouter } from "./routers/models";
 import { settingsRouter } from "./routers/settings";
 import { updaterRouter } from "./routers/updater";
 import { recordingRouter } from "./routers/recording";
+import { widgetRouter } from "./routers/widget";
 import { createRouter, procedure } from "./trpc";
 
 export const router = createRouter({
@@ -49,6 +50,9 @@ export const router = createRouter({
 
   // Recording router
   recording: recordingRouter,
+
+  // Widget router
+  widget: widgetRouter,
 });
 
 export type AppRouter = typeof router;

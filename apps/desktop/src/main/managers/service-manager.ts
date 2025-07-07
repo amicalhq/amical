@@ -7,10 +7,10 @@ import { AutoUpdaterService } from "../services/auto-updater";
 import { RecordingManager } from "./recording-manager";
 import { VADService } from "../../services/vad-service";
 import { ShortcutManager } from "../services/shortcut-manager";
+import { WindowManager } from "../core/window-manager";
 import { createIPCHandler } from "electron-trpc-experimental/main";
 import { router } from "../../trpc/router";
 import { createContext } from "../../trpc/context";
-import { BrowserWindow } from "electron";
 
 /**
  * Service map for type-safe service access
@@ -24,6 +24,7 @@ export interface ServiceMap {
   autoUpdaterService: AutoUpdaterService;
   recordingManager: RecordingManager;
   shortcutManager: ShortcutManager;
+  windowManager: WindowManager;
 }
 
 /**
@@ -42,6 +43,7 @@ export class ServiceManager {
   private autoUpdaterService: AutoUpdaterService | null = null;
   private recordingManager: RecordingManager | null = null;
   private shortcutManager: ShortcutManager | null = null;
+  private windowManager: WindowManager | null = null;
   private trpcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
   async initialize(): Promise<void> {
@@ -215,6 +217,7 @@ export class ServiceManager {
       autoUpdaterService: this.autoUpdaterService ?? undefined,
       recordingManager: this.recordingManager ?? undefined,
       shortcutManager: this.shortcutManager ?? undefined,
+      windowManager: this.windowManager ?? undefined,
     };
 
     return services[serviceName] ?? null;
@@ -254,5 +257,10 @@ export class ServiceManager {
       ServiceManager.instance = new ServiceManager();
     }
     return ServiceManager.instance;
+  }
+
+  setWindowManager(windowManager: WindowManager): void {
+    this.windowManager = windowManager;
+    logger.main.info("Window manager registered with ServiceManager");
   }
 }

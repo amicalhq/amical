@@ -169,7 +169,7 @@ export class WhisperProvider implements TranscriptionProvider {
       return true;
     }
 
-    logger.transcription.error("Not transcribing", {
+    logger.transcription.debug("Not transcribing", {
       bufferDurationMs,
       silenceDurationMs,
       frameBufferLength: this.frameBuffer.length,

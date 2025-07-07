@@ -1,17 +1,24 @@
 import { observable } from "@trpc/server/observable";
 import { createRouter, procedure } from "../trpc";
+import { z } from "zod";
 import type { RecordingState } from "../../types/recording";
+import type { RecordingMode } from "../../main/managers/recording-manager";
+
+interface RecordingStateUpdate {
+  state: RecordingState;
+  mode: RecordingMode;
+}
 
 export const recordingRouter = createRouter({
-  start: procedure.mutation(async ({ ctx }) => {
+  signalStart: procedure.mutation(async ({ ctx }) => {
     const recordingManager = ctx.serviceManager.getService("recordingManager");
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
-    return await recordingManager.startRecording();
+    return await recordingManager.startRecording("hands-free");
   }),
 
-  stop: procedure.mutation(async ({ ctx }) => {
+  signalStop: procedure.mutation(async ({ ctx }) => {
     const recordingManager = ctx.serviceManager.getService("recordingManager");
     if (!recordingManager) {
       throw new Error("Recording manager not available");
@@ -26,7 +33,7 @@ export const recordingRouter = createRouter({
   // TODO: Remove this workaround when electron-trpc is updated to handle native Symbol.asyncDispose
   // eslint-disable-next-line deprecation/deprecation
   stateUpdates: procedure.subscription(({ ctx }) => {
-    return observable<RecordingState>((emit) => {
+    return observable<RecordingStateUpdate>((emit) => {
       const recordingManager =
         ctx.serviceManager.getService("recordingManager");
       if (!recordingManager) {
@@ -34,18 +41,33 @@ export const recordingRouter = createRouter({
       }
 
       // Emit initial state
-      emit.next(recordingManager.getState());
+      emit.next({
+        state: recordingManager.getState(),
+        mode: recordingManager.getRecordingMode(),
+      });
 
       // Set up listener for state changes
       const handleStateChange = (status: RecordingState) => {
-        emit.next(status);
+        emit.next({
+          state: status,
+          mode: recordingManager.getRecordingMode(),
+        });
+      };
+
+      const handleModeChange = (mode: RecordingMode) => {
+        emit.next({
+          state: recordingManager.getState(),
+          mode,
+        });
       };
 
       recordingManager.on("state-changed", handleStateChange);
+      recordingManager.on("mode-changed", handleModeChange);
 
       // Cleanup function
       return () => {
         recordingManager.off("state-changed", handleStateChange);
+        recordingManager.off("mode-changed", handleModeChange);
       };
     });
   }),

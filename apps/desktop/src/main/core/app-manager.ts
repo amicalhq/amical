@@ -14,6 +14,7 @@ export class AppManager {
   constructor() {
     this.windowManager = new WindowManager();
     this.serviceManager = ServiceManager.createInstance();
+    this.serviceManager.setWindowManager(this.windowManager);
   }
 
   async initialize(): Promise<void> {
@@ -87,9 +88,38 @@ export class AppManager {
       "Onboarding completed, restarting app for permissions to take effect",
     );
 
-    // Relaunch the app to ensure all permissions take effect
-    app.relaunch();
-    app.quit();
+    // In development, reload windows instead of relaunching
+    if (process.env.NODE_ENV === "development") {
+      logger.main.info(
+        "Development mode: Reloading windows instead of relaunching",
+      );
+
+      // Close onboarding window
+      const onboardingWindow = this.windowManager.getOnboardingWindow();
+      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+        onboardingWindow.close();
+      }
+
+      // Give a short delay for permissions to register
+      setTimeout(async () => {
+        await this.setupWindows();
+
+        // Force reload all windows to pick up new permissions
+        const mainWindow = this.windowManager.getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.reload();
+        }
+
+        const widgetWindow = this.windowManager.getWidgetWindow();
+        if (widgetWindow && !widgetWindow.isDestroyed()) {
+          widgetWindow.reload();
+        }
+      }, 1000);
+    } else {
+      // Production mode: relaunch the app
+      app.relaunch();
+      app.quit();
+    }
   }
 
   private async setupWindows(): Promise<void> {

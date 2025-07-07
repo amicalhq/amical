@@ -272,7 +272,7 @@ export class TranscriptionService {
         });
       }
 
-      logger.transcription.error("Processed frame", {
+      logger.transcription.debug("Processed frame", {
         sessionId,
         frameSize: audioChunk.length,
         hadTranscription: chunkTranscription.length > 0,

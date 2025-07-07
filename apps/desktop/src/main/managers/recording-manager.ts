@@ -6,7 +6,7 @@ import type { RecordingState } from "../../types/recording";
 import { Mutex } from "async-mutex";
 import type { ShortcutManager } from "../services/shortcut-manager";
 
-export type RecordingMode = "idle" | "ptt" | "handsfree";
+export type RecordingMode = "idle" | "ptt" | "hands-free";
 
 /**
  * Manages recording state and coordinates audio recording across the application
@@ -61,6 +61,18 @@ export class RecordingManager extends EventEmitter {
     this.broadcastStateChange();
   }
 
+  private setMode(newMode: RecordingMode): void {
+    const oldMode = this.recordingMode;
+    this.recordingMode = newMode;
+    logger.audio.info("Recording mode changed", {
+      oldMode,
+      newMode,
+    });
+
+    // Broadcast mode change to all windows
+    this.broadcastModeChange();
+  }
+
   public getState(): RecordingState {
     return this.recordingState;
   }
@@ -68,6 +80,11 @@ export class RecordingManager extends EventEmitter {
   private broadcastStateChange(): void {
     // Emit event for internal listeners (tRPC subscription will pick this up)
     this.emit("state-changed", this.getState());
+  }
+
+  private broadcastModeChange(): void {
+    // Emit event for internal listeners (tRPC subscription will pick this up)
+    this.emit("mode-changed", this.getRecordingMode());
   }
 
   private setupIPCHandlers(): void {
@@ -84,7 +101,7 @@ export class RecordingManager extends EventEmitter {
 
         // Convert ArrayBuffer back to Float32Array
         const float32Array = new Float32Array(chunk);
-        logger.audio.info("Received audio chunk", {
+        logger.audio.debug("Received audio chunk", {
           samples: float32Array.length,
           isFinalChunk,
         });
@@ -107,9 +124,15 @@ export class RecordingManager extends EventEmitter {
     );
   }
 
-  public async startRecording() {
-    console.error("startRecording");
+  public async startRecording(mode: "ptt" | "hands-free") {
     await this.recordingMutex.runExclusive(async () => {
+      // if we were previously in ptt mode, we override
+      // priority is given to hands-free mode
+      // we don't need to check the other way around
+      if (mode === "hands-free") {
+        this.setMode("hands-free");
+      }
+
       // Check if already recording
       if (this.recordingState !== "idle") {
         logger.audio.warn("Cannot start recording - already in progress", {
@@ -119,6 +142,7 @@ export class RecordingManager extends EventEmitter {
       }
 
       this.setState("starting");
+      this.setMode(mode);
 
       // Create session ID
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -149,6 +173,7 @@ export class RecordingManager extends EventEmitter {
   }
 
   public async stopRecording() {
+    console.error("stopRecording called", this.recordingState);
     await this.recordingMutex.runExclusive(async () => {
       // Check if recording
       if (this.recordingState !== "recording") {
@@ -159,6 +184,9 @@ export class RecordingManager extends EventEmitter {
       }
 
       this.setState("stopping");
+
+      // Reset recording mode when stopping
+      this.recordingMode = "idle";
 
       // Restore system audio
       try {
@@ -180,55 +208,30 @@ export class RecordingManager extends EventEmitter {
     });
   }
 
-  public async toggleRecording() {
-    if (this.recordingState === "idle") {
-      await this.startRecording();
-    } else if (this.recordingState === "recording") {
-      await this.stopRecording();
-    } else {
-      logger.audio.warn("Cannot toggle recording in current state", {
-        currentState: this.recordingState,
-      });
-    }
-  }
-
   // PTT-specific methods
   public async startPTT() {
-    // Don't start PTT if already in hands-free mode
-    if (this.recordingMode === "handsfree") {
-      logger.audio.info("Ignoring PTT - already in hands-free mode");
-      return;
-    }
-
-    this.recordingMode = "ptt";
-    await this.startRecording();
+    this.startRecording("ptt");
   }
 
   public async stopPTT() {
-    // Only stop if we're actually in PTT mode
-    if (this.recordingMode === "ptt") {
-      this.recordingMode = "idle";
-      await this.stopRecording();
+    if (this.recordingMode !== "ptt") {
+      return;
     }
+    this.stopRecording();
   }
 
   // Hands-free mode toggle
   public async toggleHandsFree() {
-    if (this.recordingMode === "handsfree") {
-      this.recordingMode = "idle";
-      await this.stopRecording();
-      logger.audio.info("Hands-free mode disabled");
-    } else {
-      // If in PTT mode, just switch to hands-free without restarting
-      if (this.recordingMode === "ptt") {
-        this.recordingMode = "handsfree";
-        logger.audio.info("Switched from PTT to hands-free mode");
-      } else {
-        this.recordingMode = "handsfree";
-        await this.startRecording();
-        logger.audio.info("Hands-free mode enabled");
-      }
+    if (this.recordingState === "idle") {
+      this.startRecording("hands-free");
+      return;
     }
+    if (this.recordingMode === "hands-free") {
+      this.stopRecording();
+      return;
+    }
+    this.startRecording("hands-free");
+    return;
   }
 
   // Get current mode
@@ -245,7 +248,7 @@ export class RecordingManager extends EventEmitter {
       this.recordingState !== "recording" &&
       this.recordingState !== "stopping"
     ) {
-      logger.audio.warn("Received audio chunk while not recording", {
+      logger.audio.error("Received audio chunk while not recording", {
         state: this.recordingState,
         isFinalChunk,
       });
@@ -281,7 +284,7 @@ export class RecordingManager extends EventEmitter {
           isFinal: isFinalChunk,
         });
 
-      logger.audio.error("Processed audio chunk", {
+      logger.audio.debug("Processed audio chunk", {
         chunkSize: chunk.length,
         processingTimeMs: Date.now() - startTime,
         resultLength: transcriptionResult.length,

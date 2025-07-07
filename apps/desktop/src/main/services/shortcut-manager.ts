@@ -168,11 +168,8 @@ export class ShortcutManager extends EventEmitter {
     const pttKeys = this.shortcuts.pushToTalk.split("+");
     const activeKeysList = this.getActiveKeys();
 
-    // Check if PTT keys match active keys exactly
-    return (
-      pttKeys.length === activeKeysList.length &&
-      pttKeys.every((key) => activeKeysList.includes(key))
-    );
+    //! This should only be a subset match
+    return pttKeys.every((key) => activeKeysList.includes(key));
   }
 
   private isToggleRecordingShortcutPressed(): boolean {
