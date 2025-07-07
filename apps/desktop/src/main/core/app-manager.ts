@@ -17,25 +17,27 @@ export class AppManager {
   }
 
   async initialize(): Promise<void> {
-    try {
-      await this.initializeDatabase();
+    await this.initializeDatabase();
 
-      await this.requestPermissions();
-      await this.serviceManager.initialize();
+    const needsOnboarding = await this.checkNeedsOnboarding();
+
+    await this.serviceManager.initialize();
+
+    if (needsOnboarding) {
+      await this.showOnboarding();
+    } else {
       await this.setupWindows();
-      await this.setupMenu();
-
-      // Setup event handlers
-      this.eventHandlers = new EventHandlers(this);
-      this.eventHandlers.setupEventHandlers();
-
-      // Auto-update is now handled by update-electron-app in main.ts
-
-      logger.main.info("Application initialized successfully");
-    } catch (error) {
-      logger.main.error("Error initializing app:", error);
-      throw error;
     }
+
+    await this.setupMenu();
+
+    // Setup event handlers
+    this.eventHandlers = new EventHandlers(this);
+    this.eventHandlers.setupEventHandlers();
+
+    // Auto-update is now handled by update-electron-app in main.ts
+
+    logger.main.info("Application initialized successfully");
   }
 
   private async initializeDatabase(): Promise<void> {
@@ -45,26 +47,49 @@ export class AppManager {
     );
   }
 
-  private async requestPermissions(): Promise<void> {
-    if (process.platform === "darwin") {
-      const accessibilityEnabled =
-        systemPreferences.isTrustedAccessibilityClient(false);
-      if (!accessibilityEnabled) {
-        logger.main.debug(
-          "Please enable accessibility permissions in System Preferences > Security & Privacy > Privacy > Accessibility",
-        );
-      }
+  private async checkNeedsOnboarding(): Promise<boolean> {
+    // Force show onboarding for development testing
+    if (process.env.FORCE_ONBOARDING === "true") {
+      logger.main.info("Forcing onboarding window for testing");
+      return true;
     }
 
-    const microphoneEnabled =
+    if (process.platform !== "darwin") {
+      // For non-macOS platforms, we might still want to check microphone
+      const microphoneStatus =
+        systemPreferences.getMediaAccessStatus("microphone");
+      return microphoneStatus !== "granted";
+    }
+
+    // Check both microphone and accessibility permissions on macOS
+    const microphoneStatus =
       systemPreferences.getMediaAccessStatus("microphone");
-    logger.main.info("Microphone access status:", {
-      status: microphoneEnabled,
+    const accessibilityStatus =
+      systemPreferences.isTrustedAccessibilityClient(false);
+
+    logger.main.info("Permission status:", {
+      microphone: microphoneStatus,
+      accessibility: accessibilityStatus,
     });
 
-    if (microphoneEnabled !== "granted") {
-      await systemPreferences.askForMediaAccess("microphone");
-    }
+    return microphoneStatus !== "granted" || !accessibilityStatus;
+  }
+
+  private async showOnboarding(): Promise<void> {
+    this.windowManager.createOnboardingWindow();
+
+    // The onboarding window will handle the permission flow
+    // and call back to complete setup when done
+  }
+
+  completeOnboarding(): void {
+    logger.main.info(
+      "Onboarding completed, restarting app for permissions to take effect",
+    );
+
+    // Relaunch the app to ensure all permissions take effect
+    app.relaunch();
+    app.quit();
   }
 
   private async setupWindows(): Promise<void> {

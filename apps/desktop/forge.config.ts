@@ -356,6 +356,7 @@ const config: ForgeConfig = {
     new MakerDMG(
       {
         // macOS DMG files will be named like: Amical-0.0.1-arm64.dmg
+        icon: "./assets/logo.icns",
       },
       ["darwin"],
     ),
@@ -378,6 +379,11 @@ const config: ForgeConfig = {
           config: "vite.preload.config.mts",
           target: "preload",
         },
+        {
+          entry: "src/main/onboarding-preload.ts",
+          config: "vite.onboarding-preload.config.mts",
+          target: "preload",
+        },
       ],
       renderer: [
         {
@@ -387,6 +393,10 @@ const config: ForgeConfig = {
         {
           name: "widget_window",
           config: "vite.widget.config.mts",
+        },
+        {
+          name: "onboarding_window",
+          config: "vite.onboarding.config.mts",
         },
       ],
     }),

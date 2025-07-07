@@ -6,10 +6,12 @@ import { ServiceManager } from "../managers/service-manager";
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 declare const WIDGET_WINDOW_VITE_NAME: string;
+declare const ONBOARDING_WINDOW_VITE_NAME: string;
 
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null;
   private widgetWindow: BrowserWindow | null = null;
+  private onboardingWindow: BrowserWindow | null = null;
   private widgetDisplayId: number | null = null;
   private cursorPollingInterval: NodeJS.Timeout | null = null;
 
@@ -144,6 +146,65 @@ export class WindowManager {
     logger.main.info("Widget window shown");
   }
 
+  createOnboardingWindow(): void {
+    if (this.onboardingWindow && !this.onboardingWindow.isDestroyed()) {
+      this.onboardingWindow.show();
+      this.onboardingWindow.focus();
+      return;
+    }
+
+    this.onboardingWindow = new BrowserWindow({
+      width: 700,
+      height: 600,
+      frame: false,
+      resizable: false,
+      center: true,
+      modal: true,
+      webPreferences: {
+        preload: path.join(__dirname, "onboarding-preload.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+      const devUrl = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+      devUrl.pathname = "onboarding.html";
+      this.onboardingWindow.loadURL(devUrl.toString());
+    } else {
+      this.onboardingWindow.loadFile(
+        path.join(
+          __dirname,
+          `../renderer/${ONBOARDING_WINDOW_VITE_NAME}/onboarding.html`,
+        ),
+      );
+    }
+
+    this.onboardingWindow.on("closed", () => {
+      this.onboardingWindow = null;
+    });
+
+    // Disable main window while onboarding is open
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.setEnabled(false);
+    }
+
+    logger.main.info("Onboarding window created");
+  }
+
+  closeOnboardingWindow(): void {
+    if (this.onboardingWindow && !this.onboardingWindow.isDestroyed()) {
+      this.onboardingWindow.close();
+    }
+
+    // Re-enable main window
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.setEnabled(true);
+      this.mainWindow.show();
+      this.mainWindow.focus();
+    }
+  }
+
   private setupDisplayChangeNotifications(): void {
     // Set up comprehensive display event listeners
     screen.on("display-added", () => this.handleDisplayChange("display-added"));
@@ -267,8 +328,12 @@ export class WindowManager {
     return this.widgetWindow;
   }
 
+  getOnboardingWindow(): BrowserWindow | null {
+    return this.onboardingWindow;
+  }
+
   getAllWindows(): (BrowserWindow | null)[] {
-    return [this.mainWindow, this.widgetWindow];
+    return [this.mainWindow, this.widgetWindow, this.onboardingWindow];
   }
 
   openAllDevTools(): void {
