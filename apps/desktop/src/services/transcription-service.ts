@@ -16,16 +16,16 @@ import { VADService } from "./vad-service";
 import { app } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { convertRawToWav } from "../utils/audio-converter";
+
+import { StreamingWavWriter } from "../utils/streaming-wav-writer";
 import { Mutex } from "async-mutex";
 
 /**
  * Service for audio transcription and optional formatting
  */
 interface ExtendedStreamingSession extends StreamingSession {
-  audioFileStream?: fs.WriteStream;
+  wavWriter?: StreamingWavWriter;
   audioFilePath?: string;
-  audioBuffers?: Float32Array[];
 }
 
 export class TranscriptionService {
@@ -217,11 +217,14 @@ export class TranscriptionService {
       // Create audio file for this session
       const audioFilePath = await this.createAudioFile(sessionId);
 
+      // Create streaming WAV writer
+      const wavWriter = new StreamingWavWriter(audioFilePath);
+
       session = {
         context: streamingContext,
         transcriptionResults: [],
         audioFilePath,
-        audioBuffers: [],
+        wavWriter,
       };
 
       this.streamingSessions.set(sessionId, session);
@@ -231,9 +234,9 @@ export class TranscriptionService {
       });
     }
 
-    // Buffer audio chunks - we'll write WAV at the end
-    if (audioChunk.length > 0) {
-      session.audioBuffers!.push(audioChunk);
+    // Write audio chunk to WAV file immediately
+    if (audioChunk.length > 0 && session.wavWriter) {
+      await session.wavWriter.appendAudio(audioChunk);
     }
 
     // Process chunk if it has content
@@ -324,42 +327,13 @@ export class TranscriptionService {
       }
       */
 
-    // Convert buffered audio to WAV and save
-    if (
-      session.audioBuffers &&
-      session.audioBuffers.length > 0 &&
-      session.audioFilePath
-    ) {
-      // Concatenate all Float32Arrays
-      const totalLength = session.audioBuffers.reduce(
-        (acc, arr) => acc + arr.length,
-        0,
-      );
-      const combinedFloat32 = new Float32Array(totalLength);
-      let offset = 0;
-      for (const arr of session.audioBuffers) {
-        combinedFloat32.set(arr, offset);
-        offset += arr.length;
-      }
-
-      // Convert Float32Array to Buffer for WAV conversion
-      const buffer = Buffer.alloc(combinedFloat32.length * 2);
-      for (let i = 0; i < combinedFloat32.length; i++) {
-        const sample = Math.max(-1, Math.min(1, combinedFloat32[i]));
-        buffer.writeInt16LE(Math.floor(sample * 32767), i * 2);
-      }
-      const combinedBuffer = buffer;
-
-      // Convert to WAV
-      const wavBuffer = convertRawToWav(combinedBuffer);
-
-      // Write WAV file
-      await fs.promises.writeFile(session.audioFilePath, wavBuffer);
-
-      logger.transcription.info("Saved audio as WAV file", {
+    // Finalize the WAV file
+    if (session.wavWriter) {
+      await session.wavWriter.finalize();
+      logger.transcription.info("Finalized WAV file", {
         sessionId,
         filePath: session.audioFilePath,
-        size: wavBuffer.length,
+        dataSize: session.wavWriter.getDataSize(),
       });
     }
 

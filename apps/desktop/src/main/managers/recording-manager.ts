@@ -173,7 +173,6 @@ export class RecordingManager extends EventEmitter {
   }
 
   public async stopRecording() {
-    console.error("stopRecording called", this.recordingState);
     await this.recordingMutex.runExclusive(async () => {
       // Check if recording
       if (this.recordingState !== "recording") {

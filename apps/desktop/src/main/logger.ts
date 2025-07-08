@@ -16,8 +16,15 @@ const envLogLevel = process.env.LOG_LEVEL as
   | "info"
   | "debug"
   | undefined;
-const defaultFileLevel: "debug" | "info" = isDev ? "debug" : "info";
-const defaultConsoleLevel: "debug" | "warn" = isDev ? "debug" : "warn";
+
+// If LOG_DEBUG_SCOPES is set, we need to allow debug messages through the transport
+// so they can be filtered by scope later
+const hasDebugScopes = !!process.env.LOG_DEBUG_SCOPES?.trim();
+
+const defaultFileLevel: "debug" | "info" =
+  isDev || hasDebugScopes ? "debug" : "info";
+const defaultConsoleLevel: "debug" | "warn" =
+  isDev || hasDebugScopes ? "debug" : "warn";
 
 log.transports.file.level = envLogLevel || defaultFileLevel;
 log.transports.console.level = envLogLevel || defaultConsoleLevel;
