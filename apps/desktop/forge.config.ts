@@ -43,8 +43,8 @@ export const EXTERNAL_DEPENDENCIES = [
 
 const config: ForgeConfig = {
   hooks: {
-    prePackage: async () => {
-      console.error("prePackage");
+    prePackage: async (_config, platformArch) => {
+      const [platform, arch] = platformArch.split("-");
       const projectRoot = normalize(__dirname);
       // In a monorepo, node_modules are typically at the root level
       const monorepoRoot = join(projectRoot, "../../"); // Go up to monorepo root
@@ -133,7 +133,12 @@ const config: ForgeConfig = {
       }
 
       // Prune onnxruntime-node to keep only the required binary
-      console.log("Pruning onnxruntime-node binaries...");
+      const targetPlatform = platform;
+      const targetArch = arch;
+
+      console.log(
+        `Pruning onnxruntime-node binaries for ${targetPlatform}/${targetArch}...`,
+      );
       const onnxBinRoot = join(localNodeModules, "onnxruntime-node", "bin");
       if (existsSync(onnxBinRoot)) {
         const napiVersionDirs = readdirSync(onnxBinRoot);
@@ -146,18 +151,18 @@ const config: ForgeConfig = {
             const platformPath = join(napiVersionPath, platformDir);
             if (!statSync(platformPath).isDirectory()) continue;
 
-            // Delete other platform directories
-            if (platformDir !== process.platform) {
+            // Delete unused platforms except Linux (keep for compatibility)
+            if (platformDir !== targetPlatform && platformDir !== "linux") {
               console.log(`- Deleting unused platform: ${platformPath}`);
               rmSync(platformPath, { recursive: true, force: true });
-            } else {
+            } else if (platformDir === targetPlatform) {
               // Now in the correct platform dir, prune architectures
               const archDirs = readdirSync(platformPath);
               for (const archDir of archDirs) {
                 const archPath = join(platformPath, archDir);
                 if (!statSync(archPath).isDirectory()) continue;
 
-                if (archDir !== process.arch) {
+                if (archDir !== targetArch) {
                   console.log(`- Deleting unused arch: ${archPath}`);
                   rmSync(archPath, { recursive: true, force: true });
                 }
@@ -240,14 +245,16 @@ const config: ForgeConfig = {
   },
   packagerConfig: {
     asar: {
-      unpack: "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**}",
+      unpack:
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/onnxruntime-node/bin/**}",
     },
     name: "Amical",
     executableName: "Amical",
     icon: "./assets/logo", // Path to your icon file
     appBundleId: "com.amical.desktop", // Proper bundle ID
     extraResource: [
-      "../../packages/native-helpers/swift-helper/bin",
+      "../../packages/native-helpers/swift-helper/bin/SwiftHelper",
+      "../../packages/native-helpers/windows-helper/bin/WindowsHelper.exe",
       "./src/db/migrations",
       "./src/assets",
     ],

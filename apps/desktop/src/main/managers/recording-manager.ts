@@ -150,12 +150,12 @@ export class RecordingManager extends EventEmitter {
 
       // Mute system audio
       try {
-        const swiftBridge = this.serviceManager.getService("swiftIOBridge");
-        if (swiftBridge) {
-          await swiftBridge.call("muteSystemAudio", {});
+        const nativeBridge = this.serviceManager.getService("nativeBridge");
+        if (nativeBridge) {
+          await nativeBridge.call("muteSystemAudio", {});
         }
       } catch (error) {
-        logger.main.warn("Swift bridge not available for audio muting");
+        logger.main.warn("Native bridge not available for audio muting");
       }
 
       // Refresh accessibility context - fire and forget
@@ -189,12 +189,12 @@ export class RecordingManager extends EventEmitter {
 
       // Restore system audio
       try {
-        const swiftBridge = this.serviceManager.getService("swiftIOBridge");
-        if (swiftBridge) {
-          await swiftBridge.call("restoreSystemAudio", {});
+        const nativeBridge = this.serviceManager.getService("nativeBridge");
+        if (nativeBridge) {
+          await nativeBridge.call("restoreSystemAudio", {});
         }
       } catch (error) {
-        logger.main.warn("Swift bridge not available for audio restore");
+        logger.main.warn("Native bridge not available for audio restore");
       }
 
       logger.audio.info("Recording stop initiated", {
@@ -334,14 +334,14 @@ export class RecordingManager extends EventEmitter {
     }
 
     try {
-      const swiftBridge = this.serviceManager.getService("swiftIOBridge");
+      const nativeBridge = this.serviceManager.getService("nativeBridge");
 
       logger.main.info("Pasting transcription to active application", {
         textLength: transcription.length,
       });
 
-      if (swiftBridge) {
-        swiftBridge.call("pasteText", {
+      if (nativeBridge) {
+        nativeBridge.call("pasteText", {
           transcript: transcription,
         });
       }
