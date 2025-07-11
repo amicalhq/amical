@@ -36,6 +36,10 @@ export const TranscriptionsList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
 
+  // Get shortcuts data
+  const shortcutsQuery = api.settings.getShortcuts.useQuery();
+  const pushToTalkShortcut = shortcutsQuery.data?.pushToTalk || "";
+
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
     {
@@ -154,9 +158,8 @@ export const TranscriptionsList: React.FC = () => {
           <p className="text-sm text-muted-foreground max-w-sm">
             {searchTerm
               ? "Try adjusting your search terms."
-              : "Start recording to see your transcriptions here."}
+              : `Click on the widget to start dictation or press and hold the PTT shortcut key${pushToTalkShortcut ? ` (${pushToTalkShortcut})` : ""}.`}
           </p>
-          {!searchTerm && <Button className="mt-4">Start Recording</Button>}
         </div>
       </CardContent>
     </Card>

@@ -13,16 +13,16 @@ const StopButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
 }) => (
   <button
     onClick={onClick}
-    className="flex items-center justify-center w-[20px] h-[20px] bg-red-500 hover:bg-red-600 rounded transition-colors"
+    className="flex items-center justify-center w-[20px] h-[20px]rounded transition-colors"
     aria-label="Stop recording"
   >
-    <Square className="w-[12px] h-[12px] text-white fill-white" />
+    <Square className="w-[12px] h-[12px] text-red-500 fill-red-500" />
   </button>
 );
 
 // Separate component for the processing indicator
 const ProcessingIndicator: React.FC = () => (
-  <div className="flex gap-[4px] items-center justify-center">
+  <div className="flex gap-[4px] items-center justify-center flex-1 h-6">
     <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
     <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
     <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce" />
@@ -41,7 +41,7 @@ const WaveformVisualization: React.FC<{
         index={index}
         isRecording={isRecording}
         voiceDetected={voiceDetected}
-        baseHeight={100}
+        baseHeight={60}
         silentHeight={20}
       />
     ))}
@@ -138,11 +138,13 @@ export const FloatingButton: React.FC = () => {
     if (isHandsFreeMode && isRecording) {
       return (
         <>
-          <WaveformVisualization
-            isRecording={isRecording}
-            voiceDetected={voiceDetected}
-          />
-          <div className="ml-[4px]">
+          <div className="justify-center items-center flex flex-1 gap-1">
+            <WaveformVisualization
+              isRecording={isRecording}
+              voiceDetected={voiceDetected}
+            />
+          </div>
+          <div className="h-full items-center flex mr-2">
             <StopButton onClick={handleStopClick} />
           </div>
         </>
@@ -151,32 +153,37 @@ export const FloatingButton: React.FC = () => {
 
     // Show waveform visualization for all other states
     return (
-      <WaveformVisualization
-        isRecording={isRecording}
-        voiceDetected={voiceDetected}
-      />
+      <button
+        className="justify-center items-center flex flex-1 gap-1 h-full w-full"
+        role="button"
+        onClick={handleButtonClick}
+      >
+        <WaveformVisualization
+          isRecording={isRecording}
+          voiceDetected={voiceDetected}
+        />
+      </button>
     );
   };
 
   return (
-    <button
-      role="button"
-      onClick={handleButtonClick}
+    <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={`
         transition-all duration-200 ease-in-out
-        ${expanded ? "h-[32px] w-[112px]" : "h-[16px] w-[48px]"}
-        rounded-full border-2 border-text-muted bg-black/50 border-muted-foreground
+        ${expanded ? "h-[24px] w-[96px]" : "h-[8px] w-[48px]"}
+        bg-black/70 rounded-[24px] backdrop-blur-md ring-[1px] ring-black/60 shadow-[0px_0px_15px_0px_rgba(0,0,0,0.40)]
+        before:content-[''] before:absolute before:inset-[1px] before:rounded-[23px] before:outline before:outline-white/15 before:pointer-events-none
         mb-2 cursor-pointer select-none
       `}
       style={{ pointerEvents: "auto" }}
     >
       {expanded && (
-        <div className="flex gap-[2px] items-end h-[40%] justify-center w-full">
+        <div className="flex gap-[2px] h-full w-full justify-between">
           {renderWidgetContent()}
         </div>
       )}
-    </button>
+    </div>
   );
 };

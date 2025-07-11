@@ -19,6 +19,9 @@
     "node": ">=24"
   },
   "pnpm": {
+    "overrides": {
+      "@electron-forge/maker-dmg": "https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz"
+    },
     "ignoredBuiltDependencies": [
       "@tailwindcss/oxide",
       "core-js-pure",

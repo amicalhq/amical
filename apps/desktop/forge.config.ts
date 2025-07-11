@@ -355,8 +355,10 @@ const config: ForgeConfig = {
     ), // Required for macOS auto-updates
     new MakerDMG(
       {
+        //! @see https://github.com/electron/forge/issues/3517#issuecomment-2428129194
         // macOS DMG files will be named like: Amical-0.0.1-arm64.dmg
         icon: "./assets/logo.icns",
+        background: "./assets/dmg_bg.tiff",
       },
       ["darwin"],
     ),

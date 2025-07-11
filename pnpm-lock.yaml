@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@electron-forge/maker-dmg': https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz
+
 importers:
 
   .:
@@ -274,8 +277,8 @@ importers:
         specifier: ^7.8.1
         version: 7.8.1
       '@electron-forge/maker-dmg':
-        specifier: ^7.8.1
-        version: 7.8.1
+        specifier: https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz
+        version: '@fellow/maker-dmg@7.4.0'
       '@electron-forge/maker-rpm':
         specifier: ^7.8.1
         version: 7.8.1
@@ -872,16 +875,16 @@ packages:
     resolution: {integrity: sha512-jkh0QPW5p0zmruu1E8+2XNufc4UMxy13WLJcm7hn9jbaXKLkMbKuEvhrN1tH/9uGp1mhr/t8sC4N67gP+gS87w==}
     engines: {node: '>= 16.4.0'}
 
+  '@electron-forge/maker-base@7.4.0':
+    resolution: {integrity: sha512-LwWS4VPdwjISl1KpLhmM1Qr1M3sRTTQ/RsX+GlFd7cQ1W/FsgxMjaTG4Od1d+a5CGVTh3s6X2g99TSUfxjOveg==}
+    engines: {node: '>= 16.4.0'}
+
   '@electron-forge/maker-base@7.8.1':
     resolution: {integrity: sha512-GUZqschGuEBzSzE0bMeDip65IDds48DZXzldlRwQ+85SYVA6RMU2AwDDqx3YiYsvP2OuxKruuqIJZtOF5ps4FQ==}
     engines: {node: '>= 16.4.0'}
 
   '@electron-forge/maker-deb@7.8.1':
     resolution: {integrity: sha512-tjjeesQtCP5Xht1X7gl4+K9bwoETPmQfBkOVAY/FZIxPj40uQh/hOUtLX2tYENNGNVZ1ryDYRs8TuPi+I41Vfw==}
-    engines: {node: '>= 16.4.0'}
-
-  '@electron-forge/maker-dmg@7.8.1':
-    resolution: {integrity: sha512-l449QvY2Teu+J9rHnjkTHEm/wOJ1LRfmrQ2QkGtFoTRcqvFWdUAEN8nK2/08w3j2h6tvOY3QSUjRzXrhJZRNRA==}
     engines: {node: '>= 16.4.0'}
 
   '@electron-forge/maker-rpm@7.8.1':
@@ -922,6 +925,10 @@ packages:
     resolution: {integrity: sha512-hjRSJ3/JwKHgUNuvJo4vTPBJQQyvF72QOudHr+WSXMSAPasTwfDhvGaTS54mQqcKlOQ53cwHQjWO0xVEwQYQ0g==}
     engines: {node: '>= 16.4.0'}
 
+  '@electron-forge/shared-types@7.4.0':
+    resolution: {integrity: sha512-5Ehy6enUjBaU08odf9u9TOhmOVXlqobzMvKUixtkdAWgV1XZAUJmn+p21xhj0IkO92MQiXMGv66w9pDNjRT8uQ==}
+    engines: {node: '>= 16.4.0'}
+
   '@electron-forge/shared-types@7.8.1':
     resolution: {integrity: sha512-guLyGjIISKQQRWHX+ugmcjIOjn2q/BEzCo3ioJXFowxiFwmZw/oCZ2KlPig/t6dMqgUrHTH5W/F0WKu0EY4M+Q==}
     engines: {node: '>= 16.4.0'}
@@ -945,6 +952,10 @@ packages:
   '@electron-forge/template-webpack@7.8.1':
     resolution: {integrity: sha512-DA77o9kTCHrq+W211pyNP49DyAt0d1mzMp2gisyNz7a+iKvlv2DsMAeRieLoCQ44akb/z8ZsL0YLteSjKLy4AA==}
     engines: {node: '>= 16.4.0'}
+
+  '@electron-forge/tracer@7.4.0':
+    resolution: {integrity: sha512-F4jbnDn4yIZjmky1FZ6rgBKTM05AZQQfHkyJW2hdS4pDKJjdKAqWytoZKDi1/S6Cr6tN+DD0TFGD3V0i6HPHYQ==}
+    engines: {node: '>= 14.17.5'}
 
   '@electron-forge/tracer@7.8.1':
     resolution: {integrity: sha512-r2i7aHVp2fylGQSPDw3aTcdNfVX9cpL1iL2MKHrCRNwgrfR+nryGYg434T745GGm1rNQIv5Egdkh5G9xf00oWA==}
@@ -1477,6 +1488,10 @@ packages:
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
+
+  '@fellow/maker-dmg@7.4.0':
+    resolution: {integrity: sha512-xyjpqqni/wIADudqI1gDru/16Jekoidip3GVpXdc1h7dU5cHDpwQjRWefZoWBZpTBe7eevCHI2icuA/VZO5a4g==}
+    engines: {node: '>= 16.4.0'}
 
   '@floating-ui/core@1.7.0':
     resolution: {integrity: sha512-FRdBLykrPPA6P76GGGqlex/e7fbe0F1ykgxHYNXQsH/iTEtjMj/f9bpY5oQqbjt5VgZvgz/uKXbGuROijh3VLA==}
@@ -3209,9 +3224,6 @@ packages:
     resolution: {integrity: sha512-Kqo+gKJleFB+GkKiSHCCb4RB46VDBTWRKdp08RQ4rtL60+SU89M6F7gpTGG/4nL2eYD98mOKp3Lyzfk/Auht7A==}
     hasBin: true
 
-  '@types/appdmg@0.5.5':
-    resolution: {integrity: sha512-G+n6DgZTZFOteITE30LnWj+HRVIGr7wMlAiLWOO02uJFWVEitaPU9JVXm9wJokkgshBawb2O1OykdcsmkkZfgg==}
-
   '@types/better-sqlite3@7.6.13':
     resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
 
@@ -4422,9 +4434,9 @@ packages:
     os: [darwin, linux]
     hasBin: true
 
-  electron-installer-dmg@5.0.1:
-    resolution: {integrity: sha512-qOa1aAQdX57C+vzhDk3549dd/PRlNL4F8y736MTD1a43qptD+PvHY97Bo9gSf+OZ8iUWE7BrYSpk/FgLUe40EA==}
-    engines: {node: '>= 16'}
+  electron-installer-dmg@4.0.0:
+    resolution: {integrity: sha512-g3W6XnyUa7QGrAF7ViewHdt6bXV2KYU1Pm1CY3pZpp+H6mOjCHHAhf/iZAxtaX1ERCb+SQHz7xSsAHuNH9I8ZQ==}
+    engines: {node: '>= 12.13.0'}
     hasBin: true
 
   electron-installer-redhat@3.4.0:
@@ -8920,6 +8932,15 @@ snapshots:
       - encoding
       - supports-color
 
+  '@electron-forge/maker-base@7.4.0':
+    dependencies:
+      '@electron-forge/shared-types': 7.4.0
+      fs-extra: 10.1.0
+      which: 2.0.2
+    transitivePeerDependencies:
+      - bluebird
+      - supports-color
+
   '@electron-forge/maker-base@7.8.1':
     dependencies:
       '@electron-forge/shared-types': 7.8.1
@@ -8935,17 +8956,6 @@ snapshots:
       '@electron-forge/shared-types': 7.8.1
     optionalDependencies:
       electron-installer-debian: 3.2.0
-    transitivePeerDependencies:
-      - bluebird
-      - supports-color
-
-  '@electron-forge/maker-dmg@7.8.1':
-    dependencies:
-      '@electron-forge/maker-base': 7.8.1
-      '@electron-forge/shared-types': 7.8.1
-      fs-extra: 10.1.0
-    optionalDependencies:
-      electron-installer-dmg: 5.0.1
     transitivePeerDependencies:
       - bluebird
       - supports-color
@@ -9048,6 +9058,16 @@ snapshots:
       - encoding
       - supports-color
 
+  '@electron-forge/shared-types@7.4.0':
+    dependencies:
+      '@electron-forge/tracer': 7.4.0
+      '@electron/packager': 18.3.6
+      '@electron/rebuild': 3.7.2
+      listr2: 7.0.2
+    transitivePeerDependencies:
+      - bluebird
+      - supports-color
+
   '@electron-forge/shared-types@7.8.1':
     dependencies:
       '@electron-forge/tracer': 7.8.1
@@ -9105,6 +9125,10 @@ snapshots:
     transitivePeerDependencies:
       - bluebird
       - supports-color
+
+  '@electron-forge/tracer@7.4.0':
+    dependencies:
+      chrome-trace-event: 1.0.4
 
   '@electron-forge/tracer@7.8.1':
     dependencies:
@@ -9533,6 +9557,16 @@ snapshots:
       levn: 0.4.1
 
   '@fastify/busboy@2.1.1': {}
+
+  '@fellow/maker-dmg@7.4.0':
+    dependencies:
+      '@electron-forge/maker-base': 7.4.0
+      '@electron-forge/shared-types': 7.4.0
+    optionalDependencies:
+      electron-installer-dmg: 4.0.0
+    transitivePeerDependencies:
+      - bluebird
+      - supports-color
 
   '@floating-ui/core@1.7.0':
     dependencies:
@@ -11380,11 +11414,6 @@ snapshots:
       semver: 7.6.2
       update-check: 1.5.4
 
-  '@types/appdmg@0.5.5':
-    dependencies:
-      '@types/node': 22.15.12
-    optional: true
-
   '@types/better-sqlite3@7.6.13':
     dependencies:
       '@types/node': 22.15.12
@@ -12588,9 +12617,8 @@ snapshots:
       - supports-color
     optional: true
 
-  electron-installer-dmg@5.0.1:
+  electron-installer-dmg@4.0.0:
     dependencies:
-      '@types/appdmg': 0.5.5
       debug: 4.4.1
       minimist: 1.2.8
     optionalDependencies:
