@@ -13,26 +13,16 @@ import { createTranscription } from "../db/transcriptions";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
-import { app } from "electron";
-import * as fs from "node:fs";
-import * as path from "node:path";
-
-import { StreamingWavWriter } from "../utils/streaming-wav-writer";
 import { Mutex } from "async-mutex";
 
 /**
  * Service for audio transcription and optional formatting
  */
-interface ExtendedStreamingSession extends StreamingSession {
-  wavWriter?: StreamingWavWriter;
-  audioFilePath?: string;
-}
-
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private openRouterProvider: OpenRouterProvider | null = null;
   private formatterEnabled = false;
-  private streamingSessions: Map<string, ExtendedStreamingSession> = new Map();
+  private streamingSessions: Map<string, StreamingSession> = new Map();
   private vadService: VADService | null;
   private settingsService: SettingsService;
   private vadMutex: Mutex;
@@ -144,34 +134,15 @@ export class TranscriptionService {
   }
 
   /**
-   * Create audio file for recording session
-   */
-  private async createAudioFile(sessionId: string): Promise<string> {
-    // Create audio directory in app temp path
-    const audioDir = path.join(app.getPath("temp"), "amical-audio");
-    await fs.promises.mkdir(audioDir, { recursive: true });
-
-    // Create file path
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filePath = path.join(audioDir, `audio-${sessionId}-${timestamp}.wav`);
-
-    logger.transcription.info("Created audio file for session", {
-      sessionId,
-      filePath,
-    });
-
-    return filePath;
-  }
-
-  /**
    * Process a single audio chunk in streaming mode
    */
   async processStreamingChunk(options: {
     sessionId: string;
     audioChunk: Float32Array;
     isFinal?: boolean;
+    audioFilePath?: string;
   }): Promise<string> {
-    const { sessionId, audioChunk, isFinal = false } = options;
+    const { sessionId, audioChunk, isFinal = false, audioFilePath } = options;
 
     // Run VAD on the audio chunk
     let speechProbability = 0;
@@ -198,6 +169,7 @@ export class TranscriptionService {
 
     // Acquire transcription mutex
     await this.transcriptionMutex.acquire();
+
     // Auto-create session if it doesn't exist
     let session = this.streamingSessions.get(sessionId);
     if (!session) {
@@ -214,29 +186,16 @@ export class TranscriptionService {
       streamingContext.sharedData.accessibilityContext =
         appContextStore.getAccessibilityContext();
 
-      // Create audio file for this session
-      const audioFilePath = await this.createAudioFile(sessionId);
-
-      // Create streaming WAV writer
-      const wavWriter = new StreamingWavWriter(audioFilePath);
-
       session = {
         context: streamingContext,
         transcriptionResults: [],
-        audioFilePath,
-        wavWriter,
       };
 
       this.streamingSessions.set(sessionId, session);
+
       logger.transcription.info("Started streaming session", {
         sessionId,
-        audioFilePath,
       });
-    }
-
-    // Write audio chunk to WAV file immediately
-    if (audioChunk.length > 0 && session.wavWriter) {
-      await session.wavWriter.appendAudio(audioChunk);
     }
 
     // Process chunk if it has content
@@ -285,7 +244,7 @@ export class TranscriptionService {
 
     // Release transcription mutex
     this.transcriptionMutex.release();
-    let completeTranscriptionTillNow = session.transcriptionResults
+    const completeTranscriptionTillNow = session.transcriptionResults
       .join(" ")
       .trim();
 
@@ -302,13 +261,11 @@ export class TranscriptionService {
       chunkCount: session.transcriptionResults.length,
     });
 
-    // Format if enabled (currently disabled with && false)
-    // Commenting out to fix TypeScript errors since this code path is never executed
-    /*
-      if (this.formatterEnabled && this.openRouterProvider && false) {
+    if (this.formatterEnabled && this.openRouterProvider) {
+      try {
         const style =
           session.context.sharedData.userPreferences?.formattingStyle;
-        completeTranscription = await this.openRouterProvider.format({
+        const formattedText = await this.openRouterProvider.format({
           text: completeTranscription,
           context: {
             style,
@@ -324,24 +281,31 @@ export class TranscriptionService {
             aggregatedTranscription: completeTranscription,
           },
         });
-      }
-      */
 
-    // Finalize the WAV file
-    if (session.wavWriter) {
-      await session.wavWriter.finalize();
-      logger.transcription.info("Finalized WAV file", {
-        sessionId,
-        filePath: session.audioFilePath,
-        dataSize: session.wavWriter.getDataSize(),
-      });
+        logger.transcription.info("Text formatted successfully", {
+          sessionId,
+          originalLength: completeTranscription.length,
+          formattedLength: formattedText.length,
+        });
+
+        completeTranscription = formattedText;
+      } catch (error) {
+        logger.transcription.error(
+          "Formatting failed, using unformatted text",
+          {
+            sessionId,
+            error,
+          },
+        );
+        // Continue with unformatted text
+      }
     }
 
     // Save directly to database
     logger.transcription.info("Saving transcription with audio file", {
       sessionId,
-      audioFilePath: session.audioFilePath,
-      hasAudioFile: !!session.audioFilePath,
+      audioFilePath,
+      hasAudioFile: !!audioFilePath,
     });
 
     await createTranscription({
@@ -350,7 +314,7 @@ export class TranscriptionService {
       duration: session.context.sharedData.audioMetadata?.duration,
       speechModel: "whisper-local",
       formattingModel: this.formatterEnabled ? "openrouter" : undefined,
-      audioFile: session.audioFilePath,
+      audioFile: audioFilePath,
       meta: {
         sessionId,
         source: session.context.sharedData.audioMetadata?.source,

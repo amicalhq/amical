@@ -1,10 +1,13 @@
-import { ipcMain } from "electron";
+import { ipcMain, app } from "electron";
 import { EventEmitter } from "node:events";
 import { logger, logPerformance } from "../logger";
 import { ServiceManager } from "./service-manager";
 import type { RecordingState } from "../../types/recording";
 import { Mutex } from "async-mutex";
 import type { ShortcutManager } from "../services/shortcut-manager";
+import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 export type RecordingMode = "idle" | "ptt" | "hands-free";
 
@@ -17,6 +20,10 @@ export class RecordingManager extends EventEmitter {
   private recordingState: RecordingState = "idle";
   private recordingMutex = new Mutex();
   private recordingMode: RecordingMode = "idle";
+  private currentAudioRecording: {
+    audioFilePath: string;
+    wavWriter: StreamingWavWriter;
+  } | null = null;
 
   constructor(private serviceManager: ServiceManager) {
     super();
@@ -87,6 +94,26 @@ export class RecordingManager extends EventEmitter {
     this.emit("mode-changed", this.getRecordingMode());
   }
 
+  /**
+   * Create audio file for recording session
+   */
+  private async createAudioFile(sessionId: string): Promise<string> {
+    // Create audio directory in app temp path
+    const audioDir = path.join(app.getPath("temp"), "amical-audio");
+    await fs.promises.mkdir(audioDir, { recursive: true });
+
+    // Create file path
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = path.join(audioDir, `audio-${sessionId}-${timestamp}.wav`);
+
+    logger.audio.info("Created audio file for session", {
+      sessionId,
+      filePath,
+    });
+
+    return filePath;
+  }
+
   private setupIPCHandlers(): void {
     // Handle audio data chunks from renderer
     ipcMain.handle(
@@ -148,20 +175,27 @@ export class RecordingManager extends EventEmitter {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       this.currentSessionId = `session-${timestamp}`;
 
+      // Create audio file and WAV writer
+      const audioFilePath = await this.createAudioFile(this.currentSessionId);
+      this.currentAudioRecording = {
+        audioFilePath,
+        wavWriter: new StreamingWavWriter(audioFilePath),
+      };
+
+      logger.audio.info("Audio recording initialized", {
+        sessionId: this.currentSessionId,
+        audioFilePath,
+      });
+
       // Mute system audio
       try {
         const swiftBridge = this.serviceManager.getService("swiftIOBridge");
         if (swiftBridge) {
-          await swiftBridge.call("muteSystemAudio", {});
+          //await swiftBridge.call("muteSystemAudio", {});
         }
       } catch (error) {
         logger.main.warn("Swift bridge not available for audio muting");
       }
-
-      // Refresh accessibility context - fire and forget
-      // appContextStore.refreshAccessibilityData();
-
-      // TODO: Preload models if needed (Phase 2)
 
       this.setState("recording");
       logger.audio.info("Recording started successfully", {
@@ -255,8 +289,10 @@ export class RecordingManager extends EventEmitter {
     }
 
     // Session should already exist from startRecording
-    if (!this.currentSessionId) {
-      logger.audio.error("No session ID found while handling audio chunk");
+    if (!this.currentSessionId || !this.currentAudioRecording) {
+      logger.audio.error(
+        "No session ID or audio recording found while handling audio chunk",
+      );
       return;
     }
 
@@ -265,6 +301,8 @@ export class RecordingManager extends EventEmitter {
       logger.audio.debug("Skipping empty non-final chunk");
       return;
     }
+
+    await this.currentAudioRecording.wavWriter.appendAudio(chunk);
 
     try {
       const transcriptionService = this.serviceManager.getService(
@@ -275,12 +313,13 @@ export class RecordingManager extends EventEmitter {
       }
       const startTime = Date.now();
 
-      // Process the chunk - pass isFinal flag
+      // Process the chunk - pass isFinal flag and audio file path
       const transcriptionResult =
         await transcriptionService.processStreamingChunk({
           sessionId: this.currentSessionId,
           audioChunk: chunk,
           isFinal: isFinalChunk,
+          audioFilePath: this.currentAudioRecording.audioFilePath,
         });
 
       logger.audio.debug("Processed audio chunk", {
@@ -292,6 +331,14 @@ export class RecordingManager extends EventEmitter {
 
       // If this was the final chunk, handle completion
       if (isFinalChunk) {
+        // Finalize the WAV file
+        await this.currentAudioRecording.wavWriter.finalize();
+        logger.audio.info("Finalized WAV file", {
+          sessionId: this.currentSessionId,
+          filePath: this.currentAudioRecording.audioFilePath,
+          dataSize: this.currentAudioRecording.wavWriter.getDataSize(),
+        });
+
         logPerformance("streaming transcription complete", startTime, {
           sessionId: this.currentSessionId,
           resultLength: transcriptionResult?.length || 0,
@@ -308,8 +355,9 @@ export class RecordingManager extends EventEmitter {
           await this.pasteTranscription(transcriptionResult);
         }
 
-        // Clean up session
+        // Clean up session and audio recording
         this.currentSessionId = null;
+        this.currentAudioRecording = null;
 
         // Ensure state is idle after completion
         if (this.recordingState === "stopping") {
@@ -320,8 +368,9 @@ export class RecordingManager extends EventEmitter {
       logger.audio.error("Error processing audio chunk:", error);
 
       if (isFinalChunk) {
-        // Clean up session on error
+        // Clean up session and audio recording on error
         this.currentSessionId = null;
+        this.currentAudioRecording = null;
         this.setState("error");
       }
     }
@@ -363,8 +412,9 @@ export class RecordingManager extends EventEmitter {
       await this.stopRecording();
     }
 
-    // Clear any active session
+    // Clear any active session and audio recording
     this.currentSessionId = null;
+    this.currentAudioRecording = null;
     this.setState("idle");
   }
 }

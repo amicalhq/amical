@@ -66,6 +66,10 @@ export class StreamingWavWriter {
    * @param audioData Float32Array of audio samples
    */
   async appendAudio(audioData: Float32Array): Promise<void> {
+    if (!audioData.length) {
+      return;
+    }
+
     if (this.isFinalized) {
       throw new Error("Cannot append to finalized WAV file");
     }
