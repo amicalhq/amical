@@ -84,7 +84,7 @@ class AccessibilityContextService {
         // Enable manual accessibility for specific apps
         if let bundleId: String = getBundleIdentifier(pid: pid),
            appsManuallyEnableAx.contains(bundleId) {
-            FileHandle.standardError.write("🔧 Enabling manual accessibility for \(bundleId)\n".data(using: .utf8)!)
+            // FileHandle.standardError.write("🔧 Enabling manual accessibility for \(bundleId)\n".data(using: .utf8)!)
             AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
             AXUIElementSetAttributeValue(application, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
         }
@@ -94,12 +94,12 @@ class AccessibilityContextService {
         
         // Fallback to focused window if focused element fails
         if error != .success {
-            FileHandle.standardError.write("⚠️ Failed to get focused element, trying focused window...\n".data(using: .utf8)!)
+            // FileHandle.standardError.write("⚠️ Failed to get focused element, trying focused window...\n".data(using: .utf8)!)
             error = AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute as CFString, &focusedElement)
         }
         
         guard error == .success, let element = focusedElement else {
-            FileHandle.standardError.write("❌ Failed to get focused element or window. Error: \(error.rawValue)\n".data(using: .utf8)!)
+            // FileHandle.standardError.write("❌ Failed to get focused element or window. Error: \(error.rawValue)\n".data(using: .utf8)!)
             return nil
         }
         
@@ -238,13 +238,13 @@ class AccessibilityContextService {
         var urlSource = "none"
         
         // Debug: Print all window attributes
-        FileHandle.standardError.write("🔍 Window attributes:\n".data(using: .utf8)!)
+        // FileHandle.standardError.write("🔍 Window attributes:\n".data(using: .utf8)!)
         let attributes = getAttributeNames(element: windowElement)
         for attribute in attributes {
             if let value = getAttributeValue(element: windowElement, attribute: attribute) {
-                FileHandle.standardError.write("  \(attribute): \(value)\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("  \(attribute): \(value)\n".data(using: .utf8)!)
             } else {
-                FileHandle.standardError.write("  \(attribute): <no value>\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("  \(attribute): <no value>\n".data(using: .utf8)!)
             }
         }
         
@@ -258,15 +258,15 @@ class AccessibilityContextService {
         
         let isFirefox = bundleId == "org.mozilla.firefox"
         
-        FileHandle.standardError.write("🔍 Browser type - Chromium: \(isChromiumBrowser), Firefox: \(isFirefox), Bundle: \(bundleId ?? "unknown")\n".data(using: .utf8)!)
+        // FileHandle.standardError.write("🔍 Browser type - Chromium: \(isChromiumBrowser), Firefox: \(isFirefox), Bundle: \(bundleId ?? "unknown")\n".data(using: .utf8)!)
         
         // For Chromium browsers and Firefox: Prioritize AXWebArea (live URL)
         if isChromiumBrowser || isFirefox {
-            FileHandle.standardError.write("🔍 Using AXWebArea priority for Chromium/Firefox browser\n".data(using: .utf8)!)
+            // FileHandle.standardError.write("🔍 Using AXWebArea priority for Chromium/Firefox browser\n".data(using: .utf8)!)
             foundURL = findURLInChildren(element: windowElement, depth: 0, maxDepth: 30)
             if foundURL != nil {
                 urlSource = "tree_walking_priority"
-                FileHandle.standardError.write("🔍 Found URL from AXWebArea (priority): \(foundURL!)\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("🔍 Found URL from AXWebArea (priority): \(foundURL!)\n".data(using: .utf8)!)
                 return foundURL
             }
         }
@@ -279,7 +279,7 @@ class AccessibilityContextService {
         if docErr == .success, let urlString = urlRef as? String, !urlString.isEmpty {
             foundURL = urlString
             urlSource = "window_document"
-            FileHandle.standardError.write("🔍 Found URL from window document: \(urlString)\n".data(using: .utf8)!)
+            // FileHandle.standardError.write("🔍 Found URL from window document: \(urlString)\n".data(using: .utf8)!)
             
             // For Safari and other WebKit browsers, this is reliable, return immediately
             if !isChromiumBrowser && !isFirefox {
@@ -295,7 +295,7 @@ class AccessibilityContextService {
             if foundURL == nil {
                 foundURL = urlString
                 urlSource = "window_url"
-                FileHandle.standardError.write("🔍 Found URL from window URL attribute: \(urlString)\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("🔍 Found URL from window URL attribute: \(urlString)\n".data(using: .utf8)!)
                 
                 // For Safari and other WebKit browsers, this is reliable, return immediately
                 if !isChromiumBrowser && !isFirefox {
@@ -309,17 +309,17 @@ class AccessibilityContextService {
             foundURL = findURLInChildren(element: windowElement, depth: 0, maxDepth: 3)
             if foundURL != nil {
                 urlSource = "tree_walking_fallback"
-                FileHandle.standardError.write("🔍 Found URL from tree walking (fallback): \(foundURL!)\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("🔍 Found URL from tree walking (fallback): \(foundURL!)\n".data(using: .utf8)!)
                 return foundURL
             }
         }
 
         if foundURL != nil {
-            FileHandle.standardError.write("🔍 Returning URL (\(urlSource)): \(foundURL!)\n".data(using: .utf8)!)
+            // FileHandle.standardError.write("🔍 Returning URL (\(urlSource)): \(foundURL!)\n".data(using: .utf8)!)
             return foundURL
         }
 
-        FileHandle.standardError.write("🔍 No URL found from any method\n".data(using: .utf8)!)
+        // FileHandle.standardError.write("🔍 No URL found from any method\n".data(using: .utf8)!)
         return nil
     }
     
@@ -355,11 +355,11 @@ class AccessibilityContextService {
                 }
                 
                 // log role
-                FileHandle.standardError.write("🔍 Found element with role: \(role) at depth \(currentDepth + 1)\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("🔍 Found element with role: \(role) at depth \(currentDepth + 1)\n".data(using: .utf8)!)
                 // log all attribute names
-                FileHandle.standardError.write("🔍 Element attributes: \(getAttributeNames(element: child))\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("🔍 Element attributes: \(getAttributeNames(element: child))\n".data(using: .utf8)!)
                 // log kAXURLAttribute
-                FileHandle.standardError.write("🔍 kAXURLAttribute: \(getAttributeValue(element: child, attribute: kAXURLAttribute) ?? "none")\n".data(using: .utf8)!)
+                // FileHandle.standardError.write("🔍 kAXURLAttribute: \(getAttributeValue(element: child, attribute: kAXURLAttribute) ?? "none")\n".data(using: .utf8)!)
                 
                 // Priority 1: Address/search fields (most current)
                 if role == "AXTextField" || role == "AXComboBox" || role == "AXSafariAddressAndSearchField" {
@@ -370,7 +370,7 @@ class AccessibilityContextService {
                        let value = valueRef as? String,
                        !value.isEmpty,
                        (value.hasPrefix("http://") || value.hasPrefix("https://") || value.contains(".")) {
-                        FileHandle.standardError.write("🔍 Found URL in address field (\(role)): \(value)\n".data(using: .utf8)!)
+                        // FileHandle.standardError.write("🔍 Found URL in address field (\(role)): \(value)\n".data(using: .utf8)!)
                         return value
                     }
                 }
@@ -389,7 +389,7 @@ class AccessibilityContextService {
                                                      kAXURLAttribute as CFString,
                                                      &urlRef) == .success,
                        let urlString = urlRef as? String, !urlString.isEmpty {
-                        FileHandle.standardError.write("🔍 Found URL in web area: \(urlString)\n".data(using: .utf8)!)
+                        // FileHandle.standardError.write("🔍 Found URL in web area: \(urlString)\n".data(using: .utf8)!)
                         return urlString
                     }
                     
@@ -397,7 +397,7 @@ class AccessibilityContextService {
                                                      kAXDocumentAttribute as CFString,
                                                      &urlRef) == .success,
                        let urlString = urlRef as? String, !urlString.isEmpty {
-                        FileHandle.standardError.write("🔍 Found URL in web area document: \(urlString)\n".data(using: .utf8)!)
+                        // FileHandle.standardError.write("🔍 Found URL in web area document: \(urlString)\n".data(using: .utf8)!)
                         return urlString
                     }
                 }

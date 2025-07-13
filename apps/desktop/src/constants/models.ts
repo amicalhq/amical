@@ -91,4 +91,17 @@ export const AVAILABLE_MODELS: Model[] = [
     filename: "ggml-large-v3.bin",
     checksum: "ad82bf6a9043ceed055076d0fd39f5f186ff8062",
   },
+  {
+    id: "whisper-large-v3-turbo",
+    name: "Whisper Large v3 Turbo",
+    type: "whisper",
+    size: 1.5 * 1024 * 1024 * 1024, // ~1.5 GB
+    sizeFormatted: "~1.5 GB",
+    description:
+      "Optimized Large v3 variant with only 4 decoder layers, offering significantly faster transcription with accuracy comparable to Large v2/v3.",
+    downloadUrl:
+      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+    filename: "ggml-large-v3-turbo.bin",
+    checksum: "4af2b29d7ec73d781377bfd1758ca957a807e941",
+  },
 ];

@@ -261,7 +261,7 @@ export class TranscriptionService {
       chunkCount: session.transcriptionResults.length,
     });
 
-    if (this.formatterEnabled && this.openRouterProvider) {
+    if (this.formatterEnabled && this.openRouterProvider && completeTranscription.trim().length) {
       try {
         const style =
           session.context.sharedData.userPreferences?.formattingStyle;
@@ -284,6 +284,8 @@ export class TranscriptionService {
 
         logger.transcription.info("Text formatted successfully", {
           sessionId,
+          originalTranscription: completeTranscription,
+          formattedTranscription: formattedText,
           originalLength: completeTranscription.length,
           formattedLength: formattedText.length,
         });

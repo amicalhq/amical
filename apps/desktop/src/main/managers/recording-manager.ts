@@ -8,6 +8,7 @@ import type { ShortcutManager } from "../services/shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { appContextStore } from "@/stores/app-context";
 
 export type RecordingMode = "idle" | "ptt" | "hands-free";
 
@@ -174,6 +175,9 @@ export class RecordingManager extends EventEmitter {
       // Create session ID
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       this.currentSessionId = `session-${timestamp}`;
+
+      // Get accessibility context from global store
+      appContextStore.refreshAccessibilityData();
 
       // Create audio file and WAV writer
       const audioFilePath = await this.createAudioFile(this.currentSessionId);

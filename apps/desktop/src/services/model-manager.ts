@@ -423,6 +423,7 @@ class ModelManagerService extends EventEmitter {
 
     // Otherwise, find the best available model (prioritize by quality)
     const preferredOrder = [
+      "whisper-large-v3-turbo",
       "whisper-large-v1",
       "whisper-medium",
       "whisper-small",
