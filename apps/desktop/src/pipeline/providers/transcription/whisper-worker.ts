@@ -4,10 +4,13 @@ import { Whisper } from "smart-whisper";
 // Simple console-based logging for worker process
 const logger = {
   transcription: {
-    info: (message: string, ...args: any[]) => console.log(`[whisper-worker] INFO: ${message}`, ...args),
-    error: (message: string, ...args: any[]) => console.error(`[whisper-worker] ERROR: ${message}`, ...args),
-    debug: (message: string, ...args: any[]) => console.log(`[whisper-worker] DEBUG: ${message}`, ...args),
-  }
+    info: (message: string, ...args: any[]) =>
+      console.log(`[whisper-worker] INFO: ${message}`, ...args),
+    error: (message: string, ...args: any[]) =>
+      console.error(`[whisper-worker] ERROR: ${message}`, ...args),
+    debug: (message: string, ...args: any[]) =>
+      console.log(`[whisper-worker] DEBUG: ${message}`, ...args),
+  },
 };
 
 let whisperInstance: Whisper | null = null;
@@ -29,7 +32,7 @@ export async function initializeModel(modelPath: string): Promise<void> {
   try {
     await whisperInstance.load();
   } catch (e) {
-    logger.transcription.error('Failed to load Whisper model:', e);
+    logger.transcription.error("Failed to load Whisper model:", e);
     throw e;
   }
   currentModelPath = modelPath;
@@ -44,7 +47,7 @@ export async function transcribeAudio(
     suppress_blank: boolean;
     suppress_non_speech_tokens: boolean;
     no_timestamps: boolean;
-  }
+  },
 ): Promise<string> {
   if (!whisperInstance) {
     throw new Error("Whisper instance is not initialized");

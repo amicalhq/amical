@@ -56,13 +56,13 @@ const config: ForgeConfig = {
         "resources",
         "node-binaries",
         `${platform}-${arch}`,
-        platform === "win32" ? "node.exe" : "node"
+        platform === "win32" ? "node.exe" : "node",
       );
       const nodeBinaryDest = join(
         projectRoot,
         "resources",
         "node-binaries",
-        `${platform}-${arch}`
+        `${platform}-${arch}`,
       );
 
       // Check if the binary exists
@@ -74,10 +74,10 @@ const config: ForgeConfig = {
         console.log(`✓ Node.js binary found for ${platform}-${arch}`);
       } else {
         console.error(
-          `✗ Node.js binary not found for ${platform}-${arch} at ${nodeBinarySource}`
+          `✗ Node.js binary not found for ${platform}-${arch} at ${nodeBinarySource}`,
         );
         console.error(
-          `  Please run 'pnpm download-node' or 'pnpm download-node:all' first`
+          `  Please run 'pnpm download-node' or 'pnpm download-node:all' first`,
         );
         throw new Error(`Missing Node.js binary for ${platform}-${arch}`);
       }

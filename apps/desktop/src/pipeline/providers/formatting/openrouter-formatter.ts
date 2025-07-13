@@ -48,7 +48,9 @@ export class OpenRouterProvider implements FormattingProvider {
       });
 
       // Extract formatted text from XML tags
-      const match = aiResponse.match(/<formatted_text>([\s\S]*?)<\/formatted_text>/);
+      const match = aiResponse.match(
+        /<formatted_text>([\s\S]*?)<\/formatted_text>/,
+      );
       const formattedText = match ? match[1].trim() : aiResponse.trim();
 
       logger.pipeline.debug("Formatting completed", {

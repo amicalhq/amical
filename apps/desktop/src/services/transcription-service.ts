@@ -261,7 +261,11 @@ export class TranscriptionService {
       chunkCount: session.transcriptionResults.length,
     });
 
-    if (this.formatterEnabled && this.openRouterProvider && completeTranscription.trim().length) {
+    if (
+      this.formatterEnabled &&
+      this.openRouterProvider &&
+      completeTranscription.trim().length
+    ) {
       try {
         const style =
           session.context.sharedData.userPreferences?.formattingStyle;

@@ -18,7 +18,7 @@ interface WhisperWorkerMethods {
       suppress_blank: boolean;
       suppress_non_speech_tokens: boolean;
       no_timestamps: boolean;
-    }
+    },
   ): Promise<string>;
   dispose(): Promise<void>;
 }
@@ -38,23 +38,23 @@ export class WhisperProvider implements TranscriptionProvider {
   private getNodeBinaryPath(): string {
     const platform = process.platform;
     const arch = process.arch;
-    const binaryName = platform === 'win32' ? 'node.exe' : 'node';
-    
+    const binaryName = platform === "win32" ? "node.exe" : "node";
+
     if (app.isPackaged) {
       // In production, use the binary from resources
       return path.join(
         process.resourcesPath,
-        'node-binaries',
+        "node-binaries",
         `${platform}-${arch}`,
-        binaryName
+        binaryName,
       );
     } else {
       // In development, use the local binary
       return path.join(
         __dirname,
-        '../../resources/node-binaries',
+        "../../resources/node-binaries",
         `${platform}-${arch}`,
-        binaryName
+        binaryName,
       );
     }
   }
@@ -150,16 +150,13 @@ export class WhisperProvider implements TranscriptionProvider {
         aggregatedTranscription,
       );
 
-      const text = await this.whisperWorker.transcribeAudio(
-        aggregatedAudio,
-        {
-          language: "auto",
-          initial_prompt: initialPrompt,
-          suppress_blank: true,
-          suppress_non_speech_tokens: true,
-          no_timestamps: true,
-        }
-      );
+      const text = await this.whisperWorker.transcribeAudio(aggregatedAudio, {
+        language: "auto",
+        initial_prompt: initialPrompt,
+        suppress_blank: true,
+        suppress_non_speech_tokens: true,
+        no_timestamps: true,
+      });
 
       logger.transcription.debug(
         `Transcription completed, length: ${text.length}`,
@@ -299,25 +296,24 @@ export class WhisperProvider implements TranscriptionProvider {
       const workerPath = app.isPackaged
         ? path.join(__dirname, "whisper-worker.js") // In production, same directory as main.js
         : path.join(process.cwd(), ".vite/build/whisper-worker.js"); // In development
-      
-      logger.transcription.info(`Initializing Whisper worker at: ${workerPath}`);
-      this.whisperWorker = new JestWorker(
-        workerPath,
-        {
-          exposedMethods: ["initializeModel", "transcribeAudio", "dispose"],
-          numWorkers: 1,
-          enableWorkerThreads: false,
-          forkOptions: {
-            execPath: this.getNodeBinaryPath(),
-            env: {
-              ...process.env,
-              GGML_METAL_PATH_RESOURCES: process.env.GGML_METAL_PATH_RESOURCES,
-              NODE_OPTIONS: "--max-old-space-size=8192"
-            },
-            silent: false // Enable output from worker for debugging
-          }
-        }
-      ) as JestWorker & WhisperWorkerMethods;
+
+      logger.transcription.info(
+        `Initializing Whisper worker at: ${workerPath}`,
+      );
+      this.whisperWorker = new JestWorker(workerPath, {
+        exposedMethods: ["initializeModel", "transcribeAudio", "dispose"],
+        numWorkers: 1,
+        enableWorkerThreads: false,
+        forkOptions: {
+          execPath: this.getNodeBinaryPath(),
+          env: {
+            ...process.env,
+            GGML_METAL_PATH_RESOURCES: process.env.GGML_METAL_PATH_RESOURCES,
+            NODE_OPTIONS: "--max-old-space-size=8192",
+          },
+          silent: false, // Enable output from worker for debugging
+        },
+      }) as JestWorker & WhisperWorkerMethods;
     }
 
     const modelPath = await this.modelManager.getBestAvailableModelPath();

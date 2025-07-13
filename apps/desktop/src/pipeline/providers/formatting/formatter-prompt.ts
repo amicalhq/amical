@@ -117,31 +117,31 @@ export function constructFormatterPrompt(context: FormatParams["context"]): {
   systemPrompt: string;
 } {
   const { accessibilityContext, vocabulary } = context;
-  
+
   // Detect application type
   const applicationType = detectApplicationType(accessibilityContext);
-  
+
   // Build instructions array
   const instructions = [
     ...BASE_INSTRUCTIONS,
-    ...(APPLICATION_TYPE_RULES[applicationType] || [])
+    ...(APPLICATION_TYPE_RULES[applicationType] || []),
   ];
-  
+
   // Build prompt parts
   const parts = [SYSTEM_PROMPT];
-  
+
   // Add vocabulary context if available
   if (vocabulary && vocabulary.size > 0) {
     const vocabTerms = Array.from(vocabulary.keys()).join(", ");
     parts.push(`\nCustom vocabulary to use for corrections: ${vocabTerms}`);
   }
-  
+
   // Add numbered instructions
   parts.push("\nInstructions:");
   instructions.forEach((instruction, index) => {
     parts.push(`${index + 1}. ${instruction}`);
   });
-  
+
   return { systemPrompt: parts.join("\n") };
 }
 
@@ -153,18 +153,18 @@ function detectApplicationType(
   }
 
   const bundleId = accessibilityContext.context.application.bundleIdentifier;
-  
+
   // Check if it's a browser
-  const isBrowser = BROWSER_BUNDLE_IDS.some(browserId => 
-    bundleId.includes(browserId) || browserId.includes(bundleId)
+  const isBrowser = BROWSER_BUNDLE_IDS.some(
+    (browserId) => bundleId.includes(browserId) || browserId.includes(bundleId),
   );
-  
+
   if (isBrowser && accessibilityContext.context?.windowInfo?.url) {
     // Try to detect type from URL
     const url = accessibilityContext.context.windowInfo.url.toLowerCase();
-    
+
     for (const [type, patterns] of Object.entries(URL_PATTERNS)) {
-      if (patterns.some(pattern => pattern.test(url))) {
+      if (patterns.some((pattern) => pattern.test(url))) {
         return type;
       }
     }

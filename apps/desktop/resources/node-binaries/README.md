@@ -31,6 +31,7 @@ pnpm download-node:all
 ## Purpose
 
 These binaries are used to spawn a separate Node.js process for Whisper transcription, providing:
+
 - Avoidance of Electron's V8 memory cage limitations (4GB max heap)
 - Proper GPU/Metal framework initialization
 - Ability to load large Whisper models (3GB+) without OOM errors
