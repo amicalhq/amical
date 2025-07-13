@@ -1,0 +1,4 @@
+# Ignore downloaded binaries
+*
+!.gitignore
+!README.md

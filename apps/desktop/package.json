@@ -30,7 +30,9 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
     "build:swift-helper": "pnpm --filter @amical/swift-helper build",
-    "dev": "pnpm start"
+    "dev": "pnpm start",
+    "download-node": "tsx scripts/download-node-binaries.ts",
+    "download-node:all": "tsx scripts/download-node-binaries.ts --all"
   },
   "keywords": [],
   "license": "MIT",
@@ -72,6 +74,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.0.1",
     "@libsql/client": "^0.15.9",
+    "@libsql/darwin-x64": "0.5.13",
     "@openrouter/ai-sdk-provider": "^0.7.2",
     "@radix-ui/react-accordion": "^1.2.10",
     "@radix-ui/react-alert-dialog": "^1.1.13",
@@ -123,6 +126,7 @@
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.10.5",
     "input-otp": "^1.4.2",
+    "jest-worker": "^29.7.0",
     "keytar": "^7.9.0",
     "libsql": "^0.5.13",
     "lucide-react": "^0.510.0",

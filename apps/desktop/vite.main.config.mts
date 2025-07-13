@@ -5,8 +5,16 @@ import { resolve } from "path";
 export default defineConfig({
   build: {
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, "src/main/main.ts"),
+        "whisper-worker": resolve(__dirname, "src/pipeline/providers/transcription/whisper-worker.ts"),
+      },
+      output: {
+        entryFileNames: "[name].js",
+      },
       external: [
         "smart-whisper",
+        "jest-worker",
         "@libsql/client",
         "@libsql/darwin-arm64",
         "@libsql/darwin-x64",

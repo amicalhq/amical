@@ -43,11 +43,44 @@ export const EXTERNAL_DEPENDENCIES = [
 
 const config: ForgeConfig = {
   hooks: {
-    prePackage: async () => {
-      console.error("prePackage");
+    prePackage: async (_forgeConfig, platform, arch) => {
+      console.error("prePackage", { platform, arch });
       const projectRoot = normalize(__dirname);
       // In a monorepo, node_modules are typically at the root level
       const monorepoRoot = join(projectRoot, "../../"); // Go up to monorepo root
+
+      // Copy platform-specific Node.js binary
+      console.log(`Copying Node.js binary for ${platform}-${arch}...`);
+      const nodeBinarySource = join(
+        projectRoot,
+        "resources",
+        "node-binaries",
+        `${platform}-${arch}`,
+        platform === "win32" ? "node.exe" : "node"
+      );
+      const nodeBinaryDest = join(
+        projectRoot,
+        "resources",
+        "node-binaries",
+        `${platform}-${arch}`
+      );
+
+      // Check if the binary exists
+      if (existsSync(nodeBinarySource)) {
+        // Ensure destination directory exists
+        if (!existsSync(nodeBinaryDest)) {
+          mkdirSync(nodeBinaryDest, { recursive: true });
+        }
+        console.log(`✓ Node.js binary found for ${platform}-${arch}`);
+      } else {
+        console.error(
+          `✗ Node.js binary not found for ${platform}-${arch} at ${nodeBinarySource}`
+        );
+        console.error(
+          `  Please run 'pnpm download-node' or 'pnpm download-node:all' first`
+        );
+        throw new Error(`Missing Node.js binary for ${platform}-${arch}`);
+      }
 
       const getExternalNestedDependencies = async (
         nodeModuleNames: string[],
@@ -249,6 +282,7 @@ const config: ForgeConfig = {
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
       "./src/db/migrations",
+      "./resources",
       "./src/assets",
     ],
     extendInfo: {

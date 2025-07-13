@@ -4,19 +4,60 @@ import {
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { ModelManagerService } from "../../../services/model-manager";
-import { Whisper } from "smart-whisper";
+import { Worker as JestWorker } from "jest-worker";
+import * as path from "path";
+import { app } from "electron";
+
+interface WhisperWorkerMethods {
+  initializeModel(modelPath: string): Promise<void>;
+  transcribeAudio(
+    aggregatedAudio: Float32Array,
+    options: {
+      language: string;
+      initial_prompt: string;
+      suppress_blank: boolean;
+      suppress_non_speech_tokens: boolean;
+      no_timestamps: boolean;
+    }
+  ): Promise<string>;
+  dispose(): Promise<void>;
+}
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
 
   private modelManager: ModelManagerService;
-  private whisperInstance: Whisper | null = null;
+  private whisperWorker: (JestWorker & WhisperWorkerMethods) | null = null;
 
   // Frame aggregation state
   private frameBuffer: Float32Array[] = [];
   private frameBufferSpeechProbabilities: number[] = []; // Track speech probabilities for each frame
   private silenceFrameCount = 0;
   private lastSpeechTimestamp = 0;
+
+  private getNodeBinaryPath(): string {
+    const platform = process.platform;
+    const arch = process.arch;
+    const binaryName = platform === 'win32' ? 'node.exe' : 'node';
+    
+    if (app.isPackaged) {
+      // In production, use the binary from resources
+      return path.join(
+        process.resourcesPath,
+        'node-binaries',
+        `${platform}-${arch}`,
+        binaryName
+      );
+    } else {
+      // In development, use the local binary
+      return path.join(
+        __dirname,
+        '../../resources/node-binaries',
+        `${platform}-${arch}`,
+        binaryName
+      );
+    }
+  }
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -99,8 +140,8 @@ export class WhisperProvider implements TranscriptionProvider {
       );
 
       // Transcribe using smart-whisper
-      if (!this.whisperInstance) {
-        throw new Error("Whisper instance is not initialized");
+      if (!this.whisperWorker) {
+        throw new Error("Whisper worker is not initialized");
       }
 
       // Generate initial prompt from vocabulary and recent context
@@ -109,7 +150,7 @@ export class WhisperProvider implements TranscriptionProvider {
         aggregatedTranscription,
       );
 
-      const { result } = await this.whisperInstance.transcribe(
+      const text = await this.whisperWorker.transcribeAudio(
         aggregatedAudio,
         {
           language: "auto",
@@ -117,16 +158,8 @@ export class WhisperProvider implements TranscriptionProvider {
           suppress_blank: true,
           suppress_non_speech_tokens: true,
           no_timestamps: true,
-        },
+        }
       );
-
-      const transcription = await result;
-
-      // Combine all transcription segments into a single string
-      const text = transcription
-        .map((segment) => segment.text)
-        .join(" ")
-        .trim();
 
       logger.transcription.debug(
         `Transcription completed, length: ${text.length}`,
@@ -260,8 +293,31 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   async initializeWhisper(): Promise<void> {
-    if (this.whisperInstance) {
-      return; // Already initialized
+    if (!this.whisperWorker) {
+      // Initialize jest-worker with single worker process
+      // Determine the correct path for the worker script
+      const workerPath = app.isPackaged
+        ? path.join(__dirname, "whisper-worker.js") // In production, same directory as main.js
+        : path.join(process.cwd(), ".vite/build/whisper-worker.js"); // In development
+      
+      logger.transcription.info(`Initializing Whisper worker at: ${workerPath}`);
+      this.whisperWorker = new JestWorker(
+        workerPath,
+        {
+          exposedMethods: ["initializeModel", "transcribeAudio", "dispose"],
+          numWorkers: 1,
+          enableWorkerThreads: false,
+          forkOptions: {
+            execPath: this.getNodeBinaryPath(),
+            env: {
+              ...process.env,
+              GGML_METAL_PATH_RESOURCES: process.env.GGML_METAL_PATH_RESOURCES,
+              NODE_OPTIONS: "--max-old-space-size=8192"
+            },
+            silent: false // Enable output from worker for debugging
+          }
+        }
+      ) as JestWorker & WhisperWorkerMethods;
     }
 
     const modelPath = await this.modelManager.getBestAvailableModelPath();
@@ -272,10 +328,7 @@ export class WhisperProvider implements TranscriptionProvider {
     }
 
     try {
-      const { Whisper } = await import("smart-whisper");
-      this.whisperInstance = new Whisper(modelPath, { gpu: true });
-      this.whisperInstance.load();
-      logger.transcription.info(`Initialized with model: ${modelPath}`);
+      await this.whisperWorker.initializeModel(modelPath);
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);
       throw new Error(`Failed to initialize smart-whisper: ${error}`);
@@ -284,14 +337,15 @@ export class WhisperProvider implements TranscriptionProvider {
 
   // Simple cleanup method
   async dispose(): Promise<void> {
-    if (this.whisperInstance) {
+    if (this.whisperWorker) {
       try {
-        await this.whisperInstance.free();
-        logger.transcription.debug("Instance freed");
+        await this.whisperWorker.dispose();
+        await this.whisperWorker.end(); // Terminate the worker process
+        logger.transcription.debug("Worker terminated");
       } catch (error) {
-        logger.transcription.warn("Error freeing instance:", error);
+        logger.transcription.warn("Error disposing whisper worker:", error);
       } finally {
-        this.whisperInstance = null;
+        this.whisperWorker = null;
       }
     }
 

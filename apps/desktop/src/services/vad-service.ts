@@ -32,14 +32,14 @@ export class VADService extends EventEmitter {
         // In production, the assets are copied to the resources folder
         this.modelPath = path.join(
           process.resourcesPath,
-          "assets",
+          "models",
           "silero_vad_v5.onnx",
         );
       } else {
         // In development, use the source path
         this.modelPath = path.join(
           __dirname,
-          "../../src/assets/silero_vad_v5.onnx",
+          "../../resources/models/silero_vad_v5.onnx",
         );
       }
 
