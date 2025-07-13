@@ -256,4 +256,50 @@ export const settingsRouter = createRouter({
       };
     });
   }),
+
+  // Set preferred microphone
+  setPreferredMicrophone: procedure
+    .input(
+      z.object({
+        deviceName: z.string().nullable(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        // Get current recording settings
+        const currentSettings = await settingsService.getRecordingSettings();
+
+        // Merge with new microphone preference
+        const updatedSettings = {
+          defaultFormat: "wav" as const,
+          sampleRate: 16000 as const,
+          autoStopSilence: false,
+          silenceThreshold: 0.1,
+          maxRecordingDuration: 300,
+          ...currentSettings,
+          preferredMicrophoneName: input.deviceName || undefined,
+        };
+
+        await settingsService.setRecordingSettings(updatedSettings);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Preferred microphone updated:", input.deviceName);
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting preferred microphone:", error);
+        }
+        throw error;
+      }
+    }),
 });

@@ -104,6 +104,7 @@ export interface AppSettingsData {
     autoStopSilence: boolean;
     silenceThreshold: number;
     maxRecordingDuration: number;
+    preferredMicrophoneName?: string;
   };
   shortcuts?: {
     pushToTalk?: string;
