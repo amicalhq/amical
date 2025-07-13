@@ -42,20 +42,44 @@ export const useAudioCapture = ({
     },
   });
 
+  // Get user's preferred microphone from settings
+  const { data: settings } = api.settings.getSettings.useQuery();
+  const preferredMicrophoneName = settings?.recording?.preferredMicrophoneName;
+
   const startCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
       try {
         console.log("AudioCapture: Starting audio capture");
 
+        // Build audio constraints
+        const audioConstraints: MediaTrackConstraints = {
+          channelCount: 1,
+          sampleRate: SAMPLE_RATE,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        };
+
+        // Add deviceId if user has a preference
+        if (preferredMicrophoneName) {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const preferredDevice = devices.find(
+            (device) =>
+              device.kind === "audioinput" &&
+              device.label === preferredMicrophoneName,
+          );
+          if (preferredDevice) {
+            audioConstraints.deviceId = { exact: preferredDevice.deviceId };
+            console.log(
+              "AudioCapture: Using preferred microphone:",
+              preferredMicrophoneName,
+            );
+          }
+        }
+
         // Get microphone stream
         streamRef.current = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            sampleRate: SAMPLE_RATE,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          audio: audioConstraints,
         });
 
         // Create audio context
@@ -104,7 +128,7 @@ export const useAudioCapture = ({
         throw error;
       }
     });
-  }, [onAudioChunk]);
+  }, [onAudioChunk, preferredMicrophoneName]);
 
   const stopCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
