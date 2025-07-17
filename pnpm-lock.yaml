@@ -272,6 +272,9 @@ importers:
       vaul:
         specifier: ^1.1.2
         version: 1.1.2(@types/react-dom@19.1.5(@types/react@19.1.5))(@types/react@19.1.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      workerpool:
+        specifier: ^9.3.3
+        version: 9.3.3
       zod:
         specifier: ^3.25.24
         version: 3.25.67
@@ -8167,6 +8170,9 @@ packages:
     resolution: {integrity: sha512-Uv6p0PYUHp/W/aWfUPLkZVAoAjapisM27JJlwcX9wCPTfCfnuegGOxFMvvlYpmNaX4YCwEdLCwuNn3xkpSkuZw==}
     engines: {node: '>=16'}
     hasBin: true
+
+  workerpool@9.3.3:
+    resolution: {integrity: sha512-slxCaKbYjEdFT/o2rH9xS1hf4uRDch1w7Uo+apxhZ+sf/1d9e0ZVkn42kPNGP2dgjIx6YFvSevj0zHvbWe2jdw==}
 
   wrangler@4.20.3:
     resolution: {integrity: sha512-ugvmi43CFPbjeQFfhU7EqE1V0ek6ZFv80jzwHcPk/7jPFmOA4ahT5uUU1ga5ZP6vz6lUuG2bLnyl1T5qJah0cg==}
@@ -17523,6 +17529,8 @@ snapshots:
       '@cloudflare/workerd-linux-64': 1.20250617.0
       '@cloudflare/workerd-linux-arm64': 1.20250617.0
       '@cloudflare/workerd-windows-64': 1.20250617.0
+
+  workerpool@9.3.3: {}
 
   wrangler@4.20.3:
     dependencies:
