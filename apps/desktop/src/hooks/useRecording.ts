@@ -62,9 +62,7 @@ export const useRecording = (): UseRecordingOutput => {
   );
 
   // Manage audio capture when recording is active
-  const isActive =
-    recordingStatus.state === "recording" ||
-    recordingStatus.state === "starting";
+  const isActive = recordingStatus.state === "recording";
 
   const { voiceDetected } = useAudioCapture({
     onAudioChunk: handleAudioChunk,

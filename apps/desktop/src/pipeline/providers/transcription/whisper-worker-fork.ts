@@ -55,7 +55,20 @@ const methods = {
       throw new Error("Whisper instance is not initialized");
     }
 
-    const { result } = await whisperInstance.transcribe(aggregatedAudio, options);
+    // Pad audio with silence to ensure at least 1 second of audio (16k samples)
+    const SAMPLE_RATE = 16000; // Whisper expects 16kHz input
+    const MIN_DURATION_SAMPLES = SAMPLE_RATE * 1 + 4000; // 1 second + extra buffer
+    if (aggregatedAudio.length < MIN_DURATION_SAMPLES) {
+      const padded = new Float32Array(MIN_DURATION_SAMPLES);
+      // Copy the existing audio to the beginning
+      padded.set(aggregatedAudio, 0);
+      aggregatedAudio = padded;
+    }
+
+    const { result } = await whisperInstance.transcribe(
+      aggregatedAudio,
+      options,
+    );
     const transcription = await result;
 
     return transcription
@@ -74,13 +87,13 @@ const methods = {
 };
 
 // Handle messages from parent process
-process.on('message', async (message: any) => {
+process.on("message", async (message: any) => {
   const { id, method, args } = message;
 
   try {
     // Deserialize Float32Array from IPC
     const deserializedArgs = args.map((arg: any) => {
-      if (arg && arg.__type === 'Float32Array' && Array.isArray(arg.data)) {
+      if (arg && arg.__type === "Float32Array" && Array.isArray(arg.data)) {
         return new Float32Array(arg.data);
       }
       return arg;
@@ -93,9 +106,12 @@ process.on('message', async (message: any) => {
       process.send!({ id, error: `Unknown method: ${method}` });
     }
   } catch (error) {
-    process.send!({ id, error: error instanceof Error ? error.message : String(error) });
+    process.send!({
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 
 // Send ready signal
-logger.transcription.info('Worker process started');
+logger.transcription.info("Worker process started");

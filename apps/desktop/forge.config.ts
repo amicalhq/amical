@@ -272,7 +272,8 @@ const config: ForgeConfig = {
   },
   packagerConfig: {
     asar: {
-      unpack: "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/smart-whisper/**,**/node_modules/jest-worker/**}",
+      unpack:
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/smart-whisper/**,**/node_modules/jest-worker/**}",
     },
     name: "Amical",
     executableName: "Amical",

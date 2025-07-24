@@ -195,7 +195,7 @@ export class RecordingManager extends EventEmitter {
       try {
         const swiftBridge = this.serviceManager.getService("swiftIOBridge");
         if (swiftBridge) {
-          //await swiftBridge.call("muteSystemAudio", {});
+          await swiftBridge.call("muteSystemAudio", {});
         }
       } catch (error) {
         logger.main.warn("Swift bridge not available for audio muting");

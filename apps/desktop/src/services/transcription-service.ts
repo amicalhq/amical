@@ -198,49 +198,44 @@ export class TranscriptionService {
       });
     }
 
-    // Process chunk if it has content
-    if (audioChunk.length > 0) {
-      // Direct frame to Whisper - it will handle aggregation and VAD internally
-      const previousChunk =
-        session.transcriptionResults.length > 0
-          ? session.transcriptionResults[
-              session.transcriptionResults.length - 1
-            ]
-          : undefined;
-      const aggregatedTranscription = session.transcriptionResults
-        .join(" ")
-        .trim();
+    // Direct frame to Whisper - it will handle aggregation and VAD internally
+    const previousChunk =
+      session.transcriptionResults.length > 0
+        ? session.transcriptionResults[session.transcriptionResults.length - 1]
+        : undefined;
+    const aggregatedTranscription = session.transcriptionResults
+      .join(" ")
+      .trim();
 
-      const chunkTranscription = await this.whisperProvider.transcribe({
-        audioData: audioChunk,
-        speechProbability: speechProbability, // Now from VAD service
-        context: {
-          vocabulary: session.context.sharedData.vocabulary,
-          accessibilityContext: session.context.sharedData.accessibilityContext,
-          previousChunk,
-          aggregatedTranscription: aggregatedTranscription || undefined,
-        },
-        flush: isFinal,
-      });
+    const chunkTranscription = await this.whisperProvider.transcribe({
+      audioData: audioChunk,
+      speechProbability: speechProbability, // Now from VAD service
+      context: {
+        vocabulary: session.context.sharedData.vocabulary,
+        accessibilityContext: session.context.sharedData.accessibilityContext,
+        previousChunk,
+        aggregatedTranscription: aggregatedTranscription || undefined,
+      },
+      flush: isFinal,
+    });
 
-      // Accumulate the result only if Whisper returned something
-      // (it returns empty string while buffering)
-      if (chunkTranscription.trim()) {
-        session.transcriptionResults.push(chunkTranscription);
-        logger.transcription.info("Whisper returned transcription", {
-          sessionId,
-          transcriptionLength: chunkTranscription.length,
-          totalResults: session.transcriptionResults.length,
-        });
-      }
-
-      logger.transcription.debug("Processed frame", {
+    // Accumulate the result only if Whisper returned something
+    // (it returns empty string while buffering)
+    if (chunkTranscription.trim()) {
+      session.transcriptionResults.push(chunkTranscription);
+      logger.transcription.info("Whisper returned transcription", {
         sessionId,
-        frameSize: audioChunk.length,
-        hadTranscription: chunkTranscription.length > 0,
-        isFinal,
+        transcriptionLength: chunkTranscription.length,
+        totalResults: session.transcriptionResults.length,
       });
     }
+
+    logger.transcription.debug("Processed frame", {
+      sessionId,
+      frameSize: audioChunk.length,
+      hadTranscription: chunkTranscription.length > 0,
+      isFinal,
+    });
 
     // Release transcription mutex
     this.transcriptionMutex.release();

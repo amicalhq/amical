@@ -8,7 +8,6 @@ import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
 
-
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
 
@@ -136,13 +135,16 @@ export class WhisperProvider implements TranscriptionProvider {
         aggregatedTranscription,
       );
 
-      const text = await this.workerWrapper!.exec<string>('transcribeAudio', [aggregatedAudio, {
-        language: "auto",
-        initial_prompt: initialPrompt,
-        suppress_blank: true,
-        suppress_non_speech_tokens: true,
-        no_timestamps: true,
-      }]);
+      const text = await this.workerWrapper!.exec<string>("transcribeAudio", [
+        aggregatedAudio,
+        {
+          language: "auto",
+          initial_prompt: initialPrompt,
+          suppress_blank: true,
+          suppress_non_speech_tokens: true,
+          no_timestamps: true,
+        },
+      ]);
 
       logger.transcription.debug(
         `Transcription completed, length: ${text.length}`,
@@ -285,12 +287,12 @@ export class WhisperProvider implements TranscriptionProvider {
       logger.transcription.info(
         `Initializing Whisper worker at: ${workerPath}`,
       );
-      
+
       this.workerWrapper = new SimpleForkWrapper(
         workerPath,
-        this.getNodeBinaryPath()
+        this.getNodeBinaryPath(),
       );
-      
+
       await this.workerWrapper.initialize();
     }
 
@@ -302,7 +304,7 @@ export class WhisperProvider implements TranscriptionProvider {
     }
 
     try {
-      await this.workerWrapper.exec('initializeModel', [modelPath]);
+      await this.workerWrapper.exec("initializeModel", [modelPath]);
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);
       throw new Error(`Failed to initialize smart-whisper: ${error}`);
@@ -313,7 +315,7 @@ export class WhisperProvider implements TranscriptionProvider {
   async dispose(): Promise<void> {
     if (this.workerWrapper) {
       try {
-        await this.workerWrapper.exec('dispose', []);
+        await this.workerWrapper.exec("dispose", []);
         await this.workerWrapper.terminate(); // Terminate the worker
         logger.transcription.debug("Worker terminated");
       } catch (error) {

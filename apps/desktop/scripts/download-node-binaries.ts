@@ -49,7 +49,7 @@ const PLATFORMS: PlatformConfig[] = [
   },
 ];
 
-const RESOURCES_DIR = path.join(__dirname, "..", "resources", "node-binaries");
+const RESOURCES_DIR = path.join(__dirname, "..", "node-binaries");
 
 // Parse command line arguments
 const args = process.argv.slice(2);
