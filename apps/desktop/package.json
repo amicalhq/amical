@@ -1,6 +1,6 @@
 {
   "name": "@amical/desktop",
-  "version": "0.0.5-test-publish",
+  "version": "0.0.6",
   "description": "Amical Desktop app",
   "main": ".vite/build/main.js",
   "productName": "Amical",
@@ -150,6 +150,7 @@
     "update-electron-app": "^3.1.1",
     "uuid": "^11.1.0",
     "vaul": "^1.1.2",
+    "workerpool": "^9.3.3",
     "zod": "^3.25.24"
   }
 }

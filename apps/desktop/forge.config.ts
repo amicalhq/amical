@@ -38,6 +38,7 @@ export const EXTERNAL_DEPENDENCIES = [
   "@libsql/win32-x64-msvc",
   "libsql",
   "onnxruntime-node",
+  "workerpool",
   // Add any other native modules you need here
 ];
 
@@ -53,14 +54,12 @@ const config: ForgeConfig = {
       console.log(`Copying Node.js binary for ${platform}-${arch}...`);
       const nodeBinarySource = join(
         projectRoot,
-        "resources",
         "node-binaries",
         `${platform}-${arch}`,
         platform === "win32" ? "node.exe" : "node",
       );
       const nodeBinaryDest = join(
         projectRoot,
-        "resources",
         "node-binaries",
         `${platform}-${arch}`,
       );
@@ -273,7 +272,8 @@ const config: ForgeConfig = {
   },
   packagerConfig: {
     asar: {
-      unpack: "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**}",
+      unpack:
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/smart-whisper/**,**/node_modules/jest-worker/**}",
     },
     name: "Amical",
     executableName: "Amical",
@@ -282,7 +282,8 @@ const config: ForgeConfig = {
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
       "./src/db/migrations",
-      "./resources",
+      "./node-binaries",
+      "./models",
       "./src/assets",
     ],
     extendInfo: {

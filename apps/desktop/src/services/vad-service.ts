@@ -39,7 +39,7 @@ export class VADService extends EventEmitter {
         // In development, use the source path
         this.modelPath = path.join(
           __dirname,
-          "../../resources/models/silero_vad_v5.onnx",
+          "../../models/silero_vad_v5.onnx",
         );
       }
 

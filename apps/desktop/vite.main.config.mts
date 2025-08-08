@@ -11,13 +11,16 @@ export default defineConfig({
           __dirname,
           "src/pipeline/providers/transcription/whisper-worker.ts",
         ),
+        "whisper-worker-fork": resolve(
+          __dirname,
+          "src/pipeline/providers/transcription/whisper-worker-fork.ts",
+        ),
       },
       output: {
         entryFileNames: "[name].js",
       },
       external: [
         "smart-whisper",
-        "jest-worker",
         "@libsql/client",
         "@libsql/darwin-arm64",
         "@libsql/darwin-x64",
