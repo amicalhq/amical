@@ -299,9 +299,9 @@ const config: ForgeConfig = {
             // Apply different entitlements based on file path
             optionsForFile: (filePath: string) => {
               // Apply minimal entitlements to Node binary
-              if (filePath.includes('node-binaries')) {
+              if (filePath.includes("node-binaries")) {
                 return {
-                  entitlements: './entitlements.node.plist',
+                  entitlements: "./entitlements.node.plist",
                   hardenedRuntime: true,
                 };
               }
