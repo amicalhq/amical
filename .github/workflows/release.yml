@@ -59,6 +59,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
+          architecture: ${{ matrix.arch }}
 
       - name: Log Node.js architecture and platform
         run: |
