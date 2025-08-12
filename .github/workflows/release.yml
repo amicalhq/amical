@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - rosetta.test
   workflow_dispatch:
     inputs:
       tag:
@@ -60,6 +62,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: List ONNX Runtime binaries
+        run: |
+          echo "=== ONNX Runtime binaries for ${{ matrix.arch }} ==="
+          ls -la node_modules/onnxruntime-node/bin/napi-v6/darwin/ || echo "Directory not found"
+          echo ""
 
       - name: Download Node.js binaries
         working-directory: apps/desktop
