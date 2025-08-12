@@ -14,6 +14,7 @@ import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
+import { app, dialog } from "electron";
 
 /**
  * Service for audio transcription and optional formatting
@@ -22,7 +23,7 @@ export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private openRouterProvider: OpenRouterProvider | null = null;
   private formatterEnabled = false;
-  private streamingSessions: Map<string, StreamingSession> = new Map();
+  private streamingSessions = new Map<string, StreamingSession>();
   private vadService: VADService | null;
   private settingsService: SettingsService;
   private vadMutex: Mutex;
@@ -53,9 +54,29 @@ export class TranscriptionService {
     const shouldPreload = transcriptionSettings?.preloadWhisperModel !== false; // Default to true
 
     if (shouldPreload) {
-      logger.transcription.info("Preloading Whisper model...");
-      await this.preloadWhisperModel();
-      logger.transcription.info("Whisper model preloaded successfully");
+      // Check if models are available for preloading
+      const hasModels = await this.isModelAvailable();
+      if (hasModels) {
+        logger.transcription.info("Preloading Whisper model...");
+        await this.preloadWhisperModel();
+        logger.transcription.info("Whisper model preloaded successfully");
+      } else {
+        logger.transcription.info(
+          "Whisper model preloading skipped - no models available",
+        );
+        if (app.isReady()) {
+          setTimeout(() => {
+            dialog.showMessageBox({
+              type: "warning",
+              title: "No Transcription Models",
+              message: "No transcription models are available.",
+              detail:
+                "To use voice transcription, please download a model from Speech Models.",
+              buttons: ["OK"],
+            });
+          }, 2000); // Delay to ensure windows are ready
+        }
+      }
     } else {
       logger.transcription.info("Whisper model preloading disabled");
     }
@@ -78,6 +99,20 @@ export class TranscriptionService {
   }
 
   /**
+   * Check if transcription models are available (real-time check)
+   */
+  public async isModelAvailable(): Promise<boolean> {
+    try {
+      const modelManager = this.whisperProvider["modelManager"];
+      const availableModels = await modelManager.getValidDownloadedModels();
+      return Object.keys(availableModels).length > 0;
+    } catch (error) {
+      logger.transcription.error("Failed to check model availability:", error);
+      return false;
+    }
+  }
+
+  /**
    * Handle model change - dispose old model and load new one if preloading is enabled
    */
   async handleModelChange(): Promise<void> {
@@ -85,7 +120,7 @@ export class TranscriptionService {
       // Dispose current model
       await this.whisperProvider.dispose();
 
-      // Check if preloading is enabled
+      // Check if preloading is enabled and models are available
       if (this.settingsService) {
         const transcriptionSettings =
           await this.settingsService.getTranscriptionSettings();
@@ -93,11 +128,16 @@ export class TranscriptionService {
           transcriptionSettings?.preloadWhisperModel !== false;
 
         if (shouldPreload) {
-          logger.transcription.info(
-            "Reloading Whisper model after model change...",
-          );
-          await this.whisperProvider.preloadModel();
-          logger.transcription.info("Whisper model reloaded successfully");
+          const hasModels = await this.isModelAvailable();
+          if (hasModels) {
+            logger.transcription.info(
+              "Reloading Whisper model after model change...",
+            );
+            await this.whisperProvider.preloadModel();
+            logger.transcription.info("Whisper model reloaded successfully");
+          } else {
+            logger.transcription.info("No models available to preload");
+          }
         }
       }
     } catch (error) {

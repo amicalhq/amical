@@ -1,4 +1,5 @@
-import { ipcMain, app } from "electron";
+import { ipcMain, app, dialog } from "electron";
+import type { TranscriptionService } from "../../services/transcription-service";
 import { EventEmitter } from "node:events";
 import { logger, logPerformance } from "../logger";
 import { ServiceManager } from "./service-manager";
@@ -154,6 +155,30 @@ export class RecordingManager extends EventEmitter {
 
   public async startRecording(mode: "ptt" | "hands-free") {
     await this.recordingMutex.runExclusive(async () => {
+      // Check if transcription service is available and has models
+      const transcriptionService = this.serviceManager.getService(
+        "transcriptionService",
+      );
+      if (!transcriptionService) {
+        logger.audio.error("Transcription service not available");
+        // Show error dialog
+        dialog.showErrorBox(
+          "Recording Failed",
+          "Transcription service is not available. Please restart the application.",
+        );
+        return;
+      }
+
+      const hasModels = await transcriptionService.isModelAvailable();
+      if (!hasModels) {
+        logger.audio.error("No transcription models available");
+        // Show error dialog
+        dialog.showErrorBox(
+          "No Models Available",
+          "Please download a transcription model from Speech Models before recording.",
+        );
+        return;
+      }
       // if we were previously in ptt mode, we override
       // priority is given to hands-free mode
       // we don't need to check the other way around
