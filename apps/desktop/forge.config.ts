@@ -58,18 +58,9 @@ const config: ForgeConfig = {
         `${platform}-${arch}`,
         platform === "win32" ? "node.exe" : "node",
       );
-      const nodeBinaryDest = join(
-        projectRoot,
-        "node-binaries",
-        `${platform}-${arch}`,
-      );
 
       // Check if the binary exists
       if (existsSync(nodeBinarySource)) {
-        // Ensure destination directory exists
-        if (!existsSync(nodeBinaryDest)) {
-          mkdirSync(nodeBinaryDest, { recursive: true });
-        }
         console.log(`✓ Node.js binary found for ${platform}-${arch}`);
       } else {
         console.error(
@@ -282,7 +273,10 @@ const config: ForgeConfig = {
     extraResource: [
       "../../packages/native-helpers/swift-helper/bin",
       "./src/db/migrations",
-      "./node-binaries",
+      // Only include the platform-specific node binary
+      `./node-binaries/${process.platform}-${process.arch}/node${
+        process.platform === "win32" ? ".exe" : ""
+      }`,
       "./models",
       "./src/assets",
     ],

@@ -27,12 +27,7 @@ export class WhisperProvider implements TranscriptionProvider {
 
     if (app.isPackaged) {
       // In production, use the binary from resources
-      return path.join(
-        process.resourcesPath,
-        "node-binaries",
-        `${platform}-${arch}`,
-        binaryName,
-      );
+      return path.join(process.resourcesPath, binaryName);
     } else {
       // In development, use the local binary
       return path.join(

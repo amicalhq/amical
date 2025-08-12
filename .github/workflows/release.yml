@@ -67,7 +67,7 @@ jobs:
 
       - name: Download Node.js binaries
         working-directory: apps/desktop
-        run: pnpm download-node:all
+        run: pnpm download-node
 
       - name: Import Developer ID cert
         uses: apple-actions/import-codesign-certs@v3
