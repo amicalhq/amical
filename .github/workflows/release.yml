@@ -60,6 +60,13 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
+      - name: Log Node.js architecture and platform
+        run: |
+          echo "=== Node.js Process Information ==="
+          node -e "console.log('process.arch:', process.arch)"
+          node -e "console.log('process.platform:', process.platform)"
+          echo ""
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -129,50 +136,3 @@ jobs:
         id: package_version
         working-directory: apps/desktop
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: List artifacts
-        run: |
-          echo "=== Full artifacts directory structure ==="
-          find artifacts -type f -name "*.dmg" -o -name "*.zip" | sort
-          echo ""
-          echo "=== Detailed file listing ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) -exec ls -la {} \;
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          prerelease: true
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: Amical Desktop v${{ steps.package_version.outputs.version }}
-          body: |
-            ## Amical Desktop v${{ steps.package_version.outputs.version }}
-            
-            ### What's New
-            - Please update this section with actual changes
-            
-            ### Downloads
-            
-            #### macOS
-            - **Apple Silicon (M1/M2/M3)**: Download the DMG or ZIP file for arm64
-            - **Intel**: Download the DMG or ZIP file for x64
-            
-            ### Installation
-            
-            **macOS**: 
-            - **DMG**: Download and open the DMG file, then drag Amical to your Applications folder
-            - **ZIP**: Download and extract the ZIP file, then drag Amical to your Applications folder
-            
-            The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation.
-          files: |
-            artifacts/macos-arm64/*.dmg
-            artifacts/macos-arm64/zip/darwin/arm64/*.zip
-            artifacts/macos-x64/*.dmg
-            artifacts/macos-x64/zip/darwin/x64/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
