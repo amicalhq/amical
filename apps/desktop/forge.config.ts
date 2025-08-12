@@ -296,6 +296,20 @@ const config: ForgeConfig = {
       : {
           osxSign: {
             identity: process.env.CODESIGNING_IDENTITY,
+            // Apply different entitlements based on file path
+            optionsForFile: (filePath: string) => {
+              // Apply minimal entitlements to Node binary
+              if (filePath.includes('node-binaries')) {
+                return {
+                  entitlements: './entitlements.node.plist',
+                  hardenedRuntime: true,
+                };
+              }
+              // Use default entitlements for everything else
+              // https://www.npmjs.com/package/@electron/osx-sign#opts
+              // !still need to do any
+              return null as any;
+            },
           },
           // Notarization for macOS
           ...(process.env.SKIP_NOTARIZATION === "true"
