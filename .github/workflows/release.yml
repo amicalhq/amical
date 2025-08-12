@@ -14,13 +14,10 @@ on:
 jobs:
   build-macos:
     name: Build macOS (${{ matrix.arch }})
-    runs-on: macos-latest
+    runs-on: ${{ matrix.arch == 'x64' && 'macos-13' || 'macos-latest' }}
     strategy:
       matrix:
         arch: [arm64, x64]
-    defaults:
-      run:
-        shell: ${{ matrix.arch == 'x64' && 'arch -x86_64 /bin/bash -e {0}' || 'bash' }}
     
     steps:
       - name: Checkout code
@@ -38,7 +35,7 @@ jobs:
               echo "ERROR: Expected x86_64 architecture but got $CURRENT_ARCH"
               exit 1
             fi
-            echo "✓ Architecture verified: Running as x86_64 under Rosetta"
+            echo "✓ Architecture verified: Running as native x86_64 on Intel hardware"
           elif [[ "${{ matrix.arch }}" == "arm64" ]]; then
             if [[ "$CURRENT_ARCH" != "arm64" ]]; then
               echo "ERROR: Expected arm64 architecture but got $CURRENT_ARCH"
@@ -57,7 +54,6 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
-          architecture: ${{ matrix.arch }}
 
       - name: Log Node.js architecture and platform
         run: |
