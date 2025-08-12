@@ -57,6 +57,14 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
+          architecture: ${{ matrix.arch }}
+
+      - name: Log Node.js architecture and platform
+        run: |
+          echo "=== Node.js Process Information ==="
+          node -e "console.log('process.arch:', process.arch)"
+          node -e "console.log('process.platform:', process.platform)"
+          echo ""
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
