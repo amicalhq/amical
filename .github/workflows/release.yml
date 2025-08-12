@@ -18,10 +18,34 @@ jobs:
     strategy:
       matrix:
         arch: [arm64, x64]
+    defaults:
+      run:
+        shell: ${{ matrix.arch == 'x64' && 'arch -x86_64 /bin/bash -e {0}' || 'bash' }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify architecture
+        run: |
+          CURRENT_ARCH=$(uname -m)
+          echo "Current shell architecture: $CURRENT_ARCH"
+          echo "Target architecture: ${{ matrix.arch }}"
+          echo "Arch command output: $(arch)"
+          
+          if [[ "${{ matrix.arch }}" == "x64" ]]; then
+            if [[ "$CURRENT_ARCH" != "x86_64" ]]; then
+              echo "ERROR: Expected x86_64 architecture but got $CURRENT_ARCH"
+              exit 1
+            fi
+            echo "✓ Architecture verified: Running as x86_64 under Rosetta"
+          elif [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            if [[ "$CURRENT_ARCH" != "arm64" ]]; then
+              echo "ERROR: Expected arm64 architecture but got $CURRENT_ARCH"
+              exit 1
+            fi
+            echo "✓ Architecture verified: Running as native arm64"
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -60,7 +84,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CODESIGNING_IDENTITY: ${{ secrets.CODESIGNING_IDENTITY }}
         run: |
-          # Now make the distributables
+          echo "Building ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}
 
       - name: Get version from package.json
