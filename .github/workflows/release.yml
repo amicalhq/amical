@@ -63,10 +63,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: List ONNX Runtime binaries
+      - name: List ONNX Runtime binaries for arm64
         run: |
           echo "=== ONNX Runtime binaries for ${{ matrix.arch }} ==="
-          ls -la node_modules/onnxruntime-node/bin/napi-v6/darwin/ || echo "Directory not found"
+          ls -la node_modules/onnxruntime-node/bin/napi-v6/darwin/arm64 || echo "Directory not found"
+          echo ""
+
+      - name: List ONNX Runtime binaries for x64
+        run: |
+          echo "=== ONNX Runtime binaries for ${{ matrix.arch }} ==="
+          ls -la node_modules/onnxruntime-node/bin/napi-v6/darwin/x64 || echo "Directory not found"
           echo ""
 
       - name: Download Node.js binaries
