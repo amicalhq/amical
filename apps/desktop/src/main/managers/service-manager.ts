@@ -2,7 +2,7 @@ import { logger } from "../logger";
 import { ModelManagerService } from "../../services/model-manager";
 import { TranscriptionService } from "../../services/transcription-service";
 import { SettingsService } from "../../services/settings-service";
-import { SwiftIOBridge } from "../../services/platform/swift-bridge-service";
+import { NativeBridge } from "../../services/platform/native-bridge-service";
 import { AutoUpdaterService } from "../services/auto-updater";
 import { RecordingManager } from "./recording-manager";
 import { VADService } from "../../services/vad-service";
@@ -11,6 +11,7 @@ import { WindowManager } from "../core/window-manager";
 import { createIPCHandler } from "electron-trpc-experimental/main";
 import { router } from "../../trpc/router";
 import { createContext } from "../../trpc/context";
+import { isMacOS, isWindows } from "../../utils/platform";
 
 /**
  * Service map for type-safe service access
@@ -20,7 +21,7 @@ export interface ServiceMap {
   transcriptionService: TranscriptionService;
   settingsService: SettingsService;
   vadService: VADService;
-  swiftIOBridge: SwiftIOBridge;
+  nativeBridge: NativeBridge;
   autoUpdaterService: AutoUpdaterService;
   recordingManager: RecordingManager;
   shortcutManager: ShortcutManager;
@@ -39,7 +40,7 @@ export class ServiceManager {
   private settingsService: SettingsService | null = null;
   private vadService: VADService | null = null;
 
-  private swiftIOBridge: SwiftIOBridge | null = null;
+  private nativeBridge: NativeBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
   private recordingManager: RecordingManager | null = null;
   private shortcutManager: ShortcutManager | null = null;
@@ -145,9 +146,9 @@ export class ServiceManager {
   }
 
   private initializePlatformServices(): void {
-    // Initialize Swift bridge for macOS integration
-    if (process.platform === "darwin") {
-      this.swiftIOBridge = new SwiftIOBridge();
+    // Initialize platform-specific bridge
+    if (isMacOS() || isWindows()) {
+      this.nativeBridge = new NativeBridge();
     }
   }
 
@@ -163,7 +164,7 @@ export class ServiceManager {
       );
     }
     this.shortcutManager = new ShortcutManager(this.settingsService);
-    await this.shortcutManager.initialize(this.swiftIOBridge);
+    await this.shortcutManager.initialize(this.nativeBridge);
 
     // Connect shortcut events to recording manager
     this.recordingManager.setupShortcutListeners(this.shortcutManager);
@@ -213,7 +214,7 @@ export class ServiceManager {
       transcriptionService: this.transcriptionService ?? undefined,
       settingsService: this.settingsService ?? undefined,
       vadService: this.vadService ?? undefined,
-      swiftIOBridge: this.swiftIOBridge ?? undefined,
+      nativeBridge: this.nativeBridge ?? undefined,
       autoUpdaterService: this.autoUpdaterService ?? undefined,
       recordingManager: this.recordingManager ?? undefined,
       shortcutManager: this.shortcutManager ?? undefined,
@@ -242,9 +243,9 @@ export class ServiceManager {
       await this.vadService.dispose();
     }
 
-    if (this.swiftIOBridge) {
-      logger.main.info("Stopping Swift helper...");
-      this.swiftIOBridge.stopHelper();
+    if (this.nativeBridge) {
+      logger.main.info("Stopping native helper...");
+      this.nativeBridge.stopHelper();
     }
   }
 

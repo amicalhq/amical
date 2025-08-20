@@ -1,8 +1,8 @@
 import { EventEmitter } from "events";
 import { globalShortcut } from "electron";
 import { SettingsService } from "@/services/settings-service";
-import { SwiftIOBridge } from "@/services/platform/swift-bridge-service";
-import { matchesShortcutKey, getKeyNameFromPayload } from "@/utils/keycode-map";
+import { NativeBridge } from "@/services/platform/native-bridge-service";
+import { getKeyNameFromPayload } from "@/utils/keycode-map";
 import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
 
@@ -25,7 +25,7 @@ export class ShortcutManager extends EventEmitter {
     toggleRecording: "",
   };
   private settingsService: SettingsService;
-  private swiftIOBridge: SwiftIOBridge | null = null;
+  private nativeBridge: NativeBridge | null = null;
   private isRecordingShortcut: boolean = false;
 
   constructor(settingsService: SettingsService) {
@@ -33,8 +33,8 @@ export class ShortcutManager extends EventEmitter {
     this.settingsService = settingsService;
   }
 
-  async initialize(swiftIOBridge: SwiftIOBridge | null) {
-    this.swiftIOBridge = swiftIOBridge;
+  async initialize(nativeBridge: NativeBridge | null) {
+    this.nativeBridge = nativeBridge;
     await this.loadShortcuts();
     this.setupEventListeners();
   }
@@ -59,12 +59,12 @@ export class ShortcutManager extends EventEmitter {
   }
 
   private setupEventListeners() {
-    if (!this.swiftIOBridge) {
-      log.warn("SwiftIOBridge not available, shortcuts will not work");
+    if (!this.nativeBridge) {
+      log.warn("Native bridge not available, shortcuts will not work");
       return;
     }
 
-    this.swiftIOBridge.on("helperEvent", (event: HelperEvent) => {
+    this.nativeBridge.on("helperEvent", (event: HelperEvent) => {
       switch (event.type) {
         case "flagsChanged":
           this.handleFlagsChanged(event.payload);

@@ -167,8 +167,8 @@ export class AppManager {
     return this.serviceManager.getService("transcriptionService");
   }
 
-  getSwiftIOBridge() {
-    return this.serviceManager.getService("swiftIOBridge");
+  getNativeBridge() {
+    return this.serviceManager.getService("nativeBridge");
   }
 
   getAutoUpdaterService() {

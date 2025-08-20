@@ -53,6 +53,9 @@ importers:
       '@libsql/darwin-x64':
         specifier: 0.5.13
         version: 0.5.13
+      '@libsql/win32-x64-msvc':
+        specifier: ^0.5.13
+        version: 0.5.13
       '@openrouter/ai-sdk-provider':
         specifier: ^0.7.2
         version: 0.7.2(ai@4.3.16(react@19.1.0)(zod@3.25.67))(zod@3.25.67)
@@ -513,6 +516,8 @@ importers:
         version: 8.32.1(eslint@9.27.0(jiti@2.5.1))(typescript@5.8.3)
 
   packages/native-helpers/swift-helper: {}
+
+  packages/native-helpers/windows-helper: {}
 
   packages/types:
     dependencies:
@@ -10041,8 +10046,7 @@ snapshots:
   '@libsql/linux-x64-musl@0.5.13':
     optional: true
 
-  '@libsql/win32-x64-msvc@0.5.13':
-    optional: true
+  '@libsql/win32-x64-msvc@0.5.13': {}
 
   '@malept/cross-spawn-promise@1.1.1':
     dependencies:

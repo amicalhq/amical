@@ -11,23 +11,23 @@ export class EventHandlers {
   }
 
   setupEventHandlers(): void {
-    this.setupSwiftBridgeEventHandlers();
+    this.setupNativeBridgeEventHandlers();
     this.setupGeneralIPCHandlers();
     this.setupOnboardingIPCHandlers();
     // Note: Audio IPC handlers are now managed by RecordingService
   }
 
-  private setupSwiftBridgeEventHandlers(): void {
+  private setupNativeBridgeEventHandlers(): void {
     try {
-      const swiftBridge = this.appManager.getSwiftIOBridge();
-      if (!swiftBridge) {
-        logger.main.warn("Swift bridge not available for event handlers");
+      const nativeBridge = this.appManager.getNativeBridge();
+      if (!nativeBridge) {
+        logger.main.warn("Native bridge not available for event handlers");
         return;
       }
 
       // Handle non-shortcut related events only
-      swiftBridge.on("helperEvent", (event: HelperEvent) => {
-        logger.swift.debug("Received helperEvent from SwiftIOBridge", {
+      nativeBridge.on("helperEvent", (event: HelperEvent) => {
+        logger.swift.debug("Received helperEvent from native bridge", {
           event,
         });
 
@@ -35,15 +35,15 @@ export class EventHandlers {
         // This handler can process other helper events if needed
       });
 
-      swiftBridge.on("error", (error: Error) => {
-        logger.main.error("SwiftIOBridge error:", error);
+      nativeBridge.on("error", (error: Error) => {
+        logger.main.error("Native bridge error:", error);
       });
 
-      swiftBridge.on("close", (code: number | null) => {
-        logger.swift.warn("Swift helper process closed", { code });
+      nativeBridge.on("close", (code: number | null) => {
+        logger.swift.warn("Native helper process closed", { code });
       });
     } catch (error) {
-      logger.main.warn("Swift bridge not available for event handlers");
+      logger.main.warn("Native bridge not available for event handlers");
     }
   }
 
