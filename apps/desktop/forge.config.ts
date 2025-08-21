@@ -149,7 +149,7 @@ const config: ForgeConfig = {
 
           // Copy the package
           console.log(`Copying ${dep}...`);
-          cpSync(rootDepPath, localDepPath, { recursive: true });
+          cpSync(rootDepPath, localDepPath, { recursive: true, dereference: true, force: true });
           console.log(`✓ Successfully copied ${dep}`);
         } catch (error) {
           console.error(`Failed to copy ${dep}:`, error);
@@ -169,7 +169,7 @@ const config: ForgeConfig = {
               
               // Read where the symlink points to
               const symlinkTarget = readlinkSync(localDepPath);
-              const absoluteTarget = join(localNodeModules, dep, "..", symlinkTarget);
+              const absoluteTarget = join(localDepPath, "..", symlinkTarget);
               const sourcePath = normalize(absoluteTarget);
               
               console.log(`  Symlink points to: ${sourcePath}`);
@@ -314,6 +314,7 @@ const config: ForgeConfig = {
     icon: "./assets/logo", // Path to your icon file
     appBundleId: "com.amical.desktop", // Proper bundle ID
     extraResource: [
+      `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
       // Only include the platform-specific node binary
       `./node-binaries/${process.platform}-${process.arch}/node${
@@ -398,15 +399,17 @@ const config: ForgeConfig = {
             }
 
             // Handle scoped packages: if dep is @scope/package, also keep @scope/ directory
+            // But not for our workspace packages
             if (dep.includes("/") && dep.startsWith("@")) {
               const scopeDir = dep.split("/")[0]; // @libsql/client -> @libsql
               // for workspace packages only keep the actual package
               if (scopeDir === "@amical") {
-                if (filePath.startsWith(`/node_modules/${dep}/`)) {
+                if (filePath.startsWith(`/node_modules/${dep}`) ||
+                   filePath === `/node_modules/${scopeDir}`) {
                   KEEP_FILE.keep = true;
                   KEEP_FILE.log = true;
                 }
-                break;
+                continue;
               }
               if (
                 filePath === `/node_modules/${scopeDir}/` ||
