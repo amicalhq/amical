@@ -1,0 +1,41 @@
+{
+	"name": "@amical/smart-whisper",
+	"version": "0.1.0",
+	"description": "Whisper.cpp Node.js binding with auto model offloading strategy.",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"keywords": [
+		"whisper",
+		"whisper.cpp",
+		"native",
+		"binding",
+		"addon"
+	],
+	"gypfile": true,
+	"files": [
+		"dist",
+		"src",
+		"scripts",
+		"binding.gyp",
+		"whisper.cpp/**/*.{c,h,cpp,hpp,m,cu,metal}",
+		"whisper.cpp/Makefile",
+		"whisper.cpp/LICENSE"
+	],
+	"scripts": {
+		"install": "tsup",
+		"postinstall": "node-gyp rebuild",
+		"build": "tsup && node-gyp rebuild",
+		"build:ts": "tsup",
+		"build:native": "node-gyp rebuild"
+	},
+	"dependencies": {
+		"node-addon-api": "^8.5.0",
+		"minimatch": "10.0.3"
+	},
+	"devDependencies": {
+		"@amical/typescript-config": "workspace:*",
+		"@types/node": "^24.3.0",
+		"tsup": "^8.5.0",
+		"typescript": "^5.8.2"
+	}
+}

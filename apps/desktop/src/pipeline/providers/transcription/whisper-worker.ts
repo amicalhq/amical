@@ -1,5 +1,5 @@
 // This file contains just the Whisper-specific operations that need to run in a separate process
-import { Whisper } from "smart-whisper";
+import { Whisper } from "@amical/smart-whisper";
 
 // Simple console-based logging for worker process
 const logger = {
@@ -27,7 +27,7 @@ export async function initializeModel(modelPath: string): Promise<void> {
     whisperInstance = null;
   }
 
-  const { Whisper } = await import("smart-whisper");
+  const { Whisper } = await import("@amical/smart-whisper");
   whisperInstance = new Whisper(modelPath, { gpu: true });
   try {
     await whisperInstance.load();

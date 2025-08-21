@@ -81,7 +81,7 @@ export class NativeBridge extends EventEmitter {
     const helperDir = getNativeHelperDir();
 
     return electronApp.isPackaged
-      ? path.join(process.resourcesPath, helperName)
+      ? path.join(process.resourcesPath, "bin", helperName)
       : path.join(
           electronApp.getAppPath(),
           "..",

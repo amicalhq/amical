@@ -29,7 +29,6 @@ let nativeModuleDependenciesToPackage: string[] = [];
 
 export const EXTERNAL_DEPENDENCIES = [
   "electron-squirrel-startup",
-  "smart-whisper",
   "@libsql/client",
   "@libsql/darwin-arm64",
   "@libsql/darwin-x64",
@@ -268,15 +267,14 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpack:
-        "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/smart-whisper/**,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
     },
     name: "Amical",
     executableName: "Amical",
     icon: "./assets/logo", // Path to your icon file
     appBundleId: "com.amical.desktop", // Proper bundle ID
     extraResource: [
-      "../../packages/native-helpers/swift-helper/bin/SwiftHelper",
-      "../../packages/native-helpers/windows-helper/bin/WindowsHelper.exe",
+      `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
       // Only include the platform-specific node binary
       `./node-binaries/${process.platform}-${process.arch}/node${

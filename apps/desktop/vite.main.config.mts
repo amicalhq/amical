@@ -20,7 +20,7 @@ export default defineConfig({
         entryFileNames: "[name].js",
       },
       external: [
-        "smart-whisper",
+        "@amical/smart-whisper",
         "@libsql/client",
         "@libsql/darwin-arm64",
         "@libsql/darwin-x64",
