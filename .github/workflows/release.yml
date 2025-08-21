@@ -20,15 +20,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos
-            arch: arm64
-            runner: macos-latest
-          - os: macos
-            arch: x64
-            runner: macos-13
+          #- os: macos
+          #  arch: arm64
+          #  runner: macos-latest
+          #- os: macos
+          #  arch: x64
+          #  runner: macos-13
           - os: windows
             arch: x64
-            runner: windows-latest
+            runner: windows-2025
     
     steps:
       - name: Checkout code
@@ -59,7 +59,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.13.1
+          version: 10.15.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -147,7 +147,7 @@
     "react-hook-form": "^7.56.3",
     "react-resizable-panels": "^3.0.2",
     "recharts": "^2.15.3",
-    "smart-whisper": "0.2.0",
+    "smart-whisper": "0.8.1",
     "sonner": "^2.0.3",
     "split2": "^4.2.0",
     "superjson": "^2.2.2",

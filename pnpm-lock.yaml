@@ -249,8 +249,8 @@ importers:
         specifier: ^2.15.3
         version: 2.15.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       smart-whisper:
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.8.1
+        version: 0.8.1
       sonner:
         specifier: ^2.0.3
         version: 2.0.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7462,8 +7462,8 @@ packages:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
     engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
 
-  smart-whisper@0.2.0:
-    resolution: {integrity: sha512-OOpBDrD6x7RnoksqrarfXuStMGFzbTClxv/xrosQX5QZ9qhvx6ROQ6jbSGC+gb7TL7q9F6QNrYQNMLfIzHGR/w==}
+  smart-whisper@0.8.1:
+    resolution: {integrity: sha512-0DnhD6Hq7kTpWAJxv057o8rkcZ2Sv2/ZpJZJjj/DT+8Ll/zH5EHQM1lSwk+W15AvfDPD3K2ku+MD2KCXD51z5A==}
 
   snake-case@2.1.0:
     resolution: {integrity: sha512-FMR5YoPFwOLuh4rRz92dywJjyKYZNLpMn1R5ujVpIYkbA9p01fq8RMg0FkO4M+Yobt4MjHeLTJVm5xFFBHSV2Q==}
@@ -16843,7 +16843,7 @@ snapshots:
 
   smart-buffer@4.2.0: {}
 
-  smart-whisper@0.2.0:
+  smart-whisper@0.8.1:
     dependencies:
       node-addon-api: 7.1.1
 
