@@ -20,12 +20,6 @@ jobs:
     strategy:
       matrix:
         include:
-          #- os: macos
-          #  arch: arm64
-          #  runner: macos-latest
-          #- os: macos
-          #  arch: x64
-          #  runner: macos-13
           - os: windows
             arch: x64
             runner: windows-2025
@@ -137,6 +131,7 @@ jobs:
           name: windows-${{ matrix.arch }}
           path: |
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.exe
+            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.nupkg
 
   release:
     name: Create Release
@@ -162,10 +157,10 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== Full artifacts directory structure ==="
-          find artifacts -type f -name "*.dmg" -o -name "*.zip" | sort
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) | sort
           echo ""
           echo "=== Detailed file listing ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) -exec ls -la {} \;
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) -exec ls -la {} \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -206,6 +201,7 @@ jobs:
             artifacts/macos-arm64/zip/darwin/arm64/*.zip
             artifacts/macos-x64/*.dmg
             artifacts/macos-x64/zip/darwin/x64/*.zip
-            artifacts/windows-x64/squirrel.windows/x64/*.exe
+            artifacts/windows-x64/*.exe
+            artifacts/windows-x64/*.nupkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
