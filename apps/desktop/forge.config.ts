@@ -17,6 +17,8 @@ import {
   mkdirSync,
   cpSync,
   rmSync,
+  lstatSync,
+  readlinkSync,
 } from "node:fs";
 import { join, normalize } from "node:path";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
@@ -38,6 +40,7 @@ export const EXTERNAL_DEPENDENCIES = [
   "libsql",
   "onnxruntime-node",
   "workerpool",
+  "@amical/smart-whisper",
   // Add any other native modules you need here
 ];
 
@@ -153,6 +156,42 @@ const config: ForgeConfig = {
         }
       }
 
+      // Second pass: Replace any symlinks with dereferenced copies
+      console.log("Checking for symlinks in copied dependencies...");
+      for (const dep of nativeModuleDependenciesToPackage) {
+        const localDepPath = join(localNodeModules, dep);
+        
+        try {
+          if (existsSync(localDepPath)) {
+            const stats = lstatSync(localDepPath);
+            if (stats.isSymbolicLink()) {
+              console.log(`Found symlink for ${dep}, replacing with dereferenced copy...`);
+              
+              // Read where the symlink points to
+              const symlinkTarget = readlinkSync(localDepPath);
+              const absoluteTarget = join(localNodeModules, dep, "..", symlinkTarget);
+              const sourcePath = normalize(absoluteTarget);
+              
+              console.log(`  Symlink points to: ${sourcePath}`);
+              
+              // Remove the symlink
+              rmSync(localDepPath, { recursive: true, force: true });
+              
+              // Copy with dereference to get actual content
+              cpSync(sourcePath, localDepPath, { 
+                recursive: true, 
+                force: true,
+                dereference: true  // Follow symlinks and copy actual content
+              });
+              
+              console.log(`✓ Successfully replaced symlink for ${dep} with actual content`);
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to check/replace symlink for ${dep}:`, error);
+        }
+      }
+
       // Prune onnxruntime-node to keep only the required binary
       const targetPlatform = platform;
       const targetArch = arch;
@@ -199,6 +238,7 @@ const config: ForgeConfig = {
       }
     },
     packageAfterPrune: async (_forgeConfig, buildPath) => {
+      console.error("PRE PACKAGE");
       try {
         function getItemsFromFolder(
           path: string,
@@ -267,14 +307,13 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpack:
-        "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/node_modules/@amical/smart-whisper/**,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
     },
     name: "Amical",
     executableName: "Amical",
     icon: "./assets/logo", // Path to your icon file
     appBundleId: "com.amical.desktop", // Proper bundle ID
     extraResource: [
-      `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
       // Only include the platform-specific node binary
       `./node-binaries/${process.platform}-${process.arch}/node${
@@ -361,6 +400,14 @@ const config: ForgeConfig = {
             // Handle scoped packages: if dep is @scope/package, also keep @scope/ directory
             if (dep.includes("/") && dep.startsWith("@")) {
               const scopeDir = dep.split("/")[0]; // @libsql/client -> @libsql
+              // for workspace packages only keep the actual package
+              if (scopeDir === "@amical") {
+                if (filePath.startsWith(`/node_modules/${dep}/`)) {
+                  KEEP_FILE.keep = true;
+                  KEEP_FILE.log = true;
+                }
+                break;
+              }
               if (
                 filePath === `/node_modules/${scopeDir}/` ||
                 filePath === `/node_modules/${scopeDir}` ||

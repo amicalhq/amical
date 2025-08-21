@@ -20,6 +20,12 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: macos
+            arch: arm64
+            runner: macos-latest
+          - os: macos
+            arch: x64
+            runner: macos-13
           - os: windows
             arch: x64
             runner: windows-2025
