@@ -10,7 +10,8 @@ const ext = ".bin";
 
 fs.mkdirSync(models, { recursive: true });
 
-const BASE_MODELS_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+const BASE_MODELS_URL =
+  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 /**
  * MODELS is an object that contains the URLs of different ggml whisper models.
@@ -18,18 +19,18 @@ const BASE_MODELS_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/ma
  * and the value is the URL of the model.
  */
 export const MODELS = {
-	tiny: `${BASE_MODELS_URL}/ggml-tiny.bin`,
-	"tiny.en": `${BASE_MODELS_URL}/ggml-tiny.en.bin`,
-	small: `${BASE_MODELS_URL}/ggml-small.bin`,
-	"small.en": `${BASE_MODELS_URL}/ggml-small.en.bin`,
-	base: `${BASE_MODELS_URL}/ggml-base.bin`,
-	"base.en": `${BASE_MODELS_URL}/ggml-base.en.bin`,
-	medium: `${BASE_MODELS_URL}/ggml-medium.bin`,
-	"medium.en": `${BASE_MODELS_URL}/ggml-medium.en.bin`,
-	"large-v1": `${BASE_MODELS_URL}/ggml-large-v1.bin`,
-	"large-v2": `${BASE_MODELS_URL}/ggml-large-v2.bin`,
-	"large-v3": `${BASE_MODELS_URL}/ggml-large-v3.bin`,
-	"large-v3-turbo": `${BASE_MODELS_URL}/ggml-large-v3-turbo.bin`,
+  tiny: `${BASE_MODELS_URL}/ggml-tiny.bin`,
+  "tiny.en": `${BASE_MODELS_URL}/ggml-tiny.en.bin`,
+  small: `${BASE_MODELS_URL}/ggml-small.bin`,
+  "small.en": `${BASE_MODELS_URL}/ggml-small.en.bin`,
+  base: `${BASE_MODELS_URL}/ggml-base.bin`,
+  "base.en": `${BASE_MODELS_URL}/ggml-base.en.bin`,
+  medium: `${BASE_MODELS_URL}/ggml-medium.bin`,
+  "medium.en": `${BASE_MODELS_URL}/ggml-medium.en.bin`,
+  "large-v1": `${BASE_MODELS_URL}/ggml-large-v1.bin`,
+  "large-v2": `${BASE_MODELS_URL}/ggml-large-v2.bin`,
+  "large-v3": `${BASE_MODELS_URL}/ggml-large-v3.bin`,
+  "large-v3-turbo": `${BASE_MODELS_URL}/ggml-large-v3-turbo.bin`,
 } as const;
 
 export type ModelName = keyof typeof MODELS | (string & {});
@@ -42,39 +43,41 @@ export type ModelName = keyof typeof MODELS | (string & {});
  * @throws An error if the model URL or shorthand is invalid, or if the model fails to download.
  */
 export async function download(model: ModelName): Promise<string> {
-	let url = "",
-		name = "";
-	if (model in MODELS) {
-		url = MODELS[model as keyof typeof MODELS];
-		name = model;
-	} else {
-		try {
-			url = new URL(model).href;
-			name = new URL(url).pathname.split("/").pop() ?? "";
-		} catch {}
-	}
+  let url = "",
+    name = "";
+  if (model in MODELS) {
+    url = MODELS[model as keyof typeof MODELS];
+    name = model;
+  } else {
+    try {
+      url = new URL(model).href;
+      name = new URL(url).pathname.split("/").pop() ?? "";
+    } catch {}
+  }
 
-	if (!url) {
-		throw new Error(`Invalid model URL or shorthand: ${model}`);
-	}
+  if (!url) {
+    throw new Error(`Invalid model URL or shorthand: ${model}`);
+  }
 
-	if (!name) {
-		throw new Error(`Failed to parse model name: ${url}`);
-	}
+  if (!name) {
+    throw new Error(`Failed to parse model name: ${url}`);
+  }
 
-	if (check(name)) {
-		return name;
-	}
+  if (check(name)) {
+    return name;
+  }
 
-	const res = await fetch(url);
-	if (!res.ok || !res.body) {
-		throw new Error(`Failed to download model: ${res.statusText}`);
-	}
+  const res = await fetch(url);
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to download model: ${res.statusText}`);
+  }
 
-	const stream = fs.createWriteStream(path.join(models, name.endsWith(ext) ? name : name + ext));
-	Readable.fromWeb(res.body as ReadableStream<Uint8Array>).pipe(stream);
+  const stream = fs.createWriteStream(
+    path.join(models, name.endsWith(ext) ? name : name + ext),
+  );
+  Readable.fromWeb(res.body as ReadableStream<Uint8Array>).pipe(stream);
 
-	return new Promise((resolve) => stream.on("finish", () => resolve(name)));
+  return new Promise((resolve) => stream.on("finish", () => resolve(name)));
 }
 
 /**
@@ -82,9 +85,9 @@ export async function download(model: ModelName): Promise<string> {
  * @param model - The name of the model to remove.
  */
 export function remove(model: ModelName): void {
-	if (check(model)) {
-		fs.unlinkSync(path.join(models, model + ext));
-	}
+  if (check(model)) {
+    fs.unlinkSync(path.join(models, model + ext));
+  }
 }
 
 /**
@@ -92,8 +95,8 @@ export function remove(model: ModelName): void {
  * @returns An array of model names.
  */
 export function list(): ModelName[] {
-	const files = fs.readdirSync(models).filter((file) => file.endsWith(ext));
-	return files.map((file) => file.slice(0, -ext.length));
+  const files = fs.readdirSync(models).filter((file) => file.endsWith(ext));
+  return files.map((file) => file.slice(0, -ext.length));
 }
 
 /**
@@ -102,7 +105,7 @@ export function list(): ModelName[] {
  * @returns True if the model exists, false otherwise.
  */
 export function check(model: ModelName): boolean {
-	return fs.existsSync(path.join(models, model + ext));
+  return fs.existsSync(path.join(models, model + ext));
 }
 
 /**
@@ -112,11 +115,11 @@ export function check(model: ModelName): boolean {
  * @throws Error if the model is not found.
  */
 export function resolve(model: ModelName): string {
-	if (check(model)) {
-		return path.join(models, model + ext);
-	} else {
-		throw new Error(`Model not found: ${model}`);
-	}
+  if (check(model)) {
+    return path.join(models, model + ext);
+  } else {
+    throw new Error(`Model not found: ${model}`);
+  }
 }
 
 export const dir = { root, models };

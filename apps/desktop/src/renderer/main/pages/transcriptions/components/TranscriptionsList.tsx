@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/trpc/react";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 
 import {
   Tooltip,
@@ -14,8 +15,8 @@ import {
 import {
   Copy,
   Play,
+  Pause,
   Trash2,
-  Download,
   FileText,
   Search,
   MoreHorizontal,
@@ -35,6 +36,7 @@ import {
 export const TranscriptionsList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
+  const audioPlayer = useAudioPlayer();
 
   // Get shortcuts data
   const shortcutsQuery = api.settings.getShortcuts.useQuery();
@@ -85,6 +87,34 @@ export const TranscriptionsList: React.FC = () => {
       },
     });
 
+  // Using mutation for fetching audio data instead of query to:
+  // - Prevent caching of large binary audio files in memory
+  // - Avoid automatic refetching behaviors (window focus, network reconnect)
+  // - Clearly indicate this is a user-triggered action (play button click)
+  // - Track loading state per transcription ID efficiently
+  const getAudioFileMutation = api.transcriptions.getAudioFile.useMutation({
+    onSuccess: (data, variables) => {
+      if (data?.data) {
+        // Decode base64 to ArrayBuffer
+        const base64 = data.data;
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        // Pass the MIME type from the server response
+        audioPlayer.toggle(
+          bytes.buffer,
+          variables.transcriptionId,
+          data.mimeType,
+        );
+      }
+    },
+    onError: (error) => {
+      console.error("Error fetching audio file:", error);
+    },
+  });
+
   const transcriptions = transcriptionsQuery.data || [];
   const totalCount = transcriptionsCountQuery.data || 0;
   const loading =
@@ -103,9 +133,15 @@ export const TranscriptionsList: React.FC = () => {
     deleteTranscriptionMutation.mutate({ id });
   };
 
-  const handlePlayAudio = (audioFile: string) => {
-    // Implement audio playback functionality
-    console.log("Playing audio:", audioFile);
+  const handlePlayAudio = (transcriptionId: number) => {
+    if (
+      audioPlayer.currentPlayingId === transcriptionId &&
+      audioPlayer.isPlaying
+    ) {
+      audioPlayer.stop();
+    } else {
+      getAudioFileMutation.mutate({ transcriptionId });
+    }
   };
 
   const handleDownloadAudio = async (transcriptionId: number) => {
@@ -219,12 +255,27 @@ export const TranscriptionsList: React.FC = () => {
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
-                      onClick={() => handlePlayAudio(transcription.audioFile!)}
+                      onClick={() => handlePlayAudio(transcription.id)}
+                      disabled={
+                        getAudioFileMutation.isPending &&
+                        getAudioFileMutation.variables?.transcriptionId ===
+                          transcription.id
+                      }
                     >
-                      <Play className="h-4 w-4" />
+                      {audioPlayer.currentPlayingId === transcription.id &&
+                      audioPlayer.isPlaying ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Play audio</TooltipContent>
+                  <TooltipContent>
+                    {audioPlayer.currentPlayingId === transcription.id &&
+                    audioPlayer.isPlaying
+                      ? "Pause audio"
+                      : "Play audio"}
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}

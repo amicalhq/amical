@@ -149,7 +149,11 @@ const config: ForgeConfig = {
 
           // Copy the package
           console.log(`Copying ${dep}...`);
-          cpSync(rootDepPath, localDepPath, { recursive: true, dereference: true, force: true });
+          cpSync(rootDepPath, localDepPath, {
+            recursive: true,
+            dereference: true,
+            force: true,
+          });
           console.log(`✓ Successfully copied ${dep}`);
         } catch (error) {
           console.error(`Failed to copy ${dep}:`, error);
@@ -160,31 +164,35 @@ const config: ForgeConfig = {
       console.log("Checking for symlinks in copied dependencies...");
       for (const dep of nativeModuleDependenciesToPackage) {
         const localDepPath = join(localNodeModules, dep);
-        
+
         try {
           if (existsSync(localDepPath)) {
             const stats = lstatSync(localDepPath);
             if (stats.isSymbolicLink()) {
-              console.log(`Found symlink for ${dep}, replacing with dereferenced copy...`);
-              
+              console.log(
+                `Found symlink for ${dep}, replacing with dereferenced copy...`,
+              );
+
               // Read where the symlink points to
               const symlinkTarget = readlinkSync(localDepPath);
               const absoluteTarget = join(localDepPath, "..", symlinkTarget);
               const sourcePath = normalize(absoluteTarget);
-              
+
               console.log(`  Symlink points to: ${sourcePath}`);
-              
+
               // Remove the symlink
               rmSync(localDepPath, { recursive: true, force: true });
-              
+
               // Copy with dereference to get actual content
-              cpSync(sourcePath, localDepPath, { 
-                recursive: true, 
+              cpSync(sourcePath, localDepPath, {
+                recursive: true,
                 force: true,
-                dereference: true  // Follow symlinks and copy actual content
+                dereference: true, // Follow symlinks and copy actual content
               });
-              
-              console.log(`✓ Successfully replaced symlink for ${dep} with actual content`);
+
+              console.log(
+                `✓ Successfully replaced symlink for ${dep} with actual content`,
+              );
             }
           }
         } catch (error) {
@@ -404,8 +412,10 @@ const config: ForgeConfig = {
               const scopeDir = dep.split("/")[0]; // @libsql/client -> @libsql
               // for workspace packages only keep the actual package
               if (scopeDir === "@amical") {
-                if (filePath.startsWith(`/node_modules/${dep}`) ||
-                   filePath === `/node_modules/${scopeDir}`) {
+                if (
+                  filePath.startsWith(`/node_modules/${dep}`) ||
+                  filePath === `/node_modules/${scopeDir}`
+                ) {
                   KEEP_FILE.keep = true;
                   KEEP_FILE.log = true;
                 }

@@ -120,10 +120,15 @@ export const transcriptionsRouter = createRouter({
       return result;
     }),
 
-  // Get audio file for download
+  // Get audio file for playback
+  // Implemented as mutation instead of query because:
+  // 1. Large binary data (audio files) shouldn't be cached by React Query
+  // 2. Prevents automatic refetching on window focus/network reconnect
+  // 3. Represents an explicit user action (clicking play), not passive data fetching
+  // 4. Avoids memory overhead from React Query's caching system
   getAudioFile: procedure
     .input(z.object({ transcriptionId: z.number() }))
-    .query(async ({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const transcription = await getTranscriptionById(input.transcriptionId);
 
       if (!transcription?.audioFile) {
@@ -138,10 +143,28 @@ export const transcriptionsRouter = createRouter({
         const audioData = await fs.promises.readFile(transcription.audioFile);
         const filename = path.basename(transcription.audioFile);
 
+        // Detect MIME type based on file extension
+        const ext = path.extname(transcription.audioFile).toLowerCase();
+        let mimeType = "audio/wav"; // Default for our WAV files
+
+        // Map common audio extensions to MIME types
+        const mimeTypes: Record<string, string> = {
+          ".wav": "audio/wav",
+          ".mp3": "audio/mpeg",
+          ".webm": "audio/webm",
+          ".ogg": "audio/ogg",
+          ".m4a": "audio/mp4",
+          ".flac": "audio/flac",
+        };
+
+        if (ext in mimeTypes) {
+          mimeType = mimeTypes[ext];
+        }
+
         return {
-          data: audioData,
+          data: audioData.toString("base64"),
           filename,
-          mimeType: "audio/webm",
+          mimeType,
         };
       } catch (error) {
         const logger = ctx.serviceManager.getLogger();
@@ -155,6 +178,8 @@ export const transcriptionsRouter = createRouter({
     }),
 
   // Download audio file with save dialog
+  // Mutation because this triggers a system dialog and file write operation
+  // Not a query since it has side effects beyond just fetching data
   downloadAudioFile: procedure
     .input(z.object({ transcriptionId: z.number() }))
     .mutation(async ({ input, ctx }) => {
