@@ -1,10 +1,10 @@
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import path from "node:path";
 import fs from "node:fs";
-import process from "node:process"; // Added import for process
-import { app, app as electronApp } from "electron"; // electronApp for app.getAppPath() consistency
+import { app as electronApp } from "electron";
 import split2 from "split2";
 import { v4 as uuid } from "uuid";
+import { getNativeHelperName, getNativeHelperDir } from "../../utils/platform";
 
 import { EventEmitter } from "events";
 import { createScopedLogger } from "../../main/logger";
@@ -54,21 +54,21 @@ interface RPCMethods {
 }
 
 // Define event types for the client
-interface SwiftIOBridgeEvents {
+interface NativeBridgeEvents {
   helperEvent: (event: HelperEvent) => void;
   error: (error: Error) => void;
   close: (code: number | null, signal: NodeJS.Signals | null) => void;
   ready: () => void; // Emitted when the helper process is successfully spawned
 }
 
-export class SwiftIOBridge extends EventEmitter {
+export class NativeBridge extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private pending = new Map<
     string,
     { callback: (resp: RpcResponse) => void; startTime: number }
   >();
   private helperPath: string;
-  private logger = createScopedLogger("swift-bridge");
+  private logger = createScopedLogger("native-bridge");
 
   constructor() {
     super();
@@ -77,7 +77,9 @@ export class SwiftIOBridge extends EventEmitter {
   }
 
   private determineHelperPath(): string {
-    const helperName = "SwiftHelper"; // Swift native helper executable
+    const helperName = getNativeHelperName();
+    const helperDir = getNativeHelperDir();
+
     return electronApp.isPackaged
       ? path.join(process.resourcesPath, "bin", helperName)
       : path.join(
@@ -86,7 +88,7 @@ export class SwiftIOBridge extends EventEmitter {
           "..",
           "packages",
           "native-helpers",
-          "swift-helper",
+          helperDir,
           "bin",
           helperName,
         );
@@ -96,20 +98,33 @@ export class SwiftIOBridge extends EventEmitter {
     try {
       fs.accessSync(this.helperPath, fs.constants.X_OK);
     } catch (err) {
-      this.logger.error("SwiftHelper executable not found or not executable", {
-        helperPath: this.helperPath,
-      });
-      this.emit(
-        "error",
-        new Error(
-          `Helper executable not found at ${this.helperPath}. Attempt to build it if in dev mode.`,
-        ),
+      const helperName = getNativeHelperName();
+      this.logger.error(
+        `${helperName} executable not found or not executable`,
+        {
+          helperPath: this.helperPath,
+        },
       );
-      // In a real app, you might try to build it here or provide more robust error handling.
+      // In production, provide a more user-friendly error message
+      const errorMessage = electronApp.isPackaged
+        ? `${helperName} is not available. Some features may not work correctly.`
+        : `Helper executable not found at ${this.helperPath}. Please build it first.`;
+
+      this.emit("error", new Error(errorMessage));
+
+      // Log detailed error for debugging
+      this.logger.error("Helper initialization failed", {
+        helperPath: this.helperPath,
+        isPackaged: electronApp.isPackaged,
+        platform: process.platform,
+        error: err,
+      });
+
       return;
     }
 
-    this.logger.info("Spawning SwiftHelper", { helperPath: this.helperPath });
+    const helperName = getNativeHelperName();
+    this.logger.info(`Spawning ${helperName}`, { helperPath: this.helperPath });
     this.proc = spawn(this.helperPath, [], { stdio: ["pipe", "pipe", "pipe"] });
 
     this.proc.stdout.pipe(split2()).on("data", (line: string) => {
@@ -150,19 +165,24 @@ export class SwiftIOBridge extends EventEmitter {
 
     this.proc.stderr.on("data", (data: Buffer) => {
       const errorMsg = data.toString();
-      this.logger.warn("SwiftHelper stderr output", { message: errorMsg });
+      const helperName = getNativeHelperName();
+      this.logger.warn(`${helperName} stderr output`, { message: errorMsg });
       // Don't emit as error since stderr is often just debug info
       // this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
     });
 
     this.proc.on("error", (err) => {
-      this.logger.error("Failed to start SwiftHelper process", { error: err });
+      const helperName = getNativeHelperName();
+      this.logger.error(`Failed to start ${helperName} process`, {
+        error: err,
+      });
       this.emit("error", err);
       this.proc = null;
     });
 
     this.proc.on("close", (code, signal) => {
-      this.logger.info("SwiftHelper process exited", { code, signal });
+      const helperName = getNativeHelperName();
+      this.logger.info(`${helperName} process exited`, { code, signal });
       this.emit("close", code, signal);
       this.proc = null;
       // Optionally, implement retry logic or notify further
@@ -180,11 +200,18 @@ export class SwiftIOBridge extends EventEmitter {
     timeoutMs = 5000,
   ): Promise<RPCMethods[M]["result"]> {
     if (!this.proc || !this.proc.stdin || !this.proc.stdin.writable) {
-      return Promise.reject(
-        new Error(
-          "Swift helper process is not running or stdin is not writable.",
-        ),
-      );
+      const helperName = getNativeHelperName();
+      const errorMessage = electronApp.isPackaged
+        ? `${helperName} is not available for this operation.`
+        : "Native helper process is not running or stdin is not writable.";
+
+      this.logger.warn(`Cannot call ${method}: helper not available`, {
+        method,
+        isPackaged: electronApp.isPackaged,
+        platform: process.platform,
+      });
+
+      return Promise.reject(new Error(errorMessage));
     }
 
     const id = uuid();
@@ -267,7 +294,7 @@ export class SwiftIOBridge extends EventEmitter {
           const duration = timedOutAt - startTime;
           reject(
             new Error(
-              `SwiftIOBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms (duration: ${duration}ms, started: ${new Date(startTime).toISOString()})`,
+              `NativeBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms (duration: ${duration}ms, started: ${new Date(startTime).toISOString()})`,
             ),
           );
         }
@@ -283,24 +310,25 @@ export class SwiftIOBridge extends EventEmitter {
 
   public stopHelper(): void {
     if (this.proc) {
-      this.logger.info("Stopping SwiftHelper process");
+      const helperName = getNativeHelperName();
+      this.logger.info(`Stopping ${helperName} process`);
       this.proc.kill();
       this.proc = null;
     }
   }
 
   // Typed event emitter methods
-  on<E extends keyof SwiftIOBridgeEvents>(
+  on<E extends keyof NativeBridgeEvents>(
     event: E,
-    listener: SwiftIOBridgeEvents[E],
+    listener: NativeBridgeEvents[E],
   ): this {
     super.on(event, listener);
     return this;
   }
 
-  emit<E extends keyof SwiftIOBridgeEvents>(
+  emit<E extends keyof NativeBridgeEvents>(
     event: E,
-    ...args: Parameters<SwiftIOBridgeEvents[E]>
+    ...args: Parameters<NativeBridgeEvents[E]>
   ): boolean {
     return super.emit(event, ...args);
   }

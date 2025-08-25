@@ -1,5 +1,5 @@
 // Worker process entry point for fork
-import { Whisper } from "smart-whisper";
+import { Whisper } from "@amical/smart-whisper";
 
 // Simple console-based logging for worker process
 const logger = {
@@ -29,7 +29,7 @@ const methods = {
       whisperInstance = null;
     }
 
-    const { Whisper } = await import("smart-whisper");
+    const { Whisper } = await import("@amical/smart-whisper");
     whisperInstance = new Whisper(modelPath, { gpu: true });
     try {
       await whisperInstance.load();

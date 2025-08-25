@@ -11,7 +11,8 @@
     "clean": "rm -rf dist generated",
     "generate:json-schemas": "tsx scripts/generate-json-schemas.ts",
     "generate:swift": "tsx scripts/generate-swift-models.ts",
-    "generate:all": "pnpm run generate:json-schemas && pnpm run generate:swift",
+    "generate:csharp": "tsx scripts/generate-csharp-models.ts",
+    "generate:all": "pnpm run generate:json-schemas && pnpm run generate:swift && pnpm run generate:csharp",
     "lint": "eslint .",
     "check-types": "tsc --noEmit"
   },
@@ -32,7 +33,8 @@
     "zod-to-json-schema": "^3.24.5"
   },
   "dependencies": {
-    "zod": "^3.24.4"
+    "zod": "^3.24.4",
+    "minimatch": "10.0.3"
   },
   "exports": {
     ".": {

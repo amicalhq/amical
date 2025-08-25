@@ -5,13 +5,14 @@ import { app } from "electron";
 import * as path from "path";
 
 // Set GGML_METAL_PATH_RESOURCES before any other imports
-// This ensures smart-whisper can find its resources when unpacked from asar
+// This ensures @amical/smart-whisper can find its resources when unpacked from asar
 if (app.isPackaged) {
   // Point to the unpacked whisper.cpp directory
   process.env.GGML_METAL_PATH_RESOURCES = path.join(
     process.resourcesPath,
     "app.asar.unpacked",
     "node_modules",
+    "@amical",
     "smart-whisper",
     "whisper.cpp",
   );

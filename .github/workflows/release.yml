@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - feat.windows.support
     tags:
       - 'v*'
   workflow_dispatch:
@@ -12,18 +14,30 @@ on:
         type: string
 
 jobs:
-  build-macos:
-    name: Build macOS (${{ matrix.arch }})
-    runs-on: ${{ matrix.arch == 'x64' && 'macos-13' || 'macos-latest' }}
+  build:
+    name: Build ${{ matrix.os == 'macos' && 'macOS' || 'Windows' }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        arch: [arm64, x64]
+        include:
+          - os: macos
+            arch: arm64
+            runner: macos-latest
+          - os: macos
+            arch: x64
+            runner: macos-13
+          - os: windows
+            arch: x64
+            runner: windows-2025
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Verify architecture
+        if: matrix.os == 'macos'
         run: |
           CURRENT_ARCH=$(uname -m)
           echo "Current shell architecture: $CURRENT_ARCH"
@@ -47,12 +61,13 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.13.1
+          version: 10.15.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          # 24.2 to at least 24.6 (atm of writing this) has issues with symlink deref in nested directories
+          node-version: '24.1.0'
           cache: 'pnpm'
 
       - name: Log Node.js architecture and platform
@@ -70,15 +85,18 @@ jobs:
         run: pnpm download-node
 
       - name: Import Developer ID cert
+        if: matrix.os == 'macos'
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.DEVELOPER_CERT_BASE64 }}
           p12-password:    ${{ secrets.DEVELOPER_CERT_PASSPHRASE }}
 
       - name: List signing identities (debug)
+        if: matrix.os == 'macos'
         run: security find-identity -v -p codesigning
 
-      - name: Build artifacts
+      - name: Build artifacts (macOS)
+        if: matrix.os == 'macos'
         working-directory: apps/desktop
         env:
           SKIP_CODESIGNING: false
@@ -88,15 +106,24 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CODESIGNING_IDENTITY: ${{ secrets.CODESIGNING_IDENTITY }}
         run: |
-          echo "Building ${{ matrix.arch }} artifacts"
+          echo "Building macOS ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}
+
+      - name: Build artifacts (Windows)
+        if: matrix.os == 'windows'
+        working-directory: apps/desktop
+        run: |
+          echo "Building Windows x64 artifacts"
+          pnpm make:windows
 
       - name: Get version from package.json
         id: package_version
         working-directory: apps/desktop
+        shell: bash
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Upload artifacts
+      - name: Upload artifacts (macOS)
+        if: matrix.os == 'macos'
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
@@ -104,9 +131,18 @@ jobs:
             apps/desktop/out/make/*-${{ matrix.arch }}.dmg
             apps/desktop/out/make/zip/darwin/${{ matrix.arch }}/*.zip
 
+      - name: Upload artifacts (Windows)
+        if: matrix.os == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: |
+            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.exe
+            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.nupkg
+
   release:
     name: Create Release
-    needs: build-macos
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,10 +164,10 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== Full artifacts directory structure ==="
-          find artifacts -type f -name "*.dmg" -o -name "*.zip" | sort
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) | sort
           echo ""
           echo "=== Detailed file listing ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) -exec ls -la {} \;
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) -exec ls -la {} \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -152,17 +188,27 @@ jobs:
             - **Apple Silicon (M1/M2/M3)**: Download the DMG or ZIP file for arm64
             - **Intel**: Download the DMG or ZIP file for x64
             
+            #### Windows
+            - **Windows (x64)**: Download the .exe installer for 64-bit Windows
+            
             ### Installation
             
             **macOS**: 
             - **DMG**: Download and open the DMG file, then drag Amical to your Applications folder
             - **ZIP**: Download and extract the ZIP file, then drag Amical to your Applications folder
             
-            The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation.
+            **Windows**:
+            - Download and run the .exe installer
+            - Follow the installation wizard
+            - The app will be installed to your user AppData folder and a shortcut will be created
+            
+            The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation on macOS.
           files: |
             artifacts/macos-arm64/*.dmg
             artifacts/macos-arm64/zip/darwin/arm64/*.zip
             artifacts/macos-x64/*.dmg
             artifacts/macos-x64/zip/darwin/x64/*.zip
+            artifacts/windows-x64/*.exe
+            artifacts/windows-x64/*.nupkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

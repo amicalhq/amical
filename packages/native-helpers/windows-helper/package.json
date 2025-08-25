@@ -1,0 +1,16 @@
+{
+  "name": "@amical/windows-helper",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter @amical/types generate:all && dotnet publish -c Release -r win-x64 --self-contained false -o bin",
+    "build:native": "dotnet publish -c Release -r win-x64 --self-contained false -o bin",
+    "clean": "rm -rf bin obj"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ]
+}

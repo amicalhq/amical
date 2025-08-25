@@ -12,7 +12,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "bin/**", "out/**"],
+      "outputs": [".next/**", "!.next/cache/**", "bin/**", "out/**", "dist/**", "build/**"],
       "env": [
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
@@ -23,8 +23,8 @@
     },
     "build:native": {
       "dependsOn": [],
-      "inputs": ["Sources/**", "Package.swift", "main.swift", "scripts/**"],
-      "outputs": ["bin/**"],
+      "inputs": ["Sources/**", "Package.swift", "main.swift", "scripts/**", "src/binding/**", "binding.gyp", "whisper.cpp/**"],
+      "outputs": ["bin/**", "build/**"],
       "cache": true
     },
     "format:check": {},

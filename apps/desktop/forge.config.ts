@@ -17,6 +17,8 @@ import {
   mkdirSync,
   cpSync,
   rmSync,
+  lstatSync,
+  readlinkSync,
 } from "node:fs";
 import { join, normalize } from "node:path";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
@@ -29,7 +31,6 @@ let nativeModuleDependenciesToPackage: string[] = [];
 
 export const EXTERNAL_DEPENDENCIES = [
   "electron-squirrel-startup",
-  "smart-whisper",
   "@libsql/client",
   "@libsql/darwin-arm64",
   "@libsql/darwin-x64",
@@ -39,13 +40,13 @@ export const EXTERNAL_DEPENDENCIES = [
   "libsql",
   "onnxruntime-node",
   "workerpool",
+  "@amical/smart-whisper",
   // Add any other native modules you need here
 ];
 
 const config: ForgeConfig = {
   hooks: {
     prePackage: async (_forgeConfig, platform, arch) => {
-      console.error("prePackage", { platform, arch });
       const projectRoot = normalize(__dirname);
       // In a monorepo, node_modules are typically at the root level
       const monorepoRoot = join(projectRoot, "../../"); // Go up to monorepo root
@@ -148,15 +149,56 @@ const config: ForgeConfig = {
 
           // Copy the package
           console.log(`Copying ${dep}...`);
-          cpSync(rootDepPath, localDepPath, { recursive: true });
+          cpSync(rootDepPath, localDepPath, { recursive: true, dereference: true, force: true });
           console.log(`✓ Successfully copied ${dep}`);
         } catch (error) {
           console.error(`Failed to copy ${dep}:`, error);
         }
       }
 
+      // Second pass: Replace any symlinks with dereferenced copies
+      console.log("Checking for symlinks in copied dependencies...");
+      for (const dep of nativeModuleDependenciesToPackage) {
+        const localDepPath = join(localNodeModules, dep);
+        
+        try {
+          if (existsSync(localDepPath)) {
+            const stats = lstatSync(localDepPath);
+            if (stats.isSymbolicLink()) {
+              console.log(`Found symlink for ${dep}, replacing with dereferenced copy...`);
+              
+              // Read where the symlink points to
+              const symlinkTarget = readlinkSync(localDepPath);
+              const absoluteTarget = join(localDepPath, "..", symlinkTarget);
+              const sourcePath = normalize(absoluteTarget);
+              
+              console.log(`  Symlink points to: ${sourcePath}`);
+              
+              // Remove the symlink
+              rmSync(localDepPath, { recursive: true, force: true });
+              
+              // Copy with dereference to get actual content
+              cpSync(sourcePath, localDepPath, { 
+                recursive: true, 
+                force: true,
+                dereference: true  // Follow symlinks and copy actual content
+              });
+              
+              console.log(`✓ Successfully replaced symlink for ${dep} with actual content`);
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to check/replace symlink for ${dep}:`, error);
+        }
+      }
+
       // Prune onnxruntime-node to keep only the required binary
-      console.log("Pruning onnxruntime-node binaries...");
+      const targetPlatform = platform;
+      const targetArch = arch;
+
+      console.log(
+        `Pruning onnxruntime-node binaries for ${targetPlatform}/${targetArch}...`,
+      );
       const onnxBinRoot = join(localNodeModules, "onnxruntime-node", "bin");
       if (existsSync(onnxBinRoot)) {
         const napiVersionDirs = readdirSync(onnxBinRoot);
@@ -169,18 +211,18 @@ const config: ForgeConfig = {
             const platformPath = join(napiVersionPath, platformDir);
             if (!statSync(platformPath).isDirectory()) continue;
 
-            // Delete other platform directories
-            if (platformDir !== process.platform) {
+            // Delete unused platforms except Linux (keep for compatibility)
+            if (platformDir !== targetPlatform && platformDir !== "linux") {
               console.log(`- Deleting unused platform: ${platformPath}`);
               rmSync(platformPath, { recursive: true, force: true });
-            } else {
+            } else if (platformDir === targetPlatform) {
               // Now in the correct platform dir, prune architectures
               const archDirs = readdirSync(platformPath);
               for (const archDir of archDirs) {
                 const archPath = join(platformPath, archDir);
                 if (!statSync(archPath).isDirectory()) continue;
 
-                if (archDir !== process.arch) {
+                if (archDir !== targetArch) {
                   console.log(`- Deleting unused arch: ${archPath}`);
                   rmSync(archPath, { recursive: true, force: true });
                 }
@@ -196,6 +238,7 @@ const config: ForgeConfig = {
       }
     },
     packageAfterPrune: async (_forgeConfig, buildPath) => {
+      console.error("PRE PACKAGE");
       try {
         function getItemsFromFolder(
           path: string,
@@ -264,14 +307,14 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpack:
-        "{*.node,*.dylib,*.so,*.dll,*.metal,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/smart-whisper/**,**/node_modules/jest-worker/**}",
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/node_modules/@amical/smart-whisper/**,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
     },
     name: "Amical",
     executableName: "Amical",
     icon: "./assets/logo", // Path to your icon file
     appBundleId: "com.amical.desktop", // Proper bundle ID
     extraResource: [
-      "../../packages/native-helpers/swift-helper/bin",
+      `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
       // Only include the platform-specific node binary
       `./node-binaries/${process.platform}-${process.arch}/node${
@@ -356,8 +399,18 @@ const config: ForgeConfig = {
             }
 
             // Handle scoped packages: if dep is @scope/package, also keep @scope/ directory
+            // But not for our workspace packages
             if (dep.includes("/") && dep.startsWith("@")) {
               const scopeDir = dep.split("/")[0]; // @libsql/client -> @libsql
+              // for workspace packages only keep the actual package
+              if (scopeDir === "@amical") {
+                if (filePath.startsWith(`/node_modules/${dep}`) ||
+                   filePath === `/node_modules/${scopeDir}`) {
+                  KEEP_FILE.keep = true;
+                  KEEP_FILE.log = true;
+                }
+                continue;
+              }
               if (
                 filePath === `/node_modules/${scopeDir}/` ||
                 filePath === `/node_modules/${scopeDir}` ||
