@@ -38,22 +38,27 @@ const data = {
   navMain: [
     {
       title: "Transcriptions",
-      url: "#",
+      url: "/transcriptions",
       icon: IconFileDescription,
     },
     {
       title: "Vocabulary",
-      url: "#",
+      url: "/vocabulary",
       icon: IconFileWord,
     },
     {
       title: "Speech Models",
-      url: "#",
+      url: "/models",
       icon: IconDatabase,
     },
     {
+      title: "Settings (OG)",
+      url: "/settings-og",
+      icon: IconSettings,
+    },
+    {
       title: "Settings",
-      url: "#",
+      url: "/settings",
       icon: IconSettings,
     },
   ],
@@ -90,16 +95,9 @@ const data = {
   ],
 };
 
-interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  onNavigate?: (item: { title: string }) => void;
-  currentView?: string;
-}
+interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {}
 
-export function AppSidebar({
-  onNavigate,
-  currentView,
-  ...props
-}: AppSidebarProps) {
+export function AppSidebar({ ...props }: AppSidebarProps) {
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <div className="h-[var(--header-height)]"></div>
@@ -126,17 +124,8 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain
-          items={data.navMain}
-          onNavigate={onNavigate}
-          currentView={currentView}
-        />
-        <NavSecondary
-          items={data.navSecondary}
-          onNavigate={onNavigate}
-          currentView={currentView}
-          className="mt-auto"
-        />
+        <NavMain items={data.navMain} />
+        <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>{/* <NavUser user={data.user} /> */}</SidebarFooter>
     </Sidebar>
