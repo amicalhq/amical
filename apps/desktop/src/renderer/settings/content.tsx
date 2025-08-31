@@ -9,6 +9,8 @@ import VocabularySettingsPage from "./pages/vocabulary";
 import AIModelsSettingsPage from "./pages/ai-models";
 import HistorySettingsPage from "./pages/history";
 import AboutSettingsPage from "./pages/about";
+import AdvancedSettingsPage from "./pages/advanced";
+import { ShortcutsSettingsPage } from "./pages/shortcuts";
 
 const SettingsApp: React.FC = () => {
   const location = useLocation();
@@ -20,12 +22,13 @@ const SettingsApp: React.FC = () => {
 
   const getSettingsPageTitle = (pathname: string): string => {
     const routes: Record<string, string> = {
-      "/settings/": "Preferences",
-      "/settings/dictation": "Dictation",
-      "/settings/vocabulary": "Vocabulary",
-      "/settings/ai-models": "AI Models",
-      "/settings/history": "History",
-      "/settings/about": "About",
+      "/": "Preferences",
+      "/dictation": "Dictation",
+      "/vocabulary": "Vocabulary",
+      "/ai-models": "AI Models",
+      "/history": "History",
+      "/advanced": "Advanced",
+      "/about": "About",
     };
     return routes[pathname] || "Settings";
   };
@@ -41,7 +44,7 @@ const SettingsApp: React.FC = () => {
     >
       <div className="flex h-screen w-screen flex-col">
         <SiteHeader
-          currentView={`Settings - ${getSettingsPageTitle(location.pathname)}`}
+          currentView={`${getSettingsPageTitle(location.pathname)}`}
         />
 
         <div className="flex flex-1 min-h-0">
@@ -65,6 +68,11 @@ const SettingsApp: React.FC = () => {
                       />
 
                       <Route
+                        path="/shortcuts"
+                        element={<ShortcutsSettingsPage />}
+                      />
+
+                      <Route
                         path="/vocabulary"
                         element={<VocabularySettingsPage />}
                       />
@@ -75,6 +83,10 @@ const SettingsApp: React.FC = () => {
                       <Route
                         path="/history"
                         element={<HistorySettingsPage />}
+                      />
+                      <Route
+                        path="/advanced"
+                        element={<AdvancedSettingsPage />}
                       />
                       <Route path="/about" element={<AboutSettingsPage />} />
                     </Routes>

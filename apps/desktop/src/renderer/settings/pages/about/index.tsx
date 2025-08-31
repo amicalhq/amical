@@ -5,10 +5,10 @@ import { RefreshCw, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const VERSION = "1.2.3";
-const CHANGELOG_URL = "https://github.com/amical-ai/amical-ui/releases";
-const GITHUB_URL = "https://github.com/amical-ai/amical-ui";
-const DISCORD_URL = "https://discord.gg/amical";
+const VERSION = "1.0.0";
+const CHANGELOG_URL = "https://github.com/amicalhq/amical/releases";
+const GITHUB_URL = "https://github.com/amicalhq/amical";
+const DISCORD_URL = "https://amical.ai/community";
 const CONTACT_EMAIL = "contact@amical.ai";
 
 export default function AboutSettingsPage() {
@@ -41,7 +41,7 @@ export default function AboutSettingsPage() {
                 v{VERSION}
               </Badge>
             </div>
-            <Button
+            {/* <Button
               variant="outline"
               className="mt-4 md:mt-0 flex items-center gap-2"
               onClick={handleCheckUpdates}
@@ -51,7 +51,7 @@ export default function AboutSettingsPage() {
                 className={"w-4 h-4 " + (checking ? "animate-spin" : "")}
               />
               {checking ? "Checking..." : "Check for Updates"}
-            </Button>
+            </Button> */}
           </CardContent>
         </Card>
 

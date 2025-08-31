@@ -22,8 +22,8 @@ const App: React.FC = () => {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <Routes>
-            <Route path="/settings/*" element={<SettingsApp />} />
-            <Route path="/*" element={<MainLayout />} />
+            <Route path="/*" element={<SettingsApp />} />
+            {/* <Route path="/*" element={<MainLayout />} /> */}
           </Routes>
         </BrowserRouter>
       </QueryClientProvider>

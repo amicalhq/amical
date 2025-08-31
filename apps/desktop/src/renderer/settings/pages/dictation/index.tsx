@@ -45,12 +45,12 @@ export default function DictationSettingsPage() {
           <Separator />
           <MicrophoneSettings />
           <Separator />
-          <SpeechToTextSettings
+          {/* <SpeechToTextSettings
             speechModels={speechModels}
             speechModel={speechModel}
             onSpeechModelChange={setSpeechModel}
           />
-          <Separator />
+          <Separator /> */}
           <FormattingSettings />
         </CardContent>
       </Card>

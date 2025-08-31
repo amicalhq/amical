@@ -7,6 +7,8 @@ import {
   IconHistory,
   IconInfoCircle,
   IconBookFilled,
+  IconKeyboard,
+  IconAdjustments,
 } from "@tabler/icons-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -34,32 +36,42 @@ const data = {
   navMain: [
     {
       title: "Preferences",
-      url: "/settings/",
+      url: "/",
       icon: IconSettings,
     },
     {
       title: "Dictation",
-      url: "/settings/dictation",
+      url: "/dictation",
       icon: IconMicrophone,
     },
     {
+      title: "Shortcuts",
+      url: "/shortcuts",
+      icon: IconKeyboard,
+    },
+    {
       title: "Vocabulary",
-      url: "/settings/vocabulary",
+      url: "/vocabulary",
       icon: IconBook,
     },
     {
       title: "AI Models",
-      url: "/settings/ai-models",
+      url: "/ai-models",
       icon: IconBrain,
     },
     {
       title: "History",
-      url: "/settings/history",
+      url: "/history",
       icon: IconHistory,
     },
     {
+      title: "Advanced",
+      url: "/advanced",
+      icon: IconAdjustments,
+    },
+    {
       title: "About",
-      url: "/settings/about",
+      url: "/about",
       icon: IconInfoCircle,
     },
   ],
