@@ -12,9 +12,7 @@ const SETTINGS_ID = 1;
 // Default settings
 const defaultSettings: AppSettingsData = {
   formatterConfig: {
-    provider: "openrouter",
-    model: "anthropic/claude-3-haiku",
-    apiKey: "",
+    model: "", // Will be set when models are synced
     enabled: false,
   },
   ui: {
@@ -40,6 +38,14 @@ const defaultSettings: AppSettingsData = {
     pushToTalk: "Fn",
     toggleRecording: "",
   },
+  modelProvidersConfig: {
+    openRouter: {
+      apiKey: "",
+    },
+    // Don't include ollama config by default - let it be undefined so it shows as disconnected
+    defaultLanguageModel: "",
+    defaultEmbeddingModel: "",
+  },
 };
 
 // Get all app settings
@@ -60,7 +66,7 @@ export async function getAppSettings(): Promise<AppSettingsData> {
 
 // Update app settings (merges with existing settings)
 export async function updateAppSettings(
-  newSettings: Partial<AppSettingsData>,
+  newSettings: Partial<AppSettingsData>
 ): Promise<AppSettingsData> {
   const currentSettings = await getAppSettings();
   const mergedSettings: AppSettingsData = {
@@ -104,6 +110,37 @@ export async function updateAppSettings(
     };
   }
 
+  if (
+    newSettings.modelProvidersConfig &&
+    currentSettings.modelProvidersConfig
+  ) {
+    mergedSettings.modelProvidersConfig = {
+      ...currentSettings.modelProvidersConfig,
+      ...newSettings.modelProvidersConfig,
+    };
+
+    // Deep merge nested provider configs
+    if (
+      newSettings.modelProvidersConfig.openRouter &&
+      currentSettings.modelProvidersConfig.openRouter
+    ) {
+      mergedSettings.modelProvidersConfig.openRouter = {
+        ...currentSettings.modelProvidersConfig.openRouter,
+        ...newSettings.modelProvidersConfig.openRouter,
+      };
+    }
+
+    if (
+      newSettings.modelProvidersConfig.ollama &&
+      currentSettings.modelProvidersConfig.ollama
+    ) {
+      mergedSettings.modelProvidersConfig.ollama = {
+        ...currentSettings.modelProvidersConfig.ollama,
+        ...newSettings.modelProvidersConfig.ollama,
+      };
+    }
+  }
+
   const now = new Date();
 
   await db
@@ -114,12 +151,14 @@ export async function updateAppSettings(
     })
     .where(eq(appSettings.id, SETTINGS_ID));
 
+  console.log("mergedSettings", mergedSettings);
+
   return mergedSettings;
 }
 
 // Replace all app settings (complete override)
 export async function replaceAppSettings(
-  newSettings: AppSettingsData,
+  newSettings: AppSettingsData
 ): Promise<AppSettingsData> {
   const now = new Date();
 
@@ -136,7 +175,7 @@ export async function replaceAppSettings(
 
 // Get a specific setting section
 export async function getSettingsSection<K extends keyof AppSettingsData>(
-  section: K,
+  section: K
 ): Promise<AppSettingsData[K]> {
   const settings = await getAppSettings();
   return settings[section];
@@ -145,7 +184,7 @@ export async function getSettingsSection<K extends keyof AppSettingsData>(
 // Update a specific setting section
 export async function updateSettingsSection<K extends keyof AppSettingsData>(
   section: K,
-  newData: AppSettingsData[K],
+  newData: AppSettingsData[K]
 ): Promise<AppSettingsData> {
   return await updateAppSettings({
     [section]: newData,

@@ -15,10 +15,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Copy, Play, Download, Trash2, MicOff, Search } from "lucide-react";
+import {
+  Copy,
+  Play,
+  Pause,
+  Download,
+  Trash2,
+  MicOff,
+  Search,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { api } from "@/trpc/react";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { format } from "date-fns";
 
 // Helper to get formatted title
@@ -75,11 +84,13 @@ function groupHistoryByDate(history: Transcription[]) {
 interface HistoryTableCardProps {
   items: Transcription[];
   onCopy: (text: string) => void;
-  onPlay: (audioFile: string) => void;
+  onPlay: (transcriptionId: number) => void;
   onDownload: (transcriptionId: number) => void;
   onDelete: (id: number) => void;
   hovered: number | null;
   setHovered: (id: number | null) => void;
+  currentPlayingId: number | null;
+  isPlaying: boolean;
 }
 
 function HistoryTableCard({
@@ -89,6 +100,8 @@ function HistoryTableCard({
   onDownload,
   onDelete,
   setHovered,
+  currentPlayingId,
+  isPlaying,
 }: HistoryTableCardProps) {
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -159,13 +172,21 @@ function HistoryTableCard({
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                onClick={() => onPlay(item.audioFile!)}
+                                onClick={() => onPlay(item.id)}
                               >
-                                <Play className="w-4 h-4" />
+                                {currentPlayingId === item.id && isPlaying ? (
+                                  <Pause className="w-4 h-4" />
+                                ) : (
+                                  <Play className="w-4 h-4" />
+                                )}
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Play</p>
+                              <p>
+                                {currentPlayingId === item.id && isPlaying
+                                  ? "Pause audio"
+                                  : "Play audio"}
+                              </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -230,6 +251,7 @@ function HistoryTableCard({
 export default function HistorySettingsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [hovered, setHovered] = useState<number | null>(null);
+  const audioPlayer = useAudioPlayer();
 
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
@@ -271,7 +293,34 @@ export default function HistorySettingsPage() {
       },
     });
 
-  // Remove the getAudioFileMutation as we'll use the query directly
+  // Using mutation for fetching audio data instead of query to:
+  // - Prevent caching of large binary audio files in memory
+  // - Avoid automatic refetching behaviors (window focus, network reconnect)
+  // - Clearly indicate this is a user-triggered action (play button click)
+  // - Track loading state per transcription ID efficiently
+  const getAudioFileMutation = api.transcriptions.getAudioFile.useMutation({
+    onSuccess: (data, variables) => {
+      if (data?.data) {
+        // Decode base64 to ArrayBuffer
+        const base64 = data.data;
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        // Pass the MIME type from the server response
+        audioPlayer.toggle(
+          bytes.buffer,
+          variables.transcriptionId,
+          data.mimeType
+        );
+      }
+    },
+    onError: (error) => {
+      console.error("Error fetching audio file:", error);
+      toast.error("Failed to load audio file");
+    },
+  });
 
   const transcriptions = transcriptionsQuery.data || [];
   const loading = transcriptionsQuery.isLoading;
@@ -281,10 +330,16 @@ export default function HistorySettingsPage() {
     toast.success("Copied to clipboard");
   }
 
-  async function handlePlay(audioFile: string) {
-    toast.info("Playback not implemented");
-    console.log("Playback audio:", audioFile);
-  }
+  const handlePlayAudio = (transcriptionId: number) => {
+    if (
+      audioPlayer.currentPlayingId === transcriptionId &&
+      audioPlayer.isPlaying
+    ) {
+      audioPlayer.stop();
+    } else {
+      getAudioFileMutation.mutate({ transcriptionId });
+    }
+  };
 
   function handleDownload(transcriptionId: number) {
     downloadAudioMutation.mutate({ transcriptionId });
@@ -373,11 +428,13 @@ export default function HistorySettingsPage() {
                 <HistoryTableCard
                   items={groupedHistory.today}
                   onCopy={handleCopy}
-                  onPlay={handlePlay}
+                  onPlay={handlePlayAudio}
                   onDownload={handleDownload}
                   onDelete={handleDelete}
                   hovered={hovered}
                   setHovered={setHovered}
+                  currentPlayingId={audioPlayer.currentPlayingId}
+                  isPlaying={audioPlayer.isPlaying}
                 />
               </>
             )}
@@ -391,11 +448,13 @@ export default function HistorySettingsPage() {
                 <HistoryTableCard
                   items={groupedHistory.yesterday}
                   onCopy={handleCopy}
-                  onPlay={handlePlay}
+                  onPlay={handlePlayAudio}
                   onDownload={handleDownload}
                   onDelete={handleDelete}
                   hovered={hovered}
                   setHovered={setHovered}
+                  currentPlayingId={audioPlayer.currentPlayingId}
+                  isPlaying={audioPlayer.isPlaying}
                 />
               </>
             )}
@@ -409,11 +468,13 @@ export default function HistorySettingsPage() {
                 <HistoryTableCard
                   items={groupedHistory.earlier}
                   onCopy={handleCopy}
-                  onPlay={handlePlay}
+                  onPlay={handlePlayAudio}
                   onDownload={handleDownload}
                   onDelete={handleDelete}
                   hovered={hovered}
                   setHovered={setHovered}
+                  currentPlayingId={audioPlayer.currentPlayingId}
+                  isPlaying={audioPlayer.isPlaying}
                 />
               </>
             )}

@@ -2,19 +2,12 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function PreferencesSettingsPage() {
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [minimizeToTray, setMinimizeToTray] = useState(true);
-  const [theme, setTheme] = useState("system");
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
@@ -75,16 +68,7 @@ export default function PreferencesSettingsPage() {
                   Choose your preferred color scheme
                 </p>
               </div>
-              <Select value={theme} onValueChange={setTheme}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="system">System</SelectItem>
-                </SelectContent>
-              </Select>
+              <ThemeToggle />
             </div>
           </CardContent>
         </Card>

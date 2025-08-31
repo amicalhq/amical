@@ -1,6 +1,4 @@
 export interface FormatterConfig {
-  provider: "openrouter";
-  model: string;
-  apiKey: string;
+  model: string; // Model ID from synced models
   enabled: boolean;
 }

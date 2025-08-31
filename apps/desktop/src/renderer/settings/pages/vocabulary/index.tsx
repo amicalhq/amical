@@ -13,38 +13,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 type VocabularyItem = {
-  id: string;
+  id: number;
   word: string;
-  replacement?: string;
-  isReplacement: boolean;
+  replacementWord?: string | null;
+  isReplacement: boolean | null;
+  dateAdded: Date;
+  usageCount: number | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
-
-// Mock data for vocabulary items
-const mockVocabularyItems: VocabularyItem[] = [
-  {
-    id: "1",
-    word: "kate",
-    replacement: "cate",
-    isReplacement: true,
-  },
-  {
-    id: "2",
-    word: "Krishna",
-    isReplacement: false,
-  },
-  {
-    id: "3",
-    word: "nikets40@gmail.com",
-    isReplacement: false,
-  },
-  {
-    id: "4",
-    word: "Niket Singh",
-    isReplacement: false,
-  },
-];
 
 // Add/Edit Dialog Component
 interface VocabularyDialogProps {
@@ -53,15 +34,16 @@ interface VocabularyDialogProps {
   mode: "add" | "edit";
   formData: {
     word: string;
-    replacement: string;
+    replacementWord: string;
     isReplacement: boolean;
   };
   onFormDataChange: (data: {
     word: string;
-    replacement: string;
+    replacementWord: string;
     isReplacement: boolean;
   }) => void;
   onSubmit: () => void;
+  isLoading?: boolean;
 }
 
 function VocabularyDialog({
@@ -71,6 +53,7 @@ function VocabularyDialog({
   formData,
   onFormDataChange,
   onSubmit,
+  isLoading = false,
 }: VocabularyDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -108,11 +91,11 @@ function VocabularyDialog({
                 <span className="text-muted-foreground">→</span>
                 <Input
                   placeholder="Correct spelling"
-                  value={formData.replacement}
+                  value={formData.replacementWord}
                   onChange={(e) =>
                     onFormDataChange({
                       ...formData,
-                      replacement: e.target.value,
+                      replacementWord: e.target.value,
                     })
                   }
                 />
@@ -132,8 +115,15 @@ function VocabularyDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={onSubmit}>
-              {mode === "add" ? "Add word" : "Save changes"}
+            <Button
+              onClick={onSubmit}
+              disabled={!formData.word.trim() || isLoading}
+            >
+              {isLoading
+                ? "Saving..."
+                : mode === "add"
+                  ? "Add word"
+                  : "Save changes"}
             </Button>
           </DialogFooter>
         </div>
@@ -148,6 +138,7 @@ interface DeleteDialogProps {
   onOpenChange: (open: boolean) => void;
   deletingItem: VocabularyItem | null;
   onConfirm: () => void;
+  isLoading?: boolean;
 }
 
 function DeleteDialog({
@@ -155,6 +146,7 @@ function DeleteDialog({
   onOpenChange,
   deletingItem,
   onConfirm,
+  isLoading = false,
 }: DeleteDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -166,7 +158,7 @@ function DeleteDialog({
           <p className="text-sm text-muted-foreground">
             Are you sure you want to delete "
             {deletingItem?.isReplacement
-              ? `${deletingItem?.word} → ${deletingItem?.replacement}`
+              ? `${deletingItem?.word} → ${deletingItem?.replacementWord}`
               : deletingItem?.word}
             "? This action cannot be undone.
           </p>
@@ -176,8 +168,12 @@ function DeleteDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm}>
-            Delete
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={isLoading}
+          >
+            {isLoading ? "Deleting..." : "Delete"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -186,8 +182,6 @@ function DeleteDialog({
 }
 
 export default function VocabularySettingsPage() {
-  const [vocabularyItems, setVocabularyItems] =
-    useState<VocabularyItem[]>(mockVocabularyItems);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -195,60 +189,110 @@ export default function VocabularySettingsPage() {
   const [deletingItem, setDeletingItem] = useState<VocabularyItem | null>(null);
   const [formData, setFormData] = useState({
     word: "",
-    replacement: "",
+    replacementWord: "",
     isReplacement: false,
   });
 
-  const handleAddWord = () => {
-    const newItem: VocabularyItem = {
-      id: Date.now().toString(),
-      word: formData.word,
-      replacement: formData.isReplacement ? formData.replacement : undefined,
-      isReplacement: formData.isReplacement,
-    };
-    setVocabularyItems([...vocabularyItems, newItem]);
-    setFormData({ word: "", replacement: "", isReplacement: false });
-    setIsAddDialogOpen(false);
+  const vocabularyQuery = api.vocabulary.getVocabulary.useQuery({
+    limit: 100,
+    offset: 0,
+    sortBy: "dateAdded",
+    sortOrder: "desc",
+  });
+
+  const vocabularyItems = vocabularyQuery.data || [];
+  const vocabularyLoading = vocabularyQuery.isLoading;
+
+  // tRPC mutations
+  const utils = api.useUtils();
+  const createVocabularyMutation =
+    api.vocabulary.createVocabularyWord.useMutation({
+      onSuccess: () => {
+        utils.vocabulary.getVocabulary.invalidate();
+        toast.success("Word added to vocabulary");
+      },
+      onError: (error) => {
+        toast.error(`Failed to add word: ${error.message}`);
+      },
+    });
+
+  const updateVocabularyMutation = api.vocabulary.updateVocabulary.useMutation({
+    onSuccess: () => {
+      utils.vocabulary.getVocabulary.invalidate();
+      toast.success("Vocabulary updated");
+    },
+    onError: (error) => {
+      toast.error(`Failed to update word: ${error.message}`);
+    },
+  });
+
+  const deleteVocabularyMutation = api.vocabulary.deleteVocabulary.useMutation({
+    onSuccess: () => {
+      utils.vocabulary.getVocabulary.invalidate();
+      toast.success("Word deleted from vocabulary");
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete word: ${error.message}`);
+    },
+  });
+
+  const handleAddWord = async () => {
+    try {
+      await createVocabularyMutation.mutateAsync({
+        word: formData.word,
+        isReplacement: formData.isReplacement,
+        replacementWord: formData.isReplacement
+          ? formData.replacementWord
+          : undefined,
+      });
+      setFormData({ word: "", replacementWord: "", isReplacement: false });
+      setIsAddDialogOpen(false);
+    } catch {
+      // Error is handled by the mutation's onError callback
+      // Keep dialog open so user can retry
+    }
   };
 
-  const handleEditWord = () => {
+  const handleEditWord = async () => {
     if (!editingItem) return;
 
-    const updatedItems = vocabularyItems.map((item) =>
-      item.id === editingItem.id
-        ? {
-            ...item,
-            word: formData.word,
-            replacement: formData.isReplacement
-              ? formData.replacement
-              : undefined,
-            isReplacement: formData.isReplacement,
-          }
-        : item
-    );
-    setVocabularyItems(updatedItems);
-    setFormData({ word: "", replacement: "", isReplacement: false });
-    setEditingItem(null);
-    setIsEditDialogOpen(false);
+    try {
+      await updateVocabularyMutation.mutateAsync({
+        id: editingItem.id,
+        data: {
+          word: formData.word,
+        },
+      });
+      setFormData({ word: "", replacementWord: "", isReplacement: false });
+      setEditingItem(null);
+      setIsEditDialogOpen(false);
+    } catch {
+      // Error is handled by the mutation's onError callback
+      // Keep dialog open so user can retry
+    }
   };
 
-  const handleDeleteWord = () => {
+  const handleDeleteWord = async () => {
     if (!deletingItem) return;
 
-    const updatedItems = vocabularyItems.filter(
-      (item) => item.id !== deletingItem.id
-    );
-    setVocabularyItems(updatedItems);
-    setDeletingItem(null);
-    setIsDeleteDialogOpen(false);
+    try {
+      await deleteVocabularyMutation.mutateAsync({
+        id: deletingItem.id,
+      });
+      setDeletingItem(null);
+      setIsDeleteDialogOpen(false);
+    } catch {
+      // Error is handled by the mutation's onError callback
+      // Keep dialog open so user can retry
+    }
   };
 
   const openEditDialog = (item: VocabularyItem) => {
     setEditingItem(item);
     setFormData({
       word: item.word,
-      replacement: item.replacement || "",
-      isReplacement: item.isReplacement,
+      replacementWord: item.replacementWord || "",
+      isReplacement: item.isReplacement || false,
     });
     setIsEditDialogOpen(true);
   };
@@ -259,7 +303,7 @@ export default function VocabularySettingsPage() {
   };
 
   const resetForm = () => {
-    setFormData({ word: "", replacement: "", isReplacement: false });
+    setFormData({ word: "", replacementWord: "", isReplacement: false });
     setEditingItem(null);
   };
 
@@ -290,47 +334,57 @@ export default function VocabularySettingsPage() {
       {/* Vocabulary List */}
       <Card className="p-0 overflow-clip">
         <CardContent className="p-0">
-          <div className="space-y-0">
-            {vocabularyItems.map((item, index) => (
-              <div
-                className="hover:bg-muted/50 transition-colors"
-                key={item.id}
-              >
-                <div className="flex items-center justify-between py-3 px-4 group">
-                  <span className="text-sm flex items-center gap-1">
-                    {item.isReplacement ? (
-                      <>
-                        <span>{item.word}</span>
-                        <MoveRight className="w-4 h-4 mx-2" />
-                        <span>{item.replacement}</span>
-                      </>
-                    ) : (
-                      item.word
-                    )}
-                  </span>
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditDialog(item)}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openDeleteDialog(item)}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+          {vocabularyLoading ? (
+            <div className="p-8 text-center text-muted-foreground">
+              Loading vocabulary...
+            </div>
+          ) : vocabularyItems.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              No vocabulary words found. Add your first word to get started.
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {vocabularyItems.map((item, index) => (
+                <div
+                  className="hover:bg-muted/50 transition-colors"
+                  key={item.id}
+                >
+                  <div className="flex items-center justify-between py-3 px-4 group">
+                    <span className="text-sm flex items-center gap-1">
+                      {item.isReplacement ? (
+                        <>
+                          <span>{item.word}</span>
+                          <MoveRight className="w-4 h-4 mx-2" />
+                          <span>{item.replacementWord}</span>
+                        </>
+                      ) : (
+                        item.word
+                      )}
+                    </span>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(item)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openDeleteDialog(item)}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
+                  {index < vocabularyItems.length - 1 && (
+                    <div className="border-t border-border" />
+                  )}
                 </div>
-                {index < vocabularyItems.length - 1 && (
-                  <div className="border-t border-border" />
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -342,6 +396,7 @@ export default function VocabularySettingsPage() {
         formData={formData}
         onFormDataChange={setFormData}
         onSubmit={handleAddWord}
+        isLoading={createVocabularyMutation.isPending}
       />
 
       <VocabularyDialog
@@ -351,6 +406,7 @@ export default function VocabularySettingsPage() {
         formData={formData}
         onFormDataChange={setFormData}
         onSubmit={handleEditWord}
+        isLoading={updateVocabularyMutation.isPending}
       />
 
       <DeleteDialog
@@ -358,6 +414,7 @@ export default function VocabularySettingsPage() {
         onOpenChange={setIsDeleteDialogOpen}
         deletingItem={deletingItem}
         onConfirm={handleDeleteWord}
+        isLoading={deleteVocabularyMutation.isPending}
       />
     </div>
   );

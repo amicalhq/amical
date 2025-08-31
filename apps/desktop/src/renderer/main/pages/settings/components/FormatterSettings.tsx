@@ -9,39 +9,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { FormatterConfig } from "@/types/formatter";
+import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-
-// OpenRouter models list
-const OPENROUTER_MODELS = [
-  { value: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash" },
-  { value: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet" },
-  { value: "anthropic/claude-3-haiku", label: "Claude 3 Haiku" },
-  { value: "openai/gpt-4o", label: "GPT-4o" },
-  { value: "openai/gpt-4o-mini", label: "GPT-4o mini" },
-  { value: "openai/gpt-4-turbo", label: "GPT-4 Turbo" },
-  { value: "meta-llama/llama-3.1-8b-instruct", label: "Llama 3.1 8B" },
-  { value: "meta-llama/llama-3.1-70b-instruct", label: "Llama 3.1 70B" },
-  { value: "google/gemini-pro-1.5", label: "Gemini Pro 1.5" },
-];
+import { Link } from "react-router-dom";
+import { Plus } from "lucide-react";
+import type { ProviderModel } from "@/types/providers";
 
 export function FormatterSettings() {
-  const [formatterProvider, setFormatterProvider] =
-    useState<"openrouter">("openrouter");
-  const [openrouterModel, setOpenrouterModel] = useState("");
-  const [openrouterApiKey, setOpenrouterApiKey] = useState("");
+  const [syncedModels, setSyncedModels] = useState<ProviderModel[]>([]);
+  const [formatterModel, setFormatterModel] = useState("");
   const [formatterEnabled, setFormatterEnabled] = useState(false);
 
   // tRPC queries and mutations
+  const syncedModelsQuery = api.settings.getSyncedProviderModels.useQuery();
   const formatterConfigQuery = api.settings.getFormatterConfig.useQuery();
   const utils = api.useUtils();
 
@@ -57,27 +38,79 @@ export function FormatterSettings() {
       },
     });
 
+  // Load synced models from database
+  useEffect(() => {
+    if (syncedModelsQuery.data) {
+      setSyncedModels(syncedModelsQuery.data);
+    }
+  }, [syncedModelsQuery.data]);
+
   // Load configuration when query data is available
   useEffect(() => {
     if (formatterConfigQuery.data) {
       const config = formatterConfigQuery.data;
-      setFormatterProvider(config.provider);
-      setOpenrouterModel(config.model);
-      setOpenrouterApiKey(config.apiKey);
+      setFormatterModel(config.model);
       setFormatterEnabled(config.enabled);
     }
   }, [formatterConfigQuery.data]);
 
-  const saveFormatterConfig = async () => {
-    const config: FormatterConfig = {
-      provider: formatterProvider,
-      model: openrouterModel,
-      apiKey: openrouterApiKey,
-      enabled: formatterEnabled,
-    };
+  // Handle model validation and auto-selection when both models and config are loaded
+  useEffect(() => {
+    if (formatterConfigQuery.data !== undefined) {
+      const config = formatterConfigQuery.data;
 
-    setFormatterConfigMutation.mutate(config);
+      if (syncedModels.length > 0) {
+        // Auto-select first model if no model is currently configured or config is null
+        if (!config || !config.model) {
+          const firstModel = syncedModels[0];
+          setFormatterModel(firstModel.id);
+          saveFormatterConfig(firstModel.id, formatterEnabled);
+          return;
+        }
+
+        // Check if currently selected model is still available
+        const modelExists = syncedModels.some(
+          (model) => model.id === config.model
+        );
+        if (!modelExists) {
+          // Current model was removed, select first available model
+          const firstModel = syncedModels[0];
+          setFormatterModel(firstModel.id);
+          saveFormatterConfig(firstModel.id, formatterEnabled);
+          toast.info(
+            `Previous formatting model was removed. Switched to ${firstModel.name}.`
+          );
+        }
+      } else if (config && config.model) {
+        // No models available but config has a model - clear it
+        setFormatterModel("");
+        saveFormatterConfig("", formatterEnabled);
+      }
+    }
+  }, [syncedModels, formatterConfigQuery.data, formatterEnabled]);
+
+  const handleFormattingEnabledChange = (enabled: boolean) => {
+    setFormatterEnabled(enabled);
+    saveFormatterConfig(formatterModel, enabled);
   };
+
+  const handleFormattingModelChange = (model: string) => {
+    setFormatterModel(model);
+    saveFormatterConfig(model, formatterEnabled);
+  };
+
+  const saveFormatterConfig = (model: string, enabled: boolean) => {
+    setFormatterConfigMutation.mutate({
+      model,
+      enabled,
+    });
+  };
+
+  // Convert synced models to combobox options
+  const formattingModelOptions = syncedModels.map((model) => ({
+    value: model.id,
+    label: model.name,
+  }));
 
   return (
     <Card>
@@ -88,66 +121,6 @@ export function FormatterSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="formatter-provider">Provider</Label>
-          <Select
-            value={formatterProvider}
-            onValueChange={(value: "openrouter") => setFormatterProvider(value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select a provider" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="openrouter">OpenRouter</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {formatterProvider === "openrouter" && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="openrouter-model">Model</Label>
-              <Select
-                value={openrouterModel}
-                onValueChange={setOpenrouterModel}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {OPENROUTER_MODELS.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      {model.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="openrouter-api-key">API Key</Label>
-              <Input
-                id="openrouter-api-key"
-                type="password"
-                placeholder="Enter your OpenRouter API key"
-                value={openrouterApiKey}
-                onChange={(e) => setOpenrouterApiKey(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Get your API key from{" "}
-                <a
-                  href="https://openrouter.ai"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  openrouter.ai
-                </a>
-              </p>
-            </div>
-          </>
-        )}
-
         <div className="flex items-center justify-between">
           <div>
             <Label htmlFor="enable-formatter">Enable Formatter</Label>
@@ -158,23 +131,41 @@ export function FormatterSettings() {
           <Switch
             id="enable-formatter"
             checked={formatterEnabled}
-            onCheckedChange={setFormatterEnabled}
+            onCheckedChange={handleFormattingEnabledChange}
           />
         </div>
 
-        <div className="pt-4">
-          <Button
-            onClick={saveFormatterConfig}
-            disabled={
-              setFormatterConfigMutation.isPending ||
-              !openrouterModel ||
-              !openrouterApiKey
-            }
-          >
-            {setFormatterConfigMutation.isPending
-              ? "Saving..."
-              : "Save Configuration"}
-          </Button>
+        <div className="space-y-2">
+          <Label htmlFor="formatter-model">Formatting Model</Label>
+          {formattingModelOptions.length === 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-destructive">
+                No models available. Please sync models first.
+              </span>
+              <Link to="/settings/ai-models?tab=language">
+                <Button variant="outline">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Sync models
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Combobox
+                disabled={!formatterEnabled}
+                options={formattingModelOptions}
+                value={formatterModel}
+                onChange={handleFormattingModelChange}
+                placeholder="Select a formatting model..."
+              />
+              <Link to="/settings/ai-models?tab=language">
+                <Button variant="link" className="text-xs px-0">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add more models
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

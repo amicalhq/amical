@@ -20,12 +20,12 @@ const SettingsApp: React.FC = () => {
 
   const getSettingsPageTitle = (pathname: string): string => {
     const routes: Record<string, string> = {
-      "/settings/general": "General",
-      "/settings/advanced": "Advanced",
-      "/settings/appearance": "Appearance",
-      "/settings/shortcuts": "Shortcuts",
-      "/settings/privacy": "Privacy",
-      "/settings/notifications": "Notifications",
+      "/settings/": "Preferences",
+      "/settings/dictation": "Dictation",
+      "/settings/vocabulary": "Vocabulary",
+      "/settings/ai-models": "AI Models",
+      "/settings/history": "History",
+      "/settings/about": "About",
     };
     return routes[pathname] || "Settings";
   };

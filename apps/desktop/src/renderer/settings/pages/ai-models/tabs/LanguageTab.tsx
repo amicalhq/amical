@@ -1,5 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -29,7 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Trash2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -38,64 +40,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Available models from providers
-const availableOpenRouterModels = [
-  {
-    value: "gemini-flash-2",
-    name: "Gemini Flash 2.0",
-    provider: "OpenRouter",
-    size: "Large",
-    context: "128k",
-    capabilities: ["multilingual", "fast"],
-  },
-  {
-    value: "claude-3-haiku",
-    name: "Claude 3 Haiku",
-    provider: "OpenRouter",
-    size: "Medium",
-    context: "200k",
-    capabilities: ["multilingual", "reasoning"],
-  },
-  {
-    value: "gpt-4o-mini",
-    name: "GPT-4o Mini",
-    provider: "OpenRouter",
-    size: "Small",
-    context: "128k",
-    capabilities: ["multilingual", "fast"],
-  },
-];
-
-const availableOllamaModels = [
-  {
-    value: "llama-3",
-    name: "Llama 3",
-    provider: "Ollama",
-    size: "8B",
-    context: "32k",
-    capabilities: ["english", "open-source"],
-  },
-  {
-    value: "smollm2-360m",
-    name: "Smollm2 360M",
-    provider: "Ollama",
-    size: "360M",
-    context: "8k",
-    capabilities: ["english", "fast"],
-  },
-  {
-    value: "gemma3-1b",
-    name: "Gemma3 1B",
-    provider: "Ollama",
-    size: "1B",
-    context: "8k",
-    capabilities: ["english", "fast"],
-  },
-];
+// Import ProviderModel type
+import type { ProviderModel } from "@/types/providers";
 
 export default function LanguageTab() {
-  const [syncedModels, setSyncedModels] = useState<
-    typeof availableOpenRouterModels
+  const [syncedModels, setSyncedModels] = useState<ProviderModel[]>([]);
+  const [availableOpenRouterModels, setAvailableOpenRouterModels] = useState<
+    ProviderModel[]
+  >([]);
+  const [availableOllamaModels, setAvailableOllamaModels] = useState<
+    ProviderModel[]
   >([]);
   const [defaultLanguageModel, setDefaultLanguageModel] = useState("");
 
@@ -108,6 +62,211 @@ export default function LanguageTab() {
   const [ollamaStatus, setOllamaStatus] = useState<
     "connected" | "disconnected"
   >("disconnected");
+
+  // tRPC queries and mutations
+  const modelProvidersConfigQuery =
+    api.settings.getModelProvidersConfig.useQuery();
+  const syncedModelsQuery = api.settings.getSyncedProviderModels.useQuery();
+  const defaultLanguageModelQuery =
+    api.settings.getDefaultLanguageModel.useQuery();
+  const utils = api.useUtils();
+
+  const setOpenRouterConfigMutation =
+    api.settings.setOpenRouterConfig.useMutation({
+      onSuccess: () => {
+        toast.success("OpenRouter configuration saved successfully!");
+        utils.settings.getModelProvidersConfig.invalidate();
+      },
+      onError: (error) => {
+        console.error("Failed to save OpenRouter config:", error);
+        toast.error(
+          "Failed to save OpenRouter configuration. Please try again."
+        );
+      },
+    });
+
+  const setOllamaConfigMutation = api.settings.setOllamaConfig.useMutation({
+    onSuccess: () => {
+      toast.success("Ollama configuration saved successfully!");
+      utils.settings.getModelProvidersConfig.invalidate();
+    },
+    onError: (error) => {
+      console.error("Failed to save Ollama config:", error);
+      toast.error("Failed to save Ollama configuration. Please try again.");
+    },
+  });
+
+  // Validation mutations
+  const validateOpenRouterMutation =
+    api.settings.validateOpenRouterConnection.useMutation({
+      onSuccess: (result) => {
+        setIsValidatingOpenRouter(false);
+        if (result.success) {
+          // Save the API key after successful validation
+          setOpenRouterConfigMutation.mutate({ apiKey: openrouterKey.trim() });
+          setOpenrouterStatus("connected");
+          setOpenRouterValidationError("");
+          toast.success("OpenRouter connection validated successfully!");
+        } else {
+          setOpenRouterValidationError(result.error || "Validation failed");
+          toast.error(`OpenRouter validation failed: ${result.error}`);
+        }
+      },
+      onError: (error) => {
+        setIsValidatingOpenRouter(false);
+        setOpenRouterValidationError(error.message);
+        toast.error(`OpenRouter validation error: ${error.message}`);
+      },
+    });
+
+  const validateOllamaMutation =
+    api.settings.validateOllamaConnection.useMutation({
+      onSuccess: (result) => {
+        setIsValidatingOllama(false);
+        if (result.success) {
+          // Save the URL after successful validation
+          setOllamaConfigMutation.mutate({ url: ollamaUrl.trim() });
+          setOllamaStatus("connected");
+          setOllamaValidationError("");
+          toast.success("Ollama connection validated successfully!");
+        } else {
+          setOllamaValidationError(result.error || "Validation failed");
+          toast.error(`Ollama validation failed: ${result.error}`);
+        }
+      },
+      onError: (error) => {
+        setIsValidatingOllama(false);
+        setOllamaValidationError(error.message);
+        toast.error(`Ollama validation error: ${error.message}`);
+      },
+    });
+
+  // Database sync mutations
+  const syncProviderModelsMutation =
+    api.settings.syncProviderModels.useMutation({
+      onSuccess: () => {
+        utils.settings.getSyncedProviderModels.invalidate();
+        toast.success("Models synced to database successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to sync models to database:", error);
+        toast.error("Failed to sync models to database. Please try again.");
+      },
+    });
+
+  const setDefaultLanguageModelMutation =
+    api.settings.setDefaultLanguageModel.useMutation({
+      onSuccess: () => {
+        utils.settings.getDefaultLanguageModel.invalidate();
+        toast.success("Default language model updated!");
+      },
+      onError: (error) => {
+        console.error("Failed to set default language model:", error);
+        toast.error("Failed to set default language model. Please try again.");
+      },
+    });
+
+  const removeProviderModelMutation =
+    api.settings.removeProviderModel.useMutation({
+      onSuccess: () => {
+        utils.settings.getSyncedProviderModels.invalidate();
+        toast.success("Model removed successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to remove model:", error);
+        toast.error("Failed to remove model. Please try again.");
+      },
+    });
+
+  const removeOpenRouterProviderMutation =
+    api.settings.removeOpenRouterProvider.useMutation({
+      onSuccess: () => {
+        utils.settings.getModelProvidersConfig.invalidate();
+        utils.settings.getSyncedProviderModels.invalidate();
+        utils.settings.getDefaultLanguageModel.invalidate();
+        setOpenrouterStatus("disconnected");
+        setOpenrouterKey("");
+        toast.success("OpenRouter provider removed successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to remove OpenRouter provider:", error);
+        toast.error("Failed to remove OpenRouter provider. Please try again.");
+      },
+    });
+
+  const removeOllamaProviderMutation =
+    api.settings.removeOllamaProvider.useMutation({
+      onSuccess: () => {
+        utils.settings.getModelProvidersConfig.invalidate();
+        utils.settings.getSyncedProviderModels.invalidate();
+        utils.settings.getDefaultLanguageModel.invalidate();
+        setOllamaStatus("disconnected");
+        // setOllamaUrl("http://localhost:11434");
+        toast.success("Ollama provider removed successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to remove Ollama provider:", error);
+        toast.error("Failed to remove Ollama provider. Please try again.");
+      },
+    });
+
+  // Model fetching queries
+  const fetchOpenRouterModelsQuery =
+    api.settings.fetchOpenRouterModels.useQuery(
+      { apiKey: openrouterKey },
+      { enabled: false } // Don't auto-fetch
+    );
+
+  const fetchOllamaModelsQuery = api.settings.fetchOllamaModels.useQuery(
+    { url: ollamaUrl },
+    { enabled: false } // Don't auto-fetch
+  );
+
+  // Handle OpenRouter models fetch result
+  useEffect(() => {
+    if (fetchOpenRouterModelsQuery.data) {
+      setAvailableOpenRouterModels(fetchOpenRouterModelsQuery.data);
+      setOpenRouterFetchError("");
+      setIsFetchingOpenRouterModels(false);
+    }
+    if (fetchOpenRouterModelsQuery.error) {
+      setOpenRouterFetchError(fetchOpenRouterModelsQuery.error.message);
+      setIsFetchingOpenRouterModels(false);
+      toast.error(
+        `Failed to fetch OpenRouter models: ${fetchOpenRouterModelsQuery.error.message}`
+      );
+    }
+  }, [fetchOpenRouterModelsQuery.data, fetchOpenRouterModelsQuery.error]);
+
+  // Handle Ollama models fetch result
+  useEffect(() => {
+    if (fetchOllamaModelsQuery.data) {
+      setAvailableOllamaModels(fetchOllamaModelsQuery.data);
+      setOllamaFetchError("");
+      setIsFetchingOllamaModels(false);
+    }
+    if (fetchOllamaModelsQuery.error) {
+      setOllamaFetchError(fetchOllamaModelsQuery.error.message);
+      setIsFetchingOllamaModels(false);
+      toast.error(
+        `Failed to fetch Ollama models: ${fetchOllamaModelsQuery.error.message}`
+      );
+    }
+  }, [fetchOllamaModelsQuery.data, fetchOllamaModelsQuery.error]);
+
+  // Load synced models from database
+  useEffect(() => {
+    if (syncedModelsQuery.data) {
+      setSyncedModels(syncedModelsQuery.data);
+    }
+  }, [syncedModelsQuery.data]);
+
+  // Load default language model from database
+  useEffect(() => {
+    if (defaultLanguageModelQuery.data !== undefined) {
+      setDefaultLanguageModel(defaultLanguageModelQuery.data || "");
+    }
+  }, [defaultLanguageModelQuery.data]);
 
   // Dialog states
   const [openrouterDialogOpen, setOpenrouterDialogOpen] = useState(false);
@@ -130,95 +289,164 @@ export default function LanguageTab() {
   const [changeDefaultDialogOpen, setChangeDefaultDialogOpen] = useState(false);
   const [newDefaultModel, setNewDefaultModel] = useState<string>("");
 
-  // Connect functions
-  const handleOpenRouterConnect = () => {
-    if (openrouterKey.trim()) {
-      setOpenrouterStatus("connected");
+  // Validation states
+  const [isValidatingOpenRouter, setIsValidatingOpenRouter] = useState(false);
+  const [isValidatingOllama, setIsValidatingOllama] = useState(false);
+  const [openRouterValidationError, setOpenRouterValidationError] =
+    useState<string>("");
+  const [ollamaValidationError, setOllamaValidationError] =
+    useState<string>("");
+
+  // Model fetching states
+  const [isFetchingOpenRouterModels, setIsFetchingOpenRouterModels] =
+    useState(false);
+  const [isFetchingOllamaModels, setIsFetchingOllamaModels] = useState(false);
+  const [openRouterFetchError, setOpenRouterFetchError] = useState<string>("");
+  const [ollamaFetchError, setOllamaFetchError] = useState<string>("");
+
+  // Load configuration when query data is available
+  useEffect(() => {
+    if (modelProvidersConfigQuery.data) {
+      const config = modelProvidersConfigQuery.data;
+      console.log("config", config);
+
+      // Load OpenRouter config
+      if (config.openRouter?.apiKey) {
+        setOpenrouterKey(config.openRouter.apiKey);
+        setOpenrouterStatus("connected");
+      } else {
+        setOpenrouterKey("");
+        setOpenrouterStatus("disconnected");
+      }
+
+      // Load Ollama config
+      if (config.ollama?.url && config.ollama.url !== "") {
+        console.log("config.ollama.url", config.ollama.url);
+        setOllamaUrl(config.ollama.url);
+        setOllamaStatus("connected");
+      } else {
+        // setOllamaUrl("http://localhost:11434");
+        setOllamaStatus("disconnected");
+      }
     }
+  }, [modelProvidersConfigQuery.data]);
+
+  // Connect functions with validation
+  const handleOpenRouterConnect = () => {
+    if (!openrouterKey.trim()) return;
+
+    setIsValidatingOpenRouter(true);
+    setOpenRouterValidationError("");
+
+    // Validate before saving
+    validateOpenRouterMutation.mutate({ apiKey: openrouterKey.trim() });
   };
 
   const handleOllamaConnect = () => {
-    if (ollamaUrl.trim()) {
-      setOllamaStatus("connected");
-    }
+    if (!ollamaUrl.trim()) return;
+
+    setIsValidatingOllama(true);
+    setOllamaValidationError("");
+
+    // Validate before saving
+    validateOllamaMutation.mutate({ url: ollamaUrl.trim() });
   };
 
-  // Open dialog with pre-selected synced models
+  // Open dialog with pre-selected synced models and fetch available models
   const openOpenRouterDialog = () => {
     const syncedOpenRouterModels = syncedModels
       .filter((m) => m.provider === "OpenRouter")
-      .map((m) => m.value);
+      .map((m) => m.id);
     setSelectedOpenRouterModels(syncedOpenRouterModels);
     setOpenrouterSearch("");
     setOpenrouterDialogOpen(true);
+
+    // Fetch available models
+    if (openrouterKey.trim()) {
+      setIsFetchingOpenRouterModels(true);
+      setOpenRouterFetchError("");
+      fetchOpenRouterModelsQuery.refetch();
+    }
   };
 
   const openOllamaDialog = () => {
     const syncedOllamaModels = syncedModels
       .filter((m) => m.provider === "Ollama")
-      .map((m) => m.value);
+      .map((m) => m.id);
     setSelectedOllamaModels(syncedOllamaModels);
     setOllamaSearch("");
     setOllamaDialogOpen(true);
+
+    // Fetch available models
+    if (ollamaUrl.trim()) {
+      setIsFetchingOllamaModels(true);
+      setOllamaFetchError("");
+      fetchOllamaModelsQuery.refetch();
+    }
   };
 
   // Sync models functions
   const handleOpenRouterSync = () => {
     const selectedModels = availableOpenRouterModels.filter((model) =>
-      selectedOpenRouterModels.includes(model.value)
+      selectedOpenRouterModels.includes(model.id)
     );
-    setSyncedModels((prev) => {
-      const newModels = [
-        ...prev.filter((m) => m.provider !== "OpenRouter"),
-        ...selectedModels,
-      ];
-      // Set first model as default if no default is set
-      if (!defaultLanguageModel && newModels.length > 0) {
-        setDefaultLanguageModel(newModels[0].value);
-      }
-      return newModels;
+
+    // Sync to database
+    syncProviderModelsMutation.mutate({
+      provider: "OpenRouter",
+      models: selectedModels,
     });
+
+    // Set first model as default if no default is set
+    if (!defaultLanguageModel && selectedModels.length > 0) {
+      setDefaultLanguageModelMutation.mutate({ modelId: selectedModels[0].id });
+    }
+
     setOpenrouterDialogOpen(false);
     setSelectedOpenRouterModels([]);
   };
 
   const handleOllamaSync = () => {
     const selectedModels = availableOllamaModels.filter((model) =>
-      selectedOllamaModels.includes(model.value)
+      selectedOllamaModels.includes(model.id)
     );
-    setSyncedModels((prev) => {
-      const newModels = [
-        ...prev.filter((m) => m.provider !== "Ollama"),
-        ...selectedModels,
-      ];
-      // Set first model as default if no default is set
-      if (!defaultLanguageModel && newModels.length > 0) {
-        setDefaultLanguageModel(newModels[0].value);
-      }
-      return newModels;
+
+    // Sync to database
+    syncProviderModelsMutation.mutate({
+      provider: "Ollama",
+      models: selectedModels,
     });
+
+    // Set first model as default if no default is set
+    if (!defaultLanguageModel && selectedModels.length > 0) {
+      setDefaultLanguageModelMutation.mutate({ modelId: selectedModels[0].id });
+    }
+
     setOllamaDialogOpen(false);
     setSelectedOllamaModels([]);
   };
 
-  const handleRemoveModel = (modelValue: string) => {
-    setSyncedModels((prev) => prev.filter((m) => m.value !== modelValue));
-    if (defaultLanguageModel === modelValue) {
-      setDefaultLanguageModel("");
+  const handleRemoveModel = (modelId: string) => {
+    // Remove from database
+    removeProviderModelMutation.mutate({ modelId });
+
+    // Clear default if removing the default model
+    if (defaultLanguageModel === modelId) {
+      setDefaultLanguageModelMutation.mutate({ modelId: undefined });
     }
   };
 
   // Delete confirmation functions
-  const openDeleteDialog = (modelValue: string) => {
+  const openDeleteDialog = (modelId: string) => {
     // Check if trying to remove the default model
-    if (modelValue === defaultLanguageModel) {
+    if (modelId === defaultLanguageModel) {
       setErrorMessage(
         "Please select another model as default before removing this model."
       );
       setErrorDialogOpen(true);
       return;
     }
-    setModelToDelete(modelValue);
+    setModelToDelete(modelId);
     setDeleteDialogOpen(true);
   };
 
@@ -243,29 +471,9 @@ export default function LanguageTab() {
 
   const confirmRemoveProvider = () => {
     if (providerToRemove === "OpenRouter") {
-      setOpenrouterStatus("disconnected");
-      setOpenrouterKey("");
-      setSyncedModels((prev) =>
-        prev.filter((m) => m.provider !== "OpenRouter")
-      );
-      if (
-        defaultLanguageModel &&
-        syncedModels.find((m) => m.value === defaultLanguageModel)?.provider ===
-          "OpenRouter"
-      ) {
-        setDefaultLanguageModel("");
-      }
+      removeOpenRouterProviderMutation.mutate();
     } else if (providerToRemove === "Ollama") {
-      setOllamaStatus("disconnected");
-      setOllamaUrl("");
-      setSyncedModels((prev) => prev.filter((m) => m.provider !== "Ollama"));
-      if (
-        defaultLanguageModel &&
-        syncedModels.find((m) => m.value === defaultLanguageModel)?.provider ===
-          "Ollama"
-      ) {
-        setDefaultLanguageModel("");
-      }
+      removeOllamaProviderMutation.mutate();
     }
     setRemoveProviderDialogOpen(false);
     setProviderToRemove("");
@@ -277,13 +485,14 @@ export default function LanguageTab() {
   };
 
   // Change default model functions
-  const openChangeDefaultDialog = (modelValue: string) => {
-    setNewDefaultModel(modelValue);
+  const openChangeDefaultDialog = (modelId: string) => {
+    setNewDefaultModel(modelId);
     setChangeDefaultDialogOpen(true);
   };
 
   const confirmChangeDefault = () => {
-    setDefaultLanguageModel(newDefaultModel);
+    // Update default model in database
+    setDefaultLanguageModelMutation.mutate({ modelId: newDefaultModel });
     setChangeDefaultDialogOpen(false);
     setNewDefaultModel("");
   };
@@ -297,19 +506,13 @@ export default function LanguageTab() {
   const filteredOpenRouterModels = availableOpenRouterModels.filter(
     (model) =>
       model.name.toLowerCase().includes(openrouterSearch.toLowerCase()) ||
-      model.value.toLowerCase().includes(openrouterSearch.toLowerCase()) ||
-      model.capabilities.some((cap) =>
-        cap.toLowerCase().includes(openrouterSearch.toLowerCase())
-      )
+      model.id.toLowerCase().includes(openrouterSearch.toLowerCase())
   );
 
   const filteredOllamaModels = availableOllamaModels.filter(
     (model) =>
       model.name.toLowerCase().includes(ollamaSearch.toLowerCase()) ||
-      model.value.toLowerCase().includes(ollamaSearch.toLowerCase()) ||
-      model.capabilities.some((cap) =>
-        cap.toLowerCase().includes(ollamaSearch.toLowerCase())
-      )
+      model.id.toLowerCase().includes(ollamaSearch.toLowerCase())
   );
 
   function statusIndicator(status: "connected" | "disconnected") {
@@ -345,7 +548,7 @@ export default function LanguageTab() {
           <div className="mt-2 max-w-xs">
             <Combobox
               options={syncedModels.map((m) => ({
-                value: m.value,
+                value: m.id,
                 label: m.name,
               }))}
               value={defaultLanguageModel}
@@ -383,9 +586,16 @@ export default function LanguageTab() {
                   <Button
                     variant="outline"
                     onClick={handleOpenRouterConnect}
-                    disabled={!openrouterKey.trim()}
+                    disabled={!openrouterKey.trim() || isValidatingOpenRouter}
                   >
-                    Connect
+                    {isValidatingOpenRouter ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Validating...
+                      </>
+                    ) : (
+                      "Connect"
+                    )}
                   </Button>
                 ) : (
                   <div className="flex gap-2">
@@ -402,6 +612,11 @@ export default function LanguageTab() {
                   </div>
                 )}
               </div>
+              {openRouterValidationError && (
+                <p className="text-xs text-destructive mt-2">
+                  {openRouterValidationError}
+                </p>
+              )}
             </AccordionContent>
           </AccordionItem>
 
@@ -427,9 +642,16 @@ export default function LanguageTab() {
                   <Button
                     variant="outline"
                     onClick={handleOllamaConnect}
-                    disabled={!ollamaUrl.trim()}
+                    disabled={!ollamaUrl.trim() || isValidatingOllama}
                   >
-                    Connect
+                    {isValidatingOllama ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Validating...
+                      </>
+                    ) : (
+                      "Connect"
+                    )}
                   </Button>
                 ) : (
                   <div className="flex gap-2">
@@ -446,6 +668,11 @@ export default function LanguageTab() {
                   </div>
                 )}
               </div>
+              {ollamaValidationError && (
+                <p className="text-xs text-destructive mt-2">
+                  {ollamaValidationError}
+                </p>
+              )}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -471,28 +698,18 @@ export default function LanguageTab() {
                     <TableHead>Provider</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Context</TableHead>
-                    <TableHead>Capabilities</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {syncedModels.map((model) => (
-                    <TableRow key={model.value}>
+                    <TableRow key={model.id}>
                       <TableCell className="font-medium">
                         {model.name}
                       </TableCell>
                       <TableCell>{model.provider}</TableCell>
                       <TableCell>{model.size}</TableCell>
                       <TableCell>{model.context}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 flex-wrap">
-                          {model.capabilities.map((cap) => (
-                            <Badge key={cap} variant="outline">
-                              {cap}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <TooltipProvider>
@@ -502,13 +719,13 @@ export default function LanguageTab() {
                                   size="icon"
                                   variant="ghost"
                                   onClick={() =>
-                                    openChangeDefaultDialog(model.value)
+                                    openChangeDefaultDialog(model.id)
                                   }
                                 >
                                   <Check
                                     className={cn(
                                       "w-4 h-4",
-                                      defaultLanguageModel === model.value
+                                      defaultLanguageModel === model.id
                                         ? "text-green-500"
                                         : "text-muted-foreground"
                                     )}
@@ -517,7 +734,7 @@ export default function LanguageTab() {
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>
-                                  {defaultLanguageModel === model.value
+                                  {defaultLanguageModel === model.id
                                     ? "Current default model"
                                     : "Set as default model"}
                                 </p>
@@ -530,7 +747,7 @@ export default function LanguageTab() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  onClick={() => openDeleteDialog(model.value)}
+                                  onClick={() => openDeleteDialog(model.id)}
                                 >
                                   <Trash2 className="w-4 h-4 text-destructive" />
                                 </Button>
@@ -577,55 +794,55 @@ export default function LanguageTab() {
                   Clear
                 </Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredOpenRouterModels.map((model) => (
-                  <div
-                    key={model.value}
-                    className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <Checkbox
-                      id={model.value}
-                      checked={selectedOpenRouterModels.includes(model.value)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedOpenRouterModels((prev) => [
-                            ...prev,
-                            model.value,
-                          ]);
-                        } else {
-                          setSelectedOpenRouterModels((prev) =>
-                            prev.filter((v) => v !== model.value)
-                          );
-                        }
-                      }}
-                      className="mt-1"
-                    />
-                    <div className="grid gap-1.5 leading-none flex-1">
-                      <label
-                        htmlFor={model.value}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {model.name}
-                      </label>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>Size: {model.size}</span>
-                        <span>Context: {model.context}</span>
-                      </div>
-                      <div className="flex gap-1 flex-wrap mt-1">
-                        {model.capabilities.map((cap) => (
-                          <Badge
-                            key={cap}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {cap}
-                          </Badge>
-                        ))}
+              {isFetchingOpenRouterModels ? (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span>Fetching models...</span>
+                </div>
+              ) : openRouterFetchError ? (
+                <div className="text-center p-8 text-destructive">
+                  <p>Failed to fetch models: {openRouterFetchError}</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filteredOpenRouterModels.slice(0, 10).map((model) => (
+                    <div
+                      key={model.id}
+                      className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
+                    >
+                      <Checkbox
+                        id={model.id}
+                        checked={selectedOpenRouterModels.includes(model.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedOpenRouterModels((prev) => [
+                              ...prev,
+                              model.id,
+                            ]);
+                          } else {
+                            setSelectedOpenRouterModels((prev) =>
+                              prev.filter((v) => v !== model.id)
+                            );
+                          }
+                        }}
+                        className="mt-1"
+                      />
+                      <div className="grid gap-1.5 leading-none flex-1">
+                        <label
+                          htmlFor={model.id}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {model.name}
+                        </label>
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          {model.size && <span>Size: {model.size}</span>}
+                          <span>Context: {model.context}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -650,7 +867,7 @@ export default function LanguageTab() {
 
         {/* Ollama Model Selection Dialog */}
         <Dialog open={ollamaDialogOpen} onOpenChange={setOllamaDialogOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="min-w-4xl">
             <DialogHeader>
               <DialogTitle>Select Ollama Models</DialogTitle>
               <DialogDescription>
@@ -669,55 +886,55 @@ export default function LanguageTab() {
                   Clear
                 </Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredOllamaModels.map((model) => (
-                  <div
-                    key={model.value}
-                    className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <Checkbox
-                      id={model.value}
-                      checked={selectedOllamaModels.includes(model.value)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedOllamaModels((prev) => [
-                            ...prev,
-                            model.value,
-                          ]);
-                        } else {
-                          setSelectedOllamaModels((prev) =>
-                            prev.filter((v) => v !== model.value)
-                          );
-                        }
-                      }}
-                      className="mt-1"
-                    />
-                    <div className="grid gap-1.5 leading-none flex-1">
-                      <label
-                        htmlFor={model.value}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {model.name}
-                      </label>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>Size: {model.size}</span>
-                        <span>Context: {model.context}</span>
-                      </div>
-                      <div className="flex gap-1 flex-wrap mt-1">
-                        {model.capabilities.map((cap) => (
-                          <Badge
-                            key={cap}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {cap}
-                          </Badge>
-                        ))}
+              {isFetchingOllamaModels ? (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span>Fetching models...</span>
+                </div>
+              ) : ollamaFetchError ? (
+                <div className="text-center p-8 text-destructive">
+                  <p>Failed to fetch models: {ollamaFetchError}</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredOllamaModels.map((model) => (
+                    <div
+                      key={model.id}
+                      className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
+                    >
+                      <Checkbox
+                        id={model.id}
+                        checked={selectedOllamaModels.includes(model.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedOllamaModels((prev) => [
+                              ...prev,
+                              model.id,
+                            ]);
+                          } else {
+                            setSelectedOllamaModels((prev) =>
+                              prev.filter((v) => v !== model.id)
+                            );
+                          }
+                        }}
+                        className="mt-1"
+                      />
+                      <div className="grid gap-1.5 leading-none flex-1">
+                        <label
+                          htmlFor={model.id}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {model.name}
+                        </label>
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          {model.size && <span>Size: {model.size}</span>}
+                          <span>Context: {model.context}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -747,8 +964,8 @@ export default function LanguageTab() {
               <DialogTitle>Confirm Deletion</DialogTitle>
               <DialogDescription>
                 Are you sure you want to remove "
-                {syncedModels.find((m) => m.value === modelToDelete)?.name}"
-                from your synced models? This action cannot be undone.
+                {syncedModels.find((m) => m.id === modelToDelete)?.name}" from
+                your synced models? This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -810,8 +1027,8 @@ export default function LanguageTab() {
               <DialogTitle>Change Default Model</DialogTitle>
               <DialogDescription>
                 Are you sure you want to set "
-                {syncedModels.find((m) => m.value === newDefaultModel)?.name}"
-                as your default language model?
+                {syncedModels.find((m) => m.id === newDefaultModel)?.name}" as
+                your default language model?
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

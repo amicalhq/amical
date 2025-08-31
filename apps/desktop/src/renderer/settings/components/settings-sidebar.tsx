@@ -1,63 +1,83 @@
 import * as React from "react";
-import { useNavigate, useLocation } from "react-router-dom";
 import {
   IconSettings,
-  IconUser,
-  IconShield,
-  IconBell,
-  IconPalette,
-  IconKeyboard,
-  IconArrowLeft,
+  IconMicrophone,
+  IconBook,
+  IconBrain,
+  IconHistory,
+  IconInfoCircle,
+  IconBookFilled,
 } from "@tabler/icons-react";
 
+import { NavMain } from "@/components/nav-main";
+import { NavSecondary } from "@/components/nav-secondary";
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
+  SidebarFooter,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-const settingsNavData = [
-  {
-    title: "Back to Main",
-    route: "/transcriptions",
-    icon: IconArrowLeft,
-    isBackButton: true,
-  },
-  {
-    title: "Preferences",
-    route: "/settings/",
-    icon: IconSettings,
-  },
-  {
-    title: "Dictation",
-    route: "/settings/dictation",
-    icon: IconPalette,
-  },
-  {
-    title: "Vocabulary",
-    route: "/settings/vocabulary",
-    icon: IconKeyboard,
-  },
-  {
-    title: "AI Models",
-    route: "/settings/ai-models",
-    icon: IconShield,
-  },
-  {
-    title: "History",
-    route: "/settings/history",
-    icon: IconBell,
-  },
-  {
-    title: "About",
-    route: "/settings/about",
-    icon: IconUser,
-  },
-];
+// Custom Discord icon component
+const DiscordIcon = ({ className }: { className?: string }) => (
+  <img
+    src="/assets/discord-icon.svg"
+    alt="Discord"
+    className={`w-4 h-4 ${className || ""}`}
+  />
+);
+
+const data = {
+  navMain: [
+    {
+      title: "Preferences",
+      url: "/settings/",
+      icon: IconSettings,
+    },
+    {
+      title: "Dictation",
+      url: "/settings/dictation",
+      icon: IconMicrophone,
+    },
+    {
+      title: "Vocabulary",
+      url: "/settings/vocabulary",
+      icon: IconBook,
+    },
+    {
+      title: "AI Models",
+      url: "/settings/ai-models",
+      icon: IconBrain,
+    },
+    {
+      title: "History",
+      url: "/settings/history",
+      icon: IconHistory,
+    },
+    {
+      title: "About",
+      url: "/settings/about",
+      icon: IconInfoCircle,
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Docs",
+      url: "https://amical.ai/docs",
+      icon: IconBookFilled,
+      external: true,
+    },
+    {
+      title: "Community",
+      url: "https://amical.ai/community",
+      icon: DiscordIcon,
+      external: true,
+    },
+  ],
+};
 
 interface SettingsSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onBackToMain?: () => void;
@@ -67,44 +87,42 @@ export function SettingsSidebar({
   onBackToMain,
   ...props
 }: SettingsSidebarProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const handleNavigation = (item: (typeof settingsNavData)[0]) => {
-    if (item.isBackButton && onBackToMain) {
+  const handleBackToMain = () => {
+    if (onBackToMain) {
       onBackToMain();
-    } else {
-      navigate(item.route);
     }
-  };
-
-  const isActive = (route: string): boolean => {
-    return location.pathname === route;
   };
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <div className="h-[var(--header-height)]"></div>
+      <SidebarHeader className="py-0 -mb-1">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              className="data-[slot=sidebar-menu-button]:!p-1.5"
+            >
+              <button
+                onClick={handleBackToMain}
+                className="inline-flex items-center gap-2.5 font-semibold w-full"
+              >
+                <img
+                  src="/assets/logo.svg"
+                  alt="Amical Logo"
+                  className="!size-7"
+                />
+                <span className="font-semibold">Amical</span>
+              </button>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent className="flex flex-col gap-2">
-            <SidebarMenu>
-              {settingsNavData.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    tooltip={item.title}
-                    isActive={isActive(item.route)}
-                    onClick={() => handleNavigation(item)}
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavMain items={data.navMain} />
+        <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
+      <SidebarFooter></SidebarFooter>
     </Sidebar>
   );
 }

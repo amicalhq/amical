@@ -1,7 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "react-router-dom";
 import { RefreshCw, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -68,7 +67,7 @@ export default function AboutSettingsPage() {
               </p>
             </div>
             <div className="divide-y">
-              <Link to={CHANGELOG_URL} target="_blank">
+              <ExternalLink href={CHANGELOG_URL}>
                 <div className="flex items-center justify-between py-4 group cursor-pointer">
                   <div>
                     <div className="flex items-center gap-2 font-semibold text-base group-hover:underline">
@@ -80,8 +79,8 @@ export default function AboutSettingsPage() {
                     </div>
                   </div>
                 </div>
-              </Link>
-              <Link to={GITHUB_URL} target="_blank">
+              </ExternalLink>
+              <ExternalLink href={GITHUB_URL}>
                 <div className="flex items-center justify-between py-4 group cursor-pointer">
                   <div>
                     <div className="flex items-center gap-2 font-semibold text-base group-hover:underline">
@@ -98,8 +97,8 @@ export default function AboutSettingsPage() {
                     </div>
                   </div>
                 </div>
-              </Link>
-              <Link to={DISCORD_URL} target="_blank">
+              </ExternalLink>
+              <ExternalLink href={DISCORD_URL}>
                 <div className="flex items-center justify-between py-4 group cursor-pointer">
                   <div>
                     <div className="flex items-center gap-2 font-semibold text-base group-hover:underline">
@@ -116,7 +115,7 @@ export default function AboutSettingsPage() {
                     </div>
                   </div>
                 </div>
-              </Link>
+              </ExternalLink>
             </div>
           </CardContent>
         </Card>
@@ -131,7 +130,7 @@ export default function AboutSettingsPage() {
                 Get in touch with our team for support and inquiries
               </p>
             </div>
-            <a href={`mailto:${CONTACT_EMAIL}`} target="_blank">
+            <ExternalLink href={`mailto:${CONTACT_EMAIL}`}>
               <div className="flex items-center justify-between group cursor-pointer">
                 <div>
                   <div className="font-semibold text-base group-hover:underline">
@@ -142,10 +141,29 @@ export default function AboutSettingsPage() {
                   </div>
                 </div>
               </div>
-            </a>
+            </ExternalLink>
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
+const ExternalLink = ({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) => {
+  return (
+    <div
+      onClick={async (e) => {
+        e.preventDefault();
+        await window.electronAPI.openExternal(href);
+      }}
+    >
+      {children}
+    </div>
+  );
+};

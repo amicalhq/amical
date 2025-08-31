@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Trash2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -37,96 +37,141 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { toast } from "sonner";
+import { ProviderModel } from "@/types/providers";
+import { api } from "@/trpc/react";
 
-// Available embedding models from providers
-const availableOpenRouterEmbeddings = [
-  {
-    value: "openai-text-embedding-3-small",
-    name: "OpenAI Text Embedding 3 Small",
-    provider: "OpenRouter",
-    size: "Small",
-    context: "8k",
-    capabilities: ["english", "fast"],
-  },
-  {
-    value: "openai-text-embedding-3-large",
-    name: "OpenAI Text Embedding 3 Large",
-    provider: "OpenRouter",
-    size: "Large",
-    context: "8k",
-    capabilities: ["english", "accurate"],
-  },
-  {
-    value: "cohere-embed-v3",
-    name: "Cohere Embed v3",
-    provider: "OpenRouter",
-    size: "Medium",
-    context: "8k",
-    capabilities: ["multilingual", "fast"],
-  },
-];
-
-const availableOllamaEmbeddings = [
-  {
-    value: "bge-large-en-v1.5",
-    name: "BGE Large EN v1.5",
-    provider: "Ollama",
-    size: "Large",
-    context: "16k",
-    capabilities: ["english", "open-source"],
-  },
-  {
-    value: "bge-base-en-v1.5",
-    name: "BGE Base EN v1.5",
-    provider: "Ollama",
-    size: "Base",
-    context: "8k",
-    capabilities: ["english", "open-source"],
-  },
-  {
-    value: "e5-base-v2",
-    name: "E5 Base v2",
-    provider: "Ollama",
-    size: "Base",
-    context: "8k",
-    capabilities: ["english", "fast"],
-  },
-  {
-    value: "nomic-embed-text-v1.5",
-    name: "Nomic Embed Text v1.5",
-    provider: "Ollama",
-    size: "Medium",
-    context: "8k",
-    capabilities: ["english", "open-source"],
-  },
-];
+// Note: OpenRouter doesn't provide embedding models, only Ollama for now
 
 export default function EmbeddingTab() {
-  const [syncedModels, setSyncedModels] = useState<
-    typeof availableOpenRouterEmbeddings
+  const [syncedModels, setSyncedModels] = useState<ProviderModel[]>([]);
+  const [availableOllamaModels, setAvailableOllamaModels] = useState<
+    ProviderModel[]
   >([]);
   const [defaultEmbeddingModel, setDefaultEmbeddingModel] = useState("");
 
   // Provider connection states
-  const [openrouterKey, setOpenrouterKey] = useState("");
-  const [openrouterStatus, setOpenrouterStatus] = useState<
-    "connected" | "disconnected"
-  >("disconnected");
   const [ollamaUrl, setOllamaUrl] = useState("");
   const [ollamaStatus, setOllamaStatus] = useState<
     "connected" | "disconnected"
   >("disconnected");
 
+  // Validation states
+  const [isValidatingOllama, setIsValidatingOllama] = useState(false);
+  const [ollamaValidationError, setOllamaValidationError] = useState("");
+
+  // Model fetching states
+  const [isFetchingOllamaModels, setIsFetchingOllamaModels] = useState(false);
+  const [ollamaFetchError, setOllamaFetchError] = useState("");
+
+  // tRPC queries and mutations
+  const modelProvidersConfigQuery =
+    api.settings.getModelProvidersConfig.useQuery();
+  const syncedModelsQuery = api.settings.getSyncedProviderModels.useQuery();
+  const defaultEmbeddingModelQuery =
+    api.settings.getDefaultEmbeddingModel.useQuery();
+  const utils = api.useUtils();
+
+  const setOllamaConfigMutation = api.settings.setOllamaConfig.useMutation({
+    onSuccess: () => {
+      utils.settings.getModelProvidersConfig.invalidate();
+      toast.success("Ollama configuration saved successfully!");
+    },
+    onError: (error) => {
+      console.error("Failed to save Ollama config:", error);
+      toast.error("Failed to save Ollama configuration. Please try again.");
+    },
+  });
+
+  const validateOllamaMutation =
+    api.settings.validateOllamaConnection.useMutation({
+      onSuccess: (result) => {
+        setIsValidatingOllama(false);
+        if (result.success) {
+          // Save the URL after successful validation
+          setOllamaConfigMutation.mutate({ url: ollamaUrl.trim() });
+          setOllamaStatus("connected");
+          setOllamaValidationError("");
+          toast.success("Ollama connection validated successfully!");
+        } else {
+          setOllamaValidationError(result.error || "Validation failed");
+          toast.error(`Ollama validation failed: ${result.error}`);
+        }
+      },
+      onError: (error) => {
+        setIsValidatingOllama(false);
+        setOllamaValidationError(error.message);
+        toast.error(`Ollama validation error: ${error.message}`);
+      },
+    });
+
+  // Database sync mutations
+  const syncProviderModelsMutation =
+    api.settings.syncProviderModels.useMutation({
+      onSuccess: () => {
+        utils.settings.getSyncedProviderModels.invalidate();
+        toast.success("Models synced to database successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to sync models to database:", error);
+        toast.error("Failed to sync models to database. Please try again.");
+      },
+    });
+
+  const setDefaultEmbeddingModelMutation =
+    api.settings.setDefaultEmbeddingModel.useMutation({
+      onSuccess: () => {
+        utils.settings.getDefaultEmbeddingModel.invalidate();
+        toast.success("Default embedding model updated!");
+      },
+      onError: (error) => {
+        console.error("Failed to set default embedding model:", error);
+        toast.error("Failed to set default embedding model. Please try again.");
+      },
+    });
+
+  const removeProviderModelMutation =
+    api.settings.removeProviderModel.useMutation({
+      onSuccess: () => {
+        utils.settings.getSyncedProviderModels.invalidate();
+        toast.success("Model removed successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to remove model:", error);
+        toast.error("Failed to remove model. Please try again.");
+      },
+    });
+
+  const removeOllamaProviderMutation =
+    api.settings.removeOllamaProvider.useMutation({
+      onSuccess: () => {
+        utils.settings.getModelProvidersConfig.invalidate();
+        utils.settings.getSyncedProviderModels.invalidate();
+        utils.settings.getDefaultEmbeddingModel.invalidate();
+        setOllamaStatus("disconnected");
+        setOllamaUrl("");
+        toast.success("Ollama provider removed successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to remove Ollama provider:", error);
+        toast.error("Failed to remove Ollama provider. Please try again.");
+      },
+    });
+
+  // Model fetching queries
+  const fetchOllamaModelsQuery = api.settings.fetchOllamaModels.useQuery(
+    { url: ollamaUrl },
+    {
+      enabled: false, // Only fetch when manually triggered
+      retry: false,
+    }
+  );
+
   // Dialog states
-  const [openrouterDialogOpen, setOpenrouterDialogOpen] = useState(false);
   const [ollamaDialogOpen, setOllamaDialogOpen] = useState(false);
-  const [selectedOpenRouterModels, setSelectedOpenRouterModels] = useState<
-    string[]
-  >([]);
   const [selectedOllamaModels, setSelectedOllamaModels] = useState<string[]>(
     []
   );
-  const [openrouterSearch, setOpenrouterSearch] = useState("");
   const [ollamaSearch, setOllamaSearch] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<string>("");
@@ -138,95 +183,128 @@ export default function EmbeddingTab() {
   const [changeDefaultDialogOpen, setChangeDefaultDialogOpen] = useState(false);
   const [newDefaultModel, setNewDefaultModel] = useState<string>("");
 
+  // Load initial config from database
+  useEffect(() => {
+    if (modelProvidersConfigQuery.data) {
+      const config = modelProvidersConfigQuery.data;
+
+      if (config.ollama?.url) {
+        setOllamaUrl(config.ollama.url);
+        setOllamaStatus("connected");
+      }
+    }
+  }, [modelProvidersConfigQuery.data]);
+
+  // Handle Ollama model fetching results
+  useEffect(() => {
+    if (fetchOllamaModelsQuery.data) {
+      setAvailableOllamaModels(fetchOllamaModelsQuery.data);
+      setIsFetchingOllamaModels(false);
+      setOllamaFetchError("");
+      toast.success("Ollama models fetched successfully!");
+    }
+  }, [fetchOllamaModelsQuery.data]);
+
+  useEffect(() => {
+    if (fetchOllamaModelsQuery.error) {
+      setIsFetchingOllamaModels(false);
+      setOllamaFetchError(fetchOllamaModelsQuery.error.message);
+      toast.error(
+        `Failed to fetch Ollama models: ${fetchOllamaModelsQuery.error.message}`
+      );
+    }
+  }, [fetchOllamaModelsQuery.error]);
+
+  // Load synced models from database
+  useEffect(() => {
+    if (syncedModelsQuery.data) {
+      // Filter only embedding models (you may want to add a type field to distinguish)
+      setSyncedModels(syncedModelsQuery.data);
+    }
+  }, [syncedModelsQuery.data]);
+
+  // Load default embedding model from database
+  useEffect(() => {
+    if (defaultEmbeddingModelQuery.data !== undefined) {
+      setDefaultEmbeddingModel(defaultEmbeddingModelQuery.data || "");
+    }
+  }, [defaultEmbeddingModelQuery.data]);
+
   // Connect functions
-  const handleOpenRouterConnect = () => {
-    if (openrouterKey.trim()) {
-      setOpenrouterStatus("connected");
-    }
-  };
-
   const handleOllamaConnect = () => {
-    if (ollamaUrl.trim()) {
-      setOllamaStatus("connected");
+    if (!ollamaUrl.trim()) {
+      toast.error("Please enter a valid Ollama URL");
+      return;
     }
+
+    setIsValidatingOllama(true);
+    setOllamaValidationError("");
+
+    // Validate before saving
+    validateOllamaMutation.mutate({ url: ollamaUrl.trim() });
   };
 
-  // Open dialog with pre-selected synced models
-  const openOpenRouterDialog = () => {
-    const syncedOpenRouterModels = syncedModels
-      .filter((m) => m.provider === "OpenRouter")
-      .map((m) => m.value);
-    setSelectedOpenRouterModels(syncedOpenRouterModels);
-    setOpenrouterSearch("");
-    setOpenrouterDialogOpen(true);
-  };
-
+  // Open dialog with pre-selected synced models and fetch available models
   const openOllamaDialog = () => {
     const syncedOllamaModels = syncedModels
       .filter((m) => m.provider === "Ollama")
-      .map((m) => m.value);
+      .map((m) => m.id);
     setSelectedOllamaModels(syncedOllamaModels);
     setOllamaSearch("");
     setOllamaDialogOpen(true);
+
+    // Fetch available models when dialog opens
+    if (ollamaUrl) {
+      setIsFetchingOllamaModels(true);
+      setOllamaFetchError("");
+      fetchOllamaModelsQuery.refetch();
+    }
   };
 
   // Sync models functions
-  const handleOpenRouterSync = () => {
-    const selectedModels = availableOpenRouterEmbeddings.filter((model) =>
-      selectedOpenRouterModels.includes(model.value)
-    );
-    setSyncedModels((prev) => {
-      const newModels = [
-        ...prev.filter((m) => m.provider !== "OpenRouter"),
-        ...selectedModels,
-      ];
-      // Set first model as default if no default is set
-      if (!defaultEmbeddingModel && newModels.length > 0) {
-        setDefaultEmbeddingModel(newModels[0].value);
-      }
-      return newModels;
-    });
-    setOpenrouterDialogOpen(false);
-    setSelectedOpenRouterModels([]);
-  };
-
   const handleOllamaSync = () => {
-    const selectedModels = availableOllamaEmbeddings.filter((model) =>
-      selectedOllamaModels.includes(model.value)
+    const selectedModels = availableOllamaModels.filter((model) =>
+      selectedOllamaModels.includes(model.id)
     );
-    setSyncedModels((prev) => {
-      const newModels = [
-        ...prev.filter((m) => m.provider !== "Ollama"),
-        ...selectedModels,
-      ];
-      // Set first model as default if no default is set
-      if (!defaultEmbeddingModel && newModels.length > 0) {
-        setDefaultEmbeddingModel(newModels[0].value);
-      }
-      return newModels;
+
+    // Sync to database
+    syncProviderModelsMutation.mutate({
+      provider: "Ollama",
+      models: selectedModels,
     });
+
+    // Set first model as default if no default is set
+    if (!defaultEmbeddingModel && selectedModels.length > 0) {
+      setDefaultEmbeddingModelMutation.mutate({
+        modelId: selectedModels[0].id,
+      });
+    }
+
     setOllamaDialogOpen(false);
     setSelectedOllamaModels([]);
   };
 
-  const handleRemoveModel = (modelValue: string) => {
-    setSyncedModels((prev) => prev.filter((m) => m.value !== modelValue));
-    if (defaultEmbeddingModel === modelValue) {
-      setDefaultEmbeddingModel("");
+  const handleRemoveModel = (modelId: string) => {
+    // Remove from database
+    removeProviderModelMutation.mutate({ modelId });
+
+    // Clear default if removing the default model
+    if (defaultEmbeddingModel === modelId) {
+      setDefaultEmbeddingModelMutation.mutate({ modelId: undefined });
     }
   };
 
   // Delete confirmation functions
-  const openDeleteDialog = (modelValue: string) => {
+  const openDeleteDialog = (modelId: string) => {
     // Check if trying to remove the default model
-    if (modelValue === defaultEmbeddingModel) {
+    if (modelId === defaultEmbeddingModel) {
       setErrorMessage(
         "Please select another model as default before removing this model."
       );
       setErrorDialogOpen(true);
       return;
     }
-    setModelToDelete(modelValue);
+    setModelToDelete(modelId);
     setDeleteDialogOpen(true);
   };
 
@@ -250,30 +328,8 @@ export default function EmbeddingTab() {
   };
 
   const confirmRemoveProvider = () => {
-    if (providerToRemove === "OpenRouter") {
-      setOpenrouterStatus("disconnected");
-      setOpenrouterKey("");
-      setSyncedModels((prev) =>
-        prev.filter((m) => m.provider !== "OpenRouter")
-      );
-      if (
-        defaultEmbeddingModel &&
-        syncedModels.find((m) => m.value === defaultEmbeddingModel)
-          ?.provider === "OpenRouter"
-      ) {
-        setDefaultEmbeddingModel("");
-      }
-    } else if (providerToRemove === "Ollama") {
-      setOllamaStatus("disconnected");
-      setOllamaUrl("");
-      setSyncedModels((prev) => prev.filter((m) => m.provider !== "Ollama"));
-      if (
-        defaultEmbeddingModel &&
-        syncedModels.find((m) => m.value === defaultEmbeddingModel)
-          ?.provider === "Ollama"
-      ) {
-        setDefaultEmbeddingModel("");
-      }
+    if (providerToRemove === "Ollama") {
+      removeOllamaProviderMutation.mutate();
     }
     setRemoveProviderDialogOpen(false);
     setProviderToRemove("");
@@ -285,13 +341,14 @@ export default function EmbeddingTab() {
   };
 
   // Change default model functions
-  const openChangeDefaultDialog = (modelValue: string) => {
-    setNewDefaultModel(modelValue);
+  const openChangeDefaultDialog = (modelId: string) => {
+    setNewDefaultModel(modelId);
     setChangeDefaultDialogOpen(true);
   };
 
   const confirmChangeDefault = () => {
-    setDefaultEmbeddingModel(newDefaultModel);
+    // Update default model in database
+    setDefaultEmbeddingModelMutation.mutate({ modelId: newDefaultModel });
     setChangeDefaultDialogOpen(false);
     setNewDefaultModel("");
   };
@@ -302,22 +359,10 @@ export default function EmbeddingTab() {
   };
 
   // Filter functions
-  const filteredOpenRouterModels = availableOpenRouterEmbeddings.filter(
-    (model) =>
-      model.name.toLowerCase().includes(openrouterSearch.toLowerCase()) ||
-      model.value.toLowerCase().includes(openrouterSearch.toLowerCase()) ||
-      model.capabilities.some((cap) =>
-        cap.toLowerCase().includes(openrouterSearch.toLowerCase())
-      )
-  );
-
-  const filteredOllamaModels = availableOllamaEmbeddings.filter(
+  const filteredOllamaModels = availableOllamaModels.filter(
     (model) =>
       model.name.toLowerCase().includes(ollamaSearch.toLowerCase()) ||
-      model.value.toLowerCase().includes(ollamaSearch.toLowerCase()) ||
-      model.capabilities.some((cap) =>
-        cap.toLowerCase().includes(ollamaSearch.toLowerCase())
-      )
+      model.id.toLowerCase().includes(ollamaSearch.toLowerCase())
   );
 
   function statusIndicator(status: "connected" | "disconnected") {
@@ -353,7 +398,7 @@ export default function EmbeddingTab() {
           <div className="mt-2 max-w-xs">
             <Combobox
               options={syncedModels.map((m) => ({
-                value: m.value,
+                value: m.id,
                 label: m.name,
               }))}
               value={defaultEmbeddingModel}
@@ -369,50 +414,6 @@ export default function EmbeddingTab() {
 
         {/* Providers Accordions */}
         <Accordion type="multiple" className="w-full">
-          {/* OpenRouter */}
-          <AccordionItem value="openrouter">
-            <AccordionTrigger className="no-underline hover:no-underline group-hover:no-underline">
-              <div className="flex w-full items-center justify-between">
-                <span className="hover:underline">OpenRouter</span>
-                {statusIndicator(openrouterStatus)}
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="p-1">
-              <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
-                <Input
-                  type="password"
-                  placeholder="API Key"
-                  value={openrouterKey}
-                  onChange={(e) => setOpenrouterKey(e.target.value)}
-                  className="max-w-xs"
-                  disabled={openrouterStatus === "connected"}
-                />
-                {openrouterStatus === "disconnected" ? (
-                  <Button
-                    variant="outline"
-                    onClick={handleOpenRouterConnect}
-                    disabled={!openrouterKey.trim()}
-                  >
-                    Connect
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={openOpenRouterDialog}>
-                      Sync models
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => openRemoveProviderDialog("OpenRouter")}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      Remove Provider
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-
           {/* Ollama */}
           <AccordionItem value="ollama">
             <AccordionTrigger className="no-underline hover:no-underline group-hover:no-underline">
@@ -435,9 +436,12 @@ export default function EmbeddingTab() {
                   <Button
                     variant="outline"
                     onClick={handleOllamaConnect}
-                    disabled={!ollamaUrl.trim()}
+                    disabled={!ollamaUrl.trim() || isValidatingOllama}
                   >
-                    Connect
+                    {isValidatingOllama && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    {isValidatingOllama ? "Validating..." : "Connect"}
                   </Button>
                 ) : (
                   <div className="flex gap-2">
@@ -454,6 +458,11 @@ export default function EmbeddingTab() {
                   </div>
                 )}
               </div>
+              {ollamaValidationError && (
+                <div className="text-sm text-red-500 mt-2">
+                  {ollamaValidationError}
+                </div>
+              )}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -479,28 +488,18 @@ export default function EmbeddingTab() {
                     <TableHead>Provider</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Context</TableHead>
-                    <TableHead>Capabilities</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {syncedModels.map((model) => (
-                    <TableRow key={model.value}>
+                    <TableRow key={model.id}>
                       <TableCell className="font-medium">
                         {model.name}
                       </TableCell>
                       <TableCell>{model.provider}</TableCell>
-                      <TableCell>{model.size}</TableCell>
+                      <TableCell>{model.size || "Unknown"}</TableCell>
                       <TableCell>{model.context}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 flex-wrap">
-                          {model.capabilities.map((cap) => (
-                            <Badge key={cap} variant="outline">
-                              {cap}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <TooltipProvider>
@@ -510,13 +509,13 @@ export default function EmbeddingTab() {
                                   size="icon"
                                   variant="ghost"
                                   onClick={() =>
-                                    openChangeDefaultDialog(model.value)
+                                    openChangeDefaultDialog(model.id)
                                   }
                                 >
                                   <Check
                                     className={cn(
                                       "w-4 h-4",
-                                      defaultEmbeddingModel === model.value
+                                      defaultEmbeddingModel === model.id
                                         ? "text-green-500"
                                         : "text-muted-foreground"
                                     )}
@@ -525,7 +524,7 @@ export default function EmbeddingTab() {
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>
-                                  {defaultEmbeddingModel === model.value
+                                  {defaultEmbeddingModel === model.id
                                     ? "Current default model"
                                     : "Set as default model"}
                                 </p>
@@ -538,7 +537,7 @@ export default function EmbeddingTab() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  onClick={() => openDeleteDialog(model.value)}
+                                  onClick={() => openDeleteDialog(model.id)}
                                 >
                                   <Trash2 className="w-4 h-4 text-destructive" />
                                 </Button>
@@ -558,104 +557,6 @@ export default function EmbeddingTab() {
           )}
         </div>
 
-        {/* OpenRouter Model Selection Dialog */}
-        <Dialog
-          open={openrouterDialogOpen}
-          onOpenChange={setOpenrouterDialogOpen}
-        >
-          <DialogContent className="min-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Select OpenRouter Embedding Models</DialogTitle>
-              <DialogDescription>
-                Choose which embedding models you want to sync from OpenRouter.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="overflow-y-auto">
-              <div className="flex items-center gap-2 mb-4">
-                <Input
-                  placeholder="Search models..."
-                  value={openrouterSearch}
-                  onChange={(e) => setOpenrouterSearch(e.target.value)}
-                  className="max-w-xs"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => setOpenrouterSearch("")}
-                >
-                  Clear
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredOpenRouterModels.map((model) => (
-                  <div
-                    key={model.value}
-                    className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <Checkbox
-                      id={model.value}
-                      checked={selectedOpenRouterModels.includes(model.value)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedOpenRouterModels((prev) => [
-                            ...prev,
-                            model.value,
-                          ]);
-                        } else {
-                          setSelectedOpenRouterModels((prev) =>
-                            prev.filter((v) => v !== model.value)
-                          );
-                        }
-                      }}
-                      className="mt-1"
-                    />
-                    <div className="grid gap-1.5 leading-none flex-1">
-                      <label
-                        htmlFor={model.value}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {model.name}
-                      </label>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>Size: {model.size}</span>
-                        <span>Context: {model.context}</span>
-                      </div>
-                      <div className="flex gap-1 flex-wrap mt-1">
-                        {model.capabilities.map((cap) => (
-                          <Badge
-                            key={cap}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {cap}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setOpenrouterDialogOpen(false);
-                  setSelectedOpenRouterModels([]);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleOpenRouterSync}
-                disabled={selectedOpenRouterModels.length === 0}
-              >
-                Sync {selectedOpenRouterModels.length} model
-                {selectedOpenRouterModels.length !== 1 ? "s" : ""}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         {/* Ollama Model Selection Dialog */}
         <Dialog open={ollamaDialogOpen} onOpenChange={setOllamaDialogOpen}>
           <DialogContent className="min-w-4xl">
@@ -666,66 +567,79 @@ export default function EmbeddingTab() {
               </DialogDescription>
             </DialogHeader>
             <div className="overflow-y-auto">
-              <div className="flex items-center gap-2 mb-4">
-                <Input
-                  placeholder="Search models..."
-                  value={ollamaSearch}
-                  onChange={(e) => setOllamaSearch(e.target.value)}
-                  className="max-w-xs"
-                />
-                <Button variant="outline" onClick={() => setOllamaSearch("")}>
-                  Clear
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredOllamaModels.map((model) => (
-                  <div
-                    key={model.value}
-                    className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <Checkbox
-                      id={model.value}
-                      checked={selectedOllamaModels.includes(model.value)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedOllamaModels((prev) => [
-                            ...prev,
-                            model.value,
-                          ]);
-                        } else {
-                          setSelectedOllamaModels((prev) =>
-                            prev.filter((v) => v !== model.value)
-                          );
-                        }
-                      }}
-                      className="mt-1"
+              {isFetchingOllamaModels ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span>Fetching available models...</span>
+                </div>
+              ) : ollamaFetchError ? (
+                <div className="text-center py-8">
+                  <p className="text-red-500 mb-2">Failed to fetch models</p>
+                  <p className="text-sm text-muted-foreground">
+                    {ollamaFetchError}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Input
+                      placeholder="Search models..."
+                      value={ollamaSearch}
+                      onChange={(e) => setOllamaSearch(e.target.value)}
+                      className="max-w-xs"
                     />
-                    <div className="grid gap-1.5 leading-none flex-1">
-                      <label
-                        htmlFor={model.value}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {model.name}
-                      </label>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>Size: {model.size}</span>
-                        <span>Context: {model.context}</span>
-                      </div>
-                      <div className="flex gap-1 flex-wrap mt-1">
-                        {model.capabilities.map((cap) => (
-                          <Badge
-                            key={cap}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {cap}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => setOllamaSearch("")}
+                    >
+                      Clear
+                    </Button>
                   </div>
-                ))}
-              </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {filteredOllamaModels.map((model) => (
+                      <div
+                        key={model.id}
+                        className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
+                      >
+                        <Checkbox
+                          id={model.id}
+                          checked={selectedOllamaModels.includes(model.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedOllamaModels((prev) => [
+                                ...prev,
+                                model.id,
+                              ]);
+                            } else {
+                              setSelectedOllamaModels((prev) =>
+                                prev.filter((v) => v !== model.id)
+                              );
+                            }
+                          }}
+                          className="mt-1"
+                        />
+                        <div className="grid gap-1.5 leading-none flex-1">
+                          <label
+                            htmlFor={model.id}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                          >
+                            {model.name}
+                          </label>
+                          <div className="flex gap-2 text-xs text-muted-foreground">
+                            {model.size && <span>Size: {model.size}</span>}
+                            <span>Context: {model.context}</span>
+                          </div>
+                          {model.description && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {model.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -755,8 +669,8 @@ export default function EmbeddingTab() {
               <DialogTitle>Confirm Deletion</DialogTitle>
               <DialogDescription>
                 Are you sure you want to remove "
-                {syncedModels.find((m) => m.value === modelToDelete)?.name}"
-                from your synced models? This action cannot be undone.
+                {syncedModels.find((m) => m.id === modelToDelete)?.name}" from
+                your synced models? This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -780,8 +694,8 @@ export default function EmbeddingTab() {
               <DialogTitle>Remove Provider Connection</DialogTitle>
               <DialogDescription>
                 Are you sure you want to remove your {providerToRemove}{" "}
-                connection? This will disconnect your account and remove all
-                synced models from this provider. This action cannot be undone.
+                connection? This will disconnect and remove all synced models
+                from this provider. This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -818,8 +732,8 @@ export default function EmbeddingTab() {
               <DialogTitle>Change Default Model</DialogTitle>
               <DialogDescription>
                 Are you sure you want to set "
-                {syncedModels.find((m) => m.value === newDefaultModel)?.name}"
-                as your default embedding model?
+                {syncedModels.find((m) => m.id === newDefaultModel)?.name}" as
+                your default embedding model?
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

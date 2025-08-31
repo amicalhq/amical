@@ -4,7 +4,7 @@ import { vocabulary, type Vocabulary, type NewVocabulary } from "./schema";
 
 // Create a new vocabulary word
 export async function createVocabularyWord(
-  data: Omit<NewVocabulary, "id" | "createdAt" | "updatedAt">,
+  data: Omit<NewVocabulary, "id" | "createdAt" | "updatedAt">
 ) {
   const now = new Date();
 
@@ -27,7 +27,7 @@ export async function getVocabulary(
     sortBy?: "word" | "dateAdded" | "usageCount";
     sortOrder?: "asc" | "desc";
     search?: string;
-  } = {},
+  } = {}
 ) {
   const {
     limit = 50,
@@ -92,7 +92,7 @@ export async function getVocabularyByWord(word: string) {
 // Update vocabulary word
 export async function updateVocabulary(
   id: number,
-  data: Partial<Omit<Vocabulary, "id" | "createdAt">>,
+  data: Partial<Omit<Vocabulary, "id" | "createdAt">>
 ) {
   const updateData = {
     ...data,
@@ -169,7 +169,7 @@ export async function searchVocabulary(searchTerm: string, limit = 20) {
 
 // Bulk import vocabulary words
 export async function bulkImportVocabulary(
-  words: Omit<NewVocabulary, "id" | "createdAt" | "updatedAt">[],
+  words: Omit<NewVocabulary, "id" | "createdAt" | "updatedAt">[]
 ) {
   const now = new Date();
 

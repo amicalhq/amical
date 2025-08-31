@@ -1,14 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
 import SpeechTab from "./tabs/SpeechTab";
 import LanguageTab from "./tabs/LanguageTab";
 import EmbeddingTab from "./tabs/EmbeddingTab";
+import { useSearchParams } from "react-router-dom";
 
 export default function AIModelsSettingsPage() {
   const [tab, setTab] = useState("speech");
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab) {
+      setTab(tab);
+    }
+  }, []);
+
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <h1 className="text-xl font-bold mb-6">AI Models</h1>

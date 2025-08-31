@@ -58,7 +58,7 @@ const data = {
     },
     {
       title: "Settings",
-      url: "/settings",
+      url: "/settings/",
       icon: IconSettings,
     },
   ],
