@@ -53,6 +53,7 @@ export class TelemetryService {
   private systemInfo: SystemInfo | null = null;
   private enabled: boolean = false;
   private initialized: boolean = false;
+  private persistedProperties: Record<string, any> = {};
 
   constructor() {
     // Public constructor for consistency with other services
@@ -86,24 +87,26 @@ export class TelemetryService {
       const host = process.env.POSTHOG_HOST || "https://app.posthog.com";
       this.posthog = new PostHog(apiKey, {
         host,
-        flushAt: 20,
+        flushAt: 1,
         flushInterval: 10000,
       });
 
-      this.posthog.register({
+      // ! posthog-node code flow doesn't use register to set super properties
+      // ! Track them manually
+      this.persistedProperties = {
         app_version: app.getVersion(),
         machine_id: this.machineId,
+        app_is_packaged: app.isPackaged,
         system_info: {
           ...this.systemInfo,
         },
-      });
+      };
 
       // Identify the machine with system properties
       this.posthog.identify({
         distinctId: this.machineId,
         properties: {
-          ...this.systemInfo,
-          first_seen: new Date().toISOString(),
+          ...this.persistedProperties,
         },
       });
       this.enabled = true;
@@ -168,25 +171,6 @@ export class TelemetryService {
     }
   }
 
-  trackTranscriptionStarted(sessionId: string, modelId: string): void {
-    if (!this.enabled || !this.posthog) return;
-
-    try {
-      this.posthog.capture({
-        distinctId: this.machineId,
-        event: "transcription_started",
-        properties: {
-          session_id: sessionId,
-          model_id: modelId,
-          app_version: app.getVersion(),
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.main.error("Failed to track transcription started:", error);
-    }
-  }
-
   trackTranscriptionCompleted(metrics: TranscriptionMetrics): void {
     if (!this.enabled || !this.posthog) return;
 
@@ -196,11 +180,7 @@ export class TelemetryService {
         event: "transcription_completed",
         properties: {
           ...metrics,
-          app_version: app.getVersion(),
-          timestamp: new Date().toISOString(),
-          // Add performance context
-          memory_usage_mb: Math.round(process.memoryUsage().heapUsed / 1048576),
-          uptime_seconds: Math.round(process.uptime()),
+          ...this.persistedProperties,
         },
       });
 
@@ -213,25 +193,6 @@ export class TelemetryService {
       });
     } catch (error) {
       logger.main.error("Failed to track transcription completed:", error);
-    }
-  }
-
-  trackModelSelected(modelId: string, previousModelId?: string): void {
-    if (!this.enabled || !this.posthog) return;
-
-    try {
-      this.posthog.capture({
-        distinctId: this.machineId,
-        event: "model_selected",
-        properties: {
-          model_id: modelId,
-          previous_model_id: previousModelId,
-          app_version: app.getVersion(),
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.main.error("Failed to track model selection:", error);
     }
   }
 
