@@ -6,6 +6,7 @@ import {
   IconReport,
   IconSettings,
   IconBookFilled,
+  IconNotes,
 } from "@tabler/icons-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -40,6 +41,11 @@ const data = {
       title: "Transcriptions",
       url: "#",
       icon: IconFileDescription,
+    },
+    {
+      title: "Notes",
+      url: "#",
+      icon: IconNotes,
     },
     {
       title: "Vocabulary",

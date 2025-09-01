@@ -113,6 +113,55 @@ export interface AppSettingsData {
   };
 }
 
+// Notes table
+export const notes = sqliteTable("notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  content: text("content").default(""), // Store the actual text content
+  docName: text("doc_name").notNull().unique(), // yjs document name
+  transcriptionId: integer("transcription_id").references(
+    () => transcriptions.id,
+  ),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  lastAccessedAt: integer("last_accessed_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Yjs updates table for persistence
+export const yjsUpdates = sqliteTable("yjs_updates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  docName: text("doc_name").notNull(),
+  updateData: text("update_data").notNull(), // Base64 encoded binary data
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Note metadata table
+export const noteMetadata = sqliteTable(
+  "note_metadata",
+  {
+    noteId: integer("note_id")
+      .notNull()
+      .references(() => notes.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+  },
+  (table) => ({
+    pk: {
+      primaryKey: {
+        columns: [table.noteId, table.key],
+      },
+    },
+  }),
+);
+
 // Export types for TypeScript
 export type Transcription = typeof transcriptions.$inferSelect;
 export type NewTranscription = typeof transcriptions.$inferInsert;
@@ -122,3 +171,9 @@ export type DownloadedModel = typeof downloadedModels.$inferSelect;
 export type NewDownloadedModel = typeof downloadedModels.$inferInsert;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type NewAppSettings = typeof appSettings.$inferInsert;
+export type Note = typeof notes.$inferSelect;
+export type NewNote = typeof notes.$inferInsert;
+export type YjsUpdate = typeof yjsUpdates.$inferSelect;
+export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;
+export type NoteMetadata = typeof noteMetadata.$inferSelect;
+export type NewNoteMetadata = typeof noteMetadata.$inferInsert;

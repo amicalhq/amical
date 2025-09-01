@@ -12,6 +12,7 @@ import { TranscriptionsPage } from "./pages/transcriptions";
 import { VocabularyPage } from "./pages/vocabulary";
 import { ModelsPage } from "./pages/models";
 import { SettingsPage } from "./pages/settings";
+import NotesPage from "./pages/notes";
 import { SiteHeader } from "@/components/site-header";
 import { api, trpcClient } from "@/trpc/react";
 
@@ -53,6 +54,8 @@ const App: React.FC = () => {
         return <SettingsPage />;
       case "Transcriptions":
         return <TranscriptionsPage />;
+      case "Notes":
+        return <NotesPage />;
       case "Speech Models":
       default:
         return <ModelsPage />;
