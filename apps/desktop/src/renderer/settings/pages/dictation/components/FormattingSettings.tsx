@@ -28,7 +28,6 @@ export function FormattingSettings() {
   const setFormatterConfigMutation =
     api.settings.setFormatterConfig.useMutation({
       onSuccess: () => {
-        toast.success("Formatting settings saved successfully!");
         utils.settings.getFormatterConfig.invalidate();
       },
       onError: (error) => {
