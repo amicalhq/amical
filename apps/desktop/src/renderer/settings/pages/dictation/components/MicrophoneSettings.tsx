@@ -37,7 +37,7 @@ export function MicrophoneSettings() {
       toast.success(
         actualDeviceName
           ? `Microphone changed to ${deviceName}`
-          : "Using system default microphone"
+          : "Using system default microphone",
       );
     } catch (error) {
       console.error("Failed to set preferred microphone:", error);

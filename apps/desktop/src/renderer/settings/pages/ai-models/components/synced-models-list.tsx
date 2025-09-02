@@ -127,7 +127,7 @@ export default function SyncedModelsList({
     // Check if trying to remove the default model
     if (modelId === defaultModel) {
       setErrorMessage(
-        "Please select another model as default before removing this model."
+        "Please select another model as default before removing this model.",
       );
       setErrorDialogOpen(true);
       return;
@@ -225,7 +225,7 @@ export default function SyncedModelsList({
                                     "w-4 h-4",
                                     defaultModel === model.id
                                       ? "text-green-500"
-                                      : "text-muted-foreground"
+                                      : "text-muted-foreground",
                                   )}
                                 />
                               </Button>

@@ -23,7 +23,7 @@ export default function DictationSettingsPage() {
   // Separate model lists for each section
   const [speechModels] = useState(speechModelOptions); // set to [] to test empty state
   const [speechModel, setSpeechModel] = useState<string>(
-    speechModels[0]?.value || ""
+    speechModels[0]?.value || "",
   );
 
   return (

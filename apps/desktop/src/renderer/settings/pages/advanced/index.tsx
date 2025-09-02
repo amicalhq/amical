@@ -35,7 +35,7 @@ export default function AdvancedSettingsPage() {
   useEffect(() => {
     if (settingsQuery.data?.transcription) {
       setPreloadWhisperModel(
-        settingsQuery.data.transcription.preloadWhisperModel !== false
+        settingsQuery.data.transcription.preloadWhisperModel !== false,
       );
     }
   }, [settingsQuery.data]);

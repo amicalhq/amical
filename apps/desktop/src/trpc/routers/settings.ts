@@ -86,7 +86,7 @@ export const settingsRouter = createRouter({
         enablePunctuation: z.boolean().optional(),
         enableTimestamps: z.boolean().optional(),
         preloadWhisperModel: z.boolean().optional(),
-      })
+      }),
     )
     .mutation(async ({ input, ctx }) => {
       try {
@@ -120,7 +120,7 @@ export const settingsRouter = createRouter({
         // Handle model preloading change
         if (preloadChanged) {
           const transcriptionService = ctx.serviceManager.getService(
-            "transcriptionService"
+            "transcriptionService",
           );
           if (transcriptionService) {
             await transcriptionService.handleModelChange();
@@ -168,7 +168,7 @@ export const settingsRouter = createRouter({
 
         // Update transcription service with new formatter configuration
         const transcriptionService = ctx.serviceManager.getService(
-          "transcriptionService"
+          "transcriptionService",
         );
         if (transcriptionService) {
           transcriptionService.configureFormatter(input);
@@ -276,7 +276,7 @@ export const settingsRouter = createRouter({
 
       if (!shortcutManager) {
         logger?.main.warn(
-          "ShortcutManager not available for activeKeys subscription"
+          "ShortcutManager not available for activeKeys subscription",
         );
         emit.next([]);
         return () => {};
@@ -304,7 +304,7 @@ export const settingsRouter = createRouter({
     .input(
       z.object({
         deviceName: z.string().nullable(),
-      })
+      }),
     )
     .mutation(async ({ input, ctx }) => {
       try {
@@ -455,7 +455,7 @@ export const settingsRouter = createRouter({
         }
 
         const result = await settingsService.validateOpenRouterConnection(
-          input.apiKey
+          input.apiKey,
         );
 
         const logger = ctx.serviceManager.getLogger();
@@ -490,7 +490,7 @@ export const settingsRouter = createRouter({
         }
 
         const result = await settingsService.validateOllamaConnection(
-          input.url
+          input.url,
         );
 
         const logger = ctx.serviceManager.getLogger();
@@ -525,7 +525,7 @@ export const settingsRouter = createRouter({
         }
 
         const models = await settingsService.fetchOpenRouterModels(
-          input.apiKey
+          input.apiKey,
         );
 
         const logger = ctx.serviceManager.getLogger();
@@ -604,7 +604,7 @@ export const settingsRouter = createRouter({
 
         await settingsService.syncProviderModelsToDatabase(
           input.provider,
-          input.models
+          input.models,
         );
 
         const logger = ctx.serviceManager.getLogger();

@@ -66,7 +66,7 @@ export async function getAppSettings(): Promise<AppSettingsData> {
 
 // Update app settings (merges with existing settings)
 export async function updateAppSettings(
-  newSettings: Partial<AppSettingsData>
+  newSettings: Partial<AppSettingsData>,
 ): Promise<AppSettingsData> {
   const currentSettings = await getAppSettings();
   const mergedSettings: AppSettingsData = {
@@ -158,7 +158,7 @@ export async function updateAppSettings(
 
 // Replace all app settings (complete override)
 export async function replaceAppSettings(
-  newSettings: AppSettingsData
+  newSettings: AppSettingsData,
 ): Promise<AppSettingsData> {
   const now = new Date();
 
@@ -175,7 +175,7 @@ export async function replaceAppSettings(
 
 // Get a specific setting section
 export async function getSettingsSection<K extends keyof AppSettingsData>(
-  section: K
+  section: K,
 ): Promise<AppSettingsData[K]> {
   const settings = await getAppSettings();
   return settings[section];
@@ -184,7 +184,7 @@ export async function getSettingsSection<K extends keyof AppSettingsData>(
 // Update a specific setting section
 export async function updateSettingsSection<K extends keyof AppSettingsData>(
   section: K,
-  newData: AppSettingsData[K]
+  newData: AppSettingsData[K],
 ): Promise<AppSettingsData> {
   return await updateAppSettings({
     [section]: newData,

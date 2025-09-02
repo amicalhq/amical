@@ -9,7 +9,7 @@ const Content = React.lazy(
   () =>
     import("./content.js") as unknown as Promise<{
       default: React.ComponentType<any>;
-    }>
+    }>,
 );
 
 // Extend Console interface to include original methods

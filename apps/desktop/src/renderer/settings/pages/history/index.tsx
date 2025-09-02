@@ -50,12 +50,12 @@ function getDateGroup(timestamp: Date) {
   const todayDate = new Date(
     today.getFullYear(),
     today.getMonth(),
-    today.getDate()
+    today.getDate(),
   );
   const itemDateOnly = new Date(
     itemDate.getFullYear(),
     itemDate.getMonth(),
-    itemDate.getDate()
+    itemDate.getDate(),
   );
 
   const diffTime = todayDate.getTime() - itemDateOnly.getTime();
@@ -264,7 +264,7 @@ export default function HistorySettingsPage() {
     },
     {
       refetchInterval: 5000, // Poll every 5 seconds for updates
-    }
+    },
   );
 
   const utils = api.useUtils();
@@ -312,7 +312,7 @@ export default function HistorySettingsPage() {
         audioPlayer.toggle(
           bytes.buffer,
           variables.transcriptionId,
-          data.mimeType
+          data.mimeType,
         );
       }
     },

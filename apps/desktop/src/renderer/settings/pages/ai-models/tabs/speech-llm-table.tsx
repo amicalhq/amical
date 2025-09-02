@@ -1,13 +1,25 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState, useEffect } from "react"
+import type React from "react";
+import { useState, useEffect } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Zap,
   Circle,
@@ -27,30 +39,45 @@ import {
   Gauge,
   Settings,
   X,
-} from "lucide-react"
+} from "lucide-react";
 
 interface SpeechModel {
-  name: string
+  name: string;
   features: Array<{
-    icon: React.ReactNode
-    tooltip: string
-  }>
-  speed: number // out of 5
-  accuracy: number // out of 5
-  setup: "cloud" | "offline"
-  provider: string
-  modelSize?: string // for offline models
+    icon: React.ReactNode;
+    tooltip: string;
+  }>;
+  speed: number; // out of 5
+  accuracy: number; // out of 5
+  setup: "cloud" | "offline";
+  provider: string;
+  modelSize?: string; // for offline models
 }
 
 const models: SpeechModel[] = [
   {
     name: "OpenAI Whisper",
     features: [
-      { icon: <Languages className="w-4 h-4" />, tooltip: "99+ languages with automatic detection" },
-      { icon: <FileText className="w-4 h-4" />, tooltip: "Automatic punctuation and capitalization" },
-      { icon: <MessageSquare className="w-4 h-4" />, tooltip: "Built-in translation to English" },
-      { icon: <Volume2 className="w-4 h-4" />, tooltip: "Robust to background noise and accents" },
-      { icon: <Clock className="w-4 h-4" />, tooltip: "Timestamp generation for segments" },
+      {
+        icon: <Languages className="w-4 h-4" />,
+        tooltip: "99+ languages with automatic detection",
+      },
+      {
+        icon: <FileText className="w-4 h-4" />,
+        tooltip: "Automatic punctuation and capitalization",
+      },
+      {
+        icon: <MessageSquare className="w-4 h-4" />,
+        tooltip: "Built-in translation to English",
+      },
+      {
+        icon: <Volume2 className="w-4 h-4" />,
+        tooltip: "Robust to background noise and accents",
+      },
+      {
+        icon: <Clock className="w-4 h-4" />,
+        tooltip: "Timestamp generation for segments",
+      },
     ],
     speed: 3.0,
     accuracy: 4.5,
@@ -61,12 +88,27 @@ const models: SpeechModel[] = [
   {
     name: "Google Speech-to-Text",
     features: [
-      { icon: <Languages className="w-4 h-4" />, tooltip: "125+ languages and variants" },
-      { icon: <Gauge className="w-4 h-4" />, tooltip: "Real-time streaming recognition" },
-      { icon: <FileText className="w-4 h-4" />, tooltip: "Automatic punctuation and formatting" },
+      {
+        icon: <Languages className="w-4 h-4" />,
+        tooltip: "125+ languages and variants",
+      },
+      {
+        icon: <Gauge className="w-4 h-4" />,
+        tooltip: "Real-time streaming recognition",
+      },
+      {
+        icon: <FileText className="w-4 h-4" />,
+        tooltip: "Automatic punctuation and formatting",
+      },
       { icon: <Filter className="w-4 h-4" />, tooltip: "Profanity filtering" },
-      { icon: <Settings className="w-4 h-4" />, tooltip: "Custom vocabulary and models" },
-      { icon: <Headphones className="w-4 h-4" />, tooltip: "Enhanced phone call model" },
+      {
+        icon: <Settings className="w-4 h-4" />,
+        tooltip: "Custom vocabulary and models",
+      },
+      {
+        icon: <Headphones className="w-4 h-4" />,
+        tooltip: "Enhanced phone call model",
+      },
     ],
     speed: 4.5,
     accuracy: 4.0,
@@ -76,12 +118,30 @@ const models: SpeechModel[] = [
   {
     name: "Azure Speech Services",
     features: [
-      { icon: <Languages className="w-4 h-4" />, tooltip: "100+ languages and dialects" },
-      { icon: <Settings className="w-4 h-4" />, tooltip: "Custom Speech model training" },
-      { icon: <Gauge className="w-4 h-4" />, tooltip: "Real-time and batch processing" },
-      { icon: <Users className="w-4 h-4" />, tooltip: "Speaker recognition and verification" },
-      { icon: <Brain className="w-4 h-4" />, tooltip: "Intent recognition integration" },
-      { icon: <Shield className="w-4 h-4" />, tooltip: "Enterprise-grade security" },
+      {
+        icon: <Languages className="w-4 h-4" />,
+        tooltip: "100+ languages and dialects",
+      },
+      {
+        icon: <Settings className="w-4 h-4" />,
+        tooltip: "Custom Speech model training",
+      },
+      {
+        icon: <Gauge className="w-4 h-4" />,
+        tooltip: "Real-time and batch processing",
+      },
+      {
+        icon: <Users className="w-4 h-4" />,
+        tooltip: "Speaker recognition and verification",
+      },
+      {
+        icon: <Brain className="w-4 h-4" />,
+        tooltip: "Intent recognition integration",
+      },
+      {
+        icon: <Shield className="w-4 h-4" />,
+        tooltip: "Enterprise-grade security",
+      },
     ],
     speed: 4.0,
     accuracy: 4.0,
@@ -91,12 +151,30 @@ const models: SpeechModel[] = [
   {
     name: "Amazon Transcribe",
     features: [
-      { icon: <Languages className="w-4 h-4" />, tooltip: "31 languages supported" },
-      { icon: <Users className="w-4 h-4" />, tooltip: "Speaker identification (diarization)" },
-      { icon: <Settings className="w-4 h-4" />, tooltip: "Custom vocabulary and models" },
-      { icon: <Headphones className="w-4 h-4" />, tooltip: "Call analytics specialization" },
-      { icon: <Shield className="w-4 h-4" />, tooltip: "Content redaction (PII removal)" },
-      { icon: <Sparkles className="w-4 h-4" />, tooltip: "Medical and legal transcription" },
+      {
+        icon: <Languages className="w-4 h-4" />,
+        tooltip: "31 languages supported",
+      },
+      {
+        icon: <Users className="w-4 h-4" />,
+        tooltip: "Speaker identification (diarization)",
+      },
+      {
+        icon: <Settings className="w-4 h-4" />,
+        tooltip: "Custom vocabulary and models",
+      },
+      {
+        icon: <Headphones className="w-4 h-4" />,
+        tooltip: "Call analytics specialization",
+      },
+      {
+        icon: <Shield className="w-4 h-4" />,
+        tooltip: "Content redaction (PII removal)",
+      },
+      {
+        icon: <Sparkles className="w-4 h-4" />,
+        tooltip: "Medical and legal transcription",
+      },
     ],
     speed: 4.0,
     accuracy: 3.5,
@@ -106,11 +184,26 @@ const models: SpeechModel[] = [
   {
     name: "AssemblyAI",
     features: [
-      { icon: <Users className="w-4 h-4" />, tooltip: "Advanced speaker diarization" },
-      { icon: <MessageSquare className="w-4 h-4" />, tooltip: "Sentiment analysis and emotion detection" },
-      { icon: <Sparkles className="w-4 h-4" />, tooltip: "Topic detection and summarization" },
-      { icon: <Filter className="w-4 h-4" />, tooltip: "Content safety and moderation" },
-      { icon: <FileText className="w-4 h-4" />, tooltip: "Auto-chapters and key phrases" },
+      {
+        icon: <Users className="w-4 h-4" />,
+        tooltip: "Advanced speaker diarization",
+      },
+      {
+        icon: <MessageSquare className="w-4 h-4" />,
+        tooltip: "Sentiment analysis and emotion detection",
+      },
+      {
+        icon: <Sparkles className="w-4 h-4" />,
+        tooltip: "Topic detection and summarization",
+      },
+      {
+        icon: <Filter className="w-4 h-4" />,
+        tooltip: "Content safety and moderation",
+      },
+      {
+        icon: <FileText className="w-4 h-4" />,
+        tooltip: "Auto-chapters and key phrases",
+      },
       { icon: <Gauge className="w-4 h-4" />, tooltip: "Real-time streaming" },
     ],
     speed: 4.5,
@@ -121,12 +214,27 @@ const models: SpeechModel[] = [
   {
     name: "Deepgram",
     features: [
-      { icon: <Gauge className="w-4 h-4" />, tooltip: "Ultra-fast real-time processing" },
-      { icon: <Languages className="w-4 h-4" />, tooltip: "30+ languages with custom models" },
-      { icon: <Sparkles className="w-4 h-4" />, tooltip: "Keyword and topic detection" },
+      {
+        icon: <Gauge className="w-4 h-4" />,
+        tooltip: "Ultra-fast real-time processing",
+      },
+      {
+        icon: <Languages className="w-4 h-4" />,
+        tooltip: "30+ languages with custom models",
+      },
+      {
+        icon: <Sparkles className="w-4 h-4" />,
+        tooltip: "Keyword and topic detection",
+      },
       { icon: <Users className="w-4 h-4" />, tooltip: "Speaker diarization" },
-      { icon: <Settings className="w-4 h-4" />, tooltip: "Custom model training" },
-      { icon: <Volume2 className="w-4 h-4" />, tooltip: "Enhanced audio preprocessing" },
+      {
+        icon: <Settings className="w-4 h-4" />,
+        tooltip: "Custom model training",
+      },
+      {
+        icon: <Volume2 className="w-4 h-4" />,
+        tooltip: "Enhanced audio preprocessing",
+      },
     ],
     speed: 5.0,
     accuracy: 4.0,
@@ -137,10 +245,22 @@ const models: SpeechModel[] = [
     name: "Wav2Vec2",
     features: [
       { icon: <Shield className="w-4 h-4" />, tooltip: "Open source and free" },
-      { icon: <Brain className="w-4 h-4" />, tooltip: "Self-supervised learning approach" },
-      { icon: <Languages className="w-4 h-4" />, tooltip: "Multilingual model variants" },
-      { icon: <Settings className="w-4 h-4" />, tooltip: "Fine-tunable for custom domains" },
-      { icon: <Volume2 className="w-4 h-4" />, tooltip: "Robust to noisy audio" },
+      {
+        icon: <Brain className="w-4 h-4" />,
+        tooltip: "Self-supervised learning approach",
+      },
+      {
+        icon: <Languages className="w-4 h-4" />,
+        tooltip: "Multilingual model variants",
+      },
+      {
+        icon: <Settings className="w-4 h-4" />,
+        tooltip: "Fine-tunable for custom domains",
+      },
+      {
+        icon: <Volume2 className="w-4 h-4" />,
+        tooltip: "Robust to noisy audio",
+      },
     ],
     speed: 2.5,
     accuracy: 3.5,
@@ -151,11 +271,26 @@ const models: SpeechModel[] = [
   {
     name: "Vosk",
     features: [
-      { icon: <Shield className="w-4 h-4" />, tooltip: "Open source and lightweight" },
-      { icon: <Gauge className="w-4 h-4" />, tooltip: "Real-time processing capability" },
-      { icon: <Languages className="w-4 h-4" />, tooltip: "20+ language models available" },
-      { icon: <Settings className="w-4 h-4" />, tooltip: "Embedded and mobile friendly" },
-      { icon: <Clock className="w-4 h-4" />, tooltip: "Partial results and timestamps" },
+      {
+        icon: <Shield className="w-4 h-4" />,
+        tooltip: "Open source and lightweight",
+      },
+      {
+        icon: <Gauge className="w-4 h-4" />,
+        tooltip: "Real-time processing capability",
+      },
+      {
+        icon: <Languages className="w-4 h-4" />,
+        tooltip: "20+ language models available",
+      },
+      {
+        icon: <Settings className="w-4 h-4" />,
+        tooltip: "Embedded and mobile friendly",
+      },
+      {
+        icon: <Clock className="w-4 h-4" />,
+        tooltip: "Partial results and timestamps",
+      },
     ],
     speed: 3.0,
     accuracy: 3.0,
@@ -163,17 +298,19 @@ const models: SpeechModel[] = [
     provider: "Alpha Cephei",
     modelSize: "50 MB",
   },
-]
+];
 
 const SpeedRating = ({ rating }: { rating: number }) => {
-  const fullIcons = Math.floor(rating)
-  const hasHalf = rating % 1 !== 0
+  const fullIcons = Math.floor(rating);
+  const hasHalf = rating % 1 !== 0;
 
   return (
     <div className="flex items-center gap-1">
       {Array.from({ length: 5 }, (_, i) => {
         if (i < fullIcons) {
-          return <Zap key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+          return (
+            <Zap key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+          );
         } else if (i === fullIcons && hasHalf) {
           return (
             <div key={i} className="relative w-4 h-4">
@@ -182,25 +319,27 @@ const SpeedRating = ({ rating }: { rating: number }) => {
                 <Zap className="w-4 h-4 fill-yellow-400 text-yellow-400" />
               </div>
             </div>
-          )
+          );
         } else {
-          return <Zap key={i} className="w-4 h-4 text-gray-300" />
+          return <Zap key={i} className="w-4 h-4 text-gray-300" />;
         }
       })}
       <span className="text-sm text-muted-foreground ml-1">{rating}</span>
     </div>
-  )
-}
+  );
+};
 
 const AccuracyRating = ({ rating }: { rating: number }) => {
-  const fullIcons = Math.floor(rating)
-  const hasHalf = rating % 1 !== 0
+  const fullIcons = Math.floor(rating);
+  const hasHalf = rating % 1 !== 0;
 
   return (
     <div className="flex items-center gap-1">
       {Array.from({ length: 5 }, (_, i) => {
         if (i < fullIcons) {
-          return <Circle key={i} className="w-4 h-4 fill-green-500 text-green-500" />
+          return (
+            <Circle key={i} className="w-4 h-4 fill-green-500 text-green-500" />
+          );
         } else if (i === fullIcons && hasHalf) {
           return (
             <div key={i} className="relative w-4 h-4">
@@ -209,15 +348,15 @@ const AccuracyRating = ({ rating }: { rating: number }) => {
                 <Circle className="w-4 h-4 fill-green-500 text-green-500" />
               </div>
             </div>
-          )
+          );
         } else {
-          return <Circle key={i} className="w-4 h-4 text-gray-300" />
+          return <Circle key={i} className="w-4 h-4 text-gray-300" />;
         }
       })}
       <span className="text-sm text-muted-foreground ml-1">{rating}</span>
     </div>
-  )
-}
+  );
+};
 
 const CloudBadge = () => {
   return (
@@ -225,8 +364,8 @@ const CloudBadge = () => {
       <Cloud className="w-3 h-3" />
       Cloud
     </Badge>
-  )
-}
+  );
+};
 
 const OfflineBadge = () => {
   return (
@@ -234,50 +373,52 @@ const OfflineBadge = () => {
       <Download className="w-3 h-3" />
       Offline
     </Badge>
-  )
-}
+  );
+};
 
 interface DownloadButtonProps {
-  modelName: string
-  modelSize: string
+  modelName: string;
+  modelSize: string;
 }
 
 const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
-  const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "completed">("idle")
-  const [progress, setProgress] = useState(0)
+  const [downloadState, setDownloadState] = useState<
+    "idle" | "downloading" | "completed"
+  >("idle");
+  const [progress, setProgress] = useState(0);
 
   const startDownload = () => {
-    setDownloadState("downloading")
-    setProgress(0)
-  }
+    setDownloadState("downloading");
+    setProgress(0);
+  };
 
   const stopDownload = () => {
-    setDownloadState("idle")
-    setProgress(0)
-  }
+    setDownloadState("idle");
+    setProgress(0);
+  };
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let interval: NodeJS.Timeout;
     if (downloadState === "downloading") {
       interval = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 100) {
-            setDownloadState("completed")
-            return 100
+            setDownloadState("completed");
+            return 100;
           }
-          return prev + Math.random() * 15 + 5 // Random progress increment
-        })
-      }, 200)
+          return prev + Math.random() * 15 + 5; // Random progress increment
+        });
+      }, 200);
     }
-    return () => clearInterval(interval)
-  }, [downloadState])
+    return () => clearInterval(interval);
+  }, [downloadState]);
 
   if (downloadState === "completed") {
     return (
       <div className="flex flex-col items-center gap-1">
         <OfflineBadge />
       </div>
-    )
+    );
   }
 
   if (downloadState === "downloading") {
@@ -295,7 +436,8 @@ const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
               style={{
                 background: `conic-gradient(#3b82f6 ${progress * 3.6}deg, transparent ${progress * 3.6}deg)`,
                 mask: "radial-gradient(circle at center, transparent 60%, black 60%)",
-                WebkitMask: "radial-gradient(circle at center, transparent 60%, black 60%)",
+                WebkitMask:
+                  "radial-gradient(circle at center, transparent 60%, black 60%)",
               }}
             />
             <X className="w-4 h-4 text-red-500" />
@@ -306,7 +448,7 @@ const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
           <div className="text-[10px]">{modelSize}</div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -323,25 +465,33 @@ const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
         <div className="text-[10px]">{modelSize}</div>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const SetupCell = ({ model }: { model: SpeechModel }) => {
   if (model.setup === "cloud") {
-    return <CloudBadge />
+    return <CloudBadge />;
   }
 
-  return <DownloadButton modelName={model.name} modelSize={model.modelSize || "Unknown"} />
-}
+  return (
+    <DownloadButton
+      modelName={model.name}
+      modelSize={model.modelSize || "Unknown"}
+    />
+  );
+};
 
 export default function Component() {
   return (
     <div className="w-full max-w-7xl mx-auto p-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl font-bold">Speech LLM Models Comparison</CardTitle>
+          <CardTitle className="text-2xl font-bold">
+            Speech LLM Models Comparison
+          </CardTitle>
           <p className="text-muted-foreground">
-            Compare features, performance, and setup requirements of popular speech-to-text models
+            Compare features, performance, and setup requirements of popular
+            speech-to-text models
           </p>
         </CardHeader>
         <CardContent>
@@ -363,7 +513,9 @@ export default function Component() {
                       <TableCell>
                         <div>
                           <div className="font-semibold">{model.name}</div>
-                          <div className="text-sm text-muted-foreground">{model.provider}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {model.provider}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -400,5 +552,5 @@ export default function Component() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

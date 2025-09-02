@@ -37,7 +37,7 @@ export function ComboboxMulti({
   const [open, setOpen] = React.useState(false);
 
   const selectedOptions = options.filter((option) =>
-    value.includes(option.value)
+    value.includes(option.value),
   );
 
   return (
@@ -49,7 +49,7 @@ export function ComboboxMulti({
           aria-expanded={open}
           className={cn(
             "w-[250px] justify-between flex-wrap min-h-[40px]",
-            className
+            className,
           )}
         >
           <div className="flex flex-wrap gap-1 items-center">

@@ -51,12 +51,12 @@ export default function SyncModelsDialog({
   const fetchOpenRouterModelsQuery =
     api.settings.fetchOpenRouterModels.useQuery(
       { apiKey: credentials.openRouterApiKey || "" },
-      { enabled: false }
+      { enabled: false },
     );
 
   const fetchOllamaModelsQuery = api.settings.fetchOllamaModels.useQuery(
     { url: credentials.ollamaUrl || "" },
-    { enabled: false }
+    { enabled: false },
   );
 
   const syncProviderModelsMutation =
@@ -128,7 +128,7 @@ export default function SyncModelsDialog({
       setFetchError(fetchOpenRouterModelsQuery.error.message);
       setIsFetching(false);
       toast.error(
-        `Failed to fetch OpenRouter models: ${fetchOpenRouterModelsQuery.error.message}`
+        `Failed to fetch OpenRouter models: ${fetchOpenRouterModelsQuery.error.message}`,
       );
     }
   }, [fetchOpenRouterModelsQuery.error, provider]);
@@ -147,7 +147,7 @@ export default function SyncModelsDialog({
       setFetchError(fetchOllamaModelsQuery.error.message);
       setIsFetching(false);
       toast.error(
-        `Failed to fetch Ollama models: ${fetchOllamaModelsQuery.error.message}`
+        `Failed to fetch Ollama models: ${fetchOllamaModelsQuery.error.message}`,
       );
     }
   }, [fetchOllamaModelsQuery.error, provider]);
@@ -156,7 +156,7 @@ export default function SyncModelsDialog({
   const filteredModels = availableModels.filter(
     (model) =>
       model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      model.id.toLowerCase().includes(searchTerm.toLowerCase())
+      model.id.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   // Handle model selection
@@ -171,7 +171,7 @@ export default function SyncModelsDialog({
   // Handle sync
   const handleSync = () => {
     const modelsToSync = availableModels.filter((model) =>
-      selectedModels.includes(model.id)
+      selectedModels.includes(model.id),
     );
 
     // Sync to database

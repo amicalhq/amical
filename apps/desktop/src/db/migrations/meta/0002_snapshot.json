@@ -369,9 +369,7 @@
       "indexes": {
         "vocabulary_word_unique": {
           "name": "vocabulary_word_unique",
-          "columns": [
-            "word"
-          ],
+          "columns": ["word"],
           "isUnique": true
         }
       },

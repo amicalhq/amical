@@ -270,7 +270,7 @@ export default function SpeechTab() {
 
   const handleCancelDownload = async (
     modelId: string,
-    event?: React.MouseEvent
+    event?: React.MouseEvent,
   ) => {
     if (event) {
       event.preventDefault();

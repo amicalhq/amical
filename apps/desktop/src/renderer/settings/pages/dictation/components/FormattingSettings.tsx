@@ -68,7 +68,7 @@ export function FormattingSettings() {
 
         // Check if currently selected model is still available
         const modelExists = syncedModels.some(
-          (model) => model.id === config.model
+          (model) => model.id === config.model,
         );
         if (!modelExists) {
           // Current model was removed, select first available model
@@ -76,7 +76,7 @@ export function FormattingSettings() {
           setFormattingModel(firstModel.id);
           saveFormatterConfig(firstModel.id, formattingEnabled);
           toast.info(
-            `Previous formatting model was removed. Switched to ${firstModel.name}.`
+            `Previous formatting model was removed. Switched to ${firstModel.name}.`,
           );
         }
       } else if (config && config.model) {
@@ -130,7 +130,7 @@ export function FormattingSettings() {
         <Label
           className={cn(
             "text-sm font-medium text-foreground",
-            !formattingEnabled && "opacity-50 pointer-events-none"
+            !formattingEnabled && "opacity-50 pointer-events-none",
           )}
         >
           Formatting Model
@@ -170,7 +170,7 @@ export function FormattingSettings() {
             <Link
               to="/settings/ai-models?tab=language"
               className={cn(
-                !formattingEnabled && "opacity-50 pointer-events-none"
+                !formattingEnabled && "opacity-50 pointer-events-none",
               )}
             >
               <Button variant="link" className="text-xs px-0">

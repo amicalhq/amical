@@ -70,7 +70,7 @@ export function FormatterSettings() {
 
         // Check if currently selected model is still available
         const modelExists = syncedModels.some(
-          (model) => model.id === config.model
+          (model) => model.id === config.model,
         );
         if (!modelExists) {
           // Current model was removed, select first available model
@@ -78,7 +78,7 @@ export function FormatterSettings() {
           setFormatterModel(firstModel.id);
           saveFormatterConfig(firstModel.id, formatterEnabled);
           toast.info(
-            `Previous formatting model was removed. Switched to ${firstModel.name}.`
+            `Previous formatting model was removed. Switched to ${firstModel.name}.`,
           );
         }
       } else if (config && config.model) {

@@ -40,7 +40,7 @@ const BulkImportSchema = z.array(
   z.object({
     word: z.string().min(1),
     dateAdded: z.date().optional(),
-  })
+  }),
 );
 
 export const vocabularyRouter = createRouter({
@@ -78,7 +78,7 @@ export const vocabularyRouter = createRouter({
       z.object({
         searchTerm: z.string(),
         limit: z.number().optional(),
-      })
+      }),
     )
     .query(async ({ input }) => {
       return await searchVocabulary(input.searchTerm, input.limit);
@@ -104,7 +104,7 @@ export const vocabularyRouter = createRouter({
       z.object({
         id: z.number(),
         data: UpdateVocabularySchema,
-      })
+      }),
     )
     .mutation(async ({ input }) => {
       return await updateVocabulary(input.id, input.data);

@@ -59,7 +59,7 @@ export function LanguageSettings({
         <div
           className={cn(
             "flex items-start gap-2 flex-col",
-            autoDetect && "opacity-50 pointer-events-none"
+            autoDetect && "opacity-50 pointer-events-none",
           )}
         >
           <Label className="text-sm font-medium text-foreground">

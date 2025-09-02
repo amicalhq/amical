@@ -33,7 +33,7 @@ export default function ProviderAccordion({
 }: ProviderAccordionProps) {
   // Local state
   const [status, setStatus] = useState<"connected" | "disconnected">(
-    "disconnected"
+    "disconnected",
   );
   const [inputValue, setInputValue] = useState("");
   const [isValidating, setIsValidating] = useState(false);
@@ -56,7 +56,7 @@ export default function ProviderAccordion({
       onError: (error) => {
         console.error("Failed to save OpenRouter config:", error);
         toast.error(
-          "Failed to save OpenRouter configuration. Please try again."
+          "Failed to save OpenRouter configuration. Please try again.",
         );
       },
     });
@@ -218,13 +218,13 @@ export default function ProviderAccordion({
           "text-xs flex items-center gap-1",
           status === "connected"
             ? "text-green-500 border-green-500"
-            : "text-red-500 border-red-500"
+            : "text-red-500 border-red-500",
         )}
       >
         <span
           className={cn(
             "w-2 h-2 rounded-full inline-block animate-pulse mr-1",
-            status === "connected" ? "bg-green-500" : "bg-red-500"
+            status === "connected" ? "bg-green-500" : "bg-red-500",
           )}
         />
         {status === "connected" ? "Connected" : "Disconnected"}

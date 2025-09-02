@@ -53,7 +53,7 @@ export async function getAllProviderModels(): Promise<ProviderModel[]> {
  * Get provider models by provider
  */
 export async function getProviderModelsByProvider(
-  provider: string
+  provider: string,
 ): Promise<ProviderModel[]> {
   const models = await db
     .select()
@@ -66,7 +66,7 @@ export async function getProviderModelsByProvider(
  * Get a specific provider model by ID
  */
 export async function getProviderModelById(
-  id: string
+  id: string,
 ): Promise<ProviderModel | null> {
   const result = await db
     .select()
@@ -81,7 +81,7 @@ export async function getProviderModelById(
  */
 export async function syncProviderModels(
   provider: string,
-  models: ProviderModel[]
+  models: ProviderModel[],
 ): Promise<void> {
   await db.transaction(async (tx) => {
     // Delete existing models for this provider

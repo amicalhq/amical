@@ -44,7 +44,7 @@ export class AppManager {
   private async initializeDatabase(): Promise<void> {
     await initializeDatabase();
     logger.db.info(
-      "Database initialized and migrations completed successfully"
+      "Database initialized and migrations completed successfully",
     );
   }
 
@@ -85,13 +85,13 @@ export class AppManager {
 
   completeOnboarding(): void {
     logger.main.info(
-      "Onboarding completed, restarting app for permissions to take effect"
+      "Onboarding completed, restarting app for permissions to take effect",
     );
 
     // In development, reload windows instead of relaunching
     if (process.env.NODE_ENV === "development") {
       logger.main.info(
-        "Development mode: Reloading windows instead of relaunching"
+        "Development mode: Reloading windows instead of relaunching",
       );
 
       // Close onboarding window
@@ -151,7 +151,7 @@ export class AppManager {
           autoUpdaterService.checkForUpdates(true);
         }
       },
-      () => this.windowManager.openAllDevTools()
+      () => this.windowManager.openAllDevTools(),
     );
   }
 
