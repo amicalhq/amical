@@ -39,10 +39,6 @@ const defaultSettings: AppSettingsData = {
     toggleRecording: "",
   },
   modelProvidersConfig: {
-    openRouter: {
-      apiKey: "",
-    },
-    // Don't include ollama config by default - let it be undefined so it shows as disconnected
     defaultLanguageModel: "",
     defaultEmbeddingModel: "",
   },

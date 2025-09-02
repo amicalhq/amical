@@ -23,12 +23,24 @@ const GetVocabularySchema = z.object({
   search: z.string().optional(),
 });
 
-const CreateVocabularySchema = z.object({
-  word: z.string().min(1),
-  isReplacement: z.boolean().optional(),
-  replacementWord: z.string().optional(),
-  dateAdded: z.date().optional(),
-});
+const CreateVocabularySchema = z
+  .object({
+    word: z.string().min(1),
+    isReplacement: z.boolean().optional(),
+    replacementWord: z.string().optional(),
+  })
+  .refine((d) => !d.isReplacement || !!d.replacementWord?.trim(), {
+    path: ["replacementWord"],
+    message: "replacementWord is required when isReplacement is true",
+  })
+  .refine(
+    (d) =>
+      !d.isReplacement || !d.replacementWord || d.replacementWord !== d.word,
+    {
+      path: ["replacementWord"],
+      message: "replacementWord must be different from word",
+    },
+  );
 
 const UpdateVocabularySchema = z
   .object({

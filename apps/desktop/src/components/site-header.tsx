@@ -9,6 +9,9 @@ interface SiteHeaderProps {
   currentView?: string;
 }
 
+const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const noDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+
 export function SiteHeader({ currentView }: SiteHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,10 +27,9 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
       // Can go back if index is greater than 0
       setCanGoBack(idx > 0);
 
-      // For forward navigation, we need to track if we've navigated back
-      // This is a limitation of browser history API - we can't know the forward stack size
-      // A more sophisticated approach would require maintaining our own navigation stack
-      setCanGoForward(false);
+      // In Electron, each window has its own isolated history,
+      // so we can determine forward availability from the index and history length
+      setCanGoForward(idx < window.history.length - 1);
     };
 
     updateNavigationState();
@@ -48,17 +50,14 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
   return (
     <header
       className="flex h-[var(--header-height)] shrink-0 items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-sidebar/60 sticky top-0 z-50 w-full"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      style={dragRegion}
     >
       <div className="flex w-full items-center gap-1">
         {/* macOS traffic light button spacing */}
         <div className="w-[78px] flex-shrink-0" />
 
         <div className="flex items-center gap-1 px-4 lg:gap-2 lg:px-6 py-1.5">
-          <SidebarTrigger
-            className="-ml-1"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          />
+          <SidebarTrigger className="-ml-1" style={noDragRegion} />
 
           <Separator orientation="vertical" className="h-4" />
 
@@ -70,8 +69,9 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
               onClick={handleGoBack}
               disabled={!canGoBack}
               className="h-7 w-7 p-0"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              style={dragRegion}
               title="Go back"
+              aria-label="Go back"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -81,8 +81,9 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
               onClick={handleGoForward}
               disabled={!canGoForward}
               className="h-7 w-7 p-0"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              style={noDragRegion}
               title="Go forward"
+              aria-label="Go forward"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
