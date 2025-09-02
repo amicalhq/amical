@@ -24,7 +24,7 @@ export function Combobox({
   value,
   onChange,
   disabled,
-  placeholder = "Select framework...",
+  placeholder = "Select option...",
 }: {
   options: { value: string; label: string }[];
   value: string;

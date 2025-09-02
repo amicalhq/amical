@@ -151,8 +151,6 @@ export async function updateAppSettings(
     })
     .where(eq(appSettings.id, SETTINGS_ID));
 
-  console.log("mergedSettings", mergedSettings);
-
   return mergedSettings;
 }
 

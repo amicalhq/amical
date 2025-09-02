@@ -16,16 +16,26 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
   const [canGoForward, setCanGoForward] = useState(false);
 
   useEffect(() => {
-    // Check if we can go back - enable if we're not on the default route
-    const hasPreviousHistory =
-      location.key !== "default" && location.key !== "";
+    const updateNavigationState = () => {
+      // React Router stores the history index in window.history.state
+      const state = window.history.state as { idx?: number } | null;
+      const idx = state?.idx ?? 0;
 
-    setCanGoBack(hasPreviousHistory);
+      // Can go back if index is greater than 0
+      setCanGoBack(idx > 0);
 
-    // For forward navigation, we'll use browser history API to check
-    // This is a simple implementation - could be enhanced with more sophisticated state tracking
-    setCanGoForward(window.history.length > 1);
-  }, [location.pathname]);
+      // For forward navigation, we need to track if we've navigated back
+      // This is a limitation of browser history API - we can't know the forward stack size
+      // A more sophisticated approach would require maintaining our own navigation stack
+      setCanGoForward(false);
+    };
+
+    updateNavigationState();
+
+    // Listen for popstate events to update button states
+    window.addEventListener("popstate", updateNavigationState);
+    return () => window.removeEventListener("popstate", updateNavigationState);
+  }, [location.key]);
 
   const handleGoBack = () => {
     navigate(-1);

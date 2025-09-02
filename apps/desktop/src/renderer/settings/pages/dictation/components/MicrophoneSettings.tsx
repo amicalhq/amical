@@ -9,7 +9,7 @@ import {
 import { api } from "@/trpc/react";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
 import { toast } from "sonner";
-import { Mic, MicOff } from "lucide-react";
+import { Mic } from "lucide-react";
 
 export function MicrophoneSettings() {
   const { data: settings, refetch: refetchSettings } =
@@ -68,16 +68,7 @@ export function MicrophoneSettings() {
           onValueChange={handleMicrophoneChange}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select microphone">
-              <div className="flex items-center gap-2">
-                {audioDevices.length > 0 ? (
-                  <Mic className="h-4 w-4" />
-                ) : (
-                  <MicOff className="h-4 w-4" />
-                )}
-                <span>{currentSelectionValue || "Select a microphone"}</span>
-              </div>
-            </SelectValue>
+            <SelectValue placeholder="Select a microphone" />
           </SelectTrigger>
           <SelectContent>
             {audioDevices.length === 0 ? (

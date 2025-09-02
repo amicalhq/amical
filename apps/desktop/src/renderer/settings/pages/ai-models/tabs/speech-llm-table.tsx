@@ -398,7 +398,7 @@ const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
   };
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: NodeJS.Timeout | undefined;
     if (downloadState === "downloading") {
       interval = setInterval(() => {
         setProgress((prev) => {
@@ -406,11 +406,16 @@ const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
             setDownloadState("completed");
             return 100;
           }
-          return prev + Math.random() * 15 + 5; // Random progress increment
+          const increment = Math.random() * 15 + 5;
+          return Math.min(prev + increment, 100); // Clamp to 100
         });
       }, 200);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
   }, [downloadState]);
 
   if (downloadState === "completed") {

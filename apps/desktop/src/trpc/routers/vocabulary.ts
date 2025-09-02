@@ -30,11 +30,43 @@ const CreateVocabularySchema = z.object({
   dateAdded: z.date().optional(),
 });
 
-const UpdateVocabularySchema = z.object({
-  word: z.string().min(1).optional(),
-  dateAdded: z.date().optional(),
-  usageCount: z.number().optional(),
-});
+const UpdateVocabularySchema = z
+  .object({
+    word: z.string().min(1).optional(),
+    isReplacement: z.boolean().optional(),
+    replacementWord: z.string().optional(),
+    dateAdded: z.date().optional(),
+    usageCount: z.number().optional(),
+  })
+  .refine(
+    (data) => {
+      // If isReplacement is true, replacementWord must be provided
+      if (data.isReplacement === true && !data.replacementWord) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "replacementWord is required when isReplacement is true",
+      path: ["replacementWord"],
+    },
+  )
+  .refine(
+    (data) => {
+      // If both word and replacementWord are provided, they must be different
+      if (data.word && data.replacementWord) {
+        return (
+          data.word.trim().toLowerCase() !==
+          data.replacementWord.trim().toLowerCase()
+        );
+      }
+      return true;
+    },
+    {
+      message: "replacementWord must be different from word",
+      path: ["replacementWord"],
+    },
+  );
 
 const BulkImportSchema = z.array(
   z.object({

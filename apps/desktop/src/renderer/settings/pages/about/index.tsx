@@ -1,8 +1,8 @@
+import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, BookOpen } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
 
 const VERSION = "1.0.0";
@@ -156,14 +156,25 @@ const ExternalLink = ({
   href: string;
   children: React.ReactNode;
 }) => {
+  const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (window.electronAPI?.openExternal) {
+      await window.electronAPI.openExternal(href);
+    }
+  };
+
   return (
-    <div
-      onClick={async (e) => {
-        e.preventDefault();
-        await window.electronAPI.openExternal(href);
+    <a
+      href={href}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          handleClick(e as any);
+        }
       }}
+      style={{ cursor: "pointer" }}
     >
       {children}
-    </div>
+    </a>
   );
 };

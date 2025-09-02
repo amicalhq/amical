@@ -1,5 +1,6 @@
 import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -8,7 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 const Content = React.lazy(
   () =>
     import("./content.js") as unknown as Promise<{
-      default: React.ComponentType<any>;
+      default: React.ComponentType;
     }>,
 );
 
@@ -16,37 +17,45 @@ const Content = React.lazy(
 declare global {
   interface Console {
     original: {
-      log: (...args: any[]) => void;
-      info: (...args: any[]) => void;
-      warn: (...args: any[]) => void;
-      error: (...args: any[]) => void;
-      debug: (...args: any[]) => void;
+      log: (...data: unknown[]) => void;
+      info: (...data: unknown[]) => void;
+      warn: (...data: unknown[]) => void;
+      error: (...data: unknown[]) => void;
+      debug: (...data: unknown[]) => void;
     };
   }
 }
 
-// Settings window scoped logger setup
-const settingsWindowLogger = window.electronAPI.log.scope("settingsWindow");
+// Settings window scoped logger setup with guards
+const settingsWindowLogger = window.electronAPI?.log?.scope?.("settingsWindow");
+
+// Store original console methods with proper binding
+const originalConsole = {
+  log: console.log.bind(console),
+  info: console.info.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console),
+};
 
 // Proxy console methods to use BOTH original console AND settings window logger
-const originalConsole = { ...console };
-console.log = (...args: any[]) => {
+console.log = (...args: unknown[]) => {
   originalConsole.log(...args); // Show in dev console
-  settingsWindowLogger.info(...args); // Send via IPC
+  settingsWindowLogger.info(...args); // Send via IPC if available
 };
-console.info = (...args: any[]) => {
+console.info = (...args: unknown[]) => {
   originalConsole.info(...args);
   settingsWindowLogger.info(...args);
 };
-console.warn = (...args: any[]) => {
+console.warn = (...args: unknown[]) => {
   originalConsole.warn(...args);
   settingsWindowLogger.warn(...args);
 };
-console.error = (...args: any[]) => {
+console.error = (...args: unknown[]) => {
   originalConsole.error(...args);
   settingsWindowLogger.error(...args);
 };
-console.debug = (...args: any[]) => {
+console.debug = (...args: unknown[]) => {
   originalConsole.debug(...args);
   settingsWindowLogger.debug(...args);
 };
@@ -73,9 +82,11 @@ const LoadingSpinner: React.FC = () => {
 const App: React.FC = () => {
   return (
     <ThemeProvider>
-      <Suspense fallback={<LoadingSpinner />}>
-        <Content />
-      </Suspense>
+      <MemoryRouter>
+        <Suspense fallback={<LoadingSpinner />}>
+          <Content />
+        </Suspense>
+      </MemoryRouter>
       <Toaster />
     </ThemeProvider>
   );

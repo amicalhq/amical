@@ -108,7 +108,8 @@ export default function DefaultModelCombobox({
             }))}
             value={defaultModel}
             onChange={(value) => {
-              if (value !== defaultModel) {
+              // Guard against empty value from Combobox clear action
+              if (value && value !== defaultModel) {
                 openChangeDefaultDialog(value);
               }
             }}

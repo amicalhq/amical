@@ -70,21 +70,20 @@ export function LanguageSettings({
               languageOptions
                 .filter((l) => languages.includes(l.value))
                 .map((l) => (
-                  <Badge
-                    key={l.value}
-                    variant="outline"
-                    className="flex items-center"
-                  >
-                    <span>{l.label}</span>
+                  <div key={l.value} className="flex items-center gap-1">
+                    <Badge variant="outline">
+                      <span>{l.label}</span>
+                    </Badge>
                     <Button
-                      className="p-0"
+                      className="h-5 w-5 p-0"
                       onClick={() => handleRemoveLanguage(l.value)}
                       variant="ghost"
                       size="sm"
+                      aria-label={`Remove ${l.label}`}
                     >
-                      <X className="w-3 h-3 p-0" />
+                      <X className="w-3 h-3" />
                     </Button>
-                  </Badge>
+                  </div>
                 ))}
           </div>
         </div>
