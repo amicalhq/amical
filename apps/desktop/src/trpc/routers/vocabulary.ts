@@ -29,13 +29,27 @@ const CreateVocabularySchema = z
     isReplacement: z.boolean().optional(),
     replacementWord: z.string().optional(),
   })
-  .refine((d) => !d.isReplacement || !!d.replacementWord?.trim(), {
-    path: ["replacementWord"],
-    message: "replacementWord is required when isReplacement is true",
-  })
   .refine(
-    (d) =>
-      !d.isReplacement || !d.replacementWord || d.replacementWord !== d.word,
+    (data) => {
+      // If isReplacement is true, replacementWord must be provided
+      if (data.isReplacement === true && !data.replacementWord) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "replacementWord is required when isReplacement is true",
+      path: ["replacementWord"],
+    },
+  )
+  .refine(
+    (data) => {
+      // If both word and replacementWord are provided, they must be different
+      if (data.word && data.replacementWord) {
+        return data.word !== data.replacementWord;
+      }
+      return true;
+    },
     {
       path: ["replacementWord"],
       message: "replacementWord must be different from word",
@@ -47,8 +61,6 @@ const UpdateVocabularySchema = z
     word: z.string().min(1).optional(),
     isReplacement: z.boolean().optional(),
     replacementWord: z.string().optional(),
-    dateAdded: z.date().optional(),
-    usageCount: z.number().optional(),
   })
   .refine(
     (data) => {
@@ -67,10 +79,7 @@ const UpdateVocabularySchema = z
     (data) => {
       // If both word and replacementWord are provided, they must be different
       if (data.word && data.replacementWord) {
-        return (
-          data.word.trim().toLowerCase() !==
-          data.replacementWord.trim().toLowerCase()
-        );
+        return data.word !== data.replacementWord;
       }
       return true;
     },

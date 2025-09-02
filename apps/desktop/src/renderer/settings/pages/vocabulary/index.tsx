@@ -261,6 +261,10 @@ export default function VocabularySettingsPage() {
         id: editingItem.id,
         data: {
           word: formData.word,
+          isReplacement: formData.isReplacement,
+          replacementWord: formData.isReplacement
+            ? formData.replacementWord
+            : undefined,
         },
       });
       setFormData({ word: "", replacementWord: "", isReplacement: false });
