@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "./config";
+import { db } from ".";
 import {
   providerModels,
   type ProviderModelDB,

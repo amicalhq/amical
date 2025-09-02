@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db } from "./config";
+import { db } from ".";
 import {
   appSettings,
   type NewAppSettings,

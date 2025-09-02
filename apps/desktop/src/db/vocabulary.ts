@@ -1,5 +1,5 @@
 import { eq, desc, asc, like, count, gt, sql } from "drizzle-orm";
-import { db } from "./config";
+import { db } from ".";
 import { vocabulary, type Vocabulary, type NewVocabulary } from "./schema";
 
 // Create a new vocabulary word
