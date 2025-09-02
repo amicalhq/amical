@@ -69,7 +69,7 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
               onClick={handleGoBack}
               disabled={!canGoBack}
               className="h-7 w-7 p-0"
-              style={dragRegion}
+              style={noDragRegion}
               title="Go back"
               aria-label="Go back"
             >
