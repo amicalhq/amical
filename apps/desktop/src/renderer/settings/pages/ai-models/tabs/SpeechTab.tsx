@@ -209,6 +209,8 @@ export default function SpeechTab() {
       });
       utils.models.getDownloadedModels.invalidate();
       utils.models.getActiveDownloads.invalidate();
+      // Also invalidate selected model in case of auto-selection
+      utils.models.getSelectedModel.invalidate();
     },
     onError: (error) => {
       console.error("Download complete subscription error:", error);
@@ -250,6 +252,36 @@ export default function SpeechTab() {
     },
     onError: (error) => {
       console.error("Model deleted subscription error:", error);
+    },
+  });
+
+  api.models.onSelectionChanged.useSubscription(undefined, {
+    onData: ({ newModelId, reason }) => {
+      // Always invalidate to update UI
+      utils.models.getSelectedModel.invalidate();
+
+      // Show appropriate toast based on reason
+      if (reason === "auto-first-download") {
+        const model = availableModels.find((m) => m.id === newModelId);
+        if (model) {
+          toast.success(`${model.name} selected as your default speech model`);
+        }
+      } else if (reason === "auto-after-deletion") {
+        const model = availableModels.find((m) => m.id === newModelId);
+        if (model) {
+          toast.info(
+            `Auto-selected ${model.name} after deleting previous model`,
+          );
+        }
+      } else if (reason === "cleared") {
+        toast.warning(
+          "No speech models available. Please download a model to continue.",
+        );
+      }
+      // No toast for 'manual' - user initiated the change
+    },
+    onError: (error) => {
+      console.error("Selection changed subscription error:", error);
     },
   });
 

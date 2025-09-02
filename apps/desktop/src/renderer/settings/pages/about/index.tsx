@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, BookOpen } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "@/trpc/react";
 
-const VERSION = "1.0.0";
 const CHANGELOG_URL = "https://github.com/amicalhq/amical/releases";
 const GITHUB_URL = "https://github.com/amicalhq/amical";
 const DISCORD_URL = "https://amical.ai/community";
@@ -13,6 +13,7 @@ const CONTACT_EMAIL = "contact@amical.ai";
 
 export default function AboutSettingsPage() {
   const [checking, setChecking] = useState(false);
+  const { data: version } = api.settings.getAppVersion.useQuery();
 
   function handleCheckUpdates() {
     setChecking(true);
@@ -38,7 +39,7 @@ export default function AboutSettingsPage() {
             <div>
               <div className="text-lg font-semibold">Current Version</div>
               <Badge variant="secondary" className="mt-1">
-                v{VERSION}
+                v{version || "..."}
               </Badge>
             </div>
             {/* <Button

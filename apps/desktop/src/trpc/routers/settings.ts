@@ -1,5 +1,6 @@
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
+import { app } from "electron";
 import { createRouter, procedure } from "../trpc";
 import type { ValidationResult } from "../../types/providers";
 
@@ -797,5 +798,10 @@ export const settingsRouter = createRouter({
       }
       throw error;
     }
+  }),
+
+  // Get app version
+  getAppVersion: procedure.query(() => {
+    return app.getVersion();
   }),
 });
