@@ -59,6 +59,11 @@ const DefaultModelSchema = z.object({
   modelId: z.string().optional(),
 });
 
+const DictationSettingsSchema = z.object({
+  autoDetectEnabled: z.boolean(),
+  selectedLanguage: z.string().min(1), // Must be valid when autoDetectEnabled is false
+});
+
 export const settingsRouter = createRouter({
   // Get all settings
   getSettings: procedure.query(async ({ ctx }) => {
@@ -87,7 +92,7 @@ export const settingsRouter = createRouter({
         enablePunctuation: z.boolean().optional(),
         enableTimestamps: z.boolean().optional(),
         preloadWhisperModel: z.boolean().optional(),
-      }),
+      })
     )
     .mutation(async ({ input, ctx }) => {
       try {
@@ -121,7 +126,7 @@ export const settingsRouter = createRouter({
         // Handle model preloading change
         if (preloadChanged) {
           const transcriptionService = ctx.serviceManager.getService(
-            "transcriptionService",
+            "transcriptionService"
           );
           if (transcriptionService) {
             await transcriptionService.handleModelChange();
@@ -169,7 +174,7 @@ export const settingsRouter = createRouter({
 
         // Update transcription service with new formatter configuration
         const transcriptionService = ctx.serviceManager.getService(
-          "transcriptionService",
+          "transcriptionService"
         );
         if (transcriptionService) {
           transcriptionService.configureFormatter(input);
@@ -218,7 +223,7 @@ export const settingsRouter = createRouter({
 
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
-          logger.main.info("Shortcut updated", input);
+          logger?.main.info("Shortcut updated", input);
         }
 
         // Notify shortcut manager to reload shortcuts
@@ -226,7 +231,9 @@ export const settingsRouter = createRouter({
           ctx.serviceManager.getService("shortcutManager");
         if (shortcutManager) {
           await shortcutManager.reloadShortcuts();
-          logger.main.info("Shortcut manager notified of shortcut change");
+          if (logger) {
+            logger.main.info("Shortcut manager notified of shortcut change");
+          }
         }
 
         return true;
@@ -277,7 +284,7 @@ export const settingsRouter = createRouter({
 
       if (!shortcutManager) {
         logger?.main.warn(
-          "ShortcutManager not available for activeKeys subscription",
+          "ShortcutManager not available for activeKeys subscription"
         );
         emit.next([]);
         return () => {};
@@ -305,7 +312,7 @@ export const settingsRouter = createRouter({
     .input(
       z.object({
         deviceName: z.string().nullable(),
-      }),
+      })
     )
     .mutation(async ({ input, ctx }) => {
       try {
@@ -456,7 +463,7 @@ export const settingsRouter = createRouter({
         }
 
         const result = await settingsService.validateOpenRouterConnection(
-          input.apiKey,
+          input.apiKey
         );
 
         const logger = ctx.serviceManager.getLogger();
@@ -491,7 +498,7 @@ export const settingsRouter = createRouter({
         }
 
         const result = await settingsService.validateOllamaConnection(
-          input.url,
+          input.url
         );
 
         const logger = ctx.serviceManager.getLogger();
@@ -526,7 +533,7 @@ export const settingsRouter = createRouter({
         }
 
         const models = await settingsService.fetchOpenRouterModels(
-          input.apiKey,
+          input.apiKey
         );
 
         const logger = ctx.serviceManager.getLogger();
@@ -605,7 +612,7 @@ export const settingsRouter = createRouter({
 
         await settingsService.syncProviderModelsToDatabase(
           input.provider,
-          input.models,
+          input.models
         );
 
         const logger = ctx.serviceManager.getLogger();
@@ -804,4 +811,83 @@ export const settingsRouter = createRouter({
   getAppVersion: procedure.query(() => {
     return app.getVersion();
   }),
+
+  // Get dictation settings
+  getDictationSettings: procedure.query(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      const allSettings = await settingsService.getAllSettings();
+      return (
+        allSettings.dictation || {
+          autoDetectEnabled: true,
+          selectedLanguage: "en",
+        }
+      );
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error getting dictation settings:", error);
+      }
+      return {
+        autoDetectEnabled: true,
+        selectedLanguage: "en",
+      };
+    }
+  }),
+
+  // Set dictation settings
+  setDictationSettings: procedure
+    .input(DictationSettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        // Validation: if autoDetectEnabled is false, ensure selectedLanguage is valid
+        if (
+          !input.autoDetectEnabled &&
+          (!input.selectedLanguage || input.selectedLanguage === "auto")
+        ) {
+          throw new Error(
+            "Selected language must be specified when auto-detect is disabled"
+          );
+        }
+
+        // Set default to "en" if switching from auto-detect enabled to disabled with invalid language
+        let selectedLanguage = input.selectedLanguage;
+        if (
+          !input.autoDetectEnabled &&
+          (!selectedLanguage || selectedLanguage === "auto")
+        ) {
+          selectedLanguage = "en";
+        }
+
+        const dictationSettings = {
+          autoDetectEnabled: input.autoDetectEnabled,
+          selectedLanguage,
+        };
+
+        await settingsService.setDictationSettings(dictationSettings);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Dictation settings updated:", dictationSettings);
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting dictation settings:", error);
+        }
+        throw error;
+      }
+    }),
 });

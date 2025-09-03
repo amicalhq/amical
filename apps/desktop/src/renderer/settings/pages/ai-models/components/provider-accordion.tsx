@@ -78,7 +78,6 @@ export default function ProviderAccordion({
         setIsValidating(false);
         if (result.success) {
           setOpenRouterConfigMutation.mutate({ apiKey: inputValue.trim() });
-          setStatus("connected");
           setValidationError("");
           toast.success("OpenRouter connection validated successfully!");
         } else {
@@ -99,7 +98,6 @@ export default function ProviderAccordion({
         setIsValidating(false);
         if (result.success) {
           setOllamaConfigMutation.mutate({ url: inputValue.trim() });
-          setStatus("connected");
           setValidationError("");
           toast.success("Ollama connection validated successfully!");
         } else {

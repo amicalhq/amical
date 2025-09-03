@@ -61,7 +61,7 @@ export class SettingsService {
    * Update multiple settings at once
    */
   async updateSettings(
-    settings: Partial<AppSettingsData>,
+    settings: Partial<AppSettingsData>
   ): Promise<AppSettingsData> {
     return await updateAppSettings(settings);
   }
@@ -91,7 +91,7 @@ export class SettingsService {
    * Update transcription settings
    */
   async setTranscriptionSettings(
-    transcriptionSettings: AppSettingsData["transcription"],
+    transcriptionSettings: AppSettingsData["transcription"]
   ): Promise<void> {
     await updateSettingsSection("transcription", transcriptionSettings);
   }
@@ -107,9 +107,25 @@ export class SettingsService {
    * Update recording settings
    */
   async setRecordingSettings(
-    recordingSettings: AppSettingsData["recording"],
+    recordingSettings: AppSettingsData["recording"]
   ): Promise<void> {
     await updateSettingsSection("recording", recordingSettings);
+  }
+
+  /**
+   * Get dictation settings
+   */
+  async getDictationSettings(): Promise<AppSettingsData["dictation"]> {
+    return await getSettingsSection("dictation");
+  }
+
+  /**
+   * Update dictation settings
+   */
+  async setDictationSettings(
+    dictationSettings: AppSettingsData["dictation"]
+  ): Promise<void> {
+    await updateSettingsSection("dictation", dictationSettings);
   }
 
   /**
@@ -144,7 +160,7 @@ export class SettingsService {
   > {
     console.log(
       "getModelProvidersConfig",
-      await getSettingsSection("modelProvidersConfig"),
+      await getSettingsSection("modelProvidersConfig")
     );
     return await getSettingsSection("modelProvidersConfig");
   }
@@ -153,7 +169,7 @@ export class SettingsService {
    * Update model providers configuration
    */
   async setModelProvidersConfig(
-    config: AppSettingsData["modelProvidersConfig"],
+    config: AppSettingsData["modelProvidersConfig"]
   ): Promise<void> {
     await updateSettingsSection("modelProvidersConfig", config);
   }
@@ -208,7 +224,7 @@ export class SettingsService {
    * Validate OpenRouter connection by testing API key
    */
   async validateOpenRouterConnection(
-    apiKey: string,
+    apiKey: string
   ): Promise<ValidationResult> {
     try {
       const response = await fetch("https://openrouter.ai/api/v1/key", {
@@ -316,7 +332,7 @@ export class SettingsService {
       throw new Error(
         error instanceof Error
           ? error.message
-          : "Failed to fetch OpenRouter models",
+          : "Failed to fetch OpenRouter models"
       );
     }
   }
@@ -380,9 +396,7 @@ export class SettingsService {
       });
     } catch (error) {
       throw new Error(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch Ollama models",
+        error instanceof Error ? error.message : "Failed to fetch Ollama models"
       );
     }
   }
@@ -406,7 +420,7 @@ export class SettingsService {
    */
   async syncProviderModelsToDatabase(
     provider: string,
-    models: ProviderModel[],
+    models: ProviderModel[]
   ): Promise<void> {
     await syncProviderModels(provider, models);
   }
@@ -422,7 +436,15 @@ export class SettingsService {
    * Remove a provider model
    */
   async removeProviderModel(modelId: string): Promise<void> {
-    await removeProviderModel(modelId);
+    // First, find the model to get its provider
+    const allModels = await getAllProviderModels();
+    const model = allModels.find((m) => m.id === modelId);
+
+    if (!model) {
+      throw new Error(`Model not found: ${modelId}`);
+    }
+
+    await removeProviderModel(model.provider, modelId);
   }
 
   /**
@@ -436,7 +458,9 @@ export class SettingsService {
    * Check if a model exists in database
    */
   async modelExists(modelId: string): Promise<boolean> {
-    return await modelExists(modelId);
+    // Since we need provider info for composite key, let's check all models
+    const allModels = await getAllProviderModels();
+    return allModels.some((m) => m.id === modelId);
   }
 
   /**
@@ -487,13 +511,11 @@ export class SettingsService {
     // Get all OpenRouter models that will be removed
     const allModels = await getAllProviderModels();
     const openRouterModels = allModels.filter(
-      (m) => m.provider === "OpenRouter",
+      (m) => m.provider === "OpenRouter"
     );
 
     // Remove all OpenRouter models from database
-    for (const model of openRouterModels) {
-      await removeProviderModel(model.id);
-    }
+    await removeProviderModels("OpenRouter");
 
     // Clear default if it's an OpenRouter model
     let newDefaultModel = currentDefault;
@@ -506,7 +528,7 @@ export class SettingsService {
 
     // Remove OpenRouter config entirely
     const updatedConfig = { ...currentConfig };
-    delete updatedConfig.openRouter;
+    updatedConfig.openRouter = undefined;
     updatedConfig.defaultLanguageModel = newDefaultModel;
 
     await this.setModelProvidersConfig(updatedConfig);
@@ -525,9 +547,7 @@ export class SettingsService {
     const ollamaModels = allModels.filter((m) => m.provider === "Ollama");
 
     // Remove all Ollama models from database
-    for (const model of ollamaModels) {
-      await removeProviderModel(model.id);
-    }
+    await removeProviderModels("Ollama");
 
     // Clear defaults if they're Ollama models
     let newDefaultLanguage = currentDefaultLanguage;

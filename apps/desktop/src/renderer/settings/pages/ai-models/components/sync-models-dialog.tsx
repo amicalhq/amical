@@ -47,6 +47,8 @@ export default function SyncModelsDialog({
   const syncedModelsQuery = api.settings.getSyncedProviderModels.useQuery();
   const defaultLanguageModelQuery =
     api.settings.getDefaultLanguageModel.useQuery();
+  const defaultEmbeddingModelQuery =
+    api.settings.getDefaultEmbeddingModel.useQuery();
 
   const fetchOpenRouterModelsQuery =
     api.settings.fetchOpenRouterModels.useQuery(
@@ -78,6 +80,13 @@ export default function SyncModelsDialog({
     api.settings.setDefaultLanguageModel.useMutation({
       onSuccess: () => {
         utils.settings.getDefaultLanguageModel.invalidate();
+      },
+    });
+
+  const setDefaultEmbeddingModelMutation =
+    api.settings.setDefaultEmbeddingModel.useMutation({
+      onSuccess: () => {
+        utils.settings.getDefaultEmbeddingModel.invalidate();
       },
     });
 
@@ -169,13 +178,13 @@ export default function SyncModelsDialog({
   };
 
   // Handle sync
-  const handleSync = () => {
+  const handleSync = async () => {
     const modelsToSync = availableModels.filter((model) =>
       selectedModels.includes(model.id),
     );
 
     // Sync to database
-    syncProviderModelsMutation.mutate({
+    await syncProviderModelsMutation.mutateAsync({
       provider,
       models: modelsToSync,
     });
@@ -186,9 +195,11 @@ export default function SyncModelsDialog({
         setDefaultLanguageModelMutation.mutate({ modelId: modelsToSync[0].id });
       }
     } else if (modelType === "embedding" && modelsToSync.length > 0) {
-      // For embedding models, we'd need to check the default embedding model
-      // This would require fetching the default embedding model query
-      // For now, we'll skip auto-setting default for embedding models
+      // For embedding models, only set default if no default is set and this is Ollama provider
+      // (embedding models only work with Ollama)
+      if (provider === "Ollama" && !defaultEmbeddingModelQuery.data) {
+        setDefaultEmbeddingModelMutation.mutate({ modelId: modelsToSync[0].id });
+      }
     }
 
     handleCancel();

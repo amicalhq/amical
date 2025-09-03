@@ -99,9 +99,18 @@ export default function SyncedModelsList({
   // Load synced models
   useEffect(() => {
     if (syncedModelsQuery.data) {
-      setSyncedModels(syncedModelsQuery.data);
+      let filteredModels = syncedModelsQuery.data;
+      
+      // For embedding models, only show Ollama models
+      if (modelType === "embedding") {
+        filteredModels = syncedModelsQuery.data.filter(
+          (model) => model.provider.toLowerCase() === "ollama"
+        );
+      }
+      
+      setSyncedModels(filteredModels);
     }
-  }, [syncedModelsQuery.data]);
+  }, [syncedModelsQuery.data, modelType]);
 
   // Load default model based on type
   useEffect(() => {

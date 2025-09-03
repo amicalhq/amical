@@ -68,7 +68,7 @@ export function FormattingSettings() {
 
         // Check if currently selected model is still available
         const modelExists = syncedModels.some(
-          (model) => model.id === config.model,
+          (model) => model.id === config.model
         );
         if (!modelExists) {
           // Current model was removed, select first available model
@@ -76,7 +76,7 @@ export function FormattingSettings() {
           setFormattingModel(firstModel.id);
           saveFormatterConfig(firstModel.id, formattingEnabled);
           toast.info(
-            `Previous formatting model was removed. Switched to ${firstModel.name}.`,
+            `Previous formatting model was removed. Switched to ${firstModel.name}.`
           );
         }
       } else if (config && config.model) {
@@ -120,24 +120,36 @@ export function FormattingSettings() {
             Enable formatting and select the AI model for formatting output.
           </p>
         </div>
-        <Switch
-          checked={formattingEnabled}
-          onCheckedChange={handleFormattingEnabledChange}
-        />
+        <Tooltip delayDuration={100}>
+          <TooltipTrigger asChild>
+            <div>
+              <Switch
+                checked={formattingEnabled}
+                onCheckedChange={handleFormattingEnabledChange}
+                disabled={syncedModels.length === 0}
+              />
+            </div>
+          </TooltipTrigger>
+          {syncedModels.length === 0 && (
+            <TooltipContent className="max-w-sm text-center">
+              Please sync AI models first to enable formatting functionality.
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
 
       <div className="flex items-start justify-between mt-6 border-border border rounded-md p-4">
         <Label
           className={cn(
             "text-sm font-medium text-foreground",
-            !formattingEnabled && "opacity-50 pointer-events-none",
+            !formattingEnabled && "opacity-50 pointer-events-none"
           )}
         >
           Formatting Model
         </Label>
         {formattingModelOptions.length === 0 ? (
           <div className="flex flex-col items-end gap-2">
-            <Link to="/settings/ai-models?tab=language">
+            <Link to="/ai-models?tab=language">
               <Button variant="outline" size={"sm"} className="ml-2">
                 <Plus className="w-4 h-4 mr-1" />
                 Sync models
@@ -157,6 +169,7 @@ export function FormattingSettings() {
                     options={formattingModelOptions}
                     value={formattingModel}
                     onChange={handleFormattingModelChange}
+                    placeholder="Select a model..."
                   />
                 </div>
               </TooltipTrigger>
@@ -168,9 +181,9 @@ export function FormattingSettings() {
               )}
             </Tooltip>
             <Link
-              to="/settings/ai-models?tab=language"
+              to="/ai-models?tab=language"
               className={cn(
-                !formattingEnabled && "opacity-50 pointer-events-none",
+                !formattingEnabled && "opacity-50 pointer-events-none"
               )}
             >
               <Button variant="link" className="text-xs px-0">

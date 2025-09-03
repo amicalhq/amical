@@ -5,7 +5,11 @@ import {
   type ProviderModelDB,
   type NewProviderModelDB,
 } from "./schema";
-import type { ProviderModel } from "../types/providers";
+import type {
+  OllamaModel,
+  OpenRouterModel,
+  ProviderModel,
+} from "../types/providers";
 
 /**
  * Database operations for provider models
@@ -35,9 +39,10 @@ function fromDBModel(dbModel: ProviderModelDB): ProviderModel {
     size: dbModel.size || undefined,
     context: dbModel.context,
     description: dbModel.description || undefined,
-    originalModel: dbModel.originalModel
-      ? JSON.parse(dbModel.originalModel)
-      : undefined,
+    originalModel: dbModel.originalModel as
+      | OpenRouterModel
+      | OllamaModel
+      | undefined,
   };
 }
 
@@ -53,7 +58,7 @@ export async function getAllProviderModels(): Promise<ProviderModel[]> {
  * Get provider models by provider
  */
 export async function getProviderModelsByProvider(
-  provider: string,
+  provider: string
 ): Promise<ProviderModel[]> {
   const models = await db
     .select()
@@ -63,15 +68,18 @@ export async function getProviderModelsByProvider(
 }
 
 /**
- * Get a specific provider model by ID
+ * Get a specific provider model by provider and ID
  */
 export async function getProviderModelById(
-  id: string,
+  provider: string,
+  id: string
 ): Promise<ProviderModel | null> {
   const result = await db
     .select()
     .from(providerModels)
-    .where(eq(providerModels.id, id));
+    .where(
+      and(eq(providerModels.provider, provider), eq(providerModels.id, id))
+    );
 
   return result.length > 0 ? fromDBModel(result[0]) : null;
 }
@@ -81,7 +89,7 @@ export async function getProviderModelById(
  */
 export async function syncProviderModels(
   provider: string,
-  models: ProviderModel[],
+  models: ProviderModel[]
 ): Promise<void> {
   await db.transaction(async (tx) => {
     // Delete existing models for this provider
@@ -104,7 +112,7 @@ export async function upsertProviderModel(model: ProviderModel): Promise<void> {
   const dbModel = toDBModel(model);
 
   // Check if model exists
-  const existing = await getProviderModelById(model.id);
+  const existing = await getProviderModelById(model.provider, model.id);
 
   if (existing) {
     // Update existing model
@@ -114,7 +122,12 @@ export async function upsertProviderModel(model: ProviderModel): Promise<void> {
         ...dbModel,
         updatedAt: new Date(),
       })
-      .where(eq(providerModels.id, model.id));
+      .where(
+        and(
+          eq(providerModels.provider, model.provider),
+          eq(providerModels.id, model.id)
+        )
+      );
   } else {
     // Insert new model
     await db.insert(providerModels).values(dbModel);
@@ -124,8 +137,15 @@ export async function upsertProviderModel(model: ProviderModel): Promise<void> {
 /**
  * Remove a provider model
  */
-export async function removeProviderModel(id: string): Promise<void> {
-  await db.delete(providerModels).where(eq(providerModels.id, id));
+export async function removeProviderModel(
+  provider: string,
+  id: string
+): Promise<void> {
+  await db
+    .delete(providerModels)
+    .where(
+      and(eq(providerModels.provider, provider), eq(providerModels.id, id))
+    );
 }
 
 /**
@@ -138,11 +158,16 @@ export async function removeProviderModels(provider: string): Promise<void> {
 /**
  * Check if a model exists
  */
-export async function modelExists(id: string): Promise<boolean> {
+export async function modelExists(
+  provider: string,
+  id: string
+): Promise<boolean> {
   const result = await db
     .select({ id: providerModels.id })
     .from(providerModels)
-    .where(eq(providerModels.id, id));
+    .where(
+      and(eq(providerModels.provider, provider), eq(providerModels.id, id))
+    );
 
   return result.length > 0;
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { ComponentProps, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
@@ -14,15 +14,14 @@ import {
 } from "@/components/ui/table";
 import {
   Download,
-  Languages,
   Zap,
-  FileText,
-  Gauge,
   Circle,
   Square,
   Loader2,
   Trash2,
 } from "lucide-react";
+import { DynamicIcon } from "lucide-react/dynamic";
+
 import {
   TooltipContent,
   Tooltip,
@@ -43,16 +42,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DownloadProgress } from "@/constants/models";
 import { api } from "@/trpc/react";
-
-// Icon mapping helper
-const getIcon = (iconName: string) => {
-  const iconMap: Record<string, React.ReactNode> = {
-    Gauge: <Gauge className="w-4 h-4" />,
-    FileText: <FileText className="w-4 h-4" />,
-    Languages: <Languages className="w-4 h-4" />,
-  };
-  return iconMap[iconName] || <Circle className="w-4 h-4" />;
-};
 
 const SpeedRating = ({ rating }: { rating: number }) => {
   const fullIcons = Math.floor(rating);
@@ -270,12 +259,12 @@ export default function SpeechTab() {
         const model = availableModels.find((m) => m.id === newModelId);
         if (model) {
           toast.info(
-            `Auto-selected ${model.name} after deleting previous model`,
+            `Auto-selected ${model.name} after deleting previous model`
           );
         }
       } else if (reason === "cleared") {
         toast.warning(
-          "No speech models available. Please download a model to continue.",
+          "No speech models available. Please download a model to continue."
         );
       }
       // No toast for 'manual' - user initiated the change
@@ -302,7 +291,7 @@ export default function SpeechTab() {
 
   const handleCancelDownload = async (
     modelId: string,
-    event?: React.MouseEvent,
+    event?: React.MouseEvent
   ) => {
     if (event) {
       event.preventDefault();
@@ -464,7 +453,14 @@ export default function SpeechTab() {
                                   <Tooltip key={featureIndex}>
                                     <TooltipTrigger asChild>
                                       <div className="p-2 rounded-md bg-muted hover:bg-muted/80 cursor-help transition-colors">
-                                        {getIcon(feature.icon)}
+                                        {
+                                          <DynamicIcon
+                                            name={
+                                              feature.icon as ComponentProps<typeof DynamicIcon>["name"]
+                                            }
+                                            className="w-4 h-4"
+                                          />
+                                        }
                                       </div>
                                     </TooltipTrigger>
                                     <TooltipContent>

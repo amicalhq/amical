@@ -4,28 +4,11 @@ import { Separator } from "@/components/ui/separator";
 import {
   LanguageSettings,
   MicrophoneSettings,
-  SpeechToTextSettings,
   FormattingSettings,
 } from "./components";
 
-// Mock data - TODO: Move to a shared constants file
-const speechModelOptions = [
-  { value: "whisper", label: "OpenAI Whisper" },
-  { value: "google-speech", label: "Google Speech-to-Text" },
-  { value: "assemblyai", label: "AssemblyAI" },
-  { value: "deepgram", label: "Deepgram" },
-];
 
 export default function DictationSettingsPage() {
-  // State
-  const [autoDetect, setAutoDetect] = useState(true);
-  const [languages, setLanguages] = useState<string[]>([]);
-  // Separate model lists for each section
-  const [speechModels] = useState(speechModelOptions); // set to [] to test empty state
-  const [speechModel, setSpeechModel] = useState<string>(
-    speechModels[0]?.value || "",
-  );
-
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <div className="mb-8">
@@ -36,12 +19,7 @@ export default function DictationSettingsPage() {
       </div>
       <Card>
         <CardContent className="space-y-4">
-          <LanguageSettings
-            autoDetect={autoDetect}
-            onAutoDetectChange={setAutoDetect}
-            languages={languages}
-            onLanguagesChange={setLanguages}
-          />
+          <LanguageSettings/>
           <Separator />
           <MicrophoneSettings />
           <Separator />

@@ -9,7 +9,7 @@ import { useSearchParams } from "react-router-dom";
 
 export default function AIModelsSettingsPage() {
   const [tab, setTab] = useState("speech");
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -21,7 +21,10 @@ export default function AIModelsSettingsPage() {
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <h1 className="text-xl font-bold mb-6">AI Models</h1>
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
+      <Tabs value={tab} onValueChange={(tab)=>{
+        setTab(tab);
+        setSearchParams({ tab });
+      }} className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="speech" className="text-base">
             Speech

@@ -121,8 +121,7 @@ export const AVAILABLE_MODELS: Model[] = [
     id: "whisper-tiny",
     name: "Whisper Tiny",
     type: "whisper",
-    description:
-      "Fastest model with basic accuracy. Good for real-time transcription.",
+    description: "Very fast, lightweight model ideal for real-time tasks.",
     checksum: "bd577a113a864445d4c299885e0cb97d4ba92b5f",
     filename: "ggml-tiny.bin",
     downloadUrl:
@@ -132,15 +131,15 @@ export const AVAILABLE_MODELS: Model[] = [
     modelSize: "~78 MB",
     features: [
       {
-        icon: "Gauge",
-        tooltip: "Fastest model with basic accuracy",
+        icon: "rabbit",
+        tooltip: "Very fast transcription",
       },
       {
-        icon: "FileText",
-        tooltip: "Automatic punctuation and capitalization",
+        icon: "scale",
+        tooltip: "Lightweight, efficient model",
       },
       {
-        icon: "Languages",
+        icon: "languages",
         tooltip: "Multilingual support",
       },
     ],
@@ -154,7 +153,7 @@ export const AVAILABLE_MODELS: Model[] = [
     id: "whisper-base",
     name: "Whisper Base",
     type: "whisper",
-    description: "Balanced speed and accuracy. Recommended for most use cases.",
+    description: "Balanced speed and accuracy for everyday use.",
     checksum: "465707469ff3a37a2b9b8d8f89f2f99de7299dac",
     filename: "ggml-base.bin",
     downloadUrl:
@@ -164,15 +163,15 @@ export const AVAILABLE_MODELS: Model[] = [
     modelSize: "~148 MB",
     features: [
       {
-        icon: "Gauge",
-        tooltip: "Balanced speed and accuracy",
+        icon: "gauge",
+        tooltip: "Good balance of speed & accuracy",
       },
       {
-        icon: "FileText",
-        tooltip: "Automatic punctuation and capitalization",
+        icon: "scale",
+        tooltip: "Efficient model size",
       },
       {
-        icon: "Languages",
+        icon: "languages",
         tooltip: "Multilingual support",
       },
     ],
@@ -187,7 +186,7 @@ export const AVAILABLE_MODELS: Model[] = [
     name: "Whisper Small",
     type: "whisper",
     description:
-      "Higher accuracy with moderate speed. Good for quality transcription.",
+      "High accuracy with moderate speed, ideal for quality transcription.",
     checksum: "55356645c2b361a969dfd0ef2c5a50d530afd8d5",
     filename: "ggml-small.bin",
     downloadUrl:
@@ -197,15 +196,15 @@ export const AVAILABLE_MODELS: Model[] = [
     modelSize: "~488 MB",
     features: [
       {
-        icon: "Gauge",
-        tooltip: "Moderate speed, higher accuracy",
+        icon: "crosshair",
+        tooltip: "High transcription accuracy",
       },
       {
-        icon: "FileText",
-        tooltip: "Automatic punctuation and capitalization",
+        icon: "timer",
+        tooltip: "Moderate processing speed",
       },
       {
-        icon: "Languages",
+        icon: "languages",
         tooltip: "Multilingual support",
       },
     ],
@@ -219,7 +218,7 @@ export const AVAILABLE_MODELS: Model[] = [
     id: "whisper-medium",
     name: "Whisper Medium",
     type: "whisper",
-    description: "High accuracy model. Slower but more precise transcription.",
+    description: "Very high accuracy for professional, precise transcription.",
     checksum: "fd9727b6e1217c2f614f9b698455c4ffd82463b4",
     filename: "ggml-medium.bin",
     downloadUrl:
@@ -229,16 +228,16 @@ export const AVAILABLE_MODELS: Model[] = [
     modelSize: "~1.5 GB",
     features: [
       {
-        icon: "Gauge",
-        tooltip: "High accuracy, slower transcription",
+        icon: "crosshair",
+        tooltip: "Very high transcription accuracy",
       },
       {
-        icon: "FileText",
-        tooltip: "Automatic punctuation and capitalization",
+        icon: "languages",
+        tooltip: "Advanced multilingual support",
       },
       {
-        icon: "Languages",
-        tooltip: "Multilingual support",
+        icon: "gauge",
+        tooltip: "Stable performance for large jobs",
       },
     ],
     speed: 2.0,
@@ -251,8 +250,7 @@ export const AVAILABLE_MODELS: Model[] = [
     id: "whisper-large-v3",
     name: "Whisper Large v3",
     type: "whisper",
-    description:
-      "Highest accuracy model. Best quality but slowest transcription.",
+    description: "Highest accuracy and best robustness for complex audio.",
     checksum: "ad82bf6a9043ceed055076d0fd39f5f186ff8062",
     filename: "ggml-large-v3.bin",
     downloadUrl:
@@ -262,16 +260,16 @@ export const AVAILABLE_MODELS: Model[] = [
     modelSize: "~3.1 GB",
     features: [
       {
-        icon: "Gauge",
-        tooltip: "Slowest, best quality transcription",
+        icon: "award",
+        tooltip: "Highest transcription accuracy",
       },
       {
-        icon: "FileText",
-        tooltip: "Automatic punctuation and capitalization",
+        icon: "languages",
+        tooltip: "Superior multilingual & accent support",
       },
       {
-        icon: "Languages",
-        tooltip: "Multilingual support",
+        icon: "gauge",
+        tooltip: "Robust, reliable processing for intensive needs",
       },
     ],
     speed: 1.5,
@@ -284,8 +282,7 @@ export const AVAILABLE_MODELS: Model[] = [
     id: "whisper-large-v3-turbo",
     name: "Whisper Large v3 Turbo",
     type: "whisper",
-    description:
-      "Optimized Large v3 variant with only 4 decoder layers, offering significantly faster transcription with accuracy comparable to Large v2/v3.",
+    description: "Optimized for fastest performance with high accuracy.",
     checksum: "4af2b29d7ec73d781377bfd1758ca957a807e941",
     filename: "ggml-large-v3-turbo.bin",
     downloadUrl:
@@ -295,16 +292,16 @@ export const AVAILABLE_MODELS: Model[] = [
     modelSize: "~1.5 GB",
     features: [
       {
-        icon: "Gauge",
-        tooltip: "Optimized for speed with high accuracy",
+        icon: "rocket",
+        tooltip: "Optimized turbo speed",
       },
       {
-        icon: "FileText",
-        tooltip: "Automatic punctuation and capitalization",
+        icon: "award",
+        tooltip: "High accuracy across conditions",
       },
       {
-        icon: "Languages",
-        tooltip: "Multilingual support",
+        icon: "languages",
+        tooltip: "Strong multilingual support",
       },
     ],
     speed: 3.5,

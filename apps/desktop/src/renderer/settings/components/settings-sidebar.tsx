@@ -91,20 +91,7 @@ const data = {
   ],
 };
 
-interface SettingsSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  onBackToMain?: () => void;
-}
-
-export function SettingsSidebar({
-  onBackToMain,
-  ...props
-}: SettingsSidebarProps) {
-  const handleBackToMain = () => {
-    if (onBackToMain) {
-      onBackToMain();
-    }
-  };
-
+export function SettingsSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <div className="h-[var(--header-height)]"></div>
@@ -115,17 +102,14 @@ export function SettingsSidebar({
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
-              <button
-                onClick={handleBackToMain}
-                className="inline-flex items-center gap-2.5 font-semibold w-full"
-              >
+              <div className="inline-flex items-center gap-2.5 font-semibold w-full">
                 <img
                   src="/assets/logo.svg"
                   alt="Amical Logo"
                   className="!size-7"
                 />
                 <span className="font-semibold">Amical</span>
-              </button>
+              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

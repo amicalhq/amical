@@ -117,7 +117,11 @@ function VocabularyDialog({
             </Button>
             <Button
               onClick={onSubmit}
-              disabled={!formData.word.trim() || isLoading}
+              disabled={
+                !formData.word.trim() ||
+                (formData.isReplacement && !formData.replacementWord.trim()) ||
+                isLoading
+              }
             >
               {isLoading
                 ? "Saving..."

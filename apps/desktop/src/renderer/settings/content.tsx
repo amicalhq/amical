@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SettingsSidebar } from "./components/settings-sidebar";
 import { SiteHeader } from "@/components/site-header";
@@ -14,17 +14,13 @@ import { ShortcutsSettingsPage } from "./pages/shortcuts";
 
 const SettingsApp: React.FC = () => {
   const location = useLocation();
-  const navigate = useNavigate();
-
-  const handleBackToMain = () => {
-    navigate("/transcriptions");
-  };
 
   const getSettingsPageTitle = (pathname: string): string => {
     const routes: Record<string, string> = {
       "/": "Preferences",
       "/dictation": "Dictation",
       "/vocabulary": "Vocabulary",
+      "/shortcuts": "Shortcuts",
       "/ai-models": "AI Models",
       "/history": "History",
       "/advanced": "Advanced",
@@ -48,7 +44,7 @@ const SettingsApp: React.FC = () => {
         />
 
         <div className="flex flex-1 min-h-0">
-          <SettingsSidebar variant="inset" onBackToMain={handleBackToMain} />
+          <SettingsSidebar variant="inset" />
           <SidebarInset className="mt-0!">
             <div className="flex flex-1 flex-col min-h-0">
               <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">

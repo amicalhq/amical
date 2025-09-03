@@ -1,5 +1,5 @@
 import { type Icon } from "@tabler/icons-react";
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, matchPath, NavLink } from "react-router-dom";
 
 import {
   SidebarGroup,
@@ -24,17 +24,19 @@ export function NavMain({
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
           {items.map((item) => (
-            <Link to={item.url} key={item.title}>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip={item.title}
-                  isActive={location.pathname === item.url}
-                >
-                  {item.icon && <item.icon />}
-                  <span>{item.title}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </Link>
+            <SidebarMenuItem key={item.url}>
+              <SidebarMenuButton
+                asChild
+                tooltip={item.title}
+                isActive={
+                  !!matchPath({ path: item.url, end: false }, location.pathname)
+                }
+              >
+                <NavLink to={item.url} aria-label={item.title}>
+                  {item.icon && <item.icon />} <span>{item.title}</span>{" "}
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           ))}
         </SidebarMenu>
       </SidebarGroupContent>
