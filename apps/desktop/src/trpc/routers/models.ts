@@ -128,7 +128,7 @@ export const modelsRouter = createRouter({
     }),
 
   setSelectedModel: procedure
-    .input(z.object({ modelId: z.string() }))
+    .input(z.object({ modelId: z.string().nullable() }))
     .mutation(async ({ input, ctx }) => {
       const modelManagerService = ctx.serviceManager.getService(
         "modelManagerService",
@@ -281,6 +281,46 @@ export const modelsRouter = createRouter({
       // Cleanup function
       return () => {
         modelManagerService?.off("model-deleted", handleModelDeleted);
+      };
+    });
+  }),
+
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // eslint-disable-next-line deprecation/deprecation
+  onSelectionChanged: procedure.subscription(({ ctx }) => {
+    return observable<{
+      oldModelId: string | null;
+      newModelId: string | null;
+      reason:
+        | "manual"
+        | "auto-first-download"
+        | "auto-after-deletion"
+        | "cleared";
+    }>((emit) => {
+      const modelManagerService = ctx.serviceManager.getService(
+        "modelManagerService",
+      );
+      if (!modelManagerService) {
+        throw new Error("Model manager service not initialized");
+      }
+
+      const handleSelectionChanged = (
+        oldModelId: string | null,
+        newModelId: string | null,
+        reason:
+          | "manual"
+          | "auto-first-download"
+          | "auto-after-deletion"
+          | "cleared",
+      ) => {
+        emit.next({ oldModelId, newModelId, reason });
+      };
+
+      modelManagerService.on("selection-changed", handleSelectionChanged);
+
+      // Cleanup function
+      return () => {
+        modelManagerService?.off("selection-changed", handleSelectionChanged);
       };
     });
   }),

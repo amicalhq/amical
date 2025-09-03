@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db } from "./config";
+import { db } from ".";
 import {
   appSettings,
   type NewAppSettings,
@@ -12,9 +12,7 @@ const SETTINGS_ID = 1;
 // Default settings
 const defaultSettings: AppSettingsData = {
   formatterConfig: {
-    provider: "openrouter",
-    model: "anthropic/claude-3-haiku",
-    apiKey: "",
+    model: "", // Will be set when models are synced
     enabled: false,
   },
   ui: {
@@ -39,6 +37,10 @@ const defaultSettings: AppSettingsData = {
   shortcuts: {
     pushToTalk: "Fn",
     toggleRecording: "",
+  },
+  modelProvidersConfig: {
+    defaultLanguageModel: "",
+    defaultEmbeddingModel: "",
   },
 };
 
@@ -102,6 +104,37 @@ export async function updateAppSettings(
       ...currentSettings.shortcuts,
       ...newSettings.shortcuts,
     };
+  }
+
+  if (
+    newSettings.modelProvidersConfig &&
+    currentSettings.modelProvidersConfig
+  ) {
+    mergedSettings.modelProvidersConfig = {
+      ...currentSettings.modelProvidersConfig,
+      ...newSettings.modelProvidersConfig,
+    };
+
+    // Deep merge nested provider configs
+    if (
+      newSettings.modelProvidersConfig.openRouter &&
+      currentSettings.modelProvidersConfig.openRouter
+    ) {
+      mergedSettings.modelProvidersConfig.openRouter = {
+        ...currentSettings.modelProvidersConfig.openRouter,
+        ...newSettings.modelProvidersConfig.openRouter,
+      };
+    }
+
+    if (
+      newSettings.modelProvidersConfig.ollama &&
+      currentSettings.modelProvidersConfig.ollama
+    ) {
+      mergedSettings.modelProvidersConfig.ollama = {
+        ...currentSettings.modelProvidersConfig.ollama,
+        ...newSettings.modelProvidersConfig.ollama,
+      };
+    }
   }
 
   const now = new Date();

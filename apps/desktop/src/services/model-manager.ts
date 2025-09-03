@@ -29,6 +29,15 @@ interface ModelManagerEvents {
   "download-error": (modelId: string, error: Error) => void;
   "download-cancelled": (modelId: string) => void;
   "model-deleted": (modelId: string) => void;
+  "selection-changed": (
+    oldModelId: string | null,
+    newModelId: string | null,
+    reason:
+      | "manual"
+      | "auto-first-download"
+      | "auto-after-deletion"
+      | "cleared",
+  ) => void;
 }
 
 class ModelManagerService extends EventEmitter {
@@ -276,6 +285,22 @@ class ModelManagerService extends EventEmitter {
         size: stats.size,
       });
 
+      // Auto-select if this is the first model
+      const allDownloadedModels = await this.getValidDownloadedModels();
+      const downloadedModelCount = Object.keys(allDownloadedModels).length;
+
+      if (downloadedModelCount === 1 && !this.selectedModelId) {
+        const oldModelId = this.selectedModelId;
+        this.selectedModelId = modelId;
+        this.emit(
+          "selection-changed",
+          oldModelId,
+          modelId,
+          "auto-first-download",
+        );
+        logger.main.info("Auto-selected first downloaded model", { modelId });
+      }
+
       this.emit("download-complete", modelId, downloadedModel);
     } catch (error) {
       // Clean up on error
@@ -328,6 +353,9 @@ class ModelManagerService extends EventEmitter {
       throw new Error(`Model not found: ${modelId}`);
     }
 
+    // Check if this is the selected model BEFORE deletion
+    const wasSelected = this.selectedModelId === modelId;
+
     // Delete file
     if (fs.existsSync(downloadedModel.localPath)) {
       fs.unlinkSync(downloadedModel.localPath);
@@ -339,6 +367,50 @@ class ModelManagerService extends EventEmitter {
 
     // Remove from database
     await deleteDownloadedModel(modelId);
+
+    // Handle selection update if needed
+    if (wasSelected) {
+      const oldModelId = this.selectedModelId;
+      this.selectedModelId = null;
+
+      // Try to auto-select next best model
+      const remainingModels = await this.getValidDownloadedModels();
+      const preferredOrder = [
+        "whisper-large-v3-turbo",
+        "whisper-large-v1",
+        "whisper-medium",
+        "whisper-small",
+        "whisper-base",
+        "whisper-tiny",
+      ];
+
+      let autoSelected = false;
+      for (const candidateId of preferredOrder) {
+        if (remainingModels[candidateId]) {
+          this.selectedModelId = candidateId;
+          this.emit(
+            "selection-changed",
+            oldModelId,
+            candidateId,
+            "auto-after-deletion",
+          );
+          logger.main.info("Auto-selected new model after deletion", {
+            oldModel: modelId,
+            newModel: candidateId,
+          });
+          autoSelected = true;
+          break;
+        }
+      }
+
+      if (!autoSelected) {
+        // No models left, selection cleared
+        this.emit("selection-changed", oldModelId, null, "cleared");
+        logger.main.info(
+          "No models available for auto-selection after deletion",
+        );
+      }
+    }
 
     this.emit("model-deleted", modelId);
   }
@@ -403,13 +475,29 @@ class ModelManagerService extends EventEmitter {
   }
 
   // Set selected model for transcription
-  async setSelectedModel(modelId: string): Promise<void> {
-    const downloadedModels = await this.getValidDownloadedModels();
-    if (!downloadedModels[modelId]) {
-      throw new Error(`Model not downloaded: ${modelId}`);
+  async setSelectedModel(modelId: string | null): Promise<void> {
+    const oldModelId = this.selectedModelId;
+
+    // If setting to a specific model, validate it exists
+    if (modelId) {
+      const downloadedModels = await this.getValidDownloadedModels();
+      if (!downloadedModels[modelId]) {
+        throw new Error(`Model not downloaded: ${modelId}`);
+      }
     }
+
+    // Update selection
     this.selectedModelId = modelId;
-    logger.main.info("Selected model for transcription", { modelId });
+
+    // Emit change event if selection actually changed
+    if (oldModelId !== modelId) {
+      this.emit("selection-changed", oldModelId, modelId, "manual");
+      logger.main.info("Model selection changed", {
+        from: oldModelId,
+        to: modelId,
+        reason: "manual",
+      });
+    }
   }
 
   // Get best available model path for transcription (used by WhisperProvider)

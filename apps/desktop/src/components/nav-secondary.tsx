@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { type Icon } from "@tabler/icons-react";
 
@@ -13,8 +11,6 @@ import {
 
 export function NavSecondary({
   items,
-  onNavigate,
-  currentView,
   ...props
 }: {
   items: {
@@ -23,8 +19,6 @@ export function NavSecondary({
     icon: Icon;
     external?: boolean;
   }[];
-  onNavigate?: (item: { title: string }) => void;
-  currentView?: string;
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
   return (
     <SidebarGroup {...props}>
@@ -33,12 +27,9 @@ export function NavSecondary({
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
-                isActive={currentView === item.title}
                 onClick={async () => {
                   if (item.external && item.url) {
                     await window.electronAPI.openExternal(item.url);
-                  } else {
-                    onNavigate?.(item);
                   }
                 }}
               >

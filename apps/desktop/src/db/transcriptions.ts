@@ -1,5 +1,5 @@
 import { eq, desc, asc, and, like, count, gte, lte } from "drizzle-orm";
-import { db } from "./config";
+import { db } from ".";
 import {
   transcriptions,
   type Transcription,

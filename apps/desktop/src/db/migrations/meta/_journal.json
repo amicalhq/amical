@@ -8,6 +8,34 @@
       "when": 1750751926568,
       "tag": "0000_worried_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1756402010407,
+      "tag": "0001_safe_loners",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1756521593145,
+      "tag": "0002_faithful_smiling_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1756855092070,
+      "tag": "0003_past_chamber",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1756864868774,
+      "tag": "0004_graceful_doomsday",
+      "breakpoints": true
     }
   ]
 }

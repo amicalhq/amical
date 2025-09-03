@@ -1,6 +1,6 @@
 import { eq, desc } from "drizzle-orm";
 import * as fs from "fs";
-import { db } from "./config";
+import { db } from ".";
 import {
   downloadedModels,
   type DownloadedModel,

@@ -6,7 +6,9 @@ import * as fs from "fs";
 import * as schema from "./schema";
 
 // Get the user data directory for storing the database
-const dbPath = path.join(app.getPath("userData"), "amical.db");
+const dbPath = app.isPackaged
+  ? path.join(app.getPath("userData"), "amical.db")
+  : path.join(process.cwd(), "amical.db");
 
 export const db = drizzle(`file:${dbPath}`, {
   schema: {
