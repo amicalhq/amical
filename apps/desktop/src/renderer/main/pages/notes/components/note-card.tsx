@@ -33,19 +33,14 @@ function formatDate(date: Date): string {
   })
 }
 
-function truncateText(text: string, maxLength = 50): string {
-  if (text.length <= maxLength) return text
-  return text.slice(0, maxLength) + "..."
-}
 
-export function RecentNoteCard({ note, onNoteClick }: RecentNoteCardProps) {
+export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
   return (
     <div
       onClick={() => onNoteClick(note.id)}
       className={cn(
-        "flex items-start gap-3 p-3 rounded-lg transition-colors group",
+        "flex items-start gap-3 py-2 px-3 rounded-lg transition-colors group",
         "hover:bg-accent/50 hover:text-accent-foreground",
-        "border-border/80 border"
       )}
       tabIndex={0}
       role="button"
@@ -68,7 +63,7 @@ export function RecentNoteCard({ note, onNoteClick }: RecentNoteCardProps) {
       {/* Note Content */}
       <div className="flex-1 min-w-0">
         {/* Note Name */}
-        <div className="font-medium text-foreground text-sm leading-tight">{truncateText(note.name)}</div>
+        <div className="font-medium text-foreground text-sm leading-tight">{(note.name)}</div>
 
         {/* Date and Meeting Info */}
         <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">

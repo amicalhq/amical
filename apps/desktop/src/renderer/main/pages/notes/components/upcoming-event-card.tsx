@@ -1,6 +1,4 @@
-import React from "react";
 import { NotebookPen } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -14,7 +12,6 @@ interface UpcomingEvent {
   time: string;
   url: string;
   date?: string;
-  calendarColor?: string;
 }
 
 interface UpcomingEventCardProps {
@@ -35,17 +32,15 @@ const UpcomingEventCard = ({ event, onTakeNotes }: UpcomingEventCardProps) => {
   };
 
   return (
-    <Card className="bg-accent/40 group hover:bg-accent/60 transition-colors relative py-4">
-      <CardContent className="">
-        {/* Event date */}
-        <div className="text-xs text-red-400 mb-3">{event.date}</div>
+      <div className="bg-transparent border-none group hover:bg-accent/60 transition-colors relative py-3 px-4">
 
         <div className="flex items-start gap-4">
-          {/* Colored accent bar */}
-          <div
-            className="w-1 h-12 bg-red-500 rounded-full flex-shrink-0"
-            style={{ backgroundColor: event.calendarColor }}
-          />
+          {/* Leading icon */}
+          <div className="flex-shrink-0 mt-0.5">
+            {getMeetingIcon(event.url, {
+              className: "w-5 h-5 text-muted-foreground",
+            })}
+          </div>
 
           <div className="flex-1 space-y-2">
             {/* Event title */}
@@ -53,13 +48,10 @@ const UpcomingEventCard = ({ event, onTakeNotes }: UpcomingEventCardProps) => {
               {event.title}
             </h3>
 
-            {/* Time with meeting platform icon and meeting url */}
+            {/* Time and meeting url */}
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
-              {getMeetingIcon(event.url, {
-                className: "w-4 h-4 flex-shrink-0",
-              })}
-              <span className="whitespace-nowrap">{event.time}</span>
-              {event.url && (
+              <span className="whitespace-nowrap">{event.date} {event.time}</span>
+              | {event.url && (
                 <a
                   onClick={handleLinkClick}
                   className="text-muted-foreground text-xs line-clamp-1 hover:text-foreground cursor-pointer transition-colors"
@@ -89,8 +81,7 @@ const UpcomingEventCard = ({ event, onTakeNotes }: UpcomingEventCardProps) => {
             </Tooltip>
           </div>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 };
 

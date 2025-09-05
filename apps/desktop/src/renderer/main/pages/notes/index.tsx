@@ -1,7 +1,9 @@
 import React from "react";
 import { Calendar, NotebookText } from "lucide-react";
 import UpcomingEventCard from "./components/upcoming-event-card";
-import { RecentNoteCard, type Note } from "./components/recent-note-card";
+import { NoteCard, type Note } from "./components/note-card";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 // Import the type from the component
 type UpcomingEvent = {
@@ -17,25 +19,22 @@ export function NotesPage() {
   const upcomingEvents: UpcomingEvent[] = [
     {
       title: "LeadrPro Demo: Hatica Inc <> Skuad",
-      date: "Today September 6th",
+      date: "Today",
       time: "12:30 – 1 PM",
       url: "https://meetings.leadrpro.com/demo?refid=cyol83iyozu",
-      calendarColor: "#A855F7"
     },
     {
       title: "Product Review: Q3 Feature Planning",
-      date: "Tomorrow September 7th",
+      date: "Tomorrow",
       time: "2:00 – 3:00 PM",
       url: "https://zoom.us/j/123456789",
-      calendarColor: "#10B981"
     },
     {
       title: "1:1 with Sarah - Engineering Sync",
-      date: "Friday September 8th",
+      date: "Sep 8th",
       time: "10:00 – 10:30 AM",
       url: "https://meet.google.com/abc-defg-hij",
-      calendarColor: "#F59E0B"
-    }
+    },
   ];
 
   // Example recent notes data - replace with real data from your state/API
@@ -47,8 +46,8 @@ export function NotesPage() {
       lastUpdated: new Date(),
       meetingEvent: {
         title: "LeadrPro Demo: Hatica Inc <> Skuad",
-        calendarColor: "#A855F7"
-      }
+        calendarColor: "#A855F7",
+      },
     },
     {
       id: "2",
@@ -57,8 +56,8 @@ export function NotesPage() {
       lastUpdated: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
       meetingEvent: {
         title: "Product Review: Q3 Feature Planning",
-        calendarColor: "#10B981"
-      }
+        calendarColor: "#10B981",
+      },
     },
     {
       id: "3",
@@ -72,15 +71,15 @@ export function NotesPage() {
       lastUpdated: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
       meetingEvent: {
         title: "Weekly Team Standup",
-        calendarColor: "#EF4444"
-      }
+        calendarColor: "#EF4444",
+      },
     },
     {
       id: "5",
       name: "Client Feedback Compilation",
       icon: "📊",
       lastUpdated: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
-    }
+    },
   ];
 
   const handleTakeNotes = (event: UpcomingEvent) => {
@@ -104,14 +103,13 @@ export function NotesPage() {
           <Calendar className="w-4 h-4" />
           <h2 className="text-sm font-medium">Upcoming events</h2>
         </div>
-        
-        <div className="space-y-3">
+
+        <div className="bg-accent/40 rounded-xl overflow-clip">
           {upcomingEvents.map((event, index) => (
-            <UpcomingEventCard 
-              key={index} 
-              event={event} 
-              onTakeNotes={handleTakeNotes} 
-            />
+            <div key={index}>
+              <UpcomingEventCard event={event} onTakeNotes={handleTakeNotes} />
+              {/* <Separator className={cn(index === upcomingEvents.length - 1 && "hidden")} /> */}
+            </div>
           ))}
         </div>
       </div>
@@ -120,21 +118,19 @@ export function NotesPage() {
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-muted-foreground">
           <NotebookText className="w-4 h-4" />
-          <h2 className="text-sm font-medium">Recent Notes</h2>
+          <h2 className="text-sm font-medium">Notes</h2>
         </div>
-        
-        <div className="space-y-2">
+
+        <div>
           {recentNotes.map((note) => (
-            <RecentNoteCard 
-              key={note.id} 
-              note={note} 
-              onNoteClick={handleNoteClick} 
+            <NoteCard
+              key={note.id}
+              note={note}
+              onNoteClick={handleNoteClick}
             />
           ))}
         </div>
       </div>
-
-
     </div>
   );
 }
