@@ -14,6 +14,7 @@ import { ModelsPage } from "./pages/models";
 import { SettingsPage } from "./pages/settings";
 import { SiteHeader } from "@/components/site-header";
 import { api, trpcClient } from "@/trpc/react";
+import { NotesPage } from "./pages/notes";
 
 // import { Waveform } from '../components/Waveform'; // Waveform might not be needed if hook is removed
 // import { useRecording } from '../hooks/useRecording'; // Remove hook import
@@ -47,6 +48,8 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (currentView) {
+      case "Notes":
+        return <NotesPage />;
       case "Vocabulary":
         return <VocabularyPage />;
       case "Settings":
