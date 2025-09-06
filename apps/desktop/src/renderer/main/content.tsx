@@ -35,9 +35,9 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState(() => {
     // Try to restore the view from localStorage, fallback to default
     if (typeof window !== "undefined") {
-      return localStorage.getItem("amical-current-view") || "Voice Recording";
+      return localStorage.getItem("amical-current-view") || "Notes";
     }
-    return "Voice Recording";
+    return "Notes";
   });
 
   const handleNavigation = (item: any) => {

@@ -1,18 +1,9 @@
 "use client"
 
-import { FileText, Calendar, MoreHorizontal } from "lucide-react"
+import { FileText, Calendar } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Note } from "../types"
 
-export interface Note {
-  id: string
-  name: string
-  icon?: string
-  lastUpdated: Date
-  meetingEvent?: {
-    title: string
-    calendarColor: string
-  }
-}
 
 interface RecentNoteCardProps {
   note: Note
