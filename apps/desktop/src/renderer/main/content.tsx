@@ -1,34 +1,23 @@
 import React from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { api, trpcClient } from "@/trpc/react";
-import { MainLayout } from "./components/MainLayout";
-import SettingsApp from "../settings/content";
+import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { routeTree } from "./routeTree.gen";
 
-// Create a client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      refetchOnWindowFocus: false,
-    },
-  },
+// Create the router instance
+const router = createRouter({
+  routeTree,
+  defaultPreload: "intent",
 });
+
+// Register the router instance for type safety
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
 
 // Root App component with routing
 const App: React.FC = () => {
-  return (
-    <api.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/*" element={<SettingsApp />} />
-            {/* <Route path="/*" element={<MainLayout />} /> */}
-          </Routes>
-        </BrowserRouter>
-      </QueryClientProvider>
-    </api.Provider>
-  );
+  return <RouterProvider router={router} />;
 };
 
 export default App;

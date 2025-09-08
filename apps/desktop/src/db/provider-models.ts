@@ -58,7 +58,7 @@ export async function getAllProviderModels(): Promise<ProviderModel[]> {
  * Get provider models by provider
  */
 export async function getProviderModelsByProvider(
-  provider: string
+  provider: string,
 ): Promise<ProviderModel[]> {
   const models = await db
     .select()
@@ -72,13 +72,13 @@ export async function getProviderModelsByProvider(
  */
 export async function getProviderModelById(
   provider: string,
-  id: string
+  id: string,
 ): Promise<ProviderModel | null> {
   const result = await db
     .select()
     .from(providerModels)
     .where(
-      and(eq(providerModels.provider, provider), eq(providerModels.id, id))
+      and(eq(providerModels.provider, provider), eq(providerModels.id, id)),
     );
 
   return result.length > 0 ? fromDBModel(result[0]) : null;
@@ -89,7 +89,7 @@ export async function getProviderModelById(
  */
 export async function syncProviderModels(
   provider: string,
-  models: ProviderModel[]
+  models: ProviderModel[],
 ): Promise<void> {
   await db.transaction(async (tx) => {
     // Delete existing models for this provider
@@ -125,8 +125,8 @@ export async function upsertProviderModel(model: ProviderModel): Promise<void> {
       .where(
         and(
           eq(providerModels.provider, model.provider),
-          eq(providerModels.id, model.id)
-        )
+          eq(providerModels.id, model.id),
+        ),
       );
   } else {
     // Insert new model
@@ -139,12 +139,12 @@ export async function upsertProviderModel(model: ProviderModel): Promise<void> {
  */
 export async function removeProviderModel(
   provider: string,
-  id: string
+  id: string,
 ): Promise<void> {
   await db
     .delete(providerModels)
     .where(
-      and(eq(providerModels.provider, provider), eq(providerModels.id, id))
+      and(eq(providerModels.provider, provider), eq(providerModels.id, id)),
     );
 }
 
@@ -160,13 +160,13 @@ export async function removeProviderModels(provider: string): Promise<void> {
  */
 export async function modelExists(
   provider: string,
-  id: string
+  id: string,
 ): Promise<boolean> {
   const result = await db
     .select({ id: providerModels.id })
     .from(providerModels)
     .where(
-      and(eq(providerModels.provider, provider), eq(providerModels.id, id))
+      and(eq(providerModels.provider, provider), eq(providerModels.id, id)),
     );
 
   return result.length > 0;

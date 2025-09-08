@@ -5,12 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 // Lazy import the main content
-const Content = React.lazy(
-  () =>
-    import("./content.js") as unknown as Promise<{
-      default: React.ComponentType<any>;
-    }>,
-);
+const Content = React.lazy(() => import("./content"));
 
 // Extend Console interface to include original methods
 declare global {

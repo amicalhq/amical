@@ -61,7 +61,7 @@ export class SettingsService {
    * Update multiple settings at once
    */
   async updateSettings(
-    settings: Partial<AppSettingsData>
+    settings: Partial<AppSettingsData>,
   ): Promise<AppSettingsData> {
     return await updateAppSettings(settings);
   }
@@ -91,7 +91,7 @@ export class SettingsService {
    * Update transcription settings
    */
   async setTranscriptionSettings(
-    transcriptionSettings: AppSettingsData["transcription"]
+    transcriptionSettings: AppSettingsData["transcription"],
   ): Promise<void> {
     await updateSettingsSection("transcription", transcriptionSettings);
   }
@@ -107,7 +107,7 @@ export class SettingsService {
    * Update recording settings
    */
   async setRecordingSettings(
-    recordingSettings: AppSettingsData["recording"]
+    recordingSettings: AppSettingsData["recording"],
   ): Promise<void> {
     await updateSettingsSection("recording", recordingSettings);
   }
@@ -123,7 +123,7 @@ export class SettingsService {
    * Update dictation settings
    */
   async setDictationSettings(
-    dictationSettings: AppSettingsData["dictation"]
+    dictationSettings: AppSettingsData["dictation"],
   ): Promise<void> {
     await updateSettingsSection("dictation", dictationSettings);
   }
@@ -160,7 +160,7 @@ export class SettingsService {
   > {
     console.log(
       "getModelProvidersConfig",
-      await getSettingsSection("modelProvidersConfig")
+      await getSettingsSection("modelProvidersConfig"),
     );
     return await getSettingsSection("modelProvidersConfig");
   }
@@ -169,7 +169,7 @@ export class SettingsService {
    * Update model providers configuration
    */
   async setModelProvidersConfig(
-    config: AppSettingsData["modelProvidersConfig"]
+    config: AppSettingsData["modelProvidersConfig"],
   ): Promise<void> {
     await updateSettingsSection("modelProvidersConfig", config);
   }
@@ -224,7 +224,7 @@ export class SettingsService {
    * Validate OpenRouter connection by testing API key
    */
   async validateOpenRouterConnection(
-    apiKey: string
+    apiKey: string,
   ): Promise<ValidationResult> {
     try {
       const response = await fetch("https://openrouter.ai/api/v1/key", {
@@ -332,7 +332,7 @@ export class SettingsService {
       throw new Error(
         error instanceof Error
           ? error.message
-          : "Failed to fetch OpenRouter models"
+          : "Failed to fetch OpenRouter models",
       );
     }
   }
@@ -396,7 +396,9 @@ export class SettingsService {
       });
     } catch (error) {
       throw new Error(
-        error instanceof Error ? error.message : "Failed to fetch Ollama models"
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch Ollama models",
       );
     }
   }
@@ -420,7 +422,7 @@ export class SettingsService {
    */
   async syncProviderModelsToDatabase(
     provider: string,
-    models: ProviderModel[]
+    models: ProviderModel[],
   ): Promise<void> {
     await syncProviderModels(provider, models);
   }
@@ -511,7 +513,7 @@ export class SettingsService {
     // Get all OpenRouter models that will be removed
     const allModels = await getAllProviderModels();
     const openRouterModels = allModels.filter(
-      (m) => m.provider === "OpenRouter"
+      (m) => m.provider === "OpenRouter",
     );
 
     // Remove all OpenRouter models from database

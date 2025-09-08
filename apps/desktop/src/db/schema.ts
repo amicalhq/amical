@@ -102,7 +102,7 @@ export const providerModels = sqliteTable(
     primaryKey({ columns: [table.provider, table.id] }),
     // Index on provider for efficient provider-scoped lookups
     index("provider_models_provider_idx").on(table.provider),
-  ]
+  ],
 );
 
 // Define the shape of our settings JSON

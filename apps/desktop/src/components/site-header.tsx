@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useRouter } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -13,38 +13,39 @@ const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const noDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function SiteHeader({ currentView }: SiteHeaderProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
 
   useEffect(() => {
     const updateNavigationState = () => {
-      // React Router stores the history index in window.history.state
-      const state = window.history.state as { idx?: number } | null;
-      const idx = state?.idx ?? 0;
-
-      // Can go back if index is greater than 0
-      setCanGoBack(idx > 0);
-
-      // In Electron, each window has its own isolated history,
-      // so we can determine forward availability from the index and history length
-      setCanGoForward(idx < window.history.length - 1);
+      // Check browser history state
+      // TanStack Router doesn't have canGoBack/canGoForward, use window.history instead
+      setCanGoBack(
+        window.history.length > 1 && window.history.state?.index > 0,
+      );
+      setCanGoForward(window.history.state?.index < window.history.length - 1);
     };
 
     updateNavigationState();
 
-    // Listen for popstate events to update button states
+    // Listen for route changes to update button states
+    const unsubscribe = router.subscribe("onResolved", updateNavigationState);
+
+    // Listen for popstate events as well
     window.addEventListener("popstate", updateNavigationState);
-    return () => window.removeEventListener("popstate", updateNavigationState);
-  }, [location.key]);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("popstate", updateNavigationState);
+    };
+  }, [router]);
 
   const handleGoBack = () => {
-    navigate(-1);
+    router.history.back();
   };
 
   const handleGoForward = () => {
-    navigate(1);
+    router.history.forward();
   };
 
   return (

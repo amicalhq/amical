@@ -200,19 +200,14 @@
       "indexes": {
         "provider_models_provider_idx": {
           "name": "provider_models_provider_idx",
-          "columns": [
-            "provider"
-          ],
+          "columns": ["provider"],
           "isUnique": false
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "provider_models_provider_id_pk": {
-          "columns": [
-            "provider",
-            "id"
-          ],
+          "columns": ["provider", "id"],
           "name": "provider_models_provider_id_pk"
         }
       },
@@ -385,9 +380,7 @@
       "indexes": {
         "vocabulary_word_unique": {
           "name": "vocabulary_word_unique",
-          "columns": [
-            "word"
-          ],
+          "columns": ["word"],
           "isUnique": true
         }
       },

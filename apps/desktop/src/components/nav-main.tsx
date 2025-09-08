@@ -1,5 +1,5 @@
 import { type Icon } from "@tabler/icons-react";
-import { useLocation, matchPath, NavLink } from "react-router-dom";
+import { Link, useLocation } from "@tanstack/react-router";
 
 import {
   SidebarGroup,
@@ -28,13 +28,17 @@ export function NavMain({
               <SidebarMenuButton
                 asChild
                 tooltip={item.title}
-                isActive={
-                  !!matchPath({ path: item.url, end: false }, location.pathname)
-                }
+                isActive={location.pathname.startsWith(item.url)}
               >
-                <NavLink to={item.url} aria-label={item.title}>
+                <Link
+                  to={item.url}
+                  aria-label={item.title}
+                  activeProps={{
+                    className: "active",
+                  }}
+                >
                   {item.icon && <item.icon />} <span>{item.title}</span>{" "}
-                </NavLink>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
