@@ -12,36 +12,8 @@
     {
       "idx": 1,
       "version": "6",
-      "when": 1756402010407,
-      "tag": "0001_safe_loners",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1756521593145,
-      "tag": "0002_faithful_smiling_tiger",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1756855092070,
-      "tag": "0003_past_chamber",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1756864868774,
-      "tag": "0004_graceful_doomsday",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1757365971124,
-      "tag": "0005_lucky_logan",
+      "when": 1757443963743,
+      "tag": "0001_short_betty_ross",
       "breakpoints": true
     }
   ]

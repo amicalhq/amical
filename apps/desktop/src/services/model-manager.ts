@@ -128,14 +128,41 @@ class ModelManagerService extends EventEmitter {
 
       // Restore selected model from settings
       const savedSelection = await this.settingsService.getDefaultSpeechModel();
-      if (
-        savedSelection &&
-        (await modelExists("local-whisper", savedSelection))
-      ) {
-        // Model is valid (we just synced, so if it exists in DB, it's valid)
-        logger.main.info("Restored selected model from settings", {
-          modelId: savedSelection,
-        });
+
+      if (!savedSelection) {
+        // No saved selection, check if we have downloaded models to auto-select
+        const downloadedModels = await this.getValidDownloadedModels();
+        const downloadedModelCount = Object.keys(downloadedModels).length;
+
+        if (downloadedModelCount > 0) {
+          // Auto-select the best available model using the preferred order
+          const preferredOrder = [
+            "whisper-large-v3-turbo",
+            "whisper-large-v1",
+            "whisper-medium",
+            "whisper-small",
+            "whisper-base",
+            "whisper-tiny",
+          ];
+
+          for (const candidateId of preferredOrder) {
+            if (downloadedModels[candidateId]) {
+              await this.settingsService.setDefaultSpeechModel(candidateId);
+              this.emit(
+                "selection-changed",
+                null,
+                candidateId,
+                "auto-first-download",
+                "speech",
+              );
+              logger.main.info("Auto-selected speech model on initialization", {
+                modelId: candidateId,
+                availableModels: Object.keys(downloadedModels),
+              });
+              break;
+            }
+          }
+        }
       }
 
       // Validate all default models after sync

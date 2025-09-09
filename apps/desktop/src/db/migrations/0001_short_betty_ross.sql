@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `models` (
+CREATE TABLE `models` (
 	`id` text NOT NULL,
 	`provider` text NOT NULL,
 	`name` text NOT NULL,
@@ -18,5 +18,8 @@ CREATE TABLE IF NOT EXISTS `models` (
 	PRIMARY KEY(`provider`, `id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `models_provider_idx` ON `models` (`provider`);--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `models_type_idx` ON `models` (`type`);
+CREATE INDEX `models_provider_idx` ON `models` (`provider`);--> statement-breakpoint
+CREATE INDEX `models_type_idx` ON `models` (`type`);--> statement-breakpoint
+DROP TABLE `downloaded_models`;--> statement-breakpoint
+ALTER TABLE `vocabulary` ADD `replacement_word` text;--> statement-breakpoint
+ALTER TABLE `vocabulary` ADD `is_replacement` integer DEFAULT false;

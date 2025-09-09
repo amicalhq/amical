@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "12ed6c28-4494-4daa-8047-fd6fe2ef3f2b",
+  "id": "ee7c367e-1078-491c-bcfe-5cca9efbd92f",
   "prevId": "ab7ec8ad-f088-4400-aa05-c799133e7ada",
   "tables": {
     "app_settings": {
@@ -52,13 +52,20 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "downloaded_models": {
-      "name": "downloaded_models",
+    "models": {
+      "name": "models",
       "columns": {
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -76,31 +83,72 @@
           "notNull": true,
           "autoincrement": false
         },
+        "size": {
+          "name": "size",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context": {
+          "name": "context",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "local_path": {
           "name": "local_path",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "downloaded_at": {
           "name": "downloaded_at",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        },
-        "size": {
-          "name": "size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "checksum": {
-          "name": "checksum",
+        "original_model": {
+          "name": "original_model",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "speed": {
+          "name": "speed",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "accuracy": {
+          "name": "accuracy",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -122,9 +170,32 @@
           "default": "(unixepoch())"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "models_provider_idx": {
+          "name": "models_provider_idx",
+          "columns": [
+            "provider"
+          ],
+          "isUnique": false
+        },
+        "models_type_idx": {
+          "name": "models_type_idx",
+          "columns": [
+            "type"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "models_provider_id_pk": {
+          "columns": [
+            "provider",
+            "id"
+          ],
+          "name": "models_provider_id_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -294,7 +365,9 @@
       "indexes": {
         "vocabulary_word_unique": {
           "name": "vocabulary_word_unique",
-          "columns": ["word"],
+          "columns": [
+            "word"
+          ],
           "isUnique": true
         }
       },
