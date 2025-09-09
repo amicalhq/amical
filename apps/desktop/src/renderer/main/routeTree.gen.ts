@@ -8,252 +8,252 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as SettingsRouteRouteImport } from "./routes/settings/route";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as SettingsIndexRouteImport } from "./routes/settings/index";
-import { Route as SettingsVocabularyRouteImport } from "./routes/settings/vocabulary";
-import { Route as SettingsShortcutsRouteImport } from "./routes/settings/shortcuts";
-import { Route as SettingsPreferencesRouteImport } from "./routes/settings/preferences";
-import { Route as SettingsHistoryRouteImport } from "./routes/settings/history";
-import { Route as SettingsDictationRouteImport } from "./routes/settings/dictation";
-import { Route as SettingsAiModelsRouteImport } from "./routes/settings/ai-models";
-import { Route as SettingsAdvancedRouteImport } from "./routes/settings/advanced";
-import { Route as SettingsAboutRouteImport } from "./routes/settings/about";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteRouteImport } from './routes/settings/route'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as SettingsVocabularyRouteImport } from './routes/settings/vocabulary'
+import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
+import { Route as SettingsPreferencesRouteImport } from './routes/settings/preferences'
+import { Route as SettingsHistoryRouteImport } from './routes/settings/history'
+import { Route as SettingsDictationRouteImport } from './routes/settings/dictation'
+import { Route as SettingsAiModelsRouteImport } from './routes/settings/ai-models'
+import { Route as SettingsAdvancedRouteImport } from './routes/settings/advanced'
+import { Route as SettingsAboutRouteImport } from './routes/settings/about'
 
 const SettingsRouteRoute = SettingsRouteRouteImport.update({
-  id: "/settings",
-  path: "/settings",
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsVocabularyRoute = SettingsVocabularyRouteImport.update({
-  id: "/vocabulary",
-  path: "/vocabulary",
+  id: '/vocabulary',
+  path: '/vocabulary',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsShortcutsRoute = SettingsShortcutsRouteImport.update({
-  id: "/shortcuts",
-  path: "/shortcuts",
+  id: '/shortcuts',
+  path: '/shortcuts',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsPreferencesRoute = SettingsPreferencesRouteImport.update({
-  id: "/preferences",
-  path: "/preferences",
+  id: '/preferences',
+  path: '/preferences',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsHistoryRoute = SettingsHistoryRouteImport.update({
-  id: "/history",
-  path: "/history",
+  id: '/history',
+  path: '/history',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsDictationRoute = SettingsDictationRouteImport.update({
-  id: "/dictation",
-  path: "/dictation",
+  id: '/dictation',
+  path: '/dictation',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsAiModelsRoute = SettingsAiModelsRouteImport.update({
-  id: "/ai-models",
-  path: "/ai-models",
+  id: '/ai-models',
+  path: '/ai-models',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsAdvancedRoute = SettingsAdvancedRouteImport.update({
-  id: "/advanced",
-  path: "/advanced",
+  id: '/advanced',
+  path: '/advanced',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 const SettingsAboutRoute = SettingsAboutRouteImport.update({
-  id: "/about",
-  path: "/about",
+  id: '/about',
+  path: '/about',
   getParentRoute: () => SettingsRouteRoute,
-} as any);
+} as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/settings": typeof SettingsRouteRouteWithChildren;
-  "/settings/about": typeof SettingsAboutRoute;
-  "/settings/advanced": typeof SettingsAdvancedRoute;
-  "/settings/ai-models": typeof SettingsAiModelsRoute;
-  "/settings/dictation": typeof SettingsDictationRoute;
-  "/settings/history": typeof SettingsHistoryRoute;
-  "/settings/preferences": typeof SettingsPreferencesRoute;
-  "/settings/shortcuts": typeof SettingsShortcutsRoute;
-  "/settings/vocabulary": typeof SettingsVocabularyRoute;
-  "/settings/": typeof SettingsIndexRoute;
+  '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
+  '/settings/about': typeof SettingsAboutRoute
+  '/settings/advanced': typeof SettingsAdvancedRoute
+  '/settings/ai-models': typeof SettingsAiModelsRoute
+  '/settings/dictation': typeof SettingsDictationRoute
+  '/settings/history': typeof SettingsHistoryRoute
+  '/settings/preferences': typeof SettingsPreferencesRoute
+  '/settings/shortcuts': typeof SettingsShortcutsRoute
+  '/settings/vocabulary': typeof SettingsVocabularyRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/settings/about": typeof SettingsAboutRoute;
-  "/settings/advanced": typeof SettingsAdvancedRoute;
-  "/settings/ai-models": typeof SettingsAiModelsRoute;
-  "/settings/dictation": typeof SettingsDictationRoute;
-  "/settings/history": typeof SettingsHistoryRoute;
-  "/settings/preferences": typeof SettingsPreferencesRoute;
-  "/settings/shortcuts": typeof SettingsShortcutsRoute;
-  "/settings/vocabulary": typeof SettingsVocabularyRoute;
-  "/settings": typeof SettingsIndexRoute;
+  '/': typeof IndexRoute
+  '/settings/about': typeof SettingsAboutRoute
+  '/settings/advanced': typeof SettingsAdvancedRoute
+  '/settings/ai-models': typeof SettingsAiModelsRoute
+  '/settings/dictation': typeof SettingsDictationRoute
+  '/settings/history': typeof SettingsHistoryRoute
+  '/settings/preferences': typeof SettingsPreferencesRoute
+  '/settings/shortcuts': typeof SettingsShortcutsRoute
+  '/settings/vocabulary': typeof SettingsVocabularyRoute
+  '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/": typeof IndexRoute;
-  "/settings": typeof SettingsRouteRouteWithChildren;
-  "/settings/about": typeof SettingsAboutRoute;
-  "/settings/advanced": typeof SettingsAdvancedRoute;
-  "/settings/ai-models": typeof SettingsAiModelsRoute;
-  "/settings/dictation": typeof SettingsDictationRoute;
-  "/settings/history": typeof SettingsHistoryRoute;
-  "/settings/preferences": typeof SettingsPreferencesRoute;
-  "/settings/shortcuts": typeof SettingsShortcutsRoute;
-  "/settings/vocabulary": typeof SettingsVocabularyRoute;
-  "/settings/": typeof SettingsIndexRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
+  '/settings/about': typeof SettingsAboutRoute
+  '/settings/advanced': typeof SettingsAdvancedRoute
+  '/settings/ai-models': typeof SettingsAiModelsRoute
+  '/settings/dictation': typeof SettingsDictationRoute
+  '/settings/history': typeof SettingsHistoryRoute
+  '/settings/preferences': typeof SettingsPreferencesRoute
+  '/settings/shortcuts': typeof SettingsShortcutsRoute
+  '/settings/vocabulary': typeof SettingsVocabularyRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | "/"
-    | "/settings"
-    | "/settings/about"
-    | "/settings/advanced"
-    | "/settings/ai-models"
-    | "/settings/dictation"
-    | "/settings/history"
-    | "/settings/preferences"
-    | "/settings/shortcuts"
-    | "/settings/vocabulary"
-    | "/settings/";
-  fileRoutesByTo: FileRoutesByTo;
+    | '/'
+    | '/settings'
+    | '/settings/about'
+    | '/settings/advanced'
+    | '/settings/ai-models'
+    | '/settings/dictation'
+    | '/settings/history'
+    | '/settings/preferences'
+    | '/settings/shortcuts'
+    | '/settings/vocabulary'
+    | '/settings/'
+  fileRoutesByTo: FileRoutesByTo
   to:
-    | "/"
-    | "/settings/about"
-    | "/settings/advanced"
-    | "/settings/ai-models"
-    | "/settings/dictation"
-    | "/settings/history"
-    | "/settings/preferences"
-    | "/settings/shortcuts"
-    | "/settings/vocabulary"
-    | "/settings";
+    | '/'
+    | '/settings/about'
+    | '/settings/advanced'
+    | '/settings/ai-models'
+    | '/settings/dictation'
+    | '/settings/history'
+    | '/settings/preferences'
+    | '/settings/shortcuts'
+    | '/settings/vocabulary'
+    | '/settings'
   id:
-    | "__root__"
-    | "/"
-    | "/settings"
-    | "/settings/about"
-    | "/settings/advanced"
-    | "/settings/ai-models"
-    | "/settings/dictation"
-    | "/settings/history"
-    | "/settings/preferences"
-    | "/settings/shortcuts"
-    | "/settings/vocabulary"
-    | "/settings/";
-  fileRoutesById: FileRoutesById;
+    | '__root__'
+    | '/'
+    | '/settings'
+    | '/settings/about'
+    | '/settings/advanced'
+    | '/settings/ai-models'
+    | '/settings/dictation'
+    | '/settings/history'
+    | '/settings/preferences'
+    | '/settings/shortcuts'
+    | '/settings/vocabulary'
+    | '/settings/'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  SettingsRouteRoute: typeof SettingsRouteRouteWithChildren;
+  IndexRoute: typeof IndexRoute
+  SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/settings": {
-      id: "/settings";
-      path: "/settings";
-      fullPath: "/settings";
-      preLoaderRoute: typeof SettingsRouteRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/settings/": {
-      id: "/settings/";
-      path: "/";
-      fullPath: "/settings/";
-      preLoaderRoute: typeof SettingsIndexRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/vocabulary": {
-      id: "/settings/vocabulary";
-      path: "/vocabulary";
-      fullPath: "/settings/vocabulary";
-      preLoaderRoute: typeof SettingsVocabularyRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/shortcuts": {
-      id: "/settings/shortcuts";
-      path: "/shortcuts";
-      fullPath: "/settings/shortcuts";
-      preLoaderRoute: typeof SettingsShortcutsRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/preferences": {
-      id: "/settings/preferences";
-      path: "/preferences";
-      fullPath: "/settings/preferences";
-      preLoaderRoute: typeof SettingsPreferencesRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/history": {
-      id: "/settings/history";
-      path: "/history";
-      fullPath: "/settings/history";
-      preLoaderRoute: typeof SettingsHistoryRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/dictation": {
-      id: "/settings/dictation";
-      path: "/dictation";
-      fullPath: "/settings/dictation";
-      preLoaderRoute: typeof SettingsDictationRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/ai-models": {
-      id: "/settings/ai-models";
-      path: "/ai-models";
-      fullPath: "/settings/ai-models";
-      preLoaderRoute: typeof SettingsAiModelsRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/advanced": {
-      id: "/settings/advanced";
-      path: "/advanced";
-      fullPath: "/settings/advanced";
-      preLoaderRoute: typeof SettingsAdvancedRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
-    "/settings/about": {
-      id: "/settings/about";
-      path: "/about";
-      fullPath: "/settings/about";
-      preLoaderRoute: typeof SettingsAboutRouteImport;
-      parentRoute: typeof SettingsRouteRoute;
-    };
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/vocabulary': {
+      id: '/settings/vocabulary'
+      path: '/vocabulary'
+      fullPath: '/settings/vocabulary'
+      preLoaderRoute: typeof SettingsVocabularyRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/shortcuts': {
+      id: '/settings/shortcuts'
+      path: '/shortcuts'
+      fullPath: '/settings/shortcuts'
+      preLoaderRoute: typeof SettingsShortcutsRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/preferences': {
+      id: '/settings/preferences'
+      path: '/preferences'
+      fullPath: '/settings/preferences'
+      preLoaderRoute: typeof SettingsPreferencesRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/history': {
+      id: '/settings/history'
+      path: '/history'
+      fullPath: '/settings/history'
+      preLoaderRoute: typeof SettingsHistoryRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/dictation': {
+      id: '/settings/dictation'
+      path: '/dictation'
+      fullPath: '/settings/dictation'
+      preLoaderRoute: typeof SettingsDictationRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/ai-models': {
+      id: '/settings/ai-models'
+      path: '/ai-models'
+      fullPath: '/settings/ai-models'
+      preLoaderRoute: typeof SettingsAiModelsRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/advanced': {
+      id: '/settings/advanced'
+      path: '/advanced'
+      fullPath: '/settings/advanced'
+      preLoaderRoute: typeof SettingsAdvancedRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/about': {
+      id: '/settings/about'
+      path: '/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof SettingsAboutRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
   }
 }
 
 interface SettingsRouteRouteChildren {
-  SettingsAboutRoute: typeof SettingsAboutRoute;
-  SettingsAdvancedRoute: typeof SettingsAdvancedRoute;
-  SettingsAiModelsRoute: typeof SettingsAiModelsRoute;
-  SettingsDictationRoute: typeof SettingsDictationRoute;
-  SettingsHistoryRoute: typeof SettingsHistoryRoute;
-  SettingsPreferencesRoute: typeof SettingsPreferencesRoute;
-  SettingsShortcutsRoute: typeof SettingsShortcutsRoute;
-  SettingsVocabularyRoute: typeof SettingsVocabularyRoute;
-  SettingsIndexRoute: typeof SettingsIndexRoute;
+  SettingsAboutRoute: typeof SettingsAboutRoute
+  SettingsAdvancedRoute: typeof SettingsAdvancedRoute
+  SettingsAiModelsRoute: typeof SettingsAiModelsRoute
+  SettingsDictationRoute: typeof SettingsDictationRoute
+  SettingsHistoryRoute: typeof SettingsHistoryRoute
+  SettingsPreferencesRoute: typeof SettingsPreferencesRoute
+  SettingsShortcutsRoute: typeof SettingsShortcutsRoute
+  SettingsVocabularyRoute: typeof SettingsVocabularyRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
@@ -266,16 +266,16 @@ const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsVocabularyRoute: SettingsVocabularyRoute,
   SettingsIndexRoute: SettingsIndexRoute,
-};
+}
 
 const SettingsRouteRouteWithChildren = SettingsRouteRoute._addFileChildren(
   SettingsRouteRouteChildren,
-);
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
-};
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()

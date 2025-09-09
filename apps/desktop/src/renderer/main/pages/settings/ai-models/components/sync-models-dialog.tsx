@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import type { ProviderModel } from "@/types/providers";
+import type { Model } from "@/db/schema";
 
 interface SyncModelsDialogProps {
   open: boolean;
@@ -32,9 +32,6 @@ export default function SyncModelsDialog({
   // Local state
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [availableModels, setAvailableModels] = useState<ProviderModel[]>([]);
-  const [isFetching, setIsFetching] = useState(false);
-  const [fetchError, setFetchError] = useState("");
   const [credentials, setCredentials] = useState<{
     openRouterApiKey?: string;
     ollamaUrl?: string;
@@ -44,49 +41,52 @@ export default function SyncModelsDialog({
   const utils = api.useUtils();
   const modelProvidersConfigQuery =
     api.settings.getModelProvidersConfig.useQuery();
-  const syncedModelsQuery = api.settings.getSyncedProviderModels.useQuery();
+  const syncedModelsQuery = api.models.getSyncedProviderModels.useQuery();
   const defaultLanguageModelQuery =
-    api.settings.getDefaultLanguageModel.useQuery();
+    api.models.getDefaultLanguageModel.useQuery();
   const defaultEmbeddingModelQuery =
-    api.settings.getDefaultEmbeddingModel.useQuery();
+    api.models.getDefaultEmbeddingModel.useQuery();
 
-  const fetchOpenRouterModelsQuery =
-    api.settings.fetchOpenRouterModels.useQuery(
-      { apiKey: credentials.openRouterApiKey || "" },
-      { enabled: false },
-    );
+  const fetchOpenRouterModelsQuery = api.models.fetchOpenRouterModels.useQuery(
+    { apiKey: credentials.openRouterApiKey ?? "" },
+    {
+      enabled: false, // We'll trigger manually
+    },
+  );
 
-  const fetchOllamaModelsQuery = api.settings.fetchOllamaModels.useQuery(
-    { url: credentials.ollamaUrl || "" },
-    { enabled: false },
+  const fetchOllamaModelsQuery = api.models.fetchOllamaModels.useQuery(
+    { url: credentials.ollamaUrl ?? "" },
+    {
+      enabled: false, // We'll trigger manually
+    },
   );
 
   const syncProviderModelsMutation =
-    api.settings.syncProviderModels.useMutation({
+    api.models.syncProviderModelsToDatabase.useMutation({
       onSuccess: () => {
         // Invalidate all related queries to refresh parent components
-        utils.settings.getSyncedProviderModels.invalidate();
-        utils.settings.getDefaultLanguageModel.invalidate();
-        utils.settings.getDefaultEmbeddingModel.invalidate();
+        utils.models.getSyncedProviderModels.invalidate();
+        utils.models.getDefaultLanguageModel.invalidate();
+        utils.models.getDefaultEmbeddingModel.invalidate();
         toast.success("Models synced to database successfully!");
       },
-      onError: (error) => {
+      onError: (error: any) => {
         console.error("Failed to sync models to database:", error);
         toast.error("Failed to sync models to database. Please try again.");
       },
     });
 
   const setDefaultLanguageModelMutation =
-    api.settings.setDefaultLanguageModel.useMutation({
+    api.models.setDefaultLanguageModel.useMutation({
       onSuccess: () => {
-        utils.settings.getDefaultLanguageModel.invalidate();
+        utils.models.getDefaultLanguageModel.invalidate();
       },
     });
 
   const setDefaultEmbeddingModelMutation =
-    api.settings.setDefaultEmbeddingModel.useMutation({
+    api.models.setDefaultEmbeddingModel.useMutation({
       onSuccess: () => {
-        utils.settings.getDefaultEmbeddingModel.invalidate();
+        utils.models.getDefaultEmbeddingModel.invalidate();
       },
     });
 
@@ -112,54 +112,21 @@ export default function SyncModelsDialog({
 
       // Start fetching models if we have credentials
       if (provider === "OpenRouter" && credentials.openRouterApiKey) {
-        setIsFetching(true);
-        setFetchError("");
         fetchOpenRouterModelsQuery.refetch();
       } else if (provider === "Ollama" && credentials.ollamaUrl) {
-        setIsFetching(true);
-        setFetchError("");
         fetchOllamaModelsQuery.refetch();
       }
     }
   }, [open, syncedModelsQuery.data, provider, credentials]);
 
-  // Handle OpenRouter fetch results
-  useEffect(() => {
-    if (fetchOpenRouterModelsQuery.data && provider === "OpenRouter") {
-      setAvailableModels(fetchOpenRouterModelsQuery.data);
-      setFetchError("");
-      setIsFetching(false);
-    }
-  }, [fetchOpenRouterModelsQuery.data, provider]);
-
-  useEffect(() => {
-    if (fetchOpenRouterModelsQuery.error && provider === "OpenRouter") {
-      setFetchError(fetchOpenRouterModelsQuery.error.message);
-      setIsFetching(false);
-      toast.error(
-        `Failed to fetch OpenRouter models: ${fetchOpenRouterModelsQuery.error.message}`,
-      );
-    }
-  }, [fetchOpenRouterModelsQuery.error, provider]);
-
-  // Handle Ollama fetch results
-  useEffect(() => {
-    if (fetchOllamaModelsQuery.data && provider === "Ollama") {
-      setAvailableModels(fetchOllamaModelsQuery.data);
-      setFetchError("");
-      setIsFetching(false);
-    }
-  }, [fetchOllamaModelsQuery.data, provider]);
-
-  useEffect(() => {
-    if (fetchOllamaModelsQuery.error && provider === "Ollama") {
-      setFetchError(fetchOllamaModelsQuery.error.message);
-      setIsFetching(false);
-      toast.error(
-        `Failed to fetch Ollama models: ${fetchOllamaModelsQuery.error.message}`,
-      );
-    }
-  }, [fetchOllamaModelsQuery.error, provider]);
+  // Get the appropriate query based on provider
+  const activeQuery =
+    provider === "OpenRouter"
+      ? fetchOpenRouterModelsQuery
+      : fetchOllamaModelsQuery;
+  const availableModels = activeQuery.data || [];
+  const isFetching = activeQuery.isLoading || activeQuery.isFetching;
+  const fetchError = activeQuery.error?.message || "";
 
   // Filter models based on search
   const filteredModels = availableModels.filter(
@@ -212,8 +179,6 @@ export default function SyncModelsDialog({
     onOpenChange(false);
     setSelectedModels([]);
     setSearchTerm("");
-    setAvailableModels([]);
-    setFetchError("");
   };
 
   // Determine display limits and grid layout

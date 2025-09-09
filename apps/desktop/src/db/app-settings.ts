@@ -39,6 +39,7 @@ const defaultSettings: AppSettingsData = {
     toggleRecording: "",
   },
   modelProvidersConfig: {
+    defaultSpeechModel: "",
     defaultLanguageModel: "",
     defaultEmbeddingModel: "",
   },

@@ -1,14 +1,13 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import ChangeDefaultModelDialog from "./change-default-model-dialog";
-import type { ProviderModel } from "@/types/providers";
 
 interface DefaultModelComboboxProps {
-  modelType: "language" | "embedding";
+  modelType: "speech" | "language" | "embedding";
   title?: string;
 }
 
@@ -16,85 +15,134 @@ export default function DefaultModelCombobox({
   modelType,
   title = "Default Model",
 }: DefaultModelComboboxProps) {
-  // Local state
-  const [syncedModels, setSyncedModels] = useState<ProviderModel[]>([]);
-  const [defaultModel, setDefaultModel] = useState("");
+  // State for embedding confirmation dialog
   const [changeDefaultDialogOpen, setChangeDefaultDialogOpen] = useState(false);
-  const [newDefaultModel, setNewDefaultModel] = useState<string>("");
+  const [pendingModelId, setPendingModelId] = useState<string>("");
 
   // tRPC queries and mutations
   const utils = api.useUtils();
-  const syncedModelsQuery = api.settings.getSyncedProviderModels.useQuery();
-  const defaultLanguageModelQuery =
-    api.settings.getDefaultLanguageModel.useQuery();
-  const defaultEmbeddingModelQuery =
-    api.settings.getDefaultEmbeddingModel.useQuery();
 
-  const setDefaultLanguageModelMutation =
-    api.settings.setDefaultLanguageModel.useMutation({
-      onSuccess: () => {
-        utils.settings.getDefaultLanguageModel.invalidate();
-        toast.success("Default language model updated!");
-      },
-      onError: (error) => {
-        console.error("Failed to set default language model:", error);
-        toast.error("Failed to set default language model. Please try again.");
-      },
-    });
+  // Unified queries
+  const modelsQuery = api.models.getModels.useQuery({
+    type: modelType,
+    downloadedOnly: modelType === "speech",
+  });
 
-  const setDefaultEmbeddingModelMutation =
-    api.settings.setDefaultEmbeddingModel.useMutation({
-      onSuccess: () => {
-        utils.settings.getDefaultEmbeddingModel.invalidate();
-        toast.success("Default embedding model updated!");
-      },
-      onError: (error) => {
-        console.error("Failed to set default embedding model:", error);
-        toast.error("Failed to set default embedding model. Please try again.");
-      },
-    });
+  const defaultModelQuery = api.models.getDefaultModel.useQuery({
+    type: modelType,
+  });
 
-  // Load synced models
-  useEffect(() => {
-    if (syncedModelsQuery.data) {
-      setSyncedModels(syncedModelsQuery.data);
+  // Subscribe to model selection changes
+  api.models.onSelectionChanged.useSubscription(undefined, {
+    onData: ({ modelType: changedType }) => {
+      // Only invalidate if the change is for our model type
+      if (changedType === modelType) {
+        utils.models.getDefaultModel.invalidate({ type: modelType });
+        utils.models.getModels.invalidate({ type: modelType });
+      }
+    },
+    onError: (error) => {
+      console.error("Selection changed subscription error:", error);
+    },
+  });
+
+  api.models.onDownloadComplete.useSubscription(undefined, {
+    onData: () => {
+      utils.models.getModels.invalidate({ type: modelType });
+    },
+    onError: (error) => {
+      console.error("Selection changed subscription error:", error);
+    },
+  });
+
+  api.models.onModelDeleted.useSubscription(undefined, {
+    onData: () => {
+      utils.models.getModels.invalidate({ type: modelType });
+    },
+    onError: (error) => {
+      console.error("Selection changed subscription error:", error);
+    },
+  });
+
+  // Unified mutation
+  const setDefaultModelMutation = api.models.setDefaultModel.useMutation({
+    onSuccess: () => {
+      utils.models.getDefaultModel.invalidate({ type: modelType });
+      toast.success(`Default ${modelType} model updated!`);
+    },
+    onError: (error) => {
+      console.error(`Failed to set default ${modelType} model:`, error);
+      toast.error(
+        `Failed to set default ${modelType} model. Please try again.`,
+      );
+    },
+  });
+
+  // Transform models for display
+  const modelOptions = useMemo(() => {
+    if (!modelsQuery.data) return [];
+
+    if (modelType === "speech") {
+      // Speech models from local whisper
+      return modelsQuery.data.map((m) => ({
+        value: m.id,
+        label: m.name,
+      }));
+    } else {
+      // Provider models for language/embedding
+      return modelsQuery.data.map((m) => ({
+        value: m.id,
+        label: m.name,
+      }));
     }
-  }, [syncedModelsQuery.data]);
+  }, [modelsQuery.data, modelType]);
 
-  // Load default model based on type
-  useEffect(() => {
-    if (
-      modelType === "language" &&
-      defaultLanguageModelQuery.data !== undefined
-    ) {
-      setDefaultModel(defaultLanguageModelQuery.data || "");
-    } else if (
-      modelType === "embedding" &&
-      defaultEmbeddingModelQuery.data !== undefined
-    ) {
-      setDefaultModel(defaultEmbeddingModelQuery.data || "");
+  const handleModelChange = (modelId: string) => {
+    if (!modelId || modelId === defaultModelQuery.data) return;
+
+    // Only show confirmation dialog for embedding models
+    if (modelType === "embedding") {
+      setPendingModelId(modelId);
+      setChangeDefaultDialogOpen(true);
+    } else {
+      // For speech and language models, update immediately
+      setDefaultModelMutation.mutate({ type: modelType, modelId });
     }
-  }, [
-    modelType,
-    defaultLanguageModelQuery.data,
-    defaultEmbeddingModelQuery.data,
-  ]);
-
-  const openChangeDefaultDialog = (modelId: string) => {
-    setNewDefaultModel(modelId);
-    setChangeDefaultDialogOpen(true);
   };
 
   const confirmChangeDefault = () => {
-    if (modelType === "language") {
-      setDefaultLanguageModelMutation.mutate({ modelId: newDefaultModel });
-    } else {
-      setDefaultEmbeddingModelMutation.mutate({ modelId: newDefaultModel });
+    if (pendingModelId) {
+      setDefaultModelMutation.mutate({
+        type: modelType,
+        modelId: pendingModelId,
+      });
+      setPendingModelId("");
     }
-    setNewDefaultModel("");
   };
 
-  const selectedModel = syncedModels.find((m) => m.id === newDefaultModel);
+  // Find the selected model for the dialog
+  const selectedModel = useMemo(() => {
+    if (!pendingModelId || !modelsQuery.data) return undefined;
+    return modelsQuery.data.find((m) => m.id === pendingModelId);
+  }, [pendingModelId, modelsQuery.data]);
+
+  // Loading state
+  if (modelsQuery.isLoading || defaultModelQuery.isLoading) {
+    return (
+      <div>
+        <Label className="text-lg font-semibold">{title}</Label>
+        <div className="mt-2 max-w-xs">
+          <Combobox
+            options={[]}
+            value=""
+            onChange={() => {}}
+            placeholder="Loading..."
+            disabled
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -102,29 +150,26 @@ export default function DefaultModelCombobox({
         <Label className="text-lg font-semibold">{title}</Label>
         <div className="mt-2 max-w-xs">
           <Combobox
-            options={syncedModels.map((m) => ({
-              value: m.id,
-              label: m.name,
-            }))}
-            value={defaultModel}
-            onChange={(value) => {
-              // Guard against empty value from Combobox clear action
-              if (value && value !== defaultModel) {
-                openChangeDefaultDialog(value);
-              }
-            }}
+            options={modelOptions}
+            value={defaultModelQuery.data || ""}
+            onChange={handleModelChange}
             placeholder="Select a model..."
           />
         </div>
       </div>
 
-      <ChangeDefaultModelDialog
-        open={changeDefaultDialogOpen}
-        onOpenChange={setChangeDefaultDialogOpen}
-        selectedModel={selectedModel}
-        onConfirm={confirmChangeDefault}
-        modelType={modelType}
-      />
+      {modelType === "embedding" && (
+        <ChangeDefaultModelDialog
+          open={changeDefaultDialogOpen}
+          onOpenChange={(open) => {
+            setChangeDefaultDialogOpen(open);
+            if (!open) setPendingModelId("");
+          }}
+          selectedModel={selectedModel}
+          onConfirm={confirmChangeDefault}
+          modelType="embedding"
+        />
+      )}
     </>
   );
 }

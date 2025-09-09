@@ -2,7 +2,7 @@
 import { ComponentProps, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Combobox } from "@/components/ui/combobox";
+import DefaultModelCombobox from "../components/default-model-combobox";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table,
@@ -119,10 +119,6 @@ export default function SpeechTab() {
     },
     onError: (error) => {
       console.error("Failed to start download:", error);
-      if (error instanceof Error && error.message.includes("AbortError")) {
-        console.log("Download was manually aborted, not showing error");
-        return;
-      }
       toast.error("Failed to start download");
     },
   });
@@ -237,36 +233,6 @@ export default function SpeechTab() {
     },
   });
 
-  api.models.onSelectionChanged.useSubscription(undefined, {
-    onData: ({ newModelId, reason }) => {
-      // Always invalidate to update UI
-      utils.models.getSelectedModel.invalidate();
-
-      // Show appropriate toast based on reason
-      if (reason === "auto-first-download") {
-        const model = availableModels.find((m) => m.id === newModelId);
-        if (model) {
-          toast.success(`${model.name} selected as your default speech model`);
-        }
-      } else if (reason === "auto-after-deletion") {
-        const model = availableModels.find((m) => m.id === newModelId);
-        if (model) {
-          toast.info(
-            `Auto-selected ${model.name} after deleting previous model`,
-          );
-        }
-      } else if (reason === "cleared") {
-        toast.warning(
-          "No speech models available. Please download a model to continue.",
-        );
-      }
-      // No toast for 'manual' - user initiated the change
-    },
-    onError: (error) => {
-      console.error("Selection changed subscription error:", error);
-    },
-  });
-
   const handleDownload = async (modelId: string, event?: React.MouseEvent) => {
     if (event) {
       event.preventDefault();
@@ -355,28 +321,11 @@ export default function SpeechTab() {
     <>
       <Card>
         <CardContent className="space-y-6">
-          <div>
-            <Label className="text-lg font-semibold">
-              Default Speech Model
-            </Label>
-            <div className="mt-2 max-w-xs">
-              <Combobox
-                options={availableModels
-                  .filter((m) => downloadedModels[m.id])
-                  .map((m) => ({
-                    value: m.id,
-                    label: m.name,
-                  }))}
-                placeholder="Select a model..."
-                value={selectedModel || ""}
-                onChange={(value) => {
-                  if (value) {
-                    handleSelectModel(value);
-                  }
-                }}
-              />
-            </div>
-          </div>
+          {/* Default model picker using unified component */}
+          <DefaultModelCombobox
+            modelType="speech"
+            title="Default Speech Model"
+          />
           <div>
             <Label className="text-lg font-semibold mb-2 block">
               Available Models

@@ -73,7 +73,7 @@ export default function ProviderAccordion({
   });
 
   const validateOpenRouterMutation =
-    api.settings.validateOpenRouterConnection.useMutation({
+    api.models.validateOpenRouterConnection.useMutation({
       onSuccess: (result) => {
         setIsValidating(false);
         if (result.success) {
@@ -93,7 +93,7 @@ export default function ProviderAccordion({
     });
 
   const validateOllamaMutation =
-    api.settings.validateOllamaConnection.useMutation({
+    api.models.validateOllamaConnection.useMutation({
       onSuccess: (result) => {
         setIsValidating(false);
         if (result.success) {
@@ -113,12 +113,12 @@ export default function ProviderAccordion({
     });
 
   const removeOpenRouterProviderMutation =
-    api.settings.removeOpenRouterProvider.useMutation({
+    api.models.removeOpenRouterProvider.useMutation({
       onSuccess: () => {
         utils.settings.getModelProvidersConfig.invalidate();
-        utils.settings.getSyncedProviderModels.invalidate();
-        utils.settings.getDefaultLanguageModel.invalidate();
-        utils.settings.getDefaultEmbeddingModel.invalidate();
+        utils.models.getSyncedProviderModels.invalidate();
+        utils.models.getDefaultLanguageModel.invalidate();
+        utils.models.getDefaultEmbeddingModel.invalidate();
         setStatus("disconnected");
         setInputValue("");
         toast.success("OpenRouter provider removed successfully!");
@@ -130,12 +130,12 @@ export default function ProviderAccordion({
     });
 
   const removeOllamaProviderMutation =
-    api.settings.removeOllamaProvider.useMutation({
+    api.models.removeOllamaProvider.useMutation({
       onSuccess: () => {
         utils.settings.getModelProvidersConfig.invalidate();
-        utils.settings.getSyncedProviderModels.invalidate();
-        utils.settings.getDefaultLanguageModel.invalidate();
-        utils.settings.getDefaultEmbeddingModel.invalidate();
+        utils.models.getSyncedProviderModels.invalidate();
+        utils.models.getDefaultLanguageModel.invalidate();
+        utils.models.getDefaultEmbeddingModel.invalidate();
         setStatus("disconnected");
         setInputValue("");
         toast.success("Ollama provider removed successfully!");

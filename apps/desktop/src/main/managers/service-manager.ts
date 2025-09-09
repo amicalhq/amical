@@ -81,7 +81,10 @@ export class ServiceManager {
 
   private async initializeModelServices(): Promise<void> {
     // Initialize Model Manager Service
-    this.modelManagerService = new ModelManagerService();
+    if (!this.settingsService) {
+      throw new Error("Settings service not initialized");
+    }
+    this.modelManagerService = new ModelManagerService(this.settingsService);
     await this.modelManagerService.initialize();
   }
 
@@ -119,7 +122,7 @@ export class ServiceManager {
         if (formatterConfig) {
           this.transcriptionService.configureFormatter(formatterConfig);
           logger.transcription.info("Formatter configured", {
-            provider: formatterConfig.provider,
+            model: formatterConfig.model,
             enabled: formatterConfig.enabled,
           });
         }

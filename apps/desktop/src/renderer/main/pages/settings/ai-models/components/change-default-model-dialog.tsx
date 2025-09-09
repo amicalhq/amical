@@ -8,12 +8,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { ProviderModel } from "@/types/providers";
+import type { Model } from "@/db/schema";
 
 interface ChangeDefaultModelDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  selectedModel: ProviderModel | undefined;
+  selectedModel: Model | undefined;
   onConfirm: () => void;
   modelType?: "language" | "embedding";
 }

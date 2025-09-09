@@ -48,25 +48,6 @@ export const vocabulary = sqliteTable("vocabulary", {
     .default(sql`(unixepoch())`),
 });
 
-// Downloaded models table
-export const downloadedModels = sqliteTable("downloaded_models", {
-  id: text("id").primaryKey(), // Model ID (e.g., 'whisper-large-v3')
-  name: text("name").notNull(),
-  type: text("type").notNull(), // 'whisper', 'llama', etc.
-  localPath: text("local_path").notNull(),
-  downloadedAt: integer("downloaded_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  size: integer("size").notNull(), // File size in bytes
-  checksum: text("checksum"),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
-
 // App settings table with typed JSON
 export const appSettings = sqliteTable("app_settings", {
   id: integer("id").primaryKey(),
@@ -80,16 +61,35 @@ export const appSettings = sqliteTable("app_settings", {
     .default(sql`(unixepoch())`),
 });
 
-export const providerModels = sqliteTable(
-  "provider_models",
+// Unified models table for all model types (Whisper, Language, Embedding)
+export const models = sqliteTable(
+  "models",
   {
-    id: text("id").notNull(), // Model ID (not globally unique)
+    // Identity
+    id: text("id").notNull(),
+    provider: text("provider").notNull(), // "local-whisper", "openrouter", "ollama"
+
+    // Common fields
     name: text("name").notNull(),
-    provider: text("provider").notNull(), // "OpenRouter" | "Ollama"
-    size: text("size"), // Model size (e.g., "7B", "Large")
-    context: text("context").notNull(), // Context length (e.g., "32k", "128k")
-    description: text("description"), // Optional description
-    originalModel: text("original_model", { mode: "json" }), // Store original API response
+    type: text("type").notNull(), // "speech", "language", "embedding"
+    size: text("size"), // Model size string (e.g., "7B", "Large", "~78 MB")
+    context: text("context"), // Context window (e.g., "32k", "128k")
+    description: text("description"),
+
+    // Local model fields (only for downloaded Whisper models)
+    localPath: text("local_path"), // Where file is stored on disk
+    sizeBytes: integer("size_bytes"), // Actual file size in bytes
+    checksum: text("checksum"), // SHA-1 hash for verification
+    downloadedAt: integer("downloaded_at", { mode: "timestamp" }),
+
+    // Remote model fields (OpenRouter/Ollama)
+    originalModel: text("original_model", { mode: "json" }), // Original API response
+
+    // Model characteristics (for UI display)
+    speed: real("speed"), // 1-5 rating
+    accuracy: real("accuracy"), // 1-5 rating
+
+    // Timestamps
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -100,8 +100,9 @@ export const providerModels = sqliteTable(
   (table) => [
     // Composite primary key on (provider, id)
     primaryKey({ columns: [table.provider, table.id] }),
-    // Index on provider for efficient provider-scoped lookups
-    index("provider_models_provider_idx").on(table.provider),
+    // Indexes for efficient lookups
+    index("models_provider_idx").on(table.provider),
+    index("models_type_idx").on(table.type),
   ],
 );
 
@@ -151,6 +152,7 @@ export interface AppSettingsData {
     ollama?: {
       url: string;
     };
+    defaultSpeechModel?: string; // Model ID for default speech model (Whisper)
     defaultLanguageModel?: string; // Model ID for default language model
     defaultEmbeddingModel?: string; // Model ID for default embedding model
   };
@@ -166,9 +168,7 @@ export type Transcription = typeof transcriptions.$inferSelect;
 export type NewTranscription = typeof transcriptions.$inferInsert;
 export type Vocabulary = typeof vocabulary.$inferSelect;
 export type NewVocabulary = typeof vocabulary.$inferInsert;
-export type DownloadedModel = typeof downloadedModels.$inferSelect;
-export type NewDownloadedModel = typeof downloadedModels.$inferInsert;
-export type ProviderModelDB = typeof providerModels.$inferSelect;
-export type NewProviderModelDB = typeof providerModels.$inferInsert;
+export type Model = typeof models.$inferSelect;
+export type NewModel = typeof models.$inferInsert;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type NewAppSettings = typeof appSettings.$inferInsert;

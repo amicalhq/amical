@@ -19,3 +19,4 @@ package-lock.json
 .contentlayer
 .content-collections
 .source
+routeTree.gen.ts

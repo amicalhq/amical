@@ -1,4 +1,4 @@
-export interface Model {
+export interface AvailableWhisperModel {
   id: string;
   name: string;
   type: "whisper" | "tts" | "other";
@@ -37,7 +37,7 @@ export interface ModelManagerState {
 }
 
 // Available Whisper models manifest
-// export const AVAILABLE_MODELS: Model[] = [
+// export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
 //   {
 //     id: "whisper-tiny",
 //     name: "Whisper Tiny",
@@ -116,7 +116,7 @@ export interface ModelManagerState {
 //   },
 // ];
 
-export const AVAILABLE_MODELS: Model[] = [
+export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
   {
     id: "whisper-tiny",
     name: "Whisper Tiny",

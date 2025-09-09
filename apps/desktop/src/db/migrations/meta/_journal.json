@@ -36,6 +36,13 @@
       "when": 1756864868774,
       "tag": "0004_graceful_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1757365971124,
+      "tag": "0005_lucky_logan",
+      "breakpoints": true
     }
   ]
 }

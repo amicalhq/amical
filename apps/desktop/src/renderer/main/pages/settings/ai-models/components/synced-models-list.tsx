@@ -29,7 +29,7 @@ import {
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import ChangeDefaultModelDialog from "./change-default-model-dialog";
-import type { ProviderModel } from "@/types/providers";
+import type { Model } from "@/db/schema";
 
 interface SyncedModelsListProps {
   modelType: "language" | "embedding";
@@ -41,7 +41,7 @@ export default function SyncedModelsList({
   title = "Synced Models",
 }: SyncedModelsListProps) {
   // Local state
-  const [syncedModels, setSyncedModels] = useState<ProviderModel[]>([]);
+  const [syncedModels, setSyncedModels] = useState<Model[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
 
   // Dialog states
@@ -54,16 +54,16 @@ export default function SyncedModelsList({
 
   // tRPC queries and mutations
   const utils = api.useUtils();
-  const syncedModelsQuery = api.settings.getSyncedProviderModels.useQuery();
+  const syncedModelsQuery = api.models.getSyncedProviderModels.useQuery();
   const defaultLanguageModelQuery =
-    api.settings.getDefaultLanguageModel.useQuery();
+    api.models.getDefaultLanguageModel.useQuery();
   const defaultEmbeddingModelQuery =
-    api.settings.getDefaultEmbeddingModel.useQuery();
+    api.models.getDefaultEmbeddingModel.useQuery();
 
   const removeProviderModelMutation =
-    api.settings.removeProviderModel.useMutation({
+    api.models.removeProviderModel.useMutation({
       onSuccess: () => {
-        utils.settings.getSyncedProviderModels.invalidate();
+        utils.models.getSyncedProviderModels.invalidate();
         toast.success("Model removed successfully!");
       },
       onError: (error) => {
@@ -73,9 +73,9 @@ export default function SyncedModelsList({
     });
 
   const setDefaultLanguageModelMutation =
-    api.settings.setDefaultLanguageModel.useMutation({
+    api.models.setDefaultLanguageModel.useMutation({
       onSuccess: () => {
-        utils.settings.getDefaultLanguageModel.invalidate();
+        utils.models.getDefaultLanguageModel.invalidate();
         toast.success("Default language model updated!");
       },
       onError: (error) => {
@@ -85,9 +85,9 @@ export default function SyncedModelsList({
     });
 
   const setDefaultEmbeddingModelMutation =
-    api.settings.setDefaultEmbeddingModel.useMutation({
+    api.models.setDefaultEmbeddingModel.useMutation({
       onSuccess: () => {
-        utils.settings.getDefaultEmbeddingModel.invalidate();
+        utils.models.getDefaultEmbeddingModel.invalidate();
         toast.success("Default embedding model updated!");
       },
       onError: (error) => {
@@ -179,9 +179,9 @@ export default function SyncedModelsList({
     // Clear default if removing the default model
     if (defaultModel === modelId) {
       if (modelType === "language") {
-        setDefaultLanguageModelMutation.mutate({ modelId: undefined });
+        setDefaultLanguageModelMutation.mutate({ modelId: null });
       } else {
-        setDefaultEmbeddingModelMutation.mutate({ modelId: undefined });
+        setDefaultEmbeddingModelMutation.mutate({ modelId: null });
       }
     }
   };

@@ -4,7 +4,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
 import { exposeElectronTRPC } from "electron-trpc-experimental/preload";
 import type { ElectronAPI } from "../types/electron-api";
-import type { FormatterConfig } from "../types/formatter";
 
 interface ShortcutData {
   shortcut: string;
@@ -53,36 +52,7 @@ const api: ElectronAPI = {
   //   ipcRenderer.removeAllListeners('global-shortcut-event');
   // }
 
-  // Model Management API
-  getAvailableModels: () => ipcRenderer.invoke("get-available-models"),
-  getDownloadedModels: () => ipcRenderer.invoke("get-downloaded-models"),
-  isModelDownloaded: (modelId: string) =>
-    ipcRenderer.invoke("is-model-downloaded", modelId),
-  getDownloadProgress: (modelId: string) =>
-    ipcRenderer.invoke("get-download-progress", modelId),
-  getActiveDownloads: () => ipcRenderer.invoke("get-active-downloads"),
-  downloadModel: (modelId: string) =>
-    ipcRenderer.invoke("download-model", modelId),
-  cancelDownload: (modelId: string) =>
-    ipcRenderer.invoke("cancel-download", modelId),
-  deleteModel: (modelId: string) => ipcRenderer.invoke("delete-model", modelId),
-  getModelsDirectory: () => ipcRenderer.invoke("get-models-directory"),
-
-  // Local Whisper API
-  isLocalWhisperAvailable: () =>
-    ipcRenderer.invoke("is-local-whisper-available"),
-  getLocalWhisperModels: () => ipcRenderer.invoke("get-local-whisper-models"),
-  getSelectedModel: () => ipcRenderer.invoke("get-selected-model"),
-  setSelectedModel: (modelId: string) =>
-    ipcRenderer.invoke("set-selected-model", modelId),
-  setWhisperExecutablePath: (path: string) =>
-    ipcRenderer.invoke("set-whisper-executable-path", path),
-
-  // Formatter Configuration API
-  getFormatterConfig: () => ipcRenderer.invoke("get-formatter-config"),
-  setFormatterConfig: (config: FormatterConfig) =>
-    ipcRenderer.invoke("set-formatter-config", config),
-
+  // Model Management API (moved to tRPC)
   // Transcription Database API (moved to tRPC)
 
   on: (channel: string, callback: (...args: any[]) => void) => {
