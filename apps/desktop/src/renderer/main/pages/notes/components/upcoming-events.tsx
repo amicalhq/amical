@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 
 type CalendarState = "with-events" | "no-events" | "no-calendar";
 
+// TOOD: add calendar connection and sync logic
+
 export function UpcomingEvents() {
   // Switch this variable to test different states:
   // "with-events" - shows upcoming events
@@ -12,6 +14,7 @@ export function UpcomingEvents() {
   // "no-calendar" - no calendar connected
   const calendarState: CalendarState = "with-events";
 
+  // TODO: replace mock data with actual data from backend
   // Mock events data
   const mockEvents: UpcomingEvent[] = [
     {
@@ -40,6 +43,7 @@ export function UpcomingEvents() {
   const handleTakeNotes = (event: UpcomingEvent) => {
     // Handle taking notes for the event
     console.log("Taking notes for:", event.title);
+    // TODO: navigate to a notes editor, open a modal, etc.
     // You can implement your note-taking logic here
     // For example: navigate to a notes editor, open a modal, etc.
   };
@@ -47,6 +51,7 @@ export function UpcomingEvents() {
   const handleConnectCalendar = () => {
     // Handle connecting calendar
     console.log("Connecting calendar...");
+    // TODO: implement your calendar connection logic here
     // You can implement your calendar connection logic here
   };
   return (
@@ -61,7 +66,6 @@ export function UpcomingEvents() {
           {upcomingEvents.map((event, index) => (
             <div key={index}>
               <UpcomingEventCard event={event} onTakeNotes={handleTakeNotes} />
-              {/* <Separator className={cn(index === upcomingEvents.length - 1 && "hidden")} /> */}
             </div>
           ))}
         </div>

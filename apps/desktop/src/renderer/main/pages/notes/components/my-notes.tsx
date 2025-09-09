@@ -9,6 +9,7 @@ type MyNotesProps = {
   onNoteClick: (noteId: string) => void;
 };
 
+// TODO: fetch notes data from backend and replace mock data
 export function MyNotes({ onNoteClick }: MyNotesProps) {
   // Switch this variable to test different states:
   // "with-notes" - shows notes list

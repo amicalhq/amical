@@ -67,6 +67,8 @@ type InvitedUser = {
   status: "active" | "invited";
 };
 
+// TODO: fetch note data from backend and replace mock data
+
 export default function NotePage({ noteId, onBack }: NotePageProps) {
   const [noteTitle, setNoteTitle] = useState("My Project Ideas");
   const [noteBody, setNoteBody] = useState(
@@ -135,6 +137,7 @@ This note was created as part of my personal development planning session. The i
 
   const lastEditDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+  // TODO: implement actual share functionality
   const handleShare = () => {
     if (shareEmail) {
       const newInvite = {
@@ -153,8 +156,8 @@ This note was created as part of my personal development planning session. The i
     }
   };
 
+  // TODO: implement actual delete functionality
   const handleDelete = () => {
-    // TODO: Implement actual delete functionality
     console.log("Deleting note:", noteId);
     setShowDeleteDialog(false);
     // For now, just go back to the previous page
