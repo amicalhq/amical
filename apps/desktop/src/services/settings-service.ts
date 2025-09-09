@@ -141,10 +141,6 @@ export class SettingsService {
   async getModelProvidersConfig(): Promise<
     AppSettingsData["modelProvidersConfig"]
   > {
-    console.log(
-      "getModelProvidersConfig",
-      await getSettingsSection("modelProvidersConfig"),
-    );
     return await getSettingsSection("modelProvidersConfig");
   }
 
@@ -208,7 +204,6 @@ export class SettingsService {
    */
   async getDefaultSpeechModel(): Promise<string | undefined> {
     const config = await this.getModelProvidersConfig();
-    console.error("config is ", config);
     return config?.defaultSpeechModel;
   }
 

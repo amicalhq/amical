@@ -398,7 +398,7 @@ const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
   };
 
   useEffect(() => {
-    let interval: NodeJS.Timeout | undefined;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (downloadState === "downloading") {
       interval = setInterval(() => {
         setProgress((prev) => {

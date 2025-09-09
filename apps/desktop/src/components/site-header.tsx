@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -9,8 +10,8 @@ interface SiteHeaderProps {
   currentView?: string;
 }
 
-const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
-const noDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+const dragRegion = { WebkitAppRegion: "drag" } as CSSProperties;
+const noDragRegion = { WebkitAppRegion: "no-drag" } as CSSProperties;
 
 export function SiteHeader({ currentView }: SiteHeaderProps) {
   const router = useRouter();

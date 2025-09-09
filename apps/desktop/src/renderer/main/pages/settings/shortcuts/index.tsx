@@ -18,8 +18,13 @@ export function ShortcutsSettingsPage() {
   const utils = api.useUtils();
 
   const setShortcutMutation = api.settings.setShortcut.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       utils.settings.getShortcuts.invalidate();
+      toast.success(
+        variables.type === "pushToTalk"
+          ? "Push to talk shortcut updated"
+          : "Toggle Recording shortcut updated",
+      );
     },
     onError: (error) => {
       console.error("Failed to save shortcut:", error);
@@ -41,7 +46,6 @@ export function ShortcutsSettingsPage() {
       type: "pushToTalk",
       shortcut: shortcut,
     });
-    toast.success("Push to Talk shortcut updated");
   };
 
   const handleToggleRecordingChange = (shortcut: string) => {
@@ -50,7 +54,6 @@ export function ShortcutsSettingsPage() {
       type: "toggleRecording",
       shortcut: shortcut,
     });
-    toast.success("Toggle Recording shortcut updated");
   };
 
   return (

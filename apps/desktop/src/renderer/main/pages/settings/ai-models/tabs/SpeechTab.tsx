@@ -435,11 +435,13 @@ export default function SpeechTab() {
                                 {!isDownloaded && isDownloading && (
                                   <div className="relative">
                                     <button
+                                      type="button"
                                       onClick={(e) =>
                                         handleCancelDownload(model.id, e)
                                       }
                                       className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center text-white transition-colors"
                                       title="Click to cancel download"
+                                      aria-label={`Cancel downloading ${model.name}`}
                                     >
                                       <Square className="w-4 h-4" />
                                     </button>
@@ -478,9 +480,11 @@ export default function SpeechTab() {
 
                                 {isDownloaded && (
                                   <button
+                                    type="button"
                                     onClick={() => handleDeleteClick(model.id)}
                                     className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
                                     title="Click to delete model"
+                                    aria-label={`Delete ${model.name}`}
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>

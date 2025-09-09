@@ -41,7 +41,7 @@ function SettingsLayout() {
 
         <div className="flex flex-1 min-h-0">
           <SettingsSidebar variant="inset" />
-          <SidebarInset className="mt-0!">
+          <SidebarInset className="!mt-0">
             <div className="flex flex-1 flex-col min-h-0">
               <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">
                 <div className="flex-1 overflow-y-auto">
