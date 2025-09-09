@@ -142,6 +142,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "electron-trpc-experimental": "1.0.0-alpha.1",
     "embla-carousel-react": "^8.6.0",
+    "emoji-picker-react": "^4.13.3",
     "framer-motion": "^12.10.5",
     "input-otp": "^1.4.2",
     "jest-worker": "^29.7.0",
