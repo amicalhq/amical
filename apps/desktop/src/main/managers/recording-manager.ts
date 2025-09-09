@@ -1,5 +1,4 @@
 import { ipcMain, app, dialog } from "electron";
-import type { TranscriptionService } from "../../services/transcription-service";
 import { EventEmitter } from "node:events";
 import { logger, logPerformance } from "../logger";
 import { ServiceManager } from "./service-manager";
@@ -26,6 +25,8 @@ export class RecordingManager extends EventEmitter {
     audioFilePath: string;
     wavWriter: StreamingWavWriter;
   } | null = null;
+  private recordingStartedAt: number | null = null;
+  private recordingStoppedAt: number | null = null;
 
   constructor(private serviceManager: ServiceManager) {
     super();
@@ -197,6 +198,9 @@ export class RecordingManager extends EventEmitter {
       this.setState("starting");
       this.setMode(mode);
 
+      this.recordingStartedAt = performance.now();
+      this.recordingStoppedAt = null; // Reset stopped time
+
       // Create session ID
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       this.currentSessionId = `session-${timestamp}`;
@@ -244,6 +248,8 @@ export class RecordingManager extends EventEmitter {
         });
         return;
       }
+
+      this.recordingStoppedAt = performance.now();
 
       this.setState("stopping");
 
@@ -342,13 +348,15 @@ export class RecordingManager extends EventEmitter {
       }
       const startTime = Date.now();
 
-      // Process the chunk - pass isFinal flag and audio file path
+      // Process the chunk - pass isFinal flag, audio file path, and timing
       const transcriptionResult =
         await transcriptionService.processStreamingChunk({
           sessionId: this.currentSessionId,
           audioChunk: chunk,
           isFinal: isFinalChunk,
           audioFilePath: this.currentAudioRecording.audioFilePath,
+          recordingStartedAt: this.recordingStartedAt || undefined,
+          recordingStoppedAt: this.recordingStoppedAt || undefined,
         });
 
       logger.audio.debug("Processed audio chunk", {

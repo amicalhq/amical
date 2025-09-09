@@ -9,6 +9,7 @@ import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-
 import { ModelManagerService } from "../services/model-manager";
 import { SettingsService } from "../services/settings-service";
 import { appContextStore } from "../stores/app-context";
+import { TelemetryService } from "../services/telemetry-service";
 import { createTranscription } from "../db/transcriptions";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
@@ -28,17 +29,23 @@ export class TranscriptionService {
   private settingsService: SettingsService;
   private vadMutex: Mutex;
   private transcriptionMutex: Mutex;
+  private telemetryService: TelemetryService;
+  private modelManagerService: ModelManagerService;
+  private modelWasPreloaded: boolean = false;
 
   constructor(
     modelManagerService: ModelManagerService,
-    vadService: VADService | null,
+    vadService: VADService,
     settingsService: SettingsService,
+    telemetryService: TelemetryService,
   ) {
     this.whisperProvider = new WhisperProvider(modelManagerService);
     this.vadService = vadService;
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
     this.transcriptionMutex = new Mutex();
+    this.telemetryService = telemetryService;
+    this.modelManagerService = modelManagerService;
   }
 
   async initialize(): Promise<void> {
@@ -59,6 +66,7 @@ export class TranscriptionService {
       if (hasModels) {
         logger.transcription.info("Preloading Whisper model...");
         await this.preloadWhisperModel();
+        this.modelWasPreloaded = true;
         logger.transcription.info("Whisper model preloaded successfully");
       } else {
         logger.transcription.info(
@@ -119,6 +127,7 @@ export class TranscriptionService {
     try {
       // Dispose current model
       await this.whisperProvider.dispose();
+      this.modelWasPreloaded = false; // Reset preload flag on model change
 
       // Check if preloading is enabled and models are available
       if (this.settingsService) {
@@ -134,6 +143,7 @@ export class TranscriptionService {
               "Reloading Whisper model after model change...",
             );
             await this.whisperProvider.preloadModel();
+            this.modelWasPreloaded = true;
             logger.transcription.info("Whisper model reloaded successfully");
           } else {
             logger.transcription.info("No models available to preload");
@@ -181,8 +191,17 @@ export class TranscriptionService {
     audioChunk: Float32Array;
     isFinal?: boolean;
     audioFilePath?: string;
+    recordingStartedAt?: number;
+    recordingStoppedAt?: number;
   }): Promise<string> {
-    const { sessionId, audioChunk, isFinal = false, audioFilePath } = options;
+    const {
+      sessionId,
+      audioChunk,
+      isFinal = false,
+      audioFilePath,
+      recordingStartedAt,
+      recordingStoppedAt,
+    } = options;
 
     // Run VAD on the audio chunk
     let speechProbability = 0;
@@ -229,6 +248,8 @@ export class TranscriptionService {
       session = {
         context: streamingContext,
         transcriptionResults: [],
+        firstChunkReceivedAt: performance.now(),
+        recordingStartedAt: recordingStartedAt, // From RecordingManager (when user pressed record)
       };
 
       this.streamingSessions.set(sessionId, session);
@@ -288,7 +309,12 @@ export class TranscriptionService {
       return completeTranscriptionTillNow;
     }
 
+    session.finalChunkReceivedAt = performance.now();
+    session.recordingStoppedAt = recordingStoppedAt;
+
     let completeTranscription = completeTranscriptionTillNow;
+    let formattingStartTime: number | undefined;
+    let formattingDuration: number | undefined;
 
     logger.transcription.info("Finalizing streaming session", {
       sessionId,
@@ -302,6 +328,7 @@ export class TranscriptionService {
       completeTranscription.trim().length
     ) {
       try {
+        formattingStartTime = performance.now();
         const style =
           session.context.sharedData.userPreferences?.formattingStyle;
         const formattedText = await this.openRouterProvider.format({
@@ -321,12 +348,15 @@ export class TranscriptionService {
           },
         });
 
+        formattingDuration = performance.now() - formattingStartTime;
+
         logger.transcription.info("Text formatted successfully", {
           sessionId,
           originalTranscription: completeTranscription,
           formattedTranscription: formattedText,
           originalLength: completeTranscription.length,
           formattedLength: formattedText.length,
+          formattingDuration,
         });
 
         completeTranscription = formattedText;
@@ -363,6 +393,52 @@ export class TranscriptionService {
         formattingStyle:
           session.context.sharedData.userPreferences?.formattingStyle,
       },
+    });
+
+    // Track transcription completion
+    const completionTime = performance.now();
+
+    // Calculate durations:
+    // - Recording duration: from when recording started to when it ended
+    // - Processing duration: from when recording ended to completion
+    // - Total duration: from recording start to completion
+    const recordingDuration =
+      session.recordingStartedAt && session.recordingStoppedAt
+        ? session.recordingStoppedAt - session.recordingStartedAt
+        : undefined;
+    const processingDuration = session.recordingStoppedAt
+      ? completionTime - session.recordingStoppedAt
+      : undefined;
+    const totalDuration = session.recordingStartedAt
+      ? completionTime - session.recordingStartedAt
+      : undefined;
+
+    const selectedModel =
+      this.modelManagerService.getSelectedModel() || "unknown";
+    const audioDurationSeconds =
+      session.context.sharedData.audioMetadata?.duration;
+
+    this.telemetryService.trackTranscriptionCompleted({
+      session_id: sessionId,
+      model_id: selectedModel,
+      model_preloaded: this.modelWasPreloaded,
+      total_duration_ms: totalDuration || 0,
+      recording_duration_ms: recordingDuration,
+      processing_duration_ms: processingDuration,
+      audio_duration_seconds: audioDurationSeconds,
+      realtime_factor:
+        audioDurationSeconds && totalDuration
+          ? audioDurationSeconds / (totalDuration / 1000)
+          : undefined,
+      text_length: completeTranscription.length,
+      word_count: completeTranscription.trim().split(/\s+/).length,
+      formatting_enabled: this.formatterEnabled,
+      formatting_model: this.formatterEnabled ? "openrouter" : undefined,
+      formatting_duration_ms: formattingDuration,
+      vad_enabled: !!this.vadService,
+      session_type: "streaming",
+      language: session.context.sharedData.userPreferences?.language || "en",
+      vocabulary_size: session.context.sharedData.vocabulary?.size || 0,
     });
 
     this.streamingSessions.delete(sessionId);

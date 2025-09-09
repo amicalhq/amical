@@ -67,6 +67,10 @@ export interface StreamingPipelineContext extends PipelineContext {
 export interface StreamingSession {
   context: StreamingPipelineContext;
   transcriptionResults: string[]; // Accumulate all transcription chunks
+  firstChunkReceivedAt?: number; // When first audio chunk arrived at transcription service
+  recordingStartedAt?: number; // When user pressed record button (from RecordingManager)
+  recordingStoppedAt?: number; // When user released record button (from RecordingManager)
+  finalChunkReceivedAt?: number; // When final chunk arrived at transcription service
 }
 
 // Simple pipeline configuration
