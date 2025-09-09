@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import {
   Sparkles,
@@ -12,7 +10,6 @@ import {
   Trash2,
   Check,
   Star,
-  StickyNote,
   FileTextIcon,
 } from "lucide-react";
 import EmojiPicker, { Theme } from "emoji-picker-react";
@@ -110,7 +107,8 @@ This note was created as part of my personal development planning session. The i
     {
       id: 1,
       name: "Alice Johnson",
-      avatar: "/diverse-woman-portrait.png",
+      avatar:
+        "https://images.unsplash.com/photo-1588516903720-8ceb67f9ef84?q=80&w=1344&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
       email: "alice@example.com",
       access: "can-write",
       status: "active" as const,
@@ -118,7 +116,8 @@ This note was created as part of my personal development planning session. The i
     {
       id: 2,
       name: "Bob Smith",
-      avatar: "/thoughtful-man.png",
+      avatar:
+        "https://images.unsplash.com/photo-1564564321837-a57b7070ac4f?q=80&w=2676&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
       email: "bob@example.com",
       access: "can-write",
       status: "active" as const,
@@ -126,12 +125,15 @@ This note was created as part of my personal development planning session. The i
     {
       id: 3,
       name: "Carol Davis",
-      avatar: "/woman-2.jpg",
+      avatar:
+        "https://images.unsplash.com/photo-1560087637-bf797bc7796a?q=80&w=1287&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
       email: "carol@example.com",
       access: "can-read",
       status: "active" as const,
     },
   ];
+
+  const lastEditDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const handleShare = () => {
     if (shareEmail) {
@@ -216,13 +218,21 @@ This note was created as part of my personal development planning session. The i
             <div className="flex items-center ">
               {/* Last edited date */}
               <span className="text-sm text-muted-foreground">
-                Edited 5th Sep
+                Edited{" "}
+                {lastEditDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year:
+                    lastEditDate.getFullYear() !== new Date().getFullYear()
+                      ? "numeric"
+                      : undefined,
+                })}
               </span>
 
               {/* {console.log("[v0] Note ID:", noteId)} */}
 
               <Tooltip>
-                <TooltipTrigger>
+                <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -243,6 +253,7 @@ This note was created as part of my personal development planning session. The i
                     <TooltipTrigger asChild>
                       <Avatar className="h-8 w-8 border-2 border-background cursor-pointer">
                         <AvatarImage
+                          className="object-cover"
                           src={user.avatar || "/placeholder.svg"}
                           alt={user.name}
                         />
@@ -387,7 +398,7 @@ This note was created as part of my personal development planning session. The i
               </Popover>
 
               <Tooltip>
-                <TooltipTrigger>
+                <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" disabled>
                     <Mic className="h-4 w-4" />
                   </Button>
