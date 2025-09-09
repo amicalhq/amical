@@ -1,0 +1,1 @@
+ALTER TABLE `notes` ADD `content` text DEFAULT '';

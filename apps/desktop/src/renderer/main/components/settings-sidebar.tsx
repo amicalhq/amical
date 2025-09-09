@@ -9,6 +9,7 @@ import {
   IconBookFilled,
   IconKeyboard,
   IconAdjustments,
+  IconNotes,
 } from "@tabler/icons-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -48,6 +49,11 @@ const data = {
       title: "Shortcuts",
       url: "/settings/shortcuts",
       icon: IconKeyboard,
+    },
+    {
+      title: "Notes",
+      url: "#",
+      icon: IconNotes,
     },
     {
       title: "Vocabulary",

@@ -37,4 +37,50 @@ export interface ElectronAPI {
 
   // External link handling
   openExternal: (url: string) => Promise<void>;
+
+  // Notes API
+  notes: {
+    create: (options: {
+      title: string;
+      transcriptionId?: number;
+      initialContent?: string;
+    }) => Promise<import("../db/schema").Note>;
+
+    get: (id: number) => Promise<import("../db/schema").Note | null>;
+
+    getByDocName: (
+      docName: string,
+    ) => Promise<import("../db/schema").Note | null>;
+
+    list: (options?: {
+      limit?: number;
+      offset?: number;
+      sortBy?: "title" | "updatedAt" | "createdAt" | "lastAccessedAt";
+      sortOrder?: "asc" | "desc";
+      search?: string;
+      transcriptionId?: number | null;
+    }) => Promise<import("../db/schema").Note[]>;
+
+    update: (
+      id: number,
+      options: {
+        title?: string;
+        transcriptionId?: number | null;
+      },
+    ) => Promise<import("../db/schema").Note | null>;
+
+    delete: (id: number) => Promise<import("../db/schema").Note | null>;
+
+    getByTranscription: (
+      transcriptionId: number,
+    ) => Promise<import("../db/schema").Note[]>;
+
+    getPersistence: (
+      docName: string,
+    ) => Promise<{ success: boolean; docName: string }>;
+
+    saveYjsUpdate: (docName: string, update: ArrayBuffer) => Promise<void>;
+
+    loadYjsUpdates: (docName: string) => Promise<ArrayBuffer[]>;
+  };
 }
