@@ -173,26 +173,19 @@
       "indexes": {
         "models_provider_idx": {
           "name": "models_provider_idx",
-          "columns": [
-            "provider"
-          ],
+          "columns": ["provider"],
           "isUnique": false
         },
         "models_type_idx": {
           "name": "models_type_idx",
-          "columns": [
-            "type"
-          ],
+          "columns": ["type"],
           "isUnique": false
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "models_provider_id_pk": {
-          "columns": [
-            "provider",
-            "id"
-          ],
+          "columns": ["provider", "id"],
           "name": "models_provider_id_pk"
         }
       },
@@ -365,9 +358,7 @@
       "indexes": {
         "vocabulary_word_unique": {
           "name": "vocabulary_word_unique",
-          "columns": [
-            "word"
-          ],
+          "columns": ["word"],
           "isUnique": true
         }
       },
