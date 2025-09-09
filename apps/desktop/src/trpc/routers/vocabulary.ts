@@ -23,16 +23,71 @@ const GetVocabularySchema = z.object({
   search: z.string().optional(),
 });
 
-const CreateVocabularySchema = z.object({
-  word: z.string().min(1),
-  dateAdded: z.date().optional(),
-});
+const CreateVocabularySchema = z
+  .object({
+    word: z.string().min(1),
+    isReplacement: z.boolean().optional(),
+    replacementWord: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      // If isReplacement is true, replacementWord must be provided
+      if (data.isReplacement === true && !data.replacementWord) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "replacementWord is required when isReplacement is true",
+      path: ["replacementWord"],
+    },
+  )
+  .refine(
+    (data) => {
+      // If both word and replacementWord are provided, they must be different
+      if (data.word && data.replacementWord) {
+        return data.word !== data.replacementWord;
+      }
+      return true;
+    },
+    {
+      path: ["replacementWord"],
+      message: "replacementWord must be different from word",
+    },
+  );
 
-const UpdateVocabularySchema = z.object({
-  word: z.string().min(1).optional(),
-  dateAdded: z.date().optional(),
-  usageCount: z.number().optional(),
-});
+const UpdateVocabularySchema = z
+  .object({
+    word: z.string().min(1).optional(),
+    isReplacement: z.boolean().optional(),
+    replacementWord: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      // If isReplacement is true, replacementWord must be provided
+      if (data.isReplacement === true && !data.replacementWord) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "replacementWord is required when isReplacement is true",
+      path: ["replacementWord"],
+    },
+  )
+  .refine(
+    (data) => {
+      // If both word and replacementWord are provided, they must be different
+      if (data.word && data.replacementWord) {
+        return data.word !== data.replacementWord;
+      }
+      return true;
+    },
+    {
+      message: "replacementWord must be different from word",
+      path: ["replacementWord"],
+    },
+  );
 
 const BulkImportSchema = z.array(
   z.object({

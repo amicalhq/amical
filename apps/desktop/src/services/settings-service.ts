@@ -96,6 +96,22 @@ export class SettingsService {
   }
 
   /**
+   * Get dictation settings
+   */
+  async getDictationSettings(): Promise<AppSettingsData["dictation"]> {
+    return await getSettingsSection("dictation");
+  }
+
+  /**
+   * Update dictation settings
+   */
+  async setDictationSettings(
+    dictationSettings: AppSettingsData["dictation"],
+  ): Promise<void> {
+    await updateSettingsSection("dictation", dictationSettings);
+  }
+
+  /**
    * Get shortcuts configuration with defaults
    */
   async getShortcuts(): Promise<ShortcutsConfig> {
@@ -117,5 +133,131 @@ export class SettingsService {
       toggleRecording: shortcuts.toggleRecording || undefined,
     };
     await updateSettingsSection("shortcuts", dataToStore);
+  }
+
+  /**
+   * Get model providers configuration
+   */
+  async getModelProvidersConfig(): Promise<
+    AppSettingsData["modelProvidersConfig"]
+  > {
+    console.log(
+      "getModelProvidersConfig",
+      await getSettingsSection("modelProvidersConfig"),
+    );
+    return await getSettingsSection("modelProvidersConfig");
+  }
+
+  /**
+   * Update model providers configuration
+   */
+  async setModelProvidersConfig(
+    config: AppSettingsData["modelProvidersConfig"],
+  ): Promise<void> {
+    await updateSettingsSection("modelProvidersConfig", config);
+  }
+
+  /**
+   * Get OpenRouter configuration
+   */
+  async getOpenRouterConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.openRouter;
+  }
+
+  /**
+   * Update OpenRouter configuration
+   */
+  async setOpenRouterConfig(config: { apiKey: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      openRouter: config,
+    });
+  }
+
+  /**
+   * Get Ollama configuration
+   */
+  async getOllamaConfig(): Promise<{ url: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.ollama;
+  }
+
+  /**
+   * Update Ollama configuration
+   */
+  async setOllamaConfig(config: { url: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+
+    // If URL is empty, remove the ollama config entirely
+    if (config.url === "") {
+      const updatedConfig = { ...currentConfig };
+      delete updatedConfig.ollama;
+      await this.setModelProvidersConfig(updatedConfig);
+    } else {
+      await this.setModelProvidersConfig({
+        ...currentConfig,
+        ollama: config,
+      });
+    }
+  }
+
+  /**
+   * Get default speech model (Whisper)
+   */
+  async getDefaultSpeechModel(): Promise<string | undefined> {
+    const config = await this.getModelProvidersConfig();
+    console.error("config is ", config);
+    return config?.defaultSpeechModel;
+  }
+
+  /**
+   * Set default speech model (Whisper)
+   */
+  async setDefaultSpeechModel(modelId: string | undefined): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      defaultSpeechModel: modelId,
+    });
+  }
+
+  /**
+   * Get default language model
+   */
+  async getDefaultLanguageModel(): Promise<string | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.defaultLanguageModel;
+  }
+
+  /**
+   * Set default language model
+   */
+  async setDefaultLanguageModel(modelId: string | undefined): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      defaultLanguageModel: modelId,
+    });
+  }
+
+  /**
+   * Get default embedding model
+   */
+  async getDefaultEmbeddingModel(): Promise<string | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.defaultEmbeddingModel;
+  }
+
+  /**
+   * Set default embedding model
+   */
+  async setDefaultEmbeddingModel(modelId: string | undefined): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      defaultEmbeddingModel: modelId,
+    });
   }
 }

@@ -1,12 +1,11 @@
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
+import { app } from "electron";
 import { createRouter, procedure } from "../trpc";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
-  provider: z.literal("openrouter"),
-  model: z.string(),
-  apiKey: z.string(),
+  model: z.string(), // Model ID from synced models
   enabled: z.boolean(),
 });
 
@@ -14,6 +13,25 @@ const FormatterConfigSchema = z.object({
 const SetShortcutSchema = z.object({
   type: z.enum(["pushToTalk", "toggleRecording"]),
   shortcut: z.string(),
+});
+
+// Model providers schemas
+const OpenRouterConfigSchema = z.object({
+  apiKey: z.string(),
+});
+
+const OllamaConfigSchema = z.object({
+  url: z.string().url().or(z.literal("")),
+});
+
+const ModelProvidersConfigSchema = z.object({
+  openRouter: OpenRouterConfigSchema.optional(),
+  ollama: OllamaConfigSchema.optional(),
+});
+
+const DictationSettingsSchema = z.object({
+  autoDetectEnabled: z.boolean(),
+  selectedLanguage: z.string().min(1), // Must be valid when autoDetectEnabled is false
 });
 
 export const settingsRouter = createRouter({
@@ -175,7 +193,7 @@ export const settingsRouter = createRouter({
 
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
-          logger.main.info("Shortcut updated", input);
+          logger?.main.info("Shortcut updated", input);
         }
 
         // Notify shortcut manager to reload shortcuts
@@ -183,7 +201,9 @@ export const settingsRouter = createRouter({
           ctx.serviceManager.getService("shortcutManager");
         if (shortcutManager) {
           await shortcutManager.reloadShortcuts();
-          logger.main.info("Shortcut manager notified of shortcut change");
+          if (logger) {
+            logger.main.info("Shortcut manager notified of shortcut change");
+          }
         }
 
         return true;
@@ -302,4 +322,187 @@ export const settingsRouter = createRouter({
         throw error;
       }
     }),
+
+  // Get app version
+  getAppVersion: procedure.query(() => {
+    return app.getVersion();
+  }),
+
+  // Get dictation settings
+  getDictationSettings: procedure.query(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      const allSettings = await settingsService.getAllSettings();
+      return (
+        allSettings.dictation || {
+          autoDetectEnabled: true,
+          selectedLanguage: "en",
+        }
+      );
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error getting dictation settings:", error);
+      }
+      return {
+        autoDetectEnabled: true,
+        selectedLanguage: "en",
+      };
+    }
+  }),
+
+  // Set dictation settings
+  setDictationSettings: procedure
+    .input(DictationSettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        // Validation: if autoDetectEnabled is false, ensure selectedLanguage is valid
+        if (
+          !input.autoDetectEnabled &&
+          (!input.selectedLanguage || input.selectedLanguage === "auto")
+        ) {
+          throw new Error(
+            "Selected language must be specified when auto-detect is disabled",
+          );
+        }
+
+        // Set default to "en" if switching from auto-detect enabled to disabled with invalid language
+        let selectedLanguage = input.selectedLanguage;
+        if (
+          !input.autoDetectEnabled &&
+          (!selectedLanguage || selectedLanguage === "auto")
+        ) {
+          selectedLanguage = "en";
+        }
+
+        const dictationSettings = {
+          autoDetectEnabled: input.autoDetectEnabled,
+          selectedLanguage,
+        };
+
+        await settingsService.setDictationSettings(dictationSettings);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Dictation settings updated:", dictationSettings);
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting dictation settings:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Get model providers configuration
+  getModelProvidersConfig: procedure.query(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      return await settingsService.getModelProvidersConfig();
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error getting model providers config:", error);
+      }
+      return null;
+    }
+  }),
+
+  // Set model providers configuration
+  setModelProvidersConfig: procedure
+    .input(ModelProvidersConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setModelProvidersConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Model providers configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting model providers config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set OpenRouter configuration
+  setOpenRouterConfig: procedure
+    .input(OpenRouterConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setOpenRouterConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("OpenRouter configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting OpenRouter config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set Ollama configuration
+  setOllamaConfig: procedure
+    .input(OllamaConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setOllamaConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Ollama configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting Ollama config:", error);
+        }
+        throw error;
+      }
+    }),
 });
+// This comment prevents prettier from removing the trailing newline

@@ -1,5 +1,5 @@
 import { app, systemPreferences } from "electron";
-import { initializeDatabase } from "../../db/config";
+import { initializeDatabase } from "../../db";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
 import { setupApplicationMenu } from "../menu";

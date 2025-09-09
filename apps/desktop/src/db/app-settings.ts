@@ -1,5 +1,19 @@
+/**
+ * Application Settings Management
+ *
+ * This module manages app settings with a section-based approach:
+ * - Settings are organized into top-level sections (ui, transcription, recording, etc.)
+ * - Each section is treated as an atomic unit - updates replace the entire section
+ * - No deep merging is performed within sections to avoid complexity
+ *
+ * When updating settings:
+ * - To update a single field, fetch the current section, modify it, and save the complete section
+ * - The SettingsService handles this pattern correctly for all methods
+ * - Direct calls to updateAppSettings should pass complete sections
+ */
+
 import { eq } from "drizzle-orm";
-import { db } from "./config";
+import { db } from ".";
 import {
   appSettings,
   type NewAppSettings,
@@ -12,9 +26,7 @@ const SETTINGS_ID = 1;
 // Default settings
 const defaultSettings: AppSettingsData = {
   formatterConfig: {
-    provider: "openrouter",
-    model: "anthropic/claude-3-haiku",
-    apiKey: "",
+    model: "", // Will be set when models are synced
     enabled: false,
   },
   ui: {
@@ -40,6 +52,11 @@ const defaultSettings: AppSettingsData = {
     pushToTalk: "Fn",
     toggleRecording: "",
   },
+  modelProvidersConfig: {
+    defaultSpeechModel: "",
+    defaultLanguageModel: "",
+    defaultEmbeddingModel: "",
+  },
 };
 
 // Get all app settings
@@ -58,51 +75,19 @@ export async function getAppSettings(): Promise<AppSettingsData> {
   return result[0].data;
 }
 
-// Update app settings (merges with existing settings)
+// Update app settings (shallow merge at top level only)
+// IMPORTANT: When updating a section, always pass the complete section.
+// This function does NOT deep merge nested objects.
 export async function updateAppSettings(
   newSettings: Partial<AppSettingsData>,
 ): Promise<AppSettingsData> {
   const currentSettings = await getAppSettings();
+
+  // Simple shallow merge - each top-level section is replaced entirely
   const mergedSettings: AppSettingsData = {
     ...currentSettings,
     ...newSettings,
   };
-
-  // Deep merge specific nested objects if they exist in newSettings
-  if (newSettings.formatterConfig && currentSettings.formatterConfig) {
-    mergedSettings.formatterConfig = {
-      ...currentSettings.formatterConfig,
-      ...newSettings.formatterConfig,
-    };
-  }
-
-  if (newSettings.ui && currentSettings.ui) {
-    mergedSettings.ui = {
-      ...currentSettings.ui,
-      ...newSettings.ui,
-    };
-  }
-
-  if (newSettings.transcription && currentSettings.transcription) {
-    mergedSettings.transcription = {
-      ...currentSettings.transcription,
-      ...newSettings.transcription,
-    };
-  }
-
-  if (newSettings.recording && currentSettings.recording) {
-    mergedSettings.recording = {
-      ...currentSettings.recording,
-      ...newSettings.recording,
-    };
-  }
-
-  if (newSettings.shortcuts && currentSettings.shortcuts) {
-    mergedSettings.shortcuts = {
-      ...currentSettings.shortcuts,
-      ...newSettings.shortcuts,
-    };
-  }
 
   const now = new Date();
 
@@ -142,7 +127,9 @@ export async function getSettingsSection<K extends keyof AppSettingsData>(
   return settings[section];
 }
 
-// Update a specific setting section
+//! Update a specific setting section (replaces the entire section)
+//! IMPORTANT: This replaces the entire section with newData.
+//! Make sure to pass the complete section data, not partial updates.
 export async function updateSettingsSection<K extends keyof AppSettingsData>(
   section: K,
   newData: AppSettingsData[K],

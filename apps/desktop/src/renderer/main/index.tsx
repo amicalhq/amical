@@ -5,50 +5,53 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 // Lazy import the main content
-const Content = React.lazy(
-  () =>
-    import("./content.js") as unknown as Promise<{
-      default: React.ComponentType<any>;
-    }>,
-);
+const Content = React.lazy(() => import("./content"));
 
 // Extend Console interface to include original methods
 declare global {
   interface Console {
     original: {
-      log: (...args: any[]) => void;
-      info: (...args: any[]) => void;
-      warn: (...args: any[]) => void;
-      error: (...args: any[]) => void;
-      debug: (...args: any[]) => void;
+      log: (...data: unknown[]) => void;
+      info: (...data: unknown[]) => void;
+      warn: (...data: unknown[]) => void;
+      error: (...data: unknown[]) => void;
+      debug: (...data: unknown[]) => void;
     };
   }
 }
 
-// Main window scoped logger setup
-const mainWindowLogger = window.electronAPI.log.scope("mainWindow");
+// Main window scoped logger setup with guards
+const mainWindowLogger = window.electronAPI?.log?.scope?.("mainWindow");
+
+// Store original console methods with proper binding
+const originalConsole = {
+  log: console.log.bind(console),
+  info: console.info.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console),
+};
 
 // Proxy console methods to use BOTH original console AND main window logger
-const originalConsole = { ...console };
-console.log = (...args: any[]) => {
+console.log = (...args: unknown[]) => {
   originalConsole.log(...args); // Show in dev console
-  mainWindowLogger.info(...args); // Send via IPC
+  mainWindowLogger?.info?.(...args); // Send via IPC if available
 };
-console.info = (...args: any[]) => {
+console.info = (...args: unknown[]) => {
   originalConsole.info(...args);
-  mainWindowLogger.info(...args);
+  mainWindowLogger?.info?.(...args);
 };
-console.warn = (...args: any[]) => {
+console.warn = (...args: unknown[]) => {
   originalConsole.warn(...args);
-  mainWindowLogger.warn(...args);
+  mainWindowLogger?.warn?.(...args);
 };
-console.error = (...args: any[]) => {
+console.error = (...args: unknown[]) => {
   originalConsole.error(...args);
-  mainWindowLogger.error(...args);
+  mainWindowLogger?.error?.(...args);
 };
-console.debug = (...args: any[]) => {
+console.debug = (...args: unknown[]) => {
   originalConsole.debug(...args);
-  mainWindowLogger.debug(...args);
+  mainWindowLogger?.debug?.(...args);
 };
 
 // Keep original methods available if needed
