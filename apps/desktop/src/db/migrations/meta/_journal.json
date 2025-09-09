@@ -8,6 +8,20 @@
       "when": 1750751926568,
       "tag": "0000_worried_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1756713731189,
+      "tag": "0001_worthless_polaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1756717404601,
+      "tag": "0002_sweet_tiger_shark",
+      "breakpoints": true
     }
   ]
 }

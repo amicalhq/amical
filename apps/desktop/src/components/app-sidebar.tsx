@@ -48,6 +48,11 @@ const data = {
       icon: IconFileDescription,
     },
     {
+      title: "Notes",
+      url: "#",
+      icon: IconNotes,
+    },
+    {
       title: "Vocabulary",
       url: "#",
       icon: IconFileWord,

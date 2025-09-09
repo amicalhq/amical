@@ -105,6 +105,9 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CODESIGNING_IDENTITY: ${{ secrets.CODESIGNING_IDENTITY }}
+          POSTHOG_HOST: https://app.posthog.com
+          TELEMETRY_ENABLED: true
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: |
           echo "Building macOS ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}
@@ -112,6 +115,10 @@ jobs:
       - name: Build artifacts (Windows)
         if: matrix.os == 'windows'
         working-directory: apps/desktop
+        env:
+          POSTHOG_HOST: https://app.posthog.com
+          TELEMETRY_ENABLED: true
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: |
           echo "Building Windows x64 artifacts"
           pnpm make:windows

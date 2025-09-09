@@ -12,11 +12,13 @@ import { createIPCHandler } from "electron-trpc-experimental/main";
 import { router } from "../../trpc/router";
 import { createContext } from "../../trpc/context";
 import { isMacOS, isWindows } from "../../utils/platform";
+import { TelemetryService } from "../../services/telemetry-service";
 
 /**
  * Service map for type-safe service access
  */
 export interface ServiceMap {
+  telemetryService: TelemetryService;
   modelManagerService: ModelManagerService;
   transcriptionService: TranscriptionService;
   settingsService: SettingsService;
@@ -35,6 +37,7 @@ export class ServiceManager {
   private static instance: ServiceManager | null = null;
   private isInitialized = false;
 
+  private telemetryService: TelemetryService | null = null;
   private modelManagerService: ModelManagerService | null = null;
   private transcriptionService: TranscriptionService | null = null;
   private settingsService: SettingsService | null = null;
@@ -56,6 +59,7 @@ export class ServiceManager {
     }
 
     try {
+      await this.initializeTelemetryService();
       this.initializeSettingsService();
       await this.initializeModelServices();
       this.initializePlatformServices();
@@ -72,6 +76,12 @@ export class ServiceManager {
       logger.main.error("Failed to initialize services:", error);
       // Don't throw here - allow app to start even if some services fail
     }
+  }
+
+  private async initializeTelemetryService(): Promise<void> {
+    this.telemetryService = new TelemetryService();
+    await this.telemetryService.initialize();
+    logger.main.info("Telemetry service initialized");
   }
 
   private initializeSettingsService(): void {
@@ -110,6 +120,7 @@ export class ServiceManager {
         this.modelManagerService,
         this.vadService,
         this.settingsService,
+        this.telemetryService,
       );
       await this.transcriptionService.initialize();
 
@@ -210,6 +221,7 @@ export class ServiceManager {
     }
 
     const services: Partial<ServiceMap> = {
+      telemetryService: this.telemetryService ?? undefined,
       modelManagerService: this.modelManagerService ?? undefined,
       transcriptionService: this.transcriptionService ?? undefined,
       settingsService: this.settingsService ?? undefined,
@@ -246,6 +258,11 @@ export class ServiceManager {
     if (this.nativeBridge) {
       logger.main.info("Stopping native helper...");
       this.nativeBridge.stopHelper();
+    }
+
+    if (this.telemetryService) {
+      logger.main.info("Shutting down telemetry service...");
+      await this.telemetryService.shutdown();
     }
   }
 
