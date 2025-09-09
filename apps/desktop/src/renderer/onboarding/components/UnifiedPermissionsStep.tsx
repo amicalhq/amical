@@ -118,7 +118,7 @@ export function UnifiedPermissionsStep({
       {/* Header with logo */}
       <div className="text-center space-y-4">
         <img
-          src="/assets/logo.svg"
+          src="assets/logo.svg"
           alt="Amical"
           className="w-20 h-20 mx-auto"
         />

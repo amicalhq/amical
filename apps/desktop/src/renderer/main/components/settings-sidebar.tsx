@@ -26,7 +26,7 @@ import {
 // Custom Discord icon component
 const DiscordIcon = ({ className }: { className?: string }) => (
   <img
-    src="/assets/discord-icon.svg"
+    src="assets/discord-icon.svg"
     alt="Discord"
     className={`w-4 h-4 ${className || ""}`}
   />
@@ -106,7 +106,7 @@ export function SettingsSidebar({
             >
               <div className="inline-flex items-center gap-2.5 font-semibold w-full">
                 <img
-                  src="/assets/logo.svg"
+                  src="assets/logo.svg"
                   alt="Amical Logo"
                   className="!size-7"
                 />
