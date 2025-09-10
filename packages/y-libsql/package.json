@@ -1,0 +1,24 @@
+{
+  "name": "@amical/y-libsql",
+  "version": "0.1.0",
+  "description": "LibSQL persistence provider for Yjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.9",
+    "yjs": "^13.6.18",
+    "minimatch": "10.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "typescript": "^5.5.2"
+  },
+  "peerDependencies": {
+    "yjs": "^13.6.0"
+  }
+}

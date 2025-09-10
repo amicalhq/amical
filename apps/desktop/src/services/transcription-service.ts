@@ -413,14 +413,13 @@ export class TranscriptionService {
       ? completionTime - session.recordingStartedAt
       : undefined;
 
-    const selectedModel =
-      this.modelManagerService.getSelectedModel() || "unknown";
+    const selectedModel = await this.modelManagerService.getSelectedModel();
     const audioDurationSeconds =
       session.context.sharedData.audioMetadata?.duration;
 
     this.telemetryService.trackTranscriptionCompleted({
       session_id: sessionId,
-      model_id: selectedModel,
+      model_id: selectedModel!,
       model_preloaded: this.modelWasPreloaded,
       total_duration_ms: totalDuration || 0,
       recording_duration_ms: recordingDuration,

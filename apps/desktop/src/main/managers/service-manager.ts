@@ -121,9 +121,9 @@ export class ServiceManager {
 
       this.transcriptionService = new TranscriptionService(
         this.modelManagerService,
-        this.vadService,
+        this.vadService!,
         this.settingsService,
-        this.telemetryService,
+        this.telemetryService!,
       );
       await this.transcriptionService.initialize();
 
