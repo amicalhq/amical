@@ -6,17 +6,31 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
 export default function AdvancedSettingsPage() {
   const [preloadWhisperModel, setPreloadWhisperModel] = useState(true);
+  const [isResetting, setIsResetting] = useState(false);
 
   // tRPC queries and mutations
   const settingsQuery = api.settings.getSettings.useQuery();
+  const dataPathQuery = api.settings.getDataPath.useQuery();
   const utils = api.useUtils();
 
   const updateTranscriptionSettingsMutation =
@@ -30,6 +44,21 @@ export default function AdvancedSettingsPage() {
         toast.error("Failed to update settings. Please try again.");
       },
     });
+
+  const resetAppMutation = api.settings.resetApp.useMutation({
+    onMutate: () => {
+      setIsResetting(true);
+      toast.info("Resetting app...");
+    },
+    onSuccess: () => {
+      toast.success("App reset successfully. Restarting...");
+    },
+    onError: (error) => {
+      setIsResetting(false);
+      console.error("Failed to reset app:", error);
+      toast.error("Failed to reset app. Please try again.");
+    },
+  });
 
   // Load settings when query data is available
   useEffect(() => {
@@ -97,15 +126,72 @@ export default function AdvancedSettingsPage() {
 
           <div className="space-y-2">
             <Label htmlFor="data-location">Data Location</Label>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                id="data-location"
-                className="flex-1 border rounded px-3 py-2"
-                value="~/Documents/Amical"
-                readOnly
-              />
-              <Button variant="outline">Change</Button>
+            <Input
+              id="data-location"
+              value={dataPathQuery.data || "Loading..."}
+              disabled
+              className="cursor-default"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger Zone</CardTitle>
+          <CardDescription>
+            Actions here are irreversible and will delete all your data
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="reset-app">Reset App</Label>
+                <p className="text-sm text-muted-foreground">
+                  Delete all data and start fresh
+                </p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    disabled={isResetting}
+                    id="reset-app"
+                  >
+                    Reset App
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Are you absolutely sure?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently
+                      delete:
+                      <ul className="list-disc list-inside mt-2">
+                        <li>All your transcriptions</li>
+                        <li>All your notes</li>
+                        <li>Your vocabulary</li>
+                        <li>All settings and preferences</li>
+                        <li>Downloaded models</li>
+                      </ul>
+                      <br />
+                      The app will restart with a fresh installation.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => resetAppMutation.mutate()}
+                    >
+                      Yes, delete everything
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </CardContent>

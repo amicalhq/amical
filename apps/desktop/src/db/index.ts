@@ -6,7 +6,7 @@ import * as fs from "fs";
 import * as schema from "./schema";
 
 // Get the user data directory for storing the database
-const dbPath = app.isPackaged
+export const dbPath = app.isPackaged
   ? path.join(app.getPath("userData"), "amical.db")
   : path.join(process.cwd(), "amical.db");
 

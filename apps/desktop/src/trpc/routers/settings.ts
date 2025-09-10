@@ -2,6 +2,8 @@ import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { app } from "electron";
 import { createRouter, procedure } from "../trpc";
+import { dbPath } from "../../db";
+import * as fs from "fs/promises";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
@@ -504,5 +506,41 @@ export const settingsRouter = createRouter({
         throw error;
       }
     }),
+
+  // Get data path
+  getDataPath: procedure.query(() => {
+    return app.getPath("userData");
+  }),
+
+  // Reset app - deletes all data and restarts
+  resetApp: procedure.mutation(async ({ ctx }) => {
+    try {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.info("Resetting app - deleting all data");
+      }
+
+      // Delete the database file
+      await fs.unlink(dbPath);
+
+      // Handle restart differently in development vs production
+      if (process.env.NODE_ENV === "development" || !app.isPackaged) {
+        //! restarting will not work properly in dev mode
+        app.quit();
+      } else {
+        // Production mode: relaunch the app
+        app.relaunch();
+        app.quit();
+      }
+
+      return { success: true };
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error resetting app:", error);
+      }
+      throw new Error("Failed to reset app");
+    }
+  }),
 });
 // This comment prevents prettier from removing the trailing newline
