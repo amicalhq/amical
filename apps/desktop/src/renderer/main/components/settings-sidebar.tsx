@@ -52,7 +52,7 @@ const data = {
     },
     {
       title: "Notes",
-      url: "#",
+      url: "/settings/notes",
       icon: IconNotes,
     },
     {

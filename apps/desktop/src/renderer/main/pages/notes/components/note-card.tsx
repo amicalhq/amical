@@ -1,29 +1,29 @@
-"use client"
+"use client";
 
-import { FileText, Calendar } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Note } from "../types"
-
+import { FileText, Calendar } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Note } from "../types";
 
 interface RecentNoteCardProps {
-  note: Note
-  onNoteClick: (noteId: string) => void
+  note: Note;
+  onNoteClick: (noteId: number) => void;
 }
 
 function formatDate(date: Date): string {
-  const now = new Date()
-  const diffInDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  const now = new Date();
+  const diffInDays = Math.floor(
+    (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
+  );
 
-  if (diffInDays === 0) return "Today"
-  if (diffInDays === 1) return "Yesterday"
+  if (diffInDays === 0) return "Today";
+  if (diffInDays === 1) return "Yesterday";
 
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  })
+  });
 }
-
 
 export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
   return (
@@ -37,8 +37,8 @@ export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
       role="button"
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onNoteClick(note.id)
+          e.preventDefault();
+          onNoteClick(note.id);
         }
       }}
     >
@@ -54,17 +54,22 @@ export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
       {/* Note Content */}
       <div className="flex-1 min-w-0">
         {/* Note Name */}
-        <div className="font-medium text-foreground text-sm leading-tight">{(note.name)}</div>
+        <div className="font-medium text-foreground text-sm leading-tight">
+          {note.title}
+        </div>
 
         {/* Date and Meeting Info */}
         <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
-          <span>{formatDate(note.lastUpdated)}</span>
+          <span>{formatDate(note.updatedAt)}</span>
 
           {note.meetingEvent && (
             <>
               <span className="w-1 h-1 bg-muted-foreground rounded-full"></span>
               <div className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" style={{ color: note.meetingEvent.calendarColor }} />
+                <Calendar
+                  className="w-3 h-3"
+                  style={{ color: note.meetingEvent.calendarColor }}
+                />
                 <span className="">{note.meetingEvent.title}</span>
               </div>
             </>
@@ -72,5 +77,5 @@ export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }

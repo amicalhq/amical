@@ -11,6 +11,7 @@ import {
   Check,
   Star,
   FileTextIcon,
+  Loader2,
 } from "lucide-react";
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { Button } from "@/components/ui/button";
@@ -53,11 +54,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-type NotePageProps = {
-  noteId: string;
-  onBack: () => void;
-};
-
 type InvitedUser = {
   id: number;
   name: string;
@@ -67,45 +63,46 @@ type InvitedUser = {
   status: "active" | "invited";
 };
 
-// TODO: fetch note data from backend and replace mock data
+export type NotePageUIProps = {
+  noteId: string;
+  noteTitle: string;
+  noteBody: string;
+  noteEmoji: string | null;
+  isLoading: boolean;
+  isSyncing: boolean;
+  lastEditDate: Date;
+  onTitleChange: (value: string) => void;
+  onBodyChange: (value: string) => void;
+  onDelete: () => void;
+  onEmojiChange: (emoji: string | null) => void;
+  onBack?: () => void;
+  isDeleting?: boolean;
+};
 
-export default function NotePage({ noteId, onBack }: NotePageProps) {
-  const [noteTitle, setNoteTitle] = useState("My Project Ideas");
-  const [noteBody, setNoteBody] = useState(
-    `# Project Ideas for 2024
-
-## Web Development Projects
-- Build a collaborative note-taking app with real-time editing
-- Create a personal finance tracker with data visualization
-- Develop a habit tracking application with gamification
-
-## Learning Goals
-- Master TypeScript and advanced React patterns
-- Learn about system design and scalable architectures
-- Explore machine learning fundamentals
-
-## Notes
-- Remember to focus on user experience and accessibility
-- Consider mobile-first design approach
-- Plan for internationalization from the start
-
-## Resources
-- Check out the latest React documentation
-- Follow up on TypeScript best practices
-- Research modern CSS frameworks
-
-This note was created as part of my personal development planning session. The ideas here represent both short-term and long-term goals that I want to pursue throughout the year.`
-  );
+export default function Note({
+  noteTitle,
+  noteBody,
+  noteEmoji,
+  isLoading,
+  isSyncing,
+  lastEditDate,
+  onTitleChange,
+  onBodyChange,
+  onDelete,
+  onEmojiChange,
+  isDeleting = false,
+}: NotePageUIProps) {
+  // Local UI state
   const [shareEmail, setShareEmail] = useState("");
   const [accessLevel, setAccessLevel] = useState("can-read");
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [invitedUsers, setInvitedUsers] = useState<Array<InvitedUser>>([]);
   const [starred, setStarred] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
   // Mock shared users data
-  const sharedUsers = [
+  /* const sharedUsers = [
     {
       id: 1,
       name: "Alice Johnson",
@@ -133,12 +130,10 @@ This note was created as part of my personal development planning session. The i
       access: "can-read",
       status: "active" as const,
     },
-  ];
-
-  const lastEditDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  ]; */
 
   // TODO: implement actual share functionality
-  const handleShare = () => {
+  /* const handleShare = () => {
     if (shareEmail) {
       const newInvite = {
         id: Date.now(),
@@ -154,22 +149,32 @@ This note was created as part of my personal development planning session. The i
       // Hide confirmation after 3 seconds
       setTimeout(() => setShowConfirmation(false), 3000);
     }
-  };
+  }; */
 
-  // TODO: implement actual delete functionality
-  const handleDelete = () => {
-    console.log("Deleting note:", noteId);
+  const handleDeleteClick = () => {
     setShowDeleteDialog(false);
-    // For now, just go back to the previous page
-    onBack();
+    onDelete();
   };
 
   const handleEmojiSelect = (emojiData: { emoji: string }) => {
-    setSelectedEmoji(emojiData.emoji);
+    onEmojiChange(emojiData.emoji);
     setShowEmojiPicker(false);
   };
 
-  const allUsers = [...sharedUsers, ...invitedUsers];
+  const handleEmojiRemove = () => {
+    onEmojiChange(null);
+  };
+
+  /* const allUsers = [...sharedUsers, ...invitedUsers]; */
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -186,32 +191,47 @@ This note was created as part of my personal development planning session. The i
                   size="sm"
                   className="h-12 w-12 p-0 hover:bg-muted/50"
                 >
-                  {selectedEmoji ? (
-                    <span className="text-2xl">{selectedEmoji}</span>
+                  {noteEmoji ? (
+                    <span className="text-2xl">{noteEmoji}</span>
                   ) : (
                     <FileTextIcon className="!h-6 !w-6 text-muted-foreground" />
                   )}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                <EmojiPicker
-                  onEmojiClick={handleEmojiSelect}
-                  autoFocusSearch={false}
-                  theme={Theme.DARK}
-                  lazyLoadEmojis={false}
-                  height={400}
-                  width={400}
-                />
+                <div>
+                  {noteEmoji && (
+                    <div className="flex justify-end p-2 border-b">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleEmojiRemove}
+                        className="text-xs"
+                      >
+                        Remove emoji
+                      </Button>
+                    </div>
+                  )}
+                  <EmojiPicker
+                    onEmojiClick={handleEmojiSelect}
+                    autoFocusSearch={false}
+                    theme={Theme.DARK}
+                    lazyLoadEmojis={false}
+                    height={400}
+                    width={400}
+                  />
+                </div>
               </PopoverContent>
             </Popover>
 
             {/* Note Title Input */}
             <Input
               value={noteTitle}
-              onChange={(e) => setNoteTitle(e.target.value)}
+              onChange={(e) => onTitleChange(e.target.value)}
               className="!text-4xl font-semibold border-none px-4 py-2 focus-visible:ring-0 placeholder:text-muted-foreground flex-1"
               style={{ backgroundColor: "transparent" }}
               placeholder="Note title..."
+              disabled={isSyncing}
             />
           </div>
 
@@ -234,7 +254,7 @@ This note was created as part of my personal development planning session. The i
 
               {/* {console.log("[v0] Note ID:", noteId)} */}
 
-              <Tooltip>
+              {/* <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
@@ -247,10 +267,10 @@ This note was created as part of my personal development planning session. The i
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>AI Notes coming soon</TooltipContent>
-              </Tooltip>
+              </Tooltip> */}
 
               {/* Shared users avatars */}
-              <div className="flex -space-x-2">
+              {/* <div className="flex -space-x-2">
                 {sharedUsers.map((user) => (
                   <Tooltip key={user.id}>
                     <TooltipTrigger asChild>
@@ -278,10 +298,10 @@ This note was created as part of my personal development planning session. The i
                     </TooltipContent>
                   </Tooltip>
                 ))}
-              </div>
+              </div> */}
 
               {/* Star the note */}
-              <Button
+              {/* <Button
                 size="sm"
                 variant="ghost"
                 className="gap-2"
@@ -292,10 +312,10 @@ This note was created as part of my personal development planning session. The i
                   stroke={starred ? "orange" : "currentColor"}
                   className="h-4 w-4"
                 />
-              </Button>
+              </Button> */}
 
               {/* Share button with popover */}
-              <Popover>
+              {/* <Popover>
                 <PopoverTrigger asChild>
                   <Button size="sm" variant="ghost">
                     <Share className="h-4 w-4" />
@@ -398,7 +418,7 @@ This note was created as part of my personal development planning session. The i
                     )}
                   </div>
                 </PopoverContent>
-              </Popover>
+              </Popover> */}
 
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -417,7 +437,7 @@ This note was created as part of my personal development planning session. The i
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="gap-2">
+                  {/* <DropdownMenuItem className="gap-2">
                     <Copy className="h-4 w-4" />
                     Copy
                   </DropdownMenuItem>
@@ -428,7 +448,7 @@ This note was created as part of my personal development planning session. The i
                   <DropdownMenuItem className="gap-2">
                     <FolderOpen className="h-4 w-4" />
                     Move to
-                  </DropdownMenuItem>
+                  </DropdownMenuItem> */}
                   <AlertDialog
                     open={showDeleteDialog}
                     onOpenChange={setShowDeleteDialog}
@@ -452,12 +472,13 @@ This note was created as part of my personal development planning session. The i
           {/* Note Body */}
           <Textarea
             value={noteBody}
-            onChange={(e) => setNoteBody(e.target.value)}
+            onChange={(e) => onBodyChange(e.target.value)}
             placeholder="Start writing your note..."
             className="min-h-[500px] resize-none border-none bg-transparent px-4 py-2 focus-visible:ring-0 text-base leading-relaxed placeholder:text-muted-foreground"
             style={{
               backgroundColor: "transparent",
             }}
+            disabled={isSyncing}
           />
         </div>
 
@@ -474,10 +495,18 @@ This note was created as part of my personal development planning session. The i
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 className="bg-destructive text-foreground hover:bg-destructive/90"
+                disabled={isDeleting}
               >
-                Delete Note
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Note"
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

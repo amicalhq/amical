@@ -15,6 +15,13 @@
       "when": 1757443963743,
       "tag": "0001_short_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1757500655155,
+      "tag": "0002_cheerful_betty_brant",
+      "breakpoints": true
     }
   ]
 }

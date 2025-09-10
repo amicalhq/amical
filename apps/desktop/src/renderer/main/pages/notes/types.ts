@@ -7,10 +7,10 @@ export type UpcomingEvent = {
 };
 
 export interface Note {
-  id: string;
-  name: string;
-  icon?: string;
-  lastUpdated: Date;
+  id: number;
+  title: string;
+  icon?: string | null;
+  updatedAt: Date;
   meetingEvent?: {
     title: string;
     calendarColor: string;

@@ -117,11 +117,7 @@ export function UnifiedPermissionsStep({
     <div className="max-w-lg w-full space-y-6">
       {/* Header with logo */}
       <div className="text-center space-y-4">
-        <img
-          src="assets/logo.svg"
-          alt="Amical"
-          className="w-20 h-20 mx-auto"
-        />
+        <img src="assets/logo.svg" alt="Amical" className="w-20 h-20 mx-auto" />
         <div>
           <h1 className="text-2xl font-bold">Permissions Required</h1>
           <p className="text-muted-foreground mt-2">

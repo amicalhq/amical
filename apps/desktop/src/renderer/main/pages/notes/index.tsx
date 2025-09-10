@@ -1,19 +1,13 @@
-import { useState } from "react";
-import { NotesHomePage } from "./components/notes-home-page";
-import NotePage from "./components/note-page";
+import { NotesList } from "./components/notes-list";
 
-export function NotesPage() {
-  const [selectedNotesId, setSelectedNotesId] = useState<string | null>(null);
+export default function Notes() {
+  return (
+    <div className="space-y-6 p-2">
+      {/* Upcoming events section */}
+      {/* <UpcomingEvents /> */}
 
-  // TODO: replace this with a proper router
-
-  if (selectedNotesId) {
-    return (
-      <NotePage
-        noteId={selectedNotesId}
-        onBack={() => setSelectedNotesId(null)}
-      />
-    );
-  }
-  return <NotesHomePage onNoteClick={(noteId) => setSelectedNotesId(noteId)} />;
+      {/* Recent notes section */}
+      <NotesList />
+    </div>
+  );
 }

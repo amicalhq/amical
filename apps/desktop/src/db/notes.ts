@@ -1,13 +1,11 @@
 import { eq, desc, asc, like, and, isNull } from "drizzle-orm";
-import { db } from "./config";
+import { db } from "./index";
 import {
   notes,
-  noteMetadata,
   yjsUpdates,
   type Note,
   type NewNote,
-  type NoteMetadata,
-  type NewNoteMetadata,
+  type YjsUpdate,
 } from "./schema";
 
 // Create a new note
@@ -20,7 +18,6 @@ export async function createNote(
     ...data,
     createdAt: now,
     updatedAt: now,
-    lastAccessedAt: now,
   };
 
   const result = await db.insert(notes).values(newNote).returning();
@@ -32,10 +29,9 @@ export async function getNotes(
   options: {
     limit?: number;
     offset?: number;
-    sortBy?: "title" | "updatedAt" | "createdAt" | "lastAccessedAt";
+    sortBy?: "title" | "updatedAt" | "createdAt";
     sortOrder?: "asc" | "desc";
     search?: string;
-    transcriptionId?: number | null;
   } = {},
 ) {
   const {
@@ -44,7 +40,6 @@ export async function getNotes(
     sortBy = "updatedAt",
     sortOrder = "desc",
     search,
-    transcriptionId,
   } = options;
 
   // Build query
@@ -54,13 +49,6 @@ export async function getNotes(
   const conditions = [];
   if (search) {
     conditions.push(like(notes.title, `%${search}%`));
-  }
-  if (transcriptionId !== undefined) {
-    conditions.push(
-      transcriptionId === null
-        ? isNull(notes.transcriptionId)
-        : eq(notes.transcriptionId, transcriptionId),
-    );
   }
 
   if (conditions.length > 0) {
@@ -84,15 +72,6 @@ export async function getNoteById(id: number) {
   return result[0] || null;
 }
 
-// Get note by document name
-export async function getNoteByDocName(docName: string) {
-  const result = await db
-    .select()
-    .from(notes)
-    .where(eq(notes.docName, docName));
-  return result[0] || null;
-}
-
 // Update note
 export async function updateNote(
   id: number,
@@ -112,81 +91,77 @@ export async function updateNote(
   return result[0] || null;
 }
 
-// Update note last accessed time
-export async function touchNote(id: number) {
-  const result = await db
-    .update(notes)
-    .set({ lastAccessedAt: new Date() })
-    .where(eq(notes.id, id))
-    .returning();
-
-  return result[0] || null;
-}
-
 // Delete note
 export async function deleteNote(id: number) {
-  // Get the note first to get docName
-  const note = await getNoteById(id);
-  if (!note) return null;
-
-  // Delete all yjs updates for this document
-  await db.delete(yjsUpdates).where(eq(yjsUpdates.docName, note.docName));
-
-  // Delete the note (metadata will be cascade deleted)
+  // Delete the note (yjs updates and metadata will be cascade deleted)
   const result = await db.delete(notes).where(eq(notes.id, id)).returning();
-
   return result[0] || null;
 }
 
-// Get notes by transcription ID
-export async function getNotesByTranscriptionId(transcriptionId: number) {
+// YJS Updates operations
+
+// Save a YJS update to the database
+export async function saveYjsUpdate(noteId: number, update: Uint8Array) {
+  // Convert Uint8Array to Buffer for storage
+  const bufferUpdate = Buffer.from(update);
+
+  // Insert into yjs_updates table
+  await db.insert(yjsUpdates).values({
+    noteId,
+    updateData: bufferUpdate,
+  });
+}
+
+// Load all YJS updates for a note
+export async function loadYjsUpdates(noteId: number): Promise<Uint8Array[]> {
+  const updates = await db
+    .select()
+    .from(yjsUpdates)
+    .where(eq(yjsUpdates.noteId, noteId))
+    .orderBy(asc(yjsUpdates.id));
+
+  // Convert Buffer to Uint8Array
+  return updates.map((u: YjsUpdate) => {
+    return new Uint8Array(u.updateData as Buffer);
+  });
+}
+
+// Get all unique note IDs that have updates
+export async function getUniqueNoteIds(): Promise<number[]> {
+  const result = await db
+    .select({ noteId: yjsUpdates.noteId })
+    .from(yjsUpdates)
+    .groupBy(yjsUpdates.noteId);
+
+  return result.map((r: { noteId: number }) => r.noteId);
+}
+
+// Get all YJS updates for a specific note
+export async function getYjsUpdatesByNoteId(
+  noteId: number,
+): Promise<YjsUpdate[]> {
   return await db
     .select()
-    .from(notes)
-    .where(eq(notes.transcriptionId, transcriptionId))
-    .orderBy(desc(notes.updatedAt));
+    .from(yjsUpdates)
+    .where(eq(yjsUpdates.noteId, noteId))
+    .orderBy(asc(yjsUpdates.id));
 }
 
-// Note metadata operations
-export async function setNoteMetadata(
+// Replace all YJS updates with a compacted one (transactional)
+export async function replaceYjsUpdates(
   noteId: number,
-  key: string,
-  value: string,
-) {
-  const data: NewNoteMetadata = { noteId, key, value };
+  compactedUpdate: Uint8Array,
+): Promise<void> {
+  const bufferUpdate = Buffer.from(compactedUpdate);
 
-  // Upsert metadata
-  await db
-    .insert(noteMetadata)
-    .values(data)
-    .onConflictDoUpdate({
-      target: [noteMetadata.noteId, noteMetadata.key],
-      set: { value },
+  await db.transaction(async (tx) => {
+    // Delete all existing updates
+    await tx.delete(yjsUpdates).where(eq(yjsUpdates.noteId, noteId));
+
+    // Insert the compacted update
+    await tx.insert(yjsUpdates).values({
+      noteId,
+      updateData: bufferUpdate,
     });
-}
-
-export async function getNoteMetadata(noteId: number, key?: string) {
-  if (key) {
-    const result = await db
-      .select()
-      .from(noteMetadata)
-      .where(and(eq(noteMetadata.noteId, noteId), eq(noteMetadata.key, key)));
-    return result[0] || null;
-  } else {
-    return await db
-      .select()
-      .from(noteMetadata)
-      .where(eq(noteMetadata.noteId, noteId));
-  }
-}
-
-export async function deleteNoteMetadata(noteId: number, key: string) {
-  await db
-    .delete(noteMetadata)
-    .where(and(eq(noteMetadata.noteId, noteId), eq(noteMetadata.key, key)));
-}
-
-// Generate a unique document name for a new note
-export function generateDocName(): string {
-  return `note-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  });
 }

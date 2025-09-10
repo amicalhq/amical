@@ -110,49 +110,13 @@ const api: ElectronAPI = {
   // External link handling
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
 
-  // Notes API
+  // Notes API - Yjs synchronization only
   notes: {
-    create: (options: {
-      title: string;
-      transcriptionId?: number;
-      initialContent?: string;
-    }) => ipcRenderer.invoke("notes:create", options),
+    saveYjsUpdate: (noteId: number, update: ArrayBuffer) =>
+      ipcRenderer.invoke("notes:saveYjsUpdate", noteId, update),
 
-    get: (id: number) => ipcRenderer.invoke("notes:get", id),
-
-    getByDocName: (docName: string) =>
-      ipcRenderer.invoke("notes:getByDocName", docName),
-
-    list: (options?: {
-      limit?: number;
-      offset?: number;
-      sortBy?: "title" | "updatedAt" | "createdAt" | "lastAccessedAt";
-      sortOrder?: "asc" | "desc";
-      search?: string;
-      transcriptionId?: number | null;
-    }) => ipcRenderer.invoke("notes:list", options),
-
-    update: (
-      id: number,
-      options: {
-        title?: string;
-        transcriptionId?: number | null;
-      },
-    ) => ipcRenderer.invoke("notes:update", id, options),
-
-    delete: (id: number) => ipcRenderer.invoke("notes:delete", id),
-
-    getByTranscription: (transcriptionId: number) =>
-      ipcRenderer.invoke("notes:getByTranscription", transcriptionId),
-
-    getPersistence: (docName: string) =>
-      ipcRenderer.invoke("notes:getPersistence", docName),
-
-    saveYjsUpdate: (docName: string, update: ArrayBuffer) =>
-      ipcRenderer.invoke("notes:saveYjsUpdate", docName, update),
-
-    loadYjsUpdates: (docName: string) =>
-      ipcRenderer.invoke("notes:loadYjsUpdates", docName),
+    loadYjsUpdates: (noteId: number) =>
+      ipcRenderer.invoke("notes:loadYjsUpdates", noteId),
   },
 };
 

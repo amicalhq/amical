@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "583d8a02-b45c-4b5c-978c-f093e4b746f0",
-  "prevId": "22e5c111-dfb5-4845-a4d5-22896fa85f22",
+  "id": "95846ee3-06b7-46d3-97d3-511cee036d5e",
+  "prevId": "ee7c367e-1078-491c-bcfe-5cca9efbd92f",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -52,13 +52,20 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "downloaded_models": {
-      "name": "downloaded_models",
+    "models": {
+      "name": "models",
       "columns": {
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -76,31 +83,72 @@
           "notNull": true,
           "autoincrement": false
         },
+        "size": {
+          "name": "size",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context": {
+          "name": "context",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "local_path": {
           "name": "local_path",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "downloaded_at": {
           "name": "downloaded_at",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        },
-        "size": {
-          "name": "size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "checksum": {
-          "name": "checksum",
+        "original_model": {
+          "name": "original_model",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "speed": {
+          "name": "speed",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "accuracy": {
+          "name": "accuracy",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -122,50 +170,25 @@
           "default": "(unixepoch())"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "models_provider_idx": {
+          "name": "models_provider_idx",
+          "columns": ["provider"],
+          "isUnique": false
+        },
+        "models_type_idx": {
+          "name": "models_type_idx",
+          "columns": ["type"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "note_metadata": {
-      "name": "note_metadata",
-      "columns": {
-        "note_id": {
-          "name": "note_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+      "compositePrimaryKeys": {
+        "models_provider_id_pk": {
+          "columns": ["provider", "id"],
+          "name": "models_provider_id_pk"
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "note_metadata_note_id_notes_id_fk": {
-          "name": "note_metadata_note_id_notes_id_fk",
-          "tableFrom": "note_metadata",
-          "tableTo": "notes",
-          "columnsFrom": ["note_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -194,16 +217,9 @@
           "autoincrement": false,
           "default": "''"
         },
-        "doc_name": {
-          "name": "doc_name",
+        "icon": {
+          "name": "icon",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "transcription_id": {
-          "name": "transcription_id",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -223,34 +239,10 @@
           "notNull": true,
           "autoincrement": false,
           "default": "(unixepoch())"
-        },
-        "last_accessed_at": {
-          "name": "last_accessed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
         }
       },
-      "indexes": {
-        "notes_doc_name_unique": {
-          "name": "notes_doc_name_unique",
-          "columns": ["doc_name"],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "notes_transcription_id_transcriptions_id_fk": {
-          "name": "notes_transcription_id_transcriptions_id_fk",
-          "tableFrom": "notes",
-          "tableTo": "transcriptions",
-          "columnsFrom": ["transcription_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -370,6 +362,21 @@
           "notNull": true,
           "autoincrement": false
         },
+        "replacement_word": {
+          "name": "replacement_word",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_replacement": {
+          "name": "is_replacement",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
+        },
         "date_added": {
           "name": "date_added",
           "type": "integer",
@@ -425,16 +432,16 @@
           "notNull": true,
           "autoincrement": true
         },
-        "doc_name": {
-          "name": "doc_name",
-          "type": "text",
+        "note_id": {
+          "name": "note_id",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "update_data": {
           "name": "update_data",
-          "type": "text",
+          "type": "blob",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -448,8 +455,24 @@
           "default": "(unixepoch())"
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
+      "indexes": {
+        "yjs_updates_note_id_idx": {
+          "name": "yjs_updates_note_id_idx",
+          "columns": ["note_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "yjs_updates_note_id_notes_id_fk": {
+          "name": "yjs_updates_note_id_notes_id_fk",
+          "tableFrom": "yjs_updates",
+          "tableTo": "notes",
+          "columnsFrom": ["note_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

@@ -6,6 +6,7 @@ import {
   real,
   index,
   primaryKey,
+  blob,
 } from "drizzle-orm/sqlite-core";
 
 // Transcriptions table
@@ -168,48 +169,32 @@ export const notes = sqliteTable("notes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   content: text("content").default(""), // Store the actual text content
-  docName: text("doc_name").notNull().unique(), // yjs document name
-  transcriptionId: integer("transcription_id").references(
-    () => transcriptions.id,
-  ),
+  icon: text("icon"), // Store the icon (emoji) associated with the note
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
-  lastAccessedAt: integer("last_accessed_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
 });
 
 // Yjs updates table for persistence
-export const yjsUpdates = sqliteTable("yjs_updates", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  docName: text("doc_name").notNull(),
-  updateData: text("update_data").notNull(), // Base64 encoded binary data
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
-
-// Note metadata table
-export const noteMetadata = sqliteTable(
-  "note_metadata",
+export const yjsUpdates = sqliteTable(
+  "yjs_updates",
   {
+    id: integer("id").primaryKey({ autoIncrement: true }),
     noteId: integer("note_id")
       .notNull()
       .references(() => notes.id, { onDelete: "cascade" }),
-    key: text("key").notNull(),
-    value: text("value").notNull(),
+    updateData: blob("update_data", { mode: "buffer" }).notNull(), // Binary data stored as Buffer
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
   },
-  (table) => ({
-    pk: {
-      primaryKey: {
-        columns: [table.noteId, table.key],
-      },
-    },
-  }),
+  (table) => [
+    // Index for efficient foreign key lookups
+    index("yjs_updates_note_id_idx").on(table.noteId),
+  ],
 );
 
 // Export types for TypeScript
@@ -225,5 +210,3 @@ export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 export type YjsUpdate = typeof yjsUpdates.$inferSelect;
 export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;
-export type NoteMetadata = typeof noteMetadata.$inferSelect;
-export type NewNoteMetadata = typeof noteMetadata.$inferInsert;

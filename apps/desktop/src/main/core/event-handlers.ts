@@ -2,7 +2,7 @@ import { HelperEvent } from "@amical/types";
 import { AppManager } from "./app-manager";
 import { logger } from "../logger";
 import { ipcMain, shell, systemPreferences, app } from "electron";
-import NotesService from "../../services/NotesService";
+import NotesService from "../../services/notes-service";
 
 export class EventHandlers {
   private appManager: AppManager;
@@ -106,148 +106,16 @@ export class EventHandlers {
   private setupNotesIPCHandlers(): void {
     const notesService = NotesService.getInstance();
 
-    // Create note
-    ipcMain.handle(
-      "notes:create",
-      async (
-        event,
-        options: {
-          title: string;
-          transcriptionId?: number;
-          initialContent?: string;
-        },
-      ) => {
-        try {
-          const note = await notesService.createNote(options);
-          logger.main.debug("Created note", { noteId: note.id });
-          return note;
-        } catch (error) {
-          logger.main.error("Failed to create note", error);
-          throw error;
-        }
-      },
-    );
-
-    // Get note
-    ipcMain.handle("notes:get", async (event, id: number) => {
-      try {
-        const note = await notesService.getNote(id);
-        return note;
-      } catch (error) {
-        logger.main.error("Failed to get note", error);
-        throw error;
-      }
-    });
-
-    // Get note by docName
-    ipcMain.handle("notes:getByDocName", async (event, docName: string) => {
-      try {
-        const note = await notesService.getNoteByDocName(docName);
-        return note;
-      } catch (error) {
-        logger.main.error("Failed to get note by docName", error);
-        throw error;
-      }
-    });
-
-    // List notes
-    ipcMain.handle(
-      "notes:list",
-      async (
-        event,
-        options?: {
-          limit?: number;
-          offset?: number;
-          sortBy?: "title" | "updatedAt" | "createdAt" | "lastAccessedAt";
-          sortOrder?: "asc" | "desc";
-          search?: string;
-          transcriptionId?: number | null;
-        },
-      ) => {
-        try {
-          const notes = await notesService.listNotes(options);
-          return notes;
-        } catch (error) {
-          logger.main.error("Failed to list notes", error);
-          throw error;
-        }
-      },
-    );
-
-    // Update note
-    ipcMain.handle(
-      "notes:update",
-      async (
-        event,
-        id: number,
-        options: {
-          title?: string;
-          transcriptionId?: number | null;
-        },
-      ) => {
-        try {
-          const note = await notesService.updateNote(id, options);
-          logger.main.debug("Updated note", { noteId: id });
-          return note;
-        } catch (error) {
-          logger.main.error("Failed to update note", error);
-          throw error;
-        }
-      },
-    );
-
-    // Delete note
-    ipcMain.handle("notes:delete", async (event, id: number) => {
-      try {
-        const result = await notesService.deleteNote(id);
-        logger.main.debug("Deleted note", { noteId: id });
-        return result;
-      } catch (error) {
-        logger.main.error("Failed to delete note", error);
-        throw error;
-      }
-    });
-
-    // Get notes by transcription
-    ipcMain.handle(
-      "notes:getByTranscription",
-      async (event, transcriptionId: number) => {
-        try {
-          const notes =
-            await notesService.getNotesByTranscription(transcriptionId);
-          return notes;
-        } catch (error) {
-          logger.main.error("Failed to get notes by transcription", error);
-          throw error;
-        }
-      },
-    );
-
-    // Get yjs persistence for a note
-    ipcMain.handle("notes:getPersistence", async (event, docName: string) => {
-      try {
-        const persistence = await notesService.getPersistence(docName);
-        if (!persistence) {
-          throw new Error("Note not found");
-        }
-        // We can't send the persistence object directly, but we can indicate success
-        return { success: true, docName };
-      } catch (error) {
-        logger.main.error("Failed to get persistence", error);
-        throw error;
-      }
-    });
-
     // Save yjs update
     ipcMain.handle(
       "notes:saveYjsUpdate",
-      async (event, docName: string, update: ArrayBuffer) => {
+      async (event, noteId: number, update: ArrayBuffer) => {
         try {
           // Convert ArrayBuffer to Uint8Array
           const updateArray = new Uint8Array(update);
-          await notesService.saveYjsUpdate(docName, updateArray);
+          await notesService.saveYjsUpdate(noteId, updateArray);
           logger.main.debug("Saved yjs update", {
-            docName,
+            noteId,
             updateSize: updateArray.length,
           });
         } catch (error) {
@@ -257,12 +125,12 @@ export class EventHandlers {
       },
     );
 
-    // Load all yjs updates for a document
-    ipcMain.handle("notes:loadYjsUpdates", async (event, docName: string) => {
+    // Load all yjs updates for a note
+    ipcMain.handle("notes:loadYjsUpdates", async (event, noteId: number) => {
       try {
-        const updates = await notesService.loadYjsUpdates(docName);
+        const updates = await notesService.loadYjsUpdates(noteId);
         logger.main.debug("Loaded yjs updates", {
-          docName,
+          noteId,
           count: updates.length,
         });
         // Convert Uint8Array[] to ArrayBuffer[] for IPC transfer

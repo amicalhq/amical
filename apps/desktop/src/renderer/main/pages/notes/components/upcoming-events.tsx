@@ -18,12 +18,6 @@ export function UpcomingEvents() {
   // Mock events data
   const mockEvents: UpcomingEvent[] = [
     {
-      title: "LeadrPro Demo: Hatica Inc <> Skuad",
-      date: "Today",
-      time: "12:30 – 1 PM",
-      url: "https://meetings.leadrpro.com/demo?refid=cyol83iyozu",
-    },
-    {
       title: "Product Review: Q3 Feature Planning",
       date: "Tomorrow",
       time: "2:00 – 3:00 PM",
