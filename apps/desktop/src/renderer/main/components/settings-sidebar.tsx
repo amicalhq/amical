@@ -23,6 +23,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { CommandSearchButton } from "./command-search-button";
 
 // Custom Discord icon component
 const DiscordIcon = ({ className }: { className?: string }) => (
@@ -119,6 +120,9 @@ export function SettingsSidebar({
                 <span className="font-semibold">Amical</span>
               </div>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <CommandSearchButton />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>

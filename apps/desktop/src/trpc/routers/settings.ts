@@ -2,8 +2,10 @@ import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { app } from "electron";
 import { createRouter, procedure } from "../trpc";
+import NotesService from "../../services/notes-service";
 import { dbPath } from "../../db";
 import * as fs from "fs/promises";
+import { formatDate } from "@/lib/utils";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
@@ -37,6 +39,127 @@ const DictationSettingsSchema = z.object({
 });
 
 export const settingsRouter = createRouter({
+  // Search settings pages and notes
+  searchSettings: procedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ input }) => {
+      const settingsPages = [
+        {
+          title: "Notes",
+          url: "/settings/notes",
+          description: "Manage your notes",
+          icon: "file-text",
+          type: "settings" as const,
+        },
+        {
+          title: "Preferences",
+          url: "/settings/preferences",
+          description: "Configure general application preferences and behavior",
+          icon: "settings",
+          type: "settings" as const,
+        },
+        {
+          title: "Dictation",
+          url: "/settings/dictation",
+          description: "Configure speech recognition and dictation settings",
+          icon: "mic",
+          type: "settings" as const,
+        },
+        {
+          title: "Shortcuts",
+          url: "/settings/shortcuts",
+          description: "Customize keyboard shortcuts and hotkeys",
+          icon: "keyboard",
+          type: "settings" as const,
+        },
+        {
+          title: "Vocabulary",
+          url: "/settings/vocabulary",
+          description: "Manage custom vocabulary and word recognition",
+          icon: "book-open",
+          type: "settings" as const,
+        },
+        {
+          title: "AI Models",
+          url: "/settings/ai-models",
+          description: "Configure AI models and providers",
+          icon: "brain",
+          type: "settings" as const,
+        },
+        {
+          title: "History",
+          url: "/settings/history",
+          description: "View and manage transcription history",
+          icon: "history",
+          type: "settings" as const,
+        },
+        {
+          title: "Advanced",
+          url: "/settings/advanced",
+          description: "Advanced configuration options",
+          icon: "sliders",
+          type: "settings" as const,
+        },
+        {
+          title: "About",
+          url: "/settings/about",
+          description: "About Amical and version information",
+          icon: "info",
+          type: "settings" as const,
+        },
+      ];
+
+      const query = input.query.toLowerCase().trim();
+
+      // If no query, return just settings pages
+      if (!query) {
+        return settingsPages;
+      }
+
+      // Search settings pages
+      const filteredSettings = settingsPages.filter((page) => {
+        const searchText = [page.title, page.description]
+          .join(" ")
+          .toLowerCase();
+        return searchText.includes(query);
+      });
+
+      // Search notes
+      const notesService = NotesService.getInstance();
+      const notes = await notesService.listNotes({
+        search: query,
+        limit: 10, // Limit notes results to keep the list manageable
+      });
+
+      // Convert notes to the same format as settings pages
+      const noteResults = notes.map((note) => ({
+        title: note.title,
+        url: `/settings/notes/${note.id}`,
+        description: formatDate(note.createdAt),
+        icon: note.icon || "file-text",
+        type: "note" as const,
+        id: note.id,
+      }));
+
+      // Combine results
+      const allResults = [...filteredSettings, ...noteResults];
+
+      // Sort by relevance - exact title matches first, then by type
+      return allResults.sort((a, b) => {
+        const aTitle = a.title.toLowerCase().includes(query);
+        const bTitle = b.title.toLowerCase().includes(query);
+
+        if (aTitle && !bTitle) return -1;
+        if (!aTitle && bTitle) return 1;
+
+        // If both have title matches or neither do, prioritize notes
+        if (a.type === "note" && b.type === "settings") return -1;
+        if (a.type === "settings" && b.type === "note") return 1;
+
+        return 0;
+      });
+    }),
+
   // Get all settings
   getSettings: procedure.query(async ({ ctx }) => {
     try {
@@ -64,7 +187,7 @@ export const settingsRouter = createRouter({
         enablePunctuation: z.boolean().optional(),
         enableTimestamps: z.boolean().optional(),
         preloadWhisperModel: z.boolean().optional(),
-      }),
+      })
     )
     .mutation(async ({ input, ctx }) => {
       try {
@@ -98,7 +221,7 @@ export const settingsRouter = createRouter({
         // Handle model preloading change
         if (preloadChanged) {
           const transcriptionService = ctx.serviceManager.getService(
-            "transcriptionService",
+            "transcriptionService"
           );
           if (transcriptionService) {
             await transcriptionService.handleModelChange();
@@ -146,7 +269,7 @@ export const settingsRouter = createRouter({
 
         // Update transcription service with new formatter configuration
         const transcriptionService = ctx.serviceManager.getService(
-          "transcriptionService",
+          "transcriptionService"
         );
         if (transcriptionService) {
           transcriptionService.configureFormatter(input);
@@ -256,7 +379,7 @@ export const settingsRouter = createRouter({
 
       if (!shortcutManager) {
         logger?.main.warn(
-          "ShortcutManager not available for activeKeys subscription",
+          "ShortcutManager not available for activeKeys subscription"
         );
         emit.next([]);
         return () => {};
@@ -284,7 +407,7 @@ export const settingsRouter = createRouter({
     .input(
       z.object({
         deviceName: z.string().nullable(),
-      }),
+      })
     )
     .mutation(async ({ input, ctx }) => {
       try {
@@ -374,7 +497,7 @@ export const settingsRouter = createRouter({
           (!input.selectedLanguage || input.selectedLanguage === "auto")
         ) {
           throw new Error(
-            "Selected language must be specified when auto-detect is disabled",
+            "Selected language must be specified when auto-detect is disabled"
           );
         }
 
