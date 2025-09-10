@@ -183,6 +183,11 @@ export class ServiceManager {
     // Connect shortcut events to recording manager
     this.recordingManager.setupShortcutListeners(this.shortcutManager);
 
+    // Connect widget visibility to recording state changes
+    if (this.windowManager && this.recordingManager) {
+      this.windowManager.setupRecordingStateListener(this.recordingManager);
+    }
+
     logger.main.info("Shortcut manager initialized");
   }
 

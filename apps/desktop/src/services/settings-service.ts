@@ -19,6 +19,7 @@ export interface ShortcutsConfig {
 export interface AppPreferences {
   launchAtLogin: boolean;
   minimizeToTray: boolean;
+  showWidgetWhileInactive: boolean;
 }
 
 export class SettingsService {
@@ -270,6 +271,7 @@ export class SettingsService {
     return {
       launchAtLogin: preferences?.launchAtLogin ?? true,
       minimizeToTray: preferences?.minimizeToTray ?? true,
+      showWidgetWhileInactive: preferences?.showWidgetWhileInactive ?? true,
     };
   }
 

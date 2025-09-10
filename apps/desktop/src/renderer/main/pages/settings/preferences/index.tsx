@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -8,14 +7,14 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
 export default function PreferencesSettingsPage() {
-  const [launchAtLogin, setLaunchAtLogin] = useState(false);
-  const [minimizeToTray, setMinimizeToTray] = useState(true);
+  const utils = api.useUtils();
 
   // tRPC queries and mutations
   const preferencesQuery = api.settings.getPreferences.useQuery();
   const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
     onSuccess: () => {
       toast.success("Preferences updated");
+      utils.settings.getPreferences.invalidate();
     },
     onError: (error) => {
       console.error("Failed to update preferences:", error);
@@ -23,20 +22,28 @@ export default function PreferencesSettingsPage() {
     },
   });
 
-  // Load preferences when query data is available
-  useEffect(() => {
-    if (preferencesQuery.data) {
-      setLaunchAtLogin(preferencesQuery.data.launchAtLogin);
-      setMinimizeToTray(preferencesQuery.data.minimizeToTray);
-    }
-  }, [preferencesQuery.data]);
-
   const handleLaunchAtLoginChange = (checked: boolean) => {
-    setLaunchAtLogin(checked);
     updatePreferencesMutation.mutate({
       launchAtLogin: checked,
     });
   };
+
+  const handleShowWidgetWhileInactiveChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      showWidgetWhileInactive: checked,
+    });
+  };
+
+  const handleMinimizeToTrayChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      minimizeToTray: checked,
+    });
+  };
+
+  const showWidgetWhileInactive =
+    preferencesQuery.data?.showWidgetWhileInactive ?? true;
+  const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
+  const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
@@ -71,7 +78,7 @@ export default function PreferencesSettingsPage() {
             <Separator />
 
             {/* Minimize to Tray Section */}
-            <div className="flex items-center justify-between">
+            {/* <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label className="text-base font-medium text-foreground">
                   Minimize to tray
@@ -82,7 +89,27 @@ export default function PreferencesSettingsPage() {
               </div>
               <Switch
                 checked={minimizeToTray}
-                onCheckedChange={setMinimizeToTray}
+                onCheckedChange={handleMinimizeToTrayChange}
+                disabled={updatePreferencesMutation.isPending}
+              />
+            </div>
+
+            <Separator /> */}
+
+            {/* Show Widget While Inactive Section */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  Show widget while inactive
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Keep the widget visible on screen when not recording
+                </p>
+              </div>
+              <Switch
+                checked={showWidgetWhileInactive}
+                onCheckedChange={handleShowWidgetWhileInactiveChange}
+                disabled={updatePreferencesMutation.isPending}
               />
             </div>
 

@@ -39,6 +39,7 @@ const DictationSettingsSchema = z.object({
 const AppPreferencesSchema = z.object({
   launchAtLogin: z.boolean().optional(),
   minimizeToTray: z.boolean().optional(),
+  showWidgetWhileInactive: z.boolean().optional(),
 });
 
 export const settingsRouter = createRouter({
@@ -536,6 +537,14 @@ export const settingsRouter = createRouter({
       }
 
       await settingsService.setPreferences(input);
+
+      // Sync widget visibility if preference changed
+      if (input.showWidgetWhileInactive !== undefined) {
+        const windowManager = ctx.serviceManager.getService("windowManager");
+        if (windowManager) {
+          await windowManager.syncWidgetVisibility();
+        }
+      }
 
       return true;
     }),

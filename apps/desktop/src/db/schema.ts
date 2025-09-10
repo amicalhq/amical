@@ -165,6 +165,7 @@ export interface AppSettingsData {
   preferences?: {
     launchAtLogin?: boolean;
     minimizeToTray?: boolean;
+    showWidgetWhileInactive?: boolean;
   };
 }
 

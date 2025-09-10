@@ -2,6 +2,8 @@ import { BrowserWindow, screen, systemPreferences, app } from "electron";
 import path from "node:path";
 import { logger } from "../logger";
 import { ServiceManager } from "../managers/service-manager";
+import type { RecordingManager } from "../managers/recording-manager";
+import type { RecordingState } from "../../types/recording";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -61,7 +63,7 @@ export class WindowManager {
       .attachWindow(this.mainWindow!);
   }
 
-  createWidgetWindow(): void {
+  async createWidgetWindow(): Promise<void> {
     const mainScreen = screen.getPrimaryDisplay();
     const { width, height } = mainScreen.workAreaSize;
 
@@ -141,9 +143,18 @@ export class WindowManager {
       .getTRPCHandler()!
       .attachWindow(this.widgetWindow!);
 
-    // Show the widget window
-    this.widgetWindow.show();
-    logger.main.info("Widget window shown");
+    // Check preference to determine initial visibility
+    const settingsService =
+      ServiceManager.getInstance()!.getService("settingsService")!;
+    const preferences = await settingsService.getPreferences();
+    if (preferences.showWidgetWhileInactive) {
+      this.widgetWindow.show();
+      logger.main.info("Widget window shown (showWidgetWhileInactive: true)");
+    } else {
+      logger.main.info(
+        "Widget window created but hidden (showWidgetWhileInactive: false)",
+      );
+    }
   }
 
   createOnboardingWindow(): void {
@@ -203,6 +214,49 @@ export class WindowManager {
       this.mainWindow.show();
       this.mainWindow.focus();
     }
+  }
+
+  async updateWidgetVisibility(isIdle: boolean): Promise<void> {
+    if (!this.widgetWindow || this.widgetWindow.isDestroyed()) {
+      return;
+    }
+
+    const settingsService =
+      ServiceManager.getInstance()!.getService("settingsService")!;
+
+    const preferences = await settingsService.getPreferences();
+
+    if (preferences.showWidgetWhileInactive) {
+      this.widgetWindow.show();
+      return;
+    }
+
+    if (isIdle) {
+      this.widgetWindow.hide();
+      return;
+    }
+
+    this.widgetWindow.show();
+  }
+
+  setupRecordingStateListener(recordingManager: RecordingManager): void {
+    recordingManager.on("state-changed", (state: RecordingState) => {
+      const isIdle = state === "idle";
+      this.updateWidgetVisibility(isIdle).catch((error) => {
+        logger.main.error("Failed to update widget visibility", error);
+      });
+    });
+    logger.main.info(
+      "Widget visibility listener connected to recording state changes",
+    );
+  }
+
+  async syncWidgetVisibility(): Promise<void> {
+    const recordingManager =
+      ServiceManager.getInstance()!.getService("recordingManager")!;
+    const recordingState = recordingManager.getState();
+    const isIdle = recordingState === "idle";
+    await this.updateWidgetVisibility(isIdle);
   }
 
   private setupDisplayChangeNotifications(): void {

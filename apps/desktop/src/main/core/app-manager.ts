@@ -193,15 +193,15 @@ export class AppManager {
     }
   }
 
-  handleActivate(): void {
+  async handleActivate(): Promise<void> {
     const allWindows = this.windowManager.getAllWindows();
 
     if (allWindows.every((w) => !w || w.isDestroyed())) {
-      this.windowManager.createWidgetWindow();
+      await this.windowManager.createWidgetWindow();
     } else {
       const widgetWindow = this.windowManager.getWidgetWindow();
       if (!widgetWindow || widgetWindow.isDestroyed()) {
-        this.windowManager.createWidgetWindow();
+        await this.windowManager.createWidgetWindow();
       } else {
         widgetWindow.show();
       }
