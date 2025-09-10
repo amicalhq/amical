@@ -24,6 +24,13 @@ export class AppManager {
 
     await this.serviceManager.initialize();
 
+    // Sync auto-launch setting with OS on startup
+    const settingsService = this.serviceManager.getService("settingsService");
+    if (settingsService) {
+      settingsService.syncAutoLaunch();
+      logger.main.info("Auto-launch setting synced with OS");
+    }
+
     if (needsOnboarding) {
       await this.showOnboarding();
     } else {

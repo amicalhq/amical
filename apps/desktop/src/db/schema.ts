@@ -162,6 +162,10 @@ export interface AppSettingsData {
     autoDetectEnabled: boolean;
     selectedLanguage: string; // Required when autoDetectEnabled is false, defaults to "en"
   };
+  preferences?: {
+    launchAtLogin?: boolean;
+    minimizeToTray?: boolean;
+  };
 }
 
 // Notes table

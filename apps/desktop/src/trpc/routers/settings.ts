@@ -36,6 +36,11 @@ const DictationSettingsSchema = z.object({
   selectedLanguage: z.string().min(1), // Must be valid when autoDetectEnabled is false
 });
 
+const AppPreferencesSchema = z.object({
+  launchAtLogin: z.boolean().optional(),
+  minimizeToTray: z.boolean().optional(),
+});
+
 export const settingsRouter = createRouter({
   // Get all settings
   getSettings: procedure.query(async ({ ctx }) => {
@@ -511,6 +516,29 @@ export const settingsRouter = createRouter({
   getDataPath: procedure.query(() => {
     return app.getPath("userData");
   }),
+
+  // Get app preferences (launch at login, minimize to tray, etc.)
+  getPreferences: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+    return await settingsService.getPreferences();
+  }),
+
+  // Update app preferences
+  updatePreferences: procedure
+    .input(AppPreferencesSchema)
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      await settingsService.setPreferences(input);
+
+      return true;
+    }),
 
   // Reset app - deletes all data and restarts
   resetApp: procedure.mutation(async ({ ctx }) => {

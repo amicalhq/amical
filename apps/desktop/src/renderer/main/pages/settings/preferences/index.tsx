@@ -1,13 +1,42 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 export default function PreferencesSettingsPage() {
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [minimizeToTray, setMinimizeToTray] = useState(true);
+
+  // tRPC queries and mutations
+  const preferencesQuery = api.settings.getPreferences.useQuery();
+  const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
+    onSuccess: () => {
+      toast.success("Preferences updated");
+    },
+    onError: (error) => {
+      console.error("Failed to update preferences:", error);
+      toast.error("Failed to update preferences. Please try again.");
+    },
+  });
+
+  // Load preferences when query data is available
+  useEffect(() => {
+    if (preferencesQuery.data) {
+      setLaunchAtLogin(preferencesQuery.data.launchAtLogin);
+      setMinimizeToTray(preferencesQuery.data.minimizeToTray);
+    }
+  }, [preferencesQuery.data]);
+
+  const handleLaunchAtLoginChange = (checked: boolean) => {
+    setLaunchAtLogin(checked);
+    updatePreferencesMutation.mutate({
+      launchAtLogin: checked,
+    });
+  };
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
@@ -34,7 +63,8 @@ export default function PreferencesSettingsPage() {
               </div>
               <Switch
                 checked={launchAtLogin}
-                onCheckedChange={setLaunchAtLogin}
+                onCheckedChange={handleLaunchAtLoginChange}
+                disabled={updatePreferencesMutation.isPending}
               />
             </div>
 

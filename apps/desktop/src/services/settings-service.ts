@@ -1,3 +1,4 @@
+import { app } from "electron";
 import { FormatterConfig } from "../types/formatter";
 import {
   getSettingsSection,
@@ -13,6 +14,11 @@ import type { AppSettingsData } from "../db/schema";
 export interface ShortcutsConfig {
   pushToTalk: string;
   toggleRecording: string;
+}
+
+export interface AppPreferences {
+  launchAtLogin: boolean;
+  minimizeToTray: boolean;
 }
 
 export class SettingsService {
@@ -253,6 +259,50 @@ export class SettingsService {
     await this.setModelProvidersConfig({
       ...currentConfig,
       defaultEmbeddingModel: modelId,
+    });
+  }
+
+  /**
+   * Get app preferences (launch at login, minimize to tray, etc.)
+   */
+  async getPreferences(): Promise<AppPreferences> {
+    const preferences = await getSettingsSection("preferences");
+    return {
+      launchAtLogin: preferences?.launchAtLogin ?? true,
+      minimizeToTray: preferences?.minimizeToTray ?? true,
+    };
+  }
+
+  /**
+   * Set app preferences and handle side effects
+   */
+  async setPreferences(preferences: Partial<AppPreferences>): Promise<void> {
+    const currentPreferences = await this.getPreferences();
+    const newPreferences = { ...currentPreferences, ...preferences };
+
+    // Save to database
+    await updateSettingsSection("preferences", newPreferences);
+
+    // Handle launch at login change
+    if (
+      preferences.launchAtLogin !== undefined &&
+      preferences.launchAtLogin !== currentPreferences.launchAtLogin
+    ) {
+      this.syncAutoLaunch();
+    }
+  }
+
+  /**
+   * Sync the auto-launch setting with the OS
+   * This ensures the OS setting matches our stored preference
+   */
+  syncAutoLaunch(): void {
+    // Get the current preference asynchronously and apply it
+    this.getPreferences().then((preferences) => {
+      app.setLoginItemSettings({
+        openAtLogin: preferences.launchAtLogin,
+        openAsHidden: false,
+      });
     });
   }
 }
