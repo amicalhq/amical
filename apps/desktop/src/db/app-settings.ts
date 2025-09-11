@@ -19,9 +19,26 @@ import {
   type NewAppSettings,
   type AppSettingsData,
 } from "./schema";
+import { isWindows, isMacOS } from "../utils/platform";
 
 // Singleton ID for app settings (we only have one settings record)
 const SETTINGS_ID = 1;
+
+// Platform-specific default shortcuts
+const getDefaultShortcuts = () => {
+  if (isMacOS()) {
+    return {
+      pushToTalk: "Fn",
+      toggleRecording: "Fn+Space",
+    };
+  } else {
+    // Windows and Linux
+    return {
+      pushToTalk: "Ctrl+Win",
+      toggleRecording: "Ctrl+Win+Space",
+    };
+  }
+};
 
 // Default settings
 const defaultSettings: AppSettingsData = {
@@ -48,10 +65,7 @@ const defaultSettings: AppSettingsData = {
     silenceThreshold: 3,
     maxRecordingDuration: 60,
   },
-  shortcuts: {
-    pushToTalk: "Fn",
-    toggleRecording: "",
-  },
+  shortcuts: getDefaultShortcuts(),
   modelProvidersConfig: {
     defaultSpeechModel: "",
     defaultLanguageModel: "",

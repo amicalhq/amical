@@ -175,7 +175,10 @@ const config: ForgeConfig = {
 
               // Read where the symlink points to
               const symlinkTarget = readlinkSync(localDepPath);
-              const absoluteTarget = join(localDepPath, "..", symlinkTarget);
+              let absoluteTarget = symlinkTarget;
+              if (process.platform !== "win32") {
+                absoluteTarget = join(localDepPath, "..", symlinkTarget);
+              }
               const sourcePath = normalize(absoluteTarget);
 
               console.log(`  Symlink points to: ${sourcePath}`);

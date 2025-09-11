@@ -7,6 +7,7 @@ import {
   updateAppSettings,
 } from "../db/app-settings";
 import type { AppSettingsData } from "../db/schema";
+import { isWindows, isMacOS } from "../utils/platform";
 
 /**
  * Database-backed settings service with typed configuration
@@ -123,10 +124,14 @@ export class SettingsService {
    */
   async getShortcuts(): Promise<ShortcutsConfig> {
     const shortcuts = await getSettingsSection("shortcuts");
-    // Return defaults if not set
+    // Return platform-specific defaults if not set
+    const defaults = isMacOS()
+      ? { pushToTalk: "Fn", toggleRecording: "Fn+Space" }
+      : { pushToTalk: "Ctrl+Win", toggleRecording: "Ctrl+Win+Space" };
+
     return {
-      pushToTalk: shortcuts?.pushToTalk || "Fn",
-      toggleRecording: shortcuts?.toggleRecording || "Fn+Space",
+      pushToTalk: shortcuts?.pushToTalk || defaults.pushToTalk,
+      toggleRecording: shortcuts?.toggleRecording || defaults.toggleRecording,
     };
   }
 
