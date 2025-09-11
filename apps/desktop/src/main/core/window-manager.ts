@@ -29,6 +29,11 @@ export class WindowManager {
       height: 800,
       frame: true,
       titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: "#ffffff",
+        symbolColor: "#000000",
+        height: 32,
+      },
       trafficLightPosition: { x: 20, y: 16 },
       useContentSize: true,
       webPreferences: {
@@ -77,6 +82,7 @@ export class WindowManager {
       width,
       height,
       frame: false,
+      titleBarStyle: "hidden",
       transparent: true,
       alwaysOnTop: true,
       resizable: false,
@@ -168,6 +174,7 @@ export class WindowManager {
       width: 700,
       height: 600,
       frame: false,
+      titleBarStyle: "hidden",
       resizable: false,
       center: true,
       modal: true,

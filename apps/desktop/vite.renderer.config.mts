@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
-import { TanStackRouterVite } from "@tanstack/router-vite-plugin";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 // https://vitejs.dev/config
 export default defineConfig(async () => {
   // @ts-ignore
@@ -8,7 +8,9 @@ export default defineConfig(async () => {
 
   return {
     plugins: [
-      TanStackRouterVite({
+      tanstackRouter({
+        target: "react",
+        autoCodeSplitting: true,
         routesDirectory: "./src/renderer/main/routes",
         generatedRouteTree: "./src/renderer/main/routeTree.gen.ts",
       }),
@@ -21,6 +23,11 @@ export default defineConfig(async () => {
       },
     },
     optimizeDeps: {
+      //! facing issues with main window at times
+      //! and excluding next-themes and sonner isn't helping either
+      //! 504 outdated optimize deps
+      //! likely due to configs changing upon route tree regen of tanstack router
+      force: true,
       exclude: ["better-sqlite3"],
     },
   };
