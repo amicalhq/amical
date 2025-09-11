@@ -33,38 +33,20 @@ function validateShortcut(keys: string[]): ValidationResult {
   const modifierKeys = keys.filter((key) => MODIFIER_KEYS.includes(key));
   const regularKeys = keys.filter((key) => !MODIFIER_KEYS.includes(key));
 
-  // Single modifier key (e.g., Fn for PTT)
-  if (keys.length === 1 && modifierKeys.length === 1) {
-    return { valid: true, shortcut: modifierKeys[0] };
-  }
-
-  // Single regular key
+  // disallow only regular keys
   if (modifierKeys.length === 0 && regularKeys.length === 1) {
-    return { valid: true, shortcut: regularKeys[0] };
-  }
-
-  // Modifier(s) + up to 2 regular keys
-  if (
-    modifierKeys.length > 0 &&
-    regularKeys.length > 0 &&
-    regularKeys.length <= 2
-  ) {
-    return {
-      valid: true,
-      shortcut: [...modifierKeys, ...regularKeys].join("+"),
-    };
-  }
-
-  // Multiple regular keys without modifiers
-  if (modifierKeys.length === 0 && regularKeys.length > 1) {
     return {
       valid: false,
       error:
-        "Multiple keys require at least one modifier (Cmd, Win, Ctrl, Alt, Shift, or Fn)",
+        "At least one modifier key (Cmd, Win, Ctrl, Alt, Shift, Fn, etc) is required",
     };
   }
 
-  return { valid: false, error: "Invalid key combination" };
+  if (keys.length > 4) {
+    return { valid: false, error: "Maximum 4 keys allowed" };
+  }
+
+  return { valid: true, shortcut: [...modifierKeys, ...regularKeys].join("+") };
 }
 
 function RecordingDisplay({
