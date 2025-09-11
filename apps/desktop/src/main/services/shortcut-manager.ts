@@ -3,6 +3,7 @@ import { globalShortcut } from "electron";
 import { SettingsService } from "@/services/settings-service";
 import { NativeBridge } from "@/services/platform/native-bridge-service";
 import { getKeyNameFromPayload } from "@/utils/keycode-map";
+import { isWindows } from "@/utils/platform";
 import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
 
@@ -89,9 +90,9 @@ export class ShortcutManager extends EventEmitter {
       }
     }
 
-    // Track modifier keys
+    // Track modifier keys with platform-aware names
     const modifiers = [
-      { flag: payload.metaKey, name: "Cmd" },
+      { flag: payload.metaKey, name: isWindows() ? "Win" : "Cmd" },
       { flag: payload.ctrlKey, name: "Ctrl" },
       { flag: payload.altKey, name: "Alt" },
       { flag: payload.shiftKey, name: "Shift" },

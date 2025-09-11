@@ -12,7 +12,7 @@ interface ShortcutInputProps {
   onRecordingShortcutChange: (recording: boolean) => void;
 }
 
-const MODIFIER_KEYS = ["Cmd", "Ctrl", "Alt", "Shift", "Fn"];
+const MODIFIER_KEYS = ["Cmd", "Win", "Ctrl", "Alt", "Shift", "Fn"];
 const MAX_KEY_COMBINATION_LENGTH = 3;
 
 type ValidationResult = {
@@ -60,7 +60,7 @@ function validateShortcut(keys: string[]): ValidationResult {
     return {
       valid: false,
       error:
-        "Multiple keys require at least one modifier (Cmd, Ctrl, Alt, Shift, or Fn)",
+        "Multiple keys require at least one modifier (Cmd, Win, Ctrl, Alt, Shift, or Fn)",
     };
   }
 
