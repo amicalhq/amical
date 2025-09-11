@@ -142,7 +142,10 @@ async function extractArchive(
 
   if (platform === "win32") {
     // Use unzip command (available on macOS) to extract zip files
-    execSync(`unzip -q "${archivePath}" -d "${tempDir}"`, { stdio: "inherit" });
+    execSync(
+      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tempDir}' -Force"`,
+      { stdio: "inherit" },
+    );
   } else {
     // Use tar for Unix-like systems
     execSync(`tar -xzf "${archivePath}" -C "${tempDir}"`, { stdio: "inherit" });
