@@ -2,7 +2,7 @@ import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { app } from "electron";
 import { createRouter, procedure } from "../trpc";
-import { dbPath } from "../../db";
+import { dbPath, closeDatabase } from "../../db";
 import * as fs from "fs/promises";
 
 // FormatterConfig schema
@@ -556,6 +556,15 @@ export const settingsRouter = createRouter({
       if (logger) {
         logger.main.info("Resetting app - deleting all data");
       }
+
+      // Close database connection before deleting the file
+      if (logger) {
+        logger.main.info("Closing database connection before reset");
+      }
+      await closeDatabase();
+
+      // Add a small delay to ensure the connection is fully closed on Windows
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Delete the database file
       await fs.unlink(dbPath);

@@ -18,6 +18,7 @@ export const db = drizzle(`file:${dbPath}`, {
 
 // Initialize database with migrations
 let isInitialized = false;
+let dbConnection: null | typeof db = null;
 
 import { logger } from "../main/logger";
 
@@ -27,6 +28,9 @@ export async function initializeDatabase() {
   }
 
   try {
+    // Store the connection for later cleanup
+    dbConnection = db;
+
     // Determine the correct migrations folder path
     const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
     let migrationsPath: string;
@@ -71,5 +75,16 @@ export async function initializeDatabase() {
 
     // Fatal exit - app cannot function without database
     process.exit(1);
+  }
+}
+
+export async function closeDatabase() {
+  if (dbConnection) {
+    db.$client.close();
+    dbConnection = null;
+    isInitialized = false;
+    dbConnection = null;
+    isInitialized = false;
+    logger.db.info("Database connection closed successfully");
   }
 }
