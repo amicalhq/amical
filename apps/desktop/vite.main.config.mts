@@ -4,9 +4,13 @@ import { resolve } from "path";
 // https://vitejs.dev/config
 export default defineConfig({
   define: {
-    'process.env.POSTHOG_API_KEY': JSON.stringify(process.env.POSTHOG_API_KEY || ''),
-    'process.env.POSTHOG_HOST': JSON.stringify(process.env.POSTHOG_HOST || 'https://app.posthog.com'),
-    'process.env.TELEMETRY_ENABLED': JSON.stringify(process.env.TELEMETRY_ENABLED || 'false'),
+    __BUNDLED_POSTHOG_API_KEY: JSON.stringify(
+      process.env.POSTHOG_API_KEY || "",
+    ),
+    __BUNDLED_POSTHOG_HOST: JSON.stringify(process.env.POSTHOG_HOST || ""),
+    __BUNDLED_TELEMETRY_ENABLED: JSON.stringify(
+      process.env.TELEMETRY_ENABLED !== "false",
+    ),
   },
   build: {
     rollupOptions: {

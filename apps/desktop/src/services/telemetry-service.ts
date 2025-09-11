@@ -65,9 +65,11 @@ export class TelemetryService {
     }
 
     try {
-      // Check if telemetry is enabled via environment variable
-      const apiKey = process.env.POSTHOG_API_KEY;
-      const telemetryEnabled = process.env.TELEMETRY_ENABLED !== "false";
+      // Check runtime env first, then fall back to bundled values
+      const apiKey = process.env.POSTHOG_API_KEY || __BUNDLED_POSTHOG_API_KEY;
+      const telemetryEnabled = process.env.TELEMETRY_ENABLED
+        ? process.env.TELEMETRY_ENABLED !== "false"
+        : __BUNDLED_TELEMETRY_ENABLED;
 
       if (!apiKey || !telemetryEnabled) {
         logger.main.info("Telemetry disabled or no API key provided");
@@ -84,7 +86,7 @@ export class TelemetryService {
       logger.main.info("System information collected for telemetry");
 
       // Initialize PostHog
-      const host = process.env.POSTHOG_HOST || "https://app.posthog.com";
+      const host = process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST;
       this.posthog = new PostHog(apiKey, {
         host,
         flushAt: 1,

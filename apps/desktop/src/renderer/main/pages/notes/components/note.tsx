@@ -420,14 +420,14 @@ export default function Note({
                 </PopoverContent>
               </Popover> */}
 
-              <Tooltip>
+              {/* <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" disabled>
                     <Mic className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Transcription coming soon</TooltipContent>
-              </Tooltip>
+              </Tooltip> */}
 
               {/* More actions dropdown */}
               <DropdownMenu>

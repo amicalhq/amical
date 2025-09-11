@@ -323,7 +323,6 @@ export default function HistorySettingsPage() {
   });
 
   const transcriptions = transcriptionsQuery.data || [];
-  const loading = transcriptionsQuery.isLoading;
 
   function handleCopy(text: string) {
     navigator.clipboard.writeText(text);
@@ -350,30 +349,6 @@ export default function HistorySettingsPage() {
   }
 
   const groupedHistory = groupHistoryByDate(transcriptions);
-
-  // Loading state
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6 max-w-5xl">
-        <div className="mb-8">
-          <h1 className="text-xl font-bold">History</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Your recent transcription history
-          </p>
-        </div>
-        <Card>
-          <CardContent className="py-12">
-            <div className="flex flex-col items-center space-y-2 text-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
-              <p className="text-sm text-muted-foreground">
-                Loading transcription history...
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
