@@ -20,7 +20,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@electron-forge/maker-dmg": "https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz"
+      "@electron-forge/maker-dmg": "https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz",
+      "node-abi": "4.14.0"
     },
     "ignoredBuiltDependencies": [
       "@tailwindcss/oxide",

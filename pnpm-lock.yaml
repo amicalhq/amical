@@ -6,6 +6,7 @@ settings:
 
 overrides:
   '@electron-forge/maker-dmg': https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz
+  node-abi: 4.14.0
 
 importers:
 
@@ -208,7 +209,7 @@ importers:
         version: 1.0.1
       electron-trpc-experimental:
         specifier: 1.0.0-alpha.1
-        version: 1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(typescript@5.8.3))(typescript@5.8.3))(@trpc/server@11.5.0(typescript@5.8.3))(electron@36.2.0)
+        version: 1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(typescript@5.8.3))(typescript@5.8.3))(@trpc/server@11.5.0(typescript@5.8.3))(electron@38.1.0)
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.1.1)
@@ -361,8 +362,8 @@ importers:
         specifier: ^10.2.3
         version: 10.2.3
       electron:
-        specifier: 36.2.0
-        version: 36.2.0
+        specifier: 38.1.0
+        version: 38.1.0
       eslint:
         specifier: ^9.26.0
         version: 9.33.0(jiti@2.5.1)
@@ -5339,8 +5340,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@36.2.0:
-    resolution: {integrity: sha512-5yldoRjBKxPQfI0QMX+qq750o3Nl8N1SZnJqOPMq0gZ6rIJ+7y4ZLp808GrFwjfTm05TYgq3GSD8FGuKQZqwEw==}
+  electron@38.1.0:
+    resolution: {integrity: sha512-ypA8GF8RU4HD5pA1sa0/2U8k+92EPP2c7pX+3XbgB760F7OmqrFXtYkOilVw6HfV4+lk88XxqigmsUKTACQYoQ==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
@@ -7744,9 +7745,9 @@ packages:
   no-case@2.3.2:
     resolution: {integrity: sha512-rmTZ9kz+f3rCvK2TD1Ue/oZlns7OGoIWP4fc3llxxRXlOkHKoWPPWJOfFYpITabSow43QJbRIoHQXtt10VldyQ==}
 
-  node-abi@3.75.0:
-    resolution: {integrity: sha512-OhYaY5sDsIka7H7AtijtI9jwGYLyl29eQn/W623DiN/MIv5sUqc4g7BIDThX+gb7di9f6xK02nkp8sdfFWZLTg==}
-    engines: {node: '>=10'}
+  node-abi@4.14.0:
+    resolution: {integrity: sha512-E4n91K4Nk1Rch2KzD+edU2bfZTP4W42GypAUDXU4vu1A+4u9PvUNDkGI0dXbsy8ZeF3WGj0SD/uHxnXD/sW+3w==}
+    engines: {node: '>=22.12.0'}
 
   node-addon-api@4.3.0:
     resolution: {integrity: sha512-73sE9+3UaLYYFmDsFZnqCInzPyh3MqIwZO9cw58yIqAZhONrrabrYyYe3TuIqtIiOuTXVhsGau8hcrhhwSsDIQ==}
@@ -11347,7 +11348,7 @@ snapshots:
       detect-libc: 2.0.4
       fs-extra: 10.1.0
       got: 11.8.6
-      node-abi: 3.75.0
+      node-abi: 4.14.0
       node-api-version: 0.2.1
       ora: 5.4.1
       read-binary-file-arch: 1.0.6
@@ -15436,13 +15437,13 @@ snapshots:
 
   electron-to-chromium@1.5.207: {}
 
-  electron-trpc-experimental@1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(typescript@5.8.3))(typescript@5.8.3))(@trpc/server@11.5.0(typescript@5.8.3))(electron@36.2.0):
+  electron-trpc-experimental@1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(typescript@5.8.3))(typescript@5.8.3))(@trpc/server@11.5.0(typescript@5.8.3))(electron@38.1.0):
     dependencies:
       '@trpc/client': 11.5.0(@trpc/server@11.5.0(typescript@5.8.3))(typescript@5.8.3)
       '@trpc/server': 11.5.0(typescript@5.8.3)
       '@watchable/unpromise': 1.0.2
       debug: 4.4.1
-      electron: 36.2.0
+      electron: 38.1.0
       typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
@@ -15460,7 +15461,7 @@ snapshots:
       - supports-color
     optional: true
 
-  electron@36.2.0:
+  electron@38.1.0:
     dependencies:
       '@electron/get': 2.0.3
       '@types/node': 22.15.12
@@ -18836,7 +18837,7 @@ snapshots:
     dependencies:
       lower-case: 1.1.4
 
-  node-abi@3.75.0:
+  node-abi@4.14.0:
     dependencies:
       semver: 7.7.2
 
@@ -19358,7 +19359,7 @@ snapshots:
       minimist: 1.2.8
       mkdirp-classic: 0.5.3
       napi-build-utils: 2.0.0
-      node-abi: 3.75.0
+      node-abi: 4.14.0
       pump: 3.0.3
       rc: 1.2.8
       simple-get: 4.0.1
