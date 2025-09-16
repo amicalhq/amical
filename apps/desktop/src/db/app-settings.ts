@@ -48,8 +48,6 @@ const defaultSettings: AppSettingsData = {
   },
   ui: {
     theme: "system",
-    sidebarOpen: false,
-    currentView: "Voice Recording",
   },
   transcription: {
     language: "en",

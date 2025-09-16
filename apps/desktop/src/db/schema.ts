@@ -115,14 +115,6 @@ export interface AppSettingsData {
   };
   ui?: {
     theme: "light" | "dark" | "system";
-    sidebarOpen?: boolean;
-    currentView?: string;
-    windowBounds?: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    };
   };
   transcription?: {
     language: string;

@@ -17,6 +17,13 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
+  const [isMacOS, setIsMacOS] = useState(false);
+
+  useEffect(() => {
+    // Detect if running on macOS
+    const platform = navigator.platform || navigator.userAgent;
+    setIsMacOS(/Mac|Darwin/i.test(platform));
+  }, []);
 
   useEffect(() => {
     // Track navigation history in session storage
@@ -136,7 +143,7 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
     >
       <div className="flex w-full items-center gap-1">
         {/* macOS traffic light button spacing */}
-        <div className="w-[78px] flex-shrink-0" />
+        {isMacOS && <div className="w-[78px] flex-shrink-0" />}
 
         <div className="flex items-center gap-1 px-4 lg:gap-2 lg:px-6 py-1.5">
           <SidebarTrigger className="-ml-1" style={noDragRegion} />

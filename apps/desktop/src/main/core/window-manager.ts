@@ -1,4 +1,10 @@
-import { BrowserWindow, screen, systemPreferences, app } from "electron";
+import {
+  BrowserWindow,
+  screen,
+  systemPreferences,
+  app,
+  nativeTheme,
+} from "electron";
 import path from "node:path";
 import { logger } from "../logger";
 import { ServiceManager } from "../managers/service-manager";
@@ -16,13 +22,96 @@ export class WindowManager {
   private onboardingWindow: BrowserWindow | null = null;
   private widgetDisplayId: number | null = null;
   private cursorPollingInterval: NodeJS.Timeout | null = null;
+  private themeListenerSetup: boolean = false;
 
-  createOrShowMainWindow(): void {
+  private async getThemeColors(): Promise<{
+    backgroundColor: string;
+    symbolColor: string;
+  }> {
+    try {
+      const settingsService =
+        ServiceManager.getInstance()?.getService("settingsService");
+      if (!settingsService) {
+        // Default to light theme if service unavailable
+        return { backgroundColor: "#ffffff", symbolColor: "#000000" };
+      }
+
+      const uiSettings = await settingsService.getUISettings();
+      const theme = uiSettings?.theme || "system";
+
+      // Determine if we should use dark colors
+      let isDark = false;
+      if (theme === "dark") {
+        isDark = true;
+      } else if (theme === "light") {
+        isDark = false;
+      } else if (theme === "system") {
+        isDark = nativeTheme.shouldUseDarkColors;
+      }
+
+      // Return appropriate colors
+      return isDark
+        ? { backgroundColor: "#171717", symbolColor: "#fafafa" }
+        : { backgroundColor: "#ffffff", symbolColor: "#171717" };
+    } catch (error) {
+      logger.main.error("Failed to get theme colors:", error);
+      // Default to light theme on error
+      return { backgroundColor: "#ffffff", symbolColor: "#000000" };
+    }
+  }
+
+  async updateAllWindowThemes(): Promise<void> {
+    const colors = await this.getThemeColors();
+
+    // Update main window
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.setTitleBarOverlay({
+        color: colors.backgroundColor,
+        symbolColor: colors.symbolColor,
+        height: 32,
+      });
+    }
+
+    // Update onboarding window if it exists
+    // Note: onboarding window has frame: false, so no title bar to update
+
+    logger.main.info("Updated window themes", colors);
+  }
+
+  private setupThemeListener(): void {
+    if (this.themeListenerSetup) return;
+
+    // Listen for system theme changes
+    nativeTheme.on("updated", async () => {
+      const settingsService =
+        ServiceManager.getInstance()!.getService("settingsService")!;
+
+      const uiSettings = await settingsService.getUISettings();
+      const theme = uiSettings?.theme || "system";
+
+      // Only update if theme is set to "system"
+      if (theme === "system") {
+        await this.updateAllWindowThemes();
+        logger.main.info("System theme changed, updating windows");
+      }
+    });
+
+    this.themeListenerSetup = true;
+    logger.main.info("Theme listener setup complete");
+  }
+
+  async createOrShowMainWindow(): Promise<void> {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.show();
       this.mainWindow.focus();
       return;
     }
+
+    // Setup theme listener on first window creation
+    this.setupThemeListener();
+
+    // Get theme colors before creating window
+    const colors = await this.getThemeColors();
 
     this.mainWindow = new BrowserWindow({
       width: 1200,
@@ -30,8 +119,8 @@ export class WindowManager {
       frame: true,
       titleBarStyle: "hidden",
       titleBarOverlay: {
-        color: "#ffffff",
-        symbolColor: "#000000",
+        color: colors.backgroundColor,
+        symbolColor: colors.symbolColor,
         height: 32,
       },
       trafficLightPosition: { x: 20, y: 16 },
@@ -169,6 +258,9 @@ export class WindowManager {
       this.onboardingWindow.focus();
       return;
     }
+
+    // Setup theme listener if not already done
+    this.setupThemeListener();
 
     this.onboardingWindow = new BrowserWindow({
       width: 700,
