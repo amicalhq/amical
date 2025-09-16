@@ -42,6 +42,10 @@ const AppPreferencesSchema = z.object({
   showWidgetWhileInactive: z.boolean().optional(),
 });
 
+const UIThemeSchema = z.object({
+  theme: z.enum(["light", "dark", "system"]),
+});
+
 export const settingsRouter = createRouter({
   // Get all settings
   getSettings: procedure.query(async ({ ctx }) => {
@@ -544,6 +548,38 @@ export const settingsRouter = createRouter({
         if (windowManager) {
           await windowManager.syncWidgetVisibility();
         }
+      }
+
+      return true;
+    }),
+
+  // Update UI theme
+  updateUITheme: procedure
+    .input(UIThemeSchema)
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      // Get current UI settings
+      const currentUISettings = await settingsService.getUISettings();
+
+      // Update with new theme
+      await settingsService.setUISettings({
+        ...currentUISettings,
+        theme: input.theme,
+      });
+
+      // Update all window themes immediately
+      const windowManager = ctx.serviceManager.getService("windowManager");
+      if (windowManager) {
+        await windowManager.updateAllWindowThemes();
+      }
+
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.info("UI theme updated", { theme: input.theme });
       }
 
       return true;

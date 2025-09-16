@@ -7,7 +7,7 @@ import {
   updateAppSettings,
 } from "../db/app-settings";
 import type { AppSettingsData } from "../db/schema";
-import { isWindows, isMacOS } from "../utils/platform";
+import { isMacOS } from "../utils/platform";
 
 /**
  * Database-backed settings service with typed configuration
@@ -61,7 +61,11 @@ export class SettingsService {
    * Get UI settings
    */
   async getUISettings(): Promise<AppSettingsData["ui"]> {
-    return await getSettingsSection("ui");
+    return (
+      (await getSettingsSection("ui")) ?? {
+        theme: "system",
+      }
+    );
   }
 
   /**
