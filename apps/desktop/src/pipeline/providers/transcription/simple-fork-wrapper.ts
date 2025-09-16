@@ -61,7 +61,7 @@ export class SimpleForkWrapper {
     this.worker = fork(actualWorkerPath, [], {
       execPath: this.nodeBinaryPath,
       env: workerEnv,
-      silent: false,
+      silent: true,
       cwd: app.isPackaged ? process.resourcesPath : process.cwd(),
     });
 
