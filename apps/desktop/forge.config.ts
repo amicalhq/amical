@@ -332,7 +332,7 @@ const config: ForgeConfig = {
         process.platform === "win32" ? ".exe" : ""
       }`,
       "./models",
-      "./src/assets",
+      "./assets",
     ],
     extendInfo: {
       NSMicrophoneUsageDescription:
