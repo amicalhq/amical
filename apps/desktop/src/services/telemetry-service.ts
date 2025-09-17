@@ -65,8 +65,8 @@ export class TelemetryService {
     const apiKey = process.env.POSTHOG_API_KEY || __BUNDLED_POSTHOG_API_KEY;
 
     const telemetryEnabled = process.env.TELEMETRY_ENABLED
-    ? process.env.TELEMETRY_ENABLED !== "false"
-    : __BUNDLED_TELEMETRY_ENABLED;
+      ? process.env.TELEMETRY_ENABLED !== "false"
+      : __BUNDLED_TELEMETRY_ENABLED;
 
     if (!host || !apiKey || !telemetryEnabled) {
       logger.main.info(

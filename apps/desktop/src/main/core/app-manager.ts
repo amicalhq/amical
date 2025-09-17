@@ -5,16 +5,19 @@ import { WindowManager } from "./window-manager";
 import { setupApplicationMenu } from "../menu";
 import { ServiceManager } from "../managers/service-manager";
 import { EventHandlers } from "./event-handlers";
+import { TrayManager } from "../managers/tray-manager";
 
 export class AppManager {
   private windowManager: WindowManager;
   private serviceManager: ServiceManager;
   private eventHandlers: EventHandlers | null = null;
+  private trayManager: TrayManager;
 
   constructor() {
     this.windowManager = new WindowManager();
     this.serviceManager = ServiceManager.createInstance();
     this.serviceManager.setWindowManager(this.windowManager);
+    this.trayManager = TrayManager.getInstance();
   }
 
   async initialize(): Promise<void> {
@@ -42,6 +45,9 @@ export class AppManager {
     // Setup event handlers
     this.eventHandlers = new EventHandlers(this);
     this.eventHandlers.setupEventHandlers();
+
+    // Initialize tray
+    this.trayManager.initialize(this.windowManager);
 
     // Auto-update is now handled by update-electron-app in main.ts
 
@@ -190,6 +196,9 @@ export class AppManager {
     await this.serviceManager.cleanup();
     if (this.windowManager) {
       this.windowManager.cleanup();
+    }
+    if (this.trayManager) {
+      this.trayManager.cleanup();
     }
   }
 
