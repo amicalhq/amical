@@ -5,6 +5,9 @@ declare global {
 }
 
 export interface ElectronAPI {
+  // Platform information
+  platform: NodeJS.Platform;
+
   // Listeners remain the same (two-way to renderer)
   onGlobalShortcut: (
     callback: (data: { shortcut: string }) => void,

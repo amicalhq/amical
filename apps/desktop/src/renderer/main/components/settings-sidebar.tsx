@@ -1,16 +1,5 @@
 import * as React from "react";
-import {
-  IconSettings,
-  IconMicrophone,
-  IconBook,
-  IconBrain,
-  IconHistory,
-  IconInfoCircle,
-  IconBookFilled,
-  IconKeyboard,
-  IconAdjustments,
-  IconNotes,
-} from "@tabler/icons-react";
+import { IconBookFilled } from "@tabler/icons-react";
 
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
@@ -23,6 +12,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { CommandSearchButton } from "./command-search-button";
+import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
 // Custom Discord icon component
 const DiscordIcon = ({ className }: { className?: string }) => (
@@ -34,53 +25,11 @@ const DiscordIcon = ({ className }: { className?: string }) => (
 );
 
 const data = {
-  navMain: [
-    {
-      title: "Preferences",
-      url: "/settings/preferences",
-      icon: IconSettings,
-    },
-    {
-      title: "Dictation",
-      url: "/settings/dictation",
-      icon: IconMicrophone,
-    },
-    {
-      title: "Shortcuts",
-      url: "/settings/shortcuts",
-      icon: IconKeyboard,
-    },
-    {
-      title: "Notes",
-      url: "/settings/notes",
-      icon: IconNotes,
-    },
-    {
-      title: "Vocabulary",
-      url: "/settings/vocabulary",
-      icon: IconBook,
-    },
-    {
-      title: "AI Models",
-      url: "/settings/ai-models",
-      icon: IconBrain,
-    },
-    {
-      title: "History",
-      url: "/settings/history",
-      icon: IconHistory,
-    },
-    {
-      title: "Advanced",
-      url: "/settings/advanced",
-      icon: IconAdjustments,
-    },
-    {
-      title: "About",
-      url: "/settings/about",
-      icon: IconInfoCircle,
-    },
-  ],
+  navMain: SETTINGS_NAV_ITEMS.map(({ title, url, icon }) => ({
+    title,
+    url,
+    icon: typeof icon === "string" ? undefined : icon,
+  })),
   navSecondary: [
     {
       title: "Docs",
@@ -119,6 +68,9 @@ export function SettingsSidebar({
                 <span className="font-semibold">Amical</span>
               </div>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <CommandSearchButton />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>

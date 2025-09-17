@@ -101,4 +101,25 @@ export const notesRouter = createRouter({
       }
       return { success: true };
     }),
+
+  // Search notes (for command palette)
+  searchNotes: procedure
+    .input(
+      z.object({
+        query: z.string().optional().default(""),
+        limit: z.number().optional().default(10),
+      }),
+    )
+    .query(async ({ input }) => {
+      const notes = await notesService.listNotes({
+        search: input.query || "",
+        limit: input.limit,
+      });
+      return notes.map((note) => ({
+        id: note.id,
+        title: note.title,
+        createdAt: note.createdAt,
+        icon: note.icon || "file-text",
+      }));
+    }),
 });

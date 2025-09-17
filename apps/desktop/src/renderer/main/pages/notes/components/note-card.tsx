@@ -1,28 +1,12 @@
 "use client";
 
 import { FileText, Calendar } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { Note } from "../types";
 
 interface RecentNoteCardProps {
   note: Note;
   onNoteClick: (noteId: number) => void;
-}
-
-function formatDate(date: Date): string {
-  const now = new Date();
-  const diffInDays = Math.floor(
-    (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
-  );
-
-  if (diffInDays === 0) return "Today";
-  if (diffInDays === 1) return "Yesterday";
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
 }
 
 export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
