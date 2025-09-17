@@ -11,6 +11,9 @@ interface ShortcutData {
 }
 
 const api: ElectronAPI = {
+  // Platform information
+  platform: process.platform,
+
   sendAudioChunk: (
     chunk: Float32Array,
     isFinalChunk: boolean = false,
