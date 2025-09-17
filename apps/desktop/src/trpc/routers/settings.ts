@@ -585,6 +585,58 @@ export const settingsRouter = createRouter({
       return true;
     }),
 
+  // Get telemetry settings
+  getTelemetrySettings: procedure.query(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      return await settingsService.getTelemetrySettings();
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error getting telemetry settings:", error);
+      }
+      return { enabled: true };
+    }
+  }),
+
+  // Update telemetry settings
+  updateTelemetrySettings: procedure
+    .input(
+      z.object({
+        enabled: z.boolean(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const telemetryService =
+          ctx.serviceManager.getService("telemetryService");
+        if (!telemetryService) {
+          throw new Error("TelemetryService not available");
+        }
+
+        // Update the telemetry service state
+        await telemetryService.setEnabled(input.enabled);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Telemetry settings updated", {
+            enabled: input.enabled,
+          });
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error updating telemetry settings:", error);
+        }
+        throw error;
+      }
+    }),
+
   // Reset app - deletes all data and restarts
   resetApp: procedure.mutation(async ({ ctx }) => {
     try {

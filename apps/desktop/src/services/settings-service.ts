@@ -316,4 +316,21 @@ export class SettingsService {
       });
     });
   }
+
+  /**
+   * Get telemetry settings
+   */
+  async getTelemetrySettings(): Promise<AppSettingsData["telemetry"]> {
+    const telemetry = await getSettingsSection("telemetry");
+    return telemetry ?? { enabled: true }; // Default to enabled
+  }
+
+  /**
+   * Update telemetry settings
+   */
+  async setTelemetrySettings(
+    telemetrySettings: AppSettingsData["telemetry"],
+  ): Promise<void> {
+    await updateSettingsSection("telemetry", telemetrySettings);
+  }
 }

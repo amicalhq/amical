@@ -25,7 +25,10 @@
         "AWS_SECRET_ACCESS_KEY",
         "AWS_REGION",
         "S3_BUCKET_NAME",
-        "S3_ENDPOINT"
+        "S3_ENDPOINT",
+        "POSTHOG_API_KEY",
+        "POSTHOG_HOST",
+        "TELEMETRY_ENABLED"
       ]
     },
     "build:native": {

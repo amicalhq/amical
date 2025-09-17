@@ -59,8 +59,8 @@ export class ServiceManager {
     }
 
     try {
-      await this.initializeTelemetryService();
       this.initializeSettingsService();
+      await this.initializeTelemetryService();
       await this.initializeModelServices();
       this.initializePlatformServices();
       await this.initializeVADService();
@@ -79,7 +79,8 @@ export class ServiceManager {
   }
 
   private async initializeTelemetryService(): Promise<void> {
-    this.telemetryService = new TelemetryService();
+    this.telemetryService = new TelemetryService(this.settingsService!);
+    // Pass settings service if available for checking user preferences
     await this.telemetryService.initialize();
     logger.main.info("Telemetry service initialized");
   }

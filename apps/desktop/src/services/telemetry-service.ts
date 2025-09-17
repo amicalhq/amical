@@ -3,6 +3,7 @@ import { machineId } from "node-machine-id";
 import * as si from "systeminformation";
 import { app } from "electron";
 import { logger } from "../main/logger";
+import type { SettingsService } from "./settings-service";
 
 export interface TranscriptionMetrics {
   session_id?: string;
@@ -53,71 +54,78 @@ export class TelemetryService {
   private systemInfo: SystemInfo | null = null;
   private enabled: boolean = false;
   private initialized: boolean = false;
-  private persistedProperties: Record<string, any> = {};
+  private persistedProperties: Record<string, unknown> = {};
+  private settingsService: SettingsService;
 
-  constructor() {
-    // Public constructor for consistency with other services
-  }
+  constructor(settingsService: SettingsService) {
+    this.settingsService = settingsService;
+    // Initialize PostHog
+    const host = process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST;
+    // Check runtime env first, then fall back to bundled values
+    const apiKey = process.env.POSTHOG_API_KEY || __BUNDLED_POSTHOG_API_KEY;
 
-  async initialize(): Promise<void> {
-    if (this.initialized) {
+    const telemetryEnabled = process.env.TELEMETRY_ENABLED
+    ? process.env.TELEMETRY_ENABLED !== "false"
+    : __BUNDLED_TELEMETRY_ENABLED;
+
+    if (!host || !apiKey || !telemetryEnabled) {
+      logger.main.info(
+        "Telemetry disabled since either api key or host has not been provided",
+      );
       return;
     }
 
-    try {
-      // Check runtime env first, then fall back to bundled values
-      const apiKey = process.env.POSTHOG_API_KEY || __BUNDLED_POSTHOG_API_KEY;
-      const telemetryEnabled = process.env.TELEMETRY_ENABLED
-        ? process.env.TELEMETRY_ENABLED !== "false"
-        : __BUNDLED_TELEMETRY_ENABLED;
+    this.posthog = new PostHog(apiKey, {
+      host,
+      flushAt: 1,
+      flushInterval: 10000,
+    });
+  }
 
-      if (!apiKey || !telemetryEnabled) {
-        logger.main.info("Telemetry disabled or no API key provided");
-        this.enabled = false;
-        return;
-      }
-
-      // Get unique machine ID
-      this.machineId = await machineId();
-      logger.main.info("Machine ID generated for telemetry");
-
-      // Collect system information
-      this.systemInfo = await this.collectSystemInfo();
-      logger.main.info("System information collected for telemetry");
-
-      // Initialize PostHog
-      const host = process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST;
-      this.posthog = new PostHog(apiKey, {
-        host,
-        flushAt: 1,
-        flushInterval: 10000,
-      });
-
-      // ! posthog-node code flow doesn't use register to set super properties
-      // ! Track them manually
-      this.persistedProperties = {
-        app_version: app.getVersion(),
-        machine_id: this.machineId,
-        app_is_packaged: app.isPackaged,
-        system_info: {
-          ...this.systemInfo,
-        },
-      };
-
-      // Identify the machine with system properties
-      this.posthog.identify({
-        distinctId: this.machineId,
-        properties: {
-          ...this.persistedProperties,
-        },
-      });
-      this.enabled = true;
-      this.initialized = true;
-      logger.main.info("Telemetry service initialized successfully");
-    } catch (error) {
-      logger.main.error("Failed to initialize telemetry service:", error);
-      this.enabled = false;
+  async initialize(): Promise<void> {
+    if (this.initialized || !this.posthog) {
+      return;
     }
+
+    // Sync opt-out state with database settings
+    const telemetrySettings = await this.settingsService.getTelemetrySettings();
+    if (telemetrySettings?.enabled === false) {
+      await this.posthog.optOut();
+      logger.main.debug("Opted out of telemetry");
+    } else {
+      await this.posthog.optIn();
+      logger.main.debug("Opted into telemetry");
+    }
+
+    // Get unique machine ID
+    this.machineId = await machineId();
+    logger.main.info("Machine ID generated for telemetry");
+
+    // Collect system information
+    this.systemInfo = await this.collectSystemInfo();
+    logger.main.info("System information collected for telemetry");
+
+    // ! posthog-node code flow doesn't use register to set super properties
+    // ! Track them manually
+    this.persistedProperties = {
+      app_version: app.getVersion(),
+      machine_id: this.machineId,
+      app_is_packaged: app.isPackaged,
+      system_info: {
+        ...this.systemInfo,
+      },
+    };
+
+    // Identify the machine with system properties
+    this.posthog.identify({
+      distinctId: this.machineId,
+      properties: {
+        ...this.persistedProperties,
+      },
+    });
+    this.enabled = true;
+    this.initialized = true;
+    logger.main.info("Telemetry service initialized successfully");
   }
 
   private async collectSystemInfo(): Promise<SystemInfo> {
@@ -174,39 +182,35 @@ export class TelemetryService {
   }
 
   trackTranscriptionCompleted(metrics: TranscriptionMetrics): void {
-    if (!this.enabled || !this.posthog) return;
-
-    try {
-      this.posthog.capture({
-        distinctId: this.machineId,
-        event: "transcription_completed",
-        properties: {
-          ...metrics,
-          ...this.persistedProperties,
-        },
-      });
-
-      logger.main.debug("Tracked transcription completion", {
-        session_id: metrics.session_id,
-        model: metrics.model_id,
-        duration: metrics.total_duration_ms,
-        recording_duration: metrics.recording_duration_ms,
-        processing_duration: metrics.processing_duration_ms,
-      });
-    } catch (error) {
-      logger.main.error("Failed to track transcription completed:", error);
+    if (!this.posthog) {
+      return;
     }
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "transcription_completed",
+      properties: {
+        ...metrics,
+        ...this.persistedProperties,
+      },
+    });
+
+    logger.main.debug("Tracked transcription completion", {
+      session_id: metrics.session_id,
+      model: metrics.model_id,
+      duration: metrics.total_duration_ms,
+      recording_duration: metrics.recording_duration_ms,
+      processing_duration: metrics.processing_duration_ms,
+    });
   }
 
   async shutdown(): Promise<void> {
-    if (this.posthog) {
-      try {
-        await this.posthog.shutdown();
-        logger.main.info("Telemetry service shut down");
-      } catch (error) {
-        logger.main.error("Error shutting down telemetry:", error);
-      }
+    if (!this.posthog) {
+      return;
     }
+
+    await this.posthog.shutdown();
+    logger.main.info("Telemetry service shut down");
   }
 
   isEnabled(): boolean {
@@ -215,5 +219,35 @@ export class TelemetryService {
 
   getMachineId(): string {
     return this.machineId;
+  }
+
+  async optIn(): Promise<void> {
+    await this.settingsService.setTelemetrySettings({ enabled: true });
+    if (!this.posthog) {
+      return;
+    }
+
+    await this.posthog.optIn();
+
+    logger.main.info("Telemetry opt-in successful");
+  }
+
+  async optOut(): Promise<void> {
+    await this.settingsService.setTelemetrySettings({ enabled: false });
+    if (!this.posthog) {
+      return;
+    }
+
+    await this.posthog.optOut();
+
+    logger.main.info("Telemetry opt-out successful");
+  }
+
+  async setEnabled(enabled: boolean): Promise<void> {
+    if (enabled) {
+      await this.optIn();
+    } else {
+      await this.optOut();
+    }
   }
 }

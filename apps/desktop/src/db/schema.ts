@@ -159,6 +159,9 @@ export interface AppSettingsData {
     minimizeToTray?: boolean;
     showWidgetWhileInactive?: boolean;
   };
+  telemetry?: {
+    enabled?: boolean;
+  };
 }
 
 // Notes table

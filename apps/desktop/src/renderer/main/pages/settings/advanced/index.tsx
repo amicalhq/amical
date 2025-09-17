@@ -30,6 +30,7 @@ export default function AdvancedSettingsPage() {
 
   // tRPC queries and mutations
   const settingsQuery = api.settings.getSettings.useQuery();
+  const telemetryQuery = api.settings.getTelemetrySettings.useQuery();
   const dataPathQuery = api.settings.getDataPath.useQuery();
   const utils = api.useUtils();
 
@@ -42,6 +43,18 @@ export default function AdvancedSettingsPage() {
       onError: (error) => {
         console.error("Failed to update transcription settings:", error);
         toast.error("Failed to update settings. Please try again.");
+      },
+    });
+
+  const updateTelemetrySettingsMutation =
+    api.settings.updateTelemetrySettings.useMutation({
+      onSuccess: () => {
+        utils.settings.getTelemetrySettings.invalidate();
+        toast.success("Telemetry settings updated");
+      },
+      onError: (error) => {
+        console.error("Failed to update telemetry settings:", error);
+        toast.error("Failed to update telemetry settings. Please try again.");
       },
     });
 
@@ -74,6 +87,16 @@ export default function AdvancedSettingsPage() {
     updateTranscriptionSettingsMutation.mutate({
       preloadWhisperModel: checked,
     });
+  };
+
+  const handleTelemetryChange = (checked: boolean) => {
+    updateTelemetrySettingsMutation.mutate({
+      enabled: checked,
+    });
+  };
+
+  const handleOpenTelemetryDocs = () => {
+    window.electronAPI.openExternal("https://amical.ai/docs/telemetry");
   };
 
   return (
@@ -124,6 +147,26 @@ export default function AdvancedSettingsPage() {
             <Switch id="auto-update" defaultChecked />
           </div>
 
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="telemetry">Anonymous Telemetry</Label>
+              <p className="text-sm text-muted-foreground">
+                Help improve Amical by sharing anonymous usage data.{" "}
+                <button
+                  onClick={handleOpenTelemetryDocs}
+                  className="text-primary hover:underline"
+                >
+                  Learn more
+                </button>
+              </p>
+            </div>
+            <Switch
+              id="telemetry"
+              checked={telemetryQuery.data?.enabled ?? true}
+              onCheckedChange={handleTelemetryChange}
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="data-location">Data Location</Label>
             <Input
@@ -136,7 +179,7 @@ export default function AdvancedSettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-destructive/50">
+      <Card className="border-destructive/50 mt-6">
         <CardHeader>
           <CardTitle className="text-destructive">Danger Zone</CardTitle>
           <CardDescription>
