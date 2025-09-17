@@ -21,6 +21,13 @@ export interface SettingsNavItem {
 
 export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
+    title: "Notes",
+    url: "/settings/notes",
+    description: "Manage your notes",
+    icon: IconNotes,
+    type: "settings",
+  },
+  {
     title: "Preferences",
     url: "/settings/preferences",
     description: "Configure general application preferences and behavior",
@@ -39,13 +46,6 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/shortcuts",
     description: "Customize keyboard shortcuts and hotkeys",
     icon: IconKeyboard,
-    type: "settings",
-  },
-  {
-    title: "Notes",
-    url: "/settings/notes",
-    description: "Manage your notes",
-    icon: IconNotes,
     type: "settings",
   },
   {
