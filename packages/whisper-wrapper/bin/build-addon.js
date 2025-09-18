@@ -40,6 +40,49 @@ if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
 const homeDir = path.join(pkgDir, ".home");
 if (!fs.existsSync(homeDir)) fs.mkdirSync(homeDir);
 
+function ensureWindowsNodeImportLib(buildVariantDir, arch, env) {
+  if (process.platform !== "win32") return;
+
+  const nodeImportLib = path.join(buildVariantDir, "node.lib");
+  if (fs.existsSync(nodeImportLib)) return;
+
+  let headersPackageJson;
+  try {
+    headersPackageJson = require.resolve("node-api-headers/package.json", {
+      paths: [pkgDir],
+    });
+  } catch (err) {
+    throw new Error(
+      "node-api-headers package not found; cannot generate node.lib on Windows",
+    );
+  }
+
+  const defPath = path.join(path.dirname(headersPackageJson), "def", "node_api.def");
+  if (!fs.existsSync(defPath)) {
+    throw new Error(`node_api.def not found at ${defPath}`);
+  }
+
+  const machineMap = { x64: "X64", ia32: "X86", arm64: "ARM64" };
+  const machine = machineMap[arch] || "X64";
+
+  console.log(
+    `[build-addon] Generating node import library for ${machine} into ${nodeImportLib}`,
+  );
+  try {
+    run(`lib.exe /def:"${defPath}" /machine:${machine} /out:"${nodeImportLib}"`, {
+      env,
+    });
+  } catch (error) {
+    const message =
+      "Failed to generate node import library. Ensure Visual Studio build tools are installed.";
+    if (error instanceof Error) {
+      error.message = `${message}\n${error.message}`;
+      throw error;
+    }
+    throw new Error(message);
+  }
+}
+
 function variantFromName(name, platform, arch) {
   const envOverrides = {};
   if (name === "cpu-fallback") {
@@ -124,6 +167,8 @@ for (const variant of variants) {
   };
 
   console.log(`[build-addon] Building variant ${variant.name}`);
+
+  ensureWindowsNodeImportLib(buildVariantDir, arch, env);
 
   const cmakeParts = [
     "npx cmake-js compile",
