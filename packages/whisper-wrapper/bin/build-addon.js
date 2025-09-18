@@ -40,6 +40,74 @@ if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
 const homeDir = path.join(pkgDir, ".home");
 if (!fs.existsSync(homeDir)) fs.mkdirSync(homeDir);
 
+function resolveLibExecutable(env, arch) {
+  const archDir = arch === "ia32" ? "x86" : arch === "arm64" ? "arm64" : "x64";
+  const hostDir = arch === "ia32" ? "Hostx86" : "Hostx64";
+  const candidates = [];
+
+  const addIfExists = (candidate) => {
+    if (candidate && fs.existsSync(candidate) && !candidates.includes(candidate)) {
+      candidates.push(candidate);
+    }
+  };
+
+  try {
+    const whereOutput = execSync("where lib.exe", {
+      env,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of whereOutput) {
+      addIfExists(line);
+    }
+  } catch (err) {
+    // ignore when lib.exe is not on PATH; fall back to manual probing
+  }
+
+  const probeVersionedDir = (dir) => {
+    if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return;
+    const entries = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: "base" }));
+    for (const entry of entries) {
+      const candidate = path.join(dir, entry, "bin", hostDir, archDir, "lib.exe");
+      if (fs.existsSync(candidate)) {
+        addIfExists(candidate);
+        break;
+      }
+    }
+  };
+
+  const probeInstallDir = (installDir) => {
+    if (!installDir) return;
+    if (fs.existsSync(installDir) && fs.statSync(installDir).isFile()) {
+      addIfExists(installDir);
+      return;
+    }
+
+    const directCandidate = path.join(installDir, "bin", hostDir, archDir, "lib.exe");
+    addIfExists(directCandidate);
+
+    const toolsDir = path.join(installDir, "Tools", "MSVC");
+    probeVersionedDir(toolsDir);
+  };
+
+  probeInstallDir(env.VCToolsInstallDir);
+  probeInstallDir(env.VCINSTALLDIR);
+  probeInstallDir(env.VSINSTALLDIR && path.join(env.VSINSTALLDIR, "VC"));
+  probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC");
+  probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC");
+  probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Professional/VC/Tools/MSVC");
+  probeVersionedDir("C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC");
+
+  return candidates[0] || null;
+}
+
 function ensureWindowsNodeImportLib(buildVariantDir, arch, env) {
   if (process.platform !== "win32") return;
 
@@ -65,11 +133,18 @@ function ensureWindowsNodeImportLib(buildVariantDir, arch, env) {
   const machineMap = { x64: "X64", ia32: "X86", arm64: "ARM64" };
   const machine = machineMap[arch] || "X64";
 
+  const libExecutable = resolveLibExecutable(env, arch);
+  if (!libExecutable) {
+    throw new Error(
+      "Unable to locate lib.exe. Ensure the Visual Studio Build Tools are installed and vcvarsall has been applied.",
+    );
+  }
+
   console.log(
-    `[build-addon] Generating node import library for ${machine} into ${nodeImportLib}`,
+    `[build-addon] Generating node import library using ${libExecutable} for ${machine} into ${nodeImportLib}`,
   );
   try {
-    run(`lib.exe /def:"${defPath}" /machine:${machine} /out:"${nodeImportLib}"`, {
+    run(`"${libExecutable}" /def:"${defPath}" /machine:${machine} /out:"${nodeImportLib}"`, {
       env,
     });
   } catch (error) {
