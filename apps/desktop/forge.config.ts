@@ -40,7 +40,7 @@ export const EXTERNAL_DEPENDENCIES = [
   "libsql",
   "onnxruntime-node",
   "workerpool",
-  "@amical/smart-whisper",
+  "@amical/whisper-wrapper",
   // Add any other native modules you need here
 ];
 
@@ -318,7 +318,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpack:
-        "{*.node,*.dylib,*.so,*.dll,*.metal,**/node_modules/@amical/smart-whisper/**,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/node_modules/@amical/whisper-wrapper/**,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
     },
     name: "Amical",
     executableName: "Amical",

@@ -21,6 +21,14 @@ coverage
 # Vercel
 .vercel
 
+# CMake-js cache
+.cmake-js/
+**/.cmake-js/
+
+# Tool helpers
+.home/
+**/.home/
+
 # Build Outputs
 .next/
 out/
@@ -41,6 +49,7 @@ CLAUDE.md
 .local
 .claude
 amical.db
+AGENTS.md
 
 # Temp files
 /tmp

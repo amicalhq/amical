@@ -29,7 +29,7 @@ export default defineConfig({
         entryFileNames: "[name].js",
       },
       external: [
-        "@amical/smart-whisper",
+        "@amical/whisper-wrapper",
         "@libsql/client",
         "@libsql/darwin-arm64",
         "@libsql/darwin-x64",
@@ -51,7 +51,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: [
       "better-sqlite3",
-      "smart-whisper",
+      "@amical/whisper-wrapper",
       "drizzle-orm",
       "@libsql/client",
     ],

@@ -119,7 +119,7 @@ export class WhisperProvider implements TranscriptionProvider {
         `Starting transcription of ${aggregatedAudio.length} samples (${((aggregatedAudio.length / this.SAMPLE_RATE) * 1000).toFixed(0)}ms)`,
       );
 
-      // Transcribe using smart-whisper
+      // Transcribe using the local Whisper wrapper
       if (!this.workerWrapper) {
         throw new Error("Worker wrapper is not initialized");
       }
@@ -137,7 +137,7 @@ export class WhisperProvider implements TranscriptionProvider {
           initial_prompt: initialPrompt,
           suppress_blank: true,
           suppress_non_speech_tokens: true,
-          no_timestamps: true,
+          no_timestamps: false,
         },
       ]);
 
@@ -302,7 +302,7 @@ export class WhisperProvider implements TranscriptionProvider {
       await this.workerWrapper.exec("initializeModel", [modelPath]);
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);
-      throw new Error(`Failed to initialize smart-whisper: ${error}`);
+      throw new Error(`Failed to initialize whisper wrapper: ${error}`);
     }
   }
 

@@ -1,5 +1,5 @@
 // Worker process entry point for fork
-import { Whisper } from "@amical/smart-whisper";
+import { Whisper } from "@amical/whisper-wrapper";
 
 // Simple console-based logging for worker process
 const logger = {
@@ -29,7 +29,6 @@ const methods = {
       whisperInstance = null;
     }
 
-    const { Whisper } = await import("@amical/smart-whisper");
     whisperInstance = new Whisper(modelPath, { gpu: true });
     try {
       await whisperInstance.load();
@@ -71,8 +70,17 @@ const methods = {
     );
     const transcription = await result;
 
+    logger.transcription.debug(
+      `Transcription segments: ${Array.isArray(transcription) ? transcription.length : "?"}`,
+    );
+    if (Array.isArray(transcription)) {
+      logger.transcription.debug(
+        `First segment preview: ${transcription[0]?.text ?? "<none>"}`,
+      );
+    }
+
     return transcription
-      .map((segment) => segment.text)
+      .map((segment: { text: string }) => segment.text)
       .join(" ")
       .trim();
   },
