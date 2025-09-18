@@ -124,13 +124,29 @@ for (const variant of variants) {
   };
 
   console.log(`[build-addon] Building variant ${variant.name}`);
-  run(
-    `npx cmake-js compile -O "${buildVariantDir}" -B Release -d "${addonDir}" -T whisper_node --CD node_runtime=node`,
-    {
-      cwd: addonDir,
-      env,
-    },
-  );
+
+  const cmakeParts = [
+    "npx cmake-js compile",
+    `-O "${buildVariantDir}"`,
+    "-B Release",
+    `-d "${addonDir}"`,
+    "-T whisper_node",
+    "--CD node_runtime=node",
+  ];
+
+  const propagateCMakeBool = (key) => {
+    const value = env[key];
+    if (typeof value === "string" && value.length > 0) {
+      cmakeParts.push(`--CD${key}=${value}`);
+    }
+  };
+
+  propagateCMakeBool("GGML_NATIVE");
+
+  run(cmakeParts.join(" "), {
+    cwd: addonDir,
+    env,
+  });
 
   const builtBinary = path.join(buildVariantDir, "Release", "whisper.node");
   if (!fs.existsSync(builtBinary)) {
