@@ -326,7 +326,7 @@ export class WindowManager {
     const preferences = await settingsService.getPreferences();
 
     if (preferences.showWidgetWhileInactive) {
-      this.widgetWindow.show();
+      this.widgetWindow.showInactive();
       return;
     }
 
@@ -335,7 +335,7 @@ export class WindowManager {
       return;
     }
 
-    this.widgetWindow.show();
+    this.widgetWindow.showInactive();
   }
 
   setupRecordingStateListener(recordingManager: RecordingManager): void {
