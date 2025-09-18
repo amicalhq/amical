@@ -289,4 +289,8 @@ for (const variant of variants) {
       );
     }
   }
+
+  // Remove intermediate build artifacts to keep the package footprint small and avoid
+  // extremely long CMake-generated paths that break Windows packaging tools.
+  fs.rmSync(buildVariantDir, { recursive: true, force: true });
 }
