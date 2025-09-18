@@ -160,6 +160,24 @@ const config: ForgeConfig = {
         }
       }
 
+      // Prune heavy native sources that trigger MAX_PATH on Windows packages
+      const whisperWrapperPath = join(
+        localNodeModules,
+        "@amical",
+        "whisper-wrapper",
+      );
+      const whisperPruneTargets = [
+        join(whisperWrapperPath, "whisper.cpp"),
+        join(whisperWrapperPath, "build"),
+        join(whisperWrapperPath, ".cmake-js"),
+      ];
+      for (const target of whisperPruneTargets) {
+        if (existsSync(target)) {
+          console.log(`Pruning ${target} from packaged output`);
+          rmSync(target, { recursive: true, force: true });
+        }
+      }
+
       // Second pass: Replace any symlinks with dereferenced copies
       console.log("Checking for symlinks in copied dependencies...");
       for (const dep of nativeModuleDependenciesToPackage) {
