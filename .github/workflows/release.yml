@@ -79,6 +79,8 @@ jobs:
           echo ""
 
       - name: Install dependencies
+        env:
+          GGML_NATIVE: OFF # ensure postinstall builds avoid i8mm on CI runners
         run: pnpm install --frozen-lockfile
 
       - name: Build whisper native binaries
