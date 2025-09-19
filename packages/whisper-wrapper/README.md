@@ -16,6 +16,13 @@ reasoning behind them.
   without NVIDIA drivers still have a working fallback.
 - Every macOS build is ad-hoc signed (`codesign -s -`) so Electron/Node can load
   it without crashing.
+- Each variant is produced as a *single* `.node` binary. We force static
+  libraries (`GGML_STATIC=ON`, `BUILD_SHARED_LIBS=OFF`) so all ggml/whisper
+  code is linked directly into the addon—no sidecar `.dylib/.dll` files ship
+  at runtime.
+- The full CMake build directory is deleted after each variant so Electron
+  Forge/Squirrel never sees the long `CMakeFiles/...` paths that blew past
+  Windows’ MAX_PATH limit during packaging.
 
 ## GPU/CPU fallback
 
@@ -34,20 +41,17 @@ binaries alongside CPU ones without breaking installs that lack the GPU stack.
 
 ## GGML_NATIVE on macOS arm64
 
-GitHub’s hosted macOS runners advertise arm64 but clang refuses to inline the
-`vmmlaq_s32` intrinsic when `-mcpu=native` is used, which breaks the build in
-`ggml-cpu/arch/arm/quants.c`. To keep CI green the release workflow exports
-`GGML_NATIVE=OFF` before calling the build scripts so the CPU binary is built
-with a conservative feature set.
-
-Locally you’re free to enable the native path if your toolchain supports those
-instructions:
+GitHub’s hosted macOS runners expose `i8mm` but clang refuses to emit the
+`vmmlaq_s32` intrinsic when `-mcpu=native` is passed, so the build dies in
+`ggml-cpu/arch/arm/quants.c`. CI therefore exports `GGML_NATIVE=OFF` before
+calling the build scripts. Locally you can flip it back on if your toolchain
+supports those instructions:
 
 ```bash
 GGML_NATIVE=ON pnpm --filter @amical/whisper-wrapper build:native
 ```
 
-(Leave it off on CI unless the runner truly exposes `i8mm`.)
+Leave it off in CI unless you control the runner.
 
 ## Custom targets
 

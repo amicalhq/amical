@@ -3,6 +3,7 @@ project(whisper_node LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 add_definitions(-DNAPI_VERSION=8)
 
@@ -16,6 +17,9 @@ set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(WHISPER_CURL OFF CACHE BOOL "" FORCE)
 set(WHISPER_SDL2 OFF CACHE BOOL "" FORCE)
 set(WHISPER_FFMPEG OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(GGML_STATIC ON CACHE BOOL "" FORCE)
+set(GGML_SHARED OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(${WHISPER_CPP_DIR} whispercpp EXCLUDE_FROM_ALL)
 
@@ -78,4 +82,3 @@ target_link_libraries(whisper_node PRIVATE whisper Threads::Threads)
 if (APPLE)
   target_link_options(whisper_node PRIVATE "-undefined" "dynamic_lookup")
 endif()
-
