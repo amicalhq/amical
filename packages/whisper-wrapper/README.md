@@ -12,8 +12,8 @@ reasoning behind them.
 - `pnpm --filter @amical/whisper-wrapper build:native` rebuilds the default
   variants for this platform (Metal + CPU on macOS, CPU elsewhere).
 - `pnpm --filter @amical/whisper-wrapper build:native:cuda` builds an extra
-  `win32-x64-cuda` binary **and** a plain `win32-x64` binary so Windows users
-  without NVIDIA drivers still have a working fallback.
+  `win32-x64-cuda` binary alongside the regular `win32-x64` fallback. Install
+  the CUDA toolkit (12.x tested) before running it.
 - Every macOS build is ad-hoc signed (`codesign -s -`) so Electron/Node can load
   it without crashing.
 - Each variant is produced as a *single* `.node` binary. We force static

@@ -71,6 +71,13 @@ jobs:
           node-version: '24.1.0'
           cache: 'pnpm'
 
+      - name: Install CUDA Toolkit
+        if: matrix.os == 'windows'
+        uses: Jimver/cuda-toolkit@v0.2.15
+        with:
+          cuda: '12.4.1'
+          method: 'network'
+
       - name: Log Node.js architecture and platform
         run: |
           echo "=== Node.js Process Information ==="
@@ -91,9 +98,11 @@ jobs:
           GGML_NATIVE: OFF # CI mac runners lack i8mm support; keep CPU features conservative here
         run: pnpm --filter @amical/whisper-wrapper build:native
 
-      # - name: Build whisper native binaries (cuda)
-      #   if: matrix.os == 'windows'
-      #   run: pnpm --filter @amical/whisper-wrapper build:native:cuda
+      - name: Build whisper native binaries (cuda)
+        if: matrix.os == 'windows'
+        env:
+          GGML_NATIVE: OFF
+        run: pnpm --filter @amical/whisper-wrapper build:native:cuda
 
       - name: Download Node.js binaries
         working-directory: apps/desktop
