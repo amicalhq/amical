@@ -40,7 +40,7 @@ export const EXTERNAL_DEPENDENCIES = [
   "libsql",
   "onnxruntime-node",
   "workerpool",
-  "@amical/smart-whisper",
+  "@amical/whisper-wrapper",
   // Add any other native modules you need here
 ];
 
@@ -157,6 +157,24 @@ const config: ForgeConfig = {
           console.log(`✓ Successfully copied ${dep}`);
         } catch (error) {
           console.error(`Failed to copy ${dep}:`, error);
+        }
+      }
+
+      // Prune heavy native sources that trigger MAX_PATH on Windows packages
+      const whisperWrapperPath = join(
+        localNodeModules,
+        "@amical",
+        "whisper-wrapper",
+      );
+      const whisperPruneTargets = [
+        join(whisperWrapperPath, "whisper.cpp"),
+        join(whisperWrapperPath, "build"),
+        join(whisperWrapperPath, ".cmake-js"),
+      ];
+      for (const target of whisperPruneTargets) {
+        if (existsSync(target)) {
+          console.log(`Pruning ${target} from packaged output`);
+          rmSync(target, { recursive: true, force: true });
         }
       }
 
@@ -318,7 +336,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpack:
-        "{*.node,*.dylib,*.so,*.dll,*.metal,**/node_modules/@amical/smart-whisper/**,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
+        "{*.node,*.dylib,*.so,*.dll,*.metal,**/node_modules/@amical/whisper-wrapper/**,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
     },
     name: "Amical",
     executableName: "Amical",

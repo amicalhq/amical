@@ -32,13 +32,13 @@
       "keytar",
       "protobufjs",
       "sharp",
-      "smart-whisper",
+      "@amical/whisper-wrapper",
       "drizzle-orm/libsql"
     ],
     "onlyBuiltDependencies": [
       "electron",
       "electron-winstaller",
-      "smart-whisper",
+      "@amical/whisper-wrapper",
       "drizzle-orm/libsql",
       "@libsql",
       "macos-alias",

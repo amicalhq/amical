@@ -1,5 +1,19 @@
 // Worker process entry point for fork
-import { Whisper } from "@amical/smart-whisper";
+import { Whisper, getLoadedBindingInfo } from "@amical/whisper-wrapper";
+
+// Type definitions for IPC communication
+interface WorkerMessage {
+  id: number;
+  method: string;
+  args: unknown[];
+}
+
+interface SerializedFloat32Array {
+  __type: "Float32Array";
+  data: number[];
+}
+
+type MethodArg = SerializedFloat32Array | unknown;
 
 // Simple console-based logging for worker process
 const logger = {
@@ -29,7 +43,6 @@ const methods = {
       whisperInstance = null;
     }
 
-    const { Whisper } = await import("@amical/smart-whisper");
     whisperInstance = new Whisper(modelPath, { gpu: true });
     try {
       await whisperInstance.load();
@@ -71,8 +84,17 @@ const methods = {
     );
     const transcription = await result;
 
+    logger.transcription.debug(
+      `Transcription segments: ${Array.isArray(transcription) ? transcription.length : "?"}`,
+    );
+    if (Array.isArray(transcription)) {
+      logger.transcription.debug(
+        `First segment preview: ${transcription[0]?.text ?? "<none>"}`,
+      );
+    }
+
     return transcription
-      .map((segment) => segment.text)
+      .map((segment: { text: string }) => segment.text)
       .join(" ")
       .trim();
   },
@@ -84,23 +106,39 @@ const methods = {
       currentModelPath = null;
     }
   },
+
+  getBindingInfo(): { path: string; type: string } | null {
+    return getLoadedBindingInfo();
+  },
 };
 
 // Handle messages from parent process
-process.on("message", async (message: any) => {
+process.on("message", async (message: WorkerMessage) => {
   const { id, method, args } = message;
 
   try {
     // Deserialize Float32Array from IPC
-    const deserializedArgs = args.map((arg: any) => {
-      if (arg && arg.__type === "Float32Array" && Array.isArray(arg.data)) {
-        return new Float32Array(arg.data);
+    const deserializedArgs = args.map((arg: MethodArg) => {
+      if (
+        arg &&
+        typeof arg === "object" &&
+        "__type" in arg &&
+        arg.__type === "Float32Array"
+      ) {
+        const serialized = arg as SerializedFloat32Array;
+        if (Array.isArray(serialized.data)) {
+          return new Float32Array(serialized.data);
+        }
       }
       return arg;
     });
 
     if (method in methods) {
-      const result = await (methods as any)[method](...deserializedArgs);
+      const methodName = method as keyof typeof methods;
+      const fn = methods[methodName] as (
+        ...args: unknown[]
+      ) => Promise<unknown>;
+      const result = await fn(...deserializedArgs);
       process.send!({ id, result });
     } else {
       process.send!({ id, error: `Unknown method: ${method}` });

@@ -9,6 +9,7 @@ export interface TranscriptionMetrics {
   session_id?: string;
   model_id: string;
   model_preloaded?: boolean;
+  whisper_native_binding?: string;
   total_duration_ms?: number;
   recording_duration_ms?: number;
   processing_duration_ms?: number;

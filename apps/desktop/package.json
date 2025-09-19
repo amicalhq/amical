@@ -81,7 +81,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.3.22",
     "@amical/eslint-config": "workspace:*",
-    "@amical/smart-whisper": "workspace:*",
+    "@amical/whisper-wrapper": "workspace:*",
     "@amical/types": "workspace:*",
     "@amical/y-libsql": "workspace:*",
     "@dnd-kit/core": "^6.3.1",

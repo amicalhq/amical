@@ -21,11 +21,20 @@ coverage
 # Vercel
 .vercel
 
+# CMake-js cache
+.cmake-js/
+**/.cmake-js/
+
+# Tool helpers
+.home/
+**/.home/
+
 # Build Outputs
 .next/
 out/
 build
 dist
+packages/whisper-wrapper/native/
 
 
 # Debug
@@ -41,6 +50,7 @@ CLAUDE.md
 .local
 .claude
 amical.db
+AGENTS.md
 
 # Temp files
 /tmp
