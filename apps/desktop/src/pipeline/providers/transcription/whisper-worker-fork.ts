@@ -1,5 +1,5 @@
 // Worker process entry point for fork
-import { Whisper } from "@amical/whisper-wrapper";
+import { Whisper, getLoadedBindingInfo } from "@amical/whisper-wrapper";
 
 // Simple console-based logging for worker process
 const logger = {
@@ -91,6 +91,10 @@ const methods = {
       whisperInstance = null;
       currentModelPath = null;
     }
+  },
+
+  getBindingInfo(): { path: string; type: string } | null {
+    return getLoadedBindingInfo();
   },
 };
 

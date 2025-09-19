@@ -57,6 +57,18 @@ export class WhisperProvider implements TranscriptionProvider {
     await this.initializeWhisper();
   }
 
+  async getBindingInfo(): Promise<{ path: string; type: string } | null> {
+    if (!this.workerWrapper) {
+      return null;
+    }
+    try {
+      return await this.workerWrapper.exec<{ path: string; type: string } | null>('getBindingInfo', []);
+    } catch (error) {
+      logger.transcription.warn('Failed to get binding info:', error);
+      return null;
+    }
+  }
+
   async transcribe(
     params: TranscribeParams & { flush?: boolean },
   ): Promise<string> {

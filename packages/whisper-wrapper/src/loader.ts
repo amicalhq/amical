@@ -35,6 +35,12 @@ export function resolveBinding(): string {
   throw new Error(`No suitable whisper.node binary found for ${platform}-${arch}`);
 }
 
+let loadedBindingInfo: { path: string; type: string } | null = null;
+
+export function getLoadedBindingInfo(): { path: string; type: string } | null {
+  return loadedBindingInfo;
+}
+
 export function loadBinding(): any {
   const { platform, arch } = process;
   const attempted: string[] = [];
@@ -54,6 +60,17 @@ export function loadBinding(): any {
           `[whisper-wrapper] loaded fallback binary: ${candidate} (attempted ${attempted.length} candidates)`,
         );
       }
+
+      // Store the loaded binding info
+      const bindingType = dir.includes('-cuda') ? 'cuda' :
+                         dir.includes('-metal') ? 'metal' :
+                         dir.includes('-openblas') ? 'openblas' :
+                         dir === 'cpu-fallback' ? 'cpu-fallback' : 'cpu';
+      loadedBindingInfo = {
+        path: candidate,
+        type: bindingType
+      };
+
       return mod;
     } catch (error) {
       if (isLoadableError(error)) {

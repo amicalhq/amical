@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
-import { loadBinding } from "./loader";
+import { loadBinding, getLoadedBindingInfo } from "./loader";
 
 const binding = loadBinding();
 
 export interface WhisperOptions {
   gpu?: boolean;
 }
+
+export { getLoadedBindingInfo } from "./loader";
 
 export class Whisper {
   private ctx: any;
@@ -30,5 +32,9 @@ export class Whisper {
 
   async free(): Promise<void> {
     binding.free(this.ctx);
+  }
+
+  static getBindingInfo(): { path: string; type: string } | null {
+    return getLoadedBindingInfo();
   }
 }

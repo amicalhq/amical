@@ -417,10 +417,19 @@ export class TranscriptionService {
     const audioDurationSeconds =
       session.context.sharedData.audioMetadata?.duration;
 
+    // Get native binding info if using local whisper
+    let whisperNativeBinding: string | undefined;
+    if (this.whisperProvider && 'getBindingInfo' in this.whisperProvider) {
+      const bindingInfo = await this.whisperProvider.getBindingInfo();
+      whisperNativeBinding = bindingInfo?.type;
+      logger.transcription.info('whisper native binding used', whisperNativeBinding);
+    }
+
     this.telemetryService.trackTranscriptionCompleted({
       session_id: sessionId,
       model_id: selectedModel!,
       model_preloaded: this.modelWasPreloaded,
+      whisper_native_binding: whisperNativeBinding,
       total_duration_ms: totalDuration || 0,
       recording_duration_ms: recordingDuration,
       processing_duration_ms: processingDuration,
