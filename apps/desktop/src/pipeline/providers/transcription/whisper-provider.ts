@@ -62,9 +62,12 @@ export class WhisperProvider implements TranscriptionProvider {
       return null;
     }
     try {
-      return await this.workerWrapper.exec<{ path: string; type: string } | null>('getBindingInfo', []);
+      return await this.workerWrapper.exec<{
+        path: string;
+        type: string;
+      } | null>("getBindingInfo", []);
     } catch (error) {
-      logger.transcription.warn('Failed to get binding info:', error);
+      logger.transcription.warn("Failed to get binding info:", error);
       return null;
     }
   }

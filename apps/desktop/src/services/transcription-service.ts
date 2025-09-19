@@ -419,10 +419,13 @@ export class TranscriptionService {
 
     // Get native binding info if using local whisper
     let whisperNativeBinding: string | undefined;
-    if (this.whisperProvider && 'getBindingInfo' in this.whisperProvider) {
+    if (this.whisperProvider && "getBindingInfo" in this.whisperProvider) {
       const bindingInfo = await this.whisperProvider.getBindingInfo();
       whisperNativeBinding = bindingInfo?.type;
-      logger.transcription.info('whisper native binding used', whisperNativeBinding);
+      logger.transcription.info(
+        "whisper native binding used",
+        whisperNativeBinding,
+      );
     }
 
     this.telemetryService.trackTranscriptionCompleted({

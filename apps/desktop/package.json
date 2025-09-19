@@ -43,8 +43,7 @@
     "build:native-helper": "node -p \"process.platform === 'darwin' ? 'build:swift-helper' : process.platform === 'win32' ? 'build:windows-helper' : 'echo No native helpers'\" | xargs pnpm run",
     "dev": "pnpm start",
     "download-node": "tsx scripts/download-node-binaries.ts",
-    "download-node:all": "tsx scripts/download-node-binaries.ts --all",
-    "test:whisper-worker": "tsx scripts/test-whisper-worker.ts"
+    "download-node:all": "tsx scripts/download-node-binaries.ts --all"
   },
   "keywords": [],
   "license": "MIT",

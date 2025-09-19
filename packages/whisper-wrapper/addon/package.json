@@ -2,6 +2,8 @@
   "name": "@amical/whisper-node-addon",
   "private": true,
   "binary": {
-    "napi_versions": [8]
+    "napi_versions": [
+      8
+    ]
   }
 }

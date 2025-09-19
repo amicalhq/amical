@@ -32,7 +32,9 @@ export function resolveBinding(): string {
       return candidate;
     }
   }
-  throw new Error(`No suitable whisper.node binary found for ${platform}-${arch}`);
+  throw new Error(
+    `No suitable whisper.node binary found for ${platform}-${arch}`,
+  );
 }
 
 let loadedBindingInfo: { path: string; type: string } | null = null;
@@ -62,13 +64,18 @@ export function loadBinding(): any {
       }
 
       // Store the loaded binding info
-      const bindingType = dir.includes('-cuda') ? 'cuda' :
-                         dir.includes('-metal') ? 'metal' :
-                         dir.includes('-openblas') ? 'openblas' :
-                         dir === 'cpu-fallback' ? 'cpu-fallback' : 'cpu';
+      const bindingType = dir.includes("-cuda")
+        ? "cuda"
+        : dir.includes("-metal")
+          ? "metal"
+          : dir.includes("-openblas")
+            ? "openblas"
+            : dir === "cpu-fallback"
+              ? "cpu-fallback"
+              : "cpu";
       loadedBindingInfo = {
         path: candidate,
-        type: bindingType
+        type: bindingType,
       };
 
       return mod;
@@ -93,5 +100,7 @@ export function loadBinding(): any {
     throw error;
   }
 
-  throw new Error(`No suitable whisper.node binary found for ${platform}-${arch}`);
+  throw new Error(
+    `No suitable whisper.node binary found for ${platform}-${arch}`,
+  );
 }

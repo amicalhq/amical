@@ -16,7 +16,7 @@ reasoning behind them.
   the CUDA toolkit (12.x tested) before running it.
 - Every macOS build is ad-hoc signed (`codesign -s -`) so Electron/Node can load
   it without crashing.
-- Each variant is produced as a *single* `.node` binary. We force static
+- Each variant is produced as a _single_ `.node` binary. We force static
   libraries (`GGML_STATIC=ON`, `BUILD_SHARED_LIBS=OFF`) so all ggml/whisper
   code is linked directly into the addon—no sidecar `.dylib/.dll` files ship
   at runtime.

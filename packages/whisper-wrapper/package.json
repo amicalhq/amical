@@ -4,9 +4,16 @@
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "native", "src", "addon"],
+  "files": [
+    "dist",
+    "native",
+    "src",
+    "addon"
+  ],
   "binary": {
-    "napi_versions": [8]
+    "napi_versions": [
+      8
+    ]
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

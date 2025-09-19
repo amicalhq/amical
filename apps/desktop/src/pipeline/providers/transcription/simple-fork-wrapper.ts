@@ -44,7 +44,6 @@ export class SimpleForkWrapper {
     const workerEnv: any = {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
-      GGML_METAL_PATH_RESOURCES: process.env.GGML_METAL_PATH_RESOURCES,
       NODE_OPTIONS: "--max-old-space-size=8192",
     };
 

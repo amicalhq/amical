@@ -12,7 +12,10 @@ export { getLoadedBindingInfo } from "./loader";
 export class Whisper {
   private ctx: any;
 
-  constructor(private modelPath: string, _opts?: WhisperOptions) {
+  constructor(
+    private modelPath: string,
+    _opts?: WhisperOptions,
+  ) {
     this.ctx = binding.init({ model: modelPath });
   }
 
