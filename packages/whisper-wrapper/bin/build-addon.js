@@ -158,28 +158,29 @@ function patchDarwinRpaths(originalDir, targetDir, filenames) {
   const uniqueBinaries = new Set(binaries);
 
   for (const binary of uniqueBinaries) {
-    let rpathReplaced = false;
-    if (originalDir && fs.existsSync(originalDir)) {
+    const existingRpaths = getDarwinRpaths(binary);
+    const hasOriginalRpath =
+      !!originalDir && existingRpaths.includes(originalDir);
+    const hasLoaderRpath = existingRpaths.includes("@loader_path");
+
+    if (hasOriginalRpath) {
       try {
         execSync(
           `install_name_tool -rpath "${originalDir}" "@loader_path" "${binary}"`,
           { stdio: "ignore" },
         );
-        rpathReplaced = true;
       } catch (error) {
-        // Ignore when the original rpath is not present
+        // Ignore when the original rpath is not present or already updated
       }
     }
 
-    if (!rpathReplaced) {
+    if (!hasLoaderRpath) {
       try {
         execSync(`install_name_tool -add_rpath "@loader_path" "${binary}"`, {
           stdio: "ignore",
         });
       } catch (error) {
-        if (!(error instanceof Error) || !error.message.includes("exists")) {
-          throw error;
-        }
+        // Ignore if the rpath already exists after the replace attempt
       }
     }
   }
@@ -271,6 +272,19 @@ function ensureWindowsNodeImportLib(buildVariantDir, arch, env) {
       throw error;
     }
     throw new Error(message);
+  }
+}
+
+function getDarwinRpaths(binaryPath) {
+  try {
+    const output = execSync(`otool -l "${binaryPath}"`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const matches = [...output.matchAll(/cmd LC_RPATH[\s\S]*?path ([^\s]+) \(offset/g)];
+    return matches.map((match) => match[1]);
+  } catch {
+    return [];
   }
 }
 
