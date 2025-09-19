@@ -108,6 +108,122 @@ function resolveLibExecutable(env, arch) {
   return candidates[0] || null;
 }
 
+function copySidecarLibraries(builtBinaryDir, targetDir) {
+  if (!fs.existsSync(builtBinaryDir)) return [];
+
+  const entries = fs.readdirSync(builtBinaryDir, { withFileTypes: true });
+  const manifests = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const lower = entry.name.toLowerCase();
+    if (entry.name === "whisper.node") continue;
+    if (lower.endsWith(".dylib") || lower.endsWith(".so") || lower.endsWith(".dll")) {
+      const source = path.join(builtBinaryDir, entry.name);
+      const destination = path.join(targetDir, entry.name);
+      fs.copyFileSync(source, destination);
+      manifests.push(entry.name);
+    }
+  }
+
+  return manifests;
+}
+
+function createDarwinSonameAliases(targetDir, libraries) {
+  if (process.platform !== "darwin") return [];
+  const aliases = [];
+
+  for (const lib of libraries) {
+    const match = lib.match(/^(lib[^.]+)\.(\d+)\.\d+\.\d+\.dylib$/);
+    if (!match) continue;
+    const [, base, major] = match;
+    const aliasName = `${base}.${major}.dylib`;
+    const aliasPath = path.join(targetDir, aliasName);
+    if (!fs.existsSync(aliasPath)) {
+      fs.copyFileSync(path.join(targetDir, lib), aliasPath);
+    }
+    aliases.push(aliasName);
+  }
+
+  return aliases;
+}
+
+function patchDarwinRpaths(originalDir, targetDir, filenames) {
+  if (process.platform !== "darwin") return;
+  const binaries = filenames
+    .map((name) => path.join(targetDir, name))
+    .filter((file) => fs.existsSync(file));
+  if (binaries.length === 0) return;
+
+  const uniqueBinaries = new Set(binaries);
+
+  for (const binary of uniqueBinaries) {
+    let rpathReplaced = false;
+    if (originalDir && fs.existsSync(originalDir)) {
+      try {
+        execSync(
+          `install_name_tool -rpath "${originalDir}" "@loader_path" "${binary}"`,
+          { stdio: "ignore" },
+        );
+        rpathReplaced = true;
+      } catch (error) {
+        // Ignore when the original rpath is not present
+      }
+    }
+
+    if (!rpathReplaced) {
+      try {
+        execSync(`install_name_tool -add_rpath "@loader_path" "${binary}"`, {
+          stdio: "ignore",
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("exists")) {
+          throw error;
+        }
+      }
+    }
+  }
+}
+
+function patchDarwinInstallNames(targetDir, dependencyFiles, binaries) {
+  if (process.platform !== "darwin") return;
+  const deps = dependencyFiles.filter((name) => name.endsWith(".dylib"));
+  const uniqueDeps = Array.from(new Set(deps));
+
+  for (const dep of uniqueDeps) {
+    const depPath = path.join(targetDir, dep);
+    if (!fs.existsSync(depPath)) continue;
+    try {
+      execSync(`install_name_tool -id "@loader_path/${dep}" "${depPath}"`, {
+        stdio: "ignore",
+      });
+    } catch (error) {
+      // ignore if install_name already set
+    }
+  }
+
+  const binariesToPatch = Array.from(new Set(binaries));
+  const changeTargets = uniqueDeps.map((dep) => ({
+    from: `@rpath/${dep}`,
+    to: `@loader_path/${dep}`,
+  }));
+
+  for (const binaryName of binariesToPatch) {
+    const binaryPath = path.join(targetDir, binaryName);
+    if (!fs.existsSync(binaryPath)) continue;
+
+    for (const { from, to } of changeTargets) {
+      try {
+        execSync(`install_name_tool -change "${from}" "${to}" "${binaryPath}"`, {
+          stdio: "ignore",
+        });
+      } catch (error) {
+        // ignore when dependency not present on binary
+      }
+    }
+  }
+}
+
 function ensureWindowsNodeImportLib(buildVariantDir, arch, env) {
   if (process.platform !== "win32") return;
 
@@ -278,15 +394,28 @@ for (const variant of variants) {
   fs.copyFileSync(builtBinary, path.join(targetDir, "whisper.node"));
   console.log(`[build-addon] copied to native/${variant.name}/whisper.node`);
 
+  const builtBinaryDir = path.dirname(builtBinary);
+  const sidecarLibs = copySidecarLibraries(builtBinaryDir, targetDir);
+  const sonameAliases = createDarwinSonameAliases(targetDir, sidecarLibs);
+  if (process.platform === "darwin") {
+    const darwinBinaries = ["whisper.node", ...sidecarLibs, ...sonameAliases];
+    const dependencyFiles = [...sidecarLibs, ...sonameAliases];
+    patchDarwinInstallNames(targetDir, dependencyFiles, darwinBinaries);
+    patchDarwinRpaths(builtBinaryDir, targetDir, darwinBinaries);
+  }
+
   if (platform === "darwin") {
-    const targetBinary = path.join(targetDir, "whisper.node");
-    try {
-      run(`codesign --force --sign - "${targetBinary}"`);
-      console.log("[build-addon] codesigned", targetBinary);
-    } catch (err) {
-      console.warn(
-        `[build-addon] warning: codesign failed for ${targetBinary}: ${err.message}`,
-      );
+    const binariesToSign = ["whisper.node", ...sidecarLibs, ...sonameAliases];
+    for (const file of binariesToSign) {
+      const targetBinary = path.join(targetDir, file);
+      try {
+        run(`codesign --force --sign - "${targetBinary}"`);
+        console.log("[build-addon] codesigned", targetBinary);
+      } catch (err) {
+        console.warn(
+          `[build-addon] warning: codesign failed for ${targetBinary}: ${err.message}`,
+        );
+      }
     }
   }
 
