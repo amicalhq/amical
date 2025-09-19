@@ -83,6 +83,9 @@ jobs:
           GGML_NATIVE: OFF # ensure postinstall builds avoid i8mm on CI runners
         run: pnpm install --frozen-lockfile
 
+      - name: Build whisper wrapper JS
+        run: pnpm --filter @amical/whisper-wrapper build
+
       - name: Build whisper native binaries
         env:
           GGML_NATIVE: OFF # CI mac runners lack i8mm support; keep CPU features conservative here
