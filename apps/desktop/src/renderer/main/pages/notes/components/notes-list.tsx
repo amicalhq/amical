@@ -74,10 +74,22 @@ export function NotesList() {
 
   return (
     <div className="space-y-4">
-      {/* <div className="flex items-center gap-2 text-muted-foreground">
-        <NotebookText className="w-4 h-4" />
-        <h2 className="text-sm font-medium">Notes</h2>
-      </div> */}
+      {/* Header with Create button - always visible */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <NotebookText className="w-4 h-4" />
+          <h2 className="text-sm font-medium">Notes</h2>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onCreateNote}
+          disabled={createNoteMutation.isPending}
+        >
+          <Plus className="w-4 h-4" />
+          Create note
+        </Button>
+      </div>
 
       {formattedNotes.length > 0 && (
         <div>
