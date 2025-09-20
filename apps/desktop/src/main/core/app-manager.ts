@@ -202,6 +202,30 @@ export class AppManager {
     }
   }
 
+  handleSecondInstance(): void {
+    // When a second instance tries to start, focus our existing window
+    const mainWindow = this.windowManager.getMainWindow();
+    const widgetWindow = this.windowManager.getWidgetWindow();
+
+    // Try to show and focus the main window first
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+      mainWindow.show();
+    } else if (widgetWindow && !widgetWindow.isDestroyed()) {
+      // If no main window, focus the widget window
+      widgetWindow.focus();
+      widgetWindow.show();
+    } else {
+      // If no windows are open, create them
+      this.windowManager.createOrShowMainWindow();
+    }
+
+    logger.main.info("Second instance attempted, focusing existing window");
+  }
+
   async handleActivate(): Promise<void> {
     const allWindows = this.windowManager.getAllWindows();
 

@@ -11,12 +11,26 @@ if (started) {
   app.quit();
 }
 
+// Enforce single instance
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Another instance is already running, quit this one
+  app.quit();
+}
+
 // Set up auto-updater for production builds
 if (app.isPackaged) {
   updateElectronApp();
 }
 
 const appManager = new AppManager();
+
+// Handle when another instance tries to start
+app.on("second-instance", () => {
+  // Someone tried to run a second instance, we should focus our window instead.
+  appManager.handleSecondInstance();
+});
 
 app.whenReady().then(() => appManager.initialize());
 app.on("will-quit", () => appManager.cleanup());
