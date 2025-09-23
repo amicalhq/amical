@@ -61,14 +61,14 @@ export function UnifiedPermissionsStep({
   const handleOpenAccessibility = async () => {
     // Open System Preferences > Security & Privacy > Privacy > Accessibility
     await window.onboardingAPI.openExternal(
-      "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
     );
   };
 
   const handleOpenMicrophoneSettings = async () => {
     // Open System Preferences > Security & Privacy > Privacy > Microphone
     await window.onboardingAPI.openExternal(
-      "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
     );
   };
 
@@ -114,22 +114,35 @@ export function UnifiedPermissionsStep({
   const accessStatus = getAccessibilityStatus();
 
   return (
-    <div className="max-w-lg w-full space-y-6">
+    <div
+      data-testid="onboarding-container"
+      className="max-w-lg w-full space-y-6"
+    >
       {/* Header with logo */}
-      <div className="text-center space-y-4">
-        <img src="assets/logo.svg" alt="Amical" className="w-20 h-20 mx-auto" />
+      <div data-testid="onboarding-header" className="text-center space-y-4">
+        <img
+          data-testid="onboarding-logo"
+          src="assets/logo.svg"
+          alt="Amical"
+          className="w-20 h-20 mx-auto"
+        />
         <div>
-          <h1 className="text-2xl font-bold">Permissions Required</h1>
-          <p className="text-muted-foreground mt-2">
+          <h1 data-testid="onboarding-title" className="text-2xl font-bold">
+            Permissions Required
+          </h1>
+          <p
+            data-testid="onboarding-description"
+            className="text-muted-foreground mt-2"
+          >
             Amical needs these permissions to work properly
           </p>
         </div>
       </div>
 
       {/* Permission Cards */}
-      <div className="space-y-3">
+      <div data-testid="permission-cards" className="space-y-3">
         {/* Microphone Permission */}
-        <Card className="p-4">
+        <Card data-testid="microphone-permission-card" className="p-4">
           <div className="flex items-start gap-3">
             <div
               className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${micStatus.bg}`}
@@ -138,20 +151,32 @@ export function UnifiedPermissionsStep({
             </div>
             <div className="flex-1">
               <div className="flex items-center justify-between">
-                <h3 className="font-medium">Microphone</h3>
-                <div className={`flex items-center gap-1 ${micStatus.color}`}>
+                <h3 data-testid="microphone-title" className="font-medium">
+                  Microphone
+                </h3>
+                <div
+                  data-testid="microphone-status"
+                  className={`flex items-center gap-1 ${micStatus.color}`}
+                >
                   <micStatus.icon className="w-4 h-4" />
-                  <span className="text-sm capitalize">
+                  <span
+                    data-testid="microphone-status-text"
+                    className="text-sm capitalize"
+                  >
                     {permissions.microphone}
                   </span>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p
+                data-testid="microphone-description"
+                className="text-sm text-muted-foreground mt-1"
+              >
                 Required to transcribe your voice into text
               </p>
 
               {permissions.microphone === "denied" && (
                 <Button
+                  data-testid="open-microphone-settings-btn"
                   size="sm"
                   variant="outline"
                   onClick={handleOpenMicrophoneSettings}
@@ -164,6 +189,7 @@ export function UnifiedPermissionsStep({
 
               {permissions.microphone === "not-determined" && (
                 <Button
+                  data-testid="grant-microphone-permission-btn"
                   size="sm"
                   className="mt-3 w-full"
                   onClick={handleRequestMicrophone}
@@ -178,7 +204,7 @@ export function UnifiedPermissionsStep({
 
         {/* Accessibility Permission (macOS only) */}
         {platform === "darwin" && (
-          <Card className="p-4">
+          <Card data-testid="accessibility-permission-card" className="p-4">
             <div className="flex items-start gap-3">
               <div
                 className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${accessStatus.bg}`}
@@ -187,22 +213,32 @@ export function UnifiedPermissionsStep({
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-medium">Accessibility</h3>
+                  <h3 data-testid="accessibility-title" className="font-medium">
+                    Accessibility
+                  </h3>
                   <div
+                    data-testid="accessibility-status"
                     className={`flex items-center gap-1 ${accessStatus.color}`}
                   >
                     <accessStatus.icon className="w-4 h-4" />
-                    <span className="text-sm">
+                    <span
+                      data-testid="accessibility-status-text"
+                      className="text-sm"
+                    >
                       {permissions.accessibility ? "Enabled" : "Disabled"}
                     </span>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p
+                  data-testid="accessibility-description"
+                  className="text-sm text-muted-foreground mt-1"
+                >
                   Required for context based formating and push to talk
                 </p>
 
                 {!permissions.accessibility && (
                   <Button
+                    data-testid="open-accessibility-settings-btn"
                     size="sm"
                     variant="outline"
                     onClick={handleOpenAccessibility}
@@ -220,15 +256,25 @@ export function UnifiedPermissionsStep({
 
       {/* Status message */}
       {isPolling && !allPermissionsGranted && (
-        <div className="text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin" />
+        <div
+          data-testid="polling-indicator"
+          className="text-center text-sm text-muted-foreground flex items-center justify-center gap-2"
+        >
+          <RefreshCw
+            data-testid="polling-spinner"
+            className="w-4 h-4 animate-spin"
+          />
           Checking permissions...
         </div>
       )}
 
       {/* Action buttons */}
-      <div className="flex justify-between gap-4 pt-4">
+      <div
+        data-testid="action-buttons"
+        className="flex justify-between gap-4 pt-4"
+      >
         <Button
+          data-testid="quit-app-btn"
           onClick={() => window.onboardingAPI.quitApp()}
           variant="outline"
           size="lg"
@@ -236,6 +282,7 @@ export function UnifiedPermissionsStep({
           Quit Amical
         </Button>
         <Button
+          data-testid="next-btn"
           onClick={onComplete}
           size="lg"
           disabled={!allPermissionsGranted}

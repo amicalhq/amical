@@ -16,6 +16,7 @@ export function NavMain({
     title: string;
     url: string;
     icon?: Icon;
+    testId?: string;
   }[];
 }) {
   const location = useLocation();
@@ -33,6 +34,7 @@ export function NavMain({
                 <Link
                   to={item.url}
                   aria-label={item.title}
+                  data-testid={item.testId}
                   activeProps={{
                     className: "active",
                   }}

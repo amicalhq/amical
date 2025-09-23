@@ -14,7 +14,7 @@ if (started) {
 // Enforce single instance
 const gotTheLock = app.requestSingleInstanceLock();
 
-if (!gotTheLock) {
+if (!gotTheLock && process.env.TESTING !== "true") {
   // Another instance is already running, quit this one
   app.quit();
 }

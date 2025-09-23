@@ -15,6 +15,7 @@ const StopButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
     onClick={onClick}
     className="flex items-center justify-center w-[20px] h-[20px]rounded transition-colors"
     aria-label="Stop recording"
+    data-testid="widget-stop-recording-btn"
   >
     <Square className="w-[12px] h-[12px] text-red-500 fill-red-500" />
   </button>
@@ -34,7 +35,7 @@ const WaveformVisualization: React.FC<{
   isRecording: boolean;
   voiceDetected: boolean;
 }> = ({ isRecording, voiceDetected }) => (
-  <>
+  <div data-testid="widget-waveform-visualization">
     {Array.from({ length: NUM_WAVEFORM_BARS }).map((_, index) => (
       <Waveform
         key={index}
@@ -45,7 +46,7 @@ const WaveformVisualization: React.FC<{
         silentHeight={20}
       />
     ))}
-  </>
+  </div>
 );
 
 export const FloatingButton: React.FC = () => {
@@ -157,6 +158,7 @@ export const FloatingButton: React.FC = () => {
         className="justify-center items-center flex flex-1 gap-1 h-full w-full"
         role="button"
         onClick={handleButtonClick}
+        data-testid="widget-recording-btn"
       >
         <WaveformVisualization
           isRecording={isRecording}
@@ -178,6 +180,9 @@ export const FloatingButton: React.FC = () => {
         mb-2 cursor-pointer select-none
       `}
       style={{ pointerEvents: "auto" }}
+      data-testid="widget-floating-button"
+      data-recording-state={recordingStatus.state}
+      data-expanded={expanded}
     >
       {expanded && (
         <div className="flex gap-[2px] h-full w-full justify-between">
