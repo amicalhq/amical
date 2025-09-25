@@ -170,6 +170,7 @@ jobs:
           path: |
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.exe
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.nupkg
+            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/RELEASES
 
   release:
     name: Create Release
@@ -241,5 +242,6 @@ jobs:
             artifacts/macos-x64/zip/darwin/x64/*.zip
             artifacts/windows-x64/*.exe
             artifacts/windows-x64/*.nupkg
+            artifacts/windows-x64/RELEASES
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

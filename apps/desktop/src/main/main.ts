@@ -6,9 +6,15 @@ import { app } from "electron";
 import started from "electron-squirrel-startup";
 import { AppManager } from "./core/app-manager";
 import { updateElectronApp } from "update-electron-app";
+import { isWindows } from "../utils/platform";
 
 if (started) {
   app.quit();
+}
+
+// Set App User Model ID for Windows (required for Squirrel.Windows)
+if (isWindows()) {
+  app.setAppUserModelId("com.amical.desktop");
 }
 
 // Enforce single instance
@@ -20,8 +26,18 @@ if (!gotTheLock) {
 }
 
 // Set up auto-updater for production builds
-if (app.isPackaged) {
+if (app.isPackaged && !isWindows()) {
   updateElectronApp();
+}
+if (app.isPackaged && isWindows()) {
+  // Check if running with --squirrel-firstrun (Windows only)
+  const isSquirrelFirstRun = process.argv.includes("--squirrel-firstrun");
+  // Delay update check on Windows to avoid Squirrel file lock issues
+  if (isWindows() && !isSquirrelFirstRun) {
+    setTimeout(() => {
+      updateElectronApp();
+    }, 60000); // 60 second delay
+  }
 }
 
 const appManager = new AppManager();
