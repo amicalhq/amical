@@ -35,7 +35,7 @@ const WaveformVisualization: React.FC<{
   isRecording: boolean;
   voiceDetected: boolean;
 }> = ({ isRecording, voiceDetected }) => (
-  <div data-testid="widget-waveform-visualization">
+  <React.Fragment data-testid="widget-waveform-visualization">
     {Array.from({ length: NUM_WAVEFORM_BARS }).map((_, index) => (
       <Waveform
         key={index}
@@ -46,7 +46,7 @@ const WaveformVisualization: React.FC<{
         silentHeight={20}
       />
     ))}
-  </div>
+  </React.Fragment>
 );
 
 export const FloatingButton: React.FC = () => {
@@ -182,7 +182,7 @@ export const FloatingButton: React.FC = () => {
       style={{ pointerEvents: "auto" }}
       data-testid="widget-floating-button"
       data-recording-state={recordingStatus.state}
-      data-expanded={expanded}
+      data-expanded={expanded ? "true" : "false"}
     >
       {expanded && (
         <div className="flex gap-[2px] h-full w-full justify-between">

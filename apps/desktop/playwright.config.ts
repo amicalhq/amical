@@ -1,4 +1,4 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig } from "@playwright/test";
 
 /**
  * Read environment variables from file.
@@ -34,10 +34,8 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: "pnpm dev",
+    command: "npx vite --config vite.renderer.config.mts --mode development",
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
-    timeout: 120000,
   },
-  // globalSetup: require.resolve("./global-setup"),
 });
