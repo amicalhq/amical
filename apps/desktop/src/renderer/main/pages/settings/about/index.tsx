@@ -87,7 +87,7 @@ export default function AboutSettingsPage() {
                     <div className="flex items-center gap-2 font-semibold text-base group-hover:underline">
                       {/* GitHub icon as image */}
                       <img
-                        src="/icons/integrations/github.svg"
+                        src="icons/integrations/github.svg"
                         alt="GitHub"
                         className="w-5 h-5 inline-block align-middle"
                       />
@@ -105,7 +105,7 @@ export default function AboutSettingsPage() {
                     <div className="flex items-center gap-2 font-semibold text-base group-hover:underline">
                       {/* Discord icon as image */}
                       <img
-                        src="/icons/integrations/discord.svg"
+                        src="icons/integrations/discord.svg"
                         alt="Discord"
                         className="w-5 h-5 inline-block align-middle"
                       />
