@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "pnpm --filter @amical/types generate:all && dotnet publish -c Release -r win-x64 --self-contained false -o bin",
-    "build:native": "dotnet publish -c Release -r win-x64 --self-contained false -o bin",
+    "build": "pnpm --filter @amical/types generate:all && dotnet publish -c Release -r win-x64 --self-contained true -o bin",
+    "build:native": "dotnet publish -c Release -r win-x64 --self-contained true -o bin",
     "clean": "rm -rf bin obj"
   },
   "os": [

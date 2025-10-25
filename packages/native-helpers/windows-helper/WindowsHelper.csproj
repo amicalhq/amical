@@ -2,12 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
-    <RollForward>Major</RollForward>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>false</SelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <AssemblyName>WindowsHelper</AssemblyName>
     <RootNamespace>WindowsHelper</RootNamespace>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -18,7 +20,7 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
   
-  <ItemGroup Condition="'$(TargetFramework)' == 'net6.0-windows' Or '$(RuntimeIdentifier)' == 'win-x64'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(RuntimeIdentifier)' == 'win-x64'">
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
   </ItemGroup>
 
