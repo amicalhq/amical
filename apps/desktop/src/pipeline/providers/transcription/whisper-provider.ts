@@ -17,7 +17,7 @@ export class WhisperProvider implements TranscriptionProvider {
   // Frame aggregation state
   private frameBuffer: Float32Array[] = [];
   private frameBufferSpeechProbabilities: number[] = []; // Track speech probabilities for each frame
-  private silenceFrameCount = 0;
+  private currentSilenceFrameCount = 0;
   private lastSpeechTimestamp = 0;
 
   private getNodeBinaryPath(): string {
@@ -40,11 +40,13 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   // Configuration
+  private readonly TRIM_TRAILING_AND_LEADING_SILENCE = false;
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
   private readonly MIN_SPEECH_DURATION_MS = 500; // Minimum speech duration to transcribe
-  private readonly MAX_SILENCE_DURATION_MS = 800; // Max silence before cutting
+  private readonly MAX_SILENCE_DURATION_MS = 3000; // Max silence before cutting
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
+  private readonly IGNORE_FULLY_SILENT_CHUNKS = true;
 
   constructor(modelManager: ModelManagerService) {
     this.modelManager = modelManager;
@@ -81,7 +83,7 @@ export class WhisperProvider implements TranscriptionProvider {
       // Extract parameters from the new structure
       const {
         audioData,
-        speechProbability = 0,
+        speechProbability = 1,
         context,
         flush = false,
       } = params;
@@ -97,15 +99,15 @@ export class WhisperProvider implements TranscriptionProvider {
       const isSpeech = speechProbability > this.SPEECH_PROBABILITY_THRESHOLD;
 
       logger.transcription.debug(
-        `Frame received - SpeechProb: ${speechProbability.toFixed(3)}, Buffer size: ${this.frameBuffer.length}, Silence count: ${this.silenceFrameCount}`,
+        `Frame received - SpeechProb: ${speechProbability.toFixed(3)}, Buffer size: ${this.frameBuffer.length}, Silence count: ${this.currentSilenceFrameCount}`,
       );
 
       // Handle speech/silence logic
       if (isSpeech) {
-        this.silenceFrameCount = 0;
+        this.currentSilenceFrameCount = 0;
         this.lastSpeechTimestamp = Date.now();
       } else {
-        this.silenceFrameCount++;
+        this.currentSilenceFrameCount++;
       }
 
       // Determine if we should transcribe
@@ -116,13 +118,20 @@ export class WhisperProvider implements TranscriptionProvider {
         return "";
       }
 
+      const isAllSilent = this.isAllSilent();
+
       // Aggregate buffered frames
       const aggregatedAudio = this.aggregateFrames();
 
       // Clear buffers immediately after aggregation, before async operations
       this.frameBuffer = [];
       this.frameBufferSpeechProbabilities = [];
-      this.silenceFrameCount = 0;
+      this.currentSilenceFrameCount = 0;
+
+      if (isAllSilent && this.IGNORE_FULLY_SILENT_CHUNKS) {
+        logger.transcription.debug("Skipping transcription - all silent");
+        return "";
+      }
 
       // Skip if too short or only silence
       /* if (aggregatedAudio.length < this.FRAME_SIZE * 2) {
@@ -176,9 +185,10 @@ export class WhisperProvider implements TranscriptionProvider {
     const bufferDurationMs =
       ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
     const silenceDurationMs =
-      ((this.silenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
+      ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
+      1000;
 
-    // If we have speech and then significant silence, transcribe
+    // If we have speech (potential cause frameBuffer might just be all silence too, and thats okay) and then significant silence, transcribe
     if (
       this.frameBuffer.length > 0 &&
       silenceDurationMs > this.MAX_SILENCE_DURATION_MS
@@ -201,7 +211,7 @@ export class WhisperProvider implements TranscriptionProvider {
       bufferDurationMs,
       silenceDurationMs,
       frameBufferLength: this.frameBuffer.length,
-      silenceFrameCount: this.silenceFrameCount,
+      silenceFrameCount: this.currentSilenceFrameCount,
     });
 
     return false;
@@ -213,7 +223,7 @@ export class WhisperProvider implements TranscriptionProvider {
       (sum, frame) => sum + frame.length,
       0,
     );
-    const aggregated = new Float32Array(totalLength);
+    let aggregated = new Float32Array(totalLength);
 
     // Copy all frames into single array
     let offset = 0;
@@ -223,12 +233,26 @@ export class WhisperProvider implements TranscriptionProvider {
     }
 
     // Trim silence from beginning and end
-    const trimmed = this.trimSilence(aggregated);
+    aggregated = this.TRIM_TRAILING_AND_LEADING_SILENCE
+      ? this.trimSilence(aggregated)
+      : aggregated;
 
-    return trimmed;
+    return aggregated;
   }
 
-  private trimSilence(audio: Float32Array): Float32Array {
+  private isAllSilent = () => {
+    const bufferDurationMs =
+      ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
+    const silenceDurationMs =
+      ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
+      1000;
+
+    return bufferDurationMs === silenceDurationMs;
+  };
+
+  private trimSilence(
+    audio: Float32Array<ArrayBuffer>,
+  ): Float32Array<ArrayBuffer> {
     // Find first speech frame (probability > threshold)
     let startIdx = 0;
     for (let i = 0; i < this.frameBufferSpeechProbabilities.length; i++) {
@@ -338,6 +362,6 @@ export class WhisperProvider implements TranscriptionProvider {
     // Clear buffers
     this.frameBuffer = [];
     this.frameBufferSpeechProbabilities = [];
-    this.silenceFrameCount = 0;
+    this.currentSilenceFrameCount = 0;
   }
 }

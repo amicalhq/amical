@@ -98,7 +98,7 @@ export class SimpleForkWrapper {
     this.pendingCalls.clear();
   }
 
-  async exec<T>(method: string, args: any[]): Promise<T> {
+  async exec<T>(method: string, args: unknown[]): Promise<T> {
     if (!this.worker) {
       await this.initialize();
     }
