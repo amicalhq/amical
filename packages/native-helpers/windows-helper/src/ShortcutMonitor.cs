@@ -56,6 +56,12 @@ namespace WindowsHelper
         private Thread? messageLoopThread;
         private bool isRunning = false;
 
+        // Track modifier key states internally to avoid GetAsyncKeyState issues
+        private bool shiftPressed = false;
+        private bool ctrlPressed = false;
+        private bool altPressed = false;
+        private bool winPressed = false;
+
         public event EventHandler<HelperEvent>? KeyEventOccurred;
 
         public void Start()
@@ -142,8 +148,11 @@ namespace WindowsHelper
                     if (isKeyDown || isKeyUp)
                     {
                         var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-                        
-                        // Create event matching Swift helper format
+
+                        // Update our internal modifier state tracking based on the actual key being pressed/released
+                        UpdateModifierState(kbStruct.vkCode, isKeyDown);
+
+                        // Create event using our tracked modifier states
                         var keyEvent = new HelperEvent
                         {
                             Type = isKeyDown ? HelperEventType.KeyDown : HelperEventType.KeyUp,
@@ -151,10 +160,10 @@ namespace WindowsHelper
                             Payload = new HelperEventPayload
                             {
                                 KeyCode = (int)kbStruct.vkCode,
-                                AltKey = IsKeyPressed(VK_MENU),
-                                CtrlKey = IsKeyPressed(VK_CONTROL),
-                                ShiftKey = IsKeyPressed(VK_SHIFT),
-                                MetaKey = IsKeyPressed(VK_LWIN) || IsKeyPressed(VK_RWIN),
+                                AltKey = altPressed,
+                                CtrlKey = ctrlPressed,
+                                ShiftKey = shiftPressed,
+                                MetaKey = winPressed,
                                 FnKeyPressed = false // Windows doesn't have standard Fn key detection
                             }
                         };
@@ -170,10 +179,10 @@ namespace WindowsHelper
                                 Payload = new HelperEventPayload
                                 {
                                     KeyCode = (int)kbStruct.vkCode,
-                                    AltKey = IsKeyPressed(VK_MENU),
-                                    CtrlKey = IsKeyPressed(VK_CONTROL),
-                                    ShiftKey = IsKeyPressed(VK_SHIFT),
-                                    MetaKey = IsKeyPressed(VK_LWIN) || IsKeyPressed(VK_RWIN),
+                                    AltKey = altPressed,
+                                    CtrlKey = ctrlPressed,
+                                    ShiftKey = shiftPressed,
+                                    MetaKey = winPressed,
                                     FnKeyPressed = false
                                 }
                             };
@@ -193,6 +202,26 @@ namespace WindowsHelper
             }
 
             return CallNextHookEx(hookId, nCode, wParam, lParam);
+        }
+
+        private void UpdateModifierState(uint vkCode, bool isPressed)
+        {
+            switch (vkCode)
+            {
+                case VK_SHIFT:
+                    shiftPressed = isPressed;
+                    break;
+                case VK_CONTROL:
+                    ctrlPressed = isPressed;
+                    break;
+                case VK_MENU: // Alt key
+                    altPressed = isPressed;
+                    break;
+                case VK_LWIN:
+                case VK_RWIN:
+                    winPressed = isPressed;
+                    break;
+            }
         }
 
         private bool IsKeyPressed(int vKey)
