@@ -49,12 +49,37 @@ namespace WindowsHelper
         private const int VK_LWIN = 0x5B; // Left Windows key
         private const int VK_RWIN = 0x5C; // Right Windows key
         private const int VK_FUNCTION = 0xFF; // Fn key (not standard, varies by keyboard)
+        
+        // Left/right specific virtual key codes (Windows low-level hooks send these)
+        private const int VK_LSHIFT = 0xA0;
+        private const int VK_RSHIFT = 0xA1;
+        private const int VK_LCONTROL = 0xA2;
+        private const int VK_RCONTROL = 0xA3;
+        private const int VK_LMENU = 0xA4;
+        private const int VK_RMENU = 0xA5;
         #endregion
 
         private IntPtr hookId = IntPtr.Zero;
         private LowLevelKeyboardProc? hookProc;
         private Thread? messageLoopThread;
         private bool isRunning = false;
+
+        // Track modifier key states internally to avoid GetAsyncKeyState issues
+        // Track left and right separately to handle cases where both are pressed
+        private bool leftShiftPressed = false;
+        private bool rightShiftPressed = false;
+        private bool leftCtrlPressed = false;
+        private bool rightCtrlPressed = false;
+        private bool leftAltPressed = false;
+        private bool rightAltPressed = false;
+        private bool leftWinPressed = false;
+        private bool rightWinPressed = false;
+        
+        // Computed properties that combine left/right states
+        private bool shiftPressed => leftShiftPressed || rightShiftPressed;
+        private bool ctrlPressed => leftCtrlPressed || rightCtrlPressed;
+        private bool altPressed => leftAltPressed || rightAltPressed;
+        private bool winPressed => leftWinPressed || rightWinPressed;
 
         public event EventHandler<HelperEvent>? KeyEventOccurred;
 
@@ -142,8 +167,11 @@ namespace WindowsHelper
                     if (isKeyDown || isKeyUp)
                     {
                         var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-                        
-                        // Create event matching Swift helper format
+
+                        // Update our internal modifier state tracking based on the actual key being pressed/released
+                        UpdateModifierState(kbStruct.vkCode, isKeyDown);
+
+                        // Create event using our tracked modifier states
                         var keyEvent = new HelperEvent
                         {
                             Type = isKeyDown ? HelperEventType.KeyDown : HelperEventType.KeyUp,
@@ -151,10 +179,10 @@ namespace WindowsHelper
                             Payload = new HelperEventPayload
                             {
                                 KeyCode = (int)kbStruct.vkCode,
-                                AltKey = IsKeyPressed(VK_MENU),
-                                CtrlKey = IsKeyPressed(VK_CONTROL),
-                                ShiftKey = IsKeyPressed(VK_SHIFT),
-                                MetaKey = IsKeyPressed(VK_LWIN) || IsKeyPressed(VK_RWIN),
+                                AltKey = altPressed,
+                                CtrlKey = ctrlPressed,
+                                ShiftKey = shiftPressed,
+                                MetaKey = winPressed,
                                 FnKeyPressed = false // Windows doesn't have standard Fn key detection
                             }
                         };
@@ -162,7 +190,8 @@ namespace WindowsHelper
                         // Check for modifier key changes
                         if (IsModifierKey(kbStruct.vkCode))
                         {
-                            // Send flagsChanged event for modifier keys
+                            // Send flagsChanged event for modifier keys with current tracked state
+                            // State is already updated by UpdateModifierState above
                             var flagsEvent = new HelperEvent
                             {
                                 Type = HelperEventType.FlagsChanged,
@@ -170,10 +199,10 @@ namespace WindowsHelper
                                 Payload = new HelperEventPayload
                                 {
                                     KeyCode = (int)kbStruct.vkCode,
-                                    AltKey = IsKeyPressed(VK_MENU),
-                                    CtrlKey = IsKeyPressed(VK_CONTROL),
-                                    ShiftKey = IsKeyPressed(VK_SHIFT),
-                                    MetaKey = IsKeyPressed(VK_LWIN) || IsKeyPressed(VK_RWIN),
+                                    AltKey = altPressed,
+                                    CtrlKey = ctrlPressed,
+                                    ShiftKey = shiftPressed,
+                                    MetaKey = winPressed,
                                     FnKeyPressed = false
                                 }
                             };
@@ -195,6 +224,93 @@ namespace WindowsHelper
             return CallNextHookEx(hookId, nCode, wParam, lParam);
         }
 
+        private void UpdateModifierState(uint vkCode, bool isPressed)
+        {
+            switch (vkCode)
+            {
+                // Handle generic codes (fallback - Windows low-level hooks typically send left/right specific codes)
+                // For generic codes, we update both sides to be safe, but this should rarely happen
+                case VK_SHIFT:
+                    // If we get a generic code, assume left (most common case)
+                    // But also check if right is actually pressed to handle edge cases
+                    if (isPressed)
+                    {
+                        // If right shift is already pressed, don't override it
+                        if (!rightShiftPressed)
+                        {
+                            leftShiftPressed = true;
+                        }
+                    }
+                    else
+                    {
+                        // On release, clear left unless right is still pressed
+                        if (!rightShiftPressed)
+                        {
+                            leftShiftPressed = false;
+                        }
+                    }
+                    break;
+                case VK_CONTROL:
+                    if (isPressed)
+                    {
+                        if (!rightCtrlPressed)
+                        {
+                            leftCtrlPressed = true;
+                        }
+                    }
+                    else
+                    {
+                        if (!rightCtrlPressed)
+                        {
+                            leftCtrlPressed = false;
+                        }
+                    }
+                    break;
+                case VK_MENU: // Alt key
+                    if (isPressed)
+                    {
+                        if (!rightAltPressed)
+                        {
+                            leftAltPressed = true;
+                        }
+                    }
+                    else
+                    {
+                        if (!rightAltPressed)
+                        {
+                            leftAltPressed = false;
+                        }
+                    }
+                    break;
+                
+                // Handle left/right specific codes (what Windows low-level hooks actually send)
+                case VK_LSHIFT:
+                    leftShiftPressed = isPressed;
+                    break;
+                case VK_RSHIFT:
+                    rightShiftPressed = isPressed;
+                    break;
+                case VK_LCONTROL:
+                    leftCtrlPressed = isPressed;
+                    break;
+                case VK_RCONTROL:
+                    rightCtrlPressed = isPressed;
+                    break;
+                case VK_LMENU:
+                    leftAltPressed = isPressed;
+                    break;
+                case VK_RMENU:
+                    rightAltPressed = isPressed;
+                    break;
+                case VK_LWIN:
+                    leftWinPressed = isPressed;
+                    break;
+                case VK_RWIN:
+                    rightWinPressed = isPressed;
+                    break;
+            }
+        }
+
         private bool IsKeyPressed(int vKey)
         {
             return (GetAsyncKeyState(vKey) & 0x8000) != 0;
@@ -202,8 +318,10 @@ namespace WindowsHelper
 
         private bool IsModifierKey(uint vkCode)
         {
-            return vkCode == VK_SHIFT || vkCode == VK_CONTROL || 
-                   vkCode == VK_MENU || vkCode == VK_LWIN || vkCode == VK_RWIN;
+            return vkCode == VK_SHIFT || vkCode == VK_LSHIFT || vkCode == VK_RSHIFT ||
+                   vkCode == VK_CONTROL || vkCode == VK_LCONTROL || vkCode == VK_RCONTROL ||
+                   vkCode == VK_MENU || vkCode == VK_LMENU || vkCode == VK_RMENU ||
+                   vkCode == VK_LWIN || vkCode == VK_RWIN;
         }
 
         private void LogToStderr(string message)

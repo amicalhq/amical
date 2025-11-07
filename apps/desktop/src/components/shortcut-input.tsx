@@ -13,7 +13,7 @@ interface ShortcutInputProps {
 }
 
 const MODIFIER_KEYS = ["Cmd", "Win", "Ctrl", "Alt", "Shift", "Fn"];
-const MAX_KEY_COMBINATION_LENGTH = 3;
+const MAX_KEY_COMBINATION_LENGTH = 4;
 
 type ValidationResult = {
   valid: boolean;
@@ -27,7 +27,7 @@ function validateShortcut(keys: string[]): ValidationResult {
   }
 
   if (keys.length > MAX_KEY_COMBINATION_LENGTH) {
-    return { valid: false, error: "Maximum 3 keys allowed" };
+    return { valid: false, error: `Maximum ${MAX_KEY_COMBINATION_LENGTH} keys allowed` };
   }
 
   const modifierKeys = keys.filter((key) => MODIFIER_KEYS.includes(key));
@@ -40,10 +40,6 @@ function validateShortcut(keys: string[]): ValidationResult {
       error:
         "At least one modifier key (Cmd, Win, Ctrl, Alt, Shift, Fn, etc) is required",
     };
-  }
-
-  if (keys.length > 4) {
-    return { valid: false, error: "Maximum 4 keys allowed" };
   }
 
   return { valid: true, shortcut: [...modifierKeys, ...regularKeys].join("+") };
