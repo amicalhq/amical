@@ -31,7 +31,7 @@
         "TELEMETRY_ENABLED",
         "AUTH_CLIENT_ID",
         "AUTHORIZATION_ENDPOINT",
-        "TOKEN_ENDPOINT",
+        "AUTH_TOKEN_ENDPOINT",
         "API_ENDPOINT"
       ]
     },

@@ -134,7 +134,7 @@ jobs:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
           AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
-          TOKEN_ENDPOINT: ${{ secrets.TOKEN_ENDPOINT }}
+          AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
         run: |
           echo "Building macOS ${{ matrix.arch }} artifacts"
@@ -149,7 +149,7 @@ jobs:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
           AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
-          TOKEN_ENDPOINT: ${{ secrets.TOKEN_ENDPOINT }}
+          AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
         run: |
           echo "Building Windows x64 artifacts"

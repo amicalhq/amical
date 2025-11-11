@@ -38,7 +38,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     this.authService = AuthService.getInstance();
 
     // Configure endpoint based on environment
-    this.apiEndpoint = "https://dictation.amical.ai";
+    this.apiEndpoint = process.env.API_ENDPOINT || __BUNDLED_API_ENDPOINT;
 
     logger.transcription.info("AmicalCloudProvider initialized", {
       endpoint: this.apiEndpoint,
