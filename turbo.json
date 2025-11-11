@@ -28,7 +28,11 @@
         "S3_ENDPOINT",
         "POSTHOG_API_KEY",
         "POSTHOG_HOST",
-        "TELEMETRY_ENABLED"
+        "TELEMETRY_ENABLED",
+        "AUTH_CLIENT_ID",
+        "AUTHORIZATION_ENDPOINT",
+        "TOKEN_ENDPOINT",
+        "API_ENDPOINT"
       ]
     },
     "build:native": {
