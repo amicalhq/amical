@@ -2,9 +2,11 @@ import {
   PipelineContext,
   StreamingPipelineContext,
   StreamingSession,
+  TranscriptionProvider,
 } from "../pipeline/core/pipeline-types";
 import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
+import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { ModelManagerService } from "../services/model-manager";
 import { SettingsService } from "../services/settings-service";
@@ -16,12 +18,15 @@ import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { app, dialog } from "electron";
+import { AVAILABLE_MODELS } from "../constants/models";
 
 /**
  * Service for audio transcription and optional formatting
  */
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
+  private cloudProvider: AmicalCloudProvider;
+  private currentProvider: TranscriptionProvider | null = null;
   private openRouterProvider: OpenRouterProvider | null = null;
   private formatterEnabled = false;
   private streamingSessions = new Map<string, StreamingSession>();
@@ -40,12 +45,39 @@ export class TranscriptionService {
     telemetryService: TelemetryService,
   ) {
     this.whisperProvider = new WhisperProvider(modelManagerService);
+    this.cloudProvider = new AmicalCloudProvider();
     this.vadService = vadService;
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
     this.transcriptionMutex = new Mutex();
     this.telemetryService = telemetryService;
     this.modelManagerService = modelManagerService;
+  }
+
+  /**
+   * Select the appropriate transcription provider based on the selected model
+   */
+  private async selectProvider(): Promise<TranscriptionProvider> {
+    const selectedModelId = await this.modelManagerService.getSelectedModel();
+
+    if (!selectedModelId) {
+      // Default to whisper if no model selected
+      this.currentProvider = this.whisperProvider;
+      return this.whisperProvider;
+    }
+
+    // Find the model in AVAILABLE_MODELS
+    const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+
+    // Use cloud provider for Amical Cloud models
+    if (model?.provider === "Amical Cloud") {
+      this.currentProvider = this.cloudProvider;
+      return this.cloudProvider;
+    }
+
+    // Default to whisper for all other models
+    this.currentProvider = this.whisperProvider;
+    return this.whisperProvider;
   }
 
   async initialize(): Promise<void> {
@@ -55,38 +87,53 @@ export class TranscriptionService {
       logger.transcription.warn("VAD service not available");
     }
 
-    // Check if we should preload Whisper model
-    const transcriptionSettings =
-      await this.settingsService.getTranscriptionSettings();
-    const shouldPreload = transcriptionSettings?.preloadWhisperModel !== false; // Default to true
+    // Check if the selected model is a cloud model
+    const selectedModelId = await this.modelManagerService.getSelectedModel();
+    const model = selectedModelId
+      ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
+      : null;
+    const isCloudModel = model?.provider === "Amical Cloud";
 
-    if (shouldPreload) {
-      // Check if models are available for preloading
-      const hasModels = await this.isModelAvailable();
-      if (hasModels) {
-        logger.transcription.info("Preloading Whisper model...");
-        await this.preloadWhisperModel();
-        this.modelWasPreloaded = true;
-        logger.transcription.info("Whisper model preloaded successfully");
-      } else {
-        logger.transcription.info(
-          "Whisper model preloading skipped - no models available",
-        );
-        if (app.isReady()) {
-          setTimeout(() => {
-            dialog.showMessageBox({
-              type: "warning",
-              title: "No Transcription Models",
-              message: "No transcription models are available.",
-              detail:
-                "To use voice transcription, please download a model from Speech Models.",
-              buttons: ["OK"],
-            });
-          }, 2000); // Delay to ensure windows are ready
+    // Only preload for local models
+    if (!isCloudModel) {
+      // Check if we should preload Whisper model
+      const transcriptionSettings =
+        await this.settingsService.getTranscriptionSettings();
+      const shouldPreload =
+        transcriptionSettings?.preloadWhisperModel !== false; // Default to true
+
+      if (shouldPreload) {
+        // Check if models are available for preloading
+        const hasModels = await this.isModelAvailable();
+        if (hasModels) {
+          logger.transcription.info("Preloading Whisper model...");
+          await this.preloadWhisperModel();
+          this.modelWasPreloaded = true;
+          logger.transcription.info("Whisper model preloaded successfully");
+        } else {
+          logger.transcription.info(
+            "Whisper model preloading skipped - no models available",
+          );
+          if (app.isReady() && !isCloudModel) {
+            setTimeout(() => {
+              dialog.showMessageBox({
+                type: "warning",
+                title: "No Transcription Models",
+                message: "No transcription models are available.",
+                detail:
+                  "To use voice transcription, please download a model from Speech Models or use a cloud model.",
+                buttons: ["OK"],
+              });
+            }, 2000); // Delay to ensure windows are ready
+          }
         }
+      } else {
+        logger.transcription.info("Whisper model preloading disabled");
       }
     } else {
-      logger.transcription.info("Whisper model preloading disabled");
+      logger.transcription.info(
+        "Using cloud model - skipping local model preload",
+      );
     }
 
     logger.transcription.info("Transcription service initialized");
@@ -268,17 +315,28 @@ export class TranscriptionService {
       .join(" ")
       .trim();
 
-    const chunkTranscription = await this.whisperProvider.transcribe({
-      audioData: audioChunk,
-      speechProbability: speechProbability, // Now from VAD service
-      context: {
-        vocabulary: session.context.sharedData.vocabulary,
-        accessibilityContext: session.context.sharedData.accessibilityContext,
-        previousChunk,
-        aggregatedTranscription: aggregatedTranscription || undefined,
-      },
-      flush: isFinal,
-    });
+    // Select the appropriate provider
+    const provider = await this.selectProvider();
+
+    // For providers that support flush, call it separately when final
+    let chunkTranscription = "";
+
+    if (isFinal && provider.flush) {
+      // If final chunk, flush the provider buffer
+      chunkTranscription = await provider.flush();
+    } else {
+      // Normal transcription
+      chunkTranscription = await provider.transcribe({
+        audioData: audioChunk,
+        speechProbability: speechProbability, // Now from VAD service
+        context: {
+          vocabulary: session.context.sharedData.vocabulary,
+          accessibilityContext: session.context.sharedData.accessibilityContext,
+          previousChunk,
+          aggregatedTranscription: aggregatedTranscription || undefined,
+        },
+      });
+    }
 
     // Accumulate the result only if Whisper returned something
     // (it returns empty string while buffering)

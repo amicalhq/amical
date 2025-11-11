@@ -20,6 +20,35 @@ export class AppManager {
     this.trayManager = TrayManager.getInstance();
   }
 
+  handleDeepLink(url: string): void {
+    logger.main.info("Handling deep link:", url);
+
+    // Parse the URL
+    try {
+      const parsedUrl = new URL(url);
+
+      // Handle auth callback
+      // For custom scheme URLs like amical://oauth/callback
+      // parsedUrl.host = "oauth" and parsedUrl.pathname = "/callback"
+      if (parsedUrl.host === "oauth" && parsedUrl.pathname === "/callback") {
+        const code = parsedUrl.searchParams.get("code");
+        const state = parsedUrl.searchParams.get("state");
+
+        if (code) {
+          // Get AuthService and complete the OAuth flow
+          const authService = this.serviceManager.getService("authService");
+          if (authService) {
+            authService.handleAuthCallback(code, state);
+          }
+        }
+      }
+
+      // Add other deep link handlers here in the future
+    } catch (error) {
+      logger.main.error("Error handling deep link:", error);
+    }
+  }
+
   async initialize(): Promise<void> {
     await this.initializeDatabase();
 

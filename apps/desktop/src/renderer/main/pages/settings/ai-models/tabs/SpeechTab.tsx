@@ -12,9 +12,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, Zap, Circle, Square, Loader2, Trash2 } from "lucide-react";
+import {
+  Download,
+  Zap,
+  Circle,
+  Square,
+  Loader2,
+  Trash2,
+  LogIn,
+  Cloud,
+} from "lucide-react";
 import { DynamicIcon } from "lucide-react/dynamic";
-
+import { Button } from "@/components/ui/button";
 import {
   TooltipContent,
   Tooltip,
@@ -33,6 +42,14 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DownloadProgress } from "@/constants/models";
 import { api } from "@/trpc/react";
 
@@ -100,6 +117,10 @@ export default function SpeechTab() {
   >({});
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<string | null>(null);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [pendingCloudModel, setPendingCloudModel] = useState<string | null>(
+    null,
+  );
 
   // tRPC queries
   const availableModelsQuery = api.models.getAvailableModels.useQuery();
@@ -108,6 +129,9 @@ export default function SpeechTab() {
   const isTranscriptionAvailableQuery =
     api.models.isTranscriptionAvailable.useQuery();
   const selectedModelQuery = api.models.getSelectedModel.useQuery();
+
+  // Auth queries
+  const isAuthenticatedQuery = api.auth.isAuthenticated.useQuery();
 
   const utils = api.useUtils();
 
@@ -154,6 +178,17 @@ export default function SpeechTab() {
     onError: (error) => {
       console.error("Failed to select model:", error);
       toast.error("Failed to select model");
+    },
+  });
+
+  // Auth mutations
+  const loginMutation = api.auth.login.useMutation({
+    onSuccess: () => {
+      toast.info("Please complete login in your browser");
+    },
+    onError: (error) => {
+      console.error("Failed to initiate login:", error);
+      toast.error("Failed to start login process");
     },
   });
 
@@ -233,6 +268,20 @@ export default function SpeechTab() {
     },
   });
 
+  // Auth state subscription - handle login completion
+  api.auth.onAuthStateChange.useSubscription(undefined, {
+    onData: (authState) => {
+      if (authState.isAuthenticated && pendingCloudModel) {
+        toast.success("Login successful!");
+        setSelectedModelMutation.mutate({ modelId: pendingCloudModel });
+        setPendingCloudModel(null);
+      }
+    },
+    onError: (error) => {
+      console.error("Auth state subscription error:", error);
+    },
+  });
+
   const handleDownload = async (modelId: string, event?: React.MouseEvent) => {
     if (event) {
       event.preventDefault();
@@ -288,11 +337,34 @@ export default function SpeechTab() {
   };
 
   const handleSelectModel = async (modelId: string) => {
+    // Check if this is a cloud model
+    const model = availableModels.find((m) => m.id === modelId);
+    const isCloudModel = model?.provider === "Amical Cloud";
+
+    // If cloud model and not authenticated, show login dialog
+    if (isCloudModel && !isAuthenticatedQuery.data) {
+      setPendingCloudModel(modelId);
+      setShowLoginDialog(true);
+      return;
+    }
+
     try {
       await setSelectedModelMutation.mutateAsync({ modelId });
     } catch (err) {
       console.error("Failed to select model:", err);
       // Error is already handled by the mutation's onError
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      await loginMutation.mutateAsync();
+      setShowLoginDialog(false);
+      toast.info("Complete login in your browser");
+      // Auth state subscription will handle the rest when login completes
+    } catch (err) {
+      console.error("Failed to login:", err);
+      toast.error("Failed to start login");
     }
   };
 
@@ -352,6 +424,14 @@ export default function SpeechTab() {
                         const progress = downloadProgress[model.id];
                         const isDownloading =
                           progress?.status === "downloading";
+                        const isCloudModel = model.provider === "Amical Cloud";
+                        const isAuthenticated =
+                          isAuthenticatedQuery.data || false;
+
+                        // Cloud models can be selected if authenticated, local models need to be downloaded
+                        const canSelect = isCloudModel
+                          ? isAuthenticated
+                          : isDownloaded && isTranscriptionAvailable;
 
                         return (
                           <TableRow
@@ -363,9 +443,7 @@ export default function SpeechTab() {
                                 <RadioGroupItem
                                   value={model.id}
                                   id={model.id}
-                                  disabled={
-                                    !isDownloaded || !isTranscriptionAvailable
-                                  }
+                                  disabled={!canSelect}
                                 />
                                 <div>
                                   <Label
@@ -422,63 +500,89 @@ export default function SpeechTab() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col items-center space-y-1">
-                                {!isDownloaded && !isDownloading && (
-                                  <button
-                                    onClick={(e) => handleDownload(model.id, e)}
-                                    className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-primary-foreground transition-colors"
-                                    title="Click to download"
-                                  >
-                                    <Download className="w-4 h-4 text-muted-foreground" />
-                                  </button>
-                                )}
-
-                                {!isDownloaded && isDownloading && (
-                                  <div className="relative">
-                                    <button
-                                      type="button"
-                                      onClick={(e) =>
-                                        handleCancelDownload(model.id, e)
-                                      }
-                                      className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center text-white transition-colors"
-                                      title="Click to cancel download"
-                                      aria-label={`Cancel downloading ${model.name}`}
-                                    >
-                                      <Square className="w-4 h-4" />
-                                    </button>
-
-                                    {/* Circular Progress Ring */}
-                                    {progress && (
-                                      <svg
-                                        className="absolute inset-0 w-8 h-8 -rotate-90 pointer-events-none"
-                                        viewBox="0 0 36 36"
+                                {/* Cloud models show cloud icon or login button */}
+                                {isCloudModel && (
+                                  <>
+                                    {isAuthenticated ? (
+                                      <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
+                                        <Cloud className="w-4 h-4 text-blue-500" />
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => setShowLoginDialog(true)}
+                                        className="w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center text-white transition-colors"
+                                        title="Sign in to use cloud model"
                                       >
-                                        <circle
-                                          cx="18"
-                                          cy="18"
-                                          r="15.9155"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="3"
-                                          strokeDasharray="100 100"
-                                          className="text-muted-foreground/30"
-                                        />
-                                        <circle
-                                          cx="18"
-                                          cy="18"
-                                          r="15.9155"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="3"
-                                          strokeDasharray={`${Math.max(0, Math.min(100, progress.progress))} 100`}
-                                          strokeLinecap="round"
-                                          className="text-white transition-all duration-300"
-                                        />
-                                      </svg>
+                                        <LogIn className="w-4 h-4" />
+                                      </button>
                                     )}
-                                  </div>
+                                  </>
                                 )}
 
-                                {isDownloaded && (
+                                {/* Local models show download/delete buttons */}
+                                {!isCloudModel &&
+                                  !isDownloaded &&
+                                  !isDownloading && (
+                                    <button
+                                      onClick={(e) =>
+                                        handleDownload(model.id, e)
+                                      }
+                                      className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-primary-foreground transition-colors"
+                                      title="Click to download"
+                                    >
+                                      <Download className="w-4 h-4 text-muted-foreground" />
+                                    </button>
+                                  )}
+
+                                {!isCloudModel &&
+                                  !isDownloaded &&
+                                  isDownloading && (
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        onClick={(e) =>
+                                          handleCancelDownload(model.id, e)
+                                        }
+                                        className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center text-white transition-colors"
+                                        title="Click to cancel download"
+                                        aria-label={`Cancel downloading ${model.name}`}
+                                      >
+                                        <Square className="w-4 h-4" />
+                                      </button>
+
+                                      {/* Circular Progress Ring */}
+                                      {progress && (
+                                        <svg
+                                          className="absolute inset-0 w-8 h-8 -rotate-90 pointer-events-none"
+                                          viewBox="0 0 36 36"
+                                        >
+                                          <circle
+                                            cx="18"
+                                            cy="18"
+                                            r="15.9155"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="3"
+                                            strokeDasharray="100 100"
+                                            className="text-muted-foreground/30"
+                                          />
+                                          <circle
+                                            cx="18"
+                                            cy="18"
+                                            r="15.9155"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="3"
+                                            strokeDasharray={`${Math.max(0, Math.min(100, progress.progress))} 100`}
+                                            strokeLinecap="round"
+                                            className="text-white transition-all duration-300"
+                                          />
+                                        </svg>
+                                      )}
+                                    </div>
+                                  )}
+
+                                {!isCloudModel && isDownloaded && (
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteClick(model.id)}
@@ -530,6 +634,47 @@ export default function SpeechTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign In Required</DialogTitle>
+            <DialogDescription>
+              To use Amical Cloud transcription, you need to sign in with your
+              Amical account. This enables secure cloud-based transcription with
+              high accuracy.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              After clicking "Sign In", you'll be redirected to your browser to
+              complete the login process.
+            </p>
+            <div className="flex items-center space-x-2 text-sm">
+              <Cloud className="w-4 h-4 text-blue-500" />
+              <span>Fast, accurate cloud transcription</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLoginDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleLogin} disabled={loginMutation.isPending}>
+              {loginMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Opening Browser...
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign In
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

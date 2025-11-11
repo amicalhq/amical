@@ -27,7 +27,10 @@ function validateShortcut(keys: string[]): ValidationResult {
   }
 
   if (keys.length > MAX_KEY_COMBINATION_LENGTH) {
-    return { valid: false, error: `Maximum ${MAX_KEY_COMBINATION_LENGTH} keys allowed` };
+    return {
+      valid: false,
+      error: `Maximum ${MAX_KEY_COMBINATION_LENGTH} keys allowed`,
+    };
   }
 
   const modifierKeys = keys.filter((key) => MODIFIER_KEYS.includes(key));

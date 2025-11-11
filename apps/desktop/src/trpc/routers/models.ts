@@ -16,7 +16,7 @@ export const modelsRouter = createRouter({
       z.object({
         provider: z.string().optional(),
         type: z.enum(["speech", "language", "embedding"]).optional(),
-        downloadedOnly: z.boolean().optional().default(false),
+        selectable: z.boolean().optional().default(false),
       }),
     )
     .query(async ({ input, ctx }): Promise<Model[]> => {
@@ -29,22 +29,25 @@ export const modelsRouter = createRouter({
 
       // For speech models (local whisper)
       if (input.type === "speech") {
-        if (input.downloadedOnly) {
-          const downloadedModels =
-            await modelManagerService.getDownloadedModels();
-          return Object.values(downloadedModels);
-        }
         // Return all available whisper models as Model type
         // We need to convert from AvailableWhisperModel to Model format
         const availableModels = modelManagerService.getAvailableModels();
         const downloadedModels =
           await modelManagerService.getDownloadedModels();
 
+        // Check authentication status for cloud model filtering
+        const authService = ctx.serviceManager.getService("authService")!;
+        const isAuthenticated = await authService.isAuthenticated();
+
         // Map available models to Model format using downloaded data if available
-        return availableModels.map((m) => {
+        let models = availableModels.map((m) => {
           const downloaded = downloadedModels[m.id];
           if (downloaded) {
-            return downloaded;
+            // Include setup field from available model metadata
+            return {
+              ...downloaded,
+              setup: m.setup,
+            } as Model & { setup: "offline" | "cloud" };
           }
           // Create a partial Model for non-downloaded models
           return {
@@ -64,8 +67,24 @@ export const modelsRouter = createRouter({
             accuracy: m.accuracy,
             createdAt: new Date(),
             updatedAt: new Date(),
-          } as Model;
+            setup: m.setup,
+          } as Model & { setup: "offline" | "cloud" };
         });
+
+        // Apply selectable filtering for dropdown/combobox
+        if (input.selectable) {
+          models = models.filter((m) => {
+            const model = m as Model & { setup: "offline" | "cloud" };
+            // Filter cloud models if not authenticated
+            if (model.setup === "cloud") {
+              return isAuthenticated;
+            }
+            // Filter local models that aren't downloaded
+            return model.downloadedAt !== null;
+          });
+        }
+
+        return models;
       }
 
       // For language/embedding models (provider models)

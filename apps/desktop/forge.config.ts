@@ -355,7 +355,19 @@ const config: ForgeConfig = {
     extendInfo: {
       NSMicrophoneUsageDescription:
         "This app needs access to your microphone to record audio for transcription.",
+      CFBundleURLTypes: [
+        {
+          CFBundleURLSchemes: ["amical"],
+          CFBundleURLName: "com.amical.desktop",
+        },
+      ],
     },
+    protocols: [
+      {
+        name: "Amical",
+        schemes: ["amical"],
+      },
+    ],
     // Code signing configuration for macOS
     ...(process.env.SKIP_CODESIGNING === "true"
       ? {}

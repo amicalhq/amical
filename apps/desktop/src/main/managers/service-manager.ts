@@ -13,6 +13,7 @@ import { router } from "../../trpc/router";
 import { createContext } from "../../trpc/context";
 import { isMacOS, isWindows } from "../../utils/platform";
 import { TelemetryService } from "../../services/telemetry-service";
+import { AuthService } from "../../services/auth-service";
 
 /**
  * Service map for type-safe service access
@@ -22,6 +23,7 @@ export interface ServiceMap {
   modelManagerService: ModelManagerService;
   transcriptionService: TranscriptionService;
   settingsService: SettingsService;
+  authService: AuthService;
   vadService: VADService;
   nativeBridge: NativeBridge;
   autoUpdaterService: AutoUpdaterService;
@@ -41,6 +43,7 @@ export class ServiceManager {
   private modelManagerService: ModelManagerService | null = null;
   private transcriptionService: TranscriptionService | null = null;
   private settingsService: SettingsService | null = null;
+  private authService: AuthService | null = null;
   private vadService: VADService | null = null;
 
   private nativeBridge: NativeBridge | null = null;
@@ -60,6 +63,7 @@ export class ServiceManager {
 
     try {
       this.initializeSettingsService();
+      this.initializeAuthService();
       await this.initializeTelemetryService();
       await this.initializeModelServices();
       this.initializePlatformServices();
@@ -88,6 +92,11 @@ export class ServiceManager {
   private initializeSettingsService(): void {
     this.settingsService = new SettingsService();
     logger.main.info("Settings service initialized");
+  }
+
+  private initializeAuthService(): void {
+    this.authService = AuthService.getInstance();
+    logger.main.info("Auth service initialized");
   }
 
   private async initializeModelServices(): Promise<void> {
@@ -234,6 +243,7 @@ export class ServiceManager {
       modelManagerService: this.modelManagerService ?? undefined,
       transcriptionService: this.transcriptionService ?? undefined,
       settingsService: this.settingsService ?? undefined,
+      authService: this.authService ?? undefined,
       vadService: this.vadService ?? undefined,
       nativeBridge: this.nativeBridge ?? undefined,
       autoUpdaterService: this.autoUpdaterService ?? undefined,

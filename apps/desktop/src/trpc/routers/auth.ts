@@ -1,0 +1,137 @@
+import { observable } from "@trpc/server/observable";
+import { createRouter, procedure } from "../trpc";
+import { logger } from "../../main/logger";
+import { AuthState } from "../../services/auth-service";
+
+export const authRouter = createRouter({
+  // Get current auth status
+  getAuthStatus: procedure.query(async ({ ctx }) => {
+    const authService = ctx.serviceManager.getService("authService")!;
+
+    const authState = await authService.getAuthState();
+    const isAuthenticated = await authService.isAuthenticated();
+
+    return {
+      isAuthenticated,
+      userEmail: authState?.userInfo?.email || null,
+      userName: authState?.userInfo?.name || null,
+    };
+  }),
+
+  // Initiate login flow
+  login: procedure.mutation(async ({ ctx }) => {
+    const authService = ctx.serviceManager.getService("authService")!;
+
+    await authService.login();
+
+    // The actual authentication will complete via the deep link callback
+    return {
+      success: true,
+      message: "Login initiated - please complete in your browser",
+    };
+  }),
+
+  // Logout
+  logout: procedure.mutation(async ({ ctx }) => {
+    const authService = ctx.serviceManager.getService("authService")!;
+
+    await authService.logout();
+
+    return {
+      success: true,
+      message: "Logged out successfully",
+    };
+  }),
+
+  // Check if authenticated (for UI updates)
+  isAuthenticated: procedure.query(async ({ ctx }) => {
+    const authService = ctx.serviceManager.getService("authService")!;
+
+    return await authService.isAuthenticated();
+  }),
+
+  // Subscribe to auth state changes
+  // Using Observable instead of async generator due to Symbol.asyncDispose conflict
+  // eslint-disable-next-line deprecation/deprecation
+  onAuthStateChange: procedure.subscription(({ ctx }) => {
+    return observable<{
+      isAuthenticated: boolean;
+      userEmail: string | null;
+      userName: string | null;
+      error?: string;
+    }>((emit) => {
+      const authService = ctx.serviceManager.getService("authService")!;
+
+      // Define handlers once (not in a loop)
+      const handleAuthenticated = async (authState: AuthState) => {
+        logger.main.info("Auth state changed - authenticated");
+        emit.next({
+          isAuthenticated: true,
+          userEmail: authState.userInfo?.email || null,
+          userName: authState.userInfo?.name || null,
+        });
+      };
+
+      const handleLoggedOut = () => {
+        logger.main.info("Auth state changed - logged out");
+        emit.next({
+          isAuthenticated: false,
+          userEmail: null,
+          userName: null,
+        });
+      };
+
+      const handleAuthError = (error: Error) => {
+        logger.main.error("Auth error:", error);
+        emit.next({
+          isAuthenticated: false,
+          userEmail: null,
+          userName: null,
+          error: error.message,
+        });
+      };
+
+      // Attach listeners once
+      authService.on("authenticated", handleAuthenticated);
+      authService.on("logged-out", handleLoggedOut);
+      authService.on("auth-error", handleAuthError);
+
+      // Send initial state
+      authService.getAuthState().then((state) => {
+        emit.next({
+          isAuthenticated: state?.isAuthenticated || false,
+          userEmail: state?.userInfo?.email || null,
+          userName: state?.userInfo?.name || null,
+        });
+      });
+
+      // Cleanup function - removes listeners when subscription ends
+      return () => {
+        authService.off("authenticated", handleAuthenticated);
+        authService.off("logged-out", handleLoggedOut);
+        authService.off("auth-error", handleAuthError);
+      };
+    });
+  }),
+
+  // Check if cloud model requires auth
+  isCloudModelSelected: procedure.query(async ({ ctx }) => {
+    const modelManagerService = ctx.serviceManager.getService(
+      "modelManagerService",
+    )!;
+    if (!modelManagerService) {
+      return false;
+    }
+
+    const selectedModelId = await modelManagerService.getSelectedModel();
+    if (!selectedModelId) {
+      return false;
+    }
+
+    // Check if it's a cloud model
+    const { AVAILABLE_MODELS } = await import("../../constants/models");
+    const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+
+    return model?.provider === "Amical Cloud";
+  }),
+});

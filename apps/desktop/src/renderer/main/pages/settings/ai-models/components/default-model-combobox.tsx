@@ -25,7 +25,7 @@ export default function DefaultModelCombobox({
   // Unified queries
   const modelsQuery = api.models.getModels.useQuery({
     type: modelType,
-    downloadedOnly: modelType === "speech",
+    selectable: true, // Only show models that can be selected (authenticated cloud or downloaded local)
   });
 
   const defaultModelQuery = api.models.getDefaultModel.useQuery({

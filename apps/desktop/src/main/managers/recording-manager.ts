@@ -408,7 +408,7 @@ export class RecordingManager extends EventEmitter {
         // Clean up session and audio recording on error
         this.currentSessionId = null;
         this.currentAudioRecording = null;
-        this.setState("error");
+        this.setState("idle");
       }
     }
   }

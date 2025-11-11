@@ -17,6 +17,17 @@ if (isWindows()) {
   app.setAppUserModelId("com.amical.desktop");
 }
 
+// Register the amical:// protocol
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient("amical", process.execPath, [
+      process.argv[1],
+    ]);
+  }
+} else {
+  app.setAsDefaultProtocolClient("amical");
+}
+
 // Enforce single instance
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -42,13 +53,40 @@ if (app.isPackaged && isWindows()) {
 
 const appManager = new AppManager();
 
-// Handle when another instance tries to start
-app.on("second-instance", () => {
-  // Someone tried to run a second instance, we should focus our window instead.
-  appManager.handleSecondInstance();
+// Store the deep link URL for processing after app is ready
+let deeplinkingUrl: string | null = null;
+
+// Handle protocol on macOS
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  if (app.isReady()) {
+    appManager.handleDeepLink(url);
+  } else {
+    deeplinkingUrl = url;
+  }
 });
 
-app.whenReady().then(() => appManager.initialize());
+// Handle when another instance tries to start (Windows/Linux deep link handling)
+app.on("second-instance", (_event, commandLine) => {
+  // Someone tried to run a second instance, we should focus our window instead.
+  appManager.handleSecondInstance();
+
+  // Check if this is a protocol launch on Windows/Linux
+  const url = commandLine.find((arg) => arg.startsWith("amical://"));
+  if (url) {
+    appManager.handleDeepLink(url);
+  }
+});
+
+app.whenReady().then(() => {
+  appManager.initialize();
+
+  // Process any deep link that was received before app was ready
+  if (deeplinkingUrl) {
+    appManager.handleDeepLink(deeplinkingUrl);
+    deeplinkingUrl = null;
+  }
+});
 app.on("will-quit", () => appManager.cleanup());
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

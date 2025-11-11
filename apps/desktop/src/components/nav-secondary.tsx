@@ -8,6 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { AuthButton } from "@/components/auth-button";
 
 export function NavSecondary({
   items,
@@ -38,6 +39,7 @@ export function NavSecondary({
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+          <AuthButton />
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

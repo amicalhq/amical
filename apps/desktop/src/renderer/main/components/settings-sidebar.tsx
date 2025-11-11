@@ -6,7 +6,6 @@ import { NavSecondary } from "@/components/nav-secondary";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -78,7 +77,6 @@ export function SettingsSidebar({
         <NavMain items={data.navMain} />
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
-      <SidebarFooter></SidebarFooter>
     </Sidebar>
   );
 }

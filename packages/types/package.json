@@ -14,7 +14,7 @@
     "generate:csharp": "tsx scripts/generate-csharp-models.ts",
     "generate:all": "pnpm run generate:json-schemas && pnpm run generate:swift && pnpm run generate:csharp",
     "lint": "eslint .",
-    "check-types": "tsc --noEmit"
+    "type:check": "tsc --noEmit"
   },
   "keywords": [
     "amical",

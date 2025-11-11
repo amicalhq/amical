@@ -49,8 +49,8 @@
     "lint": {
       "dependsOn": ["format:check"]
     },
-    "check-types": {
-      "dependsOn": ["^check-types"]
+    "type:check": {
+      "dependsOn": ["^type:check"]
     },
     "dev": {
       "dependsOn": ["^build"],

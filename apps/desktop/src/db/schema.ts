@@ -162,6 +162,17 @@ export interface AppSettingsData {
   telemetry?: {
     enabled?: boolean;
   };
+  auth?: {
+    isAuthenticated: boolean;
+    idToken: string | null;
+    refreshToken: string | null;
+    expiresAt: number | null;
+    userInfo?: {
+      sub: string;
+      email?: string;
+      name?: string;
+    };
+  };
 }
 
 // Notes table

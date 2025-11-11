@@ -30,7 +30,9 @@ import {
   OllamaModel,
 } from "../types/providers";
 import { SettingsService } from "./settings-service";
+import { AuthService } from "./auth-service";
 import { logger } from "../main/logger";
+import { getUserAgent } from "../utils/http-client";
 
 // Type for models fetched from external APIs
 type FetchedModel = Pick<DBModel, "id" | "name" | "provider"> &
@@ -126,10 +128,69 @@ class ModelManagerService extends EventEmitter {
         removed: syncResult.removed,
       });
 
-      // Restore selected model from settings
+      // Restore selected model from settings and validate availability
       const savedSelection = await this.settingsService.getDefaultSpeechModel();
 
-      if (!savedSelection) {
+      if (savedSelection) {
+        // Validate the saved selection is still available
+        const availableModel = AVAILABLE_MODELS.find(
+          (m) => m.id === savedSelection,
+        );
+
+        // Check if it's a cloud model and user is authenticated
+        if (availableModel?.setup === "cloud") {
+          const authService = AuthService.getInstance();
+          const isAuthenticated = await authService.isAuthenticated();
+
+          if (!isAuthenticated) {
+            // Cloud model selected but not authenticated - auto-switch to local model
+            const downloadedModels = await this.getValidDownloadedModels();
+            const downloadedModelIds = Object.keys(downloadedModels);
+
+            if (downloadedModelIds.length > 0) {
+              const preferredOrder = [
+                "whisper-large-v3-turbo",
+                "whisper-large-v3",
+                "whisper-medium",
+                "whisper-small",
+                "whisper-base",
+                "whisper-tiny",
+              ];
+
+              let newModelId = downloadedModelIds[0];
+              for (const candidateId of preferredOrder) {
+                if (downloadedModels[candidateId]) {
+                  newModelId = candidateId;
+                  break;
+                }
+              }
+
+              await this.settingsService.setDefaultSpeechModel(newModelId);
+              this.emit(
+                "selection-changed",
+                savedSelection,
+                newModelId,
+                "manual",
+                "speech",
+              );
+
+              logger.main.info(
+                "Auto-switched from cloud model to local model on startup (not authenticated)",
+                {
+                  from: savedSelection,
+                  to: newModelId,
+                },
+              );
+            } else {
+              // No local models available
+              await this.settingsService.setDefaultSpeechModel(undefined);
+              logger.main.warn(
+                "Cleared cloud model selection on startup - not authenticated and no local models available",
+              );
+            }
+          }
+        }
+      } else {
         // No saved selection, check if we have downloaded models to auto-select
         const downloadedModels = await this.getValidDownloadedModels();
         const downloadedModelCount = Object.keys(downloadedModels).length;
@@ -138,7 +199,7 @@ class ModelManagerService extends EventEmitter {
           // Auto-select the best available model using the preferred order
           const preferredOrder = [
             "whisper-large-v3-turbo",
-            "whisper-large-v1",
+            "whisper-large-v3",
             "whisper-medium",
             "whisper-small",
             "whisper-base",
@@ -167,11 +228,93 @@ class ModelManagerService extends EventEmitter {
 
       // Validate all default models after sync
       await this.validateAndClearInvalidDefaults();
+
+      // Setup auth event listeners
+      this.setupAuthEventListeners();
     } catch (error) {
       logger.main.error("Error initializing model manager", {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  // Setup auth event listeners to handle logout
+  private setupAuthEventListeners(): void {
+    const authService = AuthService.getInstance();
+
+    authService.on("logged-out", async () => {
+      try {
+        const selectedModelId = await this.getSelectedModel();
+
+        if (selectedModelId) {
+          // Check if the selected model is a cloud model
+          const availableModel = AVAILABLE_MODELS.find(
+            (m) => m.id === selectedModelId,
+          );
+
+          if (availableModel?.setup === "cloud") {
+            // Cloud model selected but user logged out - auto-switch to first downloaded local model
+            const downloadedModels = await this.getValidDownloadedModels();
+            const downloadedModelIds = Object.keys(downloadedModels);
+
+            if (downloadedModelIds.length > 0) {
+              // Find the best local model from preferred order
+              const preferredOrder = [
+                "whisper-large-v3-turbo",
+                "whisper-large-v3",
+                "whisper-medium",
+                "whisper-small",
+                "whisper-base",
+                "whisper-tiny",
+              ];
+
+              let newModelId = downloadedModelIds[0]; // Fallback to first available
+              for (const candidateId of preferredOrder) {
+                if (downloadedModels[candidateId]) {
+                  newModelId = candidateId;
+                  break;
+                }
+              }
+
+              await this.settingsService.setDefaultSpeechModel(newModelId);
+              this.emit(
+                "selection-changed",
+                selectedModelId,
+                newModelId,
+                "manual",
+                "speech",
+              );
+
+              logger.main.info(
+                "Auto-switched from cloud model to local model after logout",
+                {
+                  from: selectedModelId,
+                  to: newModelId,
+                },
+              );
+            } else {
+              // No local models available, clear selection
+              await this.settingsService.setDefaultSpeechModel(undefined);
+              this.emit(
+                "selection-changed",
+                selectedModelId,
+                null,
+                "cleared",
+                "speech",
+              );
+
+              logger.main.warn(
+                "Cleared cloud model selection after logout - no local models available",
+              );
+            }
+          }
+        }
+      } catch (error) {
+        logger.main.error("Error handling logout in model manager", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
   }
 
   private ensureModelsDirectory(): void {
@@ -262,6 +405,9 @@ class ModelManagerService extends EventEmitter {
 
       const response = await fetch(model.downloadUrl, {
         signal: abortController.signal,
+        headers: {
+          "User-Agent": getUserAgent(),
+        },
       });
 
       if (!response.ok) {
@@ -546,9 +692,25 @@ class ModelManagerService extends EventEmitter {
 
     // If setting to a specific model, validate it exists
     if (modelId) {
-      const downloadedModels = await this.getValidDownloadedModels();
-      if (!downloadedModels[modelId]) {
-        throw new Error(`Model not downloaded: ${modelId}`);
+      // Check if it's a cloud model
+      const availableModel = AVAILABLE_MODELS.find((m) => m.id === modelId);
+
+      if (availableModel?.setup === "cloud") {
+        // Cloud model - check authentication
+        const authService = AuthService.getInstance();
+        const isAuthenticated = await authService.isAuthenticated();
+
+        if (!isAuthenticated) {
+          throw new Error("Authentication required for cloud models");
+        }
+
+        logger.main.info("Selecting cloud model", { modelId });
+      } else {
+        // Offline model - must be downloaded
+        const downloadedModels = await this.getValidDownloadedModels();
+        if (!downloadedModels[modelId]) {
+          throw new Error(`Model not downloaded: ${modelId}`);
+        }
       }
     }
 
@@ -630,6 +792,7 @@ class ModelManagerService extends EventEmitter {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
         },
       });
 
@@ -665,6 +828,7 @@ class ModelManagerService extends EventEmitter {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
         },
       });
 
@@ -697,6 +861,7 @@ class ModelManagerService extends EventEmitter {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
         },
       });
 
@@ -755,6 +920,7 @@ class ModelManagerService extends EventEmitter {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
         },
       });
 
