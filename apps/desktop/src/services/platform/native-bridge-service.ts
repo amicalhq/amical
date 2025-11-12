@@ -232,11 +232,27 @@ export class NativeBridge extends EventEmitter {
       );
     }
 
-    this.logger.debug("Sending RPC request", {
-      method,
-      id,
-      startedAt: new Date(startTime).toISOString(),
-    });
+    // Log at INFO level for critical audio operations, DEBUG for others
+    const logLevel =
+      method === "muteSystemAudio" || method === "restoreSystemAudio"
+        ? "info"
+        : "debug";
+    const logMessage = `Sending RPC request: ${method}`;
+
+    if (logLevel === "info") {
+      this.logger.info(logMessage, {
+        method,
+        id,
+        startedAt: new Date(startTime).toISOString(),
+      });
+    } else {
+      this.logger.debug(logMessage, {
+        method,
+        id,
+        startedAt: new Date(startTime).toISOString(),
+      });
+    }
+
     this.proc.stdin.write(JSON.stringify(requestPayload) + "\n", (err) => {
       if (err) {
         this.logger.error("Error writing to helper stdin", {
@@ -247,7 +263,11 @@ export class NativeBridge extends EventEmitter {
         // Note: The promise might have already been set up, consider how to reject it.
         // For now, this error will be logged. The timeout will eventually reject.
       } else {
-        this.logger.debug("Successfully sent RPC request", { method, id });
+        if (logLevel === "info") {
+          this.logger.info("Successfully sent RPC request", { method, id });
+        } else {
+          this.logger.debug("Successfully sent RPC request", { method, id });
+        }
       }
     });
 
@@ -265,15 +285,28 @@ export class NativeBridge extends EventEmitter {
               (error as any).data = resp.error.data;
               reject(error);
             } else {
+              // Log at INFO level for critical audio operations, DEBUG for others
+              const logLevel =
+                method === "muteSystemAudio" || method === "restoreSystemAudio"
+                  ? "info"
+                  : "debug";
+
               // Log the raw resp.result with timing information
-              this.logger.debug("Raw RPC response result received", {
+              const logData = {
                 method,
                 id,
                 result: resp.result,
                 startedAt: new Date(startTime).toISOString(),
                 completedAt: new Date(completedAt).toISOString(),
                 durationMs: duration,
-              });
+              };
+
+              if (logLevel === "info") {
+                this.logger.info("RPC response received", logData);
+              } else {
+                this.logger.debug("Raw RPC response result received", logData);
+              }
+
               // Here, we might need to validate resp.result against the specific method's result schema
               // For now, casting as any, but for type safety, validation is better.
               // Example: const resultValidation = RPCMethods[method].resultSchema.safeParse(resp.result);

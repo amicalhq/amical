@@ -156,7 +156,11 @@ export class RecordingManager extends EventEmitter {
 
   public async startRecording(mode: "ptt" | "hands-free") {
     await this.recordingMutex.runExclusive(async () => {
+      const startTime = performance.now();
+      logger.audio.info("RecordingManager: startRecording called", { mode });
+
       // Check if transcription service is available and has models
+      const modelCheckStartTime = performance.now();
       const transcriptionService = this.serviceManager.getService(
         "transcriptionService",
       );
@@ -171,6 +175,11 @@ export class RecordingManager extends EventEmitter {
       }
 
       const hasModels = await transcriptionService.isModelAvailable();
+      const modelCheckDuration = performance.now() - modelCheckStartTime;
+      logger.audio.info(
+        `RecordingManager: Model availability check took ${modelCheckDuration.toFixed(2)}ms`,
+      );
+
       if (!hasModels) {
         logger.audio.error("No transcription models available");
         // Show error dialog
@@ -205,11 +214,20 @@ export class RecordingManager extends EventEmitter {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       this.currentSessionId = `session-${timestamp}`;
 
-      // Get accessibility context from global store
+      // Get accessibility context from global store (async, not awaited)
       appContextStore.refreshAccessibilityData();
+      logger.audio.info(
+        "RecordingManager: Triggered accessibility context refresh (async)",
+      );
 
       // Create audio file and WAV writer
+      const fileCreationStartTime = performance.now();
       const audioFilePath = await this.createAudioFile(this.currentSessionId);
+      const fileCreationDuration = performance.now() - fileCreationStartTime;
+      logger.audio.info(
+        `RecordingManager: Audio file creation took ${fileCreationDuration.toFixed(2)}ms`,
+      );
+
       this.currentAudioRecording = {
         audioFilePath,
         wavWriter: new StreamingWavWriter(audioFilePath),
@@ -220,19 +238,28 @@ export class RecordingManager extends EventEmitter {
         audioFilePath,
       });
 
-      // Mute system audio
-      try {
-        const nativeBridge = this.serviceManager.getService("nativeBridge");
-        if (nativeBridge) {
-          await nativeBridge.call("muteSystemAudio", {});
-        }
-      } catch (error) {
-        logger.main.warn("Native bridge not available for audio muting");
+      // Mute system audio (async, non-blocking)
+      const muteStartTime = performance.now();
+      const nativeBridge = this.serviceManager.getService("nativeBridge");
+      if (nativeBridge) {
+        nativeBridge
+          .call("muteSystemAudio", {})
+          .then(() => {
+            const muteDuration = performance.now() - muteStartTime;
+            logger.audio.info(
+              `RecordingManager: System audio mute took ${muteDuration.toFixed(2)}ms`,
+            );
+          })
+          .catch((error) => {
+            logger.main.warn("Failed to mute system audio", { error });
+          });
       }
 
       this.setState("recording");
+      const totalDuration = performance.now() - startTime;
       logger.audio.info("Recording started successfully", {
         sessionId: this.currentSessionId,
+        totalStartupDuration: `${totalDuration.toFixed(2)}ms`,
       });
 
       return;

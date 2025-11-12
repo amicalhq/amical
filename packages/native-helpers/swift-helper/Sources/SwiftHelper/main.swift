@@ -186,7 +186,8 @@ let swiftHelper = SwiftHelper()
 let ioBridge = IOBridge(jsonEncoder: JSONEncoder(), jsonDecoder: JSONDecoder())
 
 // Start RPC processing in a background thread
-DispatchQueue.global(qos: .userInitiated).async {
+// Using .userInteractive QoS for high priority (reduces latency for audio muting)
+DispatchQueue.global(qos: .userInteractive).async {
     FileHandle.standardError.write(
         "Starting IOBridge RPC processing in background thread...\n".data(using: .utf8)!)
     ioBridge.processRpcRequests()

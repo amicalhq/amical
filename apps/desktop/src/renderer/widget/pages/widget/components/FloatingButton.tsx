@@ -51,6 +51,7 @@ const WaveformVisualization: React.FC<{
 export const FloatingButton: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout
+  const clickTimeRef = useRef<number | null>(null); // Track when user clicked
 
   // tRPC mutation to control widget mouse events
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
@@ -71,18 +72,38 @@ export const FloatingButton: React.FC = () => {
   const isStopping = recordingStatus.state === "stopping";
   const isHandsFreeMode = recordingStatus.mode === "hands-free";
 
+  // Track when recording state changes to "recording" after a click
+  useEffect(() => {
+    if (recordingStatus.state === "recording" && clickTimeRef.current) {
+      const timeSinceClick = performance.now() - clickTimeRef.current;
+      console.log(
+        `FAB: Recording state became 'recording' ${timeSinceClick.toFixed(2)}ms after user click`,
+      );
+      clickTimeRef.current = null; // Reset
+    }
+  }, [recordingStatus.state]);
+
   // Handler for widget click to start recording in hands-free mode
   const handleButtonClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log("FAB: Button clicked! Current status:", recordingStatus);
+    const clickTime = performance.now();
+    clickTimeRef.current = clickTime;
+    console.log("FAB: Button clicked at", clickTime);
+    console.log("FAB: Current status:", recordingStatus);
 
     // Only start recording if not already recording
     if (recordingStatus.state === "idle") {
+      const startRecordingCallTime = performance.now();
       await startRecording();
+      const startRecordingReturnTime = performance.now();
+      console.log(
+        `FAB: startRecording() call took ${(startRecordingReturnTime - startRecordingCallTime).toFixed(2)}ms to return`,
+      );
       console.log("FAB: Started hands-free recording");
     } else {
       console.log("FAB: Already recording, ignoring click");
+      clickTimeRef.current = null; // Reset since we're not starting
     }
   };
 

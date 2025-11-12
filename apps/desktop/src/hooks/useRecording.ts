@@ -70,8 +70,14 @@ export const useRecording = (): UseRecordingOutput => {
   });
 
   const startRecording = useCallback(async () => {
+    const mutationStartTime = performance.now();
+    console.log("Hook: Calling startRecording mutation");
     // Request main process to start recording
     await startRecordingMutation.mutateAsync();
+    const mutationDuration = performance.now() - mutationStartTime;
+    console.log(
+      `Hook: startRecording mutation took ${mutationDuration.toFixed(2)}ms`,
+    );
     console.log("Hook: Recording fully started");
   }, [startRecordingMutation]);
 

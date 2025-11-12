@@ -49,6 +49,7 @@ export const useAudioCapture = ({
   const startCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
       try {
+        const overallStartTime = performance.now();
         console.log("AudioCapture: Starting audio capture");
 
         // Build audio constraints
@@ -62,7 +63,13 @@ export const useAudioCapture = ({
 
         // Add deviceId if user has a preference
         if (preferredMicrophoneName) {
+          const enumerateStartTime = performance.now();
           const devices = await navigator.mediaDevices.enumerateDevices();
+          const enumerateDuration = performance.now() - enumerateStartTime;
+          console.log(
+            `AudioCapture: enumerateDevices took ${enumerateDuration.toFixed(2)}ms`,
+          );
+
           const preferredDevice = devices.find(
             (device) =>
               device.kind === "audioinput" &&
@@ -78,17 +85,33 @@ export const useAudioCapture = ({
         }
 
         // Get microphone stream
+        const getUserMediaStartTime = performance.now();
         streamRef.current = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
         });
+        const getUserMediaDuration = performance.now() - getUserMediaStartTime;
+        console.log(
+          `AudioCapture: getUserMedia took ${getUserMediaDuration.toFixed(2)}ms`,
+        );
 
         // Create audio context
+        const audioContextStartTime = performance.now();
         audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
+        const audioContextDuration = performance.now() - audioContextStartTime;
+        console.log(
+          `AudioCapture: AudioContext creation took ${audioContextDuration.toFixed(2)}ms`,
+        );
 
         // Load audio worklet
+        const workletStartTime = performance.now();
         await audioContextRef.current.audioWorklet.addModule(audioWorkletUrl);
+        const workletDuration = performance.now() - workletStartTime;
+        console.log(
+          `AudioCapture: audioWorklet.addModule took ${workletDuration.toFixed(2)}ms`,
+        );
 
         // Create nodes
+        const nodeCreationStartTime = performance.now();
         sourceRef.current = audioContextRef.current.createMediaStreamSource(
           streamRef.current,
         );
@@ -96,10 +119,27 @@ export const useAudioCapture = ({
           audioContextRef.current,
           "audio-recorder-processor",
         );
+        const nodeCreationDuration = performance.now() - nodeCreationStartTime;
+        console.log(
+          `AudioCapture: Node creation took ${nodeCreationDuration.toFixed(2)}ms`,
+        );
+
+        // Track first frame timing
+        let firstFrameReceived = false;
+        const firstFrameStartTime = performance.now();
 
         // Handle audio frames from worklet
         workletNodeRef.current.port.onmessage = async (event) => {
           if (event.data.type === "audioFrame") {
+            if (!firstFrameReceived) {
+              firstFrameReceived = true;
+              const firstFrameDuration =
+                performance.now() - firstFrameStartTime;
+              console.log(
+                `AudioCapture: First audio frame received after ${firstFrameDuration.toFixed(2)}ms`,
+              );
+            }
+
             const frame = event.data.frame;
             console.debug("AudioCapture: Received frame", {
               frameLength: frame.length,
@@ -122,7 +162,11 @@ export const useAudioCapture = ({
         // Connect audio graph
         sourceRef.current.connect(workletNodeRef.current);
 
-        console.log("AudioCapture: Audio capture started");
+        const overallDuration = performance.now() - overallStartTime;
+        console.log(
+          `AudioCapture: Total startup took ${overallDuration.toFixed(2)}ms`,
+        );
+        console.log("AudioCapture: Audio capture started successfully");
       } catch (error) {
         console.error("AudioCapture: Failed to start capture:", error);
         throw error;
