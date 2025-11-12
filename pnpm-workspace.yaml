@@ -3,3 +3,4 @@ packages:
   - "packages/*"
   - "packages/**"
   - "!packages/**/whisper.cpp/**"
+  - "!apps/www"
