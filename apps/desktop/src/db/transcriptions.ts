@@ -1,4 +1,4 @@
-import { eq, desc, asc, and, ilike, count, gte, lte } from "drizzle-orm";
+import { eq, desc, asc, and, ilike, count, gte, lte, sql, like } from "drizzle-orm";
 import { db } from ".";
 import {
   transcriptions,
@@ -55,7 +55,7 @@ export async function getTranscriptions(
     return await db
       .select()
       .from(transcriptions)
-      .where(ilike(transcriptions.text, `%${search}%`))
+      .where(sql`${transcriptions.text} LIKE ${`%${search}%`} COLLATE NOCASE`)
       .orderBy(orderFn(sortColumn))
       .limit(limit)
       .offset(offset);
@@ -113,7 +113,7 @@ export async function getTranscriptionsCount(search?: string) {
     const result = await db
       .select({ count: count() })
       .from(transcriptions)
-      .where(ilike(transcriptions.text, `%${search}%`));
+      .where(sql`${transcriptions.text} LIKE ${`%${search}%`} COLLATE NOCASE`);
     return result[0]?.count || 0;
   } else {
     const result = await db.select({ count: count() }).from(transcriptions);
@@ -152,7 +152,7 @@ export async function searchTranscriptions(searchTerm: string, limit = 20) {
   return await db
     .select()
     .from(transcriptions)
-    .where(ilike(transcriptions.text, `%${searchTerm}%`))
+    .where(sql`${transcriptions.text} LIKE ${`%${searchTerm}%`} COLLATE NOCASE`)
     .orderBy(desc(transcriptions.timestamp))
     .limit(limit);
 }

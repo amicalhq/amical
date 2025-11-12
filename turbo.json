@@ -60,6 +60,20 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
+    },
+    "test": {
+      "dependsOn": [],
+      "cache": false
+    },
+    "test:watch": {
+      "dependsOn": [],
+      "cache": false,
+      "persistent": true
+    },
+    "test:ui": {
+      "dependsOn": [],
+      "cache": false,
+      "persistent": true
     }
   }
 }

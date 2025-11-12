@@ -39,7 +39,6 @@ export const EXTERNAL_DEPENDENCIES = [
   "@libsql/win32-x64-msvc",
   "libsql",
   "onnxruntime-node",
-  "workerpool",
   "@amical/whisper-wrapper",
   // Add any other native modules you need here
 ];
