@@ -46,7 +46,7 @@ interface RefreshTokenResponse {
   expires_in: number;
   refresh_token: string;
   scope: string;
-  id_token?: string; // Optional in refresh flow
+  id_token: string;
 }
 
 export class AuthService extends EventEmitter {
@@ -299,23 +299,14 @@ export class AuthService extends EventEmitter {
   }
 
   /**
-   * Get bearer token for API requests
-   * Returns ID token if available, otherwise returns access token
+   * Get ID token for API requests
    * Automatically refreshes the token if it's expiring soon
    */
   async getIdToken(): Promise<string | null> {
-    // Refresh token if needed before returning
-    try {
-      await this.refreshTokenIfNeeded();
-    } catch (error) {
-      // If refresh fails, still try to return the current token
-      // The API call will fail with 401 and trigger the retry logic
-      logger.main.warn("Failed to refresh token in getIdToken:", error);
-    }
+    await this.refreshTokenIfNeeded();
 
     const authState = await this.getAuthState();
-    // Prefer ID token if available, otherwise use access token
-    return authState?.idToken || authState?.accessToken || null;
+    return authState?.idToken || null;
   }
 
   /**
@@ -338,7 +329,7 @@ export class AuthService extends EventEmitter {
     // Check if token needs refresh (10 minutes before expiry)
     if (
       authState.expiresAt &&
-      authState.expiresAt - Date.now() > 10 * 60 * 1000
+      authState.expiresAt - Date.now() > 1000 * 60 * 1000
     ) {
       // Token still valid
       return;
@@ -346,10 +337,7 @@ export class AuthService extends EventEmitter {
 
     // Start refresh and store the promise
     logger.main.info("Token needs refresh, starting refresh flow");
-    this.refreshPromise = this.performTokenRefresh(
-      authState.refreshToken,
-      authState.idToken,
-    )
+    this.refreshPromise = this.performTokenRefresh(authState.refreshToken)
       .catch((error) => {
         // Handle refresh errors internally - don't throw
         // performTokenRefresh already handles 401/400 by logging out
@@ -365,10 +353,7 @@ export class AuthService extends EventEmitter {
   /**
    * Perform the actual token refresh API call
    */
-  private async performTokenRefresh(
-    refreshToken: string,
-    idToken: string | null,
-  ): Promise<void> {
+  private async performTokenRefresh(refreshToken: string): Promise<void> {
     try {
       logger.main.info("Refreshing access token");
 
@@ -415,7 +400,7 @@ export class AuthService extends EventEmitter {
       // Update auth state with new tokens
       const updatedAuthState: AuthState = {
         isAuthenticated: true,
-        idToken: tokenResponse.id_token || idToken,
+        idToken: tokenResponse.id_token,
         // Use new refresh token if provided, otherwise keep the old one
         refreshToken: tokenResponse.refresh_token || refreshToken,
         accessToken: tokenResponse.access_token,
