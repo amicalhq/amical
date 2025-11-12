@@ -7,6 +7,7 @@ settings:
 overrides:
   '@electron-forge/maker-dmg': https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz
   node-abi: 4.14.0
+  '@types/minimatch': 3.0.5
 
 importers:
 
@@ -2607,9 +2608,8 @@ packages:
   '@types/keyv@3.1.4':
     resolution: {integrity: sha512-BQ5aZNSCpj7D6K2ksrRCTmKRLEpnPvWDiLPfoGyhZ++8YtiK9d/3DBKPJgry359X/P1PfruyYwvnvwFjuEiEIg==}
 
-  '@types/minimatch@6.0.0':
-    resolution: {integrity: sha512-zmPitbQ8+6zNutpwgcQuLcsEpn/Cj54Kbn7L5pX0Os5kdWplB7xPgEh/g+SWOB/qmows2gpuCaPyduq8ZZRnxA==}
-    deprecated: This is a stub types definition. minimatch provides its own type definitions, so you do not need this installed.
+  '@types/minimatch@3.0.5':
+    resolution: {integrity: sha512-Klz949h02Gz2uZCMGwDUSDS1YBlTdDDgbWHi+81l29tQALUtvz4rAYi5uoVhE5Lagoq6DeqAUlbrHvW/mXDgdQ==}
 
   '@types/node-fetch@2.6.13':
     resolution: {integrity: sha512-QGpRVpzSaUs30JBSGPjOg4Uveu384erbHBoT1zeONvyCfwQxIkUshLAOqN/k9EjGviPRmWTTe6aH2qySWKTVSw==}
@@ -9007,7 +9007,7 @@ snapshots:
 
   '@types/glob@7.2.0':
     dependencies:
-      '@types/minimatch': 6.0.0
+      '@types/minimatch': 3.0.5
       '@types/node': 24.3.0
 
   '@types/http-cache-semantics@4.0.4': {}
@@ -9035,9 +9035,7 @@ snapshots:
     dependencies:
       '@types/node': 24.10.1
 
-  '@types/minimatch@6.0.0':
-    dependencies:
-      minimatch: 10.0.3
+  '@types/minimatch@3.0.5': {}
 
   '@types/node-fetch@2.6.13':
     dependencies:

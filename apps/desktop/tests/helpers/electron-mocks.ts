@@ -1,7 +1,7 @@
-import { vi } from 'vitest';
-import { EventEmitter } from 'events';
-import path from 'node:path';
-import os from 'node:os';
+import { vi } from "vitest";
+import { EventEmitter } from "events";
+import path from "node:path";
+import os from "node:os";
 
 // Create a fake BrowserWindow class
 class FakeBrowserWindow extends EventEmitter {
@@ -56,7 +56,7 @@ class FakeBrowserWindow extends EventEmitter {
 
   close() {
     this._isDestroyed = true;
-    this.emit('closed');
+    this.emit("closed");
   }
 
   destroy() {
@@ -171,13 +171,19 @@ class FakeBrowserWindow extends EventEmitter {
   setTrafficLightPosition(position: { x: number; y: number }) {}
 
   // Mock methods that return values
-  getTitle() { return 'Test Window'; }
-  getNativeWindowHandle() { return Buffer.from('test'); }
-  getMediaSourceId() { return 'test-id'; }
+  getTitle() {
+    return "Test Window";
+  }
+  getNativeWindowHandle() {
+    return Buffer.from("test");
+  }
+  getMediaSourceId() {
+    return "test-id";
+  }
 }
 
 // Create test directories
-const testUserDataPath = path.join(os.tmpdir(), 'amical-test-' + Date.now());
+const testUserDataPath = path.join(os.tmpdir(), "amical-test-" + Date.now());
 const testAppPath = process.cwd();
 
 // Mock app object
@@ -188,19 +194,19 @@ const mockApp = {
       appData: testUserDataPath,
       temp: os.tmpdir(),
       home: os.homedir(),
-      documents: path.join(os.homedir(), 'Documents'),
-      downloads: path.join(os.homedir(), 'Downloads'),
-      desktop: path.join(os.homedir(), 'Desktop'),
-      music: path.join(os.homedir(), 'Music'),
-      pictures: path.join(os.homedir(), 'Pictures'),
-      videos: path.join(os.homedir(), 'Videos'),
-      logs: path.join(testUserDataPath, 'logs'),
-      crashDumps: path.join(testUserDataPath, 'crashDumps'),
+      documents: path.join(os.homedir(), "Documents"),
+      downloads: path.join(os.homedir(), "Downloads"),
+      desktop: path.join(os.homedir(), "Desktop"),
+      music: path.join(os.homedir(), "Music"),
+      pictures: path.join(os.homedir(), "Pictures"),
+      videos: path.join(os.homedir(), "Videos"),
+      logs: path.join(testUserDataPath, "logs"),
+      crashDumps: path.join(testUserDataPath, "crashDumps"),
     };
     return paths[name] || testUserDataPath;
   }),
-  getName: vi.fn(() => 'Amical'),
-  getVersion: vi.fn(() => '0.1.0-test'),
+  getName: vi.fn(() => "Amical"),
+  getVersion: vi.fn(() => "0.1.0-test"),
   isPackaged: false,
   isReady: vi.fn(() => true),
   whenReady: vi.fn(() => Promise.resolve()),
@@ -212,9 +218,9 @@ const mockApp = {
   show: vi.fn(),
   setName: vi.fn(),
   setPath: vi.fn(),
-  getLocale: vi.fn(() => 'en-US'),
-  getLocaleCountryCode: vi.fn(() => 'US'),
-  getSystemLocale: vi.fn(() => 'en-US'),
+  getLocale: vi.fn(() => "en-US"),
+  getLocaleCountryCode: vi.fn(() => "US"),
+  getSystemLocale: vi.fn(() => "en-US"),
   on: vi.fn(),
   once: vi.fn(),
   removeListener: vi.fn(),
@@ -276,10 +282,10 @@ const mockScreen = {
 
 // Mock systemPreferences
 const mockSystemPreferences = {
-  getMediaAccessStatus: vi.fn(() => 'granted'),
+  getMediaAccessStatus: vi.fn(() => "granted"),
   askForMediaAccess: vi.fn(() => Promise.resolve(true)),
   isTrustedAccessibilityClient: vi.fn(() => true),
-  getColor: vi.fn(() => '#000000'),
+  getColor: vi.fn(() => "#000000"),
   on: vi.fn(),
   removeListener: vi.fn(),
 };
@@ -287,7 +293,7 @@ const mockSystemPreferences = {
 // Mock nativeTheme
 const mockNativeTheme = {
   shouldUseDarkColors: false,
-  themeSource: 'system' as const,
+  themeSource: "system" as const,
   on: vi.fn(),
   removeListener: vi.fn(),
 };
@@ -309,13 +315,19 @@ class FakeTray extends EventEmitter {
   setImage(image: any) {}
   setContextMenu(menu: any) {}
   destroy() {}
-  isDestroyed() { return false; }
+  isDestroyed() {
+    return false;
+  }
 }
 
 // Mock dialog
 const mockDialog = {
-  showOpenDialog: vi.fn(() => Promise.resolve({ canceled: false, filePaths: [] })),
-  showSaveDialog: vi.fn(() => Promise.resolve({ canceled: false, filePath: '' })),
+  showOpenDialog: vi.fn(() =>
+    Promise.resolve({ canceled: false, filePaths: [] }),
+  ),
+  showSaveDialog: vi.fn(() =>
+    Promise.resolve({ canceled: false, filePath: "" }),
+  ),
   showMessageBox: vi.fn(() => Promise.resolve({ response: 0 })),
   showErrorBox: vi.fn(),
   showCertificateTrustDialog: vi.fn(() => Promise.resolve()),
@@ -324,7 +336,7 @@ const mockDialog = {
 // Mock shell
 const mockShell = {
   openExternal: vi.fn(() => Promise.resolve()),
-  openPath: vi.fn(() => Promise.resolve('')),
+  openPath: vi.fn(() => Promise.resolve("")),
   showItemInFolder: vi.fn(),
   openItem: vi.fn(() => Promise.resolve(true)),
   moveItemToTrash: vi.fn(() => Promise.resolve(true)),
@@ -344,9 +356,9 @@ const mockGlobalShortcut = {
 
 // Mock clipboard
 const mockClipboard = {
-  readText: vi.fn(() => ''),
+  readText: vi.fn(() => ""),
   writeText: vi.fn(),
-  readHTML: vi.fn(() => ''),
+  readHTML: vi.fn(() => ""),
   writeHTML: vi.fn(),
   readImage: vi.fn(() => ({})),
   writeImage: vi.fn(),

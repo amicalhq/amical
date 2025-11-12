@@ -1,9 +1,9 @@
-import { vi } from 'vitest';
-import type { TestDatabase } from './test-db';
-import { AppManager } from '@main/core/app-manager';
-import { ServiceManager } from '@main/managers/service-manager';
-import { router } from '@trpc/router';
-import { createContext } from '@trpc/context';
+import { vi } from "vitest";
+import type { TestDatabase } from "./test-db";
+import { AppManager } from "@main/core/app-manager";
+import { ServiceManager } from "@main/managers/service-manager";
+import { router } from "@trpc/router";
+import { createContext } from "@trpc/context";
 
 /**
  * Test wrapper for AppManager
@@ -23,12 +23,12 @@ export async function initializeTestApp(
   options: {
     skipOnboarding?: boolean;
     skipWindows?: boolean;
-  } = {}
+  } = {},
 ): Promise<TestApp> {
   const { skipOnboarding = true, skipWindows = false } = options;
 
   // Mock the database module to use our test database
-  vi.doMock('@db', () => ({
+  vi.doMock("@db", () => ({
     db: testDb.db,
     dbPath: testDb.dbPath,
     initializeDatabase: vi.fn().mockResolvedValue(undefined),
@@ -37,7 +37,7 @@ export async function initializeTestApp(
 
   // Mock onboarding check to skip it
   if (skipOnboarding) {
-    process.env.FORCE_ONBOARDING = 'false';
+    process.env.FORCE_ONBOARDING = "false";
   }
 
   // Create AppManager instance
@@ -49,7 +49,7 @@ export async function initializeTestApp(
     await appManager.initialize();
   } catch (error) {
     // Some initialization errors are expected in test environment
-    console.warn('AppManager initialization warning:', error);
+    console.warn("AppManager initialization warning:", error);
   }
 
   // Get service manager
@@ -83,15 +83,13 @@ export function createTestTRPCCaller(serviceManager: ServiceManager) {
  * Initialize just the ServiceManager without AppManager
  * Useful for testing services in isolation
  */
-export async function initializeTestServices(
-  testDb: TestDatabase
-): Promise<{
+export async function initializeTestServices(testDb: TestDatabase): Promise<{
   serviceManager: ServiceManager;
   trpcCaller: ReturnType<typeof router.createCaller>;
   cleanup: () => Promise<void>;
 }> {
   // Mock the database module
-  vi.doMock('@db', () => ({
+  vi.doMock("@db", () => ({
     db: testDb.db,
     dbPath: testDb.dbPath,
     initializeDatabase: vi.fn().mockResolvedValue(undefined),
@@ -104,7 +102,7 @@ export async function initializeTestServices(
   try {
     await serviceManager.initialize();
   } catch (error) {
-    console.warn('ServiceManager initialization warning:', error);
+    console.warn("ServiceManager initialization warning:", error);
   }
 
   // Create tRPC caller

@@ -12,8 +12,12 @@ export default defineConfig({
       process.env.TELEMETRY_ENABLED !== "false",
     ),
     __BUNDLED_AUTH_CLIENT_ID: JSON.stringify(process.env.AUTH_CLIENT_ID || ""),
-    __BUNDLED_AUTH_AUTHORIZATION_ENDPOINT: JSON.stringify(process.env.AUTHORIZATION_ENDPOINT || ""),
-    __BUNDLED_AUTH_TOKEN_ENDPOINT: JSON.stringify(process.env.AUTH_TOKEN_ENDPOINT || ""),
+    __BUNDLED_AUTH_AUTHORIZATION_ENDPOINT: JSON.stringify(
+      process.env.AUTHORIZATION_ENDPOINT || "",
+    ),
+    __BUNDLED_AUTH_TOKEN_ENDPOINT: JSON.stringify(
+      process.env.AUTH_TOKEN_ENDPOINT || "",
+    ),
     __BUNDLED_API_ENDPOINT: JSON.stringify(process.env.API_ENDPOINT || ""),
   },
   build: {

@@ -16,6 +16,7 @@ export interface AuthState {
   isAuthenticated: boolean;
   idToken: string | null;
   refreshToken: string | null;
+  accessToken: string | null;
   expiresAt: number | null;
   userInfo?: {
     sub: string;
@@ -39,6 +40,15 @@ interface TokenResponse {
   id_token: string;
 }
 
+interface RefreshTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token: string;
+  scope: string;
+  id_token?: string; // Optional in refresh flow
+}
+
 export class AuthService extends EventEmitter {
   private static instance: AuthService | null = null;
   private config: AuthConfig;
@@ -54,8 +64,7 @@ export class AuthService extends EventEmitter {
         process.env.AUTHORIZATION_ENDPOINT ||
         __BUNDLED_AUTH_AUTHORIZATION_ENDPOINT,
       tokenEndpoint:
-        process.env.AUTH_TOKEN_ENDPOINT ||
-        __BUNDLED_AUTH_TOKEN_ENDPOINT,
+        process.env.AUTH_TOKEN_ENDPOINT || __BUNDLED_AUTH_TOKEN_ENDPOINT,
       redirectUri: "amical://oauth/callback",
     };
 
@@ -170,6 +179,7 @@ export class AuthService extends EventEmitter {
         isAuthenticated: true,
         idToken: tokenResponse.id_token,
         refreshToken: tokenResponse.refresh_token,
+        accessToken: tokenResponse.access_token,
         expiresAt: Date.now() + tokenResponse.expires_in * 1000,
       };
 
@@ -267,16 +277,13 @@ export class AuthService extends EventEmitter {
 
   /**
    * Check if user is authenticated
+   * Automatically refreshes tokens if they are expired or expiring soon
    */
   async isAuthenticated(): Promise<boolean> {
+    await this.refreshTokenIfNeeded();
+
     const authState = await this.getAuthState();
     if (!authState || !authState.isAuthenticated) {
-      return false;
-    }
-
-    // Check if token is expired
-    if (authState.expiresAt && authState.expiresAt < Date.now()) {
-      // Token expired, should refresh
       return false;
     }
 
@@ -292,7 +299,8 @@ export class AuthService extends EventEmitter {
   }
 
   /**
-   * Get ID token for API requests
+   * Get bearer token for API requests
+   * Returns ID token if available, otherwise returns access token
    * Automatically refreshes the token if it's expiring soon
    */
   async getIdToken(): Promise<string | null> {
@@ -306,7 +314,8 @@ export class AuthService extends EventEmitter {
     }
 
     const authState = await this.getAuthState();
-    return authState?.idToken || null;
+    // Prefer ID token if available, otherwise use access token
+    return authState?.idToken || authState?.accessToken || null;
   }
 
   /**
@@ -321,13 +330,15 @@ export class AuthService extends EventEmitter {
 
     const authState = await this.getAuthState();
     if (!authState || !authState.refreshToken) {
-      throw new Error("No refresh token available");
+      // No refresh token available - invalid state, logout user
+      await this.logout();
+      return;
     }
 
-    // Check if token needs refresh (5 minutes before expiry)
+    // Check if token needs refresh (10 minutes before expiry)
     if (
       authState.expiresAt &&
-      authState.expiresAt - Date.now() > 5 * 60 * 1000
+      authState.expiresAt - Date.now() > 10 * 60 * 1000
     ) {
       // Token still valid
       return;
@@ -337,9 +348,16 @@ export class AuthService extends EventEmitter {
     logger.main.info("Token needs refresh, starting refresh flow");
     this.refreshPromise = this.performTokenRefresh(
       authState.refreshToken,
-    ).finally(() => {
-      this.refreshPromise = null;
-    });
+      authState.idToken,
+    )
+      .catch((error) => {
+        // Handle refresh errors internally - don't throw
+        // performTokenRefresh already handles 401/400 by logging out
+        logger.main.error("Token refresh failed:", error);
+      })
+      .finally(() => {
+        this.refreshPromise = null;
+      });
 
     return this.refreshPromise;
   }
@@ -347,7 +365,10 @@ export class AuthService extends EventEmitter {
   /**
    * Perform the actual token refresh API call
    */
-  private async performTokenRefresh(refreshToken: string): Promise<void> {
+  private async performTokenRefresh(
+    refreshToken: string,
+    idToken: string | null,
+  ): Promise<void> {
     try {
       logger.main.info("Refreshing access token");
 
@@ -385,7 +406,7 @@ export class AuthService extends EventEmitter {
         throw new Error(`Token refresh failed: ${response.statusText}`);
       }
 
-      const tokenResponse: TokenResponse = await response.json();
+      const tokenResponse: RefreshTokenResponse = await response.json();
       logger.main.info("Token refresh successful");
 
       // Get current auth state to preserve user info
@@ -394,17 +415,18 @@ export class AuthService extends EventEmitter {
       // Update auth state with new tokens
       const updatedAuthState: AuthState = {
         isAuthenticated: true,
-        idToken: tokenResponse.id_token,
+        idToken: tokenResponse.id_token || idToken,
         // Use new refresh token if provided, otherwise keep the old one
         refreshToken: tokenResponse.refresh_token || refreshToken,
+        accessToken: tokenResponse.access_token,
         expiresAt: Date.now() + tokenResponse.expires_in * 1000,
         userInfo: currentAuthState?.userInfo,
       };
 
       // Update ID token user info if present
-      if (tokenResponse.id_token) {
+      if (updatedAuthState.idToken) {
         try {
-          const payload = tokenResponse.id_token.split(".")[1];
+          const payload = updatedAuthState.idToken.split(".")[1];
           const decoded = JSON.parse(Buffer.from(payload, "base64").toString());
           updatedAuthState.userInfo = {
             sub: decoded.sub,

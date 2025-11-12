@@ -166,6 +166,7 @@ export interface AppSettingsData {
     isAuthenticated: boolean;
     idToken: string | null;
     refreshToken: string | null;
+    accessToken: string | null;
     expiresAt: number | null;
     userInfo?: {
       sub: string;

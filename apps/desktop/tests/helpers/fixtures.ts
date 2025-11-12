@@ -1,5 +1,5 @@
-import type { TestDatabase } from './test-db';
-import * as schema from '@db/schema';
+import type { TestDatabase } from "./test-db";
+import * as schema from "@db/schema";
 import type {
   NewTranscription,
   NewVocabulary,
@@ -7,21 +7,21 @@ import type {
   NewAppSettings,
   NewNote,
   AppSettingsData,
-} from '@db/schema';
+} from "@db/schema";
 
 /**
  * Default app settings for testing
  */
 export const defaultAppSettings: AppSettingsData = {
   formatterConfig: {
-    model: 'gpt-4o-mini',
+    model: "gpt-4o-mini",
     enabled: false,
   },
   ui: {
-    theme: 'system',
+    theme: "system",
   },
   transcription: {
-    language: 'en',
+    language: "en",
     autoTranscribe: true,
     confidenceThreshold: 0.7,
     enablePunctuation: true,
@@ -29,23 +29,23 @@ export const defaultAppSettings: AppSettingsData = {
     preloadWhisperModel: false,
   },
   recording: {
-    defaultFormat: 'wav',
+    defaultFormat: "wav",
     sampleRate: 16000,
     autoStopSilence: true,
     silenceThreshold: -45,
     maxRecordingDuration: 600,
   },
   shortcuts: {
-    pushToTalk: 'CommandOrControl+Shift+Space',
-    toggleRecording: 'CommandOrControl+Shift+R',
-    toggleWindow: 'CommandOrControl+Shift+W',
+    pushToTalk: "CommandOrControl+Shift+Space",
+    toggleRecording: "CommandOrControl+Shift+R",
+    toggleWindow: "CommandOrControl+Shift+W",
   },
   modelProvidersConfig: {
-    defaultSpeechModel: 'local-whisper:ggml-base.en',
+    defaultSpeechModel: "local-whisper:ggml-base.en",
   },
   dictation: {
     autoDetectEnabled: true,
-    selectedLanguage: 'en',
+    selectedLanguage: "en",
   },
   preferences: {
     launchAtLogin: false,
@@ -68,27 +68,27 @@ export const defaultAppSettings: AppSettingsData = {
  */
 export const sampleTranscriptions: NewTranscription[] = [
   {
-    text: 'This is a test transcription',
-    language: 'en',
+    text: "This is a test transcription",
+    language: "en",
     confidence: 0.95,
     duration: 5,
-    speechModel: 'whisper-base',
+    speechModel: "whisper-base",
     formattingModel: null,
   },
   {
-    text: 'Another test transcription with more content',
-    language: 'en',
+    text: "Another test transcription with more content",
+    language: "en",
     confidence: 0.88,
     duration: 8,
-    speechModel: 'whisper-base',
-    formattingModel: 'gpt-4o-mini',
+    speechModel: "whisper-base",
+    formattingModel: "gpt-4o-mini",
   },
   {
-    text: 'A third transcription for comprehensive testing',
-    language: 'en',
+    text: "A third transcription for comprehensive testing",
+    language: "en",
     confidence: 0.92,
     duration: 6,
-    speechModel: 'whisper-large',
+    speechModel: "whisper-large",
     formattingModel: null,
   },
 ];
@@ -98,20 +98,20 @@ export const sampleTranscriptions: NewTranscription[] = [
  */
 export const sampleVocabulary: NewVocabulary[] = [
   {
-    word: 'Amical',
+    word: "Amical",
     replacementWord: null,
     isReplacement: false,
     usageCount: 5,
   },
   {
-    word: 'API',
+    word: "API",
     replacementWord: null,
     isReplacement: false,
     usageCount: 3,
   },
   {
-    word: 'teh',
-    replacementWord: 'the',
+    word: "teh",
+    replacementWord: "the",
     isReplacement: true,
     usageCount: 2,
   },
@@ -122,26 +122,26 @@ export const sampleVocabulary: NewVocabulary[] = [
  */
 export const sampleModels: NewModel[] = [
   {
-    id: 'ggml-base.en',
-    provider: 'local-whisper',
-    name: 'Whisper Base English',
-    type: 'speech',
-    size: '~147 MB',
-    description: 'Optimized for English transcription',
-    localPath: '/test/models/ggml-base.en.bin',
+    id: "ggml-base.en",
+    provider: "local-whisper",
+    name: "Whisper Base English",
+    type: "speech",
+    size: "~147 MB",
+    description: "Optimized for English transcription",
+    localPath: "/test/models/ggml-base.en.bin",
     sizeBytes: 147964211,
-    checksum: 'test-checksum-base',
+    checksum: "test-checksum-base",
     downloadedAt: new Date(),
     speed: 4,
     accuracy: 3,
   },
   {
-    id: 'gpt-4o-mini',
-    provider: 'openrouter',
-    name: 'GPT-4o Mini',
-    type: 'language',
-    context: '128k',
-    description: 'Fast and efficient language model',
+    id: "gpt-4o-mini",
+    provider: "openrouter",
+    name: "GPT-4o Mini",
+    type: "language",
+    context: "128k",
+    description: "Fast and efficient language model",
     speed: 5,
     accuracy: 4,
   },
@@ -152,14 +152,14 @@ export const sampleModels: NewModel[] = [
  */
 export const sampleNotes: NewNote[] = [
   {
-    title: 'Test Note 1',
-    content: 'This is the first test note',
-    icon: '📝',
+    title: "Test Note 1",
+    content: "This is the first test note",
+    icon: "📝",
   },
   {
-    title: 'Test Note 2',
-    content: 'This is the second test note with more content',
-    icon: '📄',
+    title: "Test Note 2",
+    content: "This is the second test note with more content",
+    icon: "📄",
   },
 ];
 
@@ -229,7 +229,7 @@ export const fixtures = {
    */
   withCustomSettings: async (
     testDb: TestDatabase,
-    settings: Partial<AppSettingsData>
+    settings: Partial<AppSettingsData>,
   ) => {
     // Clear existing settings first
     await testDb.db.delete(schema.appSettings);
@@ -248,13 +248,13 @@ export const fixtures = {
     await fixtures.withCustomSettings(testDb, {
       auth: {
         isAuthenticated: true,
-        idToken: 'test-id-token',
-        refreshToken: 'test-refresh-token',
+        idToken: "test-id-token",
+        refreshToken: "test-refresh-token",
         expiresAt: Date.now() + 3600000, // 1 hour from now
         userInfo: {
-          sub: 'test-user-123',
-          email: 'test@example.com',
-          name: 'Test User',
+          sub: "test-user-123",
+          email: "test@example.com",
+          name: "Test User",
         },
       },
     });
@@ -266,9 +266,9 @@ export const fixtures = {
  */
 export async function seedDatabase(
   testDb: TestDatabase,
-  fixture: keyof typeof fixtures | ((testDb: TestDatabase) => Promise<void>)
+  fixture: keyof typeof fixtures | ((testDb: TestDatabase) => Promise<void>),
 ): Promise<void> {
-  if (typeof fixture === 'function') {
+  if (typeof fixture === "function") {
     await fixture(testDb);
   } else {
     await fixtures[fixture](testDb);

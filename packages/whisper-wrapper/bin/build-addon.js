@@ -294,3 +294,4 @@ for (const variant of variants) {
   // extremely long CMake-generated paths that break Windows packaging tools.
   fs.rmSync(buildVariantDir, { recursive: true, force: true });
 }
+
