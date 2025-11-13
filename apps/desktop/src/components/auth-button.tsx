@@ -100,7 +100,8 @@ export function AuthButton() {
       clearLoadingTimeout();
       authStatusQuery.refetch();
       setIsLoading(false);
-      if (data.isAuthenticated) {
+      // Only show toast for actual authentication events, not initial state
+      if (data.eventType === "authenticated" && data.isAuthenticated) {
         toast.success("Signed in successfully");
       }
     },

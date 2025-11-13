@@ -55,6 +55,7 @@ export const authRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   onAuthStateChange: procedure.subscription(({ ctx }) => {
     return observable<{
+      eventType: "initial" | "authenticated" | "signed-out" | "auth-error";
       isAuthenticated: boolean;
       userEmail: string | null;
       userName: string | null;
@@ -66,6 +67,7 @@ export const authRouter = createRouter({
       const handleAuthenticated = async (authState: AuthState) => {
         logger.main.info("Auth state changed - authenticated");
         emit.next({
+          eventType: "authenticated",
           isAuthenticated: true,
           userEmail: authState.userInfo?.email || null,
           userName: authState.userInfo?.name || null,
@@ -75,6 +77,7 @@ export const authRouter = createRouter({
       const handleLoggedOut = () => {
         logger.main.info("Auth state changed - logged out");
         emit.next({
+          eventType: "signed-out",
           isAuthenticated: false,
           userEmail: null,
           userName: null,
@@ -84,6 +87,7 @@ export const authRouter = createRouter({
       const handleAuthError = (error: Error) => {
         logger.main.error("Auth error:", error);
         emit.next({
+          eventType: "auth-error",
           isAuthenticated: false,
           userEmail: null,
           userName: null,
@@ -99,6 +103,7 @@ export const authRouter = createRouter({
       // Send initial state
       authService.getAuthState().then((state) => {
         emit.next({
+          eventType: "initial",
           isAuthenticated: state?.isAuthenticated || false,
           userEmail: state?.userInfo?.email || null,
           userName: state?.userInfo?.name || null,
