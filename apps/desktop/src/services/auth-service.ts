@@ -329,7 +329,7 @@ export class AuthService extends EventEmitter {
     // Check if token needs refresh (10 minutes before expiry)
     if (
       authState.expiresAt &&
-      authState.expiresAt - Date.now() > 1000 * 60 * 1000
+      authState.expiresAt - Date.now() > 10 * 60 * 1000
     ) {
       // Token still valid
       return;

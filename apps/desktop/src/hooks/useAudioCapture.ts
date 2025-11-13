@@ -94,21 +94,40 @@ export const useAudioCapture = ({
           `AudioCapture: getUserMedia took ${getUserMediaDuration.toFixed(2)}ms`,
         );
 
-        // Create audio context
+        // Create or resume audio context
         const audioContextStartTime = performance.now();
-        audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
-        const audioContextDuration = performance.now() - audioContextStartTime;
-        console.log(
-          `AudioCapture: AudioContext creation took ${audioContextDuration.toFixed(2)}ms`,
-        );
+        if (
+          audioContextRef.current &&
+          audioContextRef.current.state === "suspended"
+        ) {
+          // Resume existing context (faster)
+          await audioContextRef.current.resume();
+          const resumeDuration = performance.now() - audioContextStartTime;
+          console.log(
+            `AudioCapture: AudioContext resumed took ${resumeDuration.toFixed(2)}ms`,
+          );
+        } else if (!audioContextRef.current) {
+          // Create new context (first time only)
+          audioContextRef.current = new AudioContext({
+            sampleRate: SAMPLE_RATE,
+          });
+          const audioContextDuration =
+            performance.now() - audioContextStartTime;
+          console.log(
+            `AudioCapture: AudioContext creation took ${audioContextDuration.toFixed(2)}ms`,
+          );
 
-        // Load audio worklet
-        const workletStartTime = performance.now();
-        await audioContextRef.current.audioWorklet.addModule(audioWorkletUrl);
-        const workletDuration = performance.now() - workletStartTime;
-        console.log(
-          `AudioCapture: audioWorklet.addModule took ${workletDuration.toFixed(2)}ms`,
-        );
+          // Load audio worklet (only needed on first creation)
+          const workletStartTime = performance.now();
+          await audioContextRef.current.audioWorklet.addModule(audioWorkletUrl);
+          const workletDuration = performance.now() - workletStartTime;
+          console.log(
+            `AudioCapture: audioWorklet.addModule took ${workletDuration.toFixed(2)}ms`,
+          );
+        } else {
+          // Context exists but not suspended (already running)
+          console.log("AudioCapture: AudioContext already running");
+        }
 
         // Create nodes
         const nodeCreationStartTime = performance.now();
@@ -190,12 +209,13 @@ export const useAudioCapture = ({
           sourceRef.current.disconnect(workletNodeRef.current);
         }
 
-        // Close audio context
+        // Suspend audio context (keep it alive for next recording)
         if (
           audioContextRef.current &&
-          audioContextRef.current.state !== "closed"
+          audioContextRef.current.state === "running"
         ) {
-          await audioContextRef.current.close();
+          await audioContextRef.current.suspend();
+          console.log("AudioCapture: AudioContext suspended (ready for reuse)");
         }
 
         // Stop media stream
