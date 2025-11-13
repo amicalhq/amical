@@ -34,6 +34,7 @@ function getInitials(email?: string | null, name?: string | null): string {
 export function AuthButton() {
   const [isLoading, setIsLoading] = useState(false);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialStateRef = useRef(true);
 
   // Get current auth status
   const authStatusQuery = api.auth.getAuthStatus.useQuery();
@@ -100,9 +101,14 @@ export function AuthButton() {
       clearLoadingTimeout();
       authStatusQuery.refetch();
       setIsLoading(false);
-      if (data.isAuthenticated) {
+
+      // Only show toast for actual sign-in events, not initial state on startup
+      if (data.isAuthenticated && !isInitialStateRef.current) {
         toast.success("Signed in successfully");
       }
+
+      // Mark that we've received the initial state
+      isInitialStateRef.current = false;
     },
     onError: (error) => {
       console.error("Auth state subscription error:", error);
