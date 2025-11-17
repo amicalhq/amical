@@ -318,25 +318,18 @@ export class TranscriptionService {
     // Select the appropriate provider
     const provider = await this.selectProvider();
 
-    // For providers that support flush, call it separately when final
-    let chunkTranscription = "";
-
-    if (isFinal && provider.flush) {
-      // If final chunk, flush the provider buffer
-      chunkTranscription = await provider.flush();
-    } else {
-      // Normal transcription
-      chunkTranscription = await provider.transcribe({
-        audioData: audioChunk,
-        speechProbability: speechProbability, // Now from VAD service
-        context: {
-          vocabulary: session.context.sharedData.vocabulary,
-          accessibilityContext: session.context.sharedData.accessibilityContext,
-          previousChunk,
-          aggregatedTranscription: aggregatedTranscription || undefined,
-        },
-      });
-    }
+    // Transcribe with flush parameter for final chunks
+    const chunkTranscription = await provider.transcribe({
+      audioData: audioChunk,
+      speechProbability: speechProbability, // Now from VAD service
+      flush: isFinal, // Pass flush flag for final chunks
+      context: {
+        vocabulary: session.context.sharedData.vocabulary,
+        accessibilityContext: session.context.sharedData.accessibilityContext,
+        previousChunk,
+        aggregatedTranscription: aggregatedTranscription || undefined,
+      },
+    });
 
     // Accumulate the result only if Whisper returned something
     // (it returns empty string while buffering)

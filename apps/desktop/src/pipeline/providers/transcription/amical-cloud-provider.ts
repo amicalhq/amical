@@ -45,9 +45,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
-  async transcribe(
-    params: TranscribeParams & { flush?: boolean },
-  ): Promise<string> {
+  async transcribe(params: TranscribeParams): Promise<string> {
     try {
       const { audioData, speechProbability = 1, flush = false } = params;
 
@@ -100,26 +98,6 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       return result;
     } catch (error) {
       logger.transcription.error("Cloud transcription error:", error);
-      throw error;
-    }
-  }
-
-  async flush(): Promise<string> {
-    if (this.frameBuffer.length === 0) {
-      return "";
-    }
-
-    try {
-      const result = await this.processAudio();
-
-      // Clear buffer
-      this.frameBuffer = [];
-      this.frameBufferSpeechProbabilities = [];
-      this.currentSilenceFrameCount = 0;
-
-      return result;
-    } catch (error) {
-      logger.transcription.error("Cloud flush error:", error);
       throw error;
     }
   }

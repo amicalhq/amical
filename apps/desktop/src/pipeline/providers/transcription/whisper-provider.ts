@@ -74,9 +74,7 @@ export class WhisperProvider implements TranscriptionProvider {
     }
   }
 
-  async transcribe(
-    params: TranscribeParams & { flush?: boolean },
-  ): Promise<string> {
+  async transcribe(params: TranscribeParams): Promise<string> {
     try {
       await this.initializeWhisper();
 

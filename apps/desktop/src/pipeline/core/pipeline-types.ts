@@ -11,6 +11,7 @@ export { PipelineContext, SharedPipelineData } from "./context";
 export interface TranscribeParams {
   audioData: Float32Array;
   speechProbability?: number; // Speech probability from frontend VAD (0-1)
+  flush?: boolean; // Whether to flush any buffered audio
   context: {
     vocabulary?: Map<string, string>;
     accessibilityContext?: GetAccessibilityContextResult | null;
@@ -35,7 +36,6 @@ export interface FormatParams {
 export interface TranscriptionProvider {
   readonly name: string;
   transcribe(params: TranscribeParams): Promise<string>;
-  flush?(): Promise<string>; // Optional flush method for providers that buffer
 }
 
 // Formatting provider interface
