@@ -174,6 +174,19 @@ export interface AppSettingsData {
       name?: string;
     };
   };
+  onboarding?: {
+    completedVersion: number;
+    completedAt: string; // ISO 8601 timestamp
+    skippedScreens?: string[]; // Screens skipped via feature flags
+    featureInterests?: string[]; // Selected features (max 3)
+    discoverySource?: string; // How user found Amical
+    selectedModelType: "cloud" | "local"; // User's model choice
+    modelRecommendation?: {
+      suggested: "cloud" | "local"; // System recommendation
+      reason: string; // Human-readable explanation
+      followed: boolean; // Whether user followed recommendation
+    };
+  };
 }
 
 // Notes table

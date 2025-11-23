@@ -14,6 +14,8 @@ import { createContext } from "../../trpc/context";
 import { isMacOS, isWindows } from "../../utils/platform";
 import { TelemetryService } from "../../services/telemetry-service";
 import { AuthService } from "../../services/auth-service";
+import { OnboardingService } from "../../services/onboarding-service";
+import { OnboardingManager } from "./onboarding-manager";
 
 /**
  * Service map for type-safe service access
@@ -30,6 +32,8 @@ export interface ServiceMap {
   recordingManager: RecordingManager;
   shortcutManager: ShortcutManager;
   windowManager: WindowManager;
+  onboardingService: OnboardingService;
+  onboardingManager: OnboardingManager;
 }
 
 /**
@@ -45,12 +49,14 @@ export class ServiceManager {
   private settingsService: SettingsService | null = null;
   private authService: AuthService | null = null;
   private vadService: VADService | null = null;
+  private onboardingService: OnboardingService | null = null;
 
   private nativeBridge: NativeBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
   private recordingManager: RecordingManager | null = null;
   private shortcutManager: ShortcutManager | null = null;
   private windowManager: WindowManager | null = null;
+  private onboardingManager: OnboardingManager | null = null;
   private trpcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
   async initialize(): Promise<void> {
@@ -65,6 +71,7 @@ export class ServiceManager {
       this.initializeSettingsService();
       this.initializeAuthService();
       await this.initializeTelemetryService();
+      await this.initializeOnboardingService();
       await this.initializeModelServices();
       this.initializePlatformServices();
       await this.initializeVADService();
@@ -97,6 +104,34 @@ export class ServiceManager {
   private initializeAuthService(): void {
     this.authService = AuthService.getInstance();
     logger.main.info("Auth service initialized");
+  }
+
+  private async initializeOnboardingService(): Promise<void> {
+    if (!this.settingsService || !this.telemetryService) {
+      logger.main.warn(
+        "Settings or telemetry service not available for onboarding",
+      );
+      return;
+    }
+
+    this.onboardingService = OnboardingService.getInstance(
+      this.settingsService,
+      this.telemetryService,
+    );
+    logger.main.info("Onboarding service initialized");
+  }
+
+  initializeOnboardingManager(windowManager: WindowManager): void {
+    if (!this.onboardingService) {
+      logger.main.warn("Onboarding service not available for manager");
+      return;
+    }
+
+    this.onboardingManager = new OnboardingManager(
+      windowManager,
+      this.onboardingService,
+    );
+    logger.main.info("Onboarding manager initialized");
   }
 
   private async initializeModelServices(): Promise<void> {
@@ -250,6 +285,8 @@ export class ServiceManager {
       recordingManager: this.recordingManager ?? undefined,
       shortcutManager: this.shortcutManager ?? undefined,
       windowManager: this.windowManager ?? undefined,
+      onboardingService: this.onboardingService ?? undefined,
+      onboardingManager: this.onboardingManager ?? undefined,
     };
 
     return services[serviceName] ?? null;
@@ -283,6 +320,18 @@ export class ServiceManager {
       logger.main.info("Shutting down telemetry service...");
       await this.telemetryService.shutdown();
     }
+  }
+
+  getOnboardingService(): OnboardingService | null {
+    return this.onboardingService;
+  }
+
+  getOnboardingManager(): OnboardingManager | null {
+    return this.onboardingManager;
+  }
+
+  getSettingsService(): SettingsService | null {
+    return this.settingsService;
   }
 
   static getInstance(): ServiceManager | null {

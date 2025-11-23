@@ -56,6 +56,9 @@ export class AppManager {
 
     await this.serviceManager.initialize();
 
+    // Initialize OnboardingManager with WindowManager reference
+    this.serviceManager.initializeOnboardingManager(this.windowManager);
+
     // Sync auto-launch setting with OS on startup
     const settingsService = this.serviceManager.getService("settingsService");
     if (settingsService) {
@@ -119,7 +122,7 @@ export class AppManager {
   }
 
   private async showOnboarding(): Promise<void> {
-    this.windowManager.createOnboardingWindow();
+    this.windowManager.createOrShowOnboardingWindow();
 
     // The onboarding window will handle the permission flow
     // and call back to complete setup when done

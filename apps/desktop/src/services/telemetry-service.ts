@@ -58,6 +58,15 @@ export class TelemetryService {
   private persistedProperties: Record<string, unknown> = {};
   private settingsService: SettingsService;
 
+  // T045 - Offline analytics queueing
+  private offlineQueue: Array<{
+    event: string;
+    properties: Record<string, any>;
+    timestamp: string;
+  }> = [];
+  private maxQueueSize = 100;
+  private isOnline = true;
+
   constructor(settingsService: SettingsService) {
     this.settingsService = settingsService;
     // Initialize PostHog
@@ -250,5 +259,126 @@ export class TelemetryService {
     } else {
       await this.optOut();
     }
+  }
+
+  /**
+   * Generic track method for any analytics event
+   * T045 - Implements offline analytics queueing
+   */
+  track(eventName: string, properties?: Record<string, any>): void {
+    if (!this.posthog || !this.enabled) {
+      return;
+    }
+
+    const eventData = {
+      distinctId: this.machineId,
+      event: eventName,
+      properties: {
+        ...properties,
+        ...this.persistedProperties,
+      },
+    };
+
+    // Check if online
+    if (this.isOnline) {
+      try {
+        this.posthog.capture(eventData);
+
+        // Flush any queued events if we're back online
+        this.flushOfflineQueue();
+
+        logger.main.debug("Tracked event:", {
+          event: eventName,
+          properties: properties,
+        });
+      } catch (error) {
+        logger.main.warn("Failed to track event, queueing offline:", error);
+        this.queueOfflineEvent(eventName, properties || {});
+      }
+    } else {
+      // Queue the event for later
+      this.queueOfflineEvent(eventName, properties || {});
+    }
+  }
+
+  /**
+   * Queue an event for offline processing
+   * T045 - Part of offline analytics implementation
+   */
+  private queueOfflineEvent(
+    event: string,
+    properties: Record<string, any>,
+  ): void {
+    // Limit queue size to prevent memory issues
+    if (this.offlineQueue.length >= this.maxQueueSize) {
+      // Remove oldest event
+      this.offlineQueue.shift();
+      logger.main.warn("Offline queue full, dropping oldest event");
+    }
+
+    this.offlineQueue.push({
+      event,
+      properties,
+      timestamp: new Date().toISOString(),
+    });
+
+    logger.main.debug(
+      `Queued offline event: ${event} (queue size: ${this.offlineQueue.length})`,
+    );
+  }
+
+  /**
+   * Flush queued offline events
+   * T045 - Sends queued events when back online
+   */
+  private flushOfflineQueue(): void {
+    if (this.offlineQueue.length === 0 || !this.posthog || !this.isOnline) {
+      return;
+    }
+
+    logger.main.info(`Flushing ${this.offlineQueue.length} offline events`);
+
+    const eventsToFlush = [...this.offlineQueue];
+    this.offlineQueue = [];
+
+    eventsToFlush.forEach((queuedEvent) => {
+      try {
+        this.posthog!.capture({
+          distinctId: this.machineId,
+          event: queuedEvent.event,
+          properties: {
+            ...queuedEvent.properties,
+            ...this.persistedProperties,
+            offline_queued_at: queuedEvent.timestamp,
+            offline_sent_at: new Date().toISOString(),
+          },
+        });
+      } catch (error) {
+        logger.main.error("Failed to flush offline event:", error);
+        // Re-queue the event
+        this.offlineQueue.push(queuedEvent);
+      }
+    });
+  }
+
+  /**
+   * Set online/offline status
+   * T045 - Used to control offline queueing behavior
+   */
+  setOnlineStatus(online: boolean): void {
+    const wasOffline = !this.isOnline;
+    this.isOnline = online;
+
+    if (online && wasOffline) {
+      logger.main.info("Back online, flushing offline queue");
+      this.flushOfflineQueue();
+    }
+  }
+
+  /**
+   * Get system information for model recommendations
+   */
+  getSystemInfo(): SystemInfo | null {
+    return this.systemInfo;
   }
 }

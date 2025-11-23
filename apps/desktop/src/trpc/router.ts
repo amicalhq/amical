@@ -8,6 +8,7 @@ import { recordingRouter } from "./routers/recording";
 import { widgetRouter } from "./routers/widget";
 import { notesRouter } from "./routers/notes";
 import { authRouter } from "./routers/auth";
+import { onboardingRouter } from "./routers/onboarding";
 import { createRouter, procedure } from "./trpc";
 
 export const router = createRouter({
@@ -61,6 +62,9 @@ export const router = createRouter({
 
   // Auth router
   auth: authRouter,
+
+  // Onboarding router
+  onboarding: onboardingRouter,
 });
 
 export type AppRouter = typeof router;

@@ -1,25 +1,103 @@
-import React, { useState, useEffect } from "react";
-import { UnifiedPermissionsStep } from "./components/UnifiedPermissionsStep";
+import React, { useState, useEffect, useCallback } from "react";
+import { api } from "@/trpc/react";
+import { useOnboardingState } from "./hooks/useOnboardingState";
+import { ProgressIndicator } from "./components/shared/ProgressIndicator";
+import { OnboardingErrorBoundary } from "./components/ErrorBoundary";
+
+// Screens
+import { WelcomeScreen } from "./components/screens/WelcomeScreen";
+import { PermissionsScreen } from "./components/screens/PermissionsScreen";
+import { DiscoverySourceScreen } from "./components/screens/DiscoverySourceScreen";
+import { ModelSelectionScreen } from "./components/screens/ModelSelectionScreen";
+import { CompletionScreen } from "./components/screens/CompletionScreen";
+
+// Types
+import {
+  OnboardingScreen,
+  ModelType,
+  type OnboardingState,
+  type OnboardingPreferences,
+  type FeatureInterest,
+  type DiscoverySource,
+} from "../../types/onboarding";
 
 interface PermissionStatus {
   microphone: "granted" | "denied" | "not-determined";
   accessibility: boolean;
 }
 
+/**
+ * Main onboarding app with navigation state machine
+ * Implements T026, T027, T028, T029 - Navigation & State Machine
+ */
 export function App() {
+  // State management
+  const [currentScreen, setCurrentScreen] = useState<OnboardingScreen>(
+    OnboardingScreen.Welcome,
+  );
   const [permissions, setPermissions] = useState<PermissionStatus>({
     microphone: "not-determined",
     accessibility: false,
   });
   const [platform, setPlatform] = useState<string>("");
+  const [preferences, setPreferences] = useState<
+    Partial<OnboardingPreferences>
+  >({});
+  const [discoveryDetails, setDiscoveryDetails] = useState<string>("");
 
-  useEffect(() => {
-    // Check initial permissions and platform
-    checkPermissions();
-    window.onboardingAPI.getPlatform().then(setPlatform);
-  }, []);
+  // Hooks
+  const { state, isLoading, savePreferences, completeOnboarding, trackEvent } =
+    useOnboardingState();
 
-  const checkPermissions = async () => {
+  // tRPC queries
+  const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
+  const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
+
+  // Screen order - can be modified based on feature flags
+  const screenOrder: OnboardingScreen[] = [
+    OnboardingScreen.Welcome,
+    OnboardingScreen.Permissions,
+    OnboardingScreen.DiscoverySource,
+    OnboardingScreen.ModelSelection,
+    OnboardingScreen.Completion,
+  ];
+
+  // Get active screens (excluding skipped ones)
+  const getActiveScreens = useCallback(() => {
+    const skipped = new Set(skippedScreensQuery.data || []);
+    const flags = featureFlagsQuery.data;
+
+    // Filter out skipped screens based on feature flags
+    return screenOrder.filter((screen) => {
+      if (skipped.has(screen)) return false;
+
+      // Check feature flags
+      if (flags) {
+        if (screen === OnboardingScreen.Welcome && flags.skipWelcome)
+          return false;
+        if (screen === OnboardingScreen.DiscoverySource && flags.skipDiscovery)
+          return false;
+        if (screen === OnboardingScreen.ModelSelection && flags.skipModels)
+          return false;
+      }
+
+      return true;
+    });
+  }, [skippedScreensQuery.data, featureFlagsQuery.data]);
+
+  // Get current screen index
+  const getCurrentScreenIndex = useCallback(() => {
+    const activeScreens = getActiveScreens();
+    return activeScreens.indexOf(currentScreen);
+  }, [currentScreen, getActiveScreens]);
+
+  // Get total number of screens
+  const getTotalScreens = useCallback(() => {
+    return getActiveScreens().length;
+  }, [getActiveScreens]);
+
+  // Check permissions
+  const checkPermissions = useCallback(async () => {
     const [micStatus, accessStatus] = await Promise.all([
       window.onboardingAPI.checkMicrophonePermission(),
       window.onboardingAPI.checkAccessibilityPermission(),
@@ -29,22 +107,223 @@ export function App() {
       microphone: micStatus as "granted" | "denied" | "not-determined",
       accessibility: accessStatus,
     });
+  }, []);
+
+  // Initialize platform and permissions
+  useEffect(() => {
+    const initialize = async () => {
+      // Check initial permissions and platform
+      await checkPermissions();
+      const platformResult = await window.onboardingAPI.getPlatform();
+      setPlatform(platformResult);
+
+      // Track onboarding started event (T034)
+      trackEvent("onboarding_started", {
+        platform: platformResult,
+      });
+    };
+
+    initialize();
+  }, [checkPermissions, trackEvent]);
+
+  // Track screen views (T035)
+  useEffect(() => {
+    trackEvent("onboarding_screen_viewed", {
+      screen: currentScreen,
+      index: getCurrentScreenIndex(),
+      total: getTotalScreens(),
+    });
+  }, [currentScreen, trackEvent, getCurrentScreenIndex, getTotalScreens]);
+
+  // Navigation functions (T028 - Back navigation)
+  const navigateBack = useCallback(() => {
+    const activeScreens = getActiveScreens();
+    const currentIndex = activeScreens.indexOf(currentScreen);
+
+    if (currentIndex > 0) {
+      setCurrentScreen(activeScreens[currentIndex - 1]);
+    }
+  }, [currentScreen, getActiveScreens]);
+
+  // Navigate to next screen (T027 - Screen sequence logic)
+  const navigateNext = useCallback(() => {
+    const activeScreens = getActiveScreens();
+    const currentIndex = activeScreens.indexOf(currentScreen);
+
+    if (currentIndex < activeScreens.length - 1) {
+      setCurrentScreen(activeScreens[currentIndex + 1]);
+    }
+  }, [currentScreen, getActiveScreens]);
+
+  // Save preferences and navigate
+  const handleSaveAndContinue = async (
+    newPreferences: Partial<OnboardingPreferences>,
+  ) => {
+    try {
+      // Merge with existing preferences
+      const updatedPreferences = { ...preferences, ...newPreferences };
+      setPreferences(updatedPreferences);
+
+      // Save to backend (T030 - handled by hook)
+      await savePreferences(newPreferences);
+
+      // Navigate to next screen
+      navigateNext();
+    } catch (error) {
+      console.error("Failed to save preferences:", error);
+      // Error is already handled by the hook with toast
+    }
   };
 
-  const handleComplete = () => {
-    window.onboardingAPI.completeOnboarding();
+  // Handle feature interests selection (T036)
+  const handleFeatureInterests = async (interests: FeatureInterest[]) => {
+    trackEvent("onboarding_features_selected", {
+      features: interests,
+      count: interests.length,
+    });
+
+    await handleSaveAndContinue({ featureInterests: interests });
+  };
+
+  // Handle discovery source selection (T037)
+  const handleDiscoverySource = async (
+    source: DiscoverySource,
+    details?: string,
+  ) => {
+    trackEvent("onboarding_discovery_selected", {
+      source,
+      details,
+    });
+
+    setDiscoveryDetails(details || "");
+    await handleSaveAndContinue({ discoverySource: source });
+  };
+
+  // Handle model selection (T038)
+  const handleModelSelection = async (
+    modelType: ModelType,
+    recommendationFollowed: boolean,
+  ) => {
+    trackEvent("onboarding_model_selected", {
+      model_type: modelType,
+      recommendation_followed: recommendationFollowed,
+    });
+
+    await handleSaveAndContinue({
+      selectedModelType: modelType,
+      modelRecommendation: state?.modelRecommendation
+        ? { ...state.modelRecommendation, followed: recommendationFollowed }
+        : undefined,
+    });
+  };
+
+  // Handle completion (T039)
+  const handleComplete = async () => {
+    try {
+      // Prepare final state
+      const finalState: OnboardingState = {
+        completedVersion: 1,
+        completedAt: new Date().toISOString(),
+        skippedScreens: skippedScreensQuery.data || [],
+        featureInterests: preferences.featureInterests,
+        discoverySource: preferences.discoverySource,
+        selectedModelType: preferences.selectedModelType || ModelType.Cloud,
+        modelRecommendation: preferences.modelRecommendation,
+      };
+
+      // Complete onboarding (will also track completion event)
+      await completeOnboarding(finalState);
+    } catch (error) {
+      console.error("Failed to complete onboarding:", error);
+    }
+  };
+
+  // Show loading state
+  if (
+    isLoading ||
+    featureFlagsQuery.isLoading ||
+    skippedScreensQuery.isLoading
+  ) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Loading onboarding...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Render current screen
+  const renderScreen = () => {
+    switch (currentScreen) {
+      case OnboardingScreen.Welcome:
+        return (
+          <WelcomeScreen
+            onNext={handleFeatureInterests}
+            initialInterests={preferences.featureInterests}
+          />
+        );
+
+      case OnboardingScreen.Permissions:
+        return (
+          <PermissionsScreen
+            onNext={navigateNext}
+            onBack={navigateBack}
+            permissions={permissions}
+            platform={platform}
+            checkPermissions={checkPermissions}
+          />
+        );
+
+      case OnboardingScreen.DiscoverySource:
+        return (
+          <DiscoverySourceScreen
+            onNext={handleDiscoverySource}
+            onBack={navigateBack}
+            initialSource={preferences.discoverySource}
+            initialDetails={discoveryDetails}
+          />
+        );
+
+      case OnboardingScreen.ModelSelection:
+        return (
+          <ModelSelectionScreen
+            onNext={handleModelSelection}
+            onBack={navigateBack}
+            initialSelection={preferences.selectedModelType}
+          />
+        );
+
+      case OnboardingScreen.Completion:
+        return (
+          <CompletionScreen
+            onComplete={handleComplete}
+            preferences={preferences}
+          />
+        );
+
+      default:
+        return <div>Unknown screen</div>;
+    }
   };
 
   return (
-    <div className="h-screen w-screen bg-background text-foreground overflow-hidden">
-      <div className="h-full flex items-center justify-center p-10">
-        <UnifiedPermissionsStep
-          permissions={permissions}
-          platform={platform}
-          onComplete={handleComplete}
-          checkPermissions={checkPermissions}
-        />
+    <OnboardingErrorBoundary>
+      <div className="h-screen w-screen bg-background text-foreground">
+        {/* Progress Indicator (T029) */}
+        <div className="fixed left-0 right-0 top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="mx-auto max-w-2xl px-8 pb-4 pt-6">
+            <ProgressIndicator
+              current={getCurrentScreenIndex() + 1}
+              total={getTotalScreens()}
+            />
+          </div>
+        </div>
+
+        {/* Screen Content */}
+        <div className="h-full overflow-auto pt-20">{renderScreen()}</div>
       </div>
-    </div>
+    </OnboardingErrorBoundary>
   );
 }

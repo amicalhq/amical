@@ -1,4 +1,4 @@
-import { Label } from "@/components/ui/label";
+import React from "react";
 import {
   Select,
   SelectContent,
@@ -6,14 +6,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { api } from "@/trpc/react";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
-import { toast } from "sonner";
-import { Mic } from "lucide-react";
 
-export function MicrophoneSettings() {
-  const { data: settings, refetch: refetchSettings } =
-    api.settings.getSettings.useQuery();
+/**
+ * Simplified microphone selection component for onboarding
+ */
+export function OnboardingMicrophoneSelect() {
+  const { data: settings } = api.settings.getSettings.useQuery();
   const setPreferredMicrophone =
     api.settings.setPreferredMicrophone.useMutation();
   const { devices: audioDevices } = useAudioDevices();
@@ -30,18 +31,8 @@ export function MicrophoneSettings() {
       await setPreferredMicrophone.mutateAsync({
         deviceName: actualDeviceName,
       });
-
-      // Refetch settings to update UI
-      await refetchSettings();
-
-      toast.success(
-        actualDeviceName
-          ? `Microphone changed to ${deviceName}`
-          : "Using system default microphone",
-      );
     } catch (error) {
       console.error("Failed to set preferred microphone:", error);
-      toast.error("Failed to change microphone");
     }
   };
 
@@ -78,20 +69,12 @@ export function MicrophoneSettings() {
             ) : (
               audioDevices.map((device) => (
                 <SelectItem key={device.deviceId} value={device.label}>
-                  <div className="flex items-center gap-2">
-                    <Mic className="h-4 w-4" />
-                    <span>{device.label}</span>
-                  </div>
+                  {device.label}
                 </SelectItem>
               ))
             )}
           </SelectContent>
         </Select>
-        {audioDevices.length === 0 && (
-          <p className="text-sm text-muted-foreground mt-1">
-            No microphones detected. Please check your audio devices.
-          </p>
-        )}
       </div>
     </div>
   );

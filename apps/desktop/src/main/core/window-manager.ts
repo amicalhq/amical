@@ -100,7 +100,38 @@ export class WindowManager {
     logger.main.info("Theme listener setup complete");
   }
 
+  private async needsOnboarding(): Promise<boolean> {
+    // Force show onboarding for development testing
+    if (process.env.FORCE_ONBOARDING === "true") {
+      return true;
+    }
+
+    if (process.platform !== "darwin") {
+      // For non-macOS platforms, check microphone permission
+      const microphoneStatus =
+        systemPreferences.getMediaAccessStatus("microphone");
+      return microphoneStatus !== "granted";
+    }
+
+    // Check both microphone and accessibility permissions on macOS
+    const microphoneStatus =
+      systemPreferences.getMediaAccessStatus("microphone");
+    const accessibilityStatus =
+      systemPreferences.isTrustedAccessibilityClient(false);
+
+    return microphoneStatus !== "granted" || !accessibilityStatus;
+  }
+
   async createOrShowMainWindow(): Promise<void> {
+    // Check if onboarding is needed first
+    if (await this.needsOnboarding()) {
+      logger.main.info(
+        "Onboarding not complete, showing onboarding window instead",
+      );
+      this.createOrShowOnboardingWindow();
+      return;
+    }
+
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.show();
       this.mainWindow.focus();
@@ -252,7 +283,7 @@ export class WindowManager {
     }
   }
 
-  createOnboardingWindow(): void {
+  createOrShowOnboardingWindow(): void {
     if (this.onboardingWindow && !this.onboardingWindow.isDestroyed()) {
       this.onboardingWindow.show();
       this.onboardingWindow.focus();
@@ -263,8 +294,8 @@ export class WindowManager {
     this.setupThemeListener();
 
     this.onboardingWindow = new BrowserWindow({
-      width: 700,
-      height: 600,
+      width: 800,
+      height: 900,
       frame: false,
       titleBarStyle: "hidden",
       resizable: false,
