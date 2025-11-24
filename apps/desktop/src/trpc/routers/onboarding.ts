@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { systemPreferences, shell, app } from "electron";
 import { createRouter, procedure } from "../trpc";
 import { ServiceManager } from "../../main/managers/service-manager";
 import {
@@ -351,4 +352,137 @@ export const onboardingRouter = createRouter({
       return [];
     }
   }),
+
+  /**
+   * Check microphone permission status
+   */
+  checkMicrophonePermission: procedure.query(async (): Promise<string> => {
+    try {
+      const status = systemPreferences.getMediaAccessStatus("microphone");
+      logger.main.debug("Microphone permission status:", status);
+      return status;
+    } catch (error) {
+      logger.main.error("Failed to check microphone permission:", error);
+      return "not-determined";
+    }
+  }),
+
+  /**
+   * Check accessibility permission status
+   */
+  checkAccessibilityPermission: procedure.query(async (): Promise<boolean> => {
+    try {
+      // For non-macOS platforms, accessibility permission is not required
+      if (process.platform !== "darwin") {
+        return true;
+      }
+
+      const hasPermission =
+        systemPreferences.isTrustedAccessibilityClient(false);
+      logger.main.debug("Accessibility permission status:", hasPermission);
+      return hasPermission;
+    } catch (error) {
+      logger.main.error("Failed to check accessibility permission:", error);
+      return false;
+    }
+  }),
+
+  /**
+   * Get current platform
+   */
+  getPlatform: procedure.query(async (): Promise<string> => {
+    return process.platform;
+  }),
+
+  /**
+   * Request microphone permission
+   */
+  requestMicrophonePermission: procedure.mutation(
+    async (): Promise<boolean> => {
+      try {
+        const status = await systemPreferences.askForMediaAccess("microphone");
+        logger.main.info("Microphone permission requested, status:", status);
+        return status;
+      } catch (error) {
+        logger.main.error("Failed to request microphone permission:", error);
+        return false;
+      }
+    },
+  ),
+
+  /**
+   * Request accessibility permission (opens System Preferences)
+   */
+  requestAccessibilityPermission: procedure.mutation(
+    async (): Promise<void> => {
+      try {
+        if (process.platform === "darwin") {
+          // Prompt for accessibility permission (shows system dialog)
+          systemPreferences.isTrustedAccessibilityClient(true);
+
+          // Open System Preferences to Privacy & Security > Accessibility
+          await shell.openExternal(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+          );
+
+          logger.main.info(
+            "Opened System Preferences for accessibility permission",
+          );
+        }
+      } catch (error) {
+        logger.main.error("Failed to request accessibility permission:", error);
+        throw error;
+      }
+    },
+  ),
+
+  /**
+   * Quit the application
+   */
+  quitApp: procedure.mutation(async (): Promise<void> => {
+    try {
+      logger.main.info("Quitting application from onboarding");
+      app.quit();
+    } catch (error) {
+      logger.main.error("Failed to quit application:", error);
+      throw error;
+    }
+  }),
+
+  /**
+   * Open external URL
+   */
+  openExternal: procedure
+    .input(z.object({ url: z.string().url() }))
+    .mutation(async ({ input }): Promise<void> => {
+      try {
+        await shell.openExternal(input.url);
+        logger.main.debug("Opened external URL:", input.url);
+      } catch (error) {
+        logger.main.error("Failed to open external URL:", error);
+        throw error;
+      }
+    }),
+
+  /**
+   * Log error message
+   */
+  logError: procedure
+    .input(
+      z.object({
+        message: z.string(),
+        args: z.array(z.unknown()).optional(),
+      }),
+    )
+    .mutation(async ({ input }): Promise<void> => {
+      try {
+        logger.main.error(
+          `[Onboarding] ${input.message}`,
+          ...(input.args || []),
+        );
+      } catch (error) {
+        // Fallback if logging fails
+        console.error("Failed to log error:", error);
+      }
+    }),
 });

@@ -1,4 +1,4 @@
-import { app, systemPreferences } from "electron";
+import { app } from "electron";
 import { initializeDatabase } from "../../db";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
@@ -52,12 +52,15 @@ export class AppManager {
   async initialize(): Promise<void> {
     await this.initializeDatabase();
 
-    const needsOnboarding = await this.checkNeedsOnboarding();
-
     await this.serviceManager.initialize();
 
     // Initialize OnboardingManager with WindowManager reference
     this.serviceManager.initializeOnboardingManager(this.windowManager);
+
+    // Check if onboarding is needed using OnboardingService (single source of truth)
+    const onboardingService =
+      this.serviceManager.getService("onboardingService");
+    const onboardingCheck = await onboardingService!.checkNeedsOnboarding();
 
     // Sync auto-launch setting with OS on startup
     const settingsService = this.serviceManager.getService("settingsService");
@@ -66,8 +69,8 @@ export class AppManager {
       logger.main.info("Auto-launch setting synced with OS");
     }
 
-    if (needsOnboarding) {
-      await this.showOnboarding();
+    if (onboardingCheck.needed) {
+      this.windowManager.createOrShowOnboardingWindow();
     } else {
       await this.setupWindows();
     }
@@ -91,80 +94,6 @@ export class AppManager {
     logger.db.info(
       "Database initialized and migrations completed successfully",
     );
-  }
-
-  private async checkNeedsOnboarding(): Promise<boolean> {
-    // Force show onboarding for development testing
-    if (process.env.FORCE_ONBOARDING === "true") {
-      logger.main.info("Forcing onboarding window for testing");
-      return true;
-    }
-
-    if (process.platform !== "darwin") {
-      // For non-macOS platforms, we might still want to check microphone
-      const microphoneStatus =
-        systemPreferences.getMediaAccessStatus("microphone");
-      return microphoneStatus !== "granted";
-    }
-
-    // Check both microphone and accessibility permissions on macOS
-    const microphoneStatus =
-      systemPreferences.getMediaAccessStatus("microphone");
-    const accessibilityStatus =
-      systemPreferences.isTrustedAccessibilityClient(false);
-
-    logger.main.info("Permission status:", {
-      microphone: microphoneStatus,
-      accessibility: accessibilityStatus,
-    });
-
-    return microphoneStatus !== "granted" || !accessibilityStatus;
-  }
-
-  private async showOnboarding(): Promise<void> {
-    this.windowManager.createOrShowOnboardingWindow();
-
-    // The onboarding window will handle the permission flow
-    // and call back to complete setup when done
-  }
-
-  completeOnboarding(): void {
-    logger.main.info(
-      "Onboarding completed, restarting app for permissions to take effect",
-    );
-
-    // In development, reload windows instead of relaunching
-    if (process.env.NODE_ENV === "development") {
-      logger.main.info(
-        "Development mode: Reloading windows instead of relaunching",
-      );
-
-      // Close onboarding window
-      const onboardingWindow = this.windowManager.getOnboardingWindow();
-      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-        onboardingWindow.close();
-      }
-
-      // Give a short delay for permissions to register
-      setTimeout(async () => {
-        await this.setupWindows();
-
-        // Force reload all windows to pick up new permissions
-        const mainWindow = this.windowManager.getMainWindow();
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.reload();
-        }
-
-        const widgetWindow = this.windowManager.getWidgetWindow();
-        if (widgetWindow && !widgetWindow.isDestroyed()) {
-          widgetWindow.reload();
-        }
-      }, 1000);
-    } else {
-      // Production mode: relaunch the app
-      app.relaunch();
-      app.quit();
-    }
   }
 
   private async setupWindows(): Promise<void> {

@@ -7,9 +7,6 @@ export interface OnboardingAPI {
   requestMicrophonePermission: () => Promise<boolean>;
   requestAccessibilityPermission: () => Promise<void>;
 
-  // Navigation
-  completeOnboarding: () => Promise<void>;
-
   // Window controls
   quitApp: () => Promise<void>;
 

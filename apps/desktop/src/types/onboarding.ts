@@ -76,6 +76,7 @@ export interface OnboardingPreferences {
 export interface OnboardingState {
   completedVersion: number;
   completedAt: string;
+  lastVisitedScreen?: OnboardingScreen;
   skippedScreens?: OnboardingScreen[];
   featureInterests?: FeatureInterest[];
   discoverySource?: DiscoverySource;

@@ -52,6 +52,7 @@ export function App() {
   // tRPC queries
   const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
+  const utils = api.useUtils();
 
   // Screen order - can be modified based on feature flags
   const screenOrder: OnboardingScreen[] = [
@@ -96,40 +97,96 @@ export function App() {
     return getActiveScreens().length;
   }, [getActiveScreens]);
 
-  // Check permissions
-  const checkPermissions = useCallback(async () => {
+  // Check permissions and return fresh values (for internal use during initialization)
+  const checkPermissionsWithResult = useCallback(async () => {
     const [micStatus, accessStatus] = await Promise.all([
-      window.onboardingAPI.checkMicrophonePermission(),
-      window.onboardingAPI.checkAccessibilityPermission(),
+      utils.onboarding.checkMicrophonePermission.fetch(),
+      utils.onboarding.checkAccessibilityPermission.fetch(),
     ]);
 
     setPermissions({
       microphone: micStatus as "granted" | "denied" | "not-determined",
       accessibility: accessStatus,
     });
-  }, []);
+
+    return { micStatus, accessStatus };
+  }, [utils]);
+
+  // Check permissions (public API for components)
+  const checkPermissions = useCallback(async () => {
+    await checkPermissionsWithResult();
+  }, [checkPermissionsWithResult]);
 
   // Initialize platform and permissions
   useEffect(() => {
     const initialize = async () => {
       // Check initial permissions and platform
-      await checkPermissions();
-      const platformResult = await window.onboardingAPI.getPlatform();
+      // Use fresh results directly to avoid race condition
+      const [{ micStatus, accessStatus }, platformResult] = await Promise.all([
+        checkPermissionsWithResult(),
+        utils.onboarding.getPlatform.fetch(),
+      ]);
       setPlatform(platformResult);
+
+      // Resume from last visited screen if available
+      if (state?.lastVisitedScreen) {
+        // Smart resume: if last screen was permissions and permissions now granted, skip to next
+        // Use FRESH permission values, not stale React state
+        if (
+          state.lastVisitedScreen === OnboardingScreen.Permissions &&
+          micStatus === "granted" &&
+          (accessStatus || platformResult !== "darwin")
+        ) {
+          // Permissions granted, skip to next screen
+          const activeScreens = getActiveScreens();
+          const permissionsIndex = activeScreens.indexOf(
+            OnboardingScreen.Permissions,
+          );
+          if (
+            permissionsIndex !== -1 &&
+            permissionsIndex < activeScreens.length - 1
+          ) {
+            setCurrentScreen(activeScreens[permissionsIndex + 1]);
+          }
+        } else {
+          // Resume from last visited screen
+          setCurrentScreen(state.lastVisitedScreen as OnboardingScreen);
+        }
+      }
 
       // Track onboarding started event (T034)
       trackEvent("onboarding_started", {
         platform: platformResult,
+        resumed: !!state?.lastVisitedScreen,
+        // Enum values are strings at runtime, safe for telemetry
+        resumedFrom: state?.lastVisitedScreen,
       });
     };
 
     initialize();
-  }, [checkPermissions, trackEvent]);
+  }, [
+    checkPermissionsWithResult,
+    trackEvent,
+    utils,
+    state?.lastVisitedScreen,
+    getActiveScreens,
+  ]);
+
+  // Save current screen for resume capability
+  useEffect(() => {
+    if (currentScreen !== OnboardingScreen.Welcome) {
+      // Don't save Welcome screen, start from there if no progress
+      // lastVisitedScreen is not in OnboardingPreferences type, but is saved to state
+      savePreferences({
+        lastVisitedScreen: currentScreen,
+      } as Partial<OnboardingPreferences>);
+    }
+  }, [currentScreen, savePreferences]);
 
   // Track screen views (T035)
   useEffect(() => {
     trackEvent("onboarding_screen_viewed", {
-      screen: currentScreen,
+      screen: currentScreen, // OnboardingScreen enum, string value at runtime
       index: getCurrentScreenIndex(),
       total: getTotalScreens(),
     });

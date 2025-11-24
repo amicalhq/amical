@@ -32,7 +32,7 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json,mjs,mts,css,mdx}\" --cache --ignore-path=../../.prettierignore",
-    "ts:check": "tsc --noEmit",
+    "type:check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",

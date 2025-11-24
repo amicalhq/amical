@@ -122,49 +122,78 @@ class SwiftHelper {
         }
     }
 
-    func start() {
-        // The Unmanaged.passUnretained(self).toOpaque() passes a reference to self
-        // to the callback, so it can call instance methods.
-        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+    func checkAccessibilityPermission() -> Bool {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
+    }
 
-        // Create an event tap.
-        // We want to listen to keyDown, keyUp, and flagsChanged events.
+    func attemptEventTapCreation() {
+        // Don't recreate if already exists
+        guard eventTap == nil else {
+            return
+        }
+
+        // Check accessibility permission before attempting
+        guard checkAccessibilityPermission() else {
+            FileHandle.standardError.write("Accessibility permission not granted. Event tap disabled. RPC methods still available.\n".data(using: .utf8)!)
+            return
+        }
+
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
         let eventMask =
             (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
 
-        guard
-            let tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,  // Tap all events in the current session
-                place: .headInsertEventTap,  // Insert the tap at the head of the event tap list
-                options: .defaultTap,  // Default options
-                eventsOfInterest: CGEventMask(eventMask),
-                callback: eventTapCallback,
-                userInfo: selfPtr  // Pass a pointer to the SwiftHelper instance
-            )
-        else {
-            let errorMsg = "Failed to create event tap\n"
-            if let data = errorMsg.data(using: .utf8) {
-                FileHandle.standardError.write(data)
+        if let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: eventTapCallback,
+            userInfo: selfPtr
+        ) {
+            self.eventTap = tap
+
+            // Create a run loop source and add it to the current run loop
+            let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+
+            // Enable the event tap
+            CGEvent.tapEnable(tap: tap, enable: true)
+
+            FileHandle.standardError.write("Event tap created successfully. Keyboard monitoring active.\n".data(using: .utf8)!)
+        } else {
+            FileHandle.standardError.write("Failed to create event tap despite having permissions.\n".data(using: .utf8)!)
+        }
+    }
+
+    func setupPermissionObserver() {
+        // Observe accessibility permission changes
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Delay to allow permission change to propagate
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self?.attemptEventTapCreation()
             }
-            exit(1)
         }
+    }
 
-        self.eventTap = tap
+    func start() {
+        // Try to create event tap if permissions available
+        attemptEventTapCreation()
 
-        // Create a run loop source and add it to the current run loop.
-        let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        // Set up observer for permission changes
+        setupPermissionObserver()
 
-        // Enable the event tap.
-        CGEvent.tapEnable(tap: tap, enable: true)
+        // Keep the program running (works even without event tap)
+        let startMsg = eventTap != nil
+            ? "SwiftHelper started and listening for events...\n"
+            : "SwiftHelper started in degraded mode (no accessibility permission). RPC methods available.\n"
+        FileHandle.standardError.write(startMsg.data(using: .utf8)!)
 
-        // Keep the program running.
-        // This will also print a message to stderr if the helper starts
-        let startMsg = "SwiftHelper started and listening for events...\n"
-        if let data = startMsg.data(using: .utf8) {
-            FileHandle.standardError.write(data)
-        }
         CFRunLoopRun()
     }
 

@@ -21,12 +21,12 @@ const queryClient = new QueryClient({
 // Handle uncaught errors
 window.addEventListener("unhandledrejection", (event) => {
   console.error("Unhandled promise rejection:", event.reason);
-  window.onboardingAPI.log.error("Unhandled promise rejection:", event.reason);
+  // Error logged to console - main process can monitor renderer logs if needed
 });
 
 window.addEventListener("error", (event) => {
   console.error("Uncaught error:", event.error);
-  window.onboardingAPI.log.error("Uncaught error:", event.error);
+  // Error logged to console - main process can monitor renderer logs if needed
 });
 
 const root = ReactDOM.createRoot(

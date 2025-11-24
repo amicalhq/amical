@@ -26,29 +26,6 @@ export class OnboardingManager {
   }
 
   /**
-   * Check if onboarding is needed and launch if necessary
-   */
-  async checkAndLaunchOnboarding(): Promise<boolean> {
-    try {
-      const { needed, reason } =
-        await this.onboardingService.checkNeedsOnboarding();
-
-      if (needed) {
-        logger.main.info("Onboarding needed", reason);
-        await this.startOnboarding();
-        return true;
-      } else {
-        logger.main.info("Onboarding not needed, proceeding to main app");
-        return false;
-      }
-    } catch (error) {
-      logger.main.error("Error checking onboarding status:", error);
-      // On error, proceed to main app
-      return false;
-    }
-  }
-
-  /**
    * Start the onboarding flow
    */
   async startOnboarding(): Promise<void> {

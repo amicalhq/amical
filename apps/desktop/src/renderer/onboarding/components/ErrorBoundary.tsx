@@ -28,20 +28,7 @@ export class OnboardingErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Onboarding error caught:", error, errorInfo);
-
-    // Try to track the error if possible
-    try {
-      if (window.onboardingAPI && window.onboardingAPI.log) {
-        // Log to main process
-        window.onboardingAPI.log.error("Onboarding error:", {
-          message: error.message,
-          stack: error.stack,
-          componentStack: errorInfo.componentStack,
-        });
-      }
-    } catch (trackingError) {
-      console.error("Failed to track error:", trackingError);
-    }
+    // Error logged to console - main process can monitor renderer logs if needed
   }
 
   private handleReset = () => {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -29,6 +30,12 @@ export function UnifiedPermissionsStep({
   const [isRequestingMic, setIsRequestingMic] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
 
+  // tRPC mutations
+  const requestMicPermission =
+    api.onboarding.requestMicrophonePermission.useMutation();
+  const openExternal = api.onboarding.openExternal.useMutation();
+  const quitApp = api.onboarding.quitApp.useMutation();
+
   const allPermissionsGranted =
     permissions.microphone === "granted" &&
     (permissions.accessibility || platform !== "darwin");
@@ -51,7 +58,7 @@ export function UnifiedPermissionsStep({
   const handleRequestMicrophone = async () => {
     setIsRequestingMic(true);
     try {
-      await window.onboardingAPI.requestMicrophonePermission();
+      await requestMicPermission.mutateAsync();
       await checkPermissions();
     } finally {
       setIsRequestingMic(false);
@@ -60,16 +67,16 @@ export function UnifiedPermissionsStep({
 
   const handleOpenAccessibility = async () => {
     // Open System Preferences > Security & Privacy > Privacy > Accessibility
-    await window.onboardingAPI.openExternal(
-      "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-    );
+    await openExternal.mutateAsync({
+      url: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    });
   };
 
   const handleOpenMicrophoneSettings = async () => {
     // Open System Preferences > Security & Privacy > Privacy > Microphone
-    await window.onboardingAPI.openExternal(
-      "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-    );
+    await openExternal.mutateAsync({
+      url: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+    });
   };
 
   const getMicrophoneStatus = () => {
@@ -228,11 +235,7 @@ export function UnifiedPermissionsStep({
 
       {/* Action buttons */}
       <div className="flex justify-between gap-4 pt-4">
-        <Button
-          onClick={() => window.onboardingAPI.quitApp()}
-          variant="outline"
-          size="lg"
-        >
+        <Button onClick={() => quitApp.mutate()} variant="outline" size="lg">
           Quit Amical
         </Button>
         <Button

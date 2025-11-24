@@ -1,17 +1,18 @@
+import { systemPreferences } from "electron";
 import { logger } from "../main/logger";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
 import type { AppSettingsData } from "../db/schema";
-import type {
-  OnboardingState,
-  OnboardingPreferences,
-  ModelRecommendation,
-  ModelType,
+import {
   OnboardingScreen,
-  OnboardingFeatureFlags,
-  SystemSpecs,
-  FeatureInterest,
-  DiscoverySource,
+  type OnboardingState,
+  type OnboardingPreferences,
+  type ModelRecommendation,
+  type ModelType,
+  type OnboardingFeatureFlags,
+  type SystemSpecs,
+  type FeatureInterest,
+  type DiscoverySource,
 } from "../types/onboarding";
 
 /**
@@ -22,6 +23,7 @@ type OnboardingStateDb = {
   completedVersion?: number;
   completedAt?: string;
   lastUpdated?: string;
+  lastVisitedScreen?: string;
   skippedScreens?: string[];
   featureInterests?: string[];
   discoverySource?: string;
@@ -70,9 +72,27 @@ export class OnboardingService {
         return null;
       }
 
+      // Validate lastVisitedScreen is a valid enum value
+      let lastVisitedScreen: OnboardingScreen | undefined = undefined;
+      if (settings.onboarding.lastVisitedScreen) {
+        const screenValue = settings.onboarding.lastVisitedScreen;
+        if (
+          Object.values(OnboardingScreen).includes(
+            screenValue as OnboardingScreen,
+          )
+        ) {
+          lastVisitedScreen = screenValue as OnboardingScreen;
+        } else {
+          logger.main.warn(
+            `Invalid lastVisitedScreen value in database: "${screenValue}". Resetting to undefined.`,
+          );
+        }
+      }
+
       // Convert database types to OnboardingState types
       return {
         ...settings.onboarding,
+        lastVisitedScreen,
         skippedScreens: settings.onboarding.skippedScreens as
           | OnboardingScreen[]
           | undefined,
@@ -126,6 +146,11 @@ export class OnboardingService {
       }
       if (state.completedAt !== undefined) {
         stateForDb.completedAt = state.completedAt;
+      }
+      if (state.lastVisitedScreen !== undefined) {
+        // Convert enum to string for database storage
+        // TypeScript enums have string values at runtime, so this cast is safe
+        stateForDb.lastVisitedScreen = state.lastVisitedScreen as string;
       }
       if (state.modelRecommendation !== undefined) {
         stateForDb.modelRecommendation = {
@@ -262,7 +287,27 @@ export class OnboardingService {
   }
 
   /**
+   * Check system permissions (can be called anytime)
+   * Returns current microphone and accessibility permission status
+   */
+  checkSystemPermissions(): {
+    microphone: boolean;
+    accessibility: boolean;
+  } {
+    const microphone =
+      systemPreferences.getMediaAccessStatus("microphone") === "granted";
+
+    const accessibility =
+      process.platform === "darwin"
+        ? systemPreferences.isTrustedAccessibilityClient(false)
+        : true; // Non-macOS platforms don't need accessibility permission
+
+    return { microphone, accessibility };
+  }
+
+  /**
    * Check if onboarding is needed
+   * Returns true if user needs to go through onboarding (first time or missing permissions)
    */
   async checkNeedsOnboarding(): Promise<{
     needed: boolean;
@@ -271,6 +316,10 @@ export class OnboardingService {
       notCompleted: boolean;
       missingPermissions: boolean;
     };
+    missingPermissions: {
+      microphone: boolean;
+      accessibility: boolean;
+    };
   }> {
     const forceOnboarding = process.env.FORCE_ONBOARDING === "true";
     const state = await this.getOnboardingState();
@@ -278,18 +327,23 @@ export class OnboardingService {
       ? state.completedVersion >= 1
       : false;
 
-    // For now, we'll assume permissions are checked elsewhere
-    // This will be integrated with the actual permission checking in Phase 3
-    const missingPermissions = false;
+    // Check actual system permissions
+    const permissions = this.checkSystemPermissions();
+    const hasMissingPermissions =
+      !permissions.microphone || !permissions.accessibility;
 
-    const needed = forceOnboarding || !hasCompleted || missingPermissions;
+    const needed = forceOnboarding || !hasCompleted || hasMissingPermissions;
 
     return {
       needed,
       reason: {
         forceOnboarding,
         notCompleted: !hasCompleted,
-        missingPermissions,
+        missingPermissions: hasMissingPermissions,
+      },
+      missingPermissions: {
+        microphone: !permissions.microphone,
+        accessibility: !permissions.accessibility,
       },
     };
   }
