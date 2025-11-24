@@ -268,16 +268,16 @@ export class OnboardingService {
 
       await this.saveOnboardingState(completeState);
 
-      // Track completion event if telemetry is enabled
-      if (this.telemetryService.isEnabled()) {
-        this.telemetryService.track("onboarding_completed", {
-          version: completeState.completedVersion,
-          features: completeState.featureInterests,
-          model: completeState.selectedModelType,
-          followed_recommendation: completeState.modelRecommendation?.followed,
-          skipped_screens: completeState.skippedScreens,
-        });
-      }
+      // Track completion event
+      this.telemetryService.trackOnboardingCompleted({
+        version: completeState.completedVersion,
+        features_selected: completeState.featureInterests || [],
+        discovery_source: completeState.discoverySource,
+        model_type: completeState.selectedModelType,
+        recommendation_followed:
+          completeState.modelRecommendation?.followed || false,
+        skipped_screens: completeState.skippedScreens,
+      });
 
       logger.main.info("Onboarding completed successfully");
     } catch (error) {
@@ -508,15 +508,24 @@ export class OnboardingService {
   }
 
   /**
-   * Track onboarding event
+   * Track onboarding started event
    */
-  trackEvent(eventName: string, properties?: Record<string, any>): void {
-    if (this.telemetryService.isEnabled()) {
-      this.telemetryService.track(eventName, {
-        ...properties,
-        onboarding_session: this.currentState,
-      });
-    }
+  trackOnboardingStarted(platform: string): void {
+    this.telemetryService.trackOnboardingStarted({
+      platform,
+      resumed: !!this.currentState?.lastVisitedScreen,
+      resumedFrom: this.currentState?.lastVisitedScreen,
+    });
+  }
+
+  /**
+   * Track onboarding abandoned event
+   */
+  trackOnboardingAbandoned(lastScreen: string): void {
+    this.telemetryService.trackOnboardingAbandoned({
+      last_screen: lastScreen,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   /**

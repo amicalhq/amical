@@ -158,11 +158,6 @@ export const OnboardingPreferencesSchema = z.object({
   followedRecommendation: z.boolean().optional(),
 });
 
-export const AnalyticsEventSchema = z.object({
-  eventName: z.string(),
-  properties: z.record(z.any()),
-});
-
 // ============================================================================
 // Type Guards
 // ============================================================================

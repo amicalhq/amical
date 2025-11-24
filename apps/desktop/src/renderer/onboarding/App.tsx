@@ -46,12 +46,24 @@ export function App() {
   const [discoveryDetails, setDiscoveryDetails] = useState<string>("");
 
   // Hooks
-  const { state, isLoading, savePreferences, completeOnboarding, trackEvent } =
+  const { state, isLoading, savePreferences, completeOnboarding } =
     useOnboardingState();
 
   // tRPC queries
   const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
+
+  // Telemetry mutations
+  const trackOnboardingStarted =
+    api.onboarding.trackOnboardingStarted.useMutation();
+  const trackOnboardingScreenViewed =
+    api.onboarding.trackOnboardingScreenViewed.useMutation();
+  const trackOnboardingFeaturesSelected =
+    api.onboarding.trackOnboardingFeaturesSelected.useMutation();
+  const trackOnboardingDiscoverySelected =
+    api.onboarding.trackOnboardingDiscoverySelected.useMutation();
+  const trackOnboardingModelSelected =
+    api.onboarding.trackOnboardingModelSelected.useMutation();
   const utils = api.useUtils();
 
   // Screen order - can be modified based on feature flags
@@ -155,10 +167,9 @@ export function App() {
       }
 
       // Track onboarding started event (T034)
-      trackEvent("onboarding_started", {
+      trackOnboardingStarted.mutate({
         platform: platformResult,
         resumed: !!state?.lastVisitedScreen,
-        // Enum values are strings at runtime, safe for telemetry
         resumedFrom: state?.lastVisitedScreen,
       });
     };
@@ -166,7 +177,7 @@ export function App() {
     initialize();
   }, [
     checkPermissionsWithResult,
-    trackEvent,
+    trackOnboardingStarted,
     utils,
     state?.lastVisitedScreen,
     getActiveScreens,
@@ -185,12 +196,17 @@ export function App() {
 
   // Track screen views (T035)
   useEffect(() => {
-    trackEvent("onboarding_screen_viewed", {
-      screen: currentScreen, // OnboardingScreen enum, string value at runtime
+    trackOnboardingScreenViewed.mutate({
+      screen: currentScreen,
       index: getCurrentScreenIndex(),
       total: getTotalScreens(),
     });
-  }, [currentScreen, trackEvent, getCurrentScreenIndex, getTotalScreens]);
+  }, [
+    currentScreen,
+    trackOnboardingScreenViewed,
+    getCurrentScreenIndex,
+    getTotalScreens,
+  ]);
 
   // Navigation functions (T028 - Back navigation)
   const navigateBack = useCallback(() => {
@@ -234,7 +250,7 @@ export function App() {
 
   // Handle feature interests selection (T036)
   const handleFeatureInterests = async (interests: FeatureInterest[]) => {
-    trackEvent("onboarding_features_selected", {
+    trackOnboardingFeaturesSelected.mutate({
       features: interests,
       count: interests.length,
     });
@@ -247,7 +263,7 @@ export function App() {
     source: DiscoverySource,
     details?: string,
   ) => {
-    trackEvent("onboarding_discovery_selected", {
+    trackOnboardingDiscoverySelected.mutate({
       source,
       details,
     });
@@ -261,7 +277,7 @@ export function App() {
     modelType: ModelType,
     recommendationFollowed: boolean,
   ) => {
-    trackEvent("onboarding_model_selected", {
+    trackOnboardingModelSelected.mutate({
       model_type: modelType,
       recommendation_followed: recommendationFollowed,
     });

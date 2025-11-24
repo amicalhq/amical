@@ -16,7 +16,6 @@ interface UseOnboardingStateReturn {
   error: Error | null;
   savePreferences: (preferences: OnboardingPreferences) => Promise<void>;
   completeOnboarding: (finalState: OnboardingState) => Promise<void>;
-  trackEvent: (eventName: string, properties?: Record<string, any>) => void;
   resetOnboarding: () => Promise<void>;
 }
 
@@ -32,7 +31,8 @@ export function useOnboardingState(): UseOnboardingStateReturn {
   const getStateQuery = api.onboarding.getState.useQuery();
   const savePreferencesMutation = api.onboarding.savePreferences.useMutation();
   const completeMutation = api.onboarding.complete.useMutation();
-  const trackEventMutation = api.onboarding.trackEvent.useMutation();
+  const trackOnboardingCompleted =
+    api.onboarding.trackOnboardingCompleted.useMutation();
   const resetMutation = api.onboarding.reset.useMutation();
 
   // Load initial state
@@ -90,18 +90,6 @@ export function useOnboardingState(): UseOnboardingStateReturn {
     [savePreferencesMutation],
   );
 
-  // Track analytics event
-  const trackEvent = useCallback(
-    (eventName: string, properties?: Record<string, any>) => {
-      // Fire and forget - we don't wait for the result
-      trackEventMutation.mutate({
-        eventName,
-        properties: properties || {},
-      });
-    },
-    [trackEventMutation],
-  );
-
   // Complete onboarding
   const completeOnboarding = useCallback(
     async (finalState: OnboardingState) => {
@@ -113,11 +101,14 @@ export function useOnboardingState(): UseOnboardingStateReturn {
         }
 
         // Track completion event
-        trackEvent("onboarding_completed", {
-          features_selected: finalState.featureInterests,
+        trackOnboardingCompleted.mutate({
+          version: finalState.completedVersion,
+          features_selected: finalState.featureInterests || [],
           discovery_source: finalState.discoverySource,
           model_type: finalState.selectedModelType,
-          recommendation_followed: finalState.modelRecommendation?.followed,
+          recommendation_followed:
+            finalState.modelRecommendation?.followed || false,
+          skipped_screens: finalState.skippedScreens,
         });
 
         // Handle relaunch if needed
@@ -135,7 +126,7 @@ export function useOnboardingState(): UseOnboardingStateReturn {
         throw err;
       }
     },
-    [completeMutation, trackEvent],
+    [completeMutation, trackOnboardingCompleted],
   );
 
   // Reset onboarding (for testing)
@@ -158,7 +149,6 @@ export function useOnboardingState(): UseOnboardingStateReturn {
     error,
     savePreferences,
     completeOnboarding,
-    trackEvent,
     resetOnboarding,
   };
 }

@@ -4,6 +4,15 @@ import * as si from "systeminformation";
 import { app } from "electron";
 import { logger } from "../main/logger";
 import type { SettingsService } from "./settings-service";
+import type {
+  OnboardingStartedEvent,
+  OnboardingScreenViewedEvent,
+  OnboardingFeaturesSelectedEvent,
+  OnboardingDiscoverySelectedEvent,
+  OnboardingModelSelectedEvent,
+  OnboardingCompletedEvent,
+  OnboardingAbandonedEvent,
+} from "../types/telemetry-events";
 
 export interface TranscriptionMetrics {
   session_id?: string;
@@ -252,29 +261,101 @@ export class TelemetryService {
     }
   }
 
-  /**
-   * Generic track method for any analytics event
-   * PostHog SDK handles queueing, retries, and batching automatically
-   */
-  track(eventName: string, properties?: Record<string, any>): void {
-    if (!this.posthog || !this.enabled) {
-      return;
-    }
+  // ============================================================================
+  // Onboarding Events
+  // ============================================================================
+
+  trackOnboardingStarted(props: OnboardingStartedEvent): void {
+    if (!this.posthog || !this.enabled) return;
 
     this.posthog.capture({
       distinctId: this.machineId,
-      event: eventName,
-      properties: {
-        ...properties,
-        ...this.persistedProperties,
-      },
+      event: "onboarding_started",
+      properties: { ...props, ...this.persistedProperties },
     });
 
-    logger.main.debug("Tracked event:", {
-      event: eventName,
-      properties: properties,
-    });
+    logger.main.debug("Tracked onboarding started", props);
   }
+
+  trackOnboardingScreenViewed(props: OnboardingScreenViewedEvent): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "onboarding_screen_viewed",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked onboarding screen viewed", props);
+  }
+
+  trackOnboardingFeaturesSelected(
+    props: OnboardingFeaturesSelectedEvent,
+  ): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "onboarding_features_selected",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked onboarding features selected", props);
+  }
+
+  trackOnboardingDiscoverySelected(
+    props: OnboardingDiscoverySelectedEvent,
+  ): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "onboarding_discovery_selected",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked onboarding discovery selected", props);
+  }
+
+  trackOnboardingModelSelected(props: OnboardingModelSelectedEvent): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "onboarding_model_selected",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked onboarding model selected", props);
+  }
+
+  trackOnboardingCompleted(props: OnboardingCompletedEvent): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "onboarding_completed",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked onboarding completed", props);
+  }
+
+  trackOnboardingAbandoned(props: OnboardingAbandonedEvent): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "onboarding_abandoned",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked onboarding abandoned", props);
+  }
+
+  // ============================================================================
+  // Transcription Events
+  // ============================================================================
 
   /**
    * Get system information for model recommendations

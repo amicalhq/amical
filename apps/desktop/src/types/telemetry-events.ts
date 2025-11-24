@@ -1,0 +1,76 @@
+/**
+ * Telemetry Event Type Definitions
+ *
+ * Each event tracked in the application should have a corresponding interface here.
+ * These interfaces ensure type safety when calling telemetry methods.
+ *
+ * Naming conventions:
+ * - Event names: snake_case with domain prefix (e.g., onboarding_started)
+ * - Properties: snake_case for consistency
+ */
+
+// ============================================================================
+// Onboarding Events
+// ============================================================================
+
+/**
+ * Fired when user begins onboarding flow
+ */
+export interface OnboardingStartedEvent {
+  platform: string;
+  resumed: boolean;
+  resumedFrom?: string;
+}
+
+/**
+ * Fired when user views an onboarding screen
+ */
+export interface OnboardingScreenViewedEvent {
+  screen: string;
+  index: number;
+  total: number;
+}
+
+/**
+ * Fired when user selects feature interests
+ */
+export interface OnboardingFeaturesSelectedEvent {
+  features: string[];
+  count: number;
+}
+
+/**
+ * Fired when user selects how they discovered the app
+ */
+export interface OnboardingDiscoverySelectedEvent {
+  source: string;
+  details?: string;
+}
+
+/**
+ * Fired when user selects their preferred model type
+ */
+export interface OnboardingModelSelectedEvent {
+  model_type: string;
+  recommendation_followed: boolean;
+}
+
+/**
+ * Fired when user completes the onboarding flow
+ */
+export interface OnboardingCompletedEvent {
+  version: number;
+  features_selected: string[];
+  discovery_source?: string;
+  model_type: string;
+  recommendation_followed: boolean;
+  skipped_screens?: string[];
+}
+
+/**
+ * Fired when user abandons the onboarding flow
+ */
+export interface OnboardingAbandonedEvent {
+  last_screen: string;
+  timestamp: string;
+}

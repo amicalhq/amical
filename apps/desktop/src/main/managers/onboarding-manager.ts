@@ -41,10 +41,7 @@ export class OnboardingManager {
     await this.windowManager.createOrShowOnboardingWindow();
 
     // Track onboarding started event
-    this.onboardingService.trackEvent("onboarding_started", {
-      version: 1,
-      timestamp: new Date().toISOString(),
-    });
+    this.onboardingService.trackOnboardingStarted(process.platform);
   }
 
   /**
@@ -93,11 +90,11 @@ export class OnboardingManager {
 
     // Track abandonment event
     const currentState = await this.onboardingService.getOnboardingState();
-    this.onboardingService.trackEvent("onboarding_abandoned", {
-      last_screen:
-        currentState?.skippedScreens?.[currentState.skippedScreens.length - 1],
-      timestamp: new Date().toISOString(),
-    });
+    const lastScreen =
+      currentState?.lastVisitedScreen ||
+      currentState?.skippedScreens?.[currentState.skippedScreens.length - 1] ||
+      "unknown";
+    this.onboardingService.trackOnboardingAbandoned(lastScreen);
 
     // Close the onboarding window
     const onboardingWindow = this.windowManager.getOnboardingWindow();
@@ -168,12 +165,5 @@ export class OnboardingManager {
    */
   getFeatureFlags(): any {
     return this.onboardingService.getFeatureFlags();
-  }
-
-  /**
-   * Track an onboarding event
-   */
-  trackEvent(eventName: string, properties?: Record<string, any>): void {
-    this.onboardingService.trackEvent(eventName, properties);
   }
 }

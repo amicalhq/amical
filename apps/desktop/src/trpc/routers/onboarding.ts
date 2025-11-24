@@ -5,7 +5,6 @@ import { ServiceManager } from "../../main/managers/service-manager";
 import {
   OnboardingPreferencesSchema,
   OnboardingStateSchema,
-  AnalyticsEventSchema,
   ModelTypeSchema,
   FeatureInterestSchema,
   DiscoverySourceSchema,
@@ -200,42 +199,106 @@ export const onboardingRouter = createRouter({
     ),
 
   /**
-   * Track analytics event
+   * Track onboarding started event
    */
-  trackEvent: procedure
-    .input(AnalyticsEventSchema)
-    .mutation(
-      async ({ input }): Promise<{ tracked: boolean; reason?: string }> => {
-        try {
-          const serviceManager = ServiceManager.getInstance();
-          if (!serviceManager) {
-            return { tracked: false, reason: "ServiceManager not available" };
-          }
-          const onboardingService = serviceManager.getOnboardingService();
-          const settingsService = serviceManager.getSettingsService();
+  trackOnboardingStarted: procedure
+    .input(
+      z.object({
+        platform: z.string(),
+        resumed: z.boolean(),
+        resumedFrom: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }): Promise<void> => {
+      const serviceManager = ServiceManager.getInstance();
+      const telemetryService = serviceManager?.getService("telemetryService");
+      telemetryService?.trackOnboardingStarted(input);
+    }),
 
-          if (!onboardingService || !settingsService) {
-            return { tracked: false, reason: "Services not available" };
-          }
+  /**
+   * Track onboarding screen viewed event
+   */
+  trackOnboardingScreenViewed: procedure
+    .input(
+      z.object({
+        screen: z.string(),
+        index: z.number(),
+        total: z.number(),
+      }),
+    )
+    .mutation(async ({ input }): Promise<void> => {
+      const serviceManager = ServiceManager.getInstance();
+      const telemetryService = serviceManager?.getService("telemetryService");
+      telemetryService?.trackOnboardingScreenViewed(input);
+    }),
 
-          // Check if telemetry is enabled
-          const telemetrySettings =
-            await settingsService.getTelemetrySettings();
-          if (telemetrySettings?.enabled === false) {
-            return { tracked: false, reason: "telemetry_disabled" };
-          }
+  /**
+   * Track onboarding features selected event
+   */
+  trackOnboardingFeaturesSelected: procedure
+    .input(
+      z.object({
+        features: z.array(z.string()),
+        count: z.number(),
+      }),
+    )
+    .mutation(async ({ input }): Promise<void> => {
+      const serviceManager = ServiceManager.getInstance();
+      const telemetryService = serviceManager?.getService("telemetryService");
+      telemetryService?.trackOnboardingFeaturesSelected(input);
+    }),
 
-          // Track the event
-          onboardingService.trackEvent(input.eventName, input.properties);
-          logger.main.debug("Tracked onboarding event:", input);
+  /**
+   * Track onboarding discovery selected event
+   */
+  trackOnboardingDiscoverySelected: procedure
+    .input(
+      z.object({
+        source: z.string(),
+        details: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }): Promise<void> => {
+      const serviceManager = ServiceManager.getInstance();
+      const telemetryService = serviceManager?.getService("telemetryService");
+      telemetryService?.trackOnboardingDiscoverySelected(input);
+    }),
 
-          return { tracked: true };
-        } catch (error) {
-          logger.main.error("Failed to track onboarding event:", error);
-          return { tracked: false, reason: "error" };
-        }
-      },
-    ),
+  /**
+   * Track onboarding model selected event
+   */
+  trackOnboardingModelSelected: procedure
+    .input(
+      z.object({
+        model_type: z.string(),
+        recommendation_followed: z.boolean(),
+      }),
+    )
+    .mutation(async ({ input }): Promise<void> => {
+      const serviceManager = ServiceManager.getInstance();
+      const telemetryService = serviceManager?.getService("telemetryService");
+      telemetryService?.trackOnboardingModelSelected(input);
+    }),
+
+  /**
+   * Track onboarding completed event
+   */
+  trackOnboardingCompleted: procedure
+    .input(
+      z.object({
+        version: z.number(),
+        features_selected: z.array(z.string()),
+        discovery_source: z.string().optional(),
+        model_type: z.string(),
+        recommendation_followed: z.boolean(),
+        skipped_screens: z.array(z.string()).optional(),
+      }),
+    )
+    .mutation(async ({ input }): Promise<void> => {
+      const serviceManager = ServiceManager.getInstance();
+      const telemetryService = serviceManager?.getService("telemetryService");
+      telemetryService?.trackOnboardingCompleted(input);
+    }),
 
   /**
    * Complete onboarding and save final state
