@@ -633,17 +633,24 @@ export const settingsRouter = createRouter({
         logger.main.info("Resetting app - deleting all data");
       }
 
-      // Close database connection before deleting the file
-      if (logger) {
-        logger.main.info("Closing database connection before reset");
-      }
+      // Close database connection before deleting
       await closeDatabase();
 
       // Add a small delay to ensure the connection is fully closed on Windows
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Delete the database file
-      await fs.unlink(dbPath);
+      // Delete entire userData directory (includes db, models, cache, etc.)
+      const userDataPath = app.getPath("userData");
+      await fs.rm(userDataPath, { recursive: true, force: true });
+
+      // In development, also delete the local db file if it exists
+      if (process.env.NODE_ENV === "development" || !app.isPackaged) {
+        try {
+          await fs.unlink(dbPath);
+        } catch {
+          // Ignore if file doesn't exist
+        }
+      }
 
       // Handle restart differently in development vs production
       if (process.env.NODE_ENV === "development" || !app.isPackaged) {

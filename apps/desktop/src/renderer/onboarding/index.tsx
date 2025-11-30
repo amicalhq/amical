@@ -41,7 +41,7 @@ root.render(
           <OnboardingErrorBoundary>
             <App />
           </OnboardingErrorBoundary>
-          <Toaster />
+          <Toaster position="top-right" />
         </ThemeProvider>
       </QueryClientProvider>
     </api.Provider>

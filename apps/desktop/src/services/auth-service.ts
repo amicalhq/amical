@@ -320,8 +320,13 @@ export class AuthService extends EventEmitter {
     }
 
     const authState = await this.getAuthState();
-    if (!authState || !authState.refreshToken) {
-      // No refresh token available - invalid state, logout user
+    if (!authState) {
+      // User was never logged in - nothing to refresh
+      return;
+    }
+
+    if (!authState.refreshToken) {
+      // User has auth state but no refresh token - corrupted state, logout
       await this.logout();
       return;
     }

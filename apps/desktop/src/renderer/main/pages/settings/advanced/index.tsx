@@ -226,12 +226,12 @@ export default function AdvancedSettingsPage() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    <Button
+                      variant="destructive"
                       onClick={() => resetAppMutation.mutate()}
                     >
                       Yes, delete everything
-                    </AlertDialogAction>
+                    </Button>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
