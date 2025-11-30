@@ -8,10 +8,10 @@ import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
-import { ModelManagerService } from "../services/model-manager";
+import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
-import { appContextStore } from "../stores/app-context";
 import { TelemetryService } from "../services/telemetry-service";
+import type { NativeBridge } from "./platform/native-bridge-service";
 import { createTranscription } from "../db/transcriptions";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
@@ -35,30 +35,31 @@ export class TranscriptionService {
   private vadMutex: Mutex;
   private transcriptionMutex: Mutex;
   private telemetryService: TelemetryService;
-  private modelManagerService: ModelManagerService;
+  private modelService: ModelService;
   private modelWasPreloaded: boolean = false;
 
   constructor(
-    modelManagerService: ModelManagerService,
+    modelService: ModelService,
     vadService: VADService,
     settingsService: SettingsService,
     telemetryService: TelemetryService,
+    private nativeBridge: NativeBridge | null,
   ) {
-    this.whisperProvider = new WhisperProvider(modelManagerService);
+    this.whisperProvider = new WhisperProvider(modelService);
     this.cloudProvider = new AmicalCloudProvider();
     this.vadService = vadService;
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
     this.transcriptionMutex = new Mutex();
     this.telemetryService = telemetryService;
-    this.modelManagerService = modelManagerService;
+    this.modelService = modelService;
   }
 
   /**
    * Select the appropriate transcription provider based on the selected model
    */
   private async selectProvider(): Promise<TranscriptionProvider> {
-    const selectedModelId = await this.modelManagerService.getSelectedModel();
+    const selectedModelId = await this.modelService.getSelectedModel();
 
     if (!selectedModelId) {
       // Default to whisper if no model selected
@@ -81,14 +82,8 @@ export class TranscriptionService {
   }
 
   async initialize(): Promise<void> {
-    if (this.vadService) {
-      logger.transcription.info("Using VAD service");
-    } else {
-      logger.transcription.warn("VAD service not available");
-    }
-
     // Check if the selected model is a cloud model
-    const selectedModelId = await this.modelManagerService.getSelectedModel();
+    const selectedModelId = await this.modelService.getSelectedModel();
     const model = selectedModelId
       ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
       : null;
@@ -158,8 +153,8 @@ export class TranscriptionService {
    */
   public async isModelAvailable(): Promise<boolean> {
     try {
-      const modelManager = this.whisperProvider["modelManager"];
-      const availableModels = await modelManager.getValidDownloadedModels();
+      const modelService = this.whisperProvider["modelService"];
+      const availableModels = await modelService.getValidDownloadedModels();
       return Object.keys(availableModels).length > 0;
     } catch (error) {
       logger.transcription.error("Failed to check model availability:", error);
@@ -288,9 +283,9 @@ export class TranscriptionService {
         accumulatedTranscription: [],
       };
 
-      // Get accessibility context from global store
+      // Get accessibility context from NativeBridge
       streamingContext.sharedData.accessibilityContext =
-        appContextStore.getAccessibilityContext();
+        this.nativeBridge?.getAccessibilityContext() ?? null;
 
       session = {
         context: streamingContext,
@@ -464,7 +459,7 @@ export class TranscriptionService {
       ? completionTime - session.recordingStartedAt
       : undefined;
 
-    const selectedModel = await this.modelManagerService.getSelectedModel();
+    const selectedModel = await this.modelService.getSelectedModel();
     const audioDurationSeconds =
       session.context.sharedData.audioMetadata?.duration;
 

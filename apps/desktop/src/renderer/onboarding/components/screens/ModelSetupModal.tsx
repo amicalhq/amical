@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -15,9 +16,9 @@ import { toast } from "sonner";
 
 interface ModelSetupModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: (wasCompleted?: boolean) => void;
   modelType: ModelType;
-  onSetupComplete: () => void;
+  onContinue: () => void; // Called when setup completes - auto-advances to next step
 }
 
 /**
@@ -29,7 +30,7 @@ export function ModelSetupModal({
   isOpen,
   onClose,
   modelType,
-  onSetupComplete,
+  onContinue,
 }: ModelSetupModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +42,7 @@ export function ModelSetupModal({
   } | null>(null);
   const [modelAlreadyInstalled, setModelAlreadyInstalled] = useState(false);
   const [installedModelName, setInstalledModelName] = useState<string>("");
+  const [downloadComplete, setDownloadComplete] = useState(false);
 
   // tRPC mutations and utils
   const utils = api.useUtils();
@@ -50,8 +52,7 @@ export function ModelSetupModal({
       const authStatus = await utils.auth.getAuthStatus.fetch();
       if (authStatus.isAuthenticated) {
         toast.success("Successfully authenticated!");
-        onSetupComplete();
-        onClose();
+        onContinue();
       } else {
         setError("Authentication failed. Please try again.");
       }
@@ -85,8 +86,7 @@ export function ModelSetupModal({
         });
 
         if (data.progress.progress === 100) {
-          onSetupComplete();
-          onClose();
+          setDownloadComplete(true);
         }
       }
     },
@@ -129,14 +129,9 @@ export function ModelSetupModal({
       );
 
       if (whisperModels.length > 0) {
-        // Model already exists, mark as complete
+        // Model already exists - user must click Done to confirm
         setModelAlreadyInstalled(true);
         setInstalledModelName(whisperModels[0].name || whisperModels[0].id);
-        onSetupComplete();
-        // Don't close immediately to show the success state
-        setTimeout(() => {
-          onClose();
-        }, 2000);
       } else if (!isLoading && !downloadProgress) {
         // No existing model, start download
         startDownload();
@@ -155,47 +150,21 @@ export function ModelSetupModal({
       return (
         <>
           <DialogHeader>
-            <DialogTitle>Sign in to Amical</DialogTitle>
+            <DialogTitle>Sign in required</DialogTitle>
             <DialogDescription>
-              Sign in with your Amical account to use cloud transcription
+              Cloud transcription needs authentication to continue.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {error && (
-              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                {error}
-              </div>
-            )}
-
-            <Button
-              onClick={handleAmicalLogin}
-              disabled={isLoading}
-              className="w-full"
-              size="lg"
-            >
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign in to Amical
+          <DialogFooter className="space-x-2">
+            <Button variant="outline" onClick={() => onClose(false)}>
+              Cancel
             </Button>
-
-            <p className="text-center text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <button
-                onClick={handleAmicalLogin}
-                className="text-primary hover:underline"
-              >
-                Create one
-              </button>
-            </p>
-
-            <div className="rounded-lg bg-muted/50 p-3">
-              <p className="text-xs text-muted-foreground text-center">
-                Your audio is processed in real-time and never stored on our
-                servers.
-              </p>
-            </div>
-          </div>
+            <Button onClick={handleAmicalLogin} disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Sign In
+            </Button>
+          </DialogFooter>
         </>
       );
     }
@@ -205,28 +174,32 @@ export function ModelSetupModal({
       <>
         <DialogHeader>
           <DialogTitle>
-            {modelAlreadyInstalled
+            {modelAlreadyInstalled || downloadComplete
               ? "Local Model Ready"
               : "Downloading Local Model"}
           </DialogTitle>
           <DialogDescription>
-            {modelAlreadyInstalled
-              ? "Your system already has a Whisper model installed"
+            {modelAlreadyInstalled || downloadComplete
+              ? "Ready for private, offline transcription."
               : "Setting up Whisper Tiny for private, offline transcription"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {modelAlreadyInstalled ? (
-            // Show success state when model is already installed
-            <div className="flex flex-col items-center gap-3 py-4">
+          {modelAlreadyInstalled || downloadComplete ? (
+            // Show success state when model is ready
+            <div className="flex flex-col items-center gap-3">
               <div className="rounded-full bg-green-500/10 p-3">
                 <Check className="h-6 w-6 text-green-500" />
               </div>
               <div className="text-center">
-                <p className="font-medium">Model Already Installed</p>
+                <p className="font-medium">
+                  {modelAlreadyInstalled
+                    ? "Model Already Installed"
+                    : "Download Complete"}
+                </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Using: {installedModelName}
+                  Using: {installedModelName || "whisper-tiny"}
                 </p>
               </div>
             </div>
@@ -265,21 +238,27 @@ export function ModelSetupModal({
                   )}
                 </div>
               )}
-
-              {downloadProgress < 100 && (
-                <Button onClick={onClose} variant="outline" className="w-full">
-                  Cancel Download
-                </Button>
-              )}
             </>
           )}
         </div>
+
+        <DialogFooter className="space-x-2">
+          <Button variant="outline" onClick={() => onClose(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onContinue}
+            disabled={!modelAlreadyInstalled && !downloadComplete}
+          >
+            Continue
+          </Button>
+        </DialogFooter>
       </>
     );
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose(false)}>
       <DialogContent className="sm:max-w-md">{renderContent()}</DialogContent>
     </Dialog>
   );

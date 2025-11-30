@@ -1,23 +1,28 @@
-import { app } from "electron";
+import { app, ipcMain, shell } from "electron";
 import { initializeDatabase } from "../../db";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
 import { setupApplicationMenu } from "../menu";
 import { ServiceManager } from "../managers/service-manager";
-import { EventHandlers } from "./event-handlers";
 import { TrayManager } from "../managers/tray-manager";
+import { createIPCHandler } from "electron-trpc-experimental/main";
+import { router } from "../../trpc/router";
+import { createContext } from "../../trpc/context";
+import type { OnboardingService } from "../../services/onboarding-service";
+import type { RecordingManager } from "../managers/recording-manager";
+import type { RecordingState } from "../../types/recording";
+import type { SettingsService } from "../../services/settings-service";
 
 export class AppManager {
-  private windowManager: WindowManager;
+  private windowManager!: WindowManager;
   private serviceManager: ServiceManager;
-  private eventHandlers: EventHandlers | null = null;
   private trayManager: TrayManager;
+  private trpcHandler!: ReturnType<typeof createIPCHandler>;
 
   constructor() {
-    this.windowManager = new WindowManager();
-    this.serviceManager = ServiceManager.createInstance();
-    this.serviceManager.setWindowManager(this.windowManager);
+    this.serviceManager = ServiceManager.getInstance();
     this.trayManager = TrayManager.getInstance();
+    // WindowManager created in initialize() after deps are ready
   }
 
   handleDeepLink(url: string): void {
@@ -37,9 +42,7 @@ export class AppManager {
         if (code) {
           // Get AuthService and complete the OAuth flow
           const authService = this.serviceManager.getService("authService");
-          if (authService) {
-            authService.handleAuthCallback(code, state);
-          }
+          authService.handleAuthCallback(code, state);
         }
       }
 
@@ -54,22 +57,42 @@ export class AppManager {
 
     await this.serviceManager.initialize();
 
-    // Initialize OnboardingManager with WindowManager reference
-    this.serviceManager.initializeOnboardingManager(this.windowManager);
+    // Initialize tRPC handler (services must be ready first)
+    this.trpcHandler = createIPCHandler({
+      router,
+      windows: [],
+      createContext: async () => createContext(this.serviceManager),
+    });
+    logger.main.info("tRPC handler initialized");
 
-    // Check if onboarding is needed using OnboardingService (single source of truth)
+    // Create WindowManager now that all deps are ready
+    const settingsService = this.serviceManager.getService("settingsService");
+    this.windowManager = new WindowManager(settingsService, this.trpcHandler);
+
+    // Register WindowManager with ServiceManager for getService("windowManager")
+    this.serviceManager.setWindowManager(this.windowManager);
+
+    // Get onboarding service and subscribe to lifecycle events
     const onboardingService =
       this.serviceManager.getService("onboardingService");
-    const onboardingCheck = await onboardingService!.checkNeedsOnboarding();
+    this.setupOnboardingEventListeners(onboardingService);
+
+    // Subscribe to recording state changes for widget visibility
+    const recordingManager = this.serviceManager.getService("recordingManager");
+    this.setupRecordingEventListeners(recordingManager);
+
+    // Check if onboarding is needed using OnboardingService (single source of truth)
+    const onboardingCheck = await onboardingService.checkNeedsOnboarding();
 
     // Sync auto-launch setting with OS on startup
-    const settingsService = this.serviceManager.getService("settingsService");
-    if (settingsService) {
-      settingsService.syncAutoLaunch();
-      logger.main.info("Auto-launch setting synced with OS");
-    }
+    settingsService.syncAutoLaunch();
+    logger.main.info("Auto-launch setting synced with OS");
+
+    // Subscribe to settings changes for window updates
+    this.setupSettingsEventListeners(settingsService);
 
     if (onboardingCheck.needed) {
+      await onboardingService.startOnboardingFlow();
       this.windowManager.createOrShowOnboardingWindow();
     } else {
       await this.setupWindows();
@@ -77,12 +100,14 @@ export class AppManager {
 
     await this.setupMenu();
 
-    // Setup event handlers
-    this.eventHandlers = new EventHandlers(this);
-    this.eventHandlers.setupEventHandlers();
-
     // Initialize tray
     this.trayManager.initialize(this.windowManager);
+
+    // Setup IPC handlers
+    ipcMain.handle("open-external", async (_event, url: string) => {
+      await shell.openExternal(url);
+      logger.main.debug("Opening external URL", { url });
+    });
 
     // Auto-update is now handled by update-electron-app in main.ts
 
@@ -96,10 +121,100 @@ export class AppManager {
     );
   }
 
+  private setupOnboardingEventListeners(
+    onboardingService: OnboardingService,
+  ): void {
+    // Handle onboarding completion
+    onboardingService.on("completed", () => {
+      const shouldRelaunch = process.env.NODE_ENV !== "development";
+      logger.main.info("Onboarding completed event received", {
+        shouldRelaunch,
+      });
+
+      this.windowManager.closeOnboardingWindow();
+
+      if (shouldRelaunch) {
+        // Production: relaunch app to reinitialize with new settings
+        logger.main.info("Relaunching app after onboarding completion");
+        app.relaunch();
+        app.quit();
+      } else {
+        // Development: just show the main app windows
+        logger.main.info("Dev mode: showing main app windows after onboarding");
+        this.setupWindows();
+      }
+    });
+
+    // Handle onboarding cancellation
+    onboardingService.on("cancelled", () => {
+      logger.main.info("Onboarding cancelled event received, quitting app");
+      this.windowManager.closeOnboardingWindow();
+      app.quit();
+    });
+
+    logger.main.info("Onboarding event listeners set up");
+  }
+
+  private setupRecordingEventListeners(
+    recordingManager: RecordingManager,
+  ): void {
+    recordingManager.on("state-changed", (state: RecordingState) => {
+      this.updateWidgetVisibility(state === "idle").catch((error) => {
+        logger.main.error("Failed to update widget visibility", error);
+      });
+    });
+
+    logger.main.info("Recording state listener connected in AppManager");
+  }
+
+  private setupSettingsEventListeners(settingsService: SettingsService): void {
+    // Handle preference changes (widget visibility)
+    settingsService.on(
+      "preferences-changed",
+      async ({
+        showWidgetWhileInactiveChanged,
+      }: {
+        showWidgetWhileInactiveChanged: boolean;
+      }) => {
+        if (showWidgetWhileInactiveChanged) {
+          const recordingManager =
+            this.serviceManager.getService("recordingManager");
+          const isIdle = recordingManager.getState() === "idle";
+          await this.updateWidgetVisibility(isIdle);
+        }
+      },
+    );
+
+    // Handle theme changes
+    settingsService.on("theme-changed", async () => {
+      await this.windowManager.updateAllWindowThemes();
+    });
+
+    logger.main.info("Settings event listeners set up");
+  }
+
+  private async updateWidgetVisibility(isIdle: boolean): Promise<void> {
+    const settingsService = this.serviceManager.getService("settingsService");
+    const preferences = await settingsService.getPreferences();
+
+    if (preferences.showWidgetWhileInactive || !isIdle) {
+      this.windowManager.showWidget();
+    } else {
+      this.windowManager.hideWidget();
+    }
+  }
+
   private async setupWindows(): Promise<void> {
-    this.windowManager.createWidgetWindow();
+    await this.windowManager.createWidgetWindow();
+
+    // AppManager decides initial widget visibility based on settings
+    const settingsService = this.serviceManager.getService("settingsService");
+    const preferences = await settingsService.getPreferences();
+    if (preferences.showWidgetWhileInactive) {
+      this.windowManager.showWidget();
+    }
+
     this.windowManager.createOrShowMainWindow();
-    // tRPC handler is now set up in WindowManager when windows are created
 
     if (app.dock) {
       app.dock
@@ -127,30 +242,6 @@ export class AppManager {
       },
       () => this.windowManager.openAllDevTools(),
     );
-  }
-
-  getWindowManager(): WindowManager {
-    return this.windowManager;
-  }
-
-  getServiceManager(): ServiceManager {
-    return this.serviceManager;
-  }
-
-  getTranscriptionService() {
-    return this.serviceManager.getService("transcriptionService");
-  }
-
-  getNativeBridge() {
-    return this.serviceManager.getService("nativeBridge");
-  }
-
-  getAutoUpdaterService() {
-    return this.serviceManager.getService("autoUpdaterService");
-  }
-
-  getEventHandlers(): EventHandlers | null {
-    return this.eventHandlers;
   }
 
   async cleanup(): Promise<void> {
@@ -188,14 +279,36 @@ export class AppManager {
   }
 
   async handleActivate(): Promise<void> {
+    // If onboarding is in progress, just focus that window
+    const onboardingWindow = this.windowManager.getOnboardingWindow();
+    if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+      onboardingWindow.show();
+      onboardingWindow.focus();
+      return;
+    }
+
+    // Normal activation logic for main app
     const allWindows = this.windowManager.getAllWindows();
 
     if (allWindows.every((w) => !w || w.isDestroyed())) {
+      // All windows destroyed - recreate widget with proper visibility
       await this.windowManager.createWidgetWindow();
+      const settingsService = this.serviceManager.getService("settingsService");
+      const preferences = await settingsService.getPreferences();
+      if (preferences.showWidgetWhileInactive) {
+        this.windowManager.showWidget();
+      }
     } else {
       const widgetWindow = this.windowManager.getWidgetWindow();
       if (!widgetWindow || widgetWindow.isDestroyed()) {
+        // Widget destroyed - recreate with proper visibility
         await this.windowManager.createWidgetWindow();
+        const settingsService =
+          this.serviceManager.getService("settingsService");
+        const preferences = await settingsService.getPreferences();
+        if (preferences.showWidgetWhileInactive) {
+          this.windowManager.showWidget();
+        }
       } else {
         widgetWindow.show();
       }

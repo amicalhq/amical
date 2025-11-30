@@ -7,7 +7,7 @@ import { NavigationButtons } from "../shared/NavigationButtons";
 import { ModelSetupModal } from "./ModelSetupModal";
 import { useSystemRecommendation } from "../../hooks/useSystemRecommendation";
 import { ModelType } from "../../../../types/onboarding";
-import { Cloud, HardDrive, Sparkles, Check } from "lucide-react";
+import { Cloud, Laptop, Sparkles, Check, X, Star } from "lucide-react";
 import { toast } from "sonner";
 
 interface ModelSelectionScreenProps {
@@ -41,34 +41,26 @@ export function ModelSelectionScreen({
     {
       id: ModelType.Cloud,
       title: "Amical Cloud",
-      subtitle: "Fast cloud transcription",
+      subtitle: "Fast, more accurate, and free - no setup needed",
       description:
-        "Process audio using Amical's cloud servers for fast and accurate transcription. Your audio is never persisted on our servers.",
-      pros: ["Fast processing", "High accuracy", "No local resources needed"],
-      cons: [
-        "Requires internet",
-        "Requires Amical account",
-        "Usage limits may apply",
-      ],
+        "Ideal if you want the best accuracy or your device can't run local models.\nSecure processing; audio is never stored.",
+      pros: ["Free", "Fast", "More accurate", "No setup needed"],
+      cons: ["Needs internet & login"],
       icon: Cloud,
       iconBg: "bg-blue-500/10",
       iconColor: "text-blue-500",
     },
     {
       id: ModelType.Local,
-      title: "Local Models (Whisper)",
-      subtitle: "Private and offline",
+      title: "Local Models",
+      subtitle: "Private, offline, and free - runs fully on your device.",
       description:
-        "OpenAI's Whisper models running directly on your device. Complete privacy with no data leaving your computer.",
-      pros: ["Complete privacy", "Works offline", "No account required"],
-      cons: [
-        "Requires more RAM/CPU",
-        "Slower than cloud",
-        "Initial download required",
-      ],
-      icon: HardDrive,
-      iconBg: "bg-green-500/10",
-      iconColor: "text-green-500",
+        "Great for privacy-focused users with capable hardware. No login required.",
+      pros: ["Full privacy", "Works offline"],
+      cons: ["Uses device resources"],
+      icon: Laptop,
+      iconBg: "bg-slate-500/10",
+      iconColor: "text-slate-500",
     },
   ];
 
@@ -101,8 +93,6 @@ export function ModelSelectionScreen({
     onNext(selectedModel, followedRecommendation);
   };
 
-  const getModelById = (id: ModelType) => models.find((m) => m.id === id);
-
   // Check if any setup is complete
   const canContinue = selectedModel && setupComplete[selectedModel];
 
@@ -110,8 +100,16 @@ export function ModelSelectionScreen({
     <OnboardingLayout
       title="Choose Your AI Model"
       subtitle="Select how you want Amical to process your audio"
+      footer={
+        <NavigationButtons
+          onBack={onBack}
+          onNext={handleContinue}
+          disableNext={!canContinue}
+          nextLabel={canContinue ? "Continue" : "Complete setup to continue"}
+        />
+      }
     >
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* System Recommendation */}
         {recommendation && !isLoading && (
           <Alert className="border-primary/50 bg-primary/5">
@@ -156,9 +154,9 @@ export function ModelSelectionScreen({
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`rounded-lg p-2 ${model.iconBg}`}>
-                          <Icon className={`h-5 w-5 ${model.iconColor}`} />
+                          <Icon className={`h-6 w-6 ${model.iconColor}`} />
                         </div>
-                        <div>
+                        <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-2">
                             <h3 className="font-medium">{model.title}</h3>
                             {isRecommended && (
@@ -167,9 +165,7 @@ export function ModelSelectionScreen({
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            {model.subtitle}
-                          </p>
+                          <p className="text-sm">{model.subtitle}</p>
                         </div>
                       </div>
                       {isComplete && (
@@ -180,7 +176,7 @@ export function ModelSelectionScreen({
                     </div>
 
                     {/* Description */}
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">
                       {model.description}
                     </p>
 
@@ -192,7 +188,10 @@ export function ModelSelectionScreen({
                         </p>
                         <ul className="space-y-0.5 text-muted-foreground">
                           {model.pros.map((pro, i) => (
-                            <li key={i}>• {pro}</li>
+                            <li key={i} className="flex items-center gap-1.5">
+                              <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                              {pro}
+                            </li>
                           ))}
                         </ul>
                       </div>
@@ -202,7 +201,10 @@ export function ModelSelectionScreen({
                         </p>
                         <ul className="space-y-0.5 text-muted-foreground">
                           {model.cons.map((con, i) => (
-                            <li key={i}>• {con}</li>
+                            <li key={i} className="flex items-center gap-1.5">
+                              <X className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                              {con}
+                            </li>
                           ))}
                         </ul>
                       </div>
@@ -214,22 +216,33 @@ export function ModelSelectionScreen({
           })}
         </div>
 
-        {/* Navigation */}
-        <NavigationButtons
-          onBack={onBack}
-          onNext={handleContinue}
-          disableNext={!canContinue}
-          nextLabel={canContinue ? "Continue" : "Complete setup to continue"}
-        />
+        {/* Settings Note */}
+        <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-4">
+          <Star className="h-4 w-4 mt-0.5 text-yellow-500 shrink-0 " />
+          <p className="text-sm text-muted-foreground">
+            You can change your model later in Settings — nothing is permanent.
+          </p>
+        </div>
       </div>
 
       {/* Setup Modal */}
       {selectedModel && (
         <ModelSetupModal
           isOpen={showSetupModal}
-          onClose={() => setShowSetupModal(false)}
+          onClose={(wasCompleted) => {
+            setShowSetupModal(false);
+            // Deselect if setup wasn't completed
+            if (!wasCompleted && !setupComplete[selectedModel]) {
+              setSelectedModel(null);
+            }
+          }}
           modelType={selectedModel}
-          onSetupComplete={handleSetupComplete}
+          onContinue={() => {
+            handleSetupComplete();
+            const followedRecommendation =
+              recommendation?.suggested === selectedModel;
+            onNext(selectedModel, followedRecommendation);
+          }}
         />
       )}
     </OnboardingLayout>

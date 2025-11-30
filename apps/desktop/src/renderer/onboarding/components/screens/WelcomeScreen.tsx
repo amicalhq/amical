@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
-import { Mic, FileText, Users } from "lucide-react";
+import { Mic, FileText, Users, Command } from "lucide-react";
 import { FeatureInterest } from "../../../../types/onboarding";
 import { toast } from "sonner";
 
@@ -49,6 +49,13 @@ export function WelcomeScreen({
         "Record and transcribe meetings and conversations with high accuracy",
       icon: Users,
     },
+    {
+      id: FeatureInterest.VoiceCommands,
+      title: "Voice Commands",
+      description:
+        "Control your apps hands-free - act on tasks with natural voice commands",
+      icon: Command,
+    },
   ];
 
   const handleToggleInterest = (interest: FeatureInterest) => {
@@ -56,9 +63,9 @@ export function WelcomeScreen({
     if (newInterests.has(interest)) {
       newInterests.delete(interest);
     } else {
-      // Maximum 3 interests
-      if (newInterests.size >= 3) {
-        toast.error("You can select up to 3 features");
+      // Maximum 4 interests
+      if (newInterests.size >= 4) {
+        toast.error("You can select up to 4 features");
         return;
       }
       newInterests.add(interest);
@@ -80,6 +87,25 @@ export function WelcomeScreen({
     <OnboardingLayout
       title="Welcome to Amical"
       subtitle="Select the features you're interested in to personalize your experience"
+      footer={
+        <div className="space-y-4">
+          <NavigationButtons
+            onNext={handleContinue}
+            showBack={false}
+            disableNext={selectedInterests.size === 0}
+          />
+          {onSkip && (
+            <div className="text-center">
+              <button
+                onClick={onSkip}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                Skip onboarding
+              </button>
+            </div>
+          )}
+        </div>
+      }
     >
       <div className="space-y-4">
         {/* Feature Selection Cards */}
@@ -121,8 +147,9 @@ export function WelcomeScreen({
                     <div className="flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <h3 className="font-medium">{feature.title}</h3>
-                        {feature.id ===
-                          FeatureInterest.MeetingTranscriptions && (
+                        {(feature.id ===
+                          FeatureInterest.MeetingTranscriptions ||
+                          feature.id === FeatureInterest.VoiceCommands) && (
                           <Badge
                             variant="outline"
                             className="text-[10px] px-1.5 py-0 h-4 shrink-0"
@@ -154,30 +181,10 @@ export function WelcomeScreen({
         {/* Settings Note */}
         <div className="rounded-lg bg-muted/50 p-4">
           <p className="text-sm text-muted-foreground">
-            <span className="font-medium">Flexible preferences:</span> Don't
-            worry about getting it perfect – you can change all preferences
-            anytime in Settings.
+            Your choices help personalize setup — all features remain available
+            anytime.
           </p>
         </div>
-
-        {/* Navigation */}
-        <NavigationButtons
-          onNext={handleContinue}
-          showBack={false}
-          disableNext={selectedInterests.size === 0}
-        />
-
-        {/* Skip Option */}
-        {onSkip && (
-          <div className="text-center">
-            <button
-              onClick={onSkip}
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              Skip onboarding
-            </button>
-          </div>
-        )}
       </div>
     </OnboardingLayout>
   );

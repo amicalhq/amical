@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/trpc/react";
 import { useOnboardingState } from "./hooks/useOnboardingState";
 import { ProgressIndicator } from "./components/shared/ProgressIndicator";
@@ -49,21 +49,16 @@ export function App() {
   const { state, isLoading, savePreferences, completeOnboarding } =
     useOnboardingState();
 
+  // Ref to hold stable reference to savePreferences (avoids infinite loop in useEffect)
+  const savePreferencesRef = useRef(savePreferences);
+  savePreferencesRef.current = savePreferences;
+
+  // Ref to ensure initialization only runs once (prevents re-running on dependency changes)
+  const hasInitialized = useRef(false);
+
   // tRPC queries
   const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
-
-  // Telemetry mutations
-  const trackOnboardingStarted =
-    api.onboarding.trackOnboardingStarted.useMutation();
-  const trackOnboardingScreenViewed =
-    api.onboarding.trackOnboardingScreenViewed.useMutation();
-  const trackOnboardingFeaturesSelected =
-    api.onboarding.trackOnboardingFeaturesSelected.useMutation();
-  const trackOnboardingDiscoverySelected =
-    api.onboarding.trackOnboardingDiscoverySelected.useMutation();
-  const trackOnboardingModelSelected =
-    api.onboarding.trackOnboardingModelSelected.useMutation();
   const utils = api.useUtils();
 
   // Screen order - can be modified based on feature flags
@@ -129,8 +124,15 @@ export function App() {
     await checkPermissionsWithResult();
   }, [checkPermissionsWithResult]);
 
-  // Initialize platform and permissions
+  // Initialize platform and permissions (runs once when state is ready)
   useEffect(() => {
+    // Wait for state to be ready before initializing
+    if (isLoading) return;
+
+    // Skip if already initialized (prevents re-running when dependencies change)
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
     const initialize = async () => {
       // Check initial permissions and platform
       // Use fresh results directly to avoid race condition
@@ -165,48 +167,27 @@ export function App() {
           setCurrentScreen(state.lastVisitedScreen as OnboardingScreen);
         }
       }
-
-      // Track onboarding started event (T034)
-      trackOnboardingStarted.mutate({
-        platform: platformResult,
-        resumed: !!state?.lastVisitedScreen,
-        resumedFrom: state?.lastVisitedScreen,
-      });
     };
 
     initialize();
   }, [
+    isLoading,
     checkPermissionsWithResult,
-    trackOnboardingStarted,
     utils,
     state?.lastVisitedScreen,
     getActiveScreens,
   ]);
 
-  // Save current screen for resume capability
+  // Save current screen for resume capability (telemetry tracked in backend)
   useEffect(() => {
     if (currentScreen !== OnboardingScreen.Welcome) {
       // Don't save Welcome screen, start from there if no progress
-      // lastVisitedScreen is not in OnboardingPreferences type, but is saved to state
-      savePreferences({
+      // Use ref to avoid dependency on savePreferences which changes identity on mutation state
+      savePreferencesRef.current({
         lastVisitedScreen: currentScreen,
-      } as Partial<OnboardingPreferences>);
+      });
     }
-  }, [currentScreen, savePreferences]);
-
-  // Track screen views (T035)
-  useEffect(() => {
-    trackOnboardingScreenViewed.mutate({
-      screen: currentScreen,
-      index: getCurrentScreenIndex(),
-      total: getTotalScreens(),
-    });
-  }, [
-    currentScreen,
-    trackOnboardingScreenViewed,
-    getCurrentScreenIndex,
-    getTotalScreens,
-  ]);
+  }, [currentScreen]);
 
   // Navigation functions (T028 - Back navigation)
   const navigateBack = useCallback(() => {
@@ -229,60 +210,41 @@ export function App() {
   }, [currentScreen, getActiveScreens]);
 
   // Save preferences and navigate
-  const handleSaveAndContinue = async (
+  const handleSaveAndContinue = (
     newPreferences: Partial<OnboardingPreferences>,
   ) => {
-    try {
-      // Merge with existing preferences
-      const updatedPreferences = { ...preferences, ...newPreferences };
-      setPreferences(updatedPreferences);
+    // Merge with existing preferences
+    const updatedPreferences = { ...preferences, ...newPreferences };
+    setPreferences(updatedPreferences);
 
-      // Save to backend (T030 - handled by hook)
-      await savePreferences(newPreferences);
+    // Navigate immediately for responsive UX
+    navigateNext();
 
-      // Navigate to next screen
-      navigateNext();
-    } catch (error) {
+    // Save to backend in background (non-blocking)
+    // Preferences are already in React state, final completion will persist everything
+    savePreferences(newPreferences).catch((error) => {
       console.error("Failed to save preferences:", error);
       // Error is already handled by the hook with toast
-    }
+    });
   };
 
-  // Handle feature interests selection (T036)
-  const handleFeatureInterests = async (interests: FeatureInterest[]) => {
-    trackOnboardingFeaturesSelected.mutate({
-      features: interests,
-      count: interests.length,
-    });
-
-    await handleSaveAndContinue({ featureInterests: interests });
+  // Handle feature interests selection (telemetry tracked in backend)
+  const handleFeatureInterests = (interests: FeatureInterest[]) => {
+    handleSaveAndContinue({ featureInterests: interests });
   };
 
-  // Handle discovery source selection (T037)
-  const handleDiscoverySource = async (
-    source: DiscoverySource,
-    details?: string,
-  ) => {
-    trackOnboardingDiscoverySelected.mutate({
-      source,
-      details,
-    });
-
+  // Handle discovery source selection (telemetry tracked in backend)
+  const handleDiscoverySource = (source: DiscoverySource, details?: string) => {
     setDiscoveryDetails(details || "");
-    await handleSaveAndContinue({ discoverySource: source });
+    handleSaveAndContinue({ discoverySource: source });
   };
 
-  // Handle model selection (T038)
-  const handleModelSelection = async (
+  // Handle model selection (telemetry tracked in backend)
+  const handleModelSelection = (
     modelType: ModelType,
     recommendationFollowed: boolean,
   ) => {
-    trackOnboardingModelSelected.mutate({
-      model_type: modelType,
-      recommendation_followed: recommendationFollowed,
-    });
-
-    await handleSaveAndContinue({
+    handleSaveAndContinue({
       selectedModelType: modelType,
       modelRecommendation: state?.modelRecommendation
         ? { ...state.modelRecommendation, followed: recommendationFollowed }
@@ -372,6 +334,7 @@ export function App() {
         return (
           <CompletionScreen
             onComplete={handleComplete}
+            onBack={navigateBack}
             preferences={preferences}
           />
         );

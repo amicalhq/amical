@@ -6,7 +6,7 @@ import { AuthState } from "../../services/auth-service";
 export const authRouter = createRouter({
   // Get current auth status
   getAuthStatus: procedure.query(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService")!;
+    const authService = ctx.serviceManager.getService("authService");
 
     const authState = await authService.getAuthState();
     const isAuthenticated = await authService.isAuthenticated();
@@ -20,7 +20,7 @@ export const authRouter = createRouter({
 
   // Initiate login flow
   login: procedure.mutation(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService")!;
+    const authService = ctx.serviceManager.getService("authService");
 
     await authService.login();
 
@@ -33,7 +33,7 @@ export const authRouter = createRouter({
 
   // Logout
   logout: procedure.mutation(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService")!;
+    const authService = ctx.serviceManager.getService("authService");
 
     await authService.logout();
 
@@ -45,7 +45,7 @@ export const authRouter = createRouter({
 
   // Check if authenticated (for UI updates)
   isAuthenticated: procedure.query(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService")!;
+    const authService = ctx.serviceManager.getService("authService");
 
     return await authService.isAuthenticated();
   }),
@@ -61,7 +61,7 @@ export const authRouter = createRouter({
       userName: string | null;
       error?: string;
     }>((emit) => {
-      const authService = ctx.serviceManager.getService("authService")!;
+      const authService = ctx.serviceManager.getService("authService");
 
       // Define handlers once (not in a loop)
       const handleAuthenticated = async (authState: AuthState) => {
@@ -121,14 +121,12 @@ export const authRouter = createRouter({
 
   // Check if cloud model requires auth
   isCloudModelSelected: procedure.query(async ({ ctx }) => {
-    const modelManagerService = ctx.serviceManager.getService(
-      "modelManagerService",
-    )!;
-    if (!modelManagerService) {
+    const modelService = ctx.serviceManager.getService("modelService");
+    if (!modelService) {
       return false;
     }
 
-    const selectedModelId = await modelManagerService.getSelectedModel();
+    const selectedModelId = await modelService.getSelectedModel();
     if (!selectedModelId) {
       return false;
     }

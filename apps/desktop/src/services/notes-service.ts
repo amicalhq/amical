@@ -12,6 +12,7 @@ import {
   replaceYjsUpdates,
 } from "../db/notes";
 import * as Y from "yjs";
+import { ipcMain } from "electron";
 import { logger } from "../main/logger";
 
 export interface NoteCreateOptions {
@@ -31,8 +32,41 @@ class NotesService {
   private compactionTask: cron.ScheduledTask | null = null;
 
   private constructor() {
-    // Set up cron job for daily compaction
+    this.setupIPCHandlers();
     this.setupCompactionCron();
+  }
+
+  private setupIPCHandlers(): void {
+    ipcMain.handle(
+      "notes:saveYjsUpdate",
+      async (_event, noteId: number, update: ArrayBuffer) => {
+        try {
+          const updateArray = new Uint8Array(update);
+          await this.saveYjsUpdate(noteId, updateArray);
+          logger.main.debug("Saved yjs update", {
+            noteId,
+            updateSize: updateArray.length,
+          });
+        } catch (error) {
+          logger.main.error("Failed to save yjs update", error);
+          throw error;
+        }
+      },
+    );
+
+    ipcMain.handle("notes:loadYjsUpdates", async (_event, noteId: number) => {
+      try {
+        const updates = await this.loadYjsUpdates(noteId);
+        logger.main.debug("Loaded yjs updates", {
+          noteId,
+          count: updates.length,
+        });
+        return updates.map((u) => u.buffer);
+      } catch (error) {
+        logger.main.error("Failed to load yjs updates", error);
+        throw error;
+      }
+    });
   }
 
   public static getInstance(): NotesService {

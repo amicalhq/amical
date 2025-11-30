@@ -134,6 +134,16 @@ export function PermissionsScreen({
     <OnboardingLayout
       title="Setup Permissions"
       subtitle="Amical needs a few permissions to work properly"
+      footer={
+        <NavigationButtons
+          onBack={onBack}
+          onNext={onNext}
+          disableNext={!allPermissionsGranted}
+          nextLabel={
+            allPermissionsGranted ? "Continue" : "Waiting for permissions..."
+          }
+        />
+      }
     >
       <div className="space-y-6">
         {/* Status Summary */}
@@ -250,7 +260,8 @@ export function PermissionsScreen({
                   <div>
                     <h3 className="font-medium">Accessibility Access</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Required for global keyboard shortcuts (macOS only)
+                      Required for pasting transcription and global keyboard
+                      shortcuts (macOS only)
                     </p>
 
                     {permissions.accessibility ? (
@@ -291,16 +302,6 @@ export function PermissionsScreen({
             </Card>
           )}
         </div>
-
-        {/* Navigation */}
-        <NavigationButtons
-          onBack={onBack}
-          onNext={onNext}
-          disableNext={!allPermissionsGranted}
-          nextLabel={
-            allPermissionsGranted ? "Continue" : "Waiting for permissions..."
-          }
-        />
       </div>
     </OnboardingLayout>
   );

@@ -3,10 +3,6 @@ import { api } from "@/trpc/react";
 import type {
   OnboardingState,
   OnboardingPreferences,
-  OnboardingScreen,
-  FeatureInterest,
-  DiscoverySource,
-  ModelType,
 } from "../../../types/onboarding";
 import { toast } from "sonner";
 
@@ -31,8 +27,6 @@ export function useOnboardingState(): UseOnboardingStateReturn {
   const getStateQuery = api.onboarding.getState.useQuery();
   const savePreferencesMutation = api.onboarding.savePreferences.useMutation();
   const completeMutation = api.onboarding.complete.useMutation();
-  const trackOnboardingCompleted =
-    api.onboarding.trackOnboardingCompleted.useMutation();
   const resetMutation = api.onboarding.reset.useMutation();
 
   // Load initial state
@@ -100,33 +94,15 @@ export function useOnboardingState(): UseOnboardingStateReturn {
           throw new Error("Failed to complete onboarding");
         }
 
-        // Track completion event
-        trackOnboardingCompleted.mutate({
-          version: finalState.completedVersion,
-          features_selected: finalState.featureInterests || [],
-          discovery_source: finalState.discoverySource,
-          model_type: finalState.selectedModelType,
-          recommendation_followed:
-            finalState.modelRecommendation?.followed || false,
-          skipped_screens: finalState.skippedScreens,
-        });
-
-        // Handle relaunch if needed
-        if (result.shouldRelaunch) {
-          toast.success("Onboarding complete! Restarting application...");
-          // The app will relaunch automatically from the main process
-        } else {
-          toast.success("Onboarding complete!");
-          // In development, just reload
-          window.location.reload();
-        }
+        // Main process handles window closing and app relaunch
+        toast.success("Onboarding complete!");
       } catch (err) {
         console.error("Failed to complete onboarding:", err);
         toast.error("Failed to complete onboarding. Please try again.");
         throw err;
       }
     },
-    [completeMutation, trackOnboardingCompleted],
+    [completeMutation],
   );
 
   // Reset onboarding (for testing)

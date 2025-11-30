@@ -1,3 +1,4 @@
+import { EventEmitter } from "events";
 import { systemPreferences } from "electron";
 import { logger } from "../main/logger";
 import type { SettingsService } from "./settings-service";
@@ -5,13 +6,13 @@ import type { TelemetryService } from "./telemetry-service";
 import type { AppSettingsData } from "../db/schema";
 import {
   OnboardingScreen,
+  FeatureInterest,
   type OnboardingState,
   type OnboardingPreferences,
   type ModelRecommendation,
   type ModelType,
   type OnboardingFeatureFlags,
   type SystemSpecs,
-  type FeatureInterest,
   type DiscoverySource,
 } from "../types/onboarding";
 
@@ -35,16 +36,18 @@ type OnboardingStateDb = {
   };
 };
 
-export class OnboardingService {
+export class OnboardingService extends EventEmitter {
   private static instance: OnboardingService | null = null;
   private settingsService: SettingsService;
   private telemetryService: TelemetryService;
   private currentState: Partial<OnboardingState> = {};
+  private isOnboardingInProgress = false;
 
   constructor(
     settingsService: SettingsService,
     telemetryService: TelemetryService,
   ) {
+    super();
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
   }
@@ -175,27 +178,56 @@ export class OnboardingService {
   /**
    * Save user preferences during onboarding
    * T030, T031 - Implements savePreferences with partial progress saving
+   * Also tracks telemetry for each preference type
    */
   async savePreferences(preferences: OnboardingPreferences): Promise<void> {
     try {
       const updates: Partial<OnboardingState> = {};
 
+      // Track screen view when lastVisitedScreen changes
+      if (preferences.lastVisitedScreen !== undefined) {
+        updates.lastVisitedScreen = preferences.lastVisitedScreen;
+        this.telemetryService.trackOnboardingScreenViewed({
+          screen: preferences.lastVisitedScreen,
+          index: 0, // Index not available here, but screen name is sufficient
+          total: 5,
+        });
+      }
+
+      // Track feature interests selection
       if (preferences.featureInterests !== undefined) {
         updates.featureInterests = preferences.featureInterests;
+        this.telemetryService.trackOnboardingFeaturesSelected({
+          features: preferences.featureInterests,
+          count: preferences.featureInterests.length,
+        });
       }
+
+      // Track discovery source selection
       if (preferences.discoverySource !== undefined) {
         updates.discoverySource = preferences.discoverySource;
+        this.telemetryService.trackOnboardingDiscoverySelected({
+          source: preferences.discoverySource,
+        });
       }
+
+      // Track model selection
       if (preferences.selectedModelType !== undefined) {
         updates.selectedModelType = preferences.selectedModelType;
+        this.telemetryService.trackOnboardingModelSelected({
+          model_type: preferences.selectedModelType,
+          recommendation_followed:
+            preferences.modelRecommendation?.followed ?? false,
+        });
       }
+
       if (preferences.modelRecommendation !== undefined) {
         updates.modelRecommendation = preferences.modelRecommendation;
       }
 
       // T032 - Save partial progress after each screen
       await this.savePartialProgress(updates);
-      logger.main.info("Saved onboarding preferences:", preferences);
+      logger.main.debug("Saved onboarding preferences:", preferences);
     } catch (error) {
       logger.main.error("Failed to save preferences:", error);
       throw error;
@@ -225,32 +257,6 @@ export class OnboardingService {
       logger.main.debug("Saved partial onboarding progress:", partialState);
     } catch (error) {
       logger.main.error("Failed to save partial progress:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Read onboarding progress from database
-   * T033 - Database read method for onboarding state
-   */
-  async readOnboardingProgress(): Promise<OnboardingState | null> {
-    try {
-      return await this.getOnboardingState();
-    } catch (error) {
-      logger.main.error("Failed to read onboarding progress:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Write onboarding progress to database
-   * T033 - Database write method for onboarding state
-   */
-  async writeOnboardingProgress(state: OnboardingState): Promise<void> {
-    try {
-      await this.saveOnboardingState(state);
-    } catch (error) {
-      logger.main.error("Failed to write onboarding progress:", error);
       throw error;
     }
   }
@@ -439,14 +445,6 @@ export class OnboardingService {
    */
   async getSystemRecommendation(): Promise<ModelRecommendation> {
     try {
-      // Check for mock system specs (for testing)
-      if (process.env.MOCK_SYSTEM_SPECS) {
-        const mockSpecs = JSON.parse(
-          process.env.MOCK_SYSTEM_SPECS,
-        ) as SystemSpecs;
-        return this.calculateModelRecommendation(mockSpecs);
-      }
-
       // Get real system info from telemetry service
       const systemInfo = this.telemetryService.getSystemInfo();
       if (!systemInfo) {
@@ -542,5 +540,79 @@ export class OnboardingService {
       logger.main.error("Failed to reset onboarding:", error);
       throw error;
     }
+  }
+
+  // ============================================
+  // Flow methods (event-driven architecture)
+  // ============================================
+
+  /**
+   * Check if onboarding is currently in progress
+   */
+  isInProgress(): boolean {
+    return this.isOnboardingInProgress;
+  }
+
+  /**
+   * Start the onboarding flow
+   * Note: Window creation is handled by AppManager
+   */
+  async startOnboardingFlow(): Promise<void> {
+    if (this.isOnboardingInProgress) {
+      logger.main.warn("Onboarding already in progress");
+      return;
+    }
+
+    this.isOnboardingInProgress = true;
+    logger.main.info("Starting onboarding flow");
+
+    // Track onboarding started event
+    this.trackOnboardingStarted(process.platform);
+  }
+
+  /**
+   * Complete the onboarding flow
+   * Emits "completed" event - AppManager handles window transitions
+   */
+  async completeOnboardingFlow(finalState: OnboardingState): Promise<void> {
+    try {
+      logger.main.info("Completing onboarding flow");
+
+      // Save the final state
+      await this.completeOnboarding(finalState);
+
+      this.isOnboardingInProgress = false;
+
+      // Emit event - AppManager listens and handles window transitions
+      this.emit("completed");
+
+      logger.main.info("Onboarding completed, emitted event");
+    } catch (error) {
+      logger.main.error("Error completing onboarding flow:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel the onboarding flow
+   * Emits "cancelled" event - AppManager handles window close and app quit
+   */
+  async cancelOnboardingFlow(): Promise<void> {
+    logger.main.info("Onboarding cancelled");
+
+    this.isOnboardingInProgress = false;
+
+    // Track abandonment event
+    const currentState = await this.getOnboardingState();
+    const lastScreen =
+      currentState?.lastVisitedScreen ||
+      currentState?.skippedScreens?.[currentState.skippedScreens.length - 1] ||
+      "unknown";
+    this.trackOnboardingAbandoned(lastScreen);
+
+    // Emit event - AppManager listens and handles window close + app quit
+    this.emit("cancelled");
+
+    logger.main.info("Onboarding cancelled, emitted event");
   }
 }

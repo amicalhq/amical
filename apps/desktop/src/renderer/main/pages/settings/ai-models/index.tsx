@@ -4,12 +4,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import SpeechTab from "./tabs/SpeechTab";
 import LanguageTab from "./tabs/LanguageTab";
 import EmbeddingTab from "./tabs/EmbeddingTab";
-import { useNavigate } from "@tanstack/react-router";
-import { Route } from "../../../routes/settings/ai-models";
+import { useNavigate, getRouteApi } from "@tanstack/react-router";
+
+const routeApi = getRouteApi("/settings/ai-models");
 
 export default function AIModelsSettingsPage() {
   const navigate = useNavigate();
-  const { tab } = Route.useSearch();
+  const { tab } = routeApi.useSearch();
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">

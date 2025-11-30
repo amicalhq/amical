@@ -7,9 +7,8 @@ import {
 } from "electron";
 import path from "node:path";
 import { logger } from "../logger";
-import { ServiceManager } from "../managers/service-manager";
-import type { RecordingManager } from "../managers/recording-manager";
-import type { RecordingState } from "../../types/recording";
+import type { SettingsService } from "../../services/settings-service";
+import type { createIPCHandler } from "electron-trpc-experimental/main";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -24,40 +23,34 @@ export class WindowManager {
   private cursorPollingInterval: NodeJS.Timeout | null = null;
   private themeListenerSetup: boolean = false;
 
+  constructor(
+    private settingsService: SettingsService,
+    private trpcHandler: ReturnType<typeof createIPCHandler>,
+  ) {
+    logger.main.info("WindowManager created with dependencies");
+  }
+
   private async getThemeColors(): Promise<{
     backgroundColor: string;
     symbolColor: string;
   }> {
-    try {
-      const settingsService =
-        ServiceManager.getInstance()?.getService("settingsService");
-      if (!settingsService) {
-        // Default to light theme if service unavailable
-        return { backgroundColor: "#ffffff", symbolColor: "#000000" };
-      }
+    const uiSettings = await this.settingsService.getUISettings();
+    const theme = uiSettings?.theme || "system";
 
-      const uiSettings = await settingsService.getUISettings();
-      const theme = uiSettings?.theme || "system";
-
-      // Determine if we should use dark colors
-      let isDark = false;
-      if (theme === "dark") {
-        isDark = true;
-      } else if (theme === "light") {
-        isDark = false;
-      } else if (theme === "system") {
-        isDark = nativeTheme.shouldUseDarkColors;
-      }
-
-      // Return appropriate colors
-      return isDark
-        ? { backgroundColor: "#171717", symbolColor: "#fafafa" }
-        : { backgroundColor: "#ffffff", symbolColor: "#171717" };
-    } catch (error) {
-      logger.main.error("Failed to get theme colors:", error);
-      // Default to light theme on error
-      return { backgroundColor: "#ffffff", symbolColor: "#000000" };
+    // Determine if we should use dark colors
+    let isDark = false;
+    if (theme === "dark") {
+      isDark = true;
+    } else if (theme === "light") {
+      isDark = false;
+    } else if (theme === "system") {
+      isDark = nativeTheme.shouldUseDarkColors;
     }
+
+    // Return appropriate colors
+    return isDark
+      ? { backgroundColor: "#171717", symbolColor: "#fafafa" }
+      : { backgroundColor: "#ffffff", symbolColor: "#171717" };
   }
 
   async updateAllWindowThemes(): Promise<void> {
@@ -83,10 +76,7 @@ export class WindowManager {
 
     // Listen for system theme changes
     nativeTheme.on("updated", async () => {
-      const settingsService =
-        ServiceManager.getInstance()!.getService("settingsService")!;
-
-      const uiSettings = await settingsService.getUISettings();
+      const uiSettings = await this.settingsService.getUISettings();
       const theme = uiSettings?.theme || "system";
 
       // Only update if theme is set to "system"
@@ -142,9 +132,7 @@ export class WindowManager {
 
     this.mainWindow.on("close", () => {
       // Detach window before it's destroyed
-      ServiceManager.getInstance()!
-        .getTRPCHandler()!
-        .detachWindow(this.mainWindow!);
+      this.trpcHandler.detachWindow(this.mainWindow!);
     });
 
     this.mainWindow.on("closed", () => {
@@ -152,9 +140,7 @@ export class WindowManager {
       this.mainWindow = null;
     });
 
-    ServiceManager.getInstance()!
-      .getTRPCHandler()!
-      .attachWindow(this.mainWindow!);
+    this.trpcHandler.attachWindow(this.mainWindow!);
   }
 
   async createWidgetWindow(): Promise<void> {
@@ -171,7 +157,6 @@ export class WindowManager {
       width,
       height,
       frame: false,
-      titleBarStyle: "hidden",
       transparent: true,
       alwaysOnTop: true,
       resizable: false,
@@ -212,9 +197,7 @@ export class WindowManager {
 
     this.widgetWindow.on("close", () => {
       // Detach window before it's destroyed
-      ServiceManager.getInstance()!
-        .getTRPCHandler()!
-        .detachWindow(this.widgetWindow!);
+      this.trpcHandler.detachWindow(this.widgetWindow!);
     });
 
     this.widgetWindow.on("closed", () => {
@@ -234,22 +217,11 @@ export class WindowManager {
     this.setupDisplayChangeNotifications();
 
     // Update tRPC handler with new window
-    ServiceManager.getInstance()!
-      .getTRPCHandler()!
-      .attachWindow(this.widgetWindow!);
+    this.trpcHandler.attachWindow(this.widgetWindow!);
 
-    // Check preference to determine initial visibility
-    const settingsService =
-      ServiceManager.getInstance()!.getService("settingsService")!;
-    const preferences = await settingsService.getPreferences();
-    if (preferences.showWidgetWhileInactive) {
-      this.widgetWindow.show();
-      logger.main.info("Widget window shown (showWidgetWhileInactive: true)");
-    } else {
-      logger.main.info(
-        "Widget window created but hidden (showWidgetWhileInactive: false)",
-      );
-    }
+    logger.main.info(
+      "Widget window created (visibility controlled by AppManager)",
+    );
   }
 
   createOrShowOnboardingWindow(): void {
@@ -264,7 +236,7 @@ export class WindowManager {
 
     this.onboardingWindow = new BrowserWindow({
       width: 800,
-      height: 900,
+      height: 928,
       frame: false,
       titleBarStyle: "hidden",
       resizable: false,
@@ -290,6 +262,10 @@ export class WindowManager {
       );
     }
 
+    this.onboardingWindow.on("close", () => {
+      this.trpcHandler.detachWindow(this.onboardingWindow!);
+    });
+
     this.onboardingWindow.on("closed", () => {
       this.onboardingWindow = null;
     });
@@ -299,6 +275,7 @@ export class WindowManager {
       this.mainWindow.setEnabled(false);
     }
 
+    this.trpcHandler.attachWindow(this.onboardingWindow!);
     logger.main.info("Onboarding window created");
   }
 
@@ -315,47 +292,16 @@ export class WindowManager {
     }
   }
 
-  async updateWidgetVisibility(isIdle: boolean): Promise<void> {
-    if (!this.widgetWindow || this.widgetWindow.isDestroyed()) {
-      return;
-    }
-
-    const settingsService =
-      ServiceManager.getInstance()!.getService("settingsService")!;
-
-    const preferences = await settingsService.getPreferences();
-
-    if (preferences.showWidgetWhileInactive) {
+  showWidget(): void {
+    if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
       this.widgetWindow.showInactive();
-      return;
     }
+  }
 
-    if (isIdle) {
+  hideWidget(): void {
+    if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
       this.widgetWindow.hide();
-      return;
     }
-
-    this.widgetWindow.showInactive();
-  }
-
-  setupRecordingStateListener(recordingManager: RecordingManager): void {
-    recordingManager.on("state-changed", (state: RecordingState) => {
-      const isIdle = state === "idle";
-      this.updateWidgetVisibility(isIdle).catch((error) => {
-        logger.main.error("Failed to update widget visibility", error);
-      });
-    });
-    logger.main.info(
-      "Widget visibility listener connected to recording state changes",
-    );
-  }
-
-  async syncWidgetVisibility(): Promise<void> {
-    const recordingManager =
-      ServiceManager.getInstance()!.getService("recordingManager")!;
-    const recordingState = recordingManager.getState();
-    const isIdle = recordingState === "idle";
-    await this.updateWidgetVisibility(isIdle);
   }
 
   private setupDisplayChangeNotifications(): void {

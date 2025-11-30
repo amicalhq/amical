@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
 import type { ModelRecommendation } from "../../../types/onboarding";
 
@@ -13,19 +12,10 @@ interface UseSystemRecommendationReturn {
  * Analyzes system specs and provides intelligent recommendations
  */
 export function useSystemRecommendation(): UseSystemRecommendationReturn {
-  const [recommendation, setRecommendation] =
-    useState<ModelRecommendation | null>(null);
-
   const query = api.onboarding.getSystemRecommendation.useQuery();
 
-  useEffect(() => {
-    if (query.data) {
-      setRecommendation(query.data);
-    }
-  }, [query.data]);
-
   return {
-    recommendation,
+    recommendation: query.data ?? null,
     isLoading: query.isLoading,
     error: query.error as Error | null,
   };

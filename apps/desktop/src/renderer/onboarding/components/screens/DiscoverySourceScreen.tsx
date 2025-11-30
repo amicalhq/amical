@@ -80,6 +80,16 @@ export function DiscoverySourceScreen({
     <OnboardingLayout
       title="How did you discover Amical?"
       subtitle="This helps us understand where our users come from"
+      footer={
+        <NavigationButtons
+          onBack={onBack}
+          onNext={handleContinue}
+          disableNext={
+            !selectedSource ||
+            (selectedSource === DiscoverySource.Other && !otherDetails.trim())
+          }
+        />
+      }
     >
       <div className="space-y-6">
         {/* Discovery Sources */}
@@ -117,16 +127,6 @@ export function DiscoverySourceScreen({
             </p>
           </div>
         )}
-
-        {/* Navigation */}
-        <NavigationButtons
-          onBack={onBack}
-          onNext={handleContinue}
-          disableNext={
-            !selectedSource ||
-            (selectedSource === DiscoverySource.Other && !otherDetails.trim())
-          }
-        />
       </div>
     </OnboardingLayout>
   );

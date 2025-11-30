@@ -69,6 +69,7 @@ export class NativeBridge extends EventEmitter {
   >();
   private helperPath: string;
   private logger = createScopedLogger("native-bridge");
+  private accessibilityContext: GetAccessibilityContextResult | null = null;
 
   constructor() {
     super();
@@ -348,6 +349,36 @@ export class NativeBridge extends EventEmitter {
       this.proc.kill();
       this.proc = null;
     }
+  }
+
+  /**
+   * Refresh the cached accessibility context from the native helper.
+   * This is called asynchronously when recording starts.
+   */
+  async refreshAccessibilityContext(): Promise<void> {
+    try {
+      const context = await this.call("getAccessibilityContext", {
+        editableOnly: false,
+      });
+      this.accessibilityContext = context;
+      this.logger.debug("Accessibility context refreshed", {
+        hasApplication: !!context.context?.application?.name,
+        hasFocusedElement: !!context.context?.focusedElement?.role,
+        hasTextSelection: !!context.context?.textSelection?.selectedText,
+        hasWindow: !!context.context?.windowInfo?.title,
+      });
+    } catch (error) {
+      this.logger.error("Failed to refresh accessibility context", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Get the cached accessibility context.
+   */
+  getAccessibilityContext(): GetAccessibilityContextResult | null {
+    return this.accessibilityContext;
   }
 
   // Typed event emitter methods

@@ -37,7 +37,7 @@ export function NavigationButtons({
   return (
     <div
       className={cn(
-        "flex items-center justify-between pt-6",
+        "flex items-center justify-between pt-4",
         !showBack && "justify-end",
         className,
       )}

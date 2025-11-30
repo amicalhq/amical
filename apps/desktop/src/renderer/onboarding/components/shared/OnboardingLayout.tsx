@@ -3,7 +3,9 @@ import { cn } from "@/lib/utils";
 
 interface OnboardingLayoutProps {
   children: React.ReactNode;
+  footer?: React.ReactNode;
   title?: string;
+  titleIcon?: React.ReactNode;
   subtitle?: string;
   className?: string;
 }
@@ -14,23 +16,27 @@ interface OnboardingLayoutProps {
  */
 export function OnboardingLayout({
   children,
+  footer,
   title,
+  titleIcon,
   subtitle,
   className,
 }: OnboardingLayoutProps) {
   return (
     <div
       className={cn(
-        "flex flex-col items-center bg-background py-4 px-6",
+        "flex h-full flex-col items-center bg-background px-6 py-4",
         className,
       )}
     >
-      <div className="w-full max-w-3xl">
+      {/* Scrollable content area */}
+      <div className="flex-1 w-full max-w-3xl overflow-auto">
         {/* Header */}
         {(title || subtitle) && (
           <div className="mb-4 text-center">
             {title && (
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              <h1 className="flex items-center justify-center gap-2 text-2xl font-bold tracking-tight text-foreground">
+                {titleIcon}
                 {title}
               </h1>
             )}
@@ -45,6 +51,9 @@ export function OnboardingLayout({
           {children}
         </div>
       </div>
+
+      {/* Footer - pinned to bottom */}
+      {footer && <div className="w-full max-w-3xl pt-4 mt-auto">{footer}</div>}
     </div>
   );
 }

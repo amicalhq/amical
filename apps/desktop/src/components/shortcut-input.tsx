@@ -137,6 +137,9 @@ export function ShortcutInput({
   };
 
   // Subscribe to key events when recording
+  // Note: activeKeys closure is fresh on each render because useSubscription
+  // updates its callback reference, so previousKeys correctly captures the
+  // previous state value when onData fires.
   api.settings.activeKeysUpdates.useSubscription(undefined, {
     enabled: isRecordingShortcut,
     onData: (keys: string[]) => {

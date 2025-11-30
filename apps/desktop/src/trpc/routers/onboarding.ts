@@ -1,18 +1,11 @@
 import { z } from "zod";
 import { systemPreferences, shell, app } from "electron";
 import { createRouter, procedure } from "../trpc";
-import { ServiceManager } from "../../main/managers/service-manager";
 import {
   OnboardingPreferencesSchema,
   OnboardingStateSchema,
-  ModelTypeSchema,
-  FeatureInterestSchema,
-  DiscoverySourceSchema,
-  OnboardingScreenSchema,
-  type OnboardingState,
   type ModelRecommendation,
   type OnboardingFeatureFlags,
-  type OnboardingPreferences,
 } from "../../types/onboarding";
 import { logger } from "../../main/logger";
 
@@ -24,9 +17,9 @@ export const onboardingRouter = createRouter({
   /**
    * Get current onboarding state from database
    */
-  getState: procedure.query(async () => {
+  getState: procedure.query(async ({ ctx }) => {
     try {
-      const serviceManager = ServiceManager.getInstance();
+      const { serviceManager } = ctx;
       if (!serviceManager) {
         logger.main.warn("ServiceManager not available");
         return null;
@@ -50,9 +43,9 @@ export const onboardingRouter = createRouter({
    * Get system recommendation for model selection
    */
   getSystemRecommendation: procedure.query(
-    async (): Promise<ModelRecommendation> => {
+    async ({ ctx }): Promise<ModelRecommendation> => {
       try {
-        const serviceManager = ServiceManager.getInstance();
+        const { serviceManager } = ctx;
         if (!serviceManager) {
           throw new Error("ServiceManager not available");
         }
@@ -75,9 +68,9 @@ export const onboardingRouter = createRouter({
   /**
    * Check if onboarding is needed
    */
-  needsOnboarding: procedure.query(async () => {
+  needsOnboarding: procedure.query(async ({ ctx }) => {
     try {
-      const serviceManager = ServiceManager.getInstance();
+      const { serviceManager } = ctx;
       if (!serviceManager) {
         // If service manager not available, assume onboarding not needed
         return {
@@ -123,9 +116,9 @@ export const onboardingRouter = createRouter({
    * Get feature flags for screen visibility
    */
   getFeatureFlags: procedure.query(
-    async (): Promise<OnboardingFeatureFlags> => {
+    async ({ ctx }): Promise<OnboardingFeatureFlags> => {
       try {
-        const serviceManager = ServiceManager.getInstance();
+        const { serviceManager } = ctx;
         if (!serviceManager) {
           // Return all screens enabled by default
           return {
@@ -172,9 +165,12 @@ export const onboardingRouter = createRouter({
   savePreferences: procedure
     .input(OnboardingPreferencesSchema)
     .mutation(
-      async ({ input }): Promise<{ success: boolean; message?: string }> => {
+      async ({
+        input,
+        ctx,
+      }): Promise<{ success: boolean; message?: string }> => {
         try {
-          const serviceManager = ServiceManager.getInstance();
+          const { serviceManager } = ctx;
           if (!serviceManager) {
             throw new Error("ServiceManager not available");
           }
@@ -199,167 +195,53 @@ export const onboardingRouter = createRouter({
     ),
 
   /**
-   * Track onboarding started event
-   */
-  trackOnboardingStarted: procedure
-    .input(
-      z.object({
-        platform: z.string(),
-        resumed: z.boolean(),
-        resumedFrom: z.string().optional(),
-      }),
-    )
-    .mutation(async ({ input }): Promise<void> => {
-      const serviceManager = ServiceManager.getInstance();
-      const telemetryService = serviceManager?.getService("telemetryService");
-      telemetryService?.trackOnboardingStarted(input);
-    }),
-
-  /**
-   * Track onboarding screen viewed event
-   */
-  trackOnboardingScreenViewed: procedure
-    .input(
-      z.object({
-        screen: z.string(),
-        index: z.number(),
-        total: z.number(),
-      }),
-    )
-    .mutation(async ({ input }): Promise<void> => {
-      const serviceManager = ServiceManager.getInstance();
-      const telemetryService = serviceManager?.getService("telemetryService");
-      telemetryService?.trackOnboardingScreenViewed(input);
-    }),
-
-  /**
-   * Track onboarding features selected event
-   */
-  trackOnboardingFeaturesSelected: procedure
-    .input(
-      z.object({
-        features: z.array(z.string()),
-        count: z.number(),
-      }),
-    )
-    .mutation(async ({ input }): Promise<void> => {
-      const serviceManager = ServiceManager.getInstance();
-      const telemetryService = serviceManager?.getService("telemetryService");
-      telemetryService?.trackOnboardingFeaturesSelected(input);
-    }),
-
-  /**
-   * Track onboarding discovery selected event
-   */
-  trackOnboardingDiscoverySelected: procedure
-    .input(
-      z.object({
-        source: z.string(),
-        details: z.string().optional(),
-      }),
-    )
-    .mutation(async ({ input }): Promise<void> => {
-      const serviceManager = ServiceManager.getInstance();
-      const telemetryService = serviceManager?.getService("telemetryService");
-      telemetryService?.trackOnboardingDiscoverySelected(input);
-    }),
-
-  /**
-   * Track onboarding model selected event
-   */
-  trackOnboardingModelSelected: procedure
-    .input(
-      z.object({
-        model_type: z.string(),
-        recommendation_followed: z.boolean(),
-      }),
-    )
-    .mutation(async ({ input }): Promise<void> => {
-      const serviceManager = ServiceManager.getInstance();
-      const telemetryService = serviceManager?.getService("telemetryService");
-      telemetryService?.trackOnboardingModelSelected(input);
-    }),
-
-  /**
-   * Track onboarding completed event
-   */
-  trackOnboardingCompleted: procedure
-    .input(
-      z.object({
-        version: z.number(),
-        features_selected: z.array(z.string()),
-        discovery_source: z.string().optional(),
-        model_type: z.string(),
-        recommendation_followed: z.boolean(),
-        skipped_screens: z.array(z.string()).optional(),
-      }),
-    )
-    .mutation(async ({ input }): Promise<void> => {
-      const serviceManager = ServiceManager.getInstance();
-      const telemetryService = serviceManager?.getService("telemetryService");
-      telemetryService?.trackOnboardingCompleted(input);
-    }),
-
-  /**
    * Complete onboarding and save final state
    */
   complete: procedure
     .input(OnboardingStateSchema)
-    .mutation(
-      async ({
-        input,
-      }): Promise<{ success: boolean; shouldRelaunch: boolean }> => {
-        try {
-          const serviceManager = ServiceManager.getInstance();
-          if (!serviceManager) {
-            throw new Error("ServiceManager not available");
-          }
-          const onboardingService = serviceManager.getOnboardingService();
-          const onboardingManager = serviceManager.getOnboardingManager();
-
-          if (!onboardingService || !onboardingManager) {
-            throw new Error("Onboarding services not available");
-          }
-
-          // Complete onboarding through the manager (handles window closing and relaunching)
-          await onboardingManager.completeOnboarding(input);
-
-          // Determine if app needs to relaunch
-          const isDevelopment = process.env.NODE_ENV === "development";
-          const shouldRelaunch = !isDevelopment;
-
-          logger.main.info("Onboarding completed successfully", {
-            shouldRelaunch,
-            state: input,
-          });
-
-          return {
-            success: true,
-            shouldRelaunch,
-          };
-        } catch (error) {
-          logger.main.error("Failed to complete onboarding:", error);
-          throw error;
+    .mutation(async ({ input, ctx }): Promise<{ success: boolean }> => {
+      try {
+        const { serviceManager } = ctx;
+        if (!serviceManager) {
+          throw new Error("ServiceManager not available");
         }
-      },
-    ),
+        const onboardingService = serviceManager.getOnboardingService();
+
+        if (!onboardingService) {
+          throw new Error("OnboardingService not available");
+        }
+
+        // Complete onboarding through the service
+        // AppManager handles window closing and relaunch decision
+        await onboardingService.completeOnboardingFlow(input);
+
+        logger.main.info("Onboarding completed successfully", {
+          state: input,
+        });
+
+        return { success: true };
+      } catch (error) {
+        logger.main.error("Failed to complete onboarding:", error);
+        throw error;
+      }
+    }),
 
   /**
    * Cancel onboarding
    */
-  cancel: procedure.mutation(async () => {
+  cancel: procedure.mutation(async ({ ctx }) => {
     try {
-      const serviceManager = ServiceManager.getInstance();
+      const { serviceManager } = ctx;
       if (!serviceManager) {
         throw new Error("ServiceManager not available");
       }
-      const onboardingManager = serviceManager.getOnboardingManager();
+      const onboardingService = serviceManager.getOnboardingService();
 
-      if (!onboardingManager) {
-        throw new Error("OnboardingManager not available");
+      if (!onboardingService) {
+        throw new Error("OnboardingService not available");
       }
 
-      await onboardingManager.cancelOnboarding();
+      await onboardingService.cancelOnboardingFlow();
 
       return { success: true };
     } catch (error) {
@@ -371,9 +253,9 @@ export const onboardingRouter = createRouter({
   /**
    * Reset onboarding state (for testing)
    */
-  reset: procedure.mutation(async () => {
+  reset: procedure.mutation(async ({ ctx }) => {
     try {
-      const serviceManager = ServiceManager.getInstance();
+      const { serviceManager } = ctx;
       if (!serviceManager) {
         throw new Error("ServiceManager not available");
       }
@@ -396,9 +278,9 @@ export const onboardingRouter = createRouter({
   /**
    * Get skipped screens based on feature flags
    */
-  getSkippedScreens: procedure.query(async () => {
+  getSkippedScreens: procedure.query(async ({ ctx }) => {
     try {
-      const serviceManager = ServiceManager.getInstance();
+      const { serviceManager } = ctx;
       if (!serviceManager) {
         return [];
       }

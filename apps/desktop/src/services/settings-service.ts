@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { EventEmitter } from "events";
 import { FormatterConfig } from "../types/formatter";
 import {
   getSettingsSection,
@@ -23,8 +24,10 @@ export interface AppPreferences {
   showWidgetWhileInactive: boolean;
 }
 
-export class SettingsService {
-  constructor() {}
+export class SettingsService extends EventEmitter {
+  constructor() {
+    super();
+  }
 
   /**
    * Get formatter configuration
@@ -73,6 +76,11 @@ export class SettingsService {
    */
   async setUISettings(uiSettings: AppSettingsData["ui"]): Promise<void> {
     await updateSettingsSection("ui", uiSettings);
+
+    // Emit event if theme changed (AppManager will handle window updates)
+    if (uiSettings?.theme !== undefined) {
+      this.emit("theme-changed", { theme: uiSettings.theme });
+    }
   }
 
   /**
@@ -301,6 +309,13 @@ export class SettingsService {
     ) {
       this.syncAutoLaunch();
     }
+
+    // Emit event for listeners (AppManager will handle window updates)
+    this.emit("preferences-changed", {
+      changes: preferences,
+      showWidgetWhileInactiveChanged:
+        preferences.showWidgetWhileInactive !== undefined,
+    });
   }
 
   /**

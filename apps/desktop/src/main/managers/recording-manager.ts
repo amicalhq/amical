@@ -1,14 +1,13 @@
 import { ipcMain, app, dialog } from "electron";
 import { EventEmitter } from "node:events";
 import { logger, logPerformance } from "../logger";
-import { ServiceManager } from "./service-manager";
+import type { ServiceManager } from "@/main/managers/service-manager";
 import type { RecordingState } from "../../types/recording";
 import { Mutex } from "async-mutex";
-import type { ShortcutManager } from "../services/shortcut-manager";
+import type { ShortcutManager } from "./shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { appContextStore } from "@/stores/app-context";
 
 export type RecordingMode = "idle" | "ptt" | "hands-free";
 
@@ -164,15 +163,6 @@ export class RecordingManager extends EventEmitter {
       const transcriptionService = this.serviceManager.getService(
         "transcriptionService",
       );
-      if (!transcriptionService) {
-        logger.audio.error("Transcription service not available");
-        // Show error dialog
-        dialog.showErrorBox(
-          "Recording Failed",
-          "Transcription service is not available. Please restart the application.",
-        );
-        return;
-      }
 
       const hasModels = await transcriptionService.isModelAvailable();
       const modelCheckDuration = performance.now() - modelCheckStartTime;
@@ -214,8 +204,9 @@ export class RecordingManager extends EventEmitter {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       this.currentSessionId = `session-${timestamp}`;
 
-      // Get accessibility context from global store (async, not awaited)
-      appContextStore.refreshAccessibilityData();
+      // Refresh accessibility context from NativeBridge (async, not awaited)
+      const nativeBridge = this.serviceManager.getService("nativeBridge");
+      nativeBridge?.refreshAccessibilityContext();
       logger.audio.info(
         "RecordingManager: Triggered accessibility context refresh (async)",
       );
@@ -240,7 +231,6 @@ export class RecordingManager extends EventEmitter {
 
       // Mute system audio (async, non-blocking)
       const muteStartTime = performance.now();
-      const nativeBridge = this.serviceManager.getService("nativeBridge");
       if (nativeBridge) {
         nativeBridge
           .call("muteSystemAudio", {})

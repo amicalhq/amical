@@ -3,7 +3,7 @@ import {
   TranscribeParams,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
-import { ModelManagerService } from "../../../services/model-manager";
+import { ModelService } from "../../../services/model-service";
 import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
@@ -11,7 +11,7 @@ import { app } from "electron";
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
 
-  private modelManager: ModelManagerService;
+  private modelService: ModelService;
   private workerWrapper: SimpleForkWrapper | null = null;
 
   // Frame aggregation state
@@ -48,8 +48,8 @@ export class WhisperProvider implements TranscriptionProvider {
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
   private readonly IGNORE_FULLY_SILENT_CHUNKS = true;
 
-  constructor(modelManager: ModelManagerService) {
-    this.modelManager = modelManager;
+  constructor(modelService: ModelService) {
+    this.modelService = modelService;
   }
 
   /**
@@ -328,7 +328,7 @@ export class WhisperProvider implements TranscriptionProvider {
       await this.workerWrapper.initialize();
     }
 
-    const modelPath = await this.modelManager.getBestAvailableModelPath();
+    const modelPath = await this.modelService.getBestAvailableModelPath();
     if (!modelPath) {
       throw new Error(
         "No Whisper models available. Please download a model first.",

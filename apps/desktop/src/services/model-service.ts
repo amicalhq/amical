@@ -56,7 +56,7 @@ interface ModelManagerEvents {
   ) => void;
 }
 
-class ModelManagerService extends EventEmitter {
+class ModelService extends EventEmitter {
   private state: ModelManagerState;
   private modelsDirectory: string;
   private settingsService: SettingsService;
@@ -1149,4 +1149,4 @@ class ModelManagerService extends EventEmitter {
   }
 }
 
-export { ModelManagerService };
+export { ModelService };

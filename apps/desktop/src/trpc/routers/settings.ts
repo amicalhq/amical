@@ -541,14 +541,7 @@ export const settingsRouter = createRouter({
       }
 
       await settingsService.setPreferences(input);
-
-      // Sync widget visibility if preference changed
-      if (input.showWidgetWhileInactive !== undefined) {
-        const windowManager = ctx.serviceManager.getService("windowManager");
-        if (windowManager) {
-          await windowManager.syncWidgetVisibility();
-        }
-      }
+      // Window updates are handled via settings events in AppManager
 
       return true;
     }),
@@ -570,12 +563,7 @@ export const settingsRouter = createRouter({
         ...currentUISettings,
         theme: input.theme,
       });
-
-      // Update all window themes immediately
-      const windowManager = ctx.serviceManager.getService("windowManager");
-      if (windowManager) {
-        await windowManager.updateAllWindowThemes();
-      }
+      // Window updates are handled via settings events in AppManager
 
       const logger = ctx.serviceManager.getLogger();
       if (logger) {
