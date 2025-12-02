@@ -12,12 +12,13 @@ import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
 import type { NativeBridge } from "./platform/native-bridge-service";
+import type { OnboardingService } from "./onboarding-service";
 import { createTranscription } from "../db/transcriptions";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
-import { app, dialog } from "electron";
+import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
 
 /**
@@ -44,6 +45,7 @@ export class TranscriptionService {
     settingsService: SettingsService,
     telemetryService: TelemetryService,
     private nativeBridge: NativeBridge | null,
+    private onboardingService: OnboardingService | null,
   ) {
     this.whisperProvider = new WhisperProvider(modelService);
     this.cloudProvider = new AmicalCloudProvider();
@@ -109,8 +111,10 @@ export class TranscriptionService {
           logger.transcription.info(
             "Whisper model preloading skipped - no models available",
           );
-          if (app.isReady() && !isCloudModel) {
-            setTimeout(() => {
+          setTimeout(async () => {
+            const onboardingCheck =
+              await this.onboardingService?.checkNeedsOnboarding();
+            if (!onboardingCheck?.needed) {
               dialog.showMessageBox({
                 type: "warning",
                 title: "No Transcription Models",
@@ -119,8 +123,8 @@ export class TranscriptionService {
                   "To use voice transcription, please download a model from Speech Models or use a cloud model.",
                 buttons: ["OK"],
               });
-            }, 2000); // Delay to ensure windows are ready
-          }
+            }
+          }, 2000); // Delay to ensure windows are ready
         }
       } else {
         logger.transcription.info("Whisper model preloading disabled");

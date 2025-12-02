@@ -149,6 +149,7 @@ export class ServiceManager {
         this.settingsService,
         this.telemetryService!,
         this.nativeBridge,
+        this.onboardingService,
       );
       await this.transcriptionService.initialize();
 
