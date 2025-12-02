@@ -46,7 +46,19 @@ export class AppManager {
         }
       }
 
-      // Add other deep link handlers here in the future
+      // Auto-focus the appropriate window after handling deep link
+      const onboardingWindow = this.windowManager.getOnboardingWindow();
+      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+        onboardingWindow.show();
+        onboardingWindow.focus();
+      } else {
+        // Create or show main window
+        this.windowManager.createOrShowMainWindow();
+        const mainWindow = this.windowManager.getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.focus();
+        }
+      }
     } catch (error) {
       logger.main.error("Error handling deep link:", error);
     }

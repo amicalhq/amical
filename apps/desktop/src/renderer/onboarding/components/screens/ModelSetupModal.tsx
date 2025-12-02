@@ -44,27 +44,34 @@ export function ModelSetupModal({
   const [installedModelName, setInstalledModelName] = useState<string>("");
   const [downloadComplete, setDownloadComplete] = useState(false);
 
-  // tRPC mutations and utils
-  const utils = api.useUtils();
+  // tRPC mutations
   const loginMutation = api.auth.login.useMutation({
-    onSuccess: async () => {
-      // After login, check auth status
-      const authStatus = await utils.auth.getAuthStatus.fetch();
-      if (authStatus.isAuthenticated) {
-        toast.success("Successfully authenticated!");
-        onContinue();
-      } else {
-        setError("Authentication failed. Please try again.");
-      }
-      setIsLoading(false);
+    onSuccess: () => {
+      // Browser opened, waiting for OAuth completion via subscription
+      toast.info("Complete login in your browser");
     },
     onError: (err) => {
       console.error("OAuth error:", err);
-      setError("Failed to authenticate. Please try again.");
+      setError("Failed to open login. Please try again.");
       setIsLoading(false);
     },
   });
   const downloadModelMutation = api.models.downloadModel.useMutation();
+
+  // Subscribe to auth state changes for Cloud model OAuth completion
+  api.auth.onAuthStateChange.useSubscription(undefined, {
+    onData: (authState) => {
+      if (authState.isAuthenticated && isLoading) {
+        toast.success("Successfully authenticated!");
+        setIsLoading(false);
+        onContinue();
+      }
+    },
+    onError: (error) => {
+      console.error("Auth state subscription error:", error);
+    },
+    enabled: modelType === ModelType.Cloud && isOpen,
+  });
 
   // Check for existing downloaded models
   const { data: downloadedModels } = api.models.getDownloadedModels.useQuery(
