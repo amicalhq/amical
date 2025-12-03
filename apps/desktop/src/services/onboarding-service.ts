@@ -3,6 +3,7 @@ import { systemPreferences } from "electron";
 import { logger } from "../main/logger";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
+import type { ModelService } from "./model-service";
 import type { AppSettingsData } from "../db/schema";
 import {
   OnboardingScreen,
@@ -40,26 +41,31 @@ export class OnboardingService extends EventEmitter {
   private static instance: OnboardingService | null = null;
   private settingsService: SettingsService;
   private telemetryService: TelemetryService;
+  private modelService: ModelService;
   private currentState: Partial<OnboardingState> = {};
   private isOnboardingInProgress = false;
 
   constructor(
     settingsService: SettingsService,
     telemetryService: TelemetryService,
+    modelService: ModelService,
   ) {
     super();
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
+    this.modelService = modelService;
   }
 
   static getInstance(
     settingsService: SettingsService,
     telemetryService: TelemetryService,
+    modelService: ModelService,
   ): OnboardingService {
     if (!OnboardingService.instance) {
       OnboardingService.instance = new OnboardingService(
         settingsService,
         telemetryService,
+        modelService,
       );
     }
     return OnboardingService.instance;
@@ -211,7 +217,7 @@ export class OnboardingService extends EventEmitter {
         });
       }
 
-      // Track model selection
+      // Track model selection and set the actual model
       if (preferences.selectedModelType !== undefined) {
         updates.selectedModelType = preferences.selectedModelType;
         this.telemetryService.trackOnboardingModelSelected({
@@ -219,6 +225,26 @@ export class OnboardingService extends EventEmitter {
           recommendation_followed:
             preferences.modelRecommendation?.followed ?? false,
         });
+
+        // Set the actual model in ModelService
+        if (preferences.selectedModelType === "cloud") {
+          await this.modelService.setSelectedModel("amical-cloud");
+          logger.main.info("Set default speech model to amical-cloud");
+        } else if (preferences.selectedModelType === "local") {
+          // Keep existing selection if any, otherwise use first downloaded model
+          const currentModel = await this.modelService.getSelectedModel();
+          if (!currentModel) {
+            const downloadedModels =
+              await this.modelService.getDownloadedModels();
+            const downloadedIds = Object.keys(downloadedModels);
+            if (downloadedIds.length > 0) {
+              await this.modelService.setSelectedModel(downloadedIds[0]);
+              logger.main.info(
+                `Set default speech model to ${downloadedIds[0]}`,
+              );
+            }
+          }
+        }
       }
 
       if (preferences.modelRecommendation !== undefined) {

@@ -64,8 +64,8 @@ export class ServiceManager {
       this.initializeSettingsService();
       this.initializeAuthService();
       await this.initializeTelemetryService();
-      await this.initializeOnboardingService();
       await this.initializeModelServices();
+      await this.initializeOnboardingService();
       this.initializePlatformServices();
       await this.initializeVADService();
       await this.initializeAIServices();
@@ -99,9 +99,9 @@ export class ServiceManager {
   }
 
   private async initializeOnboardingService(): Promise<void> {
-    if (!this.settingsService || !this.telemetryService) {
+    if (!this.settingsService || !this.telemetryService || !this.modelService) {
       logger.main.warn(
-        "Settings or telemetry service not available for onboarding",
+        "Settings, telemetry, or model service not available for onboarding",
       );
       return;
     }
@@ -109,6 +109,7 @@ export class ServiceManager {
     this.onboardingService = OnboardingService.getInstance(
       this.settingsService,
       this.telemetryService,
+      this.modelService,
     );
     logger.main.info("Onboarding service initialized");
   }

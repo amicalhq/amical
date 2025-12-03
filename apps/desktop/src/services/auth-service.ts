@@ -4,6 +4,7 @@ import { logger } from "../main/logger";
 import { EventEmitter } from "events";
 import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
 import { getUserAgent } from "../utils/http-client";
+import { ServiceManager } from "../main/managers/service-manager";
 
 interface AuthConfig {
   clientId: string;
@@ -200,6 +201,17 @@ export class AuthService extends EventEmitter {
 
       // Save to database
       await updateSettingsSection("auth", authState);
+
+      // Identify user in telemetry
+      if (authState.userInfo?.sub) {
+        const telemetryService =
+          ServiceManager.getInstance().getService("telemetryService");
+        telemetryService.identifyUser(
+          authState.userInfo.sub,
+          authState.userInfo.email,
+          authState.userInfo.name,
+        );
+      }
 
       // Clear pending auth
       this.pendingAuth = null;

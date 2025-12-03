@@ -126,13 +126,6 @@ export class TelemetryService {
       },
     };
 
-    // Identify the machine with system properties
-    this.posthog.identify({
-      distinctId: this.machineId,
-      properties: {
-        ...this.persistedProperties,
-      },
-    });
     this.enabled = true;
     this.initialized = true;
     logger.main.info("Telemetry service initialized successfully");
@@ -259,6 +252,34 @@ export class TelemetryService {
     } else {
       await this.optOut();
     }
+  }
+
+  // ============================================================================
+  // User Identification
+  // ============================================================================
+
+  /**
+   * Identify user in telemetry after login.
+   * Also creates an alias to link machine ID with user ID.
+   */
+  identifyUser(userId: string, email?: string, name?: string): void {
+    if (!this.posthog || !this.enabled) return;
+
+    // Identify with user ID
+    this.posthog.identify({
+      distinctId: userId,
+      properties: {
+        ...this.persistedProperties,
+        email,
+        name,
+      },
+    });
+
+    // Alias machine ID to user ID so previous anonymous events are linked
+    this.posthog.alias({
+      distinctId: userId,
+      alias: this.machineId,
+    });
   }
 
   // ============================================================================
