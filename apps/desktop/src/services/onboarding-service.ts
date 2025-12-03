@@ -432,6 +432,80 @@ export class OnboardingService extends EventEmitter {
   }
 
   /**
+   * Check for high-end hardware (RTX 50 series or M3 Pro/Max/M4)
+   */
+  private hasHighEndHardware(gpuModel: string, cpuModel: string): boolean {
+    const upperGpu = gpuModel.toUpperCase();
+    const upperCpu = cpuModel.toUpperCase();
+
+    // RTX 50 series
+    const hasRtx50 = ["RTX 5060", "RTX 5070", "RTX 5080", "RTX 5090"].some(
+      (m) => upperGpu.includes(m),
+    );
+
+    // M3 Pro/Max or M4+
+    const hasM3ProMax =
+      upperCpu.includes("M3 PRO") || upperCpu.includes("M3 MAX");
+    const hasM4Plus = ["M4", "M5", "M6"].some((chip) =>
+      upperCpu.includes(`APPLE ${chip}`),
+    );
+
+    return hasRtx50 || hasM3ProMax || hasM4Plus;
+  }
+
+  /**
+   * Check for NVIDIA RTX 20 series
+   */
+  private hasNvidia20Series(gpuModel: string): boolean {
+    if (!gpuModel) return false;
+    const upperGpu = gpuModel.toUpperCase();
+    return ["RTX 2060", "RTX 2070", "RTX 2080"].some((m) =>
+      upperGpu.includes(m),
+    );
+  }
+
+  /**
+   * Check for Apple Silicon M1
+   */
+  private hasAppleSiliconM1(cpuModel: string): boolean {
+    if (process.platform !== "darwin" || process.arch !== "arm64") return false;
+    return cpuModel.toUpperCase().includes("APPLE M1");
+  }
+
+  /**
+   * Get recommended local model ID based on hardware
+   * - High-end (RTX 50, M3 Pro/Max, M4+) → whisper-large-v3-turbo
+   * - Mid-tier (RTX 30/40, M2/M3 base) → whisper-medium
+   * - Entry (RTX 20, M1) → whisper-small
+   * - Default → whisper-base
+   */
+  getRecommendedLocalModelId(): string {
+    const systemInfo = this.telemetryService.getSystemInfo();
+    const gpuModel = systemInfo?.gpu_model || "";
+    const cpuModel = systemInfo?.cpu_model || "";
+
+    // High-end: RTX 50 series or M3 Pro/Max/M4+
+    if (this.hasHighEndHardware(gpuModel, cpuModel)) {
+      return "whisper-large-v3-turbo";
+    }
+
+    // Mid-tier: RTX 30/40 series or M2/M3 base
+    if (
+      this.hasNvidia30SeriesOrBetter(gpuModel) ||
+      this.hasAppleSiliconM2OrBetter(cpuModel)
+    ) {
+      return "whisper-medium";
+    }
+
+    // Entry: RTX 20 series or M1
+    if (this.hasNvidia20Series(gpuModel) || this.hasAppleSiliconM1(cpuModel)) {
+      return "whisper-small";
+    }
+
+    return "whisper-base";
+  }
+
+  /**
    * Calculate model recommendation based on system specs
    */
   calculateModelRecommendation(systemInfo: SystemSpecs): ModelRecommendation {

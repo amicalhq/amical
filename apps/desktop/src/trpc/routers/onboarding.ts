@@ -66,6 +66,21 @@ export const onboardingRouter = createRouter({
   ),
 
   /**
+   * Get recommended local model ID based on hardware
+   */
+  getRecommendedLocalModel: procedure.query(({ ctx }): string => {
+    const { serviceManager } = ctx;
+    if (!serviceManager) {
+      return "whisper-base";
+    }
+    const onboardingService = serviceManager.getOnboardingService();
+    if (!onboardingService) {
+      return "whisper-base";
+    }
+    return onboardingService.getRecommendedLocalModelId();
+  }),
+
+  /**
    * Check if onboarding is needed
    */
   needsOnboarding: procedure.query(async ({ ctx }) => {

@@ -157,6 +157,16 @@ export class TranscriptionService {
    */
   public async isModelAvailable(): Promise<boolean> {
     try {
+      // Check if selected model is a cloud model (doesn't need download)
+      const selectedModelId = await this.modelService.getSelectedModel();
+      if (selectedModelId) {
+        const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+        if (model?.provider === "Amical Cloud") {
+          return true;
+        }
+      }
+
+      // For local models, check if any are downloaded
       const modelService = this.whisperProvider["modelService"];
       const availableModels = await modelService.getValidDownloadedModels();
       return Object.keys(availableModels).length > 0;

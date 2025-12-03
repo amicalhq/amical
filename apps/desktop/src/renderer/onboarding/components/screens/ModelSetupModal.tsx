@@ -44,6 +44,12 @@ export function ModelSetupModal({
   const [installedModelName, setInstalledModelName] = useState<string>("");
   const [downloadComplete, setDownloadComplete] = useState(false);
 
+  // Get recommended local model based on hardware
+  const { data: recommendedModelId = "whisper-base" } =
+    api.onboarding.getRecommendedLocalModel.useQuery(undefined, {
+      enabled: modelType === ModelType.Local && isOpen,
+    });
+
   // tRPC mutations
   const loginMutation = api.auth.login.useMutation({
     onSuccess: () => {
@@ -84,7 +90,7 @@ export function ModelSetupModal({
   // Subscribe to download progress
   api.models.onDownloadProgress.useSubscription(undefined, {
     onData: (data) => {
-      if (data.modelId === "whisper-tiny") {
+      if (data.modelId === recommendedModelId) {
         setDownloadProgress(data.progress.progress);
         setDownloadInfo({
           downloaded: data.progress.bytesDownloaded || 0,
@@ -116,7 +122,7 @@ export function ModelSetupModal({
 
     try {
       await downloadModelMutation.mutateAsync({
-        modelId: "whisper-tiny",
+        modelId: recommendedModelId,
       });
       // Progress will be handled by subscription
     } catch (err) {
@@ -188,7 +194,7 @@ export function ModelSetupModal({
           <DialogDescription>
             {modelAlreadyInstalled || downloadComplete
               ? "Ready for private, offline transcription."
-              : "Setting up Whisper Tiny for private, offline transcription"}
+              : "Setting up local model for private, offline transcription"}
           </DialogDescription>
         </DialogHeader>
 
@@ -206,7 +212,7 @@ export function ModelSetupModal({
                     : "Download Complete"}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Using: {installedModelName || "whisper-tiny"}
+                  Using: {installedModelName || recommendedModelId}
                 </p>
               </div>
             </div>
