@@ -1081,8 +1081,14 @@ class ModelService extends EventEmitter {
     const defaultSpeechModel =
       await this.settingsService.getDefaultSpeechModel();
     if (defaultSpeechModel) {
-      const exists = await modelExists("local-whisper", defaultSpeechModel);
-      if (!exists) {
+      const availableModel = AVAILABLE_MODELS.find(
+        (m) => m.id === defaultSpeechModel,
+      );
+      const isAmicalModel = availableModel?.provider === "Amical Cloud";
+      const existsInDb = await modelExists("local-whisper", defaultSpeechModel);
+
+      // Amical cloud models are always valid; local models must exist in DB
+      if (!isAmicalModel && !existsInDb) {
         logger.main.info("Clearing invalid default speech model", {
           modelId: defaultSpeechModel,
         });
