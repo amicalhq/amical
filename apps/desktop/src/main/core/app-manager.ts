@@ -267,6 +267,17 @@ export class AppManager {
   }
 
   handleSecondInstance(): void {
+    // If onboarding is in progress, focus onboarding window instead
+    const onboardingWindow = this.windowManager.getOnboardingWindow();
+    if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+      onboardingWindow.show();
+      onboardingWindow.focus();
+      logger.main.info(
+        "Second instance attempted during onboarding, focusing onboarding window",
+      );
+      return;
+    }
+
     // When a second instance tries to start, focus our existing window
     const mainWindow = this.windowManager.getMainWindow();
     const widgetWindow = this.windowManager.getWidgetWindow();

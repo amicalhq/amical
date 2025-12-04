@@ -1,6 +1,7 @@
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { app } from "electron";
+import path from "node:path";
 import { createRouter, procedure } from "../trpc";
 import { dbPath, closeDatabase } from "../../db";
 import * as fs from "fs/promises";
@@ -625,12 +626,12 @@ export const settingsRouter = createRouter({
       }
     }),
 
-  // Reset app - deletes all data and restarts
+  // Reset app - deletes database and models, then restarts
   resetApp: procedure.mutation(async ({ ctx }) => {
     try {
       const logger = ctx.serviceManager.getLogger();
       if (logger) {
-        logger.main.info("Resetting app - deleting all data");
+        logger.main.info("Resetting app - deleting database and models");
       }
 
       // Close database connection before deleting
@@ -639,9 +640,17 @@ export const settingsRouter = createRouter({
       // Add a small delay to ensure the connection is fully closed on Windows
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Delete entire userData directory (includes db, models, cache, etc.)
       const userDataPath = app.getPath("userData");
-      await fs.rm(userDataPath, { recursive: true, force: true });
+
+      // Delete database files (main db + WAL/SHM files)
+      const dbFile = path.join(userDataPath, "amical.db");
+      await fs.rm(dbFile, { force: true }).catch(() => {});
+      await fs.rm(`${dbFile}-wal`, { force: true }).catch(() => {});
+      await fs.rm(`${dbFile}-shm`, { force: true }).catch(() => {});
+
+      // Delete models directory
+      const modelsDir = path.join(userDataPath, "models");
+      await fs.rm(modelsDir, { recursive: true, force: true }).catch(() => {});
 
       // In development, also delete the local db file if it exists
       if (process.env.NODE_ENV === "development" || !app.isPackaged) {
