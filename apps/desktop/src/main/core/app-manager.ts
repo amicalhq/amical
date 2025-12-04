@@ -105,7 +105,7 @@ export class AppManager {
 
     if (onboardingCheck.needed) {
       await onboardingService.startOnboardingFlow();
-      this.windowManager.createOrShowOnboardingWindow();
+      await this.windowManager.createOrShowOnboardingWindow();
     } else {
       await this.setupWindows();
     }

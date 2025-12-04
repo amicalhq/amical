@@ -224,7 +224,7 @@ export class WindowManager {
     );
   }
 
-  createOrShowOnboardingWindow(): void {
+  async createOrShowOnboardingWindow(): Promise<void> {
     if (this.onboardingWindow && !this.onboardingWindow.isDestroyed()) {
       this.onboardingWindow.show();
       this.onboardingWindow.focus();
@@ -234,11 +234,20 @@ export class WindowManager {
     // Setup theme listener if not already done
     this.setupThemeListener();
 
+    // Get theme colors before creating window
+    const colors = await this.getThemeColors();
+
     this.onboardingWindow = new BrowserWindow({
       width: 800,
       height: 928,
-      frame: false,
+      frame: true,
       titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: colors.backgroundColor,
+        symbolColor: colors.symbolColor,
+        height: 32,
+      },
+      trafficLightPosition: { x: 20, y: 16 },
       resizable: false,
       center: true,
       modal: true,
