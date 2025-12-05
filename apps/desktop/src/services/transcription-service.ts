@@ -337,6 +337,7 @@ export class TranscriptionService {
         accessibilityContext: session.context.sharedData.accessibilityContext,
         previousChunk,
         aggregatedTranscription: aggregatedTranscription || undefined,
+        language: session.context.sharedData.userPreferences?.language,
       },
     });
 
@@ -522,8 +523,16 @@ export class TranscriptionService {
     // Create default context
     const context = createDefaultContext(uuid());
 
+    // Load dictation settings to get language preference
+    const dictationSettings = await this.settingsService.getDictationSettings();
+    if (dictationSettings) {
+      context.sharedData.userPreferences.language =
+        dictationSettings.autoDetectEnabled
+          ? undefined
+          : dictationSettings.selectedLanguage || "en";
+    }
+
     // TODO: Load actual vocabulary
-    // TODO: Load user preferences from settings
     // TODO: Load formatter config from settings
 
     return context;

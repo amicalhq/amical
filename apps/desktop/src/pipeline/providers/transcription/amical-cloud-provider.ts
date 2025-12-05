@@ -26,6 +26,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private frameBufferSpeechProbabilities: number[] = [];
   private currentSilenceFrameCount = 0;
   private lastSpeechTimestamp = 0;
+  private currentLanguage: string | undefined;
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -47,7 +48,15 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   async transcribe(params: TranscribeParams): Promise<string> {
     try {
-      const { audioData, speechProbability = 1, flush = false } = params;
+      const {
+        audioData,
+        speechProbability = 1,
+        flush = false,
+        context,
+      } = params;
+
+      // Store language for use in API call (undefined = auto-detect)
+      this.currentLanguage = context.language;
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
@@ -153,6 +162,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         },
         body: JSON.stringify({
           audioData: Array.from(audioData),
+          language: this.currentLanguage,
         }),
       });
 

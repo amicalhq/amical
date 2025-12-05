@@ -85,7 +85,7 @@ export class WhisperProvider implements TranscriptionProvider {
         context,
         flush = false,
       } = params;
-      const { vocabulary, aggregatedTranscription } = context;
+      const { vocabulary, aggregatedTranscription, language } = context;
 
       // Audio data is already Float32Array
 
@@ -155,7 +155,7 @@ export class WhisperProvider implements TranscriptionProvider {
       const text = await this.workerWrapper!.exec<string>("transcribeAudio", [
         aggregatedAudio,
         {
-          language: "auto",
+          language: language || "auto",
           initial_prompt: initialPrompt,
           suppress_blank: true,
           suppress_non_speech_tokens: true,

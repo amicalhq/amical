@@ -17,6 +17,7 @@ export interface TranscribeParams {
     accessibilityContext?: GetAccessibilityContextResult | null;
     previousChunk?: string;
     aggregatedTranscription?: string;
+    language?: string;
   };
 }
 
