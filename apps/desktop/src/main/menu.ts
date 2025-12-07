@@ -127,6 +127,8 @@ export const setupApplicationMenu = (
               { role: "front" as const },
               { type: "separator" as const },
               { role: "window" as const },
+              { type: "separator" as const },
+              { role: "close" as const },
             ]
           : [{ role: "close" as const }]),
       ],
