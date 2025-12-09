@@ -302,6 +302,7 @@ export class AppManager {
   }
 
   async handleActivate(): Promise<void> {
+    logger.main.info("Handle activate called");
     // If onboarding is in progress, just focus that window
     const onboardingWindow = this.windowManager.getOnboardingWindow();
     if (onboardingWindow && !onboardingWindow.isDestroyed()) {

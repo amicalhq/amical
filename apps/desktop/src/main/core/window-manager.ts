@@ -164,6 +164,8 @@ export class WindowManager {
       skipTaskbar: true,
       focusable: false,
       hasShadow: false,
+      // prevent main window from gaining focus upon clicks on widget
+      ...(process.platform === "darwin" && { type: "panel" }),
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
         nodeIntegration: false,
