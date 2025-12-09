@@ -265,6 +265,12 @@ for (const variant of variants) {
   };
 
   propagateCMakeBool("GGML_NATIVE");
+  propagateCMakeBool("GGML_VULKAN");
+  propagateCMakeBool("GGML_METAL");
+  propagateCMakeBool("GGML_CUDA");
+  propagateCMakeBool("GGML_OPENBLAS");
+  propagateCMakeBool("GGML_BLAS");
+  propagateCMakeBool("GGML_USE_ACCELERATE");
 
   run(cmakeParts.join(" "), {
     cwd: addonDir,
