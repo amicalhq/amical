@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 
-const GPU_FIRST_CANDIDATES = ["metal", "openblas", "cuda"] as const;
+const GPU_FIRST_CANDIDATES = ["metal", "openblas", "cuda", "vulkan"] as const;
 
 function candidateDirs(platform: string, arch: string): string[] {
   return [
@@ -66,13 +66,15 @@ export function loadBinding(): any {
       // Store the loaded binding info
       const bindingType = dir.includes("-cuda")
         ? "cuda"
-        : dir.includes("-metal")
-          ? "metal"
-          : dir.includes("-openblas")
-            ? "openblas"
-            : dir === "cpu-fallback"
-              ? "cpu-fallback"
-              : "cpu";
+        : dir.includes("-vulkan")
+          ? "vulkan"
+          : dir.includes("-metal")
+            ? "metal"
+            : dir.includes("-openblas")
+              ? "openblas"
+              : dir === "cpu-fallback"
+                ? "cpu-fallback"
+                : "cpu";
       loadedBindingInfo = {
         path: candidate,
         type: bindingType,

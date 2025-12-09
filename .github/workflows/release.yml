@@ -5,6 +5,7 @@ on:
     branches:
       - feat.windows.support
       - feat/whisper.migration
+      - feat/vulkan-support
     tags:
       - 'v*'
   workflow_dispatch:
@@ -71,12 +72,13 @@ jobs:
           node-version: '24.1.0'
           cache: 'pnpm'
 
-      - name: Install CUDA Toolkit
+      - name: Install Vulkan SDK
         if: matrix.os == 'windows'
-        uses: Jimver/cuda-toolkit@v0.2.15
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
         with:
-          cuda: '12.4.1'
-          method: 'network'
+          vulkan-query-version: 1.3.290.0
+          vulkan-components: Vulkan-Headers, Vulkan-Loader, Glslang, SPIRV-Tools
+          vulkan-use-cache: true
 
       - name: Log Node.js architecture and platform
         run: |
@@ -98,11 +100,11 @@ jobs:
           GGML_NATIVE: OFF # CI mac runners lack i8mm support; keep CPU features conservative here
         run: pnpm --filter @amical/whisper-wrapper build:native
 
-      - name: Build whisper native binaries (cuda)
+      - name: Build whisper native binaries (vulkan)
         if: matrix.os == 'windows'
         env:
           GGML_NATIVE: OFF
-        run: pnpm --filter @amical/whisper-wrapper build:native:cuda
+        run: pnpm --filter @amical/whisper-wrapper build:native:vulkan
 
       - name: Download Node.js binaries
         working-directory: apps/desktop
