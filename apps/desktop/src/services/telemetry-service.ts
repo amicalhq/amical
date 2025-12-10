@@ -282,6 +282,18 @@ export class TelemetryService {
     });
   }
 
+  trackAppLaunch(): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "app_launch",
+      properties: { ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked app launch");
+  }
+
   // ============================================================================
   // Onboarding Events
   // ============================================================================

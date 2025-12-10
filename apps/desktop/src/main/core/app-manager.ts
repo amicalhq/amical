@@ -69,6 +69,9 @@ export class AppManager {
 
     await this.serviceManager.initialize();
 
+    const telemetryService = this.serviceManager.getService("telemetryService");
+    telemetryService.trackAppLaunch();
+
     // Initialize tRPC handler (services must be ready first)
     this.trpcHandler = createIPCHandler({
       router,
