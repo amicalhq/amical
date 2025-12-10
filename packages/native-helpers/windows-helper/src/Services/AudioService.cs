@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -14,7 +15,10 @@ namespace WindowsHelper.Services
         private MMDeviceEnumerator? deviceEnumerator;
         private float originalVolume = 1.0f;
         private bool originalMuteState = false;
-        
+
+        // Preloaded audio data for faster playback
+        private readonly Dictionary<string, byte[]> preloadedAudio = new();
+
         public event EventHandler<string>? SoundPlaybackCompleted;
 
         public AudioService()
@@ -22,10 +26,41 @@ namespace WindowsHelper.Services
             try
             {
                 deviceEnumerator = new MMDeviceEnumerator();
+
+                // Preload audio files at startup for faster playback
+                PreloadSound("rec-start");
+                PreloadSound("rec-stop");
+                LogToStderr("Audio files preloaded at startup");
             }
             catch (Exception ex)
             {
-                LogToStderr($"Failed to initialize audio device enumerator: {ex.Message}");
+                LogToStderr($"Failed to initialize audio service: {ex.Message}");
+            }
+        }
+
+        private void PreloadSound(string soundName)
+        {
+            try
+            {
+                var assembly = Assembly.GetExecutingAssembly();
+                var resourceName = $"WindowsHelper.Resources.{soundName}.mp3";
+
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream != null)
+                {
+                    using var ms = new MemoryStream();
+                    stream.CopyTo(ms);
+                    preloadedAudio[soundName] = ms.ToArray();
+                    LogToStderr($"Preloaded {soundName}.mp3 ({preloadedAudio[soundName].Length} bytes)");
+                }
+                else
+                {
+                    LogToStderr($"Resource not found for preloading: {resourceName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogToStderr($"Failed to preload {soundName}: {ex.Message}");
             }
         }
 
@@ -34,7 +69,7 @@ namespace WindowsHelper.Services
             try
             {
                 LogToStderr($"PlaySound called with soundName: {soundName}");
-                
+
                 // Stop any currently playing sound
                 if (waveOut != null && waveOut.PlaybackState == PlaybackState.Playing)
                 {
@@ -42,49 +77,49 @@ namespace WindowsHelper.Services
                     waveOut.Dispose();
                     waveOut = null;
                 }
-                
-                // Get embedded resource
-                var assembly = Assembly.GetExecutingAssembly();
-                var resourceName = $"WindowsHelper.Resources.{soundName}.mp3";
-                
-                using (var stream = assembly.GetManifestResourceStream(resourceName))
+
+                // Use preloaded audio data (fast) or fall back to loading from resources
+                byte[]? audioData;
+                if (!preloadedAudio.TryGetValue(soundName, out audioData))
                 {
+                    LogToStderr($"Audio not preloaded, loading from resources: {soundName}");
+                    var assembly = Assembly.GetExecutingAssembly();
+                    var resourceName = $"WindowsHelper.Resources.{soundName}.mp3";
+
+                    using var stream = assembly.GetManifestResourceStream(resourceName);
                     if (stream == null)
                     {
                         LogToStderr($"Resource not found: {resourceName}");
                         return;
                     }
-                    
-                    // Create memory stream from embedded resource
-                    using (var memoryStream = new MemoryStream())
-                    {
-                        await stream.CopyToAsync(memoryStream);
-                        memoryStream.Position = 0;
-                        
-                        // Create audio file reader
-                        using (var audioFile = new Mp3FileReader(memoryStream))
-                        {
-                            waveOut = new WaveOutEvent();
-                            waveOut.Init(audioFile);
-                            
-                            // Set up completion handler
-                            var completionSource = new TaskCompletionSource<bool>();
-                            waveOut.PlaybackStopped += (sender, args) =>
-                            {
-                                LogToStderr($"Sound playback finished for {soundName}");
-                                completionSource.TrySetResult(true);
-                                SoundPlaybackCompleted?.Invoke(this, requestId);
-                            };
-                            
-                            // Start playback
-                            waveOut.Play();
-                            LogToStderr($"Playing embedded sound: {soundName}.mp3");
-                            
-                            // Wait for completion
-                            await completionSource.Task;
-                        }
-                    }
+
+                    using var ms = new MemoryStream();
+                    await stream.CopyToAsync(ms);
+                    audioData = ms.ToArray();
                 }
+
+                // Create memory stream from preloaded/loaded audio data
+                using var memoryStream = new MemoryStream(audioData);
+                using var audioFile = new Mp3FileReader(memoryStream);
+
+                waveOut = new WaveOutEvent();
+                waveOut.Init(audioFile);
+
+                // Set up completion handler
+                var completionSource = new TaskCompletionSource<bool>();
+                waveOut.PlaybackStopped += (sender, args) =>
+                {
+                    LogToStderr($"Sound playback finished for {soundName}");
+                    completionSource.TrySetResult(true);
+                    SoundPlaybackCompleted?.Invoke(this, requestId);
+                };
+
+                // Start playback
+                waveOut.Play();
+                LogToStderr($"Playing sound: {soundName}.mp3");
+
+                // Wait for completion
+                await completionSource.Task;
             }
             catch (Exception ex)
             {

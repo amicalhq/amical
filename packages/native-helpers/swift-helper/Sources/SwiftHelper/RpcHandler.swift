@@ -1,18 +1,17 @@
-import AVFoundation  // ADDED
 import Foundation
 
-class IOBridge: NSObject, AVAudioPlayerDelegate {
+class IOBridge: NSObject {
     private let jsonEncoder: JSONEncoder
     private let jsonDecoder: JSONDecoder
     private let accessibilityService: AccessibilityService
-    private var audioPlayer: AVAudioPlayer?
-    private var audioCompletionHandler: (() -> Void)?
+    private let audioService: AudioService
     private let dateFormatter: DateFormatter
 
     init(jsonEncoder: JSONEncoder, jsonDecoder: JSONDecoder) {
         self.jsonEncoder = jsonEncoder
         self.jsonDecoder = jsonDecoder
         self.accessibilityService = AccessibilityService()
+        self.audioService = AudioService()  // Audio preloaded here at startup
         self.dateFormatter = DateFormatter()
         self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         super.init()
@@ -22,78 +21,6 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
         let timestamp = dateFormatter.string(from: Date())
         let logMessage = "[\(timestamp)] \(message)\n"
         FileHandle.standardError.write(logMessage.data(using: .utf8)!)
-    }
-
-    private func playSound(named soundName: String, completion: (() -> Void)? = nil) {
-        logToStderr("[IOBridge] playSound called with soundName: \(soundName)")
-
-        if audioPlayer?.isPlaying == true {
-            logToStderr(
-                "[IOBridge] Sound '\(audioPlayer?.url?.lastPathComponent ?? "previous")' is playing. Stopping it before playing \(soundName)."
-            )
-            audioPlayer?.delegate = nil
-            audioPlayer?.stop()
-        }
-        audioPlayer = nil
-        self.audioCompletionHandler = nil
-
-        self.audioCompletionHandler = completion
-
-        // Get the embedded audio data
-        let audioData: [UInt8]
-        do {
-            switch soundName {
-            case "rec-start":
-                logToStderr("[IOBridge] Attempting to load rec-start.mp3 from PackageResources")
-                audioData = PackageResources.rec_start_mp3
-                logToStderr(
-                    "[IOBridge] Successfully loaded rec-start.mp3, data size: \(audioData.count) bytes"
-                )
-            case "rec-stop":
-                logToStderr("[IOBridge] Attempting to load rec-stop.mp3 from PackageResources")
-                audioData = PackageResources.rec_stop_mp3
-                logToStderr(
-                    "[IOBridge] Successfully loaded rec-stop.mp3, data size: \(audioData.count) bytes"
-                )
-            default:
-                logToStderr(
-                    "[IOBridge] Error: Unknown sound name '\(soundName)'. Completion will not be called."
-                )
-                self.audioCompletionHandler = nil
-                return
-            }
-        } catch {
-            logToStderr(
-                "[IOBridge] Error loading embedded audio data for '\(soundName)': \(error.localizedDescription). Completion will not be called."
-            )
-            self.audioCompletionHandler = nil
-            return
-        }
-
-        do {
-            // Convert embedded data to Data object
-            let soundData = Data(audioData)
-
-            // Initialize the audio player with the embedded data
-            audioPlayer = try AVAudioPlayer(data: soundData)
-            audioPlayer?.delegate = self
-
-            if audioPlayer?.play() == true {
-                logToStderr(
-                    "[IOBridge] Playing embedded sound: \(soundName).mp3. Delegate will handle completion."
-                )
-            } else {
-                logToStderr(
-                    "[IOBridge] Failed to start playing embedded sound: \(soundName).mp3 (audioPlayer.play() returned false or player is nil). Completion will not be called."
-                )
-                self.audioCompletionHandler = nil
-            }
-        } catch {
-            logToStderr(
-                "[IOBridge] Error initializing AVAudioPlayer for embedded \(soundName).mp3: \(error.localizedDescription). Completion will not be called."
-            )
-            self.audioCompletionHandler = nil
-        }
     }
 
     // Handles a single RPC Request
@@ -157,7 +84,7 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
         case .muteSystemAudio:
             logToStderr("[IOBridge] Handling muteSystemAudio for ID: \(request.id)")
 
-            playSound(named: "rec-start") { [weak self] in
+            audioService.playSound(named: "rec-start") { [weak self] in
                 guard let self = self else {
                     let timestamp = DateFormatter().string(from: Date())
                     let logMessage =
@@ -200,7 +127,7 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
 
             let success = accessibilityService.restoreSystemAudio()
             if success {  // Play sound only if restore was successful
-                playSound(named: "rec-stop")
+                audioService.playSound(named: "rec-stop")
             }
             let resultPayload = RestoreSystemAudioResultSchema(
                 message: success ? "Restore command sent" : "Failed to send restore command",
@@ -398,22 +325,4 @@ class IOBridge: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    // MARK: - AVAudioPlayerDelegate
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        logToStderr(
-            "[IOBridge] Sound playback finished (player URL: \(player.url?.lastPathComponent ?? "unknown"), successfully: \(flag))."
-        )
-
-        let handlerToCall = audioCompletionHandler
-        audioCompletionHandler = nil
-
-        if flag {
-            logToStderr("[IOBridge] Sound finished successfully. Executing completion handler.")
-            handlerToCall?()
-        } else {
-            logToStderr(
-                "[IOBridge] Sound did not finish successfully (e.g., stopped or error). Not executing completion handler."
-            )
-        }
-    }
 }

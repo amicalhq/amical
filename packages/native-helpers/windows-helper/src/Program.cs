@@ -25,19 +25,20 @@ namespace WindowsHelper
             {
                 // Initialize components
                 shortcutMonitor = new ShortcutMonitor();
-                rpcHandler = new RpcHandler();
+                // Pass shortcutMonitor to RpcHandler for STA thread dispatch (audio operations)
+                rpcHandler = new RpcHandler(shortcutMonitor);
 
                 // Set up event handlers
                 shortcutMonitor.KeyEventOccurred += OnKeyEvent;
 
                 // Start RPC processing in background task
-                var rpcTask = Task.Run(() => 
+                var rpcTask = Task.Run(() =>
                 {
                     LogToStderr("Starting RPC processing in background thread...");
                     rpcHandler.ProcessRpcRequests(cancellationTokenSource.Token);
                 }, cancellationTokenSource.Token);
 
-                // Start shortcut monitoring (this will run the Windows message loop)
+                // Start shortcut monitoring (this will run the Windows message loop with STA support)
                 LogToStderr("Starting shortcut monitoring in main thread...");
                 shortcutMonitor.Start();
 

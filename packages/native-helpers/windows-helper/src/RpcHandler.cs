@@ -13,16 +13,24 @@ namespace WindowsHelper
         private readonly JsonSerializerOptions jsonOptions;
         private readonly AccessibilityService accessibilityService;
         private readonly AudioService audioService;
+        private readonly ShortcutMonitor? shortcutMonitor;
         private Action<string>? audioCompletionHandler;
 
-        public RpcHandler()
+        public RpcHandler(ShortcutMonitor? shortcutMonitor = null)
         {
+            this.shortcutMonitor = shortcutMonitor;
+
             // Use the generated converter settings from the models
             jsonOptions = WindowsHelper.Models.Converter.Settings;
-            
+
             accessibilityService = new AccessibilityService();
             audioService = new AudioService();
             audioService.SoundPlaybackCompleted += OnSoundPlaybackCompleted;
+
+            if (shortcutMonitor != null)
+            {
+                LogToStderr("RpcHandler: STA thread dispatch enabled via ShortcutMonitor");
+            }
         }
 
         public void ProcessRpcRequests(CancellationToken cancellationToken)
@@ -253,10 +261,10 @@ namespace WindowsHelper
         private async Task<RpcResponse> HandleMuteSystemAudio(RpcRequest request)
         {
             LogToStderr($"Handling muteSystemAudio for ID: {request.Id}");
-            
+
             // Store the request ID for the completion handler
             var requestId = request.Id.ToString();
-            
+
             audioCompletionHandler = (id) =>
             {
                 LogToStderr($"rec-start.mp3 finished playing. Proceeding to mute system audio. ID: {id}");
@@ -274,9 +282,21 @@ namespace WindowsHelper
                 audioCompletionHandler = null;
             };
 
-            // Play sound and wait for completion
-            await audioService.PlaySound("rec-start", requestId);
-            
+            // Play sound on STA thread if available (faster due to COM/audio API preferences)
+            if (shortcutMonitor != null)
+            {
+                LogToStderr("Dispatching audio playback to STA thread");
+                await shortcutMonitor.InvokeOnStaAsync(async () =>
+                {
+                    await audioService.PlaySound("rec-start", requestId);
+                    return true;
+                });
+            }
+            else
+            {
+                await audioService.PlaySound("rec-start", requestId);
+            }
+
             // Return dummy response (real response sent after audio completion)
             return new RpcResponse { Id = request.Id.ToString() };
         }
@@ -284,14 +304,24 @@ namespace WindowsHelper
         private RpcResponse HandleRestoreSystemAudio(RpcRequest request)
         {
             LogToStderr($"Handling restoreSystemAudio for ID: {request.Id}");
-            
+
             var success = audioService.RestoreSystemAudio();
             if (success)
             {
-                // Play sound asynchronously (don't wait)
-                _ = audioService.PlaySound("rec-stop", request.Id.ToString());
+                // Play sound asynchronously on STA thread if available (don't wait)
+                if (shortcutMonitor != null)
+                {
+                    shortcutMonitor.PostToSta(async () =>
+                    {
+                        await audioService.PlaySound("rec-stop", request.Id.ToString());
+                    });
+                }
+                else
+                {
+                    _ = audioService.PlaySound("rec-stop", request.Id.ToString());
+                }
             }
-            
+
             return new RpcResponse
             {
                 Id = request.Id.ToString(),

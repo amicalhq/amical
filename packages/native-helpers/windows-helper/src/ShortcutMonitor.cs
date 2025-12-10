@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using WindowsHelper.Models;
 
 namespace WindowsHelper
@@ -14,6 +16,13 @@ namespace WindowsHelper
         private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
+
+        // For MsgWaitForMultipleObjects
+        private const uint QS_ALLINPUT = 0x04FF;
+        private const uint WAIT_OBJECT_0 = 0;
+        private const uint WAIT_TIMEOUT = 258;
+        private const uint INFINITE = 0xFFFFFFFF;
+        private const int PM_REMOVE = 0x0001;
 
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -31,6 +40,12 @@ namespace WindowsHelper
 
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("user32.dll")]
+        private static extern uint MsgWaitForMultipleObjects(uint nCount, IntPtr[] pHandles, bool bWaitAll, uint dwMilliseconds, uint dwWakeMask);
+
+        [DllImport("user32.dll")]
+        private static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, int wRemoveMsg);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct KBDLLHOOKSTRUCT
@@ -64,6 +79,10 @@ namespace WindowsHelper
         private Thread? messageLoopThread;
         private bool isRunning = false;
 
+        // STA thread work queue for dispatching work from other threads
+        private readonly ConcurrentQueue<Action> staWorkQueue = new();
+        private readonly AutoResetEvent staWorkEvent = new(false);
+
         // Track modifier key states internally to avoid GetAsyncKeyState issues
         // Track left and right separately to handle cases where both are pressed
         private bool leftShiftPressed = false;
@@ -82,6 +101,65 @@ namespace WindowsHelper
         private bool winPressed => leftWinPressed || rightWinPressed;
 
         public event EventHandler<HelperEvent>? KeyEventOccurred;
+
+        /// <summary>
+        /// Invokes an async action on the STA thread and waits for completion.
+        /// Use this for audio/COM operations that require STA thread.
+        /// </summary>
+        public Task<T> InvokeOnStaAsync<T>(Func<Task<T>> asyncAction)
+        {
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            staWorkQueue.Enqueue(async () =>
+            {
+                try
+                {
+                    var result = await asyncAction();
+                    tcs.SetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            });
+            staWorkEvent.Set();
+
+            return tcs.Task;
+        }
+
+        /// <summary>
+        /// Invokes a synchronous action on the STA thread and waits for completion.
+        /// Use this for audio/COM operations that require STA thread.
+        /// </summary>
+        public Task<T> InvokeOnSta<T>(Func<T> action)
+        {
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            staWorkQueue.Enqueue(() =>
+            {
+                try
+                {
+                    var result = action();
+                    tcs.SetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            });
+            staWorkEvent.Set();
+
+            return tcs.Task;
+        }
+
+        /// <summary>
+        /// Posts an action to the STA thread without waiting for completion.
+        /// </summary>
+        public void PostToSta(Action action)
+        {
+            staWorkQueue.Enqueue(action);
+            staWorkEvent.Set();
+        }
 
         public void Start()
         {
@@ -113,7 +191,7 @@ namespace WindowsHelper
             {
                 // Keep a reference to the delegate to prevent GC
                 hookProc = HookCallback;
-                
+
                 using (Process curProcess = Process.GetCurrentProcess())
                 using (ProcessModule? curModule = curProcess.MainModule)
                 {
@@ -131,13 +209,36 @@ namespace WindowsHelper
                 }
 
                 LogToStderr("Shortcut hook installed successfully");
+                LogToStderr("STA thread ready for work dispatch");
 
-                // Run Windows message loop
-                MSG msg;
-                while (isRunning && GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
+                // Run Windows message loop with support for STA work queue
+                var waitHandles = new IntPtr[] { staWorkEvent.SafeWaitHandle.DangerousGetHandle() };
+
+                while (isRunning)
                 {
-                    TranslateMessage(ref msg);
-                    DispatchMessage(ref msg);
+                    // Wait for either a Windows message or a work item
+                    var waitResult = MsgWaitForMultipleObjects(1, waitHandles, false, INFINITE, QS_ALLINPUT);
+
+                    if (waitResult == WAIT_OBJECT_0)
+                    {
+                        // Work item signaled - process all queued work
+                        ProcessStaWorkQueue();
+                    }
+                    else if (waitResult == WAIT_OBJECT_0 + 1)
+                    {
+                        // Windows message available - process all pending messages
+                        MSG msg;
+                        while (PeekMessage(out msg, IntPtr.Zero, 0, 0, PM_REMOVE))
+                        {
+                            if (msg.message == 0x0012) // WM_QUIT
+                            {
+                                isRunning = false;
+                                break;
+                            }
+                            TranslateMessage(ref msg);
+                            DispatchMessage(ref msg);
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -150,6 +251,21 @@ namespace WindowsHelper
                 {
                     UnhookWindowsHookEx(hookId);
                     hookId = IntPtr.Zero;
+                }
+            }
+        }
+
+        private void ProcessStaWorkQueue()
+        {
+            while (staWorkQueue.TryDequeue(out var action))
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    LogToStderr($"Error processing STA work item: {ex.Message}");
                 }
             }
         }
