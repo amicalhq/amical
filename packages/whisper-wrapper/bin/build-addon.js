@@ -185,6 +185,9 @@ function variantFromName(name, platform, arch) {
   if (name.includes("-cuda")) {
     envOverrides.GGML_CUDA = "1";
   }
+  if (name.includes("-vulkan")) {
+    envOverrides.GGML_VULKAN = "1";
+  }
   if (name.startsWith("darwin-")) {
     envOverrides.GGML_USE_ACCELERATE = envOverrides.GGML_USE_ACCELERATE || "1";
   }
@@ -262,6 +265,12 @@ for (const variant of variants) {
   };
 
   propagateCMakeBool("GGML_NATIVE");
+  propagateCMakeBool("GGML_VULKAN");
+  propagateCMakeBool("GGML_METAL");
+  propagateCMakeBool("GGML_CUDA");
+  propagateCMakeBool("GGML_OPENBLAS");
+  propagateCMakeBool("GGML_BLAS");
+  propagateCMakeBool("GGML_USE_ACCELERATE");
 
   run(cmakeParts.join(" "), {
     cwd: addonDir,

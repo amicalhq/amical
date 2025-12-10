@@ -12,7 +12,9 @@ function build(targets) {
   });
 }
 
-if (process.argv.includes("--cuda")) {
+if (process.argv.includes("--vulkan")) {
+  build(["win32-x64-vulkan", "win32-x64"]);
+} else if (process.argv.includes("--cuda")) {
   build(["win32-x64-cuda", "win32-x64"]);
 } else {
   build([]);

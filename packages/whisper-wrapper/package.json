@@ -19,7 +19,8 @@
     "build": "tsc -p tsconfig.json",
     "postinstall": "node ./bin/build-addon.js",
     "build:native": "node ./scripts/build-native.js",
-    "build:native:cuda": "node ./scripts/build-native.js --cuda"
+    "build:native:cuda": "node ./scripts/build-native.js --cuda",
+    "build:native:vulkan": "node ./scripts/build-native.js --vulkan"
   },
   "dependencies": {
     "cmake-js": "^7.3.1",
