@@ -266,15 +266,16 @@ export class TranscriptionService {
     if (audioChunk.length > 0 && this.vadService) {
       // Acquire VAD mutex
       await this.vadMutex.acquire();
+      try {
+        // Pass Float32Array directly to VAD
+        const vadResult = await this.vadService.processAudioFrame(audioChunk);
 
-      // Pass Float32Array directly to VAD
-      const vadResult = await this.vadService.processAudioFrame(audioChunk);
-
-      // Release VAD mutex
-      this.vadMutex.release();
-
-      speechProbability = vadResult.probability;
-      isSpeaking = vadResult.isSpeaking;
+        speechProbability = vadResult.probability;
+        isSpeaking = vadResult.isSpeaking;
+      } finally {
+        // Release VAD mutex - always release even on error
+        this.vadMutex.release();
+      }
 
       logger.transcription.debug("VAD result", {
         probability: speechProbability.toFixed(3),
@@ -287,80 +288,85 @@ export class TranscriptionService {
 
     // Auto-create session if it doesn't exist
     let session = this.streamingSessions.get(sessionId);
-    if (!session) {
-      const context = await this.buildContext();
-      const streamingContext: StreamingPipelineContext = {
-        ...context,
-        sessionId,
-        isPartial: true,
-        isFinal: false,
-        accumulatedTranscription: [],
-      };
 
-      // Get accessibility context from NativeBridge
-      streamingContext.sharedData.accessibilityContext =
-        this.nativeBridge?.getAccessibilityContext() ?? null;
+    try {
+      if (!session) {
+        const context = await this.buildContext();
+        const streamingContext: StreamingPipelineContext = {
+          ...context,
+          sessionId,
+          isPartial: true,
+          isFinal: false,
+          accumulatedTranscription: [],
+        };
 
-      session = {
-        context: streamingContext,
-        transcriptionResults: [],
-        firstChunkReceivedAt: performance.now(),
-        recordingStartedAt: recordingStartedAt, // From RecordingManager (when user pressed record)
-      };
+        // Get accessibility context from NativeBridge
+        streamingContext.sharedData.accessibilityContext =
+          this.nativeBridge?.getAccessibilityContext() ?? null;
 
-      this.streamingSessions.set(sessionId, session);
+        session = {
+          context: streamingContext,
+          transcriptionResults: [],
+          firstChunkReceivedAt: performance.now(),
+          recordingStartedAt: recordingStartedAt, // From RecordingManager (when user pressed record)
+        };
 
-      logger.transcription.info("Started streaming session", {
-        sessionId,
+        this.streamingSessions.set(sessionId, session);
+
+        logger.transcription.info("Started streaming session", {
+          sessionId,
+        });
+      }
+
+      // Direct frame to Whisper - it will handle aggregation and VAD internally
+      const previousChunk =
+        session.transcriptionResults.length > 0
+          ? session.transcriptionResults[
+              session.transcriptionResults.length - 1
+            ]
+          : undefined;
+      const aggregatedTranscription = session.transcriptionResults
+        .join(" ")
+        .trim();
+
+      // Select the appropriate provider
+      const provider = await this.selectProvider();
+
+      // Transcribe with flush parameter for final chunks
+      const chunkTranscription = await provider.transcribe({
+        audioData: audioChunk,
+        speechProbability: speechProbability, // Now from VAD service
+        flush: isFinal, // Pass flush flag for final chunks
+        context: {
+          vocabulary: session.context.sharedData.vocabulary,
+          accessibilityContext: session.context.sharedData.accessibilityContext,
+          previousChunk,
+          aggregatedTranscription: aggregatedTranscription || undefined,
+          language: session.context.sharedData.userPreferences?.language,
+        },
       });
-    }
 
-    // Direct frame to Whisper - it will handle aggregation and VAD internally
-    const previousChunk =
-      session.transcriptionResults.length > 0
-        ? session.transcriptionResults[session.transcriptionResults.length - 1]
-        : undefined;
-    const aggregatedTranscription = session.transcriptionResults
-      .join(" ")
-      .trim();
+      // Accumulate the result only if Whisper returned something
+      // (it returns empty string while buffering)
+      if (chunkTranscription.trim()) {
+        session.transcriptionResults.push(chunkTranscription);
+        logger.transcription.info("Whisper returned transcription", {
+          sessionId,
+          transcriptionLength: chunkTranscription.length,
+          totalResults: session.transcriptionResults.length,
+        });
+      }
 
-    // Select the appropriate provider
-    const provider = await this.selectProvider();
-
-    // Transcribe with flush parameter for final chunks
-    const chunkTranscription = await provider.transcribe({
-      audioData: audioChunk,
-      speechProbability: speechProbability, // Now from VAD service
-      flush: isFinal, // Pass flush flag for final chunks
-      context: {
-        vocabulary: session.context.sharedData.vocabulary,
-        accessibilityContext: session.context.sharedData.accessibilityContext,
-        previousChunk,
-        aggregatedTranscription: aggregatedTranscription || undefined,
-        language: session.context.sharedData.userPreferences?.language,
-      },
-    });
-
-    // Accumulate the result only if Whisper returned something
-    // (it returns empty string while buffering)
-    if (chunkTranscription.trim()) {
-      session.transcriptionResults.push(chunkTranscription);
-      logger.transcription.info("Whisper returned transcription", {
+      logger.transcription.debug("Processed frame", {
         sessionId,
-        transcriptionLength: chunkTranscription.length,
-        totalResults: session.transcriptionResults.length,
+        frameSize: audioChunk.length,
+        hadTranscription: chunkTranscription.length > 0,
+        isFinal,
       });
+    } finally {
+      // Release transcription mutex - always release even on error
+      this.transcriptionMutex.release();
     }
-
-    logger.transcription.debug("Processed frame", {
-      sessionId,
-      frameSize: audioChunk.length,
-      hadTranscription: chunkTranscription.length > 0,
-      isFinal,
-    });
-
-    // Release transcription mutex
-    this.transcriptionMutex.release();
     const completeTranscriptionTillNow = session.transcriptionResults
       .join(" ")
       .trim();

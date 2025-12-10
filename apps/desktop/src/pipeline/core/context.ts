@@ -14,7 +14,7 @@ import { GetAccessibilityContextResult } from "@amical/types";
 export interface SharedPipelineData {
   vocabulary: Map<string, string>;
   userPreferences: {
-    language: string;
+    language?: string; // Optional - undefined means auto-detect
     formattingStyle: "formal" | "casual" | "technical";
   };
   audioMetadata: {
