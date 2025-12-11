@@ -26,77 +26,58 @@
 
 ## Table of Contents
 
+- [⬇️ Download](#️-download)
 - [🔮 Overview](#-overview)
 - [✨ Features](#-features)
 - [🔰 Tech Stack](#-tech-stack)
 - [🤗 Contributing](#-contributing)
 - [🎗 License](#-license)
 
-> [!CAUTION]
-> Amical is in active development towards its first release, expect bugs and breaking changes.
+## ⬇️ Download
+
+<p>
+  <a href="https://github.com/amicalhq/amical/releases/latest">
+    <img src="https://amical.ai/download_button_macos.png" alt="Download for macOS" height="60">
+  </a>
+  <a href="https://github.com/amicalhq/amical/releases/latest">
+    <img src="https://amical.ai/download_button_windows.png" alt="Download for Windows" height="60">
+  </a>
+</p>
 
 ## 🔮 Overview
 
-Open source AI Dictation and Note-taking\
-Dictate hands-free, transcribe meetings, and capture notes effortlessly - powered by Gen AI
+Local-first AI Dictation app.
+
+Amical is an open source AI-powered dictation and note-taking app that runs entirely on your machine.
+Powered by [Whisper](https://github.com/openai/whisper) for speech-to-text and open source LLMs for intelligent processing, Amical gives you the power of AI dictation with complete privacy.
+
+Context-aware dictation that adapts to what you're doing: drafting an email, chatting on Discord, writing prompts in your IDE, or messaging friends. Amical detects the active app and formats your speech accordingly.
+
 
 ## ✨ Features
 
 > ✔︎ - Done, ◑ - In Progress, ◯ - Planned
 
-### 📱 Apps
+🚀 Super-fast dictation with AI-enhanced accuracy ✔︎
 
-◑ `Mac`
-◯ `Windows`
-◯ `Linux`
-◯ `iOS`
-◯ `Android`
+🧠 Context-aware speech-to-text based on the active app ✔︎
 
-### ⚡ Core Features
+📒 Smart voice notes → summaries, tasks, structured notes ◑
 
-✔︎<kbd>Context-Awareness</kbd>\
-<sup>Recognize context based on the apps being used in the background to customize transcription based on use case.</sup>\
-◑<kbd>Note Taking</kbd>\
-<sup>Take quick notes with voice within the app.</sup>\
-◑<kbd>Meeting Transcription</kbd>\
-<sup>Record live meetings with both mic and system audio for seamless transcription.</sup>\
-◑<kbd>Automatic Meeting Notes</kbd>\
-<sup>Generate meeting notes using transcriptions and templates</sup>\
-◑<kbd>Custom Hotkeys</kbd>\
-<sup>Configure your own keyboard shortcuts for common transcription actions (start/stop, commands).</sup>\
-✔︎<kbd>Desktop Widget</kbd>\
-<sup>A floating, easily accessible widget to control transcription without leaving your workflow.</sup>\
-✔︎<kbd>Multi-Language Support</kbd>\
-<sup>Support for multiple languages and dialects for global usability.</sup>\
-✔︎<kbd>Custom Vocabulary</kbd>\
-<sup>Add custom terms, such as names, technical terms, or slang, for better accuracy.</sup>\
-◯<kbd>Automatic Vocabulary</kbd>\
-<sup>Dynamically learn new words based on usage.</sup>\
-◑<kbd>Bring Your Own Key</kbd>\
-<sup>Use your own API keys for AI models within the app.</sup>\
-✔︎<kbd>Bring Your Own Model (Ollama)</kbd>\
-<sup>Point to any AI model within the app.</sup>
+🔌 MCP integration → voice commands that control your apps ◯
 
-### 🔗 Integrations & Workflow
+🎙️ Real-time meeting transcription (mic + system audio) ◯
 
-◯<kbd>MCP Integrations</kbd>\
-<sup>Seamlessly integrate your apps via MCP for control and command.</sup>\
-◯<kbd>Voice Commands</kbd>\
-<sup>Control desktop apps and transcription processes via native and custom integrations.</sup>\
-◯<kbd>Integration Framework</kbd>\
-<sup>Framework and devkit to build your own integrations.</sup>
+🔧 Extensible via hotkeys, voice macros, custom workflows ✔︎
 
-### 🌟 Enhancements
+🔐 Privacy-first: works offline, one click setup of local models in-app ✔︎
 
-◯<kbd>Text Editing</kbd>\
-<sup>Inline editing of transcribed text via voice commands.</sup>\
-◯<kbd>Transcription History</kbd>\
-<sup>Maintain an easily searchable history of transcribed texts, with export options.</sup>\
-◯<kbd>Custom Prompts</kbd>\
-<sup>Custom prompts for AI to pre and post-process transcription to support use cases like custom formatting, summaries, etc.</sup>\
+🪟 Floating widget for frictionless start/stop with custom hotkeys ✔︎
 
 ## 🔰 Tech Stack
 
+- 🎤 [Whisper](https://github.com/openai/whisper)
+- 🦙 [Ollama](https://ollama.ai)
 - 🧑‍💻 [Typescript](https://www.typescriptlang.org/)
 - 🖥️ [Electron](https://electronjs.org/)
 - ☘️ [Next.js](https://nextjs.org/)
@@ -116,7 +97,7 @@ Contributions are welcome! Please read the [Contributing Guide][contributing] to
 - **🐛 [Report an Issue][issues]**: Found a bug? Let us know!
 - **💬 [Start a Discussion][discussions]**: Have ideas or suggestions? We'd love to hear from you.
 
-# 🎗 License
+## 🎗 License
 
 Released under [MIT][license].
 
