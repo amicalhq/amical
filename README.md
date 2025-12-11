@@ -26,7 +26,7 @@
 
 ## Table of Contents
 
-- [⬇️ Download](#-download)
+- [⬇️ Download](#️-download)
 - [🔮 Overview](#-overview)
 - [✨ Features](#-features)
 - [🔰 Tech Stack](#-tech-stack)
