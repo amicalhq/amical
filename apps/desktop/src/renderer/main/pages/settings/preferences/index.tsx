@@ -40,10 +40,18 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleShowInDockChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      showInDock: checked,
+    });
+  };
+
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
   const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
+  const showInDock = preferencesQuery.data?.showInDock ?? true;
+  const isMac = window.electronAPI.platform === "darwin";
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
@@ -114,6 +122,29 @@ export default function PreferencesSettingsPage() {
             </div>
 
             <Separator />
+
+            {/* Show in Dock Section (macOS only) */}
+            {isMac && (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label className="text-base font-medium text-foreground">
+                      Show app in dock
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Display the application icon in the macOS dock
+                    </p>
+                  </div>
+                  <Switch
+                    checked={showInDock}
+                    onCheckedChange={handleShowInDockChange}
+                    disabled={updatePreferencesMutation.isPending}
+                  />
+                </div>
+
+                <Separator />
+              </>
+            )}
 
             {/* Theme Section */}
             <div className="flex items-center justify-between">

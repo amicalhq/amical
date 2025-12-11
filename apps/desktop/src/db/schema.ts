@@ -158,6 +158,7 @@ export interface AppSettingsData {
     launchAtLogin?: boolean;
     minimizeToTray?: boolean;
     showWidgetWhileInactive?: boolean;
+    showInDock?: boolean;
   };
   telemetry?: {
     enabled?: boolean;

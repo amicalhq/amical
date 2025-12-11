@@ -49,6 +49,11 @@ const defaultSettings: AppSettingsData = {
   ui: {
     theme: "system",
   },
+  preferences: {
+    launchAtLogin: true,
+    showWidgetWhileInactive: true,
+    showInDock: true,
+  },
   transcription: {
     language: "en",
     autoTranscribe: true,

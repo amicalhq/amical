@@ -22,6 +22,7 @@ export interface AppPreferences {
   launchAtLogin: boolean;
   minimizeToTray: boolean;
   showWidgetWhileInactive: boolean;
+  showInDock: boolean;
 }
 
 export class SettingsService extends EventEmitter {
@@ -289,6 +290,7 @@ export class SettingsService extends EventEmitter {
       launchAtLogin: preferences?.launchAtLogin ?? true,
       minimizeToTray: preferences?.minimizeToTray ?? true,
       showWidgetWhileInactive: preferences?.showWidgetWhileInactive ?? true,
+      showInDock: preferences?.showInDock ?? true,
     };
   }
 
@@ -315,6 +317,7 @@ export class SettingsService extends EventEmitter {
       changes: preferences,
       showWidgetWhileInactiveChanged:
         preferences.showWidgetWhileInactive !== undefined,
+      showInDockChanged: preferences.showInDock !== undefined,
     });
   }
 
@@ -329,6 +332,26 @@ export class SettingsService extends EventEmitter {
         openAtLogin: preferences.launchAtLogin,
         openAsHidden: false,
       });
+    });
+  }
+
+  /**
+   * Sync the dock visibility setting with macOS
+   * This ensures the dock visibility matches our stored preference
+   */
+  syncDockVisibility(): void {
+    // Only applicable on macOS where app.dock exists
+    if (!app.dock) {
+      return;
+    }
+
+    // Get the current preference asynchronously and apply it
+    this.getPreferences().then((preferences) => {
+      if (preferences.showInDock) {
+        app.dock?.show();
+      } else {
+        app.dock?.hide();
+      }
     });
   }
 

@@ -183,19 +183,24 @@ export class AppManager {
   }
 
   private setupSettingsEventListeners(settingsService: SettingsService): void {
-    // Handle preference changes (widget visibility)
+    // Handle preference changes (widget visibility, dock visibility)
     settingsService.on(
       "preferences-changed",
       async ({
         showWidgetWhileInactiveChanged,
+        showInDockChanged,
       }: {
         showWidgetWhileInactiveChanged: boolean;
+        showInDockChanged: boolean;
       }) => {
         if (showWidgetWhileInactiveChanged) {
           const recordingManager =
             this.serviceManager.getService("recordingManager");
           const isIdle = recordingManager.getState() === "idle";
           await this.updateWidgetVisibility(isIdle);
+        }
+        if (showInDockChanged) {
+          settingsService.syncDockVisibility();
         }
       },
     );
@@ -231,17 +236,21 @@ export class AppManager {
 
     this.windowManager.createOrShowMainWindow();
 
+    // Apply dock visibility based on user preference (macOS only)
     if (app.dock) {
-      app.dock
-        .show()
-        .then(() => {
-          logger.main.info("Explicitly showing app in dock");
-        })
-        .catch((error) => {
-          logger.main.error("Error showing app in dock", error);
-        });
-    } else {
-      logger.main.warn("app.dock is not available");
+      if (preferences.showInDock) {
+        app.dock
+          .show()
+          .then(() => {
+            logger.main.info("Showing app in dock based on preference");
+          })
+          .catch((error) => {
+            logger.main.error("Error showing app in dock", error);
+          });
+      } else {
+        app.dock.hide();
+        logger.main.info("Hiding app from dock based on preference");
+      }
     }
   }
 
