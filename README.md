@@ -53,6 +53,9 @@ Powered by [Whisper](https://github.com/openai/whisper) for speech-to-text and o
 
 Context-aware dictation that adapts to what you're doing: drafting an email, chatting on Discord, writing prompts in your IDE, or messaging friends. Amical detects the active app and formats your speech accordingly.
 
+<p align="center">
+  <img src="https://amical.ai/demo/dictation-demo-component.gif" alt="Amical dictation demo" width="600">
+</p>
 
 ## ✨ Features
 
