@@ -129,15 +129,30 @@ namespace WindowsHelper.Services
                         var tp = textPattern as TextPattern;
                         if (tp != null)
                         {
-                            var selection = tp.GetSelection();
-                            if (selection.Length > 0)
+                            try
                             {
-                                var range = selection[0];
-                                context.TextSelection = new TextSelection
+                                var selection = tp.GetSelection();
+                                if (selection != null && selection.Length > 0)
                                 {
-                                    SelectedText = range.GetText(-1),
-                                    IsEditable = context.IsEditable
-                                };
+                                    var range = selection[0];
+                                    var selectedText = SafeGetTextFromRange(range);
+                                    if (selectedText != null)
+                                    {
+                                        context.TextSelection = new TextSelection
+                                        {
+                                            SelectedText = selectedText,
+                                            IsEditable = context.IsEditable
+                                        };
+                                    }
+                                }
+                            }
+                            catch (COMException ex)
+                            {
+                                LogToStderr($"Error getting text selection: {ex.Message}");
+                            }
+                            catch (InvalidOperationException ex)
+                            {
+                                LogToStderr($"Error getting text selection: {ex.Message}");
                             }
                         }
                     }
@@ -270,7 +285,7 @@ namespace WindowsHelper.Services
                 // Try Text pattern
                 if (element.TryGetCurrentPattern(TextPattern.Pattern, out object textPattern))
                 {
-                    return (textPattern as TextPattern)?.DocumentRange.GetText(-1);
+                    return SafeGetDocumentText(textPattern as TextPattern);
                 }
                 
                 // Try RangeValue pattern
@@ -297,7 +312,7 @@ namespace WindowsHelper.Services
                     var vp = valuePattern as ValuePattern;
                     return vp != null && !vp.Current.IsReadOnly;
                 }
-                
+
                 // Check if it's an editable text control
                 if (element.Current.ControlType == ControlType.Edit ||
                     element.Current.ControlType == ControlType.Document)
@@ -309,10 +324,48 @@ namespace WindowsHelper.Services
             {
                 // Ignore pattern errors
             }
-            
+
             return false;
         }
-        
+
+        /// <summary>
+        /// Safely retrieves text from a TextPatternRange, handling COM exceptions that can occur
+        /// when the underlying element becomes unavailable.
+        /// </summary>
+        private string? SafeGetTextFromRange(TextPatternRange? range, int maxLength = -1)
+        {
+            if (range == null) return null;
+
+            try
+            {
+                return range.GetText(maxLength);
+            }
+            catch (COMException ex)
+            {
+                LogToStderr($"SafeGetTextFromRange COMException: {ex.Message}");
+                return null;
+            }
+            catch (ElementNotAvailableException ex)
+            {
+                LogToStderr($"SafeGetTextFromRange ElementNotAvailable: {ex.Message}");
+                return null;
+            }
+            catch (InvalidOperationException ex)
+            {
+                LogToStderr($"SafeGetTextFromRange InvalidOperation: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Safely retrieves the document text from a TextPattern.
+        /// </summary>
+        private string? SafeGetDocumentText(TextPattern? textPattern, int maxLength = -1)
+        {
+            if (textPattern?.DocumentRange == null) return null;
+            return SafeGetTextFromRange(textPattern.DocumentRange, maxLength);
+        }
+
         private void LogToStderr(string message)
         {
             var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
