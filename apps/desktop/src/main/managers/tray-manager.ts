@@ -33,9 +33,10 @@ export class TrayManager {
     );
 
     // On macOS, mark as template image for proper light/dark mode support
+    // Use guid to persist menu bar position between app launches
     if (isMacOS()) {
       icon.setTemplateImage(true);
-      this.tray = new Tray(icon);
+      this.tray = new Tray(icon, { guid: "com.amical.menubar" });
     } else {
       this.tray = new Tray(icon);
     }
