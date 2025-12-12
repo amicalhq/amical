@@ -73,10 +73,12 @@ export function UnifiedPermissionsStep({
   };
 
   const handleOpenMicrophoneSettings = async () => {
-    // Open System Preferences > Security & Privacy > Privacy > Microphone
-    await openExternal.mutateAsync({
-      url: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-    });
+    // Open platform-specific microphone privacy settings
+    const url =
+      platform === "darwin"
+        ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        : "ms-settings:privacy-microphone";
+    await openExternal.mutateAsync({ url });
   };
 
   const getMicrophoneStatus = () => {
