@@ -38,7 +38,9 @@ if (!gotTheLock) {
 
 // Set up auto-updater for production builds
 if (app.isPackaged && !isWindows()) {
-  updateElectronApp();
+  updateElectronApp({
+    notifyUser: false,
+  });
 }
 if (app.isPackaged && isWindows()) {
   // Check if running with --squirrel-firstrun (Windows only)
@@ -46,7 +48,9 @@ if (app.isPackaged && isWindows()) {
   // Delay update check on Windows to avoid Squirrel file lock issues
   if (isWindows() && !isSquirrelFirstRun) {
     setTimeout(() => {
-      updateElectronApp();
+      updateElectronApp({
+        notifyUser: false,
+      });
     }, 60000); // 60 second delay
   }
 }
