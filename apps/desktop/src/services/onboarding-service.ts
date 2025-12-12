@@ -214,6 +214,7 @@ export class OnboardingService extends EventEmitter {
         updates.discoverySource = preferences.discoverySource;
         this.telemetryService.trackOnboardingDiscoverySelected({
           source: preferences.discoverySource,
+          details: preferences.discoveryDetails,
         });
       }
 

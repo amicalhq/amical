@@ -236,7 +236,10 @@ export function App() {
   // Handle discovery source selection (telemetry tracked in backend)
   const handleDiscoverySource = (source: DiscoverySource, details?: string) => {
     setDiscoveryDetails(details || "");
-    handleSaveAndContinue({ discoverySource: source });
+    handleSaveAndContinue({
+      discoverySource: source,
+      discoveryDetails: details,
+    });
   };
 
   // Handle model selection (telemetry tracked in backend)

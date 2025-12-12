@@ -63,6 +63,7 @@ export interface ModelRecommendation {
 export interface OnboardingPreferences {
   featureInterests?: FeatureInterest[];
   discoverySource?: DiscoverySource;
+  discoveryDetails?: string;
   selectedModelType?: ModelType;
   modelRecommendation?: ModelRecommendation & { followed: boolean };
   lastVisitedScreen?: OnboardingScreen;
@@ -125,6 +126,7 @@ export const OnboardingStateSchema = z.object({
 export const OnboardingPreferencesSchema = z.object({
   featureInterests: z.array(FeatureInterestSchema).optional(),
   discoverySource: DiscoverySourceSchema.optional(),
+  discoveryDetails: z.string().max(200).optional(),
   selectedModelType: ModelTypeSchema.optional(),
   modelRecommendation: z
     .object({
