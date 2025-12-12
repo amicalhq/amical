@@ -109,11 +109,15 @@ export class TelemetryService {
 
     // Get unique machine ID
     this.machineId = await machineId();
-    logger.main.info("Machine ID generated for telemetry");
+    logger.main.info("Machine ID generated for telemetry", {
+      machineId: this.machineId,
+    });
 
     // Collect system information
     this.systemInfo = await this.collectSystemInfo();
-    logger.main.info("System information collected for telemetry");
+    logger.main.info("System information collected for telemetry", {
+      systemInfo: this.systemInfo,
+    });
 
     // ! posthog-node code flow doesn't use register to set super properties
     // ! Track them manually
