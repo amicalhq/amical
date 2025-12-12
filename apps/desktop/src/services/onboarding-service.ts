@@ -355,6 +355,7 @@ export class OnboardingService extends EventEmitter {
   }> {
     const forceOnboarding = process.env.FORCE_ONBOARDING === "true";
     const state = await this.getOnboardingState();
+    logger.main.info("Onboarding state:", state);
     const hasCompleted = state?.completedVersion
       ? state.completedVersion >= 1
       : false;

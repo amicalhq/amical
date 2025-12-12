@@ -36,10 +36,8 @@ export class TrayManager {
     // Use guid to persist menu bar position between app launches
     if (isMacOS()) {
       icon.setTemplateImage(true);
-      this.tray = new Tray(icon, { guid: "com.amical.menubar" });
-    } else {
-      this.tray = new Tray(icon);
     }
+    this.tray = new Tray(icon);
 
     // Set tooltip
     this.tray.setToolTip("Amical");
@@ -103,10 +101,12 @@ export class TrayManager {
   }
 
   cleanup(): void {
-    if (this.tray && !this.tray.isDestroyed()) {
+    //! DO NOT MANUALLY DESTROY, THIS RESETS THE TRAY POSITION
+    //! EVEN IF IT SHOULDN'T
+    /* if (this.tray && !this.tray.isDestroyed()) {
       this.tray.destroy();
       this.tray = null;
       logger.main.info("Tray cleaned up");
-    }
+    } */
   }
 }
