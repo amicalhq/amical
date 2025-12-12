@@ -120,7 +120,7 @@ export function DiscoverySourceScreen({
               placeholder="Tell us more..."
               value={otherDetails}
               onChange={(e) => setOtherDetails(e.target.value)}
-              maxLength={100}
+              maxLength={200}
             />
             <p className="text-xs text-muted-foreground">
               {otherDetails.length}/100 characters
