@@ -180,6 +180,18 @@ export class VADService extends EventEmitter {
     return this.isSpeaking;
   }
 
+  /**
+   * Reset VAD state for a new recording session.
+   * This clears the LSTM state and speech detection counters.
+   */
+  reset(): void {
+    this.resetStates();
+    this.speechFrameCount = 0;
+    this.silenceFrameCount = 0;
+    this.isSpeaking = false;
+    logger.main.debug("VAD state reset for new recording session");
+  }
+
   async dispose(): Promise<void> {
     if (this.session) {
       await this.session.release();

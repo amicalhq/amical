@@ -197,6 +197,10 @@ export class RecordingManager extends EventEmitter {
       this.setState("starting");
       this.setMode(mode);
 
+      // Reset VAD state for fresh speech detection in this recording
+      const vadService = this.serviceManager.getService("vadService");
+      vadService.reset();
+
       this.recordingStartedAt = performance.now();
       this.recordingStoppedAt = null; // Reset stopped time
 
