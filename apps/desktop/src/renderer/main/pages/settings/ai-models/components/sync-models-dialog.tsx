@@ -253,7 +253,10 @@ export default function SyncModelsDialog({
                 ).map((model) => (
                   <div
                     key={model.id}
-                    className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors"
+                    className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() =>
+                      toggleModel(model.id, !selectedModels.includes(model.id))
+                    }
                   >
                     <Checkbox
                       id={model.id}
@@ -261,15 +264,13 @@ export default function SyncModelsDialog({
                       onCheckedChange={(checked) =>
                         toggleModel(model.id, !!checked)
                       }
+                      onClick={(e) => e.stopPropagation()}
                       className="mt-1"
                     />
                     <div className="grid gap-1.5 leading-none flex-1">
-                      <label
-                        htmlFor={model.id}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
+                      <span className="text-sm font-medium leading-none cursor-pointer">
                         {model.name}
-                      </label>
+                      </span>
                       <div className="flex gap-2 text-xs text-muted-foreground">
                         {model.size && <span>Size: {model.size}</span>}
                         <span>Context: {model.context}</span>

@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -90,6 +89,17 @@ export function FormattingSettings() {
         </Tooltip>
       </div>
 
+      <Link
+        to="/settings/ai-models"
+        search={{ tab: "language" }}
+        className="inline-block"
+      >
+        <Button variant="link" className="text-xs px-0">
+          <Plus className="w-4 h-4" />
+          Manage language models
+        </Button>
+      </Link>
+
       {formattingEnabled && (
         <div className="mt-6 border-border border rounded-md p-4">
           <div className="space-y-4">
@@ -114,22 +124,10 @@ export function FormattingSettings() {
                 </Link>
               </div>
             ) : (
-              <div className="space-y-3">
-                <DefaultModelCombobox
-                  modelType="language"
-                  title="Default Language Model"
-                />
-                <Link
-                  to="/settings/ai-models"
-                  search={{ tab: "language" }}
-                  className="inline-block"
-                >
-                  <Button variant="link" className="text-xs px-0">
-                    <Plus className="w-4 h-4" />
-                    Manage language models
-                  </Button>
-                </Link>
-              </div>
+              <DefaultModelCombobox
+                modelType="language"
+                title="Default Language Model"
+              />
             )}
           </div>
         </div>
