@@ -43,7 +43,6 @@ const getDefaultShortcuts = () => {
 // Default settings
 const defaultSettings: AppSettingsData = {
   formatterConfig: {
-    model: "", // Will be set when models are synced
     enabled: false,
   },
   ui: {

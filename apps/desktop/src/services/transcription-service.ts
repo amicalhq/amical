@@ -3,11 +3,13 @@ import {
   StreamingPipelineContext,
   StreamingSession,
   TranscriptionProvider,
+  FormattingProvider,
 } from "../pipeline/core/pipeline-types";
 import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
+import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
@@ -28,8 +30,6 @@ export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private cloudProvider: AmicalCloudProvider;
   private currentProvider: TranscriptionProvider | null = null;
-  private openRouterProvider: OpenRouterProvider | null = null;
-  private formatterEnabled = false;
   private streamingSessions = new Map<string, StreamingSession>();
   private vadService: VADService | null;
   private settingsService: SettingsService;
@@ -213,33 +213,6 @@ export class TranscriptionService {
   }
 
   /**
-   * Configure formatter for post-processing
-   */
-  configureFormatter(config: any): void {
-    if (!config?.enabled) {
-      this.openRouterProvider = null;
-      this.formatterEnabled = false;
-      logger.transcription.info("Formatter disabled");
-      return;
-    }
-
-    if (config.provider === "openrouter" && config.apiKey && config.model) {
-      this.openRouterProvider = new OpenRouterProvider(
-        config.apiKey,
-        config.model,
-      );
-      this.formatterEnabled = true;
-      logger.transcription.info("Formatter configured", {
-        provider: config.provider,
-      });
-    } else {
-      logger.transcription.warn("Invalid formatter configuration");
-      this.openRouterProvider = null;
-      this.formatterEnabled = false;
-    }
-  }
-
-  /**
    * Process a single audio chunk in streaming mode
    */
   async processStreamingChunk(options: {
@@ -380,7 +353,6 @@ export class TranscriptionService {
     session.recordingStoppedAt = recordingStoppedAt;
 
     let completeTranscription = completeTranscriptionTillNow;
-    let formattingStartTime: number | undefined;
     let formattingDuration: number | undefined;
 
     logger.transcription.info("Finalizing streaming session", {
@@ -389,53 +361,91 @@ export class TranscriptionService {
       chunkCount: session.transcriptionResults.length,
     });
 
-    if (
-      this.formatterEnabled &&
-      this.openRouterProvider &&
-      completeTranscription.trim().length
-    ) {
-      try {
-        formattingStartTime = performance.now();
-        const style =
-          session.context.sharedData.userPreferences?.formattingStyle;
-        const formattedText = await this.openRouterProvider.format({
-          text: completeTranscription,
-          context: {
-            style,
-            vocabulary: session.context.sharedData.vocabulary,
-            accessibilityContext:
-              session.context.sharedData.accessibilityContext,
-            previousChunk:
-              session.transcriptionResults.length > 1
-                ? session.transcriptionResults[
-                    session.transcriptionResults.length - 2
-                  ]
-                : undefined,
-            aggregatedTranscription: completeTranscription,
-          },
-        });
+    // Fetch formatter config on-demand
+    let formattingUsed = false;
+    let formattingModel: string | undefined;
 
-        formattingDuration = performance.now() - formattingStartTime;
+    const formatterConfig = await this.settingsService.getFormatterConfig();
 
-        logger.transcription.info("Text formatted successfully", {
-          sessionId,
-          originalTranscription: completeTranscription,
-          formattedTranscription: formattedText,
-          originalLength: completeTranscription.length,
-          formattedLength: formattedText.length,
-          formattingDuration,
-        });
-
-        completeTranscription = formattedText;
-      } catch (error) {
-        logger.transcription.error(
-          "Formatting failed, using unformatted text",
-          {
-            sessionId,
-            error,
-          },
+    if (!formatterConfig?.enabled) {
+      logger.transcription.debug("Formatting skipped: disabled in config");
+    } else if (!completeTranscription.trim().length) {
+      logger.transcription.debug("Formatting skipped: empty transcription");
+    } else {
+      // Get default language model and look up provider
+      const modelId = await this.settingsService.getDefaultLanguageModel();
+      if (!modelId) {
+        logger.transcription.debug(
+          "Formatting skipped: no default language model",
         );
-        // Continue with unformatted text
+      } else {
+        const allModels = await this.modelService.getSyncedProviderModels();
+        const model = allModels.find(
+          (m) => m.id === modelId && m.type === "language",
+        );
+
+        if (!model) {
+          logger.transcription.warn("Formatting skipped: model not found", {
+            modelId,
+          });
+        } else if (model.provider === "OpenRouter") {
+          const config = await this.settingsService.getOpenRouterConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: OpenRouter API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new OpenRouterProvider(config.apiKey, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "Ollama") {
+          const config = await this.settingsService.getOllamaConfig();
+          if (!config?.url) {
+            logger.transcription.warn("Formatting skipped: Ollama URL missing");
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new OllamaFormatter(config.url, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else {
+          logger.transcription.warn(
+            "Formatting skipped: unsupported provider",
+            {
+              provider: model.provider,
+            },
+          );
+        }
       }
     }
 
@@ -451,7 +461,7 @@ export class TranscriptionService {
       language: session.context.sharedData.userPreferences?.language || "en",
       duration: session.context.sharedData.audioMetadata?.duration,
       speechModel: "whisper-local",
-      formattingModel: this.formatterEnabled ? "openrouter" : undefined,
+      formattingModel,
       audioFile: audioFilePath,
       meta: {
         sessionId,
@@ -510,8 +520,8 @@ export class TranscriptionService {
           : undefined,
       text_length: completeTranscription.length,
       word_count: completeTranscription.trim().split(/\s+/).length,
-      formatting_enabled: this.formatterEnabled,
-      formatting_model: this.formatterEnabled ? "openrouter" : undefined,
+      formatting_enabled: formattingUsed,
+      formatting_model: formattingModel,
       formatting_duration_ms: formattingDuration,
       vad_enabled: !!this.vadService,
       session_type: "streaming",
@@ -542,6 +552,51 @@ export class TranscriptionService {
     // TODO: Load formatter config from settings
 
     return context;
+  }
+
+  private async formatWithProvider(
+    provider: FormattingProvider,
+    sessionId: string,
+    text: string,
+    session: StreamingSession,
+  ): Promise<{ text: string; duration: number } | null> {
+    const startTime = performance.now();
+    const style = session.context.sharedData.userPreferences?.formattingStyle;
+
+    try {
+      const formattedText = await provider.format({
+        text,
+        context: {
+          style,
+          vocabulary: session.context.sharedData.vocabulary,
+          accessibilityContext: session.context.sharedData.accessibilityContext,
+          previousChunk:
+            session.transcriptionResults.length > 1
+              ? session.transcriptionResults[
+                  session.transcriptionResults.length - 2
+                ]
+              : undefined,
+          aggregatedTranscription: text,
+        },
+      });
+
+      const duration = performance.now() - startTime;
+
+      logger.transcription.info("Text formatted successfully", {
+        sessionId,
+        originalLength: text.length,
+        formattedLength: formattedText.length,
+        formattingDuration: duration,
+      });
+
+      return { text: formattedText, duration };
+    } catch (error) {
+      logger.transcription.error("Formatting failed, using unformatted text", {
+        sessionId,
+        error,
+      });
+      return null;
+    }
   }
 
   /**

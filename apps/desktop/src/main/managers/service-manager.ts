@@ -154,23 +154,6 @@ export class ServiceManager {
       );
       await this.transcriptionService.initialize();
 
-      // Load and configure formatter
-      try {
-        const formatterConfig = await this.settingsService.getFormatterConfig();
-        if (formatterConfig) {
-          this.transcriptionService.configureFormatter(formatterConfig);
-          logger.transcription.info("Formatter configured", {
-            model: formatterConfig.model,
-            enabled: formatterConfig.enabled,
-          });
-        }
-      } catch (formatterError) {
-        logger.transcription.warn(
-          "Failed to load formatter configuration:",
-          formatterError,
-        );
-      }
-
       logger.transcription.info("Transcription Service initialized", {
         client: "Pipeline with Whisper",
       });

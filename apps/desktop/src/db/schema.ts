@@ -110,7 +110,6 @@ export const models = sqliteTable(
 // Define the shape of our settings JSON
 export interface AppSettingsData {
   formatterConfig?: {
-    model: string; // Now stores the model ID from synced models
     enabled: boolean;
   };
   ui?: {

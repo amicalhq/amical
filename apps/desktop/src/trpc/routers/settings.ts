@@ -8,7 +8,6 @@ import * as fs from "fs/promises";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
-  model: z.string(), // Model ID from synced models
   enabled: z.boolean(),
 });
 
@@ -148,34 +147,9 @@ export const settingsRouter = createRouter({
   setFormatterConfig: procedure
     .input(FormatterConfigSchema)
     .mutation(async ({ input, ctx }) => {
-      try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
-        if (!settingsService) {
-          throw new Error("SettingsService not available");
-        }
-        await settingsService.setFormatterConfig(input);
-
-        // Update transcription service with new formatter configuration
-        const transcriptionService = ctx.serviceManager.getService(
-          "transcriptionService",
-        );
-        if (transcriptionService) {
-          transcriptionService.configureFormatter(input);
-          const logger = ctx.serviceManager.getLogger();
-          if (logger) {
-            logger.transcription.info("Formatter configuration updated");
-          }
-        }
-
-        return true;
-      } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
-        if (logger) {
-          logger.transcription.error("Error setting formatter config:", error);
-        }
-        throw error;
-      }
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      await settingsService.setFormatterConfig(input);
+      return true;
     }),
   // Get shortcuts configuration
   getShortcuts: procedure.query(async ({ ctx }) => {

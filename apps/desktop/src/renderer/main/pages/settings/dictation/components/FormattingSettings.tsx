@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Plus } from "lucide-react";
@@ -19,9 +20,6 @@ export function FormattingSettings() {
   // tRPC queries and mutations
   const formatterConfigQuery = api.settings.getFormatterConfig.useQuery();
   const modelsQuery = api.models.getModels.useQuery({
-    type: "language",
-  });
-  const defaultLanguageModelQuery = api.models.getDefaultModel.useQuery({
     type: "language",
   });
   const utils = api.useUtils();
@@ -47,16 +45,7 @@ export function FormattingSettings() {
 
   const handleFormattingEnabledChange = (enabled: boolean) => {
     setFormattingEnabled(enabled);
-    // Save with the current default language model
-    const model = defaultLanguageModelQuery.data || "";
-    saveFormatterConfig(model, enabled);
-  };
-
-  const saveFormatterConfig = (model: string, enabled: boolean) => {
-    setFormatterConfigMutation.mutate({
-      model,
-      enabled,
-    });
+    setFormatterConfigMutation.mutate({ enabled });
   };
 
   const hasModels = (modelsQuery.data?.length ?? 0) > 0;
@@ -64,11 +53,16 @@ export function FormattingSettings() {
     <div className="">
       <div className="flex items-center justify-between mb-2">
         <div>
-          <Label className="text-base font-semibold text-foreground">
-            Formatting
-          </Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-base font-semibold text-foreground">
+              Formatting
+            </Label>
+            <Badge className="text-[10px] px-1.5 py-0 bg-orange-500/20 text-orange-500 hover:bg-orange-500/20">
+              Alpha
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground mb-2">
-            Enable formatting and select the AI model for formatting output.
+            Enable context based transcription formatting.
           </p>
         </div>
         <Tooltip delayDuration={100}>
