@@ -103,9 +103,12 @@ export class WindowManager {
     // Get theme colors before creating window
     const colors = await this.getThemeColors();
 
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const windowHeight = Math.min(800, primaryDisplay.workAreaSize.height - 40);
+
     this.mainWindow = new BrowserWindow({
       width: 1200,
-      height: 800,
+      height: windowHeight,
       frame: true,
       titleBarStyle: "hidden",
       titleBarOverlay: {
@@ -239,9 +242,12 @@ export class WindowManager {
     // Get theme colors before creating window
     const colors = await this.getThemeColors();
 
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const windowHeight = Math.min(928, primaryDisplay.workAreaSize.height - 40);
+
     this.onboardingWindow = new BrowserWindow({
       width: 800,
-      height: 928,
+      height: windowHeight,
       frame: true,
       titleBarStyle: "hidden",
       titleBarOverlay: {
