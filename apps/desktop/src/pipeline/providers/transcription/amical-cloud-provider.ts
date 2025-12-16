@@ -5,6 +5,8 @@ import {
 import { logger } from "../../../main/logger";
 import { AuthService } from "../../../services/auth-service";
 import { getUserAgent } from "../../../utils/http-client";
+import { detectApplicationType } from "../formatting/formatter-prompt";
+import type { GetAccessibilityContextResult } from "@amical/types";
 
 interface CloudTranscriptionResponse {
   success: boolean;
@@ -27,6 +29,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private currentSilenceFrameCount = 0;
   private lastSpeechTimestamp = 0;
   private currentLanguage: string | undefined;
+  private currentAccessibilityContext: GetAccessibilityContextResult | null =
+    null;
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -57,6 +61,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
       // Store language for use in API call (undefined = auto-detect)
       this.currentLanguage = context.language;
+
+      // Store accessibility context for the API request
+      this.currentAccessibilityContext = context?.accessibilityContext ?? null;
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
@@ -163,6 +170,30 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         body: JSON.stringify({
           audioData: Array.from(audioData),
           language: this.currentLanguage,
+          sharedContext: this.currentAccessibilityContext
+            ? {
+                selectedText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.selectedText,
+                beforeText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.preSelectionText,
+                afterText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.postSelectionText,
+                appType: detectApplicationType(
+                  this.currentAccessibilityContext,
+                ),
+                appBundleId:
+                  this.currentAccessibilityContext.context?.application
+                    ?.bundleIdentifier,
+                appName:
+                  this.currentAccessibilityContext.context?.application?.name,
+                appUrl:
+                  this.currentAccessibilityContext.context?.windowInfo?.url,
+                surroundingContext: "", // Empty for now, future enhancement
+              }
+            : undefined,
         }),
       });
 

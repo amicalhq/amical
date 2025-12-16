@@ -17,8 +17,11 @@ const BASE_INSTRUCTIONS = [
   "Do not include any commentary, explanations, or text outside the XML tags",
 ];
 
+// Application type union
+type AppType = "email" | "chat" | "notes" | "default";
+
 // Application type specific rules
-const APPLICATION_TYPE_RULES: Record<string, string[]> = {
+const APPLICATION_TYPE_RULES: Record<AppType, string[]> = {
   email: [
     "Format with proper email structure (greeting, body paragraphs, closing)",
     "Preserve email metadata if present (From, To, Subject, Date)",
@@ -41,7 +44,7 @@ const APPLICATION_TYPE_RULES: Record<string, string[]> = {
     "Format action items and tasks clearly",
     "Preserve any existing formatting hints",
   ],
-  general: [
+  default: [
     "Apply standard formatting for general text",
     "Create logical paragraph breaks based on content flow",
     "Maintain consistent formatting throughout",
@@ -50,7 +53,7 @@ const APPLICATION_TYPE_RULES: Record<string, string[]> = {
 };
 
 // Map bundle identifiers to application types
-const BUNDLE_TO_TYPE: Record<string, string> = {
+const BUNDLE_TO_TYPE: Record<string, AppType> = {
   "com.apple.mail": "email",
   "com.microsoft.Outlook": "email",
   "com.readdle.smartemail": "email",
@@ -79,8 +82,8 @@ const BROWSER_BUNDLE_IDS = [
   "com.vivaldi.Vivaldi",
 ];
 
-// URL patterns for web applications
-const URL_PATTERNS: Record<string, RegExp[]> = {
+// URL patterns for web applications (general has no patterns, falls through)
+const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
   email: [
     /mail\.google\.com/,
     /outlook\.live\.com/,
@@ -145,11 +148,11 @@ export function constructFormatterPrompt(context: FormatParams["context"]): {
   return { systemPrompt: parts.join("\n") };
 }
 
-function detectApplicationType(
+export function detectApplicationType(
   accessibilityContext: GetAccessibilityContextResult | null | undefined,
-): string {
+): "email" | "chat" | "notes" | "default" {
   if (!accessibilityContext?.context?.application?.bundleIdentifier) {
-    return "general";
+    return "default";
   }
 
   const bundleId = accessibilityContext.context.application.bundleIdentifier;
@@ -163,8 +166,11 @@ function detectApplicationType(
     // Try to detect type from URL
     const url = accessibilityContext.context.windowInfo.url.toLowerCase();
 
-    for (const [type, patterns] of Object.entries(URL_PATTERNS)) {
-      if (patterns.some((pattern) => pattern.test(url))) {
+    for (const [type, patterns] of Object.entries(URL_PATTERNS) as [
+      AppType,
+      RegExp[],
+    ][]) {
+      if (patterns?.some((pattern) => pattern.test(url))) {
         return type;
       }
     }
@@ -176,12 +182,15 @@ function detectApplicationType(
   }
 
   // Check for partial matches
-  for (const [key, type] of Object.entries(BUNDLE_TO_TYPE)) {
+  for (const [key, type] of Object.entries(BUNDLE_TO_TYPE) as [
+    string,
+    AppType,
+  ][]) {
     if (bundleId.includes(key) || key.includes(bundleId)) {
       return type;
     }
   }
 
-  // Default to general
-  return "general";
+  // Default to default
+  return "default";
 }
