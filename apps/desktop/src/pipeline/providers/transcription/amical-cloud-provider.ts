@@ -103,8 +103,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         return "";
       }
 
-      // Process accumulated audio
-      const result = await this.processAudio();
+      // Process accumulated audio (pass flush flag for formatting decision)
+      const result = await this.processAudio(flush);
 
       // Clear buffer after processing
       this.frameBuffer = [];
@@ -118,12 +118,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     }
   }
 
-  private async processAudio(): Promise<string> {
-    if (this.frameBuffer.length === 0) {
-      return "";
-    }
-
-    // Combine all frames into a single Float32Array
+  private async processAudio(isFinal: boolean = false): Promise<string> {
+    // Combine all frames into a single Float32Array (may be empty)
     const totalLength = this.frameBuffer.reduce(
       (acc, frame) => acc + frame.length,
       0,
@@ -136,13 +132,20 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     }
 
     // Try transcription with automatic retry on 401
-    return this.makeTranscriptionRequest(combinedAudio);
+    // Enable formatting only on final chunk
+    return this.makeTranscriptionRequest(combinedAudio, false, isFinal);
   }
 
   private async makeTranscriptionRequest(
     audioData: Float32Array,
     isRetry = false,
+    enableFormatting = false,
   ): Promise<string> {
+    // Skip API call if no audio and formatting not requested
+    if (audioData.length === 0 && !enableFormatting) {
+      return "";
+    }
+
     // Get auth token
     const idToken = await this.authService.getIdToken();
     if (!idToken) {
@@ -157,6 +160,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       sampleRate: this.SAMPLE_RATE,
       duration,
       isRetry,
+      formatting: enableFormatting,
     });
 
     try {
@@ -170,6 +174,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         body: JSON.stringify({
           audioData: Array.from(audioData),
           language: this.currentLanguage,
+          formatting: {
+            enabled: enableFormatting,
+          },
           sharedContext: this.currentAccessibilityContext
             ? {
                 selectedText:
@@ -212,8 +219,12 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           // Force token refresh
           await this.authService.refreshTokenIfNeeded();
 
-          // Retry the request once
-          return await this.makeTranscriptionRequest(audioData, true);
+          // Retry the request once (preserve formatting flag)
+          return await this.makeTranscriptionRequest(
+            audioData,
+            true,
+            enableFormatting,
+          );
         } catch (refreshError) {
           logger.transcription.error("Token refresh failed:", refreshError);
           throw new Error("Authentication failed - please log in again");
