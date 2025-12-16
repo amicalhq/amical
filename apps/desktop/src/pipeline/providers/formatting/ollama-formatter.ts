@@ -17,6 +17,12 @@ export class OllamaFormatter implements FormattingProvider {
       // Construct the formatter prompt using the same function as OpenRouter
       const { systemPrompt } = constructFormatterPrompt(context);
 
+      logger.pipeline.debug("Formatting request", {
+        model: this.model,
+        systemPrompt,
+        userPrompt: text,
+      });
+
       // Use Ollama's chat endpoint for system/user message structure
       const response = await fetch(`${this.ollamaUrl}/api/chat`, {
         method: "POST",
@@ -41,6 +47,11 @@ export class OllamaFormatter implements FormattingProvider {
 
       const data = await response.json();
       const aiResponse = data.message?.content ?? "";
+
+      logger.pipeline.debug("Formatting raw response", {
+        model: this.model,
+        rawResponse: aiResponse,
+      });
 
       // Extract formatted text from XML tags (same as OpenRouter)
       const match = aiResponse.match(

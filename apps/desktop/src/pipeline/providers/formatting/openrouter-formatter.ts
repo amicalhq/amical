@@ -31,6 +31,12 @@ export class OpenRouterProvider implements FormattingProvider {
       // Build user prompt with context
       const userPrompt = text;
 
+      logger.pipeline.info("Formatting request", {
+        model: this.model,
+        systemPrompt,
+        userPrompt,
+      });
+
       const { text: aiResponse } = await generateText({
         model: this.provider(this.model),
         messages: [
@@ -45,6 +51,11 @@ export class OpenRouterProvider implements FormattingProvider {
         ],
         temperature: 0.1, // Low temperature for consistent formatting
         maxTokens: 2000,
+      });
+
+      logger.pipeline.debug("Formatting raw response", {
+        model: this.model,
+        rawResponse: aiResponse,
       });
 
       // Extract formatted text from XML tags
