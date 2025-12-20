@@ -15,15 +15,15 @@ interface KeyInfo {
 }
 
 interface ShortcutConfig {
-  pushToTalk: string;
-  toggleRecording: string;
+  pushToTalk: string[];
+  toggleRecording: string[];
 }
 
 export class ShortcutManager extends EventEmitter {
   private activeKeys = new Map<string, KeyInfo>();
   private shortcuts: ShortcutConfig = {
-    pushToTalk: "",
-    toggleRecording: "",
+    pushToTalk: [],
+    toggleRecording: [],
   };
   private settingsService: SettingsService;
   private nativeBridge: NativeBridge | null = null;
@@ -162,26 +162,26 @@ export class ShortcutManager extends EventEmitter {
   }
 
   private isPTTShortcutPressed(): boolean {
-    if (!this.shortcuts.pushToTalk) {
+    const pttKeys = this.shortcuts.pushToTalk;
+    if (!pttKeys || pttKeys.length === 0) {
       return false;
     }
 
-    const pttKeys = this.shortcuts.pushToTalk.split("+");
     const activeKeysList = this.getActiveKeys();
 
-    //! This should only be a subset match
+    // PTT: subset match - all PTT keys must be pressed (can have extra keys)
     return pttKeys.every((key) => activeKeysList.includes(key));
   }
 
   private isToggleRecordingShortcutPressed(): boolean {
-    if (!this.shortcuts.toggleRecording) {
+    const toggleKeys = this.shortcuts.toggleRecording;
+    if (!toggleKeys || toggleKeys.length === 0) {
       return false;
     }
 
-    const toggleKeys = this.shortcuts.toggleRecording.split("+");
     const activeKeysList = this.getActiveKeys();
 
-    // Check if toggle recording keys match active keys exactly
+    // Toggle: exact match - only these keys pressed, no extra keys
     return (
       toggleKeys.length === activeKeysList.length &&
       toggleKeys.every((key) => activeKeysList.includes(key))

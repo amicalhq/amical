@@ -11,10 +11,10 @@ const FormatterConfigSchema = z.object({
   enabled: z.boolean(),
 });
 
-// Shortcut schema
+// Shortcut schema (array of key names)
 const SetShortcutSchema = z.object({
   type: z.enum(["pushToTalk", "toggleRecording"]),
-  shortcut: z.string(),
+  shortcut: z.array(z.string()),
 });
 
 // Model providers schemas

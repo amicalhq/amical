@@ -8,14 +8,13 @@ import {
   updateAppSettings,
 } from "../db/app-settings";
 import type { AppSettingsData } from "../db/schema";
-import { isMacOS } from "../utils/platform";
 
 /**
  * Database-backed settings service with typed configuration
  */
 export interface ShortcutsConfig {
-  pushToTalk: string;
-  toggleRecording: string;
+  pushToTalk: string[];
+  toggleRecording: string[];
 }
 
 export interface AppPreferences {
@@ -133,18 +132,14 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
-   * Get shortcuts configuration with defaults
+   * Get shortcuts configuration
+   * Defaults are handled by app-settings.ts during initialization/migration
    */
   async getShortcuts(): Promise<ShortcutsConfig> {
     const shortcuts = await getSettingsSection("shortcuts");
-    // Return platform-specific defaults if not set
-    const defaults = isMacOS()
-      ? { pushToTalk: "Fn", toggleRecording: "Fn+Space" }
-      : { pushToTalk: "Ctrl+Win", toggleRecording: "Ctrl+Win+Space" };
-
     return {
-      pushToTalk: shortcuts?.pushToTalk || defaults.pushToTalk,
-      toggleRecording: shortcuts?.toggleRecording || defaults.toggleRecording,
+      pushToTalk: shortcuts?.pushToTalk ?? [],
+      toggleRecording: shortcuts?.toggleRecording ?? [],
     };
   }
 
@@ -152,10 +147,14 @@ export class SettingsService extends EventEmitter {
    * Update shortcuts configuration
    */
   async setShortcuts(shortcuts: ShortcutsConfig): Promise<void> {
-    // Store empty strings as undefined to clear shortcuts
+    // Store empty arrays as undefined to clear shortcuts
     const dataToStore = {
-      pushToTalk: shortcuts.pushToTalk || undefined,
-      toggleRecording: shortcuts.toggleRecording || undefined,
+      pushToTalk: shortcuts.pushToTalk?.length
+        ? shortcuts.pushToTalk
+        : undefined,
+      toggleRecording: shortcuts.toggleRecording?.length
+        ? shortcuts.toggleRecording
+        : undefined,
     };
     await updateSettingsSection("shortcuts", dataToStore);
   }

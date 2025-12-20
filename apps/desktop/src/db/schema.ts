@@ -132,9 +132,8 @@ export interface AppSettingsData {
     preferredMicrophoneName?: string;
   };
   shortcuts?: {
-    pushToTalk?: string;
-    toggleRecording?: string;
-    toggleWindow?: string;
+    pushToTalk?: string[];
+    toggleRecording?: string[];
   };
 
   modelProvidersConfig?: {

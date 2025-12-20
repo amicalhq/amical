@@ -7,8 +7,10 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
 export function ShortcutsSettingsPage() {
-  const [pushToTalkShortcut, setPushToTalkShortcut] = useState("");
-  const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState("");
+  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<string[]>([]);
+  const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState<
+    string[]
+  >([]);
   const [recordingShortcut, setRecordingShortcut] = useState<
     "pushToTalk" | "toggleRecording" | null
   >(null);
@@ -40,7 +42,7 @@ export function ShortcutsSettingsPage() {
     }
   }, [shortcutsQuery.data]);
 
-  const handlePushToTalkChange = (shortcut: string) => {
+  const handlePushToTalkChange = (shortcut: string[]) => {
     setPushToTalkShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "pushToTalk",
@@ -48,7 +50,7 @@ export function ShortcutsSettingsPage() {
     });
   };
 
-  const handleToggleRecordingChange = (shortcut: string) => {
+  const handleToggleRecordingChange = (shortcut: string[]) => {
     setToggleRecordingShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "toggleRecording",

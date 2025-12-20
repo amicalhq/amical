@@ -6,8 +6,8 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
 interface ShortcutInputProps {
-  value?: string;
-  onChange: (value: string) => void;
+  value?: string[];
+  onChange: (value: string[]) => void;
   isRecordingShortcut?: boolean;
   onRecordingShortcutChange: (recording: boolean) => void;
 }
@@ -17,7 +17,7 @@ const MAX_KEY_COMBINATION_LENGTH = 4;
 
 type ValidationResult = {
   valid: boolean;
-  shortcut?: string;
+  shortcut?: string[];
   error?: string;
 };
 
@@ -45,7 +45,8 @@ function validateShortcut(keys: string[]): ValidationResult {
     };
   }
 
-  return { valid: true, shortcut: [...modifierKeys, ...regularKeys].join("+") };
+  // Return array format: modifiers first, then regular keys
+  return { valid: true, shortcut: [...modifierKeys, ...regularKeys] };
 }
 
 function RecordingDisplay({
@@ -90,17 +91,20 @@ function ShortcutDisplay({
   value,
   onEdit,
 }: {
-  value?: string;
+  value?: string[];
   onEdit: () => void;
 }) {
+  // Format array as display string (e.g., ["Fn", "Space"] -> "Fn+Space")
+  const displayValue = value?.length ? value.join("+") : undefined;
+
   return (
     <>
-      {value && (
+      {displayValue && (
         <kbd
           onClick={onEdit}
           className="inline-flex items-center px-3 py-1 bg-muted hover:bg-muted/70 rounded-md text-sm font-mono cursor-pointer transition-colors"
         >
-          {value}
+          {displayValue}
         </kbd>
       )}
       <Button
