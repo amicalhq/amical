@@ -61,8 +61,24 @@ func eventTapCallback(
         )
 
         anInstance.sendKeyEvent(helperEvent)
+
+        // Check if this key event matches a configured shortcut and should be consumed
+        // Only check for regular key events (not modifier-only events)
+        let modifiers = ModifierState(
+            fn: event.flags.contains(.maskSecondaryFn),
+            cmd: event.flags.contains(.maskCommand),
+            ctrl: event.flags.contains(.maskControl),
+            alt: event.flags.contains(.maskAlternate),
+            shift: event.flags.contains(.maskShift)
+        )
+
+        if ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode), modifiers: modifiers) {
+            // CONSUME - prevent default behavior (e.g., cursor movement for arrow keys)
+            return nil
+        }
     } else if type == .flagsChanged {
         // Handle flags changed events (like Fn key press/release)
+        // Modifier-only events always pass through - they don't cause unwanted behavior on their own
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
         let payload = KeyEventPayload(

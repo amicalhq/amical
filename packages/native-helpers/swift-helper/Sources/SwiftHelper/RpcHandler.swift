@@ -147,6 +147,42 @@ class IOBridge: NSObject {
                 rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: nil)
             }
 
+        case .setShortcuts:
+            logToStderr("[IOBridge] Handling setShortcuts for ID: \(request.id)")
+            guard let paramsAnyCodable = request.params else {
+                let errPayload = Error(
+                    code: -32602, data: nil, message: "Missing params for setShortcuts")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                sendRpcResponse(rpcResponse)
+                return
+            }
+
+            do {
+                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                let shortcutsParams = try jsonDecoder.decode(
+                    SetShortcutsParamsSchema.self, from: paramsData)
+
+                // Update the ShortcutManager with the new shortcuts
+                ShortcutManager.shared.setShortcuts(
+                    pushToTalk: shortcutsParams.pushToTalk,
+                    toggleRecording: shortcutsParams.toggleRecording
+                )
+
+                let resultPayload = SetShortcutsResultSchema(success: true)
+                let resultData = try jsonEncoder.encode(resultPayload)
+                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
+                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+
+            } catch {
+                logToStderr(
+                    "[IOBridge] Error processing setShortcuts params: \(error.localizedDescription) for ID: \(request.id)"
+                )
+                let errPayload = Error(
+                    code: -32602, data: request.params,
+                    message: "Invalid params: \(error.localizedDescription)")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+            }
+
         default:
             logToStderr("[IOBridge] Method not found: \(request.method) for ID: \(request.id)")
             let errPayload = Error(

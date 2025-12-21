@@ -24,7 +24,7 @@ import {
   type NewAppSettings,
   type AppSettingsData,
 } from "./schema";
-import { isWindows, isMacOS } from "../utils/platform";
+import { isMacOS } from "../utils/platform";
 
 // Current settings schema version - increment when making breaking changes
 const CURRENT_SETTINGS_VERSION = 2;

@@ -25,6 +25,8 @@ import {
   MuteSystemAudioResult,
   RestoreSystemAudioParams,
   RestoreSystemAudioResult,
+  SetShortcutsParams,
+  SetShortcutsResult,
 } from "@amical/types";
 
 // Define the interface for RPC methods
@@ -49,8 +51,10 @@ interface RPCMethods {
     params: RestoreSystemAudioParams;
     result: RestoreSystemAudioResult;
   };
-  // Add other methods here, e.g.:
-  // setLogLevel: { params: SetLogLevelParams; result: SetLogLevelResult };
+  setShortcuts: {
+    params: SetShortcutsParams;
+    result: SetShortcutsResult;
+  };
 }
 
 // Define event types for the client
@@ -379,6 +383,28 @@ export class NativeBridge extends EventEmitter {
    */
   getAccessibilityContext(): GetAccessibilityContextResult | null {
     return this.accessibilityContext;
+  }
+
+  /**
+   * Send the configured shortcuts to the native helper for key consumption.
+   * When these shortcuts are pressed, the native helper will consume the key events
+   * to prevent default behavior (e.g., cursor movement for arrow keys).
+   */
+  async setShortcuts(shortcuts: SetShortcutsParams): Promise<boolean> {
+    try {
+      const result = await this.call("setShortcuts", shortcuts);
+      this.logger.info("Shortcuts synced to native helper", {
+        pushToTalk: shortcuts.pushToTalk,
+        toggleRecording: shortcuts.toggleRecording,
+        success: result.success,
+      });
+      return result.success;
+    } catch (error) {
+      this.logger.error("Failed to sync shortcuts to native helper", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
   }
 
   // Typed event emitter methods

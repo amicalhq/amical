@@ -36,8 +36,8 @@ function validateShortcut(keys: string[]): ValidationResult {
   const modifierKeys = keys.filter((key) => MODIFIER_KEYS.includes(key));
   const regularKeys = keys.filter((key) => !MODIFIER_KEYS.includes(key));
 
-  // disallow only regular keys
-  if (modifierKeys.length === 0 && regularKeys.length === 1) {
+  // Require at least one modifier key
+  if (modifierKeys.length === 0) {
     return {
       valid: false,
       error:

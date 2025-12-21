@@ -37,6 +37,7 @@ export class ShortcutManager extends EventEmitter {
   async initialize(nativeBridge: NativeBridge | null) {
     this.nativeBridge = nativeBridge;
     await this.loadShortcuts();
+    this.syncShortcutsToNative(); // fire-and-forget
     this.setupEventListeners();
   }
 
@@ -50,8 +51,31 @@ export class ShortcutManager extends EventEmitter {
     }
   }
 
+  /**
+   * Sync the configured shortcuts to the native helper for key consumption.
+   * This tells the native helper which key combinations to consume
+   * (prevent default behavior like cursor movement for arrow keys).
+   */
+  private async syncShortcutsToNative() {
+    if (!this.nativeBridge) {
+      log.debug("Native bridge not available, skipping shortcut sync");
+      return;
+    }
+
+    try {
+      await this.nativeBridge.setShortcuts({
+        pushToTalk: this.shortcuts.pushToTalk,
+        toggleRecording: this.shortcuts.toggleRecording,
+      });
+      log.info("Shortcuts synced to native helper");
+    } catch (error) {
+      log.error("Failed to sync shortcuts to native helper", { error });
+    }
+  }
+
   async reloadShortcuts() {
     await this.loadShortcuts();
+    this.syncShortcutsToNative(); // fire-and-forget
   }
 
   setIsRecordingShortcut(isRecording: boolean) {

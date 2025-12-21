@@ -26,6 +26,10 @@ import {
   RestoreSystemAudioResultSchema,
 } from "../src/schemas/methods/restore-system-audio.js";
 import {
+  SetShortcutsParamsSchema,
+  SetShortcutsResultSchema,
+} from "../src/schemas/methods/set-shortcuts.js";
+import {
   KeyDownEventSchema,
   KeyUpEventSchema,
   FlagsChangedEventSchema,
@@ -86,6 +90,16 @@ const schemasToGenerate = [
   {
     zod: MuteSystemAudioResultSchema,
     name: "MuteSystemAudioResult",
+    category: "methods",
+  },
+  {
+    zod: SetShortcutsParamsSchema,
+    name: "SetShortcutsParams",
+    category: "methods",
+  },
+  {
+    zod: SetShortcutsResultSchema,
+    name: "SetShortcutsResult",
     category: "methods",
   },
 ];

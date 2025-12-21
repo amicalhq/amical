@@ -440,7 +440,7 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RestoreSystemAudio };
+    public enum Method { GetAccessibilityContext, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RestoreSystemAudio, SetShortcuts };
 
     public enum KeyDownEventType { KeyDown };
 
@@ -586,6 +586,8 @@ namespace WindowsHelper.Models
                     return Method.PasteText;
                 case "restoreSystemAudio":
                     return Method.RestoreSystemAudio;
+                case "setShortcuts":
+                    return Method.SetShortcuts;
             }
             throw new Exception("Cannot unmarshal type Method");
         }
@@ -608,6 +610,9 @@ namespace WindowsHelper.Models
                     return;
                 case Method.RestoreSystemAudio:
                     JsonSerializer.Serialize(writer, "restoreSystemAudio", options);
+                    return;
+                case Method.SetShortcuts:
+                    JsonSerializer.Serialize(writer, "setShortcuts", options);
                     return;
             }
             throw new Exception("Cannot marshal type Method");

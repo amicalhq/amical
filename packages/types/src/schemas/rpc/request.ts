@@ -10,7 +10,7 @@ const RPCMethodNameSchema = z.union([
   z.literal("pasteText"),
   z.literal("muteSystemAudio"),
   z.literal("restoreSystemAudio"),
-  // Add other method names here
+  z.literal("setShortcuts"),
 ]);
 
 export const RpcRequestSchema = z.object({
