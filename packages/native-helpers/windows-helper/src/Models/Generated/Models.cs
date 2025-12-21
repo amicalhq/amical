@@ -20,6 +20,8 @@
 //    var muteSystemAudioResult = MuteSystemAudioResult.FromJson(jsonString);
 //    var restoreSystemAudioParams = RestoreSystemAudioParams.FromJson(jsonString);
 //    var restoreSystemAudioResult = RestoreSystemAudioResult.FromJson(jsonString);
+//    var setShortcutsParams = SetShortcutsParams.FromJson(jsonString);
+//    var setShortcutsResult = SetShortcutsResult.FromJson(jsonString);
 //    var keyDownEvent = KeyDownEvent.FromJson(jsonString);
 //    var keyUpEvent = KeyUpEvent.FromJson(jsonString);
 //    var flagsChangedEvent = FlagsChangedEvent.FromJson(jsonString);
@@ -220,6 +222,21 @@ namespace WindowsHelper.Models
         [JsonPropertyName("message")]
         public string Message { get; set; }
 
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+    }
+
+    public partial class SetShortcutsParams
+    {
+        [JsonPropertyName("pushToTalk")]
+        public List<string> PushToTalk { get; set; }
+
+        [JsonPropertyName("toggleRecording")]
+        public List<string> ToggleRecording { get; set; }
+    }
+
+    public partial class SetShortcutsResult
+    {
         [JsonPropertyName("success")]
         public bool Success { get; set; }
     }
@@ -510,6 +527,16 @@ namespace WindowsHelper.Models
         public static RestoreSystemAudioResult FromJson(string json) => JsonSerializer.Deserialize<RestoreSystemAudioResult>(json, WindowsHelper.Models.Converter.Settings);
     }
 
+    public partial class SetShortcutsParams
+    {
+        public static SetShortcutsParams FromJson(string json) => JsonSerializer.Deserialize<SetShortcutsParams>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
+    public partial class SetShortcutsResult
+    {
+        public static SetShortcutsResult FromJson(string json) => JsonSerializer.Deserialize<SetShortcutsResult>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
     public partial class KeyDownEvent
     {
         public static KeyDownEvent FromJson(string json) => JsonSerializer.Deserialize<KeyDownEvent>(json, WindowsHelper.Models.Converter.Settings);
@@ -543,6 +570,8 @@ namespace WindowsHelper.Models
         public static string ToJson(this object self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this MuteSystemAudioResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this RestoreSystemAudioResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this SetShortcutsParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this SetShortcutsResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this KeyDownEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this KeyUpEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this FlagsChangedEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);

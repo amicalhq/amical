@@ -328,6 +328,22 @@ namespace WindowsHelper
                         {
                             // Send regular key event
                             KeyEventOccurred?.Invoke(this, keyEvent);
+
+                            // Check if this key event should be consumed (prevent default behavior)
+                            // Only for regular key events, not modifiers
+                            var modifierState = new ModifierState
+                            {
+                                Win = winPressed,
+                                Ctrl = ctrlPressed,
+                                Alt = altPressed,
+                                Shift = shiftPressed
+                            };
+
+                            if (ShortcutManager.Instance.ShouldConsumeKey((int)kbStruct.vkCode, modifierState))
+                            {
+                                // Consume - prevent default behavior (e.g., cursor movement for arrow keys)
+                                return (IntPtr)1;
+                            }
                         }
                     }
                 }

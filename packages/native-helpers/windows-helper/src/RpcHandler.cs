@@ -98,7 +98,11 @@ namespace WindowsHelper
                     case Method.RestoreSystemAudio:
                         response = HandleRestoreSystemAudio(request);
                         break;
-                        
+
+                    case Method.SetShortcuts:
+                        response = HandleSetShortcuts(request);
+                        break;
+
                     default:
                         LogToStderr($"Method not found: {request.Method} for ID: {request.Id}");
                         response = new RpcResponse
@@ -336,6 +340,54 @@ namespace WindowsHelper
         private void OnSoundPlaybackCompleted(object? sender, string requestId)
         {
             audioCompletionHandler?.Invoke(requestId);
+        }
+
+        private RpcResponse HandleSetShortcuts(RpcRequest request)
+        {
+            LogToStderr($"[RpcHandler] Handling setShortcuts for ID: {request.Id}");
+
+            try
+            {
+                var paramsJson = JsonSerializer.Serialize(request.Params, jsonOptions);
+                var setShortcutsParams = JsonSerializer.Deserialize<SetShortcutsParams>(paramsJson, jsonOptions);
+
+                if (setShortcutsParams == null)
+                {
+                    return new RpcResponse
+                    {
+                        Id = request.Id.ToString(),
+                        Error = new Error
+                        {
+                            Code = -32602,
+                            Message = "Invalid params: could not deserialize SetShortcutsParams"
+                        }
+                    };
+                }
+
+                ShortcutManager.Instance.SetShortcuts(
+                    setShortcutsParams.PushToTalk?.ToArray() ?? Array.Empty<string>(),
+                    setShortcutsParams.ToggleRecording?.ToArray() ?? Array.Empty<string>()
+                );
+
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Result = new SetShortcutsResult { Success = true }
+                };
+            }
+            catch (Exception ex)
+            {
+                LogToStderr($"[RpcHandler] Error in setShortcuts: {ex.Message}");
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Error = new Error
+                    {
+                        Code = -32603,
+                        Message = $"Internal error: {ex.Message}"
+                    }
+                };
+            }
         }
 
         private void SendRpcResponse(RpcResponse response)

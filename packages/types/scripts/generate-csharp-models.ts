@@ -37,6 +37,8 @@ try {
     "generated/json-schemas/methods/mute-system-audio-result.schema.json " +
     "generated/json-schemas/methods/restore-system-audio-params.schema.json " +
     "generated/json-schemas/methods/restore-system-audio-result.schema.json " +
+    "generated/json-schemas/methods/set-shortcuts-params.schema.json " +
+    "generated/json-schemas/methods/set-shortcuts-result.schema.json " +
     "generated/json-schemas/events/key-down-event.schema.json " +
     "generated/json-schemas/events/key-up-event.schema.json " +
     "generated/json-schemas/events/flags-changed-event.schema.json " +
