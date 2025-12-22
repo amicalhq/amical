@@ -17,6 +17,23 @@ class ShortcutManager {
 
     private var pushToTalkKeys: [String] = []
     private var toggleRecordingKeys: [String] = []
+
+    // ============================================================================
+    // IMPORTANT: Fn Key State Tracking
+    // ============================================================================
+    // We track the Fn key state ourselves via flagsChanged events instead of
+    // trusting event.flags.contains(.maskSecondaryFn) on keyDown/keyUp events.
+    //
+    // WHY: macOS reports UNRELIABLE Fn flag on keyDown events, especially on
+    // MacBooks with the Globe/Fn key. The flag can be true even when Fn is NOT
+    // pressed, causing arrow keys and other keys to be incorrectly consumed.
+    //
+    // FIX: We update fnKeyDown only when we receive flagsChanged events (which
+    // are reliable for modifier state), and use this tracked state for shortcut
+    // matching in shouldConsumeKey().
+    // ============================================================================
+    private var fnKeyDown: Bool = false
+
     private let lock = NSLock()
     private let dateFormatter: DateFormatter
 
@@ -41,6 +58,15 @@ class ShortcutManager {
         logToStderr("[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording)")
     }
 
+    /// Update the tracked Fn key state
+    /// Called from event tap callback when flagsChanged event is received
+    /// We track Fn separately because macOS can report unreliable Fn flag on keyDown events
+    func setFnKeyState(_ isDown: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        fnKeyDown = isDown
+    }
+
     /// Check if this key event should be consumed (prevent default behavior)
     /// Called from event tap callback for keyDown/keyUp events only
     func shouldConsumeKey(keyCode: Int, modifiers: ModifierState) -> Bool {
@@ -53,8 +79,10 @@ class ShortcutManager {
         }
 
         // Build set of currently active keys (modifiers + this regular key)
+        // Note: We use tracked fnKeyDown instead of modifiers.fn because macOS
+        // can report unreliable Fn flag on keyDown events (especially on MacBooks)
         var activeKeys = Set<String>()
-        if modifiers.fn { activeKeys.insert("Fn") }
+        if fnKeyDown { activeKeys.insert("Fn") }
         if modifiers.cmd { activeKeys.insert("Cmd") }
         if modifiers.ctrl { activeKeys.insert("Ctrl") }
         if modifiers.alt { activeKeys.insert("Alt") }

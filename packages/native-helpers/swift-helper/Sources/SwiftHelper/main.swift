@@ -81,6 +81,18 @@ func eventTapCallback(
         // Modifier-only events always pass through - they don't cause unwanted behavior on their own
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
+        // ====================================================================
+        // IMPORTANT: Track Fn key state via flagsChanged (NOT keyDown flags)
+        // ====================================================================
+        // macOS reports UNRELIABLE .maskSecondaryFn on keyDown events,
+        // especially on MacBooks. The flag can be TRUE even when Fn is NOT
+        // pressed! flagsChanged events are reliable, so we track Fn state
+        // here and use it in ShortcutManager.shouldConsumeKey().
+        // See ShortcutManager.swift for more details.
+        // ====================================================================
+        let fnPressed = event.flags.contains(.maskSecondaryFn)
+        ShortcutManager.shared.setFnKeyState(fnPressed)
+
         let payload = KeyEventPayload(
             key: nil,
             code: nil,
