@@ -266,13 +266,15 @@ const config: ForgeConfig = {
         );
       }
     },
+    // NOTE: This hook does NOT run when prune: false is set in packagerConfig (line 467).
+    // The empty directory cleanup code below is currently dead code.
+    // DLL bundling has been moved to postPackage which always runs.
     packageAfterPrune: async (
       _forgeConfig,
       buildPath,
       _electronVersion,
-      platform,
+      _platform,
     ) => {
-      console.error("PRE PACKAGE");
       try {
         function getItemsFromFolder(
           path: string,
@@ -332,57 +334,64 @@ const config: ForgeConfig = {
             }
           }
         }
-
-        // =====================================================================
-        // Bundle VC++ Runtime DLLs for Windows
-        // =====================================================================
-        //
-        // WHY: onnxruntime-node (used by VAD service for voice activity detection)
-        // depends on Visual C++ runtime DLLs. These are NOT bundled by onnxruntime-node
-        // and are expected to be installed on the user's system.
-        //
-        // PROBLEM: Some Windows machines don't have VC++ Redistributable installed,
-        // causing "DLL initialization routine failed" errors on app startup.
-        //
-        // SOLUTION: Bundle the required DLLs from the build machine's System32.
-        // Windows DLL search order finds them in the app directory first.
-        //
-        // REQUIREMENTS:
-        // - Build machine must have VC++ runtime (GitHub Actions windows-2025 has VS2022)
-        // - Target: Windows 10+ (ucrtbase.dll is built into the OS)
-        //
-        // DLLs needed by onnxruntime_binding.node:
-        // - msvcp140.dll      : VC++ Standard Library (C++ runtime)
-        // - vcruntime140.dll  : VC++ Runtime (core C runtime)
-        // - vcruntime140_1.dll: VC++ Runtime extension (C++17+ features)
-        // =====================================================================
-        if (platform === "win32") {
-          const vcRuntimeDlls = [
-            "msvcp140.dll",
-            "vcruntime140.dll",
-            "vcruntime140_1.dll",
-          ];
-
-          console.log("Bundling VC++ runtime DLLs for Windows...");
-          for (const dll of vcRuntimeDlls) {
-            const src = join("C:", "Windows", "System32", dll);
-            const dest = join(buildPath, dll);
-            try {
-              copyFileSync(src, dest);
-              console.log(`  ✓ Copied ${dll}`);
-            } catch (error) {
-              console.error(`  ✗ Failed to copy ${dll}:`, error);
-              throw new Error(
-                `Failed to bundle ${dll}. The build machine must have Visual C++ runtime installed. ` +
-                  `On GitHub Actions, use a Windows runner with Visual Studio (e.g., windows-2025).`,
-              );
-            }
-          }
-          console.log("✓ VC++ runtime DLLs bundled successfully");
-        }
       } catch (error) {
         console.error("Error in packageAfterPrune:", error);
         throw error;
+      }
+    },
+    postPackage: async (_forgeConfig, options) => {
+      const { outputPath, platform } = options;
+      // =====================================================================
+      // Bundle VC++ Runtime DLLs for Windows
+      // =====================================================================
+      //
+      // WHY: onnxruntime-node (used by VAD service for voice activity detection)
+      // depends on Visual C++ runtime DLLs. These are NOT bundled by onnxruntime-node
+      // and are expected to be installed on the user's system.
+      //
+      // PROBLEM: Some Windows machines don't have VC++ Redistributable installed,
+      // causing "DLL initialization routine failed" errors on app startup.
+      //
+      // SOLUTION: Bundle the required DLLs from the build machine's System32.
+      // Windows DLL search order finds them in the app directory first.
+      //
+      // REQUIREMENTS:
+      // - Build machine must have VC++ runtime (GitHub Actions windows-2025 has VS2022)
+      // - Target: Windows 10+ (ucrtbase.dll is built into the OS)
+      //
+      // DLLs needed by onnxruntime_binding.node:
+      // - msvcp140.dll      : VC++ Standard Library (C++ runtime)
+      // - vcruntime140.dll  : VC++ Runtime (core C runtime)
+      // - vcruntime140_1.dll: VC++ Runtime extension (C++17+ features)
+      //
+      // NOTE: This runs in postPackage (not packageAfterPrune) because prune: false
+      // is set in packagerConfig, which disables the packageAfterPrune hook.
+      // =====================================================================
+      if (platform === "win32") {
+        console.log(
+          `[postPackage] Bundling VC++ runtime DLLs for Windows at ${outputPath}...`,
+        );
+        const vcRuntimeDlls = [
+          "msvcp140.dll",
+          "vcruntime140.dll",
+          "vcruntime140_1.dll",
+        ];
+
+        for (const dll of vcRuntimeDlls) {
+          const src = `C:\\Windows\\System32\\${dll}`;
+          const dest = join(outputPath, dll);
+          try {
+            copyFileSync(src, dest);
+            console.log(`  ✓ Copied ${dll}`);
+          } catch (error) {
+            console.error(`  ✗ Failed to copy ${dll}:`, error);
+            throw new Error(
+              `Failed to bundle ${dll}. The build machine must have Visual C++ runtime installed. ` +
+                `On GitHub Actions, use a Windows runner with Visual Studio (e.g., windows-2025).`,
+            );
+          }
+        }
+        console.log("✓ VC++ runtime DLLs bundled successfully");
       }
     },
   },
