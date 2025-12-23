@@ -340,7 +340,7 @@ const config: ForgeConfig = {
       }
     },
     postPackage: async (_forgeConfig, options) => {
-      const { outputPath, platform } = options;
+      const { outputPaths, platform } = options;
       // =====================================================================
       // Bundle VC++ Runtime DLLs for Windows
       // =====================================================================
@@ -368,27 +368,29 @@ const config: ForgeConfig = {
       // is set in packagerConfig, which disables the packageAfterPrune hook.
       // =====================================================================
       if (platform === "win32") {
-        console.log(
-          `[postPackage] Bundling VC++ runtime DLLs for Windows at ${outputPath}...`,
-        );
         const vcRuntimeDlls = [
           "msvcp140.dll",
           "vcruntime140.dll",
           "vcruntime140_1.dll",
         ];
 
-        for (const dll of vcRuntimeDlls) {
-          const src = `C:\\Windows\\System32\\${dll}`;
-          const dest = join(outputPath, dll);
-          try {
-            copyFileSync(src, dest);
-            console.log(`  ✓ Copied ${dll}`);
-          } catch (error) {
-            console.error(`  ✗ Failed to copy ${dll}:`, error);
-            throw new Error(
-              `Failed to bundle ${dll}. The build machine must have Visual C++ runtime installed. ` +
-                `On GitHub Actions, use a Windows runner with Visual Studio (e.g., windows-2025).`,
-            );
+        for (const outputPath of outputPaths) {
+          console.log(
+            `[postPackage] Bundling VC++ runtime DLLs for Windows at ${outputPath}...`,
+          );
+          for (const dll of vcRuntimeDlls) {
+            const src = `C:\\Windows\\System32\\${dll}`;
+            const dest = join(outputPath, dll);
+            try {
+              copyFileSync(src, dest);
+              console.log(`  ✓ Copied ${dll}`);
+            } catch (error) {
+              console.error(`  ✗ Failed to copy ${dll}:`, error);
+              throw new Error(
+                `Failed to bundle ${dll}. The build machine must have Visual C++ runtime installed. ` +
+                  `On GitHub Actions, use a Windows runner with Visual Studio (e.g., windows-2025).`,
+              );
+            }
           }
         }
         console.log("✓ VC++ runtime DLLs bundled successfully");
