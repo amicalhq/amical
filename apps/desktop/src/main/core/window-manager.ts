@@ -23,6 +23,20 @@ export class WindowManager {
   private cursorPollingInterval: NodeJS.Timeout | null = null;
   private themeListenerSetup: boolean = false;
 
+  // On Windows, inset from all edges to allow taskbar auto-hide detection
+  private readonly widgetEdgeInset = process.platform === "win32" ? 4 : 0;
+
+  /** Calculate widget bounds with edge inset applied for taskbar auto-hide */
+  private getWidgetBounds(workArea: Electron.Rectangle): Electron.Rectangle {
+    const inset = this.widgetEdgeInset;
+    return {
+      x: workArea.x + inset,
+      y: workArea.y + inset,
+      width: workArea.width - inset * 2,
+      height: workArea.height - inset * 2,
+    };
+  }
+
   constructor(
     private settingsService: SettingsService,
     private trpcHandler: ReturnType<typeof createIPCHandler>,
@@ -148,18 +162,18 @@ export class WindowManager {
 
   async createWidgetWindow(): Promise<void> {
     const mainScreen = screen.getPrimaryDisplay();
-    const { width, height } = mainScreen.workAreaSize;
+    const widgetBounds = this.getWidgetBounds(mainScreen.workArea);
 
     logger.main.info("Creating widget window", {
       display: mainScreen.id,
       workArea: mainScreen.workArea,
-      size: { width, height },
+      widgetBounds,
+      edgeInset: this.widgetEdgeInset,
     });
 
     this.widgetWindow = new BrowserWindow({
       show: false,
-      width,
-      height,
+      ...widgetBounds,
       frame: false,
       transparent: true,
       alwaysOnTop: true,
@@ -218,11 +232,11 @@ export class WindowManager {
       });
       this.widgetWindow.setHiddenInMissionControl(true);
     } else if (process.platform === "win32") {
-      // On Windows, use "pop-up-menu" level for always-on-top.
-      // "screen-saver" level blocks the taskbar auto-hide detection zone.
-      // "pop-up-menu" is high enough to stay above most windows but allows
-      // system UI like the taskbar to function properly.
-      this.widgetWindow.setAlwaysOnTop(true, "pop-up-menu");
+      // On Windows, use "screen-saver" level for maximum z-order priority
+      // to stay above other app toolbars/menus. The widget window is inset
+      // from screen edges to allow taskbar auto-hide detection.
+      // See: https://github.com/electron/electron/issues/11830
+      this.widgetWindow.setAlwaysOnTop(true, "screen-saver");
     }
 
     // Set up display change notifications for all platforms
@@ -389,7 +403,9 @@ export class WindowManager {
 
       // Update widget window bounds to new display
       if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
-        this.widgetWindow.setBounds(focusedWindowDisplay.workArea);
+        this.widgetWindow.setBounds(
+          this.getWidgetBounds(focusedWindowDisplay.workArea),
+        );
       }
     });
   }
@@ -416,7 +432,7 @@ export class WindowManager {
       this.widgetDisplayId = cursorDisplay.id;
 
       // Update widget window bounds to new display
-      this.widgetWindow.setBounds(cursorDisplay.workArea);
+      this.widgetWindow.setBounds(this.getWidgetBounds(cursorDisplay.workArea));
     }, 500); // Poll every 500ms
 
     logger.main.info("Started cursor polling for display detection");
@@ -432,9 +448,7 @@ export class WindowManager {
     const currentDisplay = screen.getDisplayNearestPoint(cursorPoint);
 
     // Update window bounds to match new display's work area
-    this.widgetWindow.setBounds(currentDisplay.workArea);
-    this.widgetDisplayId = currentDisplay.id;
-
+    this.widgetWindow.setBounds(this.getWidgetBounds(currentDisplay.workArea));
     this.widgetDisplayId = currentDisplay.id;
     logger.main.info("Display configuration changed", {
       displayId: currentDisplay.id,
