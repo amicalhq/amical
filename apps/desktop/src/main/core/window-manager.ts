@@ -218,11 +218,11 @@ export class WindowManager {
       });
       this.widgetWindow.setHiddenInMissionControl(true);
     } else if (process.platform === "win32") {
-      // On Windows, explicitly set always-on-top with "screen-saver" level
-      // for maximum z-order priority. The BrowserWindow option alone uses "floating"
-      // level which can be obscured by other app toolbars/menus.
-      // See: https://github.com/electron/electron/issues/11830
-      this.widgetWindow.setAlwaysOnTop(true, "screen-saver");
+      // On Windows, use "pop-up-menu" level for always-on-top.
+      // "screen-saver" level blocks the taskbar auto-hide detection zone.
+      // "pop-up-menu" is high enough to stay above most windows but allows
+      // system UI like the taskbar to function properly.
+      this.widgetWindow.setAlwaysOnTop(true, "pop-up-menu");
     }
 
     // Set up display change notifications for all platforms
