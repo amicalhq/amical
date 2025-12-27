@@ -6,6 +6,11 @@ import { getKeyNameFromPayload } from "@/utils/keycode-map";
 import { isWindows } from "@/utils/platform";
 import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
+import {
+  validateShortcutComprehensive,
+  type ShortcutType,
+  type ValidationResult,
+} from "@/utils/shortcut-validation";
 
 const log = logger.main;
 
@@ -76,6 +81,49 @@ export class ShortcutManager extends EventEmitter {
   async reloadShortcuts() {
     await this.loadShortcuts();
     this.syncShortcutsToNative(); // fire-and-forget
+  }
+
+  /**
+   * Set a shortcut with full validation.
+   * Validates, persists, updates internal state, and syncs to native.
+   */
+  async setShortcut(
+    type: ShortcutType,
+    keys: string[],
+  ): Promise<ValidationResult> {
+    // Get the other shortcut for cross-validation
+    const otherShortcut =
+      type === "pushToTalk"
+        ? this.shortcuts.toggleRecording
+        : this.shortcuts.pushToTalk;
+
+    // Validate the shortcut
+    const result = validateShortcutComprehensive({
+      currentShortcut: keys,
+      otherShortcut,
+      shortcutType: type,
+      platform: process.platform,
+    });
+
+    if (!result.valid) {
+      return result;
+    }
+
+    // Persist to settings
+    const updatedShortcuts = {
+      ...this.shortcuts,
+      [type]: keys,
+    };
+    await this.settingsService.setShortcuts(updatedShortcuts);
+
+    // Update internal state
+    this.shortcuts = updatedShortcuts;
+    log.info("Shortcut updated", { type, keys });
+
+    // Sync to native helper
+    await this.syncShortcutsToNative();
+
+    return result;
   }
 
   setIsRecordingShortcut(isRecording: boolean) {

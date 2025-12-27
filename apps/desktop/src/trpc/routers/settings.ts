@@ -1,4 +1,5 @@
 import { observable } from "@trpc/server/observable";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { app } from "electron";
 import path from "node:path";
@@ -163,45 +164,27 @@ export const settingsRouter = createRouter({
   setShortcut: procedure
     .input(SetShortcutSchema)
     .mutation(async ({ input, ctx }) => {
-      try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
-        if (!settingsService) {
-          throw new Error("SettingsService not available");
-        }
-
-        // Get current shortcuts and update the specific one
-        const currentShortcuts = await settingsService.getShortcuts();
-        const updatedShortcuts = {
-          ...currentShortcuts,
-          [input.type]: input.shortcut,
-        };
-
-        await settingsService.setShortcuts(updatedShortcuts);
-
-        const logger = ctx.serviceManager.getLogger();
-        if (logger) {
-          logger?.main.info("Shortcut updated", input);
-        }
-
-        // Notify shortcut manager to reload shortcuts
-        const shortcutManager =
-          ctx.serviceManager.getService("shortcutManager");
-        if (shortcutManager) {
-          await shortcutManager.reloadShortcuts();
-          if (logger) {
-            logger.main.info("Shortcut manager notified of shortcut change");
-          }
-        }
-
-        return true;
-      } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
-        if (logger) {
-          logger.main.error("Error setting shortcut:", error);
-        }
-        throw error;
+      const shortcutManager = ctx.serviceManager.getService("shortcutManager");
+      if (!shortcutManager) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "ShortcutManager not available",
+        });
       }
+
+      const result = await shortcutManager.setShortcut(
+        input.type,
+        input.shortcut,
+      );
+
+      if (!result.valid) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: result.error || "Invalid shortcut",
+        });
+      }
+
+      return { success: true, warning: result.warning };
     }),
 
   // Set shortcut recording state

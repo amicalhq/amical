@@ -329,6 +329,22 @@ namespace WindowsHelper
                             // Send regular key event
                             KeyEventOccurred?.Invoke(this, keyEvent);
 
+                            // Track regular key state for multi-key shortcuts
+                            // We need to track which non-modifier keys are held down so that
+                            // shortcuts like Shift+A+B can work properly
+                            var keyName = VirtualKeyMap.GetKeyName((int)kbStruct.vkCode);
+                            if (keyName != null)
+                            {
+                                if (isKeyDown)
+                                {
+                                    ShortcutManager.Instance.AddRegularKey(keyName);
+                                }
+                                else
+                                {
+                                    ShortcutManager.Instance.RemoveRegularKey(keyName);
+                                }
+                            }
+
                             // Check if this key event should be consumed (prevent default behavior)
                             // Only for regular key events, not modifiers
                             var modifierState = new ModifierState

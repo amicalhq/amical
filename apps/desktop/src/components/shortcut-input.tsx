@@ -21,7 +21,10 @@ type ValidationResult = {
   error?: string;
 };
 
-function validateShortcut(keys: string[]): ValidationResult {
+/**
+ * Basic format validation only - business logic validation happens on backend
+ */
+function validateShortcutFormat(keys: string[]): ValidationResult {
   if (keys.length === 0) {
     return { valid: false, error: "No keys detected" };
   }
@@ -29,24 +32,18 @@ function validateShortcut(keys: string[]): ValidationResult {
   if (keys.length > MAX_KEY_COMBINATION_LENGTH) {
     return {
       valid: false,
-      error: `Maximum ${MAX_KEY_COMBINATION_LENGTH} keys allowed`,
+      error: `Too many keys - use ${MAX_KEY_COMBINATION_LENGTH} or fewer`,
     };
   }
 
   const modifierKeys = keys.filter((key) => MODIFIER_KEYS.includes(key));
   const regularKeys = keys.filter((key) => !MODIFIER_KEYS.includes(key));
 
-  // Require at least one modifier key
-  if (modifierKeys.length === 0) {
-    return {
-      valid: false,
-      error:
-        "At least one modifier key (Cmd, Win, Ctrl, Alt, Shift, Fn, etc) is required",
-    };
-  }
-
   // Return array format: modifiers first, then regular keys
-  return { valid: true, shortcut: [...modifierKeys, ...regularKeys] };
+  return {
+    valid: true,
+    shortcut: [...modifierKeys, ...regularKeys],
+  };
 }
 
 function RecordingDisplay({
@@ -152,9 +149,10 @@ export function ShortcutInput({
 
       // When any key is released, validate the combination
       if (previousKeys.length > 0 && keys.length < previousKeys.length) {
-        const result = validateShortcut(previousKeys);
+        const result = validateShortcutFormat(previousKeys);
 
         if (result.valid && result.shortcut) {
+          // Basic format is valid - let parent handle backend validation
           onChange(result.shortcut);
         } else {
           toast.error(result.error || "Invalid key combination");

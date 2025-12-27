@@ -20,17 +20,24 @@ export function ShortcutsSettingsPage() {
   const utils = api.useUtils();
 
   const setShortcutMutation = api.settings.setShortcut.useMutation({
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       utils.settings.getShortcuts.invalidate();
-      toast.success(
-        variables.type === "pushToTalk"
-          ? "Push to talk shortcut updated"
-          : "Toggle Recording shortcut updated",
-      );
+
+      // Show warning if there is one
+      if (data.warning) {
+        toast.warning(data.warning);
+      } else {
+        toast.success(
+          variables.type === "pushToTalk"
+            ? "Push to talk shortcut updated"
+            : "Toggle Recording shortcut updated",
+        );
+      }
     },
     onError: (error) => {
-      console.error("Failed to save shortcut:", error);
-      toast.error("Failed to save shortcut. Please try again.");
+      toast.error(error.message);
+      // Revert to saved value
+      utils.settings.getShortcuts.invalidate();
     },
   });
 

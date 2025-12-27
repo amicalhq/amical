@@ -72,6 +72,17 @@ func eventTapCallback(
             shift: event.flags.contains(.maskShift)
         )
 
+        // Track regular key state for multi-key shortcuts
+        // We need to track which non-modifier keys are held down so that
+        // shortcuts like Shift+A+B can work properly
+        if let keyName = keyCodeToName(Int(keyCode)) {
+            if type == .keyDown {
+                ShortcutManager.shared.addRegularKey(keyName)
+            } else {
+                ShortcutManager.shared.removeRegularKey(keyName)
+            }
+        }
+
         if ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode), modifiers: modifiers) {
             // CONSUME - prevent default behavior (e.g., cursor movement for arrow keys)
             return nil

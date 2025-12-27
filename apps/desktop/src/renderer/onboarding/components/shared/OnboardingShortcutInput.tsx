@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { ShortcutInput } from "@/components/shortcut-input";
 import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 /**
  * Push to Talk shortcut input for onboarding
@@ -15,6 +16,11 @@ export function OnboardingShortcutInput() {
   const shortcutsQuery = api.settings.getShortcuts.useQuery();
   const setShortcutMutation = api.settings.setShortcut.useMutation({
     onSuccess: () => {
+      utils.settings.getShortcuts.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+      // Revert to saved value
       utils.settings.getShortcuts.invalidate();
     },
   });
