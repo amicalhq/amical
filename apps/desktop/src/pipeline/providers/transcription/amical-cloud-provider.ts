@@ -136,6 +136,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       offset += frame.length;
     }
 
+    // Save VAD probabilities before clearing
+    const vadProbs = [...this.frameBufferSpeechProbabilities];
+
     // Clear frame buffers only (context values needed for API call below)
     this.frameBuffer = [];
     this.frameBufferSpeechProbabilities = [];
@@ -144,6 +147,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     // Make the API request
     return this.makeTranscriptionRequest(
       combinedAudio,
+      vadProbs,
       false,
       enableFormatting,
     );
@@ -177,6 +181,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   private async makeTranscriptionRequest(
     audioData: Float32Array,
+    vadProbs: number[],
     isRetry = false,
     enableFormatting = false,
   ): Promise<string> {
@@ -215,6 +220,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       },
       body: JSON.stringify({
         audioData: Array.from(audioData),
+        vadProbs,
         language: this.currentLanguage,
         previousTranscription: this.currentAggregatedTranscription,
         formatting: {
@@ -262,6 +268,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         // Retry the request once (preserve formatting flag)
         return await this.makeTranscriptionRequest(
           audioData,
+          vadProbs,
           true,
           enableFormatting,
         );

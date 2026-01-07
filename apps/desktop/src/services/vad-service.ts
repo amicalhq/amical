@@ -13,10 +13,13 @@ export class VADService extends EventEmitter {
 
   // Configuration
   private readonly WINDOW_SIZE_SAMPLES = 512; // 32ms at 16kHz
+  private readonly CTX_SIZE = 64; // Context size for v6
+  private readonly INPUT_SIZE = 576; // CTX_SIZE + WINDOW_SIZE_SAMPLES
   private readonly SPEECH_THRESHOLD = 0.1;
   private readonly REDEMPTION_FRAMES = 8;
 
   // State
+  private context: Float32Array = new Float32Array(64).fill(0); // v6 context buffer
   private speechFrameCount = 0;
   private silenceFrameCount = 0;
   private isSpeaking = false;
@@ -33,13 +36,13 @@ export class VADService extends EventEmitter {
         this.modelPath = path.join(
           process.resourcesPath,
           "models",
-          "silero_vad_v5.onnx",
+          "silero_vad_v6.onnx",
         );
       } else {
         // In development, use the source path
         this.modelPath = path.join(
           __dirname,
-          "../../models/silero_vad_v5.onnx",
+          "../../models/silero_vad_v6.onnx",
         );
       }
 
@@ -90,10 +93,14 @@ export class VADService extends EventEmitter {
     }
 
     try {
-      // Create input tensor - shape should be [1, audio_length]
-      const inputTensor = new ort.Tensor("float32", audioFrames, [
+      // v6: Create combined input [context | frame] with fixed size 576
+      const input = new Float32Array(this.INPUT_SIZE);
+      input.set(this.context, 0);
+      input.set(audioFrames, this.CTX_SIZE);
+
+      const inputTensor = new ort.Tensor("float32", input, [
         1,
-        audioFrames.length,
+        this.INPUT_SIZE,
       ]);
 
       const srTensor = new ort.Tensor(
@@ -109,12 +116,18 @@ export class VADService extends EventEmitter {
         sr: srTensor,
       });
 
+      // v6: Use dynamic output name detection for robustness
+      const outName = this.session.outputNames[0];
+      const stateName = this.session.outputNames.find((n) => n !== outName)!;
+
       // Update state for next iteration
-      this.state = results.stateN as ort.Tensor;
+      this.state = results[stateName] as ort.Tensor;
 
       // Get speech probability
-      const output = results.output as ort.Tensor;
-      const probability = output.data[0] as number;
+      const probability = (results[outName].data as Float32Array)[0];
+
+      // v6: Update context = last CTX_SIZE samples of the input
+      this.context = input.slice(this.INPUT_SIZE - this.CTX_SIZE);
 
       // Apply smoothing logic
       const isSpeaking = this.applySpeechDetectionLogic(probability);
@@ -182,10 +195,11 @@ export class VADService extends EventEmitter {
 
   /**
    * Reset VAD state for a new recording session.
-   * This clears the LSTM state and speech detection counters.
+   * This clears the LSTM state, context buffer, and speech detection counters.
    */
   reset(): void {
     this.resetStates();
+    this.context = new Float32Array(this.CTX_SIZE).fill(0); // Reset v6 context buffer
     this.speechFrameCount = 0;
     this.silenceFrameCount = 0;
     this.isSpeaking = false;
