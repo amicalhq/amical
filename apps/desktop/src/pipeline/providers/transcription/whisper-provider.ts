@@ -1,6 +1,7 @@
 import {
   TranscriptionProvider,
   TranscribeParams,
+  TranscribeContext,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { ModelService } from "../../../services/model-service";
@@ -74,74 +75,79 @@ export class WhisperProvider implements TranscriptionProvider {
     }
   }
 
+  /**
+   * Process an audio chunk - buffers and conditionally transcribes
+   */
   async transcribe(params: TranscribeParams): Promise<string> {
+    await this.initializeWhisper();
+
+    const { audioData, speechProbability = 1, context } = params;
+
+    // Add frame to buffer with speech probability
+    this.frameBuffer.push(audioData);
+    this.frameBufferSpeechProbabilities.push(speechProbability);
+
+    // Consider it speech if probability is above threshold
+    const isSpeech = speechProbability > this.SPEECH_PROBABILITY_THRESHOLD;
+
+    logger.transcription.debug(
+      `Frame received - SpeechProb: ${speechProbability.toFixed(3)}, Buffer size: ${this.frameBuffer.length}, Silence count: ${this.currentSilenceFrameCount}`,
+    );
+
+    // Handle speech/silence logic
+    if (isSpeech) {
+      this.currentSilenceFrameCount = 0;
+      this.lastSpeechTimestamp = Date.now();
+    } else {
+      this.currentSilenceFrameCount++;
+    }
+
+    // Only transcribe if speech/silence patterns indicate we should
+    if (!this.shouldTranscribe()) {
+      return "";
+    }
+
+    return this.doTranscription(context);
+  }
+
+  /**
+   * Flush any buffered audio and return transcription
+   * Called at the end of a recording session
+   */
+  async flush(context: TranscribeContext): Promise<string> {
+    if (this.frameBuffer.length === 0) {
+      return "";
+    }
+
+    await this.initializeWhisper();
+    return this.doTranscription(context);
+  }
+
+  /**
+   * Shared transcription logic - aggregates buffer, calls whisper, clears state
+   * Assumes initializeWhisper() was already called by caller
+   */
+  private async doTranscription(context: TranscribeContext): Promise<string> {
     try {
-      await this.initializeWhisper();
-
-      // Extract parameters from the new structure
-      const {
-        audioData,
-        speechProbability = 1,
-        context,
-        flush = false,
-      } = params;
       const { vocabulary, aggregatedTranscription, language } = context;
-
-      // Audio data is already Float32Array
-
-      // Add frame to buffer with speech probability
-      this.frameBuffer.push(audioData);
-      this.frameBufferSpeechProbabilities.push(speechProbability);
-
-      // Consider it speech if probability is above threshold
-      const isSpeech = speechProbability > this.SPEECH_PROBABILITY_THRESHOLD;
-
-      logger.transcription.debug(
-        `Frame received - SpeechProb: ${speechProbability.toFixed(3)}, Buffer size: ${this.frameBuffer.length}, Silence count: ${this.currentSilenceFrameCount}`,
-      );
-
-      // Handle speech/silence logic
-      if (isSpeech) {
-        this.currentSilenceFrameCount = 0;
-        this.lastSpeechTimestamp = Date.now();
-      } else {
-        this.currentSilenceFrameCount++;
-      }
-
-      // Determine if we should transcribe
-      const shouldTranscribe = flush || this.shouldTranscribe();
-
-      if (!shouldTranscribe) {
-        // Keep buffering
-        return "";
-      }
 
       const isAllSilent = this.isAllSilent();
 
       // Aggregate buffered frames
       const aggregatedAudio = this.aggregateFrames();
 
-      // Clear buffers immediately after aggregation, before async operations
-      this.frameBuffer = [];
-      this.frameBufferSpeechProbabilities = [];
-      this.currentSilenceFrameCount = 0;
+      // Clear buffers immediately after aggregation
+      this.reset();
 
       if (isAllSilent && this.IGNORE_FULLY_SILENT_CHUNKS) {
         logger.transcription.debug("Skipping transcription - all silent");
         return "";
       }
 
-      // Skip if too short or only silence
-      /* if (aggregatedAudio.length < this.FRAME_SIZE * 2) {
-        logger.transcription.debug("Skipping transcription - audio too short");
-        return "";
-      } */
-
       logger.transcription.debug(
         `Starting transcription of ${aggregatedAudio.length} samples (${((aggregatedAudio.length / this.SAMPLE_RATE) * 1000).toFixed(0)}ms)`,
       );
 
-      // Transcribe using the local Whisper wrapper
       if (!this.workerWrapper) {
         throw new Error("Worker wrapper is not initialized");
       }
@@ -152,7 +158,7 @@ export class WhisperProvider implements TranscriptionProvider {
         aggregatedTranscription,
       );
 
-      const text = await this.workerWrapper!.exec<string>("transcribeAudio", [
+      const text = await this.workerWrapper.exec<string>("transcribeAudio", [
         aggregatedAudio,
         {
           language: language || "auto",
@@ -174,11 +180,20 @@ export class WhisperProvider implements TranscriptionProvider {
     }
   }
 
+  /**
+   * Clear internal buffers without transcribing
+   * Called when cancelling a session to prevent audio bleed
+   */
+  reset(): void {
+    this.frameBuffer = [];
+    this.frameBufferSpeechProbabilities = [];
+    this.currentSilenceFrameCount = 0;
+  }
+
   private shouldTranscribe(): boolean {
     // Transcribe if:
     // 1. We have significant silence after speech
     // 2. Buffer is getting too large
-    // 3. Final chunk was received (handled elsewhere)
 
     const bufferDurationMs =
       ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
@@ -186,7 +201,7 @@ export class WhisperProvider implements TranscriptionProvider {
       ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
       1000;
 
-    // If we have speech (potential cause frameBuffer might just be all silence too, and thats okay) and then significant silence, transcribe
+    // If we have speech and then significant silence, transcribe
     if (
       this.frameBuffer.length > 0 &&
       silenceDurationMs > this.MAX_SILENCE_DURATION_MS
@@ -357,9 +372,6 @@ export class WhisperProvider implements TranscriptionProvider {
       }
     }
 
-    // Clear buffers
-    this.frameBuffer = [];
-    this.frameBufferSpeechProbabilities = [];
-    this.currentSilenceFrameCount = 0;
+    this.reset();
   }
 }

@@ -136,6 +136,25 @@ export class StreamingWavWriter {
   }
 
   /**
+   * Abort writing and close the file stream without finalizing
+   * Used when recording is cancelled
+   */
+  async abort(): Promise<void> {
+    if (this.isFinalized) return;
+
+    this.isFinalized = true; // Prevent further writes
+
+    // Close the stream
+    await new Promise<void>((resolve) => {
+      this.fileStream.end(() => resolve());
+    });
+
+    logger.transcription.info("WAV writer aborted", {
+      path: this.fileStream.path,
+    });
+  }
+
+  /**
    * Get the current size of audio data written
    */
   getDataSize(): number {

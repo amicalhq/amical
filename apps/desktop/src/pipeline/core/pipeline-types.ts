@@ -7,18 +7,20 @@ import { PipelineContext } from "./context";
 import { GetAccessibilityContextResult } from "@amical/types";
 export { PipelineContext, SharedPipelineData } from "./context";
 
+// Context for transcription operations (shared between transcribe and flush)
+export interface TranscribeContext {
+  vocabulary?: Map<string, string>;
+  accessibilityContext?: GetAccessibilityContextResult | null;
+  previousChunk?: string;
+  aggregatedTranscription?: string;
+  language?: string;
+}
+
 // Transcription input parameters
 export interface TranscribeParams {
   audioData: Float32Array;
   speechProbability?: number; // Speech probability from frontend VAD (0-1)
-  flush?: boolean; // Whether to flush any buffered audio
-  context: {
-    vocabulary?: Map<string, string>;
-    accessibilityContext?: GetAccessibilityContextResult | null;
-    previousChunk?: string;
-    aggregatedTranscription?: string;
-    language?: string;
-  };
+  context: TranscribeContext;
 }
 
 // Formatting input parameters
@@ -37,6 +39,8 @@ export interface FormatParams {
 export interface TranscriptionProvider {
   readonly name: string;
   transcribe(params: TranscribeParams): Promise<string>;
+  flush(context: TranscribeContext): Promise<string>;
+  reset(): void; // Clear internal buffers without transcribing
 }
 
 // Formatting provider interface
@@ -71,7 +75,7 @@ export interface StreamingSession {
   firstChunkReceivedAt?: number; // When first audio chunk arrived at transcription service
   recordingStartedAt?: number; // When user pressed record button (from RecordingManager)
   recordingStoppedAt?: number; // When user released record button (from RecordingManager)
-  finalChunkReceivedAt?: number; // When final chunk arrived at transcription service
+  finalizationStartedAt?: number; // When finalizeSession() was called
 }
 
 // Simple pipeline configuration

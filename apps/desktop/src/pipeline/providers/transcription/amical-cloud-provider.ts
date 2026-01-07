@@ -1,6 +1,7 @@
 import {
   TranscriptionProvider,
   TranscribeParams,
+  TranscribeContext,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { AuthService } from "../../../services/auth-service";
@@ -51,21 +52,16 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
+  /**
+   * Process an audio chunk - buffers and conditionally transcribes
+   */
   async transcribe(params: TranscribeParams): Promise<string> {
     try {
-      const {
-        audioData,
-        speechProbability = 1,
-        flush = false,
-        context,
-      } = params;
+      const { audioData, speechProbability = 1, context } = params;
 
-      // Store language for use in API call (undefined = auto-detect)
+      // Store context for API call
       this.currentLanguage = context.language;
-
-      // Store accessibility context for the API request
       this.currentAccessibilityContext = context?.accessibilityContext ?? null;
-
       this.currentAggregatedTranscription = context?.aggregatedTranscription;
 
       // Check authentication
@@ -89,40 +85,46 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         this.currentSilenceFrameCount++;
       }
 
-      // Calculate durations
-      const silenceDuration =
-        ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
-        1000;
-      const speechDuration =
-        ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
-
-      // Determine if we should process
-      const shouldProcess =
-        flush ||
-        (speechDuration >= this.MIN_SPEECH_DURATION_MS &&
-          silenceDuration >= this.MAX_SILENCE_DURATION_MS);
-
-      if (!shouldProcess) {
+      // Only transcribe if speech/silence patterns indicate we should
+      if (!this.shouldTranscribe()) {
         return "";
       }
 
-      // Process accumulated audio (pass flush flag for formatting decision)
-      const result = await this.processAudio(flush);
-
-      // Clear buffer after processing
-      this.frameBuffer = [];
-      this.frameBufferSpeechProbabilities = [];
-      this.currentSilenceFrameCount = 0;
-
-      return result;
+      return this.doTranscription(false);
     } catch (error) {
       logger.transcription.error("Cloud transcription error:", error);
       throw error;
     }
   }
 
-  private async processAudio(isFinal: boolean = false): Promise<string> {
-    // Combine all frames into a single Float32Array (may be empty)
+  /**
+   * Flush any buffered audio and return transcription with formatting
+   * Called at the end of a recording session
+   */
+  async flush(context: TranscribeContext): Promise<string> {
+    try {
+      // Store context for API call
+      this.currentLanguage = context.language;
+      this.currentAccessibilityContext = context?.accessibilityContext ?? null;
+      this.currentAggregatedTranscription = context?.aggregatedTranscription;
+
+      // Check authentication
+      if (!(await this.authService.isAuthenticated())) {
+        throw new Error("Authentication required for cloud transcription");
+      }
+
+      return this.doTranscription(true);
+    } catch (error) {
+      logger.transcription.error("Cloud transcription error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Shared transcription logic - aggregates buffer, calls cloud API, clears state
+   */
+  private async doTranscription(enableFormatting: boolean): Promise<string> {
+    // Combine all frames into a single Float32Array
     const totalLength = this.frameBuffer.reduce(
       (acc, frame) => acc + frame.length,
       0,
@@ -134,9 +136,43 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       offset += frame.length;
     }
 
-    // Try transcription with automatic retry on 401
-    // Enable formatting only on final chunk
-    return this.makeTranscriptionRequest(combinedAudio, false, isFinal);
+    // Clear frame buffers only (context values needed for API call below)
+    this.frameBuffer = [];
+    this.frameBufferSpeechProbabilities = [];
+    this.currentSilenceFrameCount = 0;
+
+    // Make the API request
+    return this.makeTranscriptionRequest(
+      combinedAudio,
+      false,
+      enableFormatting,
+    );
+  }
+
+  /**
+   * Clear internal buffers without transcribing
+   * Called when cancelling a session to prevent audio bleed
+   */
+  reset(): void {
+    this.frameBuffer = [];
+    this.frameBufferSpeechProbabilities = [];
+    this.currentSilenceFrameCount = 0;
+    this.currentLanguage = undefined;
+    this.currentAccessibilityContext = null;
+    this.currentAggregatedTranscription = undefined;
+  }
+
+  private shouldTranscribe(): boolean {
+    const silenceDuration =
+      ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
+      1000;
+    const speechDuration =
+      ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
+
+    return (
+      speechDuration >= this.MIN_SPEECH_DURATION_MS &&
+      silenceDuration >= this.MAX_SILENCE_DURATION_MS
+    );
   }
 
   private async makeTranscriptionRequest(
@@ -144,9 +180,13 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     isRetry = false,
     enableFormatting = false,
   ): Promise<string> {
-    // Skip API call if no audio and formatting not requested
-    if (audioData.length === 0 && !enableFormatting) {
-      return "";
+    // Skip API call if there's nothing to process
+    if (audioData.length === 0) {
+      const hasTextToFormat =
+        enableFormatting && this.currentAggregatedTranscription?.trim();
+      if (!hasTextToFormat) {
+        return "";
+      }
     }
 
     // Get auth token
@@ -166,112 +206,104 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       formatting: enableFormatting,
     });
 
-    try {
-      const response = await fetch(`${this.apiEndpoint}/transcribe`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-          "User-Agent": getUserAgent(),
+    const response = await fetch(`${this.apiEndpoint}/transcribe`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+        "User-Agent": getUserAgent(),
+      },
+      body: JSON.stringify({
+        audioData: Array.from(audioData),
+        language: this.currentLanguage,
+        previousTranscription: this.currentAggregatedTranscription,
+        formatting: {
+          enabled: enableFormatting,
         },
-        body: JSON.stringify({
-          audioData: Array.from(audioData),
-          language: this.currentLanguage,
-          previousTranscription: this.currentAggregatedTranscription,
-          formatting: {
-            enabled: enableFormatting,
-          },
-          sharedContext: this.currentAccessibilityContext
-            ? {
-                selectedText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.selectedText,
-                beforeText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.preSelectionText,
-                afterText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.postSelectionText,
-                appType: detectApplicationType(
-                  this.currentAccessibilityContext,
-                ),
-                appBundleId:
-                  this.currentAccessibilityContext.context?.application
-                    ?.bundleIdentifier,
-                appName:
-                  this.currentAccessibilityContext.context?.application?.name,
-                appUrl:
-                  this.currentAccessibilityContext.context?.windowInfo?.url,
-                surroundingContext: "", // Empty for now, future enhancement
-              }
-            : undefined,
-        }),
-      });
+        sharedContext: this.currentAccessibilityContext
+          ? {
+              selectedText:
+                this.currentAccessibilityContext.context?.textSelection
+                  ?.selectedText,
+              beforeText:
+                this.currentAccessibilityContext.context?.textSelection
+                  ?.preSelectionText,
+              afterText:
+                this.currentAccessibilityContext.context?.textSelection
+                  ?.postSelectionText,
+              appType: detectApplicationType(this.currentAccessibilityContext),
+              appBundleId:
+                this.currentAccessibilityContext.context?.application
+                  ?.bundleIdentifier,
+              appName:
+                this.currentAccessibilityContext.context?.application?.name,
+              appUrl: this.currentAccessibilityContext.context?.windowInfo?.url,
+              surroundingContext: "", // Empty for now, future enhancement
+            }
+          : undefined,
+      }),
+    });
 
-      // Handle 401 with token refresh and retry
-      if (response.status === 401) {
-        if (isRetry) {
-          // Already retried once, give up
-          throw new Error("Authentication failed - please log in again");
-        }
+    // Handle 401 with token refresh and retry
+    if (response.status === 401) {
+      if (isRetry) {
+        // Already retried once, give up
+        throw new Error("Authentication failed - please log in again");
+      }
 
-        logger.transcription.warn(
-          "Got 401 response, attempting token refresh and retry",
+      logger.transcription.warn(
+        "Got 401 response, attempting token refresh and retry",
+      );
+
+      try {
+        // Force token refresh
+        await this.authService.refreshTokenIfNeeded();
+
+        // Retry the request once (preserve formatting flag)
+        return await this.makeTranscriptionRequest(
+          audioData,
+          true,
+          enableFormatting,
         );
-
-        try {
-          // Force token refresh
-          await this.authService.refreshTokenIfNeeded();
-
-          // Retry the request once (preserve formatting flag)
-          return await this.makeTranscriptionRequest(
-            audioData,
-            true,
-            enableFormatting,
-          );
-        } catch (refreshError) {
-          logger.transcription.error("Token refresh failed:", refreshError);
-          throw new Error("Authentication failed - please log in again");
-        }
+      } catch (refreshError) {
+        logger.transcription.error("Token refresh failed:", refreshError);
+        throw new Error("Authentication failed - please log in again");
       }
-
-      if (response.status === 403) {
-        throw new Error("Subscription required for cloud transcription");
-      }
-
-      if (response.status === 429) {
-        const errorData = await response.json();
-        throw new Error(
-          `Word limit exceeded: ${errorData.currentWords}/${errorData.limit}`,
-        );
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        logger.transcription.error("Cloud API error:", {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-        });
-        throw new Error(`Cloud API error: ${response.statusText}`);
-      }
-
-      const result: CloudTranscriptionResponse = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || "Cloud transcription failed");
-      }
-
-      logger.transcription.info("Cloud transcription successful", {
-        textLength: result.transcription?.length || 0,
-        language: result.language,
-        duration: result.duration,
-      });
-
-      return result.transcription || "";
-    } catch (error) {
-      logger.transcription.error("Cloud transcription request failed:", error);
-      throw error;
     }
+
+    if (response.status === 403) {
+      throw new Error("Subscription required for cloud transcription");
+    }
+
+    if (response.status === 429) {
+      const errorData = await response.json();
+      throw new Error(
+        `Word limit exceeded: ${errorData.currentWords}/${errorData.limit}`,
+      );
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.transcription.error("Cloud API error:", {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      throw new Error(`Cloud API error: ${response.statusText}`);
+    }
+
+    const result: CloudTranscriptionResponse = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.error || "Cloud transcription failed");
+    }
+
+    logger.transcription.info("Cloud transcription successful", {
+      textLength: result.transcription?.length || 0,
+      language: result.language,
+      duration: result.duration,
+    });
+
+    return result.transcription || "";
   }
 }

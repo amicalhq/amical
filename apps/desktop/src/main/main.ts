@@ -1,12 +1,26 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { app } from "electron";
+import { app, ipcMain } from "electron";
+import { logger } from "./logger";
 
 import started from "electron-squirrel-startup";
 import { AppManager } from "./core/app-manager";
 import { updateElectronApp } from "update-electron-app";
 import { isWindows } from "../utils/platform";
+
+// Setup renderer logging relay (allows renderer to send logs to main process)
+ipcMain.handle(
+  "log-message",
+  (_event, level: string, scope: string, ...args: unknown[]) => {
+    const scopedLogger =
+      logger[scope as keyof typeof logger] || logger.renderer;
+    const logMethod = scopedLogger[level as keyof typeof scopedLogger];
+    if (typeof logMethod === "function") {
+      logMethod(...args);
+    }
+  },
+);
 
 if (started) {
   app.quit();

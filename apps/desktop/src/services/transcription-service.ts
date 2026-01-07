@@ -214,23 +214,14 @@ export class TranscriptionService {
 
   /**
    * Process a single audio chunk in streaming mode
+   * For finalization, use finalizeSession() instead
    */
   async processStreamingChunk(options: {
     sessionId: string;
     audioChunk: Float32Array;
-    isFinal?: boolean;
-    audioFilePath?: string;
     recordingStartedAt?: number;
-    recordingStoppedAt?: number;
   }): Promise<string> {
-    const {
-      sessionId,
-      audioChunk,
-      isFinal = false,
-      audioFilePath,
-      recordingStartedAt,
-      recordingStoppedAt,
-    } = options;
+    const { sessionId, audioChunk, recordingStartedAt } = options;
 
     // Run VAD on the audio chunk
     let speechProbability = 0;
@@ -281,7 +272,7 @@ export class TranscriptionService {
           context: streamingContext,
           transcriptionResults: [],
           firstChunkReceivedAt: performance.now(),
-          recordingStartedAt: recordingStartedAt, // From RecordingManager (when user pressed record)
+          recordingStartedAt: recordingStartedAt,
         };
 
         this.streamingSessions.set(sessionId, session);
@@ -305,11 +296,10 @@ export class TranscriptionService {
       // Select the appropriate provider
       const provider = await this.selectProvider();
 
-      // Transcribe with flush parameter for final chunks
+      // Transcribe chunk (flush is done separately in finalizeSession)
       const chunkTranscription = await provider.transcribe({
         audioData: audioChunk,
-        speechProbability: speechProbability, // Now from VAD service
-        flush: isFinal, // Pass flush flag for final chunks
+        speechProbability: speechProbability,
         context: {
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
@@ -334,25 +324,96 @@ export class TranscriptionService {
         sessionId,
         frameSize: audioChunk.length,
         hadTranscription: chunkTranscription.length > 0,
-        isFinal,
       });
     } finally {
       // Release transcription mutex - always release even on error
       this.transcriptionMutex.release();
     }
-    const completeTranscriptionTillNow = session.transcriptionResults
-      .join(" ")
-      .trim();
 
-    // this is the final chunk, save the transcription
-    if (!isFinal) {
-      return completeTranscriptionTillNow;
+    return session.transcriptionResults.join(" ").trim();
+  }
+
+  /**
+   * Cancel a streaming session without processing
+   * Used when recording is cancelled (e.g., quick tap, accidental activation)
+   */
+  async cancelStreamingSession(sessionId: string): Promise<void> {
+    if (this.streamingSessions.has(sessionId)) {
+      // Acquire mutex to prevent race with processStreamingChunk
+      await this.transcriptionMutex.acquire();
+      try {
+        // Clear provider buffers to prevent audio bleed into next session
+        this.currentProvider?.reset();
+
+        this.streamingSessions.delete(sessionId);
+        logger.transcription.info("Streaming session cancelled", { sessionId });
+      } finally {
+        this.transcriptionMutex.release();
+      }
+    }
+  }
+
+  /**
+   * Finalize a streaming session - flush provider, format, save to DB
+   * Call this instead of processStreamingChunk with isFinal=true
+   */
+  async finalizeSession(options: {
+    sessionId: string;
+    audioFilePath?: string;
+    recordingStartedAt?: number;
+    recordingStoppedAt?: number;
+  }): Promise<string> {
+    const { sessionId, audioFilePath, recordingStartedAt, recordingStoppedAt } =
+      options;
+
+    const session = this.streamingSessions.get(sessionId);
+    if (!session) {
+      logger.transcription.warn("No session found to finalize", { sessionId });
+      return "";
     }
 
-    session.finalChunkReceivedAt = performance.now();
+    // Update session timestamps
+    session.finalizationStartedAt = performance.now();
     session.recordingStoppedAt = recordingStoppedAt;
+    if (recordingStartedAt && !session.recordingStartedAt) {
+      session.recordingStartedAt = recordingStartedAt;
+    }
 
-    let completeTranscription = completeTranscriptionTillNow;
+    // Flush provider to get any remaining buffered audio
+    await this.transcriptionMutex.acquire();
+    try {
+      const previousChunk =
+        session.transcriptionResults.length > 0
+          ? session.transcriptionResults[
+              session.transcriptionResults.length - 1
+            ]
+          : undefined;
+      const aggregatedTranscription = session.transcriptionResults
+        .join(" ")
+        .trim();
+
+      const provider = await this.selectProvider();
+      const finalTranscription = await provider.flush({
+        vocabulary: session.context.sharedData.vocabulary,
+        accessibilityContext: session.context.sharedData.accessibilityContext,
+        previousChunk,
+        aggregatedTranscription: aggregatedTranscription || undefined,
+        language: session.context.sharedData.userPreferences?.language,
+      });
+
+      if (finalTranscription.trim()) {
+        session.transcriptionResults.push(finalTranscription);
+        logger.transcription.info("Whisper returned final transcription", {
+          sessionId,
+          transcriptionLength: finalTranscription.length,
+          totalResults: session.transcriptionResults.length,
+        });
+      }
+    } finally {
+      this.transcriptionMutex.release();
+    }
+
+    let completeTranscription = session.transcriptionResults.join(" ").trim();
     let formattingDuration: number | undefined;
 
     logger.transcription.info("Finalizing streaming session", {

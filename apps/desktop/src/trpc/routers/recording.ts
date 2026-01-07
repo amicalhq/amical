@@ -15,7 +15,7 @@ export const recordingRouter = createRouter({
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
-    return await recordingManager.startRecording("hands-free");
+    return await recordingManager.signalStart();
   }),
 
   signalStop: procedure.mutation(async ({ ctx }) => {
@@ -23,7 +23,7 @@ export const recordingRouter = createRouter({
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
-    return await recordingManager.stopRecording();
+    return await recordingManager.signalStop();
   }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
