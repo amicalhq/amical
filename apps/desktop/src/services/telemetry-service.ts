@@ -12,6 +12,7 @@ import type {
   OnboardingModelSelectedEvent,
   OnboardingCompletedEvent,
   OnboardingAbandonedEvent,
+  NativeHelperCrashedEvent,
 } from "../types/telemetry-events";
 
 export interface TranscriptionMetrics {
@@ -388,6 +389,22 @@ export class TelemetryService {
     });
 
     logger.main.debug("Tracked onboarding abandoned", props);
+  }
+
+  // ============================================================================
+  // Native Helper Events
+  // ============================================================================
+
+  trackNativeHelperCrashed(props: NativeHelperCrashedEvent): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "native_helper_crashed",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked native helper crash", props);
   }
 
   // ============================================================================

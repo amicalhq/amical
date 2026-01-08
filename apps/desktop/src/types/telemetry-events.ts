@@ -74,3 +74,20 @@ export interface OnboardingAbandonedEvent {
   last_screen: string;
   timestamp: string;
 }
+
+// ============================================================================
+// Native Helper Events
+// ============================================================================
+
+/**
+ * Fired when the native helper process crashes
+ */
+export interface NativeHelperCrashedEvent {
+  helper_name: string;
+  platform: string;
+  exit_code: number | null;
+  signal: string | null;
+  restart_attempt: number;
+  max_restarts: number;
+  will_restart: boolean;
+}

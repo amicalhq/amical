@@ -172,7 +172,7 @@ export class ServiceManager {
   private initializePlatformServices(): void {
     // Initialize platform-specific bridge
     if (isMacOS() || isWindows()) {
-      this.nativeBridge = new NativeBridge();
+      this.nativeBridge = new NativeBridge(this.telemetryService ?? undefined);
     }
   }
 

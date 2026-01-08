@@ -8,6 +8,7 @@ import { getNativeHelperName, getNativeHelperDir } from "../../utils/platform";
 
 import { EventEmitter } from "events";
 import { createScopedLogger } from "../../main/logger";
+import type { TelemetryService } from "../telemetry-service";
 import {
   RpcRequestSchema,
   RpcRequest,
@@ -75,8 +76,19 @@ export class NativeBridge extends EventEmitter {
   private logger = createScopedLogger("native-bridge");
   private accessibilityContext: GetAccessibilityContextResult | null = null;
 
-  constructor() {
+  // Auto-restart configuration
+  private static readonly MAX_RESTARTS = 3;
+  private static readonly RESTART_DELAY_MS = 1000;
+  private static readonly RESTART_COUNT_RESET_MS = 30000; // Reset count after 30s of stability
+  private restartCount = 0;
+  private lastRestartTime = 0;
+  private lastCrashInfo: { code: number | null; signal: string | null } | null =
+    null;
+  private telemetryService: TelemetryService | null = null;
+
+  constructor(telemetryService?: TelemetryService) {
     super();
+    this.telemetryService = telemetryService ?? null;
     this.helperPath = this.determineHelperPath();
     this.startHelperProcess();
   }
@@ -187,16 +199,77 @@ export class NativeBridge extends EventEmitter {
 
     this.proc.on("close", (code, signal) => {
       const helperName = getNativeHelperName();
-      this.logger.info(`${helperName} process exited`, { code, signal });
+      const isNormalExit = code === 0 && signal === null;
+
+      if (isNormalExit) {
+        this.logger.info(`${helperName} process exited normally`);
+      } else {
+        this.logger.error(`${helperName} process crashed`, { code, signal });
+        this.lastCrashInfo = { code, signal };
+      }
+
       this.emit("close", code, signal);
       this.proc = null;
-      // Optionally, implement retry logic or notify further
+
+      // Auto-restart on crash
+      if (!isNormalExit) {
+        this.attemptRestart();
+      }
     });
 
     process.nextTick(() => {
       this.emit("ready"); // Emit ready on next tick
     });
     this.logger.info("Helper process started and listeners attached");
+  }
+
+  private attemptRestart(): void {
+    const helperName = getNativeHelperName();
+    const now = Date.now();
+
+    // Reset restart count if enough time has passed since last restart
+    if (now - this.lastRestartTime > NativeBridge.RESTART_COUNT_RESET_MS) {
+      this.restartCount = 0;
+    }
+
+    const willRestart = this.restartCount < NativeBridge.MAX_RESTARTS;
+
+    // Track crash telemetry
+    this.telemetryService?.trackNativeHelperCrashed({
+      helper_name: helperName,
+      platform: process.platform,
+      exit_code: this.lastCrashInfo?.code ?? null,
+      signal: this.lastCrashInfo?.signal ?? null,
+      restart_attempt: this.restartCount + 1,
+      max_restarts: NativeBridge.MAX_RESTARTS,
+      will_restart: willRestart,
+    });
+
+    if (!willRestart) {
+      this.logger.error(
+        `${helperName} crashed too many times, not restarting`,
+        {
+          restartCount: this.restartCount,
+          maxRestarts: NativeBridge.MAX_RESTARTS,
+        },
+      );
+      return;
+    }
+
+    this.restartCount++;
+    this.lastRestartTime = now;
+
+    this.logger.info(
+      `Restarting ${helperName} in ${NativeBridge.RESTART_DELAY_MS}ms`,
+      {
+        attempt: this.restartCount,
+        maxRestarts: NativeBridge.MAX_RESTARTS,
+      },
+    );
+
+    setTimeout(() => {
+      this.startHelperProcess();
+    }, NativeBridge.RESTART_DELAY_MS);
   }
 
   public call<M extends keyof RPCMethods>(
