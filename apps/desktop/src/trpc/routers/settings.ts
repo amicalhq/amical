@@ -481,6 +481,44 @@ export const settingsRouter = createRouter({
     return app.getPath("userData");
   }),
 
+  // Get log file path
+  getLogFilePath: procedure.query(() => {
+    const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+    return isDev
+      ? path.join(app.getPath("userData"), "logs", "amical-dev.log")
+      : path.join(app.getPath("logs"), "amical.log");
+  }),
+
+  // Get machine ID for display
+  getMachineId: procedure.query(async ({ ctx }) => {
+    const telemetryService = ctx.serviceManager.getService("telemetryService");
+    return telemetryService?.getMachineId() ?? "";
+  }),
+
+  // Download log file via save dialog
+  downloadLogFile: procedure.mutation(async () => {
+    const { dialog, BrowserWindow } = await import("electron");
+    const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+    const logPath = isDev
+      ? path.join(app.getPath("userData"), "logs", "amical-dev.log")
+      : path.join(app.getPath("logs"), "amical.log");
+
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    const saveOptions = {
+      defaultPath: `amical-logs-${new Date().toISOString().split("T")[0]}.log`,
+      filters: [{ name: "Log Files", extensions: ["log", "txt"] }],
+    };
+    const { filePath } = focusedWindow
+      ? await dialog.showSaveDialog(focusedWindow, saveOptions)
+      : await dialog.showSaveDialog(saveOptions);
+
+    if (filePath) {
+      await fs.copyFile(logPath, filePath);
+      return { success: true, path: filePath };
+    }
+    return { success: false };
+  }),
+
   // Get app preferences (launch at login, minimize to tray, etc.)
   getPreferences: procedure.query(async ({ ctx }) => {
     const settingsService = ctx.serviceManager.getService("settingsService");

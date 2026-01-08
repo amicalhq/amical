@@ -32,6 +32,8 @@ export default function AdvancedSettingsPage() {
   const settingsQuery = api.settings.getSettings.useQuery();
   const telemetryQuery = api.settings.getTelemetrySettings.useQuery();
   const dataPathQuery = api.settings.getDataPath.useQuery();
+  const logFilePathQuery = api.settings.getLogFilePath.useQuery();
+  const machineIdQuery = api.settings.getMachineId.useQuery();
   const utils = api.useUtils();
 
   const updateTranscriptionSettingsMutation =
@@ -73,6 +75,17 @@ export default function AdvancedSettingsPage() {
     },
   });
 
+  const downloadLogFileMutation = api.settings.downloadLogFile.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success("Log file saved successfully");
+      }
+    },
+    onError: () => {
+      toast.error("Failed to save log file");
+    },
+  });
+
   // Load settings when query data is available
   useEffect(() => {
     if (settingsQuery.data?.transcription) {
@@ -97,6 +110,13 @@ export default function AdvancedSettingsPage() {
 
   const handleOpenTelemetryDocs = () => {
     window.electronAPI.openExternal("https://amical.ai/docs/telemetry");
+  };
+
+  const handleCopyMachineId = async () => {
+    if (machineIdQuery.data) {
+      await navigator.clipboard.writeText(machineIdQuery.data);
+      toast.success("Machine ID copied to clipboard");
+    }
   };
 
   return (
@@ -175,6 +195,44 @@ export default function AdvancedSettingsPage() {
               disabled
               className="cursor-default"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="log-location">Log File Location</Label>
+            <div className="flex gap-2">
+              <Input
+                id="log-location"
+                value={logFilePathQuery.data || "Loading..."}
+                disabled
+                className="cursor-default flex-1"
+              />
+              <Button
+                variant="outline"
+                onClick={() => downloadLogFileMutation.mutate()}
+                disabled={downloadLogFileMutation.isPending}
+              >
+                Download
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="machine-id">Machine ID</Label>
+            <div className="flex gap-2">
+              <Input
+                id="machine-id"
+                value={machineIdQuery.data || "Loading..."}
+                disabled
+                className="cursor-default flex-1 font-mono text-xs"
+              />
+              <Button
+                variant="outline"
+                onClick={handleCopyMachineId}
+                disabled={!machineIdQuery.data}
+              >
+                Copy
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
