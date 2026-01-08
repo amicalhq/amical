@@ -13,6 +13,7 @@ import type {
   OnboardingCompletedEvent,
   OnboardingAbandonedEvent,
   NativeHelperCrashedEvent,
+  NoteCreatedEvent,
 } from "../types/telemetry-events";
 
 export interface TranscriptionMetrics {
@@ -405,6 +406,22 @@ export class TelemetryService {
     });
 
     logger.main.debug("Tracked native helper crash", props);
+  }
+
+  // ============================================================================
+  // Notes Events
+  // ============================================================================
+
+  trackNoteCreated(props: NoteCreatedEvent): void {
+    if (!this.posthog || !this.enabled) return;
+
+    this.posthog.capture({
+      distinctId: this.machineId,
+      event: "note_created",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked note created", props);
   }
 
   // ============================================================================
