@@ -1,4 +1,5 @@
 import Foundation
+import ObjCExceptionCatcher
 
 class IOBridge: NSObject {
     private let jsonEncoder: JSONEncoder
@@ -258,59 +259,53 @@ class IOBridge: NSObject {
         }
 
         // Fetch REAL accessibility tree data using the service
-        let actualTreeData: AccessibilityElementNode? =
-            accessibilityService.fetchFullAccessibilityTree(rootId: accessibilityParams?.rootID)
+        switch ExceptionCatcher.try({
+            self.accessibilityService.fetchFullAccessibilityTree(rootId: accessibilityParams?.rootID)
+        }) {
+        case .success(let actualTreeData):
+            logToStderr("[IOBridge] Fetched actualTreeData. Is nil? \(actualTreeData == nil). For ID: \(request.id)")
 
-        logToStderr(
-            "[IOBridge] Fetched actualTreeData from AccessibilityService. Is nil? \(actualTreeData == nil). For ID: \(request.id)"
-        )
-
-        var treeAsJsonAny: JSONAny? = nil
-        if let dataToEncode = actualTreeData {
-            do {
-                let encodedData = try jsonEncoder.encode(dataToEncode)
-                treeAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: encodedData)
-                if let treeDataForLog = try? jsonEncoder.encode(treeAsJsonAny),
-                    let treeStringForLog = String(data: treeDataForLog, encoding: .utf8)
-                {
-                    logToStderr(
-                        "[IOBridge] treeAsJsonAny (after encoding actualTreeData): \(treeStringForLog) for ID: \(request.id)"
-                    )
+            var treeAsJsonAny: JSONAny? = nil
+            if let dataToEncode = actualTreeData {
+                do {
+                    let encodedData = try jsonEncoder.encode(dataToEncode)
+                    treeAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: encodedData)
+                } catch {
+                    logToStderr("[IOBridge] Error encoding actualTreeData: \(error.localizedDescription)")
                 }
+            }
+
+            let resultPayload = GetAccessibilityTreeDetailsResultSchema(tree: treeAsJsonAny)
+            var resultAsJsonAny: JSONAny? = nil
+            do {
+                let resultPayloadData = try jsonEncoder.encode(resultPayload)
+                resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultPayloadData)
             } catch {
-                logToStderr(
-                    "[IOBridge] Error encoding actualTreeData to JSONAny: \(error.localizedDescription) for ID: \(request.id)"
-                )
+                logToStderr("Error encoding result: \(error.localizedDescription)")
             }
-        }
+            let rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+            sendRpcResponse(rpcResponse)
 
-        let resultPayload = GetAccessibilityTreeDetailsResultSchema(tree: treeAsJsonAny)
-        do {
-            let resultPayloadForLogData = try jsonEncoder.encode(resultPayload)
-            if let resultPayloadStringForLog = String(
-                data: resultPayloadForLogData, encoding: .utf8)
-            {
-                logToStderr(
-                    "[IOBridge] GetAccessibilityTreeDetailsResultSchema (resultPayload) before final encoding: \(resultPayloadStringForLog) for ID: \(request.id)"
-                )
+        case .exception(let exception):
+            logToStderr("[IOBridge] NSException in fetchFullAccessibilityTree: \(exception.name) - \(exception.reason)")
+            let exceptionData: [String: Any] = [
+                "name": exception.name,
+                "reason": exception.reason,
+                "callStack": exception.callStack.prefix(10).joined(separator: "\n")
+            ]
+            var exceptionJsonAny: JSONAny? = nil
+            if let jsonData = try? JSONSerialization.data(withJSONObject: exceptionData),
+               let decoded = try? jsonDecoder.decode(JSONAny.self, from: jsonData) {
+                exceptionJsonAny = decoded
             }
-        } catch {
-            logToStderr(
-                "[IOBridge] Error encoding resultPayload for logging: \(error.localizedDescription) for ID: \(request.id)"
+            let errPayload = Error(
+                code: -32603,
+                data: exceptionJsonAny,
+                message: "\(exception.name): \(exception.reason)"
             )
+            let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+            sendRpcResponse(rpcResponse)
         }
-
-        var resultAsJsonAny: JSONAny? = nil
-        do {
-            let resultPayloadData = try jsonEncoder.encode(resultPayload)
-            resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultPayloadData)
-        } catch {
-            logToStderr(
-                "Error encoding GetAccessibilityTreeDetailsResultSchema to JSONAny: \(error.localizedDescription)"
-            )
-        }
-        let rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-        sendRpcResponse(rpcResponse)
     }
 
     private func handleAccessibilityContext(_ request: RPCRequestSchema) {
@@ -339,23 +334,42 @@ class IOBridge: NSObject {
         }
 
         let editableOnly = contextParams?.editableOnly ?? false
-        let context = AccessibilityContextService.getAccessibilityContext(
-            editableOnly: editableOnly)
-        logToStderr("[IOBridge] Retrieved context for ID: \(request.id)")
 
-        let resultPayload = GetAccessibilityContextResultSchema(context: context)
-        do {
-            let resultData = try jsonEncoder.encode(resultPayload)
-            let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-            let rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-            sendRpcResponse(rpcResponse)
-        } catch {
-            logToStderr(
-                "[IOBridge] Error encoding getAccessibilityContext result: \(error.localizedDescription) for ID: \(request.id)"
-            )
+        switch ExceptionCatcher.try({
+            AccessibilityContextService.getAccessibilityContext(editableOnly: editableOnly)
+        }) {
+        case .success(let context):
+            logToStderr("[IOBridge] Retrieved context for ID: \(request.id)")
+            let resultPayload = GetAccessibilityContextResultSchema(context: context)
+            do {
+                let resultData = try jsonEncoder.encode(resultPayload)
+                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
+                let rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+                sendRpcResponse(rpcResponse)
+            } catch {
+                logToStderr("[IOBridge] Error encoding result: \(error.localizedDescription) for ID: \(request.id)")
+                let errPayload = Error(code: -32603, data: nil, message: "Error encoding result: \(error.localizedDescription)")
+                let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                sendRpcResponse(rpcResponse)
+            }
+
+        case .exception(let exception):
+            logToStderr("[IOBridge] NSException in getAccessibilityContext: \(exception.name) - \(exception.reason)")
+            let exceptionData: [String: Any] = [
+                "name": exception.name,
+                "reason": exception.reason,
+                "callStack": exception.callStack.prefix(10).joined(separator: "\n")
+            ]
+            var exceptionJsonAny: JSONAny? = nil
+            if let jsonData = try? JSONSerialization.data(withJSONObject: exceptionData),
+               let decoded = try? jsonDecoder.decode(JSONAny.self, from: jsonData) {
+                exceptionJsonAny = decoded
+            }
             let errPayload = Error(
-                code: -32603, data: nil,
-                message: "Error encoding result: \(error.localizedDescription)")
+                code: -32603,
+                data: exceptionJsonAny,
+                message: "\(exception.name): \(exception.reason)"
+            )
             let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             sendRpcResponse(rpcResponse)
         }
