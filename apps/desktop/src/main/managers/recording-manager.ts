@@ -546,6 +546,18 @@ export class RecordingManager extends EventEmitter {
 
     if (result) {
       await this.pasteTranscription(result);
+    } else {
+      // Check for empty transcript notification
+      const sessionDurationMs =
+        this.recordingStoppedAt && this.recordingStartedAt
+          ? this.recordingStoppedAt - this.recordingStartedAt
+          : 0;
+      if (sessionDurationMs > 5000) {
+        this.emit("widget-notification", { type: "empty_transcript" });
+        logger.audio.info("Emitted widget notification", {
+          type: "empty_transcript",
+        });
+      }
     }
 
     this.resetSessionState();
@@ -603,6 +615,8 @@ export class RecordingManager extends EventEmitter {
       if (this.recordingState === "recording" && !this.firstChunkReceived) {
         logger.audio.warn("No audio detected for 5 seconds");
         this.emit("no-audio-detected");
+        this.emit("widget-notification", { type: "no_audio" });
+        logger.audio.info("Emitted widget notification", { type: "no_audio" });
         this.endRecording("no_audio");
       }
     }, NO_AUDIO_TIMEOUT);

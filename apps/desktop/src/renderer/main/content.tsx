@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   RouterProvider,
   createRouter,
@@ -24,6 +24,19 @@ declare module "@tanstack/react-router" {
 
 // Root App component with routing
 const App: React.FC = () => {
+  // Listen for navigation events from main process (e.g., from widget)
+  useEffect(() => {
+    const handleNavigate = (route: string) => {
+      router.navigate({ to: route });
+    };
+
+    window.electronAPI?.on?.("navigate", handleNavigate);
+
+    return () => {
+      window.electronAPI?.off?.("navigate", handleNavigate);
+    };
+  }, []);
+
   return <RouterProvider router={router} />;
 };
 

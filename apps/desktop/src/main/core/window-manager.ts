@@ -104,7 +104,15 @@ export class WindowManager {
     logger.main.info("Theme listener setup complete");
   }
 
-  async createOrShowMainWindow(): Promise<void> {
+  /**
+   * Creates a new main window or shows existing one.
+   * @param initialRoute - Optional route to navigate to when creating a NEW window.
+   *                       This is passed as a URL hash to avoid race conditions where
+   *                       the renderer isn't ready to receive IPC navigation events.
+   *                       If window already exists, caller should use webContents.send()
+   *                       to navigate (renderer is already loaded and listening).
+   */
+  async createOrShowMainWindow(initialRoute?: string): Promise<void> {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.show();
       this.mainWindow.focus();
@@ -139,11 +147,17 @@ export class WindowManager {
       },
     });
 
+    // Load the window URL, appending initial route as hash if provided
+    // This avoids race conditions when the renderer isn't ready for IPC events
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-      this.mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+      const url = initialRoute
+        ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#${initialRoute}`
+        : MAIN_WINDOW_VITE_DEV_SERVER_URL;
+      this.mainWindow.loadURL(url);
     } else {
       this.mainWindow.loadFile(
         path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+        initialRoute ? { hash: initialRoute } : undefined,
       );
     }
 

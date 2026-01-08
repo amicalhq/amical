@@ -1,8 +1,13 @@
 import { observable } from "@trpc/server/observable";
 import { createRouter, procedure } from "../trpc";
-import { z } from "zod";
+import { v4 as uuid } from "uuid";
 import type { RecordingState } from "../../types/recording";
 import type { RecordingMode } from "../../main/managers/recording-manager";
+import type {
+  WidgetNotification,
+  WidgetNotificationType,
+} from "../../types/widget-notification";
+import { WIDGET_NOTIFICATION_CONFIG } from "../../types/widget-notification";
 
 interface RecordingStateUpdate {
   state: RecordingState;
@@ -100,6 +105,37 @@ export const recordingRouter = createRouter({
       // Cleanup function
       return () => {
         vadService.off("voice-detected", handleVoiceDetection);
+      };
+    });
+  }),
+
+  // Widget notification subscription
+  widgetNotifications: procedure.subscription(({ ctx }) => {
+    return observable<WidgetNotification>((emit) => {
+      const recordingManager =
+        ctx.serviceManager.getService("recordingManager");
+      if (!recordingManager) {
+        throw new Error("Recording manager not available");
+      }
+
+      const handleNotification = (data: { type: WidgetNotificationType }) => {
+        const config = WIDGET_NOTIFICATION_CONFIG[data.type];
+        emit.next({
+          id: uuid(),
+          type: data.type,
+          title: config.title,
+          // Description will be hydrated on frontend with mic name
+          primaryAction: config.primaryAction,
+          secondaryAction: config.secondaryAction,
+          timestamp: Date.now(),
+        });
+      };
+
+      recordingManager.on("widget-notification", handleNotification);
+
+      // Cleanup function
+      return () => {
+        recordingManager.off("widget-notification", handleNotification);
       };
     });
   }),

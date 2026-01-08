@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WidgetPage } from "./pages/widget";
 import { api, trpcClient } from "@/trpc/react";
+import { ThemeProvider } from "@/components/theme-provider";
+import { ToasterWrapper } from "./components/ToasterWrapper";
 import "@/styles/globals.css";
 
 // Extend Console interface to include original methods
@@ -69,11 +71,14 @@ const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
   root.render(
-    <api.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <WidgetPage />
-      </QueryClientProvider>
-    </api.Provider>,
+    <ThemeProvider>
+      <api.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <WidgetPage />
+          <ToasterWrapper />
+        </QueryClientProvider>
+      </api.Provider>
+    </ThemeProvider>,
   );
 } else {
   console.error(
