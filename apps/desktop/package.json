@@ -162,6 +162,7 @@
     "node-machine-id": "^1.1.12",
     "onnxruntime-node": "^1.20.1",
     "openai": "^4.98.0",
+    "posthog-js": "^1.316.0",
     "posthog-node": "^5.8.1",
     "react": "^19.1.1",
     "react-day-picker": "8.10.1",
