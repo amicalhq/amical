@@ -9,7 +9,7 @@ export { PipelineContext, SharedPipelineData } from "./context";
 
 // Context for transcription operations (shared between transcribe and flush)
 export interface TranscribeContext {
-  vocabulary?: Map<string, string>;
+  vocabulary?: string[];
   accessibilityContext?: GetAccessibilityContextResult | null;
   previousChunk?: string;
   aggregatedTranscription?: string;
@@ -28,7 +28,7 @@ export interface FormatParams {
   text: string;
   context: {
     style?: string;
-    vocabulary?: Map<string, string>;
+    vocabulary?: string[];
     accessibilityContext?: GetAccessibilityContextResult | null;
     previousChunk?: string;
     aggregatedTranscription?: string;

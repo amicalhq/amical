@@ -132,9 +132,11 @@ export class TelemetryService {
       },
     };
 
-    this.enabled = true;
+    this.enabled = telemetrySettings?.enabled !== false;
     this.initialized = true;
-    logger.main.info("Telemetry service initialized successfully");
+    logger.main.info("Telemetry service initialized successfully", {
+      enabled: this.enabled,
+    });
   }
 
   private async collectSystemInfo(): Promise<SystemInfo> {
@@ -232,6 +234,7 @@ export class TelemetryService {
 
   async optIn(): Promise<void> {
     await this.settingsService.setTelemetrySettings({ enabled: true });
+    this.enabled = true;
     if (!this.posthog) {
       return;
     }
@@ -243,6 +246,7 @@ export class TelemetryService {
 
   async optOut(): Promise<void> {
     await this.settingsService.setTelemetrySettings({ enabled: false });
+    this.enabled = false;
     if (!this.posthog) {
       return;
     }

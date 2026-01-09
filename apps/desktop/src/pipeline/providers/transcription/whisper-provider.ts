@@ -294,17 +294,14 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   private generateInitialPrompt(
-    vocabulary?: Map<string, string>,
+    vocabulary?: string[],
     aggregatedTranscription?: string,
   ): string {
     const promptParts: string[] = [];
 
     // Add vocabulary terms if available
-    if (vocabulary && vocabulary.size > 0) {
-      // Extract vocabulary keys (the actual terms) and join with commas
-      const vocabularyTerms = Array.from(vocabulary.keys());
-      const vocabularyText = vocabularyTerms.join(", ");
-      promptParts.push(vocabularyText);
+    if (vocabulary && vocabulary.length > 0) {
+      promptParts.push(vocabulary.join(", "));
     }
 
     // Add last 8 words from aggregated transcription if available

@@ -16,6 +16,7 @@ import { TelemetryService } from "../services/telemetry-service";
 import type { NativeBridge } from "./platform/native-bridge-service";
 import type { OnboardingService } from "./onboarding-service";
 import { createTranscription } from "../db/transcriptions";
+import { getVocabulary } from "../db/vocabulary";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
@@ -609,7 +610,19 @@ export class TranscriptionService {
           : dictationSettings.selectedLanguage || "en";
     }
 
-    // TODO: Load actual vocabulary
+    // Load vocabulary and replacements
+    const vocabEntries = await getVocabulary({ limit: 50 });
+    for (const entry of vocabEntries) {
+      if (entry.isReplacement) {
+        context.sharedData.replacements.set(
+          entry.word,
+          entry.replacementWord || "",
+        );
+      } else {
+        context.sharedData.vocabulary.push(entry.word);
+      }
+    }
+
     // TODO: Load formatter config from settings
 
     return context;

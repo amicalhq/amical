@@ -12,7 +12,8 @@ export interface PipelineContext {
 import { GetAccessibilityContextResult } from "@amical/types";
 
 export interface SharedPipelineData {
-  vocabulary: Map<string, string>;
+  vocabulary: string[]; // Custom vocab
+  replacements: Map<string, string>; // Custom replacements
   userPreferences: {
     language?: string; // Optional - undefined means auto-detect
     formattingStyle: "formal" | "casual" | "technical";
@@ -31,7 +32,8 @@ export function createDefaultContext(sessionId: string): PipelineContext {
   return {
     sessionId,
     sharedData: {
-      vocabulary: new Map(),
+      vocabulary: [],
+      replacements: new Map(),
       userPreferences: {
         language: "en",
         formattingStyle: "formal",

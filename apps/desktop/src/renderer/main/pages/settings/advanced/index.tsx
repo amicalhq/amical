@@ -52,6 +52,7 @@ export default function AdvancedSettingsPage() {
     api.settings.updateTelemetrySettings.useMutation({
       onSuccess: () => {
         utils.settings.getTelemetrySettings.invalidate();
+        utils.settings.getTelemetryConfig.invalidate();
         toast.success("Telemetry settings updated");
       },
       onError: (error) => {

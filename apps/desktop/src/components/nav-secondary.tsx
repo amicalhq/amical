@@ -9,6 +9,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { AuthButton } from "@/components/auth-button";
+import { FeedbackButton } from "@/components/feedback-button";
 
 export function NavSecondary({
   items,
@@ -39,6 +40,7 @@ export function NavSecondary({
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+          <FeedbackButton />
           <AuthButton />
         </SidebarMenu>
       </SidebarGroupContent>

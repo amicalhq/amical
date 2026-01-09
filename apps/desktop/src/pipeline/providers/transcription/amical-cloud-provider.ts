@@ -33,6 +33,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private currentAccessibilityContext: GetAccessibilityContextResult | null =
     null;
   private currentAggregatedTranscription: string | undefined;
+  private currentVocabulary: string[] = [];
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -63,6 +64,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       this.currentLanguage = context.language;
       this.currentAccessibilityContext = context?.accessibilityContext ?? null;
       this.currentAggregatedTranscription = context?.aggregatedTranscription;
+      this.currentVocabulary = context?.vocabulary ?? [];
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
@@ -107,6 +109,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       this.currentLanguage = context.language;
       this.currentAccessibilityContext = context?.accessibilityContext ?? null;
       this.currentAggregatedTranscription = context?.aggregatedTranscription;
+      this.currentVocabulary = context?.vocabulary ?? [];
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
@@ -222,6 +225,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         audioData: Array.from(audioData),
         vadProbs,
         language: this.currentLanguage,
+        vocabulary: this.currentVocabulary,
         previousTranscription: this.currentAggregatedTranscription,
         formatting: {
           enabled: enableFormatting,

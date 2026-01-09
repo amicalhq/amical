@@ -495,6 +495,19 @@ export const settingsRouter = createRouter({
     return telemetryService?.getMachineId() ?? "";
   }),
 
+  // Get telemetry config for renderer (PostHog surveys)
+  getTelemetryConfig: procedure.query(async ({ ctx }) => {
+    const telemetryService = ctx.serviceManager.getService("telemetryService");
+    return {
+      apiKey: process.env.POSTHOG_API_KEY || __BUNDLED_POSTHOG_API_KEY,
+      host: process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST,
+      machineId: telemetryService?.getMachineId() ?? "",
+      enabled: telemetryService?.isEnabled() ?? false,
+      feedbackSurveyId:
+        process.env.FEEDBACK_SURVEY_ID || __BUNDLED_FEEDBACK_SURVEY_ID,
+    };
+  }),
+
   // Download log file via save dialog
   downloadLogFile: procedure.mutation(async () => {
     const { dialog, BrowserWindow } = await import("electron");
