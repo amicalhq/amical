@@ -380,6 +380,11 @@ export class TranscriptionService {
       session.recordingStartedAt = recordingStartedAt;
     }
 
+    const formatterConfig = await this.settingsService.getFormatterConfig();
+    const shouldUseCloudFormatting =
+      formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+    let usedCloudProvider = false;
+
     // Flush provider to get any remaining buffered audio
     await this.transcriptionMutex.acquire();
     try {
@@ -394,12 +399,14 @@ export class TranscriptionService {
         .trim();
 
       const provider = await this.selectProvider();
+      usedCloudProvider = provider.name === "amical-cloud";
       const finalTranscription = await provider.flush({
         vocabulary: session.context.sharedData.vocabulary,
         accessibilityContext: session.context.sharedData.accessibilityContext,
         previousChunk,
         aggregatedTranscription: aggregatedTranscription || undefined,
         language: session.context.sharedData.userPreferences?.language,
+        formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
       });
 
       if (finalTranscription.trim()) {
@@ -427,15 +434,24 @@ export class TranscriptionService {
     let formattingUsed = false;
     let formattingModel: string | undefined;
 
-    const formatterConfig = await this.settingsService.getFormatterConfig();
-
-    if (!formatterConfig?.enabled) {
+    if (!formatterConfig || !formatterConfig.enabled) {
       logger.transcription.debug("Formatting skipped: disabled in config");
     } else if (!completeTranscription.trim().length) {
       logger.transcription.debug("Formatting skipped: empty transcription");
+    } else if (formatterConfig.modelId === "amical-cloud") {
+      if (!usedCloudProvider) {
+        logger.transcription.warn(
+          "Formatting skipped: Amical Cloud formatting requires cloud transcription",
+        );
+      } else {
+        formattingUsed = true;
+        formattingModel = "amical-cloud";
+      }
     } else {
       // Get default language model and look up provider
-      const modelId = await this.settingsService.getDefaultLanguageModel();
+      const modelId =
+        formatterConfig.modelId ||
+        (await this.settingsService.getDefaultLanguageModel());
       if (!modelId) {
         logger.transcription.debug(
           "Formatting skipped: no default language model",

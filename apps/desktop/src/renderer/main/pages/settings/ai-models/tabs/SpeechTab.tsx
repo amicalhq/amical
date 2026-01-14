@@ -2,6 +2,7 @@
 import { ComponentProps, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import DefaultModelCombobox from "../components/default-model-combobox";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -172,8 +173,11 @@ export default function SpeechTab() {
   });
 
   const setSelectedModelMutation = api.models.setSelectedModel.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       utils.models.getSelectedModel.invalidate();
+      if (variables.modelId === "amical-cloud") {
+        toast.success("Amical Cloud selected. Cloud formatting enabled.");
+      }
     },
     onError: (error) => {
       console.error("Failed to select model:", error);
@@ -464,6 +468,24 @@ export default function SpeechTab() {
                                     </Avatar>
                                     <span>{model.provider}</span>
                                   </div>
+                                  {isCloudModel && (
+                                    <div className="mt-1">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge
+                                            variant="secondary"
+                                            className="text-[10px] px-1.5 py-0"
+                                          >
+                                            Formatting available
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Cloud formatting is available when
+                                          this model is selected.
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </TableCell>

@@ -27,7 +27,7 @@ import {
 import { isMacOS } from "../utils/platform";
 
 // Current settings schema version - increment when making breaking changes
-const CURRENT_SETTINGS_VERSION = 2;
+const CURRENT_SETTINGS_VERSION = 3;
 
 // Type for v1 settings (before shortcuts array migration)
 interface AppSettingsDataV1 extends Omit<AppSettingsData, "shortcuts"> {
@@ -67,6 +67,29 @@ const migrations: Record<number, MigrationFn> = {
           }
         : undefined,
     } as AppSettingsData;
+  },
+
+  // v2 -> v3: Auto-set formatting model to amical-cloud for users already on cloud transcription
+  3: (data: unknown): AppSettingsData => {
+    const oldData = data as AppSettingsData;
+    const isCloudSpeech =
+      oldData.modelProvidersConfig?.defaultSpeechModel === "amical-cloud";
+    const hasNoFormattingModel = !oldData.formatterConfig?.modelId;
+
+    // If user is on Amical Cloud transcription and hasn't set a formatting model,
+    // auto-set formatting to use Amical Cloud
+    if (isCloudSpeech && hasNoFormattingModel) {
+      return {
+        ...oldData,
+        formatterConfig: {
+          ...oldData.formatterConfig,
+          enabled: oldData.formatterConfig?.enabled ?? false,
+          modelId: "amical-cloud",
+        },
+      };
+    }
+
+    return oldData;
   },
 };
 

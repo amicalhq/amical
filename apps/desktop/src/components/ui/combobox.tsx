@@ -19,6 +19,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+export interface ComboboxOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+  disabledReason?: string;
+}
+
 export function Combobox({
   options,
   value,
@@ -26,7 +33,7 @@ export function Combobox({
   disabled,
   placeholder = "Select option...",
 }: {
-  options: { value: string; label: string }[];
+  options: ComboboxOption[];
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
@@ -56,22 +63,32 @@ export function Combobox({
             <CommandEmpty>No option found.</CommandEmpty>
             <CommandGroup>
               {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={option.value}
-                  onSelect={(currentValue) => {
-                    setOpen(false);
-                    onChange(currentValue === value ? "" : currentValue);
-                  }}
-                >
-                  <CheckIcon
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  {option.label}
-                </CommandItem>
+                <div key={option.value}>
+                  <CommandItem
+                    value={option.value}
+                    disabled={option.disabled}
+                    onSelect={(currentValue) => {
+                      if (option.disabled) {
+                        return;
+                      }
+                      setOpen(false);
+                      onChange(currentValue === value ? "" : currentValue);
+                    }}
+                  >
+                    <CheckIcon
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === option.value ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    {option.label}
+                  </CommandItem>
+                  {option.disabled && option.disabledReason && (
+                    <p className="text-[10px] text-muted-foreground px-2 pb-1 -mt-0.5">
+                      {option.disabledReason}
+                    </p>
+                  )}
+                </div>
               ))}
             </CommandGroup>
           </CommandList>

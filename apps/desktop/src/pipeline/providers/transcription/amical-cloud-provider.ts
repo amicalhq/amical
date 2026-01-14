@@ -116,7 +116,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         throw new Error("Authentication required for cloud transcription");
       }
 
-      return this.doTranscription(true);
+      const enableFormatting = context.formattingEnabled ?? false;
+      return this.doTranscription(enableFormatting);
     } catch (error) {
       logger.transcription.error("Cloud transcription error:", error);
       throw error;

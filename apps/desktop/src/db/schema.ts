@@ -111,6 +111,8 @@ export const models = sqliteTable(
 export interface AppSettingsData {
   formatterConfig?: {
     enabled: boolean;
+    modelId?: string; // Formatting model selection (language model ID or "amical-cloud")
+    fallbackModelId?: string; // Last non-cloud formatting model for auto-restore
   };
   ui?: {
     theme: "light" | "dark" | "system";

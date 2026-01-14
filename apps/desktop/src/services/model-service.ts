@@ -165,13 +165,10 @@ class ModelService extends EventEmitter {
                 }
               }
 
-              await this.settingsService.setDefaultSpeechModel(newModelId);
-              this.emit(
-                "selection-changed",
-                savedSelection,
+              await this.applySpeechModelSelection(
                 newModelId,
                 "manual",
-                "speech",
+                savedSelection,
               );
 
               logger.main.info(
@@ -183,7 +180,11 @@ class ModelService extends EventEmitter {
               );
             } else {
               // No local models available
-              await this.settingsService.setDefaultSpeechModel(undefined);
+              await this.applySpeechModelSelection(
+                null,
+                "cleared",
+                savedSelection,
+              );
               logger.main.warn(
                 "Cleared cloud model selection on startup - not authenticated and no local models available",
               );
@@ -208,13 +209,10 @@ class ModelService extends EventEmitter {
 
           for (const candidateId of preferredOrder) {
             if (downloadedModels[candidateId]) {
-              await this.settingsService.setDefaultSpeechModel(candidateId);
-              this.emit(
-                "selection-changed",
-                null,
+              await this.applySpeechModelSelection(
                 candidateId,
                 "auto-first-download",
-                "speech",
+                null,
               );
               logger.main.info("Auto-selected speech model on initialization", {
                 modelId: candidateId,
@@ -276,13 +274,10 @@ class ModelService extends EventEmitter {
                 }
               }
 
-              await this.settingsService.setDefaultSpeechModel(newModelId);
-              this.emit(
-                "selection-changed",
-                selectedModelId,
+              await this.applySpeechModelSelection(
                 newModelId,
                 "manual",
-                "speech",
+                selectedModelId,
               );
 
               logger.main.info(
@@ -294,13 +289,10 @@ class ModelService extends EventEmitter {
               );
             } else {
               // No local models available, clear selection
-              await this.settingsService.setDefaultSpeechModel(undefined);
-              this.emit(
-                "selection-changed",
-                selectedModelId,
+              await this.applySpeechModelSelection(
                 null,
                 "cleared",
-                "speech",
+                selectedModelId,
               );
 
               logger.main.warn(
@@ -522,13 +514,10 @@ class ModelService extends EventEmitter {
         await this.settingsService.getDefaultSpeechModel();
 
       if (downloadedModelCount === 1 && !currentSelection) {
-        await this.settingsService.setDefaultSpeechModel(modelId);
-        this.emit(
-          "selection-changed",
-          null,
+        await this.applySpeechModelSelection(
           modelId,
           "auto-first-download",
-          "speech",
+          null,
         );
         logger.main.info("Auto-selected first downloaded model", { modelId });
       }
@@ -603,9 +592,6 @@ class ModelService extends EventEmitter {
 
     // Handle selection update if needed
     if (wasSelected) {
-      // Clear selection first
-      await this.settingsService.setDefaultSpeechModel(undefined);
-
       // Try to auto-select next best model
       const remainingModels = await this.getValidDownloadedModels();
       const preferredOrder = [
@@ -620,13 +606,10 @@ class ModelService extends EventEmitter {
       let autoSelected = false;
       for (const candidateId of preferredOrder) {
         if (remainingModels[candidateId]) {
-          await this.settingsService.setDefaultSpeechModel(candidateId);
-          this.emit(
-            "selection-changed",
-            modelId,
+          await this.applySpeechModelSelection(
             candidateId,
             "auto-after-deletion",
-            "speech",
+            modelId,
           );
           logger.main.info("Auto-selected new model after deletion", {
             oldModel: modelId,
@@ -639,7 +622,7 @@ class ModelService extends EventEmitter {
 
       if (!autoSelected) {
         // No models left, selection cleared
-        this.emit("selection-changed", modelId, null, "cleared", "speech");
+        await this.applySpeechModelSelection(null, "cleared", modelId);
         logger.main.info(
           "No models available for auto-selection after deletion",
         );
@@ -686,6 +669,80 @@ class ModelService extends EventEmitter {
     return (await this.settingsService.getDefaultSpeechModel()) || null;
   }
 
+  private async syncFormatterConfigForSpeechChange(
+    oldModelId: string | null,
+    newModelId: string | null,
+  ): Promise<void> {
+    if (oldModelId === newModelId) {
+      return;
+    }
+
+    const formatterConfig =
+      (await this.settingsService.getFormatterConfig()) || { enabled: false };
+    const currentModelId = formatterConfig.modelId;
+    const fallbackModelId = formatterConfig.fallbackModelId;
+    const movedToCloud = newModelId === "amical-cloud";
+    const movedFromCloud = oldModelId === "amical-cloud";
+    const usingCloudFormatting = currentModelId === "amical-cloud";
+
+    let nextConfig = { ...formatterConfig };
+    let updated = false;
+
+    if (movedToCloud && !usingCloudFormatting) {
+      if (currentModelId && currentModelId !== "amical-cloud") {
+        nextConfig.fallbackModelId = currentModelId;
+      } else if (!fallbackModelId) {
+        const defaultLanguageModel =
+          await this.settingsService.getDefaultLanguageModel();
+        if (defaultLanguageModel) {
+          nextConfig.fallbackModelId = defaultLanguageModel;
+        }
+      }
+
+      nextConfig.modelId = "amical-cloud";
+      nextConfig.enabled = true;
+      updated = true;
+    } else if (movedFromCloud && usingCloudFormatting) {
+      const fallback =
+        fallbackModelId ||
+        (await this.settingsService.getDefaultLanguageModel());
+
+      nextConfig.modelId =
+        fallback && fallback !== "amical-cloud" ? fallback : undefined;
+      updated = true;
+    }
+
+    if (updated) {
+      await this.settingsService.setFormatterConfig(nextConfig);
+    }
+  }
+
+  private async applySpeechModelSelection(
+    modelId: string | null,
+    reason:
+      | "manual"
+      | "auto-first-download"
+      | "auto-after-deletion"
+      | "cleared",
+    oldModelId?: string | null,
+  ): Promise<void> {
+    const previousModelId = oldModelId ?? (await this.getSelectedModel());
+
+    if (previousModelId === modelId) {
+      return;
+    }
+
+    await this.settingsService.setDefaultSpeechModel(modelId || undefined);
+    await this.syncFormatterConfigForSpeechChange(previousModelId, modelId);
+
+    this.emit("selection-changed", previousModelId, modelId, reason, "speech");
+    logger.main.info("Model selection changed", {
+      from: previousModelId,
+      to: modelId,
+      reason,
+    });
+  }
+
   // Set selected model for transcription
   async setSelectedModel(modelId: string | null): Promise<void> {
     const oldModelId = await this.getSelectedModel();
@@ -714,18 +771,7 @@ class ModelService extends EventEmitter {
       }
     }
 
-    // Update selection in settings
-    await this.settingsService.setDefaultSpeechModel(modelId || undefined);
-
-    // Emit change event if selection actually changed
-    if (oldModelId !== modelId) {
-      this.emit("selection-changed", oldModelId, modelId, "manual", "speech");
-      logger.main.info("Model selection changed", {
-        from: oldModelId,
-        to: modelId,
-        reason: "manual",
-      });
-    }
+    await this.applySpeechModelSelection(modelId, "manual", oldModelId);
   }
 
   // Get best available model path for transcription (used by WhisperProvider)
@@ -1092,13 +1138,10 @@ class ModelService extends EventEmitter {
         logger.main.info("Clearing invalid default speech model", {
           modelId: defaultSpeechModel,
         });
-        await this.settingsService.setDefaultSpeechModel(undefined);
-        this.emit(
-          "selection-changed",
-          defaultSpeechModel,
+        await this.applySpeechModelSelection(
           null,
           "auto-after-deletion",
-          "speech",
+          defaultSpeechModel,
         );
       }
     }

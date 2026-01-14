@@ -10,6 +10,8 @@ import * as fs from "fs/promises";
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
   enabled: z.boolean(),
+  modelId: z.string().optional(),
+  fallbackModelId: z.string().optional(),
 });
 
 // Shortcut schema (array of key names)

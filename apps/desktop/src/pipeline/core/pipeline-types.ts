@@ -14,6 +14,7 @@ export interface TranscribeContext {
   previousChunk?: string;
   aggregatedTranscription?: string;
   language?: string;
+  formattingEnabled?: boolean;
 }
 
 // Transcription input parameters

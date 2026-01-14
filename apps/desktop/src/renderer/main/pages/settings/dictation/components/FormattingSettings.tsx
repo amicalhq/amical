@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,45 +9,26 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { api } from "@/trpc/react";
-import { toast } from "sonner";
-import DefaultModelCombobox from "@/renderer/main/pages/settings/ai-models/components/default-model-combobox";
+import { Combobox } from "@/components/ui/combobox";
+import { useFormattingSettings } from "../hooks/use-formatting-settings";
 
 export function FormattingSettings() {
-  const [formattingEnabled, setFormattingEnabled] = useState(false);
+  const {
+    formattingEnabled,
+    selectedModelId,
+    formattingOptions,
+    disableFormattingToggle,
+    hasFormattingOptions,
+    showCloudRequiresSpeech,
+    showCloudRequiresAuth,
+    showCloudReady,
+    showNoLanguageModels,
+    handleFormattingEnabledChange,
+    handleFormattingModelChange,
+    handleCloudLogin,
+    isLoginPending,
+  } = useFormattingSettings();
 
-  // tRPC queries and mutations
-  const formatterConfigQuery = api.settings.getFormatterConfig.useQuery();
-  const modelsQuery = api.models.getModels.useQuery({
-    type: "language",
-  });
-  const utils = api.useUtils();
-
-  const setFormatterConfigMutation =
-    api.settings.setFormatterConfig.useMutation({
-      onSuccess: () => {
-        utils.settings.getFormatterConfig.invalidate();
-      },
-      onError: (error) => {
-        console.error("Failed to save formatting settings:", error);
-        toast.error("Failed to save formatting settings. Please try again.");
-      },
-    });
-
-  // Load formatter config from database
-  useEffect(() => {
-    if (formatterConfigQuery.data) {
-      const config = formatterConfigQuery.data;
-      setFormattingEnabled(config.enabled);
-    }
-  }, [formatterConfigQuery.data]);
-
-  const handleFormattingEnabledChange = (enabled: boolean) => {
-    setFormattingEnabled(enabled);
-    setFormatterConfigMutation.mutate({ enabled });
-  };
-
-  const hasModels = (modelsQuery.data?.length ?? 0) > 0;
   return (
     <div className="">
       <div className="flex items-center justify-between mb-2">
@@ -62,7 +42,7 @@ export function FormattingSettings() {
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mb-2">
-            Enable context based transcription formatting.
+            Apply punctuation and structure to your transcriptions.
           </p>
         </div>
         <Tooltip delayDuration={100}>
@@ -71,13 +51,14 @@ export function FormattingSettings() {
               <Switch
                 checked={formattingEnabled}
                 onCheckedChange={handleFormattingEnabledChange}
-                disabled={!hasModels}
+                disabled={disableFormattingToggle}
               />
             </div>
           </TooltipTrigger>
-          {!hasModels && (
+          {disableFormattingToggle && (
             <TooltipContent className="max-w-sm text-center">
-              Please sync AI models first to enable formatting functionality.
+              Sync a language model or select Amical Cloud transcription to
+              enable formatting.
             </TooltipContent>
           )}
         </Tooltip>
@@ -99,30 +80,62 @@ export function FormattingSettings() {
           <div className="space-y-4">
             <div>
               <Label className="text-sm font-medium text-foreground mb-2 block">
-                Formatting Model
+                Formatting model
               </Label>
               <p className="text-xs text-muted-foreground mb-4">
-                Select the language model to use for formatting transcriptions.
+                Choose the model used to format your transcription.
               </p>
             </div>
-            {!hasModels ? (
-              <div className="flex flex-col items-center gap-2">
-                <span className="text-destructive text-sm">
-                  No models available. Please sync models first.
-                </span>
-                <Link to="/settings/ai-models" search={{ tab: "language" }}>
-                  <Button variant="outline" size={"sm"}>
-                    <Plus className="w-4 h-4 mr-1" />
-                    Sync models
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <DefaultModelCombobox
-                modelType="language"
-                title="Default Language Model"
+            <div className="space-y-3">
+              <Combobox
+                options={formattingOptions}
+                value={selectedModelId}
+                onChange={handleFormattingModelChange}
+                placeholder="Select a model..."
+                disabled={!hasFormattingOptions}
               />
-            )}
+              {showCloudRequiresSpeech && (
+                <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  <span>Requires Amical Cloud transcription.</span>
+                  <Link to="/settings/ai-models" search={{ tab: "speech" }}>
+                    <Button variant="outline" size="sm">
+                      Switch speech model
+                    </Button>
+                  </Link>
+                </div>
+              )}
+              {showCloudRequiresAuth && (
+                <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  <span>Sign in to use Amical Cloud formatting.</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCloudLogin}
+                    disabled={isLoginPending}
+                  >
+                    Sign in
+                  </Button>
+                </div>
+              )}
+              {showCloudReady && (
+                <p className="text-xs text-muted-foreground">
+                  Using Amical Cloud formatting.
+                </p>
+              )}
+              {showNoLanguageModels && (
+                <div className="flex items-center justify-between rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-muted-foreground">
+                  <span>
+                    Formatting won't run — no language model available.
+                  </span>
+                  <Link to="/settings/ai-models" search={{ tab: "language" }}>
+                    <Button variant="outline" size="sm">
+                      <Plus className="w-4 h-4 mr-1" />
+                      Sync language models
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
