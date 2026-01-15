@@ -180,49 +180,58 @@ class AccessibilityContextService {
         return chain
     }
     
+    static let MAX_CONTEXT_LENGTH = 500
+
     static func getTextSelection(element: AXUIElement) -> TextSelection? {
-        // Get selected text
-        guard let selectedText = getAttributeValue(element: element, attribute: kAXSelectedTextAttribute),
-              !selectedText.isEmpty else {
-            return nil
-        }
-        
-        // Get full content
+        // Get full content first - we need this to provide context
         let fullContent = getAttributeValue(element: element, attribute: kAXValueAttribute)
-        
-        // Get selection range
+
+        // Get selection/cursor range
         var selectionRange: SelectionRange? = nil
         var rangeValue: CFTypeRef?
         let rangeError = AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeValue)
-        
+
         if rangeError == .success, let axValue = rangeValue {
             var range = CFRange()
             if AXValueGetValue(axValue as! AXValue, .cfRange, &range) {
                 selectionRange = SelectionRange(length: Int(range.length), location: Int(range.location))
             }
         }
-        
-        // Calculate pre and post selection text
+
+        // If we have no cursor/selection position and no content, return nil
+        guard selectionRange != nil || fullContent != nil else {
+            return nil
+        }
+
+        // Get selected text (may be empty if just cursor position)
+        let selectedText = getAttributeValue(element: element, attribute: kAXSelectedTextAttribute)
+
+        // Calculate pre and post selection/cursor text
         var preSelectionText: String? = nil
         var postSelectionText: String? = nil
-        
+
         if let fullContent = fullContent, let range = selectionRange {
             let nsString = fullContent as NSString
-            
+
+            // Pre-selection text: last MAX_CONTEXT_LENGTH chars before cursor/selection
             if range.location > 0 {
-                let preRange = NSRange(location: 0, length: range.location)
+                let preLength = min(range.location, MAX_CONTEXT_LENGTH)
+                let preStart = range.location - preLength
+                let preRange = NSRange(location: preStart, length: preLength)
                 preSelectionText = nsString.substring(with: preRange)
             }
-            
+
+            // Post-selection text: first MAX_CONTEXT_LENGTH chars after cursor/selection
             let postStart = range.location + range.length
             if postStart < nsString.length {
-                let postRange = NSRange(location: postStart, length: nsString.length - postStart)
+                let postLength = min(nsString.length - postStart, MAX_CONTEXT_LENGTH)
+                let postRange = NSRange(location: postStart, length: postLength)
                 postSelectionText = nsString.substring(with: postRange)
             }
         }
-        
+
         let isEditable = isElementEditable(element: element)
-        
+
         return TextSelection(
             fullContent: fullContent,
             isEditable: isEditable,

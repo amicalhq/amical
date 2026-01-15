@@ -134,8 +134,8 @@ export function constructFormatterPrompt(context: FormatParams["context"]): {
   const parts = [SYSTEM_PROMPT];
 
   // Add vocabulary context if available
-  if (vocabulary && vocabulary.size > 0) {
-    const vocabTerms = Array.from(vocabulary.keys()).join(", ");
+  if (vocabulary && vocabulary.length > 0) {
+    const vocabTerms = vocabulary.join(", ");
     parts.push(`\nCustom vocabulary to use for corrections: ${vocabTerms}`);
   }
 

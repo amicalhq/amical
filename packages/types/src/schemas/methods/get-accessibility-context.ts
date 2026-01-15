@@ -29,10 +29,10 @@ const FocusedElementInfoSchema = z.object({
 });
 
 const TextSelectionInfoSchema = z.object({
-  selectedText: z.string(),
+  selectedText: z.string().nullable(), // Nullable when only cursor position is available (no selection)
   fullContent: z.string().nullable(),
-  preSelectionText: z.string().nullable(),
-  postSelectionText: z.string().nullable(),
+  preSelectionText: z.string().nullable(), // Last 500 chars before cursor/selection (closest to cursor)
+  postSelectionText: z.string().nullable(), // First 500 chars after cursor/selection (closest to cursor)
   selectionRange: SelectionRangeSchema.nullable(),
   isEditable: z.boolean(),
 });

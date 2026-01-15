@@ -544,7 +544,7 @@ export class TranscriptionService {
       meta: {
         sessionId,
         source: session.context.sharedData.audioMetadata?.source,
-        vocabularySize: session.context.sharedData.vocabulary?.size || 0,
+        vocabularySize: session.context.sharedData.vocabulary?.length || 0,
         formattingStyle:
           session.context.sharedData.userPreferences?.formattingStyle,
       },
@@ -604,7 +604,7 @@ export class TranscriptionService {
       vad_enabled: !!this.vadService,
       session_type: "streaming",
       language: session.context.sharedData.userPreferences?.language || "en",
-      vocabulary_size: session.context.sharedData.vocabulary?.size || 0,
+      vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
     });
 
     this.streamingSessions.delete(sessionId);
