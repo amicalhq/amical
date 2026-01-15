@@ -15,6 +15,7 @@ namespace WindowsHelper.Services
     public class UIAutomationService
     {
         private readonly int maxDepth = 10;
+        private const int MAX_CONTEXT_LENGTH = 500;
         
         public AccessibilityElementNode? FetchAccessibilityTree(string? rootId)
         {
@@ -125,37 +126,10 @@ namespace WindowsHelper.Services
                     context.IsEditable = IsElementEditable(focusedElement);
                     
                     // Get text selection if available
-                    if (focusedElement.TryGetCurrentPattern(TextPattern.Pattern, out object textPattern))
+                    var textSelectionResult = GetTextSelection(focusedElement, context.IsEditable);
+                    if (textSelectionResult != null)
                     {
-                        var tp = textPattern as TextPattern;
-                        if (tp != null)
-                        {
-                            try
-                            {
-                                var selection = tp.GetSelection();
-                                if (selection != null && selection.Length > 0)
-                                {
-                                    var range = selection[0];
-                                    var selectedText = SafeGetTextFromRange(range);
-                                    if (selectedText != null)
-                                    {
-                                        context.TextSelection = new TextSelection
-                                        {
-                                            SelectedText = selectedText,
-                                            IsEditable = context.IsEditable
-                                        };
-                                    }
-                                }
-                            }
-                            catch (COMException ex)
-                            {
-                                LogToStderr($"Error getting text selection: {ex.Message}");
-                            }
-                            catch (InvalidOperationException ex)
-                            {
-                                LogToStderr($"Error getting text selection: {ex.Message}");
-                            }
-                        }
+                        context.TextSelection = textSelectionResult;
                     }
                 }
                 
@@ -327,6 +301,171 @@ namespace WindowsHelper.Services
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Gets text selection information including surrounding context.
+        /// Matches the behavior of the Swift helper's getTextSelection function.
+        /// </summary>
+        private TextSelection? GetTextSelection(AutomationElement element, bool isEditable)
+        {
+            try
+            {
+                // Try to get TextPattern for full text manipulation
+                if (!element.TryGetCurrentPattern(TextPattern.Pattern, out object textPatternObj))
+                {
+                    // Fall back to ValuePattern for simple text fields
+                    return GetTextSelectionFromValuePattern(element, isEditable);
+                }
+
+                var textPattern = textPatternObj as TextPattern;
+                if (textPattern == null)
+                {
+                    return GetTextSelectionFromValuePattern(element, isEditable);
+                }
+
+                // Get the full document content
+                var fullContent = SafeGetDocumentText(textPattern);
+
+                // Get selection ranges
+                TextPatternRange[]? selectionRanges = null;
+                try
+                {
+                    selectionRanges = textPattern.GetSelection();
+                }
+                catch (COMException ex)
+                {
+                    LogToStderr($"Error getting selection: {ex.Message}");
+                }
+                catch (InvalidOperationException ex)
+                {
+                    LogToStderr($"Error getting selection: {ex.Message}");
+                }
+
+                // If we have no selection/cursor and no content, return null
+                if ((selectionRanges == null || selectionRanges.Length == 0) && string.IsNullOrEmpty(fullContent))
+                {
+                    return null;
+                }
+
+                string? selectedText = null;
+                string? preSelectionText = null;
+                string? postSelectionText = null;
+                Models.SelectionRange? selectionRange = null;
+
+                if (selectionRanges != null && selectionRanges.Length > 0 && !string.IsNullOrEmpty(fullContent))
+                {
+                    var range = selectionRanges[0];
+                    selectedText = SafeGetTextFromRange(range);
+
+                    // Calculate selection position by comparing with document start
+                    try
+                    {
+                        var documentRange = textPattern.DocumentRange;
+
+                        // Get text before selection by cloning document range and moving end to selection start
+                        var beforeRange = documentRange.Clone();
+                        beforeRange.MoveEndpointByRange(TextPatternRangeEndpoint.End, range, TextPatternRangeEndpoint.Start);
+                        var textBefore = SafeGetTextFromRange(beforeRange);
+
+                        // Get text after selection by cloning document range and moving start to selection end
+                        var afterRange = documentRange.Clone();
+                        afterRange.MoveEndpointByRange(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End);
+                        var textAfter = SafeGetTextFromRange(afterRange);
+
+                        // Calculate location and length
+                        int location = textBefore?.Length ?? 0;
+                        int length = selectedText?.Length ?? 0;
+
+                        selectionRange = new Models.SelectionRange
+                        {
+                            Location = location,
+                            Length = length
+                        };
+
+                        // Extract pre-selection context (last MAX_CONTEXT_LENGTH chars before cursor/selection)
+                        if (!string.IsNullOrEmpty(textBefore))
+                        {
+                            int preStart = Math.Max(0, textBefore.Length - MAX_CONTEXT_LENGTH);
+                            preSelectionText = textBefore.Substring(preStart);
+                        }
+
+                        // Extract post-selection context (first MAX_CONTEXT_LENGTH chars after cursor/selection)
+                        if (!string.IsNullOrEmpty(textAfter))
+                        {
+                            int postLength = Math.Min(textAfter.Length, MAX_CONTEXT_LENGTH);
+                            postSelectionText = textAfter.Substring(0, postLength);
+                        }
+                    }
+                    catch (COMException ex)
+                    {
+                        LogToStderr($"Error calculating selection position: {ex.Message}");
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        LogToStderr($"Error calculating selection position: {ex.Message}");
+                    }
+                }
+
+                // Return TextSelection even if we only have full content (provides context)
+                if (fullContent != null || selectedText != null || preSelectionText != null || postSelectionText != null)
+                {
+                    return new TextSelection
+                    {
+                        FullContent = fullContent,
+                        IsEditable = isEditable,
+                        SelectedText = selectedText,
+                        PreSelectionText = preSelectionText,
+                        PostSelectionText = postSelectionText,
+                        SelectionRange = selectionRange
+                    };
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LogToStderr($"Error in GetTextSelection: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Fallback method for getting text selection from ValuePattern (simpler text fields).
+        /// </summary>
+        private TextSelection? GetTextSelectionFromValuePattern(AutomationElement element, bool isEditable)
+        {
+            try
+            {
+                if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out object valuePatternObj))
+                {
+                    return null;
+                }
+
+                var valuePattern = valuePatternObj as ValuePattern;
+                if (valuePattern == null)
+                {
+                    return null;
+                }
+
+                var fullContent = valuePattern.Current.Value;
+                if (string.IsNullOrEmpty(fullContent))
+                {
+                    return null;
+                }
+
+                // For ValuePattern, we don't have selection info, but we can provide the full content
+                return new TextSelection
+                {
+                    FullContent = fullContent,
+                    IsEditable = isEditable
+                };
+            }
+            catch (Exception ex)
+            {
+                LogToStderr($"Error in GetTextSelectionFromValuePattern: {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>
