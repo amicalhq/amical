@@ -57,7 +57,7 @@ export class OllamaFormatter implements FormattingProvider {
       const match = aiResponse.match(
         /<formatted_text>([\s\S]*?)<\/formatted_text>/,
       );
-      const formattedText = match ? match[1].trim() : aiResponse.trim();
+      const formattedText = match ? match[1] : aiResponse;
 
       logger.pipeline.debug("Formatting completed", {
         original: text,

@@ -200,8 +200,9 @@ export class NativeBridge extends EventEmitter {
     this.proc.on("close", (code, signal) => {
       const helperName = getNativeHelperName();
       const isNormalExit = code === 0 && signal === null;
+      const isIntentionalKill = signal === "SIGTERM";
 
-      if (isNormalExit) {
+      if (isNormalExit || isIntentionalKill) {
         this.logger.info(`${helperName} process exited normally`);
       } else {
         this.logger.error(`${helperName} process crashed`, { code, signal });
@@ -212,7 +213,7 @@ export class NativeBridge extends EventEmitter {
       this.proc = null;
 
       // Auto-restart on crash
-      if (!isNormalExit) {
+      if (!isNormalExit && !isIntentionalKill) {
         this.attemptRestart();
       }
     });

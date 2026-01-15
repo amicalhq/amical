@@ -421,7 +421,7 @@ export class TranscriptionService {
       this.transcriptionMutex.release();
     }
 
-    let completeTranscription = session.transcriptionResults.join(" ").trim();
+    let completeTranscription = session.transcriptionResults.join(" ");
     let formattingDuration: number | undefined;
 
     logger.transcription.info("Finalizing streaming session", {
