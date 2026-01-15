@@ -69,7 +69,7 @@ const migrations: Record<number, MigrationFn> = {
     } as AppSettingsData;
   },
 
-  // v2 -> v3: Auto-set formatting model to amical-cloud for users already on cloud transcription
+  // v2 -> v3: Auto-enable formatting with amical-cloud for users already on cloud transcription
   3: (data: unknown): AppSettingsData => {
     const oldData = data as AppSettingsData;
     const isCloudSpeech =
@@ -77,13 +77,13 @@ const migrations: Record<number, MigrationFn> = {
     const hasNoFormattingModel = !oldData.formatterConfig?.modelId;
 
     // If user is on Amical Cloud transcription and hasn't set a formatting model,
-    // auto-set formatting to use Amical Cloud
+    // auto-enable formatting with Amical Cloud
     if (isCloudSpeech && hasNoFormattingModel) {
       return {
         ...oldData,
         formatterConfig: {
           ...oldData.formatterConfig,
-          enabled: oldData.formatterConfig?.enabled ?? false,
+          enabled: true,
           modelId: "amical-cloud",
         },
       };
