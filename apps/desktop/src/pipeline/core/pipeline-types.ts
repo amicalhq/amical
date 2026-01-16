@@ -9,6 +9,7 @@ export { PipelineContext, SharedPipelineData } from "./context";
 
 // Context for transcription operations (shared between transcribe and flush)
 export interface TranscribeContext {
+  sessionId?: string;
   vocabulary?: string[];
   accessibilityContext?: GetAccessibilityContextResult | null;
   previousChunk?: string;

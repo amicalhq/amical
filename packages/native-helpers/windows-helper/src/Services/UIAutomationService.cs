@@ -384,17 +384,27 @@ namespace WindowsHelper.Services
                         };
 
                         // Extract pre-selection context (last MAX_CONTEXT_LENGTH chars before cursor/selection)
+                        // Returns "" if cursor is at start of document
                         if (!string.IsNullOrEmpty(textBefore))
                         {
                             int preStart = Math.Max(0, textBefore.Length - MAX_CONTEXT_LENGTH);
                             preSelectionText = textBefore.Substring(preStart);
                         }
+                        else
+                        {
+                            preSelectionText = "";
+                        }
 
                         // Extract post-selection context (first MAX_CONTEXT_LENGTH chars after cursor/selection)
+                        // Returns "" if cursor is at end of document
                         if (!string.IsNullOrEmpty(textAfter))
                         {
                             int postLength = Math.Min(textAfter.Length, MAX_CONTEXT_LENGTH);
                             postSelectionText = textAfter.Substring(0, postLength);
+                        }
+                        else
+                        {
+                            postSelectionText = "";
                         }
                     }
                     catch (COMException ex)

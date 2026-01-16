@@ -207,6 +207,7 @@ class AccessibilityContextService {
         let selectedText = getAttributeValue(element: element, attribute: kAXSelectedTextAttribute)
 
         // Calculate pre and post selection/cursor text
+        // Return "" instead of nil when cursor is at start/end of document
         var preSelectionText: String? = nil
         var postSelectionText: String? = nil
 
@@ -214,19 +215,25 @@ class AccessibilityContextService {
             let nsString = fullContent as NSString
 
             // Pre-selection text: last MAX_CONTEXT_LENGTH chars before cursor/selection
+            // Returns "" if cursor is at start of document (position 0)
             if range.location > 0 {
                 let preLength = min(range.location, MAX_CONTEXT_LENGTH)
                 let preStart = range.location - preLength
                 let preRange = NSRange(location: preStart, length: preLength)
                 preSelectionText = nsString.substring(with: preRange)
+            } else {
+                preSelectionText = ""
             }
 
             // Post-selection text: first MAX_CONTEXT_LENGTH chars after cursor/selection
+            // Returns "" if cursor is at end of document
             let postStart = range.location + range.length
             if postStart < nsString.length {
                 let postLength = min(nsString.length - postStart, MAX_CONTEXT_LENGTH)
                 let postRange = NSRange(location: postStart, length: postLength)
                 postSelectionText = nsString.substring(with: postRange)
+            } else {
+                postSelectionText = ""
             }
         }
 

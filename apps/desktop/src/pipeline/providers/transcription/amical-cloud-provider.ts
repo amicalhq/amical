@@ -34,6 +34,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     null;
   private currentAggregatedTranscription: string | undefined;
   private currentVocabulary: string[] = [];
+  private currentSessionId: string | undefined;
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -65,6 +66,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       this.currentAccessibilityContext = context?.accessibilityContext ?? null;
       this.currentAggregatedTranscription = context?.aggregatedTranscription;
       this.currentVocabulary = context?.vocabulary ?? [];
+      this.currentSessionId = context?.sessionId;
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
@@ -110,6 +112,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       this.currentAccessibilityContext = context?.accessibilityContext ?? null;
       this.currentAggregatedTranscription = context?.aggregatedTranscription;
       this.currentVocabulary = context?.vocabulary ?? [];
+      this.currentSessionId = context?.sessionId;
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
@@ -117,7 +120,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       }
 
       const enableFormatting = context.formattingEnabled ?? false;
-      return this.doTranscription(enableFormatting);
+      // flush() is called at session end, so this is the final call
+      return this.doTranscription(enableFormatting, true);
     } catch (error) {
       logger.transcription.error("Cloud transcription error:", error);
       throw error;
@@ -126,8 +130,13 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   /**
    * Shared transcription logic - aggregates buffer, calls cloud API, clears state
+   * @param enableFormatting - Whether to enable formatting
+   * @param isFinal - Whether this is the final call for the session (default: false)
    */
-  private async doTranscription(enableFormatting: boolean): Promise<string> {
+  private async doTranscription(
+    enableFormatting: boolean,
+    isFinal = false,
+  ): Promise<string> {
     // Combine all frames into a single Float32Array
     const totalLength = this.frameBuffer.reduce(
       (acc, frame) => acc + frame.length,
@@ -154,6 +163,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       vadProbs,
       false,
       enableFormatting,
+      isFinal,
     );
   }
 
@@ -168,6 +178,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     this.currentLanguage = undefined;
     this.currentAccessibilityContext = null;
     this.currentAggregatedTranscription = undefined;
+    this.currentSessionId = undefined;
   }
 
   private shouldTranscribe(): boolean {
@@ -188,6 +199,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     vadProbs: number[],
     isRetry = false,
     enableFormatting = false,
+    isFinal = false,
   ): Promise<string> {
     // Skip API call if there's nothing to process
     if (audioData.length === 0) {
@@ -213,6 +225,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       duration,
       isRetry,
       formatting: enableFormatting,
+      sessionId: this.currentSessionId,
+      isFinal,
     });
 
     const response = await fetch(`${this.apiEndpoint}/transcribe`, {
@@ -223,6 +237,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         "User-Agent": getUserAgent(),
       },
       body: JSON.stringify({
+        sessionId: this.currentSessionId,
+        isFinal,
         audioData: Array.from(audioData),
         vadProbs,
         language: this.currentLanguage,
@@ -270,12 +286,13 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         // Force token refresh
         await this.authService.refreshTokenIfNeeded();
 
-        // Retry the request once (preserve formatting flag)
+        // Retry the request once (preserve formatting and isFinal flags)
         return await this.makeTranscriptionRequest(
           audioData,
           vadProbs,
           true,
           enableFormatting,
+          isFinal,
         );
       } catch (refreshError) {
         logger.transcription.error("Token refresh failed:", refreshError);

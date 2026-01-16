@@ -300,6 +300,7 @@ export class TranscriptionService {
         audioData: audioChunk,
         speechProbability: speechProbability,
         context: {
+          sessionId,
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
           previousChunk,
@@ -391,11 +392,13 @@ export class TranscriptionService {
           ? session.transcriptionResults[
               session.transcriptionResults.length - 1
             ]
-          : undefined;      const aggregatedTranscription = session.transcriptionResults.join("");
+          : undefined;
+      const aggregatedTranscription = session.transcriptionResults.join("");
 
       const provider = await this.selectProvider();
       usedCloudProvider = provider.name === "amical-cloud";
       const finalTranscription = await provider.flush({
+        sessionId,
         vocabulary: session.context.sharedData.vocabulary,
         accessibilityContext: session.context.sharedData.accessibilityContext,
         previousChunk,
@@ -682,15 +685,14 @@ export class TranscriptionService {
       return transcription;
     }
 
-    // Strip leading space if:
-    // 1. No previous text (start of document/field)
-    // 2. Previous text ends with whitespace (avoid double space)
+    // Strip leading space only if previous text exists and ends with ASCII whitespace.
+    // When there's no previous text (null/undefined/""), keep the leading space.
     const shouldStripLeadingSpace =
-      !preSelectionText ||
-      preSelectionText.length === 0 ||
-      /\s$/.test(preSelectionText);
+      preSelectionText !== undefined &&
+      preSelectionText !== null &&
+      (preSelectionText.length === 0 || /[ \t\r\n]$/.test(preSelectionText));
 
-    return shouldStripLeadingSpace ? transcription.trimStart() : transcription;
+    return shouldStripLeadingSpace ? transcription.slice(1) : transcription;
   }
 
   /**
