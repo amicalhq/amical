@@ -11,6 +11,7 @@ export default function PreferencesSettingsPage() {
 
   // tRPC queries and mutations
   const preferencesQuery = api.settings.getPreferences.useQuery();
+  const settingsQuery = api.settings.getSettings.useQuery();
   const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
     onSuccess: () => {
       toast.success("Preferences updated");
@@ -21,6 +22,17 @@ export default function PreferencesSettingsPage() {
       toast.error("Failed to update preferences. Please try again.");
     },
   });
+  const updateRecordingSettingsMutation =
+    api.settings.updateRecordingSettings.useMutation({
+      onSuccess: () => {
+        utils.settings.getSettings.invalidate();
+        toast.success("Recording settings updated");
+      },
+      onError: (error) => {
+        console.error("Failed to update recording settings:", error);
+        toast.error("Failed to update recording settings. Please try again.");
+      },
+    });
 
   const handleLaunchAtLoginChange = (checked: boolean) => {
     updatePreferencesMutation.mutate({
@@ -46,11 +58,19 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleMuteSystemAudioChange = (checked: boolean) => {
+    updateRecordingSettingsMutation.mutate({
+      muteSystemAudio: checked,
+    });
+  };
+
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
   const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
   const showInDock = preferencesQuery.data?.showInDock ?? true;
+  const muteSystemAudio =
+    settingsQuery.data?.recording?.muteSystemAudio ?? true;
   const isMac = window.electronAPI.platform === "darwin";
 
   return (
@@ -145,6 +165,27 @@ export default function PreferencesSettingsPage() {
                 <Separator />
               </>
             )}
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  Mute system audio during recording
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Silence system output while capturing microphone audio
+                </p>
+              </div>
+              <Switch
+                checked={muteSystemAudio}
+                onCheckedChange={handleMuteSystemAudioChange}
+                disabled={
+                  updateRecordingSettingsMutation.isPending ||
+                  settingsQuery.isLoading
+                }
+              />
+            </div>
 
             {/* Theme Section */}
             <div className="flex items-center justify-between">

@@ -50,6 +50,23 @@ const UIThemeSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
 });
 
+const RecordingSettingsSchema = z.object({
+  defaultFormat: z.enum(["wav", "mp3", "flac"]).optional(),
+  sampleRate: z
+    .union([
+      z.literal(16000),
+      z.literal(22050),
+      z.literal(44100),
+      z.literal(48000),
+    ])
+    .optional(),
+  autoStopSilence: z.boolean().optional(),
+  silenceThreshold: z.number().optional(),
+  maxRecordingDuration: z.number().optional(),
+  muteSystemAudio: z.boolean().optional(),
+  preferredMicrophoneName: z.string().optional(),
+});
+
 export const settingsRouter = createRouter({
   // Get all settings
   getSettings: procedure.query(async ({ ctx }) => {
@@ -124,6 +141,47 @@ export const settingsRouter = createRouter({
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
           logger.main.error("Error updating transcription settings:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Update recording settings
+  updateRecordingSettings: procedure
+    .input(RecordingSettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        const currentSettings = await settingsService.getRecordingSettings();
+
+        const mergedSettings = {
+          defaultFormat: "wav" as const,
+          sampleRate: 16000 as const,
+          autoStopSilence: true,
+          silenceThreshold: 3,
+          maxRecordingDuration: 60,
+          muteSystemAudio: true,
+          ...currentSettings,
+          ...input,
+        };
+
+        await settingsService.setRecordingSettings(mergedSettings);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Recording settings updated", mergedSettings);
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error updating recording settings:", error);
         }
         throw error;
       }

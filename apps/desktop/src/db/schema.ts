@@ -131,6 +131,7 @@ export interface AppSettingsData {
     autoStopSilence: boolean;
     silenceThreshold: number;
     maxRecordingDuration: number;
+    muteSystemAudio?: boolean;
     preferredMicrophoneName?: string;
   };
   shortcuts?: {
