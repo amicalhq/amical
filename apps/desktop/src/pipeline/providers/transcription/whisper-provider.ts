@@ -156,6 +156,7 @@ export class WhisperProvider implements TranscriptionProvider {
       const initialPrompt = this.generateInitialPrompt(
         vocabulary,
         aggregatedTranscription,
+        context.accessibilityContext,
       );
 
       const text = await this.workerWrapper.exec<string>("transcribeAudio", [
@@ -296,6 +297,7 @@ export class WhisperProvider implements TranscriptionProvider {
   private generateInitialPrompt(
     vocabulary?: string[],
     aggregatedTranscription?: string,
+    accessibilityContext?: TranscribeContext["accessibilityContext"],
   ): string {
     const promptParts: string[] = [];
 
@@ -304,17 +306,19 @@ export class WhisperProvider implements TranscriptionProvider {
       promptParts.push(vocabulary.join(", "));
     }
 
-    // Add last 8 words from aggregated transcription if available
-    if (aggregatedTranscription && aggregatedTranscription.trim().length > 0) {
-      const words = aggregatedTranscription.trim().split(/\s+/);
-      const lastWords = words.slice(-8).join(" ");
-      if (lastWords.length > 0) {
-        promptParts.push(lastWords);
+    if (aggregatedTranscription) {
+      // Pass full transcription - whisper.cpp auto-truncates to last ~224 tokens
+      promptParts.push(aggregatedTranscription);
+    } else {
+      const beforeText =
+        accessibilityContext?.context?.textSelection?.preSelectionText;
+      if (beforeText && beforeText.trim().length > 0) {
+        promptParts.push(beforeText);
       }
     }
 
     // Combine parts with a separator, or return empty string if no context
-    const prompt = promptParts.join(". ");
+    const prompt = promptParts.join(" ");
 
     logger.transcription.debug(`Generated initial prompt: "${prompt}"`);
 

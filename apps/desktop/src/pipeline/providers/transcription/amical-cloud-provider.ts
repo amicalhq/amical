@@ -314,6 +314,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       textLength: result.transcription?.length || 0,
       language: result.language,
       duration: result.duration,
+      transcription: result.transcription,
     });
 
     return result.transcription || "";

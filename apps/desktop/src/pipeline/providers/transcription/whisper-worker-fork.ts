@@ -95,8 +95,7 @@ const methods = {
 
     return transcription
       .map((segment: { text: string }) => segment.text)
-      .join(" ")
-      .trim();
+      .join("");
   },
 
   async dispose(): Promise<void> {

@@ -290,9 +290,7 @@ export class TranscriptionService {
               session.transcriptionResults.length - 1
             ]
           : undefined;
-      const aggregatedTranscription = session.transcriptionResults
-        .join(" ")
-        .trim();
+      const aggregatedTranscription = session.transcriptionResults.join("");
 
       // Select the appropriate provider
       const provider = await this.selectProvider();
@@ -331,7 +329,7 @@ export class TranscriptionService {
       this.transcriptionMutex.release();
     }
 
-    return session.transcriptionResults.join(" ").trim();
+    return session.transcriptionResults.join("");
   }
 
   /**
@@ -393,10 +391,7 @@ export class TranscriptionService {
           ? session.transcriptionResults[
               session.transcriptionResults.length - 1
             ]
-          : undefined;
-      const aggregatedTranscription = session.transcriptionResults
-        .join(" ")
-        .trim();
+          : undefined;      const aggregatedTranscription = session.transcriptionResults.join("");
 
       const provider = await this.selectProvider();
       usedCloudProvider = provider.name === "amical-cloud";
@@ -421,7 +416,19 @@ export class TranscriptionService {
       this.transcriptionMutex.release();
     }
 
-    let completeTranscription = session.transcriptionResults.join(" ");
+    let completeTranscription = session.transcriptionResults.join("");
+
+    // Apply simple pre-formatting for local models (handles Whisper leading space artifact)
+    if (!usedCloudProvider) {
+      const preSelectionText =
+        session.context.sharedData.accessibilityContext?.context?.textSelection
+          ?.preSelectionText;
+      completeTranscription = this.preFormatLocalTranscription(
+        completeTranscription,
+        preSelectionText,
+      );
+    }
+
     let formattingDuration: number | undefined;
 
     logger.transcription.info("Finalizing streaming session", {
@@ -524,6 +531,24 @@ export class TranscriptionService {
             },
           );
         }
+      }
+    }
+
+    // Apply vocabulary replacements (final post-processing step)
+    const replacements = session.context.sharedData.replacements;
+    if (replacements.size > 0) {
+      const beforeReplacements = completeTranscription;
+      completeTranscription = this.applyReplacements(
+        completeTranscription,
+        replacements,
+      );
+      if (beforeReplacements !== completeTranscription) {
+        logger.transcription.info("Applied vocabulary replacements", {
+          sessionId,
+          replacementCount: replacements.size,
+          originalLength: beforeReplacements.length,
+          newLength: completeTranscription.length,
+        });
       }
     }
 
@@ -642,6 +667,63 @@ export class TranscriptionService {
     // TODO: Load formatter config from settings
 
     return context;
+  }
+
+  /**
+   * Simple pre-formatter for local Transcription models.
+   * Handles leading space based on insertion context to avoid double spaces or unwanted leading whitespace.
+   * Runs before LLM formatter (if configured) to ensure clean input.
+   */
+  private preFormatLocalTranscription(
+    transcription: string,
+    preSelectionText: string | null | undefined,
+  ): string {
+    if (!transcription.startsWith(" ")) {
+      return transcription;
+    }
+
+    // Strip leading space if:
+    // 1. No previous text (start of document/field)
+    // 2. Previous text ends with whitespace (avoid double space)
+    const shouldStripLeadingSpace =
+      !preSelectionText ||
+      preSelectionText.length === 0 ||
+      /\s$/.test(preSelectionText);
+
+    return shouldStripLeadingSpace ? transcription.trimStart() : transcription;
+  }
+
+  /**
+   * Apply vocabulary replacements to transcription text.
+   * Uses case-insensitive Unicode-aware word boundary matching to replace terms.
+   * Works across all languages and scripts (Latin, Cyrillic, CJK, Arabic, etc.).
+   * Runs after LLM formatting as the final post-processing step.
+   */
+  private applyReplacements(
+    text: string,
+    replacements: Map<string, string>,
+  ): string {
+    if (replacements.size === 0 || !text) {
+      return text;
+    }
+
+    let result = text;
+
+    for (const [word, replacement] of replacements) {
+      // Escape special regex characters in the word
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Use Unicode-aware word boundaries:
+      // - \p{L} matches any Unicode letter (Latin, Cyrillic, CJK, Arabic, etc.)
+      // - \p{N} matches any Unicode number
+      // - Negative lookbehind/lookahead ensures word is not part of a larger word
+      const regex = new RegExp(
+        `(?<![\\p{L}\\p{N}])${escapedWord}(?![\\p{L}\\p{N}])`,
+        "giu",
+      );
+      result = result.replace(regex, replacement);
+    }
+
+    return result;
   }
 
   private async formatWithProvider(
