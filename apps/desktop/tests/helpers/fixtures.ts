@@ -34,6 +34,7 @@ export const defaultAppSettings: AppSettingsData = {
     autoStopSilence: true,
     silenceThreshold: -45,
     maxRecordingDuration: 600,
+    muteSystemAudio: true,
   },
   shortcuts: {
     pushToTalk: "CommandOrControl+Shift+Space",
@@ -177,7 +178,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: defaultAppSettings,
-      version: 1,
+      version: 4,
     });
   },
 
@@ -237,7 +238,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: { ...defaultAppSettings, ...settings },
-      version: 1,
+      version: 4,
     });
   },
 
