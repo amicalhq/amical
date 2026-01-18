@@ -353,7 +353,7 @@ namespace WindowsHelper.Services
                 string? postSelectionText = null;
                 Models.SelectionRange? selectionRange = null;
 
-                if (selectionRanges != null && selectionRanges.Length > 0 && !string.IsNullOrEmpty(fullContent))
+                if (selectionRanges != null && selectionRanges.Length > 0 && fullContent != null)
                 {
                     var range = selectionRanges[0];
                     selectedText = SafeGetTextFromRange(range);

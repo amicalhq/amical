@@ -312,7 +312,13 @@ export class TranscriptionService {
       // Accumulate the result only if Whisper returned something
       // (it returns empty string while buffering)
       if (chunkTranscription.trim()) {
-        session.transcriptionResults.push(chunkTranscription);
+        // Cloud provider concatenates previousTranscription with new transcription,
+        // so we need to replace the array instead of appending to avoid duplication
+        if (provider.name === "amical-cloud" && aggregatedTranscription) {
+          session.transcriptionResults = [chunkTranscription];
+        } else {
+          session.transcriptionResults.push(chunkTranscription);
+        }
         logger.transcription.info("Whisper returned transcription", {
           sessionId,
           transcriptionLength: chunkTranscription.length,
@@ -408,7 +414,13 @@ export class TranscriptionService {
       });
 
       if (finalTranscription.trim()) {
-        session.transcriptionResults.push(finalTranscription);
+        // Cloud provider concatenates previousTranscription with new transcription,
+        // so we need to replace the array instead of appending to avoid duplication
+        if (usedCloudProvider && aggregatedTranscription) {
+          session.transcriptionResults = [finalTranscription];
+        } else {
+          session.transcriptionResults.push(finalTranscription);
+        }
         logger.transcription.info("Whisper returned final transcription", {
           sessionId,
           transcriptionLength: finalTranscription.length,
