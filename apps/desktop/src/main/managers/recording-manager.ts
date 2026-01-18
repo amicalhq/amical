@@ -167,12 +167,7 @@ export class RecordingManager extends EventEmitter {
   public async onPTTRelease() {
     // Hands-free mode ignores PTT release
     if (this.recordingMode !== "ptt") return;
-    if (
-      this.recordingState !== "recording" &&
-      this.recordingState !== "starting"
-    ) {
-      return;
-    }
+    if (this.recordingState !== "recording") return;
 
     if (this.isQuickAction()) {
       // Quick release - wait for potential double-tap before cancelling
@@ -206,10 +201,7 @@ export class RecordingManager extends EventEmitter {
     }
 
     // Already recording
-    if (
-      this.recordingState === "recording" ||
-      this.recordingState === "starting"
-    ) {
+    if (this.recordingState === "recording") {
       // In PTT mode? Switch to hands-free
       if (this.recordingMode === "ptt") {
         logger.audio.info("Toggle in PTT mode, switching to hands-free");
@@ -249,7 +241,7 @@ export class RecordingManager extends EventEmitter {
       const startTime = performance.now();
       logger.audio.info("RecordingManager: doStart called", { mode });
 
-      // Sync state broadcast - stay in "starting" until init completes
+      // Sync state broadcast
       this.setState("starting");
       this.setMode(mode);
       this.terminationCode = null;
@@ -260,15 +252,13 @@ export class RecordingManager extends EventEmitter {
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       this.currentSessionId = `session-${timestamp}`;
+      this.setState("recording");
 
-      // Initialize session (includes muting) BEFORE changing to "recording"
-      // This ensures audio is muted before renderer starts capturing
+      this.startNoAudioTimer();
+
+      // Async init inside mutex
       this.initPromise = this.initializeSession();
       await this.initPromise;
-
-      // Now safe to start recording - audio is muted
-      this.setState("recording");
-      this.startNoAudioTimer();
 
       const totalDuration = performance.now() - startTime;
       logger.audio.info("Recording started", {
@@ -307,10 +297,7 @@ export class RecordingManager extends EventEmitter {
     code: TerminationCode | null = null,
   ): Promise<void> {
     await this.lifecycleMutex.runExclusive(async () => {
-      if (
-        this.recordingState !== "recording" &&
-        this.recordingState !== "starting"
-      ) {
+      if (this.recordingState !== "recording") {
         logger.audio.warn("Cannot end recording - not recording", {
           currentState: this.recordingState,
         });
@@ -758,10 +745,7 @@ export class RecordingManager extends EventEmitter {
    * Signal to stop recording (called from tRPC)
    */
   public async signalStop(): Promise<void> {
-    if (
-      this.recordingState === "recording" ||
-      this.recordingState === "starting"
-    ) {
+    if (this.recordingState === "recording") {
       await this.endRecording();
     }
   }
@@ -771,10 +755,7 @@ export class RecordingManager extends EventEmitter {
     this.clearTimers();
 
     // Stop recording if active
-    if (
-      this.recordingState === "recording" ||
-      this.recordingState === "starting"
-    ) {
+    if (this.recordingState === "recording") {
       await this.endRecording();
     }
 
