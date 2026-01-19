@@ -34,7 +34,6 @@ export const defaultAppSettings: AppSettingsData = {
     autoStopSilence: true,
     silenceThreshold: -45,
     maxRecordingDuration: 600,
-    muteSystemAudio: true,
   },
   shortcuts: {
     pushToTalk: "CommandOrControl+Shift+Space",
@@ -52,6 +51,7 @@ export const defaultAppSettings: AppSettingsData = {
     launchAtLogin: false,
     minimizeToTray: true,
     showWidgetWhileInactive: true,
+    muteSystemAudio: true,
   },
   telemetry: {
     enabled: false,

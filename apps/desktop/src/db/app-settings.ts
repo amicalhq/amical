@@ -92,14 +92,14 @@ const migrations: Record<number, MigrationFn> = {
     return oldData;
   },
 
-  // v3 -> v4: Default muteSystemAudio to true when unset
+  // v3 -> v4: Default muteSystemAudio to preferences (default true)
   4: (data: unknown): AppSettingsData => {
     const oldData = data as AppSettingsData;
     return {
       ...oldData,
-      recording: {
-        ...(oldData.recording ?? {}),
-        muteSystemAudio: oldData.recording?.muteSystemAudio ?? true,
+      preferences: {
+        ...(oldData.preferences ?? {}),
+        muteSystemAudio: oldData.preferences?.muteSystemAudio ?? true,
       },
     };
   },
@@ -153,6 +153,7 @@ const defaultSettings: AppSettingsData = {
     launchAtLogin: true,
     showWidgetWhileInactive: true,
     showInDock: true,
+    muteSystemAudio: true,
   },
   transcription: {
     language: "en",
@@ -167,7 +168,6 @@ const defaultSettings: AppSettingsData = {
     autoStopSilence: true,
     silenceThreshold: 3,
     maxRecordingDuration: 60,
-    muteSystemAudio: true,
   },
   shortcuts: getDefaultShortcuts(),
   modelProvidersConfig: {

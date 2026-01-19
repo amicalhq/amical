@@ -285,10 +285,10 @@ export class RecordingManager extends EventEmitter {
       const nativeBridge = this.serviceManager.getService("nativeBridge");
       nativeBridge.refreshAccessibilityContext();
 
-      // Conditionally mute system audio based on settings
+      // Conditionally mute system audio based on preferences
       const settingsService = this.serviceManager.getService("settingsService");
-      const recordingSettings = await settingsService.getRecordingSettings();
-      const shouldMute = recordingSettings?.muteSystemAudio ?? true;
+      const preferences = await settingsService.getPreferences();
+      const shouldMute = preferences?.muteSystemAudio ?? true;
 
       if (shouldMute) {
         const result = await nativeBridge.call("muteSystemAudio", {});

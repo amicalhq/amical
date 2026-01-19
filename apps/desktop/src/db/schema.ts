@@ -131,7 +131,6 @@ export interface AppSettingsData {
     autoStopSilence: boolean;
     silenceThreshold: number;
     maxRecordingDuration: number;
-    muteSystemAudio?: boolean;
     preferredMicrophoneName?: string;
   };
   shortcuts?: {
@@ -160,6 +159,7 @@ export interface AppSettingsData {
     minimizeToTray?: boolean;
     showWidgetWhileInactive?: boolean;
     showInDock?: boolean;
+    muteSystemAudio?: boolean;
   };
   telemetry?: {
     enabled?: boolean;

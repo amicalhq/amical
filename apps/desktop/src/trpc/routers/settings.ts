@@ -44,6 +44,7 @@ const AppPreferencesSchema = z.object({
   minimizeToTray: z.boolean().optional(),
   showWidgetWhileInactive: z.boolean().optional(),
   showInDock: z.boolean().optional(),
+  muteSystemAudio: z.boolean().optional(),
 });
 
 const UIThemeSchema = z.object({
@@ -63,7 +64,6 @@ const RecordingSettingsSchema = z.object({
   autoStopSilence: z.boolean().optional(),
   silenceThreshold: z.number().optional(),
   maxRecordingDuration: z.number().optional(),
-  muteSystemAudio: z.boolean().optional(),
   preferredMicrophoneName: z.string().optional(),
 });
 
@@ -165,7 +165,6 @@ export const settingsRouter = createRouter({
           autoStopSilence: true,
           silenceThreshold: 3,
           maxRecordingDuration: 60,
-          muteSystemAudio: true,
           ...currentSettings,
           ...input,
         };
