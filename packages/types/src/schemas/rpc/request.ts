@@ -7,6 +7,8 @@ import { PasteTextParamsSchema } from "../methods/paste-text.js";
 const RPCMethodNameSchema = z.union([
   z.literal("getAccessibilityTreeDetails"),
   z.literal("getAccessibilityContext"),
+  z.literal("getAccessibilityStatus"),
+  z.literal("requestAccessibilityPermission"),
   z.literal("pasteText"),
   z.literal("muteSystemAudio"),
   z.literal("restoreSystemAudio"),

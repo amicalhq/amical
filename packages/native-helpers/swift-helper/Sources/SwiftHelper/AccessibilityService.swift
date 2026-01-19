@@ -48,7 +48,7 @@ struct AccessibilityElementNode: Codable {
 
 class AccessibilityService {
 
-    private let maxDepth = 10  // To prevent excessively deep recursion and large payloads
+    private let maxDepth = ACCESSIBILITY_TREE_MAX_DEPTH  // To prevent excessively deep recursion and large payloads
     private let dateFormatter: DateFormatter
 
     // Properties to store original audio states
@@ -478,23 +478,19 @@ class AccessibilityService {
             return false
         }
 
-        // Simulate Cmd+V
-        // Using deprecated kVK_Command might still work but kCGEventFlagMaskCommand is preferred.
-        // Virtual key code for 'v' is 9.
-        let vKeyCode: CGKeyCode = 9
-
+        // Simulate Cmd+V using virtual key codes from Constants.swift
         let source = CGEventSource(stateID: .hidSystemState)
 
-        let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(55), keyDown: true)  // 55 is kVK_Command
+        let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: true)
         cmdDown?.flags = .maskCommand
 
-        let vDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true)
+        let vDown = CGEvent(keyboardEventSource: source, virtualKey: VK_V, keyDown: true)
         vDown?.flags = .maskCommand  // Keep command flag for the V press as well
 
-        let vUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
+        let vUp = CGEvent(keyboardEventSource: source, virtualKey: VK_V, keyDown: false)
         vUp?.flags = .maskCommand
 
-        let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(55), keyDown: false)
+        let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: false)
         // No flags needed for key up typically, or just .maskCommand if it was held
 
         if cmdDown == nil || vDown == nil || vUp == nil || cmdUp == nil {
@@ -516,7 +512,7 @@ class AccessibilityService {
 
         // Restore the original pasteboard content after a short delay
         // to allow the paste action to complete.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {  // 200ms delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + PASTE_RESTORE_DELAY_SECONDS) {
             self.restorePasteboard(
                 pasteboard: pasteboard, items: originalPasteboardItems,
                 originalChangeCount: originalChangeCount)
@@ -547,10 +543,6 @@ class AccessibilityService {
         }
     }
 
-    // Define kVK_Function if not available from a system framework directly in this context.
-    // 0x3F is the virtual key code for the Fn key on Apple keyboards.
-    private let kVK_Function: CGKeyCode = 0x3F
-
     // Determines whether a keyboard event should be forwarded to the Electron application.
     // This method should be called from the CGEventTap callback in main.swift or RpcHandler.swift.
     public func shouldForwardKeyboardEvent(event: CGEvent) -> Bool {
@@ -570,7 +562,7 @@ class AccessibilityService {
 
         if type == .keyDown || type == .keyUp {
             // For keyDown and keyUp events, only forward if the event is FOR THE Fn KEY ITSELF.
-            if keyCode == kVK_Function {
+            if keyCode == VK_FUNCTION {
                 // logToStderr("[AccessibilityService] Forwarding \(type == .keyDown ? "keyDown" : "keyUp") event because it IS the Fn key (keyCode: \(keyCode)).")
                 return true
             } else {

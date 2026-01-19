@@ -20,6 +20,10 @@ import {
   GetAccessibilityTreeDetailsResult,
   GetAccessibilityContextParams,
   GetAccessibilityContextResult,
+  GetAccessibilityStatusParams,
+  GetAccessibilityStatusResult,
+  RequestAccessibilityPermissionParams,
+  RequestAccessibilityPermissionResult,
   PasteTextParams,
   PasteTextResult,
   MuteSystemAudioParams,
@@ -28,6 +32,7 @@ import {
   RestoreSystemAudioResult,
   SetShortcutsParams,
   SetShortcutsResult,
+  AppContext,
 } from "@amical/types";
 
 // Define the interface for RPC methods
@@ -39,6 +44,14 @@ interface RPCMethods {
   getAccessibilityContext: {
     params: GetAccessibilityContextParams;
     result: GetAccessibilityContextResult;
+  };
+  getAccessibilityStatus: {
+    params: GetAccessibilityStatusParams;
+    result: GetAccessibilityStatusResult;
+  };
+  requestAccessibilityPermission: {
+    params: RequestAccessibilityPermissionParams;
+    result: RequestAccessibilityPermissionResult;
   };
   pasteText: {
     params: PasteTextParams;
@@ -74,7 +87,7 @@ export class NativeBridge extends EventEmitter {
   >();
   private helperPath: string;
   private logger = createScopedLogger("native-bridge");
-  private accessibilityContext: GetAccessibilityContextResult | null = null;
+  private accessibilityContext: AppContext | null = null;
 
   // Auto-restart configuration
   private static readonly MAX_RESTARTS = 3;
@@ -435,15 +448,16 @@ export class NativeBridge extends EventEmitter {
    */
   async refreshAccessibilityContext(): Promise<void> {
     try {
-      const context = await this.call("getAccessibilityContext", {
+      const result = await this.call("getAccessibilityContext", {
         editableOnly: false,
       });
-      this.accessibilityContext = context;
+      this.accessibilityContext = result.context;
       this.logger.debug("Accessibility context refreshed", {
-        hasApplication: !!context.context?.application?.name,
-        hasFocusedElement: !!context.context?.focusedElement?.role,
-        hasTextSelection: !!context.context?.textSelection?.selectedText,
-        hasWindow: !!context.context?.windowInfo?.title,
+        hasApplication: !!result.context?.application?.name,
+        hasFocusedElement: !!result.context?.focusedElement?.role,
+        hasTextSelection: !!result.context?.textSelection?.selectedText,
+        extractionMethod: result.context?.textSelection?.extractionMethod,
+        metricsMs: result.context?.metrics?.totalTimeMs,
       });
     } catch (error) {
       this.logger.error("Failed to refresh accessibility context", {
@@ -454,9 +468,13 @@ export class NativeBridge extends EventEmitter {
 
   /**
    * Get the cached accessibility context.
+   * Returns in the result wrapper format for API consistency.
    */
   getAccessibilityContext(): GetAccessibilityContextResult | null {
-    return this.accessibilityContext;
+    if (this.accessibilityContext === null) {
+      return null;
+    }
+    return { context: this.accessibilityContext };
   }
 
   /**
@@ -479,6 +497,20 @@ export class NativeBridge extends EventEmitter {
       });
       return false;
     }
+  }
+
+  /**
+   * Get accessibility permission status.
+   */
+  async getAccessibilityStatus(): Promise<GetAccessibilityStatusResult> {
+    return this.call("getAccessibilityStatus", {});
+  }
+
+  /**
+   * Request accessibility permission.
+   */
+  async requestAccessibilityPermission(): Promise<RequestAccessibilityPermissionResult> {
+    return this.call("requestAccessibilityPermission", {});
   }
 
   // Typed event emitter methods
