@@ -57,10 +57,10 @@ namespace WindowsHelper.Services
             return uiAutomationService.FetchAccessibilityTree(rootId);
         }
 
-        public AccessibilityContext GetAccessibilityContext(bool editableOnly)
+        public Context? GetAccessibilityContext(bool editableOnly)
         {
-            // Delegate to UI Automation service for real implementation
-            return uiAutomationService.GetAccessibilityContext(editableOnly);
+            // Delegate to the new modular AccessibilityContextService
+            return AccessibilityContextService.GetAccessibilityContext(editableOnly);
         }
 
         public bool PasteText(string text)

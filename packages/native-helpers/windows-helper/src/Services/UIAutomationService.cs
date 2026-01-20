@@ -1,36 +1,32 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows.Automation;
-using System.Windows.Automation.Text;
-using System.Windows.Forms;
 using WindowsHelper.Models;
 
 namespace WindowsHelper.Services
 {
     /// <summary>
-    /// Implements accessibility functionality using Windows UI Automation API
+    /// Implements accessibility tree building using Windows UI Automation API.
+    /// Note: GetAccessibilityContext has been moved to AccessibilityContextService.
     /// </summary>
     public class UIAutomationService
     {
         private readonly int maxDepth = 10;
-        private const int MAX_CONTEXT_LENGTH = 500;
-        
+
         public AccessibilityElementNode? FetchAccessibilityTree(string? rootId)
         {
             try
             {
                 LogToStderr("FetchAccessibilityTree called with UI Automation");
-                
+
                 AutomationElement rootElement;
-                
+
                 if (!string.IsNullOrEmpty(rootId))
                 {
                     // Try to find element by automation ID
                     var condition = new PropertyCondition(AutomationElement.AutomationIdProperty, rootId);
                     rootElement = AutomationElement.RootElement.FindFirst(TreeScope.Descendants, condition);
-                    
+
                     if (rootElement == null)
                     {
                         LogToStderr($"Could not find element with ID: {rootId}");
@@ -47,7 +43,7 @@ namespace WindowsHelper.Services
                         return null;
                     }
                 }
-                
+
                 return BuildAccessibilityTree(rootElement, 0);
             }
             catch (Exception ex)
@@ -56,12 +52,12 @@ namespace WindowsHelper.Services
                 return null;
             }
         }
-        
+
         private AccessibilityElementNode? BuildAccessibilityTree(AutomationElement element, int depth)
         {
             if (element == null || depth > maxDepth)
                 return null;
-                
+
             try
             {
                 var node = new AccessibilityElementNode
@@ -74,7 +70,7 @@ namespace WindowsHelper.Services
                     IsEditable = IsElementEditable(element),
                     Children = new List<AccessibilityElementNode>()
                 };
-                
+
                 // Get children
                 var children = element.FindAll(TreeScope.Children, Condition.TrueCondition);
                 foreach (AutomationElement child in children)
@@ -85,7 +81,7 @@ namespace WindowsHelper.Services
                         node.Children.Add(childNode);
                     }
                 }
-                
+
                 return node;
             }
             catch (ElementNotAvailableException)
@@ -99,154 +95,7 @@ namespace WindowsHelper.Services
                 return null;
             }
         }
-        
-        public AccessibilityContext GetAccessibilityContext(bool editableOnly)
-        {
-            var context = new AccessibilityContext();
-            
-            try
-            {
-                LogToStderr($"GetAccessibilityContext called with editableOnly: {editableOnly}");
-                
-                // Get focused element
-                var focusedElement = AutomationElement.FocusedElement;
-                if (focusedElement != null)
-                {
-                    // Populate focused element information
-                    context.FocusedElement = new FocusedElement
-                    {
-                        Role = focusedElement.Current.ControlType.ProgrammaticName,
-                        Title = focusedElement.Current.Name,
-                        Value = GetElementValue(focusedElement),
-                        Description = focusedElement.Current.HelpText,
-                        IsEditable = IsElementEditable(focusedElement)
-                    };
-                    
-                    context.FocusedElementRole = focusedElement.Current.ControlType.ProgrammaticName;
-                    context.IsEditable = IsElementEditable(focusedElement);
-                    
-                    // Get text selection if available
-                    var textSelectionResult = GetTextSelection(focusedElement, context.IsEditable);
-                    if (textSelectionResult != null)
-                    {
-                        context.TextSelection = textSelectionResult;
-                    }
-                }
-                
-                // Get window information
-                var window = GetWindowElement(focusedElement);
-                if (window != null)
-                {
-                    context.WindowInfo = new WindowInfo
-                    {
-                        Title = window.Current.Name
-                    };
-                    context.WindowTitle = window.Current.Name;
-                    
-                    // Get application info
-                    try
-                    {
-                        var processId = window.Current.ProcessId;
-                        var process = System.Diagnostics.Process.GetProcessById(processId);
-                        
-                        context.Application = new Models.Application
-                        {
-                            Name = process.ProcessName,
-                            BundleIdentifier = process.MainModule?.FileName ?? "",
-                            Version = process.MainModule?.FileVersionInfo.ProductVersion ?? ""
-                        };
-                        context.ApplicationName = process.ProcessName;
-                        
-                        // Detect if it's a web browser
-                        var browserNames = new[] { "chrome", "firefox", "edge", "msedge", "brave", "opera" };
-                        context.IsWebContent = Array.Exists(browserNames, 
-                            name => process.ProcessName.ToLower().Contains(name));
-                            
-                        // For browsers, try to get URL
-                        if (context.IsWebContent)
-                        {
-                            var urlBar = FindUrlBar(window);
-                            if (urlBar != null)
-                            {
-                                context.WindowInfo.Url = GetElementValue(urlBar);
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        context.ApplicationName = "Unknown";
-                    }
-                }
-                
-                context.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-                
-                LogToStderr($"Accessibility context retrieved: App={context.ApplicationName}, Window={context.WindowTitle}");
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"Error getting accessibility context: {ex.Message}");
-            }
-            
-            return context;
-        }
-        
-        private AutomationElement? GetWindowElement(AutomationElement? element)
-        {
-            if (element == null) return null;
-            
-            var current = element;
-            while (current != null)
-            {
-                if (current.Current.ControlType == ControlType.Window)
-                    return current;
-                    
-                try
-                {
-                    var parent = TreeWalker.ControlViewWalker.GetParent(current);
-                    if (parent == null || parent.Equals(AutomationElement.RootElement))
-                        break;
-                    current = parent;
-                }
-                catch
-                {
-                    break;
-                }
-            }
-            
-            return null;
-        }
-        
-        private AutomationElement? FindUrlBar(AutomationElement window)
-        {
-            try
-            {
-                // Common patterns for finding URL bars in browsers
-                var conditions = new Condition[]
-                {
-                    new PropertyCondition(AutomationElement.AutomationIdProperty, "addressEditBox"),
-                    new PropertyCondition(AutomationElement.AutomationIdProperty, "urlbar"),
-                    new PropertyCondition(AutomationElement.AutomationIdProperty, "omnibox"),
-                    new AndCondition(
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
-                        new PropertyCondition(AutomationElement.IsKeyboardFocusableProperty, true)
-                    )
-                };
-                
-                foreach (var condition in conditions)
-                {
-                    var element = window.FindFirst(TreeScope.Descendants, condition);
-                    if (element != null)
-                        return element;
-                }
-            }
-            catch
-            {
-                // Ignore errors in URL detection
-            }
-            
-            return null;
-        }
-        
+
         private string? GetElementValue(AutomationElement element)
         {
             try
@@ -256,13 +105,14 @@ namespace WindowsHelper.Services
                 {
                     return (valuePattern as ValuePattern)?.Current.Value;
                 }
-                
+
                 // Try Text pattern
                 if (element.TryGetCurrentPattern(TextPattern.Pattern, out object textPattern))
                 {
-                    return SafeGetDocumentText(textPattern as TextPattern);
+                    var tp = textPattern as TextPattern;
+                    return tp?.DocumentRange?.GetText(-1);
                 }
-                
+
                 // Try RangeValue pattern
                 if (element.TryGetCurrentPattern(RangeValuePattern.Pattern, out object rangePattern))
                 {
@@ -273,10 +123,10 @@ namespace WindowsHelper.Services
             {
                 // Ignore pattern errors
             }
-            
+
             return null;
         }
-        
+
         private bool IsElementEditable(AutomationElement element)
         {
             try
@@ -301,219 +151,6 @@ namespace WindowsHelper.Services
             }
 
             return false;
-        }
-
-        /// <summary>
-        /// Gets text selection information including surrounding context.
-        /// Matches the behavior of the Swift helper's getTextSelection function.
-        /// </summary>
-        private TextSelection? GetTextSelection(AutomationElement element, bool isEditable)
-        {
-            try
-            {
-                // Try to get TextPattern for full text manipulation
-                if (!element.TryGetCurrentPattern(TextPattern.Pattern, out object textPatternObj))
-                {
-                    // Fall back to ValuePattern for simple text fields
-                    return GetTextSelectionFromValuePattern(element, isEditable);
-                }
-
-                var textPattern = textPatternObj as TextPattern;
-                if (textPattern == null)
-                {
-                    return GetTextSelectionFromValuePattern(element, isEditable);
-                }
-
-                // Get the full document content
-                var fullContent = SafeGetDocumentText(textPattern);
-
-                // Get selection ranges
-                TextPatternRange[]? selectionRanges = null;
-                try
-                {
-                    selectionRanges = textPattern.GetSelection();
-                }
-                catch (COMException ex)
-                {
-                    LogToStderr($"Error getting selection: {ex.Message}");
-                }
-                catch (InvalidOperationException ex)
-                {
-                    LogToStderr($"Error getting selection: {ex.Message}");
-                }
-
-                // If we have no selection/cursor and no content, return null
-                if ((selectionRanges == null || selectionRanges.Length == 0) && string.IsNullOrEmpty(fullContent))
-                {
-                    return null;
-                }
-
-                string? selectedText = null;
-                string? preSelectionText = null;
-                string? postSelectionText = null;
-                Models.SelectionRange? selectionRange = null;
-
-                if (selectionRanges != null && selectionRanges.Length > 0 && fullContent != null)
-                {
-                    var range = selectionRanges[0];
-                    selectedText = SafeGetTextFromRange(range);
-
-                    // Calculate selection position by comparing with document start
-                    try
-                    {
-                        var documentRange = textPattern.DocumentRange;
-
-                        // Get text before selection by cloning document range and moving end to selection start
-                        var beforeRange = documentRange.Clone();
-                        beforeRange.MoveEndpointByRange(TextPatternRangeEndpoint.End, range, TextPatternRangeEndpoint.Start);
-                        var textBefore = SafeGetTextFromRange(beforeRange);
-
-                        // Get text after selection by cloning document range and moving start to selection end
-                        var afterRange = documentRange.Clone();
-                        afterRange.MoveEndpointByRange(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End);
-                        var textAfter = SafeGetTextFromRange(afterRange);
-
-                        // Calculate location and length
-                        int location = textBefore?.Length ?? 0;
-                        int length = selectedText?.Length ?? 0;
-
-                        selectionRange = new Models.SelectionRange
-                        {
-                            Location = location,
-                            Length = length
-                        };
-
-                        // Extract pre-selection context (last MAX_CONTEXT_LENGTH chars before cursor/selection)
-                        // Returns "" if cursor is at start of document
-                        if (!string.IsNullOrEmpty(textBefore))
-                        {
-                            int preStart = Math.Max(0, textBefore.Length - MAX_CONTEXT_LENGTH);
-                            preSelectionText = textBefore.Substring(preStart);
-                        }
-                        else
-                        {
-                            preSelectionText = "";
-                        }
-
-                        // Extract post-selection context (first MAX_CONTEXT_LENGTH chars after cursor/selection)
-                        // Returns "" if cursor is at end of document
-                        if (!string.IsNullOrEmpty(textAfter))
-                        {
-                            int postLength = Math.Min(textAfter.Length, MAX_CONTEXT_LENGTH);
-                            postSelectionText = textAfter.Substring(0, postLength);
-                        }
-                        else
-                        {
-                            postSelectionText = "";
-                        }
-                    }
-                    catch (COMException ex)
-                    {
-                        LogToStderr($"Error calculating selection position: {ex.Message}");
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        LogToStderr($"Error calculating selection position: {ex.Message}");
-                    }
-                }
-
-                // Return TextSelection even if we only have full content (provides context)
-                if (fullContent != null || selectedText != null || preSelectionText != null || postSelectionText != null)
-                {
-                    return new TextSelection
-                    {
-                        FullContent = fullContent,
-                        IsEditable = isEditable,
-                        SelectedText = selectedText,
-                        PreSelectionText = preSelectionText,
-                        PostSelectionText = postSelectionText,
-                        SelectionRange = selectionRange
-                    };
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"Error in GetTextSelection: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Fallback method for getting text selection from ValuePattern (simpler text fields).
-        /// </summary>
-        private TextSelection? GetTextSelectionFromValuePattern(AutomationElement element, bool isEditable)
-        {
-            try
-            {
-                if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out object valuePatternObj))
-                {
-                    return null;
-                }
-
-                var valuePattern = valuePatternObj as ValuePattern;
-                if (valuePattern == null)
-                {
-                    return null;
-                }
-
-                var fullContent = valuePattern.Current.Value;
-                if (string.IsNullOrEmpty(fullContent))
-                {
-                    return null;
-                }
-
-                // For ValuePattern, we don't have selection info, but we can provide the full content
-                return new TextSelection
-                {
-                    FullContent = fullContent,
-                    IsEditable = isEditable
-                };
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"Error in GetTextSelectionFromValuePattern: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Safely retrieves text from a TextPatternRange, handling COM exceptions that can occur
-        /// when the underlying element becomes unavailable.
-        /// </summary>
-        private string? SafeGetTextFromRange(TextPatternRange? range, int maxLength = -1)
-        {
-            if (range == null) return null;
-
-            try
-            {
-                return range.GetText(maxLength);
-            }
-            catch (COMException ex)
-            {
-                LogToStderr($"SafeGetTextFromRange COMException: {ex.Message}");
-                return null;
-            }
-            catch (ElementNotAvailableException ex)
-            {
-                LogToStderr($"SafeGetTextFromRange ElementNotAvailable: {ex.Message}");
-                return null;
-            }
-            catch (InvalidOperationException ex)
-            {
-                LogToStderr($"SafeGetTextFromRange InvalidOperation: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Safely retrieves the document text from a TextPattern.
-        /// </summary>
-        private string? SafeGetDocumentText(TextPattern? textPattern, int maxLength = -1)
-        {
-            if (textPattern?.DocumentRange == null) return null;
-            return SafeGetTextFromRange(textPattern.DocumentRange, maxLength);
         }
 
         private void LogToStderr(string message)
