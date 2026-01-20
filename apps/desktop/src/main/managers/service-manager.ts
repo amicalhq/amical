@@ -12,6 +12,7 @@ import { isMacOS, isWindows } from "../../utils/platform";
 import { TelemetryService } from "../../services/telemetry-service";
 import { AuthService } from "../../services/auth-service";
 import { OnboardingService } from "../../services/onboarding-service";
+import { HttpApiManager } from "./http-api-manager";
 
 /**
  * Service map for type-safe service access
@@ -29,6 +30,7 @@ export interface ServiceMap {
   shortcutManager: ShortcutManager;
   windowManager: WindowManager;
   onboardingService: OnboardingService;
+  httpApiManager: HttpApiManager;
 }
 
 /**
@@ -51,6 +53,7 @@ export class ServiceManager {
   private recordingManager: RecordingManager | null = null;
   private shortcutManager: ShortcutManager | null = null;
   private windowManager: WindowManager | null = null;
+  private httpApiManager: HttpApiManager | null = null;
 
   async initialize(): Promise<void> {
     if (this.isInitialized) {
@@ -72,6 +75,7 @@ export class ServiceManager {
       this.initializeRecordingManager();
       await this.initializeShortcutManager();
       this.initializeAutoUpdater();
+      await this.initializeHttpApiManager();
 
       this.isInitialized = true;
       logger.main.info("Services initialized successfully");
@@ -200,6 +204,17 @@ export class ServiceManager {
     this.autoUpdaterService = new AutoUpdaterService();
   }
 
+  private async initializeHttpApiManager(): Promise<void> {
+    try {
+      this.httpApiManager = new HttpApiManager(this);
+      await this.httpApiManager.start();
+      logger.main.info("HTTP API manager initialized");
+    } catch (error) {
+      logger.main.warn("Failed to initialize HTTP API manager:", error);
+      // Don't throw - HTTP API is not critical for basic functionality
+    }
+  }
+
   getLogger() {
     return logger;
   }
@@ -224,12 +239,17 @@ export class ServiceManager {
       shortcutManager: this.shortcutManager!,
       windowManager: this.windowManager!,
       onboardingService: this.onboardingService!,
+      httpApiManager: this.httpApiManager!,
     };
 
     return services[serviceName];
   }
 
   async cleanup(): Promise<void> {
+    if (this.httpApiManager) {
+      logger.main.info("Stopping HTTP API server...");
+      this.httpApiManager.stop();
+    }
     if (this.shortcutManager) {
       logger.main.info("Cleaning up shortcut manager...");
       this.shortcutManager.cleanup();
