@@ -1,14 +1,17 @@
 using System;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using WindowsHelper.Models;
+using WindowsHelper.Services;
 
 namespace WindowsHelper
 {
     class Program
     {
+        static StaThreadRunner? keyboardStaRunner;  // Dedicated for keyboard hooks (must stay responsive)
+        static StaThreadRunner? operationsStaRunner; // For clipboard, audio, and other STA operations
         static ShortcutMonitor? shortcutMonitor;
+        static ClipboardService? clipboardService;
         static RpcHandler? rpcHandler;
         static readonly CancellationTokenSource cancellationTokenSource = new();
 
@@ -23,24 +26,45 @@ namespace WindowsHelper
 
             try
             {
-                // Initialize components
-                shortcutMonitor = new ShortcutMonitor();
-                // Pass shortcutMonitor to RpcHandler for STA thread dispatch (audio operations)
-                rpcHandler = new RpcHandler(shortcutMonitor);
+                // Initialize components in dependency order
+                // Two STA threads: one dedicated for keyboard hooks (must stay responsive),
+                // one shared for clipboard/audio operations (can tolerate some latency)
+
+                // 1. Keyboard STA thread - dedicated for hooks, must pump messages quickly
+                keyboardStaRunner = new StaThreadRunner();
+
+                // 2. Operations STA thread - for clipboard and audio operations
+                operationsStaRunner = new StaThreadRunner();
+
+                // 3. ClipboardService - uses operations STA thread
+                clipboardService = new ClipboardService(operationsStaRunner);
+
+                // 4. ShortcutMonitor - uses dedicated keyboard STA thread
+                shortcutMonitor = new ShortcutMonitor(keyboardStaRunner);
+
+                // 5. RpcHandler - uses operations STA thread for audio dispatch
+                rpcHandler = new RpcHandler(operationsStaRunner, clipboardService);
 
                 // Set up event handlers
                 shortcutMonitor.KeyEventOccurred += OnKeyEvent;
 
-                // Start RPC processing in background task
+                // Start STA threads BEFORE RPC processing to avoid race condition
+                LogToStderr("Starting keyboard STA thread...");
+                keyboardStaRunner.Start();
+
+                LogToStderr("Starting operations STA thread...");
+                operationsStaRunner.Start();
+
+                // Install keyboard hooks on dedicated STA thread
+                LogToStderr("Installing keyboard hooks...");
+                shortcutMonitor.Start();
+
+                // Start RPC processing AFTER STA threads are running
                 var rpcTask = Task.Run(() =>
                 {
                     LogToStderr("Starting RPC processing in background thread...");
                     rpcHandler.ProcessRpcRequests(cancellationTokenSource.Token);
                 }, cancellationTokenSource.Token);
-
-                // Start shortcut monitoring (this will run the Windows message loop with STA support)
-                LogToStderr("Starting shortcut monitoring in main thread...");
-                shortcutMonitor.Start();
 
                 // Wait for cancellation
                 await Task.Delay(Timeout.Infinite, cancellationTokenSource.Token);
@@ -58,6 +82,8 @@ namespace WindowsHelper
             {
                 // Cleanup
                 shortcutMonitor?.Stop();
+                keyboardStaRunner?.Stop();
+                operationsStaRunner?.Stop();
                 cancellationTokenSource.Cancel();
                 LogToStderr("WindowsHelper stopped.");
             }
