@@ -8,16 +8,26 @@ namespace WindowsHelper.Utils
     public static class StringHelpers
     {
         /// <summary>
-        /// Normalize newlines from Windows CRLF to Unix LF.
+        /// Unicode BOM (Byte Order Mark) character.
+        /// Some apps (e.g., Discord on Windows) return BOM when text fields are empty.
+        /// </summary>
+        private const char BOM = '\uFEFF';
+
+        /// <summary>
+        /// Normalize text content: remove BOM and normalize newlines.
         /// CRITICAL: This must be called before any index calculations.
         /// </summary>
-        /// <param name="content">Content potentially containing CRLF</param>
-        /// <returns>Content with only LF newlines</returns>
+        /// <param name="content">Content potentially containing BOM and/or CRLF</param>
+        /// <returns>Normalized content with BOM removed and only LF newlines</returns>
         public static string? NormalizeNewlines(string? content)
         {
             if (content == null) return null;
-            // Replace CRLF first, then any remaining standalone CR
-            return content.Replace("\r\n", "\n").Replace("\r", "\n");
+            // Strip BOM characters (can appear at start or throughout text)
+            // Then replace CRLF, then any remaining standalone CR
+            return content
+                .Replace(BOM.ToString(), "")
+                .Replace("\r\n", "\n")
+                .Replace("\r", "\n");
         }
 
         /// <summary>
