@@ -1,7 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Windows.Automation;
+using System.Runtime.InteropServices;
+using Interop.UIAutomationClient;
 using WindowsHelper.Models;
 using WindowsHelper.Utils;
 
@@ -13,76 +13,82 @@ namespace WindowsHelper.Services
     public struct FocusResult
     {
         /// <summary>The text-capable element found</summary>
-        public AutomationElement Element;
-        /// <summary>True if found via descendant/ancestor search, false if original element was text-capable</summary>
+        public IUIAutomationElement Element;
+        /// <summary>True if found via ancestor search, false if original element was text-capable</summary>
         public bool WasSearched;
     }
 
     /// <summary>
     /// Service for focus resolution and element information extraction.
-    /// Matches Swift's FocusService.
+    /// Uses COM interop with minimal approach (no descendant search).
     /// </summary>
     public static class FocusService
     {
-        // =============================================================================
-        // Focus Element Retrieval
-        // =============================================================================
-
         /// <summary>
-        /// Get the currently focused element from UI Automation.
+        /// Get the currently focused element.
         /// </summary>
-        public static AutomationElement? GetFocusedElement()
+        public static IUIAutomationElement? GetFocusedElement()
         {
-            try
-            {
-                return AutomationElement.FocusedElement;
-            }
-            catch (Exception)
-            {
-                return null;
-            }
+            return UIAutomationService.GetFocusedElement();
         }
-
-        // =============================================================================
-        // Text-Capable Element Search
-        // =============================================================================
 
         /// <summary>
         /// Find a text-capable element starting from the given element.
-        /// Searches descendants first, then ancestors (matching Swift).
+        /// Only searches ancestors (no descendant search).
         /// </summary>
-        /// <param name="element">Starting element</param>
-        /// <param name="editableOnly">If true, only return editable elements</param>
-        /// <returns>FocusResult or null if no suitable element found</returns>
-        public static FocusResult? FindTextCapableElement(AutomationElement element, bool editableOnly)
+        public static FocusResult? FindTextCapableElement(IUIAutomationElement element, bool editableOnly)
         {
+            if (element == null) return null;
+
             try
             {
                 // Check if current element is text-capable
-                if (UIAutomationHelpers.IsTextCapable(element))
+                if (IsTextCapable(element))
                 {
-                    if (!editableOnly || UIAutomationHelpers.IsElementEditable(element))
+                    if (!editableOnly || IsElementEditable(element))
                     {
                         return new FocusResult { Element = element, WasSearched = false };
                     }
                 }
 
-                // Search descendants for text-capable element (BFS)
-                var descendant = SearchDescendantsForTextCapable(element, editableOnly);
-                if (descendant != null)
-                {
-                    return new FocusResult { Element = descendant, WasSearched = true };
-                }
+                // Search ancestors only (no descendant search)
+                var sw = Stopwatch.StartNew();
+                var walker = UIAutomationService.ControlViewWalker;
+                var current = element;
 
-                // Search ancestors for text-capable element
-                var ancestor = SearchAncestorsForTextCapable(element, editableOnly);
-                if (ancestor != null)
+                for (int i = 0; i < Constants.PARENT_CHAIN_MAX_DEPTH; i++)
                 {
-                    return new FocusResult { Element = ancestor, WasSearched = true };
+                    if (sw.ElapsedMilliseconds > Constants.PARENT_WALK_TIMEOUT_MS)
+                        break;
+
+                    try
+                    {
+                        var parent = walker.GetParentElement(current);
+                        if (parent == null) break;
+
+                        // Check if we've reached root
+                        var automationId = parent.CurrentAutomationId;
+                        if (string.IsNullOrEmpty(automationId) && parent.CurrentControlType == 0)
+                            break;
+
+                        if (IsTextCapable(parent))
+                        {
+                            if (!editableOnly || IsElementEditable(parent))
+                            {
+                                return new FocusResult { Element = parent, WasSearched = true };
+                            }
+                        }
+
+                        current = parent;
+                    }
+                    catch (COMException)
+                    {
+                        break;
+                    }
                 }
 
                 // If editableOnly is false, return original if it has ValuePattern
-                if (!editableOnly && element.TryGetCurrentPattern(ValuePattern.Pattern, out _))
+                if (!editableOnly && HasValuePattern(element))
                 {
                     return new FocusResult { Element = element, WasSearched = false };
                 }
@@ -96,143 +102,129 @@ namespace WindowsHelper.Services
         }
 
         /// <summary>
-        /// BFS search for text-capable descendant.
+        /// Check if element is text-capable.
         /// </summary>
-        private static AutomationElement? SearchDescendantsForTextCapable(
-            AutomationElement element,
-            bool editableOnly,
-            int maxDepth = 0,
-            int maxElements = 0)
+        private static bool IsTextCapable(IUIAutomationElement element)
         {
-            if (maxDepth <= 0) maxDepth = Constants.TREE_WALK_MAX_DEPTH;
-            if (maxElements <= 0) maxElements = Constants.TREE_WALK_MAX_ELEMENTS;
+            if (element == null) return false;
 
-            var queue = new Queue<(AutomationElement el, int depth)>();
-            queue.Enqueue((element, 0));
-            int searched = 0;
-            var walker = TreeWalker.ControlViewWalker;
-
-            while (queue.Count > 0 && searched < maxElements)
-            {
-                var (current, depth) = queue.Dequeue();
-                if (depth >= maxDepth) continue;
-
-                try
-                {
-                    var child = walker.GetFirstChild(current);
-                    while (child != null && searched < maxElements)
-                    {
-                        searched++;
-
-                        if (UIAutomationHelpers.IsTextCapable(child))
-                        {
-                            if (!editableOnly || UIAutomationHelpers.IsElementEditable(child))
-                                return child;
-                        }
-
-                        queue.Enqueue((child, depth + 1));
-                        child = walker.GetNextSibling(child);
-                    }
-                }
-                catch (ElementNotAvailableException)
-                {
-                    // Element became unavailable, continue search
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Walk parent chain looking for text-capable ancestor.
-        /// </summary>
-        private static AutomationElement? SearchAncestorsForTextCapable(
-            AutomationElement element,
-            bool editableOnly,
-            int maxDepth = 0)
-        {
-            if (maxDepth <= 0) maxDepth = Constants.PARENT_CHAIN_MAX_DEPTH;
-
-            var current = element;
-            var walker = TreeWalker.ControlViewWalker;
-
-            for (int i = 0; i < maxDepth; i++)
-            {
-                try
-                {
-                    var parent = walker.GetParent(current);
-                    if (parent == null || Automation.Compare(parent, AutomationElement.RootElement))
-                        break;
-
-                    if (UIAutomationHelpers.IsTextCapable(parent))
-                    {
-                        if (!editableOnly || UIAutomationHelpers.IsElementEditable(parent))
-                            return parent;
-                    }
-
-                    current = parent;
-                }
-                catch (ElementNotAvailableException)
-                {
-                    break;
-                }
-            }
-
-            return null;
-        }
-
-        // =============================================================================
-        // Element Information Extraction
-        // =============================================================================
-
-        /// <summary>
-        /// Extract FocusedElement information from an AutomationElement.
-        /// </summary>
-        public static FocusedElement? GetElementInfo(AutomationElement element, string? processName = null)
-        {
             try
             {
-                var (role, subrole) = RoleMapper.MapControlType(element, processName);
+                var controlType = element.CurrentControlType;
 
-                string? value = null;
-                if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var vp))
+                // Edit and Document are always text-capable
+                if (controlType == Constants.UIA_EditControlTypeId ||
+                    controlType == Constants.UIA_DocumentControlTypeId)
                 {
-                    try
-                    {
-                        value = ((ValuePattern)vp).Current.Value;
-                    }
-                    catch { }
+                    return true;
                 }
 
+                // Check for TextPattern
+                var textPattern = element.GetCurrentPattern(Constants.UIA_TextPatternId);
+                return textPattern != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if element is editable.
+        /// </summary>
+        private static bool IsElementEditable(IUIAutomationElement element)
+        {
+            if (element == null) return false;
+
+            try
+            {
+                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
+                var valuePattern = pattern as IUIAutomationValuePattern;
+                if (valuePattern != null)
+                {
+                    return valuePattern.CurrentIsReadOnly == 0;
+                }
+
+                var controlType = element.CurrentControlType;
+                if (controlType == Constants.UIA_EditControlTypeId ||
+                    controlType == Constants.UIA_DocumentControlTypeId)
+                {
+                    return element.CurrentIsEnabled != 0;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if element has ValuePattern.
+        /// </summary>
+        private static bool HasValuePattern(IUIAutomationElement element)
+        {
+            if (element == null) return false;
+
+            try
+            {
+                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
+                return pattern != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Extract FocusedElement information.
+        /// </summary>
+        public static FocusedElement? GetElementInfo(IUIAutomationElement element)
+        {
+            if (element == null) return null;
+
+            try
+            {
+                var (role, subrole) = RoleMapper.MapControlType(element);
+
+                string? value = null;
+                try
+                {
+                    var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
+                    var valuePattern = pattern as IUIAutomationValuePattern;
+                    if (valuePattern != null)
+                    {
+                        value = valuePattern.CurrentValue;
+                    }
+                }
+                catch { }
+
                 // Suppress value for secure fields
-                if (UIAutomationHelpers.IsSecureField(element))
+                if (IsSecureField(element))
                 {
                     value = null;
                 }
 
-                // Check actual focus state (like Swift's kAXFocusedAttribute)
-                bool isFocused = true;  // Default to true for safety
+                // Check focus state
+                bool isFocused = true;
                 try
                 {
-                    var hasFocus = (bool)element.GetCurrentPropertyValue(AutomationElement.HasKeyboardFocusProperty);
-                    isFocused = hasFocus;
+                    isFocused = element.CurrentHasKeyboardFocus != 0;
                 }
-                catch
-                {
-                    // If we can't determine focus, default to true (conservative)
-                }
+                catch { }
 
                 return new FocusedElement
                 {
                     Role = role,
                     Subrole = subrole,
-                    Title = element.Current.Name,
+                    Title = element.CurrentName,
                     Value = value,
-                    Description = element.Current.HelpText,
-                    IsEditable = UIAutomationHelpers.IsElementEditable(element),
+                    Description = element.CurrentHelpText,
+                    IsEditable = IsElementEditable(element),
                     IsFocused = isFocused,
-                    IsPlaceholder = UIAutomationHelpers.IsPlaceholderShowing(element, null),
-                    IsSecure = UIAutomationHelpers.IsSecureField(element)
+                    IsPlaceholder = IsPlaceholderShowing(element),
+                    IsSecure = IsSecureField(element)
                 };
             }
             catch
@@ -241,27 +233,62 @@ namespace WindowsHelper.Services
             }
         }
 
-        // =============================================================================
-        // Window Information Extraction
-        // =============================================================================
+        /// <summary>
+        /// Check if element is a secure/password field.
+        /// </summary>
+        private static bool IsSecureField(IUIAutomationElement element)
+        {
+            if (element == null) return false;
+
+            try
+            {
+                return element.CurrentIsPassword != 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         /// <summary>
-        /// Get window information for the element's containing window.
+        /// Check if placeholder is showing.
         /// </summary>
-        public static WindowInfo? GetWindowInfo(AutomationElement? element, string? processName = null)
+        private static bool IsPlaceholderShowing(IUIAutomationElement element)
         {
-            var windowElement = UIAutomationHelpers.GetWindowElement(element);
+            if (element == null) return false;
+
+            try
+            {
+                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
+                var valuePattern = pattern as IUIAutomationValuePattern;
+                if (valuePattern != null)
+                {
+                    var value = valuePattern.CurrentValue;
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        return !string.IsNullOrEmpty(element.CurrentName);
+                    }
+                }
+            }
+            catch { }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Get window information.
+        /// </summary>
+        public static WindowInfo? GetWindowInfo(IUIAutomationElement? element)
+        {
+            var windowElement = GetWindowElement(element);
             if (windowElement == null) return null;
 
             try
             {
-                var title = windowElement.Current.Name;
-
-                // URL will be extracted separately by UrlResolver
                 return new WindowInfo
                 {
-                    Title = title,
-                    Url = null  // Will be set by AccessibilityContextService
+                    Title = windowElement.CurrentName,
+                    Url = null
                 };
             }
             catch
@@ -270,23 +297,19 @@ namespace WindowsHelper.Services
             }
         }
 
-        // =============================================================================
-        // Application Information Extraction
-        // =============================================================================
-
         /// <summary>
-        /// Get application information for the element's process.
+        /// Get application information.
         /// </summary>
-        public static (Application? app, string? processName) GetApplicationInfo(AutomationElement? element)
+        public static (Application? app, string? processName) GetApplicationInfo(IUIAutomationElement? element)
         {
             if (element == null) return (null, null);
 
             try
             {
-                var windowElement = UIAutomationHelpers.GetWindowElement(element);
+                var windowElement = GetWindowElement(element);
                 if (windowElement == null) return (null, null);
 
-                var processId = windowElement.Current.ProcessId;
+                var processId = windowElement.CurrentProcessId;
                 var process = Process.GetProcessById(processId);
 
                 var processName = process.ProcessName;
@@ -317,6 +340,45 @@ namespace WindowsHelper.Services
             {
                 return (null, null);
             }
+        }
+
+        /// <summary>
+        /// Get the window element containing the given element.
+        /// </summary>
+        private static IUIAutomationElement? GetWindowElement(IUIAutomationElement? element)
+        {
+            if (element == null) return null;
+
+            try
+            {
+                // Check if current element is a window
+                if (element.CurrentControlType == Constants.UIA_WindowControlTypeId)
+                {
+                    return element;
+                }
+
+                // Walk up to find window
+                var walker = UIAutomationService.ControlViewWalker;
+                var current = element;
+
+                for (int i = 0; i < Constants.PARENT_CHAIN_MAX_DEPTH; i++)
+                {
+                    var parent = walker.GetParentElement(current);
+                    if (parent == null) break;
+
+                    if (parent.CurrentControlType == Constants.UIA_WindowControlTypeId)
+                    {
+                        return parent;
+                    }
+
+                    current = parent;
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
         }
     }
 }

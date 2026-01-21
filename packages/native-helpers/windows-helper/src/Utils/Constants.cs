@@ -1,10 +1,7 @@
-using System.Collections.Generic;
-
 namespace WindowsHelper.Utils
 {
     /// <summary>
-    /// Centralized configuration constants matching Swift's Constants.swift.
-    /// All magic numbers, timeouts, depths, and configuration values in one place.
+    /// Centralized configuration constants.
     /// </summary>
     public static class Constants
     {
@@ -32,110 +29,62 @@ namespace WindowsHelper.Utils
         // =============================================================================
 
         /// <summary>
-        /// Default maximum depth for generic tree walks (BFS)
-        /// </summary>
-        public const int TREE_WALK_MAX_DEPTH = 8;
-
-        /// <summary>
-        /// Maximum elements to visit during tree searches
-        /// </summary>
-        public const int TREE_WALK_MAX_ELEMENTS = 100;
-
-        /// <summary>
-        /// Depth for touching descendants to trigger lazy loading
-        /// </summary>
-        public const int TOUCH_DESCENDANTS_MAX_DEPTH = 3;
-
-        /// <summary>
-        /// Maximum children to touch per level during lazy loading
-        /// </summary>
-        public const int TOUCH_DESCENDANTS_PREFIX_LIMIT = 8;
-
-        /// <summary>
         /// Default depth for parent chain traversal
         /// </summary>
         public const int PARENT_CHAIN_MAX_DEPTH = 10;
 
-        /// <summary>
-        /// Depth limit for descendant-or-equal check (infinite loop guard)
-        /// Matches Swift's DESCENDANT_CHECK_MAX_DEPTH
-        /// </summary>
-        public const int DESCENDANT_CHECK_MAX_DEPTH = 20;
-
         // =============================================================================
-        // Document Search (maps to Swift's WebArea search)
+        // Timeouts (milliseconds)
         // =============================================================================
 
         /// <summary>
-        /// Default depth for finding Documents in descendants
+        /// Timeout for parent chain traversal
         /// </summary>
-        public const int DOCUMENT_SEARCH_MAX_DEPTH = 10;
-
-        /// <summary>
-        /// Maximum elements to visit when finding Documents
-        /// </summary>
-        public const int DOCUMENT_SEARCH_MAX_ELEMENTS = 200;
-
-        /// <summary>
-        /// Depth for Document ancestor search (increased for deeply nested Electron apps like Notion)
-        /// </summary>
-        public const int DOCUMENT_ANCESTOR_SEARCH_DEPTH = 15;
-
-        // =============================================================================
-        // Deep Text Element Search (maps to Swift's findDeepestTextElement)
-        // =============================================================================
-
-        /// <summary>
-        /// Default depth for finding deepest text element
-        /// </summary>
-        public const int FIND_TEXT_ELEMENT_MAX_DEPTH = 10;
-
-        /// <summary>
-        /// Maximum elements to visit when finding text element
-        /// </summary>
-        public const int FIND_TEXT_ELEMENT_MAX_ELEMENTS = 200;
-
-        // =============================================================================
-        // Browser URL Search
-        // =============================================================================
-
-        /// <summary>
-        /// Depth for Chromium browser URL search (deeper due to complex DOM)
-        /// </summary>
-        public const int CHROMIUM_URL_SEARCH_DEPTH = 30;
-
-        /// <summary>
-        /// Depth for non-Chromium browser URL search
-        /// </summary>
-        public const int NON_CHROMIUM_URL_SEARCH_DEPTH = 3;
-
-        // =============================================================================
-        // Performance (best-effort)
-        // =============================================================================
+        public const int PARENT_WALK_TIMEOUT_MS = 1000;
 
         /// <summary>
         /// Best-effort timeout for extraction (milliseconds)
         /// </summary>
-        public const double EXTRACTION_TIMEOUT_MS = 600.0;
+        public const double EXTRACTION_TIMEOUT_MS = 1000.0;
 
         // =============================================================================
-        // Browser Process Names
+        // Search Limits
         // =============================================================================
 
         /// <summary>
-        /// Known browser process names for role mapping and URL extraction.
-        /// Used to determine if Document should map to AXWebArea vs AXTextArea.
+        /// Maximum depth for URL address bar search in browsers
         /// </summary>
-        public static readonly HashSet<string> BrowserProcessNames = new HashSet<string>(
-            System.StringComparer.OrdinalIgnoreCase)
-        {
-            "chrome",
-            "msedge",
-            "firefox",
-            "brave",
-            "opera",
-            "vivaldi",
-            "chromium"
-        };
+        public const int URL_SEARCH_MAX_DEPTH = 15;
+
+        /// <summary>
+        /// Maximum elements to visit during URL search
+        /// </summary>
+        public const int URL_SEARCH_MAX_ELEMENTS = 150;
+
+        /// <summary>
+        /// Maximum depth for finding Edit descendants
+        /// </summary>
+        public const int EDIT_SEARCH_MAX_DEPTH = 8;
+
+        /// <summary>
+        /// Maximum Edit elements to find
+        /// </summary>
+        public const int EDIT_SEARCH_MAX_EDITS = 10;
+
+        // =============================================================================
+        // UIA Control Type IDs (only those used in logic)
+        // =============================================================================
+
+        public const int UIA_EditControlTypeId = 50004;
+        public const int UIA_GroupControlTypeId = 50026;
+        public const int UIA_DocumentControlTypeId = 50030;
+        public const int UIA_WindowControlTypeId = 50032;
+
+        // =============================================================================
+        // UIA Pattern IDs
+        // =============================================================================
+
+        public const int UIA_ValuePatternId = 10002;
+        public const int UIA_TextPatternId = 10014;
     }
 }

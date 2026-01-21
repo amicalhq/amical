@@ -1,21 +1,34 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using WindowsHelper.Models;
 using WindowsHelper.Services;
+using WinFormsApp = System.Windows.Forms.Application;
 
 namespace WindowsHelper
 {
     class Program
     {
         static StaThreadRunner? keyboardStaRunner;  // Dedicated for keyboard hooks (must stay responsive)
-        static StaThreadRunner? operationsStaRunner; // For clipboard, audio, and other STA operations
         static ShortcutMonitor? shortcutMonitor;
         static ClipboardService? clipboardService;
         static RpcHandler? rpcHandler;
         static readonly CancellationTokenSource cancellationTokenSource = new();
 
-        static async Task Main(string[] args)
+        // P/Invoke for tool window style
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [STAThread]
+        static void Main(string[] args)
         {
             // Set up console encoding for proper JSON communication
             Console.InputEncoding = System.Text.Encoding.UTF8;
@@ -24,68 +37,101 @@ namespace WindowsHelper
             // Log startup
             LogToStderr("WindowsHelper starting...");
 
+            // Create hidden form for WinForms message pump (required for COM interop)
+            var hiddenForm = new Form
+            {
+                WindowState = FormWindowState.Minimized,
+                ShowInTaskbar = false,
+                Visible = false,
+                FormBorderStyle = FormBorderStyle.None,
+                Opacity = 0,
+                Text = "WindowsHelper"
+            };
+
+            hiddenForm.Load += (s, e) =>
+            {
+                // Make it a tool window (no alt-tab, no taskbar)
+                SetWindowLong(hiddenForm.Handle, GWL_EXSTYLE,
+                    GetWindowLong(hiddenForm.Handle, GWL_EXSTYLE) | WS_EX_TOOLWINDOW);
+                hiddenForm.Hide();
+
+                // Initialize services after form is ready
+                InitializeServices();
+            };
+
+            // Handle Ctrl+C gracefully
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                e.Cancel = true;
+                LogToStderr("WindowsHelper shutting down...");
+                Cleanup();
+                WinFormsApp.Exit();
+            };
+
+            WinFormsApp.ApplicationExit += (s, e) =>
+            {
+                Cleanup();
+            };
+
+            // Run message pump (blocks until Application.Exit called)
+            WinFormsApp.Run(hiddenForm);
+        }
+
+        static void InitializeServices()
+        {
             try
             {
-                // Initialize components in dependency order
-                // Two STA threads: one dedicated for keyboard hooks (must stay responsive),
-                // one shared for clipboard/audio operations (can tolerate some latency)
-
                 // 1. Keyboard STA thread - dedicated for hooks, must pump messages quickly
                 keyboardStaRunner = new StaThreadRunner();
 
-                // 2. Operations STA thread - for clipboard and audio operations
-                operationsStaRunner = new StaThreadRunner();
+                // 2. ClipboardService - uses keyboard STA thread for clipboard operations
+                clipboardService = new ClipboardService(keyboardStaRunner);
 
-                // 3. ClipboardService - uses operations STA thread
-                clipboardService = new ClipboardService(operationsStaRunner);
-
-                // 4. ShortcutMonitor - uses dedicated keyboard STA thread
+                // 3. ShortcutMonitor - uses dedicated keyboard STA thread
                 shortcutMonitor = new ShortcutMonitor(keyboardStaRunner);
 
-                // 5. RpcHandler - uses operations STA thread for audio dispatch
-                rpcHandler = new RpcHandler(operationsStaRunner, clipboardService);
+                // 4. RpcHandler - processes requests on background thread, dispatches to STA as needed
+                rpcHandler = new RpcHandler(keyboardStaRunner, clipboardService);
 
                 // Set up event handlers
                 shortcutMonitor.KeyEventOccurred += OnKeyEvent;
 
-                // Start STA threads BEFORE RPC processing to avoid race condition
+                // Start keyboard STA thread
                 LogToStderr("Starting keyboard STA thread...");
                 keyboardStaRunner.Start();
-
-                LogToStderr("Starting operations STA thread...");
-                operationsStaRunner.Start();
 
                 // Install keyboard hooks on dedicated STA thread
                 LogToStderr("Installing keyboard hooks...");
                 shortcutMonitor.Start();
 
-                // Start RPC processing AFTER STA threads are running
-                var rpcTask = Task.Run(() =>
+                // Start RPC processing in background thread
+                Task.Run(() =>
                 {
                     LogToStderr("Starting RPC processing in background thread...");
                     rpcHandler.ProcessRpcRequests(cancellationTokenSource.Token);
                 }, cancellationTokenSource.Token);
 
-                // Wait for cancellation
-                await Task.Delay(Timeout.Infinite, cancellationTokenSource.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                LogToStderr("WindowsHelper shutting down...");
+                LogToStderr("WindowsHelper ready.");
             }
             catch (Exception ex)
             {
-                LogToStderr($"Fatal error: {ex.Message}");
+                LogToStderr($"Fatal error during initialization: {ex.Message}");
                 Environment.Exit(1);
             }
-            finally
+        }
+
+        static void Cleanup()
+        {
+            try
             {
-                // Cleanup
                 shortcutMonitor?.Stop();
                 keyboardStaRunner?.Stop();
-                operationsStaRunner?.Stop();
                 cancellationTokenSource.Cancel();
                 LogToStderr("WindowsHelper stopped.");
+            }
+            catch (Exception ex)
+            {
+                LogToStderr($"Error during cleanup: {ex.Message}");
             }
         }
 
@@ -109,16 +155,6 @@ namespace WindowsHelper
             var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             Console.Error.WriteLine($"[{timestamp}] {message}");
             Console.Error.Flush();
-        }
-
-        // Handle Ctrl+C gracefully
-        static Program()
-        {
-            Console.CancelKeyPress += (sender, e) =>
-            {
-                e.Cancel = true;
-                cancellationTokenSource.Cancel();
-            };
         }
     }
 }

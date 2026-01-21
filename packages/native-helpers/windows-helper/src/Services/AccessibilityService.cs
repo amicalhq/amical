@@ -17,17 +17,17 @@ namespace WindowsHelper.Services
         #endregion
 
         private readonly ClipboardService clipboardService;
-        private readonly UIAutomationService uiAutomationService;
 
         public AccessibilityService(ClipboardService clipboardService)
         {
             this.clipboardService = clipboardService;
-            this.uiAutomationService = new UIAutomationService();
         }
 
-        public AccessibilityElementNode? FetchAccessibilityTree(string? rootId)
+        public object? FetchAccessibilityTree(string? rootId)
         {
-            return uiAutomationService.FetchAccessibilityTree(rootId);
+            // Tree fetching is no longer supported in the minimal approach
+            LogToStderr("FetchAccessibilityTree is deprecated - tree traversal removed for performance");
+            return null;
         }
 
         public Context? GetAccessibilityContext(bool editableOnly)

@@ -1,159 +1,146 @@
 using System;
-using System.Collections.Generic;
-using System.Windows.Automation;
-using WindowsHelper.Models;
+using System.Runtime.InteropServices;
+using Interop.UIAutomationClient;
 
 namespace WindowsHelper.Services
 {
     /// <summary>
-    /// Implements accessibility tree building using Windows UI Automation API.
-    /// Note: GetAccessibilityContext has been moved to AccessibilityContextService.
+    /// UI Automation service using COM interop for better performance.
+    /// Uses CUIAutomationClass singleton and minimal approach (focused element + parent walking only).
     /// </summary>
-    public class UIAutomationService
+    public static class UIAutomationService
     {
-        private readonly int maxDepth = 10;
+        // Singleton CUIAutomation instance - created once at startup
+        private static readonly CUIAutomation _automation;
+        private static readonly IUIAutomationTreeWalker _rawViewWalker;
+        private static readonly IUIAutomationTreeWalker _controlViewWalker;
 
-        public AccessibilityElementNode? FetchAccessibilityTree(string? rootId)
+        static UIAutomationService()
         {
             try
             {
-                LogToStderr("FetchAccessibilityTree called with UI Automation");
-
-                AutomationElement rootElement;
-
-                if (!string.IsNullOrEmpty(rootId))
-                {
-                    // Try to find element by automation ID
-                    var condition = new PropertyCondition(AutomationElement.AutomationIdProperty, rootId);
-                    rootElement = AutomationElement.RootElement.FindFirst(TreeScope.Descendants, condition);
-
-                    if (rootElement == null)
-                    {
-                        LogToStderr($"Could not find element with ID: {rootId}");
-                        return null;
-                    }
-                }
-                else
-                {
-                    // Get the focused element as root
-                    rootElement = AutomationElement.FocusedElement;
-                    if (rootElement == null)
-                    {
-                        LogToStderr("No focused element found");
-                        return null;
-                    }
-                }
-
-                return BuildAccessibilityTree(rootElement, 0);
+                _automation = new CUIAutomationClass();
+                _rawViewWalker = _automation.RawViewWalker;
+                _controlViewWalker = _automation.ControlViewWalker;
+                LogToStderr("UIAutomationService initialized with COM interop");
             }
             catch (Exception ex)
             {
-                LogToStderr($"Error fetching accessibility tree: {ex.Message}");
-                return null;
+                LogToStderr($"Failed to initialize UIAutomationService: {ex.Message}");
+                throw;
             }
         }
 
-        private AccessibilityElementNode? BuildAccessibilityTree(AutomationElement element, int depth)
-        {
-            if (element == null || depth > maxDepth)
-                return null;
+        /// <summary>
+        /// Gets the CUIAutomation instance.
+        /// </summary>
+        public static CUIAutomation Automation => _automation;
 
+        /// <summary>
+        /// Gets the raw view tree walker.
+        /// </summary>
+        public static IUIAutomationTreeWalker RawViewWalker => _rawViewWalker;
+
+        /// <summary>
+        /// Gets the control view tree walker.
+        /// </summary>
+        public static IUIAutomationTreeWalker ControlViewWalker => _controlViewWalker;
+
+        /// <summary>
+        /// Gets the currently focused element.
+        /// </summary>
+        public static IUIAutomationElement? GetFocusedElement()
+        {
             try
             {
-                var node = new AccessibilityElementNode
-                {
-                    Id = element.Current.AutomationId,
-                    Role = element.Current.ControlType.ProgrammaticName,
-                    Name = element.Current.Name,
-                    Value = GetElementValue(element),
-                    Description = element.Current.HelpText,
-                    IsEditable = IsElementEditable(element),
-                    Children = new List<AccessibilityElementNode>()
-                };
-
-                // Get children
-                var children = element.FindAll(TreeScope.Children, Condition.TrueCondition);
-                foreach (AutomationElement child in children)
-                {
-                    var childNode = BuildAccessibilityTree(child, depth + 1);
-                    if (childNode != null)
-                    {
-                        node.Children.Add(childNode);
-                    }
-                }
-
-                return node;
+                return _automation.GetFocusedElement();
             }
-            catch (ElementNotAvailableException)
+            catch (COMException ex)
             {
-                // Element became unavailable during traversal
+                LogToStderr($"GetFocusedElement failed: {ex.Message}");
                 return null;
             }
             catch (Exception ex)
             {
-                LogToStderr($"Error building tree node: {ex.Message}");
+                LogToStderr($"GetFocusedElement unexpected error: {ex.Message}");
                 return null;
             }
         }
 
-        private string? GetElementValue(AutomationElement element)
+        /// <summary>
+        /// Gets the parent of an element.
+        /// </summary>
+        public static IUIAutomationElement? GetParent(IUIAutomationElement element)
         {
+            if (element == null) return null;
+
             try
             {
-                // Try Value pattern first
-                if (element.TryGetCurrentPattern(ValuePattern.Pattern, out object valuePattern))
-                {
-                    return (valuePattern as ValuePattern)?.Current.Value;
-                }
-
-                // Try Text pattern
-                if (element.TryGetCurrentPattern(TextPattern.Pattern, out object textPattern))
-                {
-                    var tp = textPattern as TextPattern;
-                    return tp?.DocumentRange?.GetText(-1);
-                }
-
-                // Try RangeValue pattern
-                if (element.TryGetCurrentPattern(RangeValuePattern.Pattern, out object rangePattern))
-                {
-                    return (rangePattern as RangeValuePattern)?.Current.Value.ToString();
-                }
+                return _controlViewWalker.GetParentElement(element);
             }
-            catch
+            catch (COMException)
             {
-                // Ignore pattern errors
+                return null;
             }
-
-            return null;
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
-        private bool IsElementEditable(AutomationElement element)
+        /// <summary>
+        /// Gets an element from a window handle.
+        /// </summary>
+        public static IUIAutomationElement? ElementFromHandle(IntPtr hwnd)
         {
+            if (hwnd == IntPtr.Zero) return null;
+
             try
             {
-                // Check if element supports Value pattern and is not read-only
-                if (element.TryGetCurrentPattern(ValuePattern.Pattern, out object valuePattern))
-                {
-                    var vp = valuePattern as ValuePattern;
-                    return vp != null && !vp.Current.IsReadOnly;
-                }
-
-                // Check if it's an editable text control
-                if (element.Current.ControlType == ControlType.Edit ||
-                    element.Current.ControlType == ControlType.Document)
-                {
-                    return element.Current.IsEnabled;
-                }
+                return _automation.ElementFromHandle(hwnd);
             }
-            catch
+            catch (COMException)
             {
-                // Ignore pattern errors
+                return null;
             }
-
-            return false;
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
-        private void LogToStderr(string message)
+        /// <summary>
+        /// Creates a condition for finding elements.
+        /// </summary>
+        public static IUIAutomationCondition CreatePropertyCondition(int propertyId, object value)
+        {
+            return _automation.CreatePropertyCondition(propertyId, value);
+        }
+
+        /// <summary>
+        /// Gets the true condition (matches all elements).
+        /// </summary>
+        public static IUIAutomationCondition TrueCondition => _automation.CreateTrueCondition();
+
+        /// <summary>
+        /// Safely releases a COM object.
+        /// </summary>
+        public static void SafeRelease(object? comObject)
+        {
+            if (comObject != null)
+            {
+                try
+                {
+                    Marshal.ReleaseComObject(comObject);
+                }
+                catch
+                {
+                    // Ignore release errors
+                }
+            }
+        }
+
+        private static void LogToStderr(string message)
         {
             var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             Console.Error.WriteLine($"[{timestamp}] [UIAutomationService] {message}");

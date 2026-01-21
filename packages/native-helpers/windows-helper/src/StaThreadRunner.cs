@@ -184,11 +184,20 @@ namespace WindowsHelper
             }
             catch (Exception ex)
             {
-                LogToStderr($"Error in STA message loop: {ex.Message}");
+                LogToStderr($"Fatal error in STA message loop: {ex.Message}");
+                LogToStderr("Exiting process to trigger restart...");
+                Environment.Exit(1);
             }
             finally
             {
                 LogToStderr("STA thread stopped");
+                // If we exit the loop unexpectedly (not via Stop()), crash the process
+                // so Electron can restart us. This ensures keyboard hooks get reinstalled.
+                if (isRunning)
+                {
+                    LogToStderr("STA thread exited unexpectedly, forcing process exit...");
+                    Environment.Exit(1);
+                }
             }
         }
 

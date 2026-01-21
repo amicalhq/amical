@@ -1,765 +1,320 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows.Automation;
-using System.Windows.Automation.Text;
+using Interop.UIAutomationClient;
 using WindowsHelper.Models;
 using WindowsHelper.Utils;
 
 namespace WindowsHelper.Services
 {
     /// <summary>
-    /// Service for extracting text selection from elements using multi-path algorithm.
-    /// Implements Phase 1 extraction with TextPattern as primary path.
-    /// Matches Swift's SelectionExtractor.
+    /// Service for extracting text selection using COM interop.
+    /// For Chromium contenteditable (Notion, etc.), searches descendants to find the specific Edit with caret.
+    /// For other apps, walks UP parents to find TextPattern.
     /// </summary>
     public static class SelectionExtractor
     {
-        // =============================================================================
-        // Main Extraction Entry Point
-        // =============================================================================
-
         /// <summary>
-        /// Extract text selection from an element using multi-path algorithm.
+        /// Extract text selection from an element.
         /// </summary>
-        /// <param name="focusedElement">The originally focused element</param>
-        /// <param name="extractionElement">The element to extract from (may differ from focused)</param>
-        /// <param name="metricsBuilder">Builder to record extraction metrics</param>
-        /// <returns>TextSelection or null if no text selection available</returns>
         public static TextSelection? Extract(
-            AutomationElement focusedElement,
-            AutomationElement extractionElement,
+            IUIAutomationElement focusedElement,
+            IUIAutomationElement extractionElement,
             MetricsBuilder metricsBuilder)
         {
+            var sw = Stopwatch.StartNew();
             var builder = new TextSelectionBuilder();
 
-            // Track both elements - extraction element may change during retry paths
-            var currentExtractionElement = extractionElement;
+            // Check if focused element is editable
+            var focusedIsEditable = IsElementEditable(focusedElement);
 
-            // Step 2: Check if focused element is editable
-            var focusedIsEditable = UIAutomationHelpers.IsElementEditable(focusedElement);
-
-            // Step 2.1: SECURE FIELD CHECK - suppress all content if secure
-            // Check focused element ONLY (early exit)
-            if (UIAutomationHelpers.IsSecureField(focusedElement))
+            // Secure field check
+            if (IsSecureField(focusedElement))
             {
                 return TextSelectionBuilder.SecureField(focusedIsEditable);
             }
 
-            // Variables to track extraction state
-            SelectionRange? selectionRange = null;
-            string? selectedText = null;
-            string? fullContent = null;
-            bool hasMultipleRanges = false;
-            The0 extractionMethod = The0.None;
-
-            // Track if large doc path was used (content already windowed)
-            bool isLargeDoc = false;
-            bool fullContentTruncated = false;
-
-            // =============================================================================
-            // Path A: TextPattern (PRIMARY - equivalent to Swift's TextMarker)
-            // NOTE: Uses extractionElement (the text-capable element), not focusedElement.
-            // This matches Swift where extract() receives the text-capable element found by
-            // findTextCapableElement(), not the original system focus. In container-focus
-            // scenarios, extractionElement is the text field inside, while focusedElement
-            // is the container - we want to extract from the text field.
-            // =============================================================================
-            metricsBuilder.TextPatternAttempted = true;
-            var textPatternResult = ExtractViaTextPattern(extractionElement, metricsBuilder);
-            if (textPatternResult != null)
+            // Try to find the specific Edit element that contains the caret.
+            // This handles cases where the focused element is a container (Group, Pane, etc.)
+            // containing multiple editable regions (e.g., Notion title + content).
+            // By finding the exact Edit with the caret, we avoid extracting the entire page.
+            var editWithCaret = FindEditWithCaret(focusedElement, metricsBuilder);
+            if (editWithCaret != null)
             {
-                metricsBuilder.TextPatternSucceeded = true;
-                selectedText = textPatternResult.SelectedText;
-                selectionRange = textPatternResult.SelectionRange;
-                hasMultipleRanges = textPatternResult.HasMultipleRanges;
-                extractionMethod = The0.TextMarkerRange;
-
-                // Handle large doc case - content already windowed
-                if (textPatternResult.IsLargeDoc)
+                // Use the Edit's ValuePattern directly - much cleaner extraction
+                var editResult = ExtractFromEditElement(editWithCaret, metricsBuilder);
+                if (editResult != null)
                 {
-                    isLargeDoc = true;
-                    fullContent = textPatternResult.FullContent;
-                    fullContentTruncated = textPatternResult.FullContentTruncated;
+                    metricsBuilder.TextPatternSucceeded = true;
+                    return editResult;
                 }
             }
 
-            // =============================================================================
-            // Document Retry Path: When TextPattern fails on focused element
-            // =============================================================================
-            if (extractionMethod == The0.None)
+            // Try to get TextPattern from extraction element
+            IUIAutomationTextPattern? textPattern = GetTextPattern(extractionElement);
+
+            // If no TextPattern, walk UP parents (with timeout)
+            if (textPattern == null)
             {
-                metricsBuilder.DocumentRetryAttempted = true;
+                var walker = UIAutomationService.ControlViewWalker;
+                var current = extractionElement;
 
-                // Re-query app focused element for containsFocus scoring (like Swift does)
-                var appFocusedElement = GetAppFocusedElement();
-
-                // Search from extractionElement (the text-capable element), use appFocusedElement for scoring
-                var documentElement = FindDocumentElement(extractionElement, appFocusedElement);
-                if (documentElement != null)
+                for (int depth = 0; depth < Constants.PARENT_CHAIN_MAX_DEPTH; depth++)
                 {
-                    metricsBuilder.DocumentFound = true;
-
-                    // Try TextPattern on Document
-                    var docResult = ExtractViaTextPattern(documentElement, metricsBuilder);
-                    if (docResult != null)
+                    if (sw.ElapsedMilliseconds > Constants.PARENT_WALK_TIMEOUT_MS)
                     {
-                        metricsBuilder.TextPatternSucceeded = true;
-                        metricsBuilder.DocumentRetrySucceeded = true;
-                        currentExtractionElement = documentElement;  // SWITCH extraction element
-                        selectedText = docResult.SelectedText;
-                        selectionRange = docResult.SelectionRange;
-                        hasMultipleRanges = docResult.HasMultipleRanges;
-                        extractionMethod = The0.TextMarkerRange;
+                        metricsBuilder.RecordError("Parent walk timeout");
+                        break;
+                    }
 
-                        // Handle large doc case
-                        if (docResult.IsLargeDoc)
+                    try
+                    {
+                        current = walker.GetParentElement(current);
+                        if (current == null) break;
+
+                        textPattern = GetTextPattern(current);
+                        if (textPattern != null)
                         {
-                            isLargeDoc = true;
-                            fullContent = docResult.FullContent;
-                            fullContentTruncated = docResult.FullContentTruncated;
+                            break;
                         }
                     }
-                    // If TextPattern fails on Document, DON'T switch extractionElement
-                }
-            }
-
-            // =============================================================================
-            // Deep Text Element Path: When Document retry fails
-            // =============================================================================
-            if (extractionMethod == The0.None)
-            {
-                var deepTextElement = UIAutomationHelpers.FindDeepestTextElement(extractionElement);
-                if (deepTextElement != null)
-                {
-                    // Try TextPattern on deep element
-                    var deepResult = ExtractViaTextPattern(deepTextElement, metricsBuilder);
-                    if (deepResult != null)
+                    catch (COMException)
                     {
-                        metricsBuilder.TextPatternSucceeded = true;
-                        currentExtractionElement = deepTextElement;  // SWITCH
-                        selectedText = deepResult.SelectedText;
-                        selectionRange = deepResult.SelectionRange;
-                        hasMultipleRanges = deepResult.HasMultipleRanges;
-                        extractionMethod = The0.TextMarkerRange;
-
-                        // Handle large doc case
-                        if (deepResult.IsLargeDoc)
-                        {
-                            isLargeDoc = true;
-                            fullContent = deepResult.FullContent;
-                            fullContentTruncated = deepResult.FullContentTruncated;
-                        }
-                    }
-                    else
-                    {
-                        // Try selectedTextRange fallback on deep element
-                        var rangeResult = ExtractViaSelectedTextRange(deepTextElement);
-                        if (rangeResult != null)
-                        {
-                            currentExtractionElement = deepTextElement;  // SWITCH
-                            selectedText = rangeResult.SelectedText;
-                            selectionRange = rangeResult.SelectionRange;
-                            extractionMethod = The0.SelectedTextRange;
-                        }
+                        break;
                     }
                 }
             }
 
-            // =============================================================================
-            // Path B: SelectedTextRange (Fallback 1)
-            // =============================================================================
-            if (extractionMethod == The0.None)
+            // If we found TextPattern, extract selection
+            if (textPattern != null)
             {
-                metricsBuilder.RecordFallback(The0.SelectedTextRange);
-                var result = ExtractViaSelectedTextRange(currentExtractionElement);
+                metricsBuilder.TextPatternAttempted = true;
+                var result = ExtractViaTextPattern(textPattern, focusedElement, metricsBuilder);
+
                 if (result != null)
                 {
-                    selectedText = result.SelectedText;
-                    selectionRange = result.SelectionRange;
-                    extractionMethod = The0.SelectedTextRange;
+                    metricsBuilder.TextPatternSucceeded = true;
+
+                    builder.SelectedText = result.SelectedText;
+                    builder.SelectionRange = result.SelectionRange;
+                    builder.FullContent = result.FullContent;
+                    builder.HasMultipleRanges = result.HasMultipleRanges;
+                    builder.FullContentTruncated = result.FullContentTruncated;
+                    builder.ExtractionMethod = The0.TextMarkerRange;
+                    builder.IsEditable = focusedIsEditable || IsElementEditable(extractionElement);
+                    builder.IsPlaceholder = IsPlaceholderShowing(focusedElement) ||
+                                           IsPlaceholderShowing(extractionElement);
+
+                    // Compute pre/post context
+                    if (result.SelectionRange != null && result.FullContent != null)
+                    {
+                        builder.PreSelectionText = ComputePreContext(result.FullContent, result.SelectionRange);
+                        builder.PostSelectionText = ComputePostContext(result.FullContent, result.SelectionRange);
+                    }
+
+                    return builder.Build();
                 }
             }
 
-            // =============================================================================
-            // Path C: SelectedTextRanges (Fallback 2 - Multi-select)
-            // =============================================================================
-            if (extractionMethod == The0.None)
-            {
-                metricsBuilder.RecordFallback(The0.SelectedTextRanges);
-                var result = ExtractViaSelectedTextRanges(currentExtractionElement);
-                if (result != null)
-                {
-                    selectedText = result.SelectedText;
-                    selectionRange = result.SelectionRange;
-                    hasMultipleRanges = result.HasMultipleRanges;
-                    extractionMethod = The0.SelectedTextRanges;
-                }
-            }
-
-            // =============================================================================
-            // Path D: ValuePattern (Fallback 3)
-            // =============================================================================
-            if (extractionMethod == The0.None)
+            // Fallback: Try ValuePattern
+            var valueResult = ExtractViaValuePattern(extractionElement);
+            if (valueResult != null)
             {
                 metricsBuilder.RecordFallback(The0.ValueAttribute);
-                if (currentExtractionElement.TryGetCurrentPattern(ValuePattern.Pattern, out var vp))
-                {
-                    try
-                    {
-                        var value = ((ValuePattern)vp).Current.Value;
-                        fullContent = value;
-                        extractionMethod = The0.ValueAttribute;
-                        // Note: No selectionRange available from this path
-                    }
-                    catch { }
-                }
+                builder.FullContent = valueResult;
+                builder.ExtractionMethod = The0.ValueAttribute;
+                builder.IsEditable = focusedIsEditable || IsElementEditable(extractionElement);
+                return builder.Build();
             }
 
-            // =============================================================================
-            // Path E: TextPattern Full Content (stringForRange equivalent)
-            // =============================================================================
-            if (extractionMethod == The0.None)
-            {
-                metricsBuilder.RecordFallback(The0.StringForRange);
-                if (currentExtractionElement.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
-                {
-                    try
-                    {
-                        var textPattern = (TextPattern)tp;
-                        // Use unbounded GetText(-1) to get full content, accepting O(n) cost as Swift does
-                        var content = textPattern.DocumentRange.GetText(-1);
-                        if (content != null)
-                        {
-                            fullContent = StringHelpers.NormalizeNewlines(content);
-                            extractionMethod = The0.StringForRange;
-                        }
-                    }
-                    catch { }
-                }
-            }
-
-            // If no extraction succeeded at all, return null
-            if (extractionMethod == The0.None)
-            {
-                return null;
-            }
-
-            // =============================================================================
-            // Step 5: Full Content Retrieval (if not already obtained)
-            // Skip if large doc path already provided content
-            // =============================================================================
-            if (!isLargeDoc && fullContent == null && selectionRange != null)
-            {
-                fullContent = GetFullContent(currentExtractionElement);
-            }
-
-            // =============================================================================
-            // Step 3: Placeholder Check (non-blocking)
-            // =============================================================================
-            int? selectionLength = (int?)selectionRange?.Length;
-            // OR logic: check placeholder on BOTH elements
-            var focusedIsPlaceholder = UIAutomationHelpers.IsPlaceholderShowing(focusedElement, null);
-            var extractionIsPlaceholder = UIAutomationHelpers.IsPlaceholderShowing(currentExtractionElement, selectionLength);
-            builder.IsPlaceholder = focusedIsPlaceholder || extractionIsPlaceholder;
-
-            // OR logic for isEditable: editable if EITHER element is editable
-            var extractionIsEditable = UIAutomationHelpers.IsElementEditable(currentExtractionElement);
-            builder.IsEditable = focusedIsEditable || extractionIsEditable;
-
-            // =============================================================================
-            // Step 5.1: Selection Range Validation
-            // Skip clamping/re-derive for large docs (indices already relative to window)
-            // =============================================================================
-            if (!isLargeDoc && selectionRange != null && fullContent != null)
-            {
-                var (clampedRange, reDerivedSelectedText) = ClampAndRederive(fullContent, selectionRange);
-                selectionRange = clampedRange;
-
-                // Re-derive selectedText when no windowing needed
-                if (fullContent.Length <= Constants.MAX_FULL_CONTENT_LENGTH)
-                {
-                    selectedText = reDerivedSelectedText;
-                }
-            }
-
-            // =============================================================================
-            // Step 6: Content Windowing
-            // Skip if large doc path already windowed
-            // =============================================================================
-            if (!isLargeDoc && fullContent != null && fullContent.Length > Constants.MAX_FULL_CONTENT_LENGTH)
-            {
-                var windowResult = WindowContent(fullContent, selectionRange, metricsBuilder);
-                fullContent = windowResult.WindowedContent;
-                selectionRange = windowResult.AdjustedRange;
-                selectedText = windowResult.SelectedText;
-                fullContentTruncated = true;
-            }
-            else if (!isLargeDoc && fullContent != null && extractionMethod == The0.ValueAttribute)
-            {
-                // ValuePattern path may need head+tail truncation
-                var (truncatedContent, wasTruncated) = TruncateHeadTail(fullContent);
-                fullContent = truncatedContent;
-                fullContentTruncated = wasTruncated;
-            }
-            else if (!isLargeDoc && fullContent != null && extractionMethod == The0.StringForRange)
-            {
-                // StringForRange path may need head+tail truncation
-                if (fullContent.Length > Constants.MAX_FULL_CONTENT_LENGTH)
-                {
-                    var (truncatedContent, wasTruncated) = TruncateHeadTail(fullContent);
-                    fullContent = truncatedContent;
-                    fullContentTruncated = wasTruncated;
-                }
-            }
-
-            // =============================================================================
-            // Step 7: Context Computation
-            // =============================================================================
-            string? preSelectionText = null;
-            string? postSelectionText = null;
-
-            if (selectionRange != null && fullContent != null)
-            {
-                preSelectionText = ComputePreContext(fullContent, selectionRange);
-                postSelectionText = ComputePostContext(fullContent, selectionRange);
-            }
-
-            // Build final result
-            builder.SelectedText = selectedText;
-            builder.FullContent = fullContent;
-            builder.PreSelectionText = preSelectionText;
-            builder.PostSelectionText = postSelectionText;
-            builder.SelectionRange = selectionRange;
-            builder.ExtractionMethod = extractionMethod;
-            builder.HasMultipleRanges = hasMultipleRanges;
-            builder.FullContentTruncated = fullContentTruncated;
-
-            return builder.Build();
+            return null;
         }
 
-        // =============================================================================
-        // TextPattern Extraction (Primary Path)
-        // =============================================================================
-
         /// <summary>
-        /// Extract selection using TextPattern - equivalent to Swift's TextMarker path.
-        /// Tries GetSelection first, then GetCaretRange for cursor-only.
-        /// For large documents, uses WindowAroundSelection to avoid O(n) cost.
+        /// Get TextPattern from element if it's a text-capable control type.
         /// </summary>
-        private static TextExtractionResult? ExtractViaTextPattern(
-            AutomationElement element,
-            MetricsBuilder metricsBuilder)
+        private static IUIAutomationTextPattern? GetTextPattern(IUIAutomationElement element)
         {
-            if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
-                return null;
-
-            var textPattern = (TextPattern)tp;
-            TextPatternRange? selectionRange = null;
-            bool hasMultipleRanges = false;
+            if (element == null) return null;
 
             try
             {
-                // Try to get selection
-                var selections = textPattern.GetSelection();
-                if (selections != null && selections.Length > 0)
+                var controlType = element.CurrentControlType;
+
+                // Only check Edit and Document control types
+                if (controlType != Constants.UIA_EditControlTypeId &&
+                    controlType != Constants.UIA_DocumentControlTypeId)
                 {
-                    selectionRange = selections[0];
-                    hasMultipleRanges = selections.Length > 1;
+                    return null;
                 }
+
+                var pattern = element.GetCurrentPattern(Constants.UIA_TextPatternId);
+                return pattern as IUIAutomationTextPattern;
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Extract selection using TextPattern.
+        /// Uses RangeFromChild to scope extraction to the focused element when possible.
+        /// </summary>
+        private static TextExtractionResult? ExtractViaTextPattern(
+            IUIAutomationTextPattern textPattern,
+            IUIAutomationElement focusedElement,
+            MetricsBuilder metricsBuilder)
+        {
+            try
+            {
+                // Get document range
+                var docRange = textPattern.DocumentRange;
+                if (docRange == null) return null;
+
+                // Get selection
+                IUIAutomationTextRange? selectionRange = null;
+                bool hasMultipleRanges = false;
+
+                try
+                {
+                    var selections = textPattern.GetSelection();
+                    if (selections != null && selections.Length > 0)
+                    {
+                        selectionRange = selections.GetElement(0);
+                        hasMultipleRanges = selections.Length > 1;
+                    }
+                }
+                catch (COMException ex)
+                {
+                    metricsBuilder.RecordError($"GetSelection failed: {ex.HResult}");
+                }
+
+                // If no selection, try caret range (TextPattern2)
+                if (selectionRange == null)
+                {
+                    selectionRange = GetCaretRange(textPattern);
+                }
+
+                if (selectionRange == null)
+                {
+                    // No selection AND no active caret - this means the element
+                    // doesn't actually have keyboard focus. Don't extract content
+                    // from non-focused text elements (e.g., Notion's Document
+                    // when clicking on non-editable title).
+                    return null;
+                }
+
+                // Try to get a scoped range for the focused element using RangeFromChild.
+                // This prevents extracting the entire page (e.g., Notion sidebar + content)
+                // when we only care about the focused text block.
+                IUIAutomationTextRange? scopedRange = null;
+                try
+                {
+                    scopedRange = textPattern.RangeFromChild(focusedElement);
+                }
+                catch (COMException)
+                {
+                    // RangeFromChild may fail if the element isn't a direct text child
+                    // Fall back to document range
+                }
+
+                // Use scoped range if available and non-empty, otherwise fall back to doc range
+                var contentRange = scopedRange;
+                if (contentRange != null)
+                {
+                    var testText = contentRange.GetText(1);
+                    if (string.IsNullOrEmpty(testText))
+                    {
+                        // Scoped range is empty, fall back to doc range
+                        contentRange = docRange;
+                    }
+                }
+                else
+                {
+                    contentRange = docRange;
+                }
+
+                // Get selected text
+                var rawSelectedText = selectionRange.GetText(-1);
+                var selectedText = StringHelpers.NormalizeNewlines(rawSelectedText);
+                var selectionLength = selectedText?.Length ?? 0;
+
+                // Get text before selection to compute location (relative to scoped range)
+                var beforeRange = selectionRange.Clone();
+                beforeRange.MoveEndpointByRange(
+                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
+                    contentRange,
+                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
+                beforeRange.MoveEndpointByRange(
+                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_End,
+                    selectionRange,
+                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
+
+                var rawBeforeText = beforeRange.GetText(-1);
+                var beforeText = StringHelpers.NormalizeNewlines(rawBeforeText);
+                var location = beforeText?.Length ?? 0;
+
+                // Get full content from scoped range
+                var rawFullContent = contentRange.GetText(-1);
+                var fullContent = StringHelpers.NormalizeNewlines(rawFullContent);
+                var fullContentTruncated = false;
+
+                // Truncate if needed
+                if (fullContent != null && fullContent.Length > Constants.MAX_FULL_CONTENT_LENGTH)
+                {
+                    var windowResult = WindowContent(fullContent, location, selectionLength);
+                    fullContent = windowResult.Content;
+                    location = windowResult.AdjustedLocation;
+                    selectionLength = Math.Min(selectionLength, fullContent.Length - location);
+                    fullContentTruncated = true;
+
+                    // Re-derive selected text from windowed content
+                    if (selectionLength > 0 && location + selectionLength <= fullContent.Length)
+                    {
+                        selectedText = fullContent.Substring(location, selectionLength);
+                    }
+                }
+
+                return new TextExtractionResult
+                {
+                    SelectedText = selectedText,
+                    SelectionRange = new SelectionRange { Location = location, Length = selectionLength },
+                    FullContent = fullContent,
+                    HasMultipleRanges = hasMultipleRanges,
+                    FullContentTruncated = fullContentTruncated
+                };
             }
             catch (COMException ex)
             {
-                metricsBuilder.RecordError($"TextPattern.GetSelection failed: {ex.HResult}");
-            }
-            catch (InvalidOperationException ex)
-            {
-                metricsBuilder.RecordError($"TextPattern.GetSelection invalid: {ex.Message}");
-            }
-
-            // If no selection, try to get caret position (Win10+)
-            if (selectionRange == null)
-            {
-                selectionRange = GetCaretRange(element);
-            }
-
-            if (selectionRange == null)
+                metricsBuilder.RecordError($"TextPattern extraction failed: {ex.HResult}");
                 return null;
-
-            // PRE-CHECK: Probe document length first (spec compliance)
-            var docLength = ProbeDocumentLength(textPattern);
-
-            if (docLength <= Constants.MAX_FULL_CONTENT_LENGTH)
-            {
-                // SMALL DOC: Safe to compute absolute indices
-                return ExtractFromSmallDocument(textPattern, selectionRange, hasMultipleRanges, metricsBuilder);
-            }
-            else
-            {
-                // LARGE DOC: Use windowed extraction to avoid O(n) cost
-                return ExtractFromLargeDocument(textPattern, selectionRange, hasMultipleRanges, metricsBuilder);
-            }
-        }
-
-        /// <summary>
-        /// Probe document length using bounded GetText.
-        /// Uses MAX*2+1 buffer to account for CRLF-heavy docs that shrink after normalization.
-        /// Returns normalized length for accurate threshold comparison.
-        /// </summary>
-        private static int ProbeDocumentLength(TextPattern textPattern)
-        {
-            try
-            {
-                var docRange = textPattern.DocumentRange;
-                // Use MAX*2+1 buffer to handle worst-case CRLF (every char could be \r\n → \n)
-                // This ensures CRLF-heavy large docs aren't misclassified as small
-                var probeLimit = Constants.MAX_FULL_CONTENT_LENGTH * 2 + 1;
-                var probeText = docRange.GetText(probeLimit);
-                if (probeText == null) return 0;
-
-                // Normalize to get accurate length comparison
-                var normalized = StringHelpers.NormalizeNewlines(probeText);
-                return normalized?.Length ?? 0;
-            }
-            catch
-            {
-                // If probe fails, assume small doc (safer - will compute absolute indices)
-                return 0;
-            }
-        }
-
-        /// <summary>
-        /// Extract from small document - compute absolute indices (safe for small docs).
-        /// </summary>
-        private static TextExtractionResult? ExtractFromSmallDocument(
-            TextPattern textPattern,
-            TextPatternRange selectionRange,
-            bool hasMultipleRanges,
-            MetricsBuilder metricsBuilder)
-        {
-            try
-            {
-                var docRange = textPattern.DocumentRange;
-
-                // Get text before selection (normalize IMMEDIATELY)
-                var beforeRange = docRange.Clone();
-                beforeRange.MoveEndpointByRange(
-                    TextPatternRangeEndpoint.End,
-                    selectionRange,
-                    TextPatternRangeEndpoint.Start);
-                var rawBeforeText = beforeRange.GetText(-1);
-                var beforeText = StringHelpers.NormalizeNewlines(rawBeforeText);
-                var location = beforeText?.Length ?? 0;
-
-                // Get selected text (normalize IMMEDIATELY)
-                var rawSelectedText = selectionRange.GetText(-1);
-                var selectedText = StringHelpers.NormalizeNewlines(rawSelectedText);
-                var length = selectedText?.Length ?? 0;
-
-                return new TextExtractionResult
-                {
-                    SelectedText = selectedText,
-                    SelectionRange = new SelectionRange { Location = location, Length = length },
-                    HasMultipleRanges = hasMultipleRanges,
-                    IsLargeDoc = false
-                };
             }
             catch (Exception ex)
             {
-                metricsBuilder.RecordError($"TextPattern small doc extraction failed: {ex.Message}");
+                metricsBuilder.RecordError($"TextPattern extraction error: {ex.Message}");
                 return null;
             }
         }
 
         /// <summary>
-        /// Extract from large document using WindowAroundSelection approach.
-        /// Uses TextPatternRange manipulation to get context without reading from doc start.
-        /// Returns windowed content with RELATIVE indices.
+        /// Get caret range using TextPattern2 if available.
         /// </summary>
-        private static TextExtractionResult? ExtractFromLargeDocument(
-            TextPattern textPattern,
-            TextPatternRange selectionRange,
-            bool hasMultipleRanges,
-            MetricsBuilder metricsBuilder)
+        private static IUIAutomationTextRange? GetCaretRange(IUIAutomationTextPattern textPattern)
         {
             try
             {
-                // Get selected text with MAX+1 buffer, then truncate at surrogate boundary if needed
-                // This prevents splitting a surrogate pair at exactly MAX characters
-                var rawSelectedText = selectionRange.GetText(Constants.MAX_FULL_CONTENT_LENGTH + 1);
-                var selectedText = StringHelpers.NormalizeNewlines(rawSelectedText);
+                // Try to cast to TextPattern2
+                var textPattern2 = textPattern as IUIAutomationTextPattern2;
+                if (textPattern2 == null) return null;
 
-                // Truncate at surrogate boundary if exceeds MAX
-                if (selectedText != null && selectedText.Length > Constants.MAX_FULL_CONTENT_LENGTH)
-                {
-                    var truncateAt = StringHelpers.AdjustForSurrogatePairs(
-                        selectedText,
-                        Constants.MAX_FULL_CONTENT_LENGTH,
-                        SurrogatePairDirection.Backward);
-                    selectedText = selectedText.Substring(0, truncateAt);
-                }
-                var selectionLength = selectedText?.Length ?? 0;
-
-                // Get BEFORE context by cloning and moving start backward
-                string beforeContext = "";
-                try
-                {
-                    var beforeRange = selectionRange.Clone();
-                    // Move START endpoint backward by WINDOW_PADDING characters
-                    var moved = beforeRange.MoveEndpointByUnit(
-                        TextPatternRangeEndpoint.Start,
-                        TextUnit.Character,
-                        -Constants.WINDOW_PADDING);
-
-                    if (moved != 0)
-                    {
-                        // Move END to selection START to get just the before text
-                        beforeRange.MoveEndpointByRange(
-                            TextPatternRangeEndpoint.End,
-                            selectionRange,
-                            TextPatternRangeEndpoint.Start);
-
-                        var rawBefore = beforeRange.GetText(Constants.WINDOW_PADDING);
-                        beforeContext = StringHelpers.NormalizeNewlines(rawBefore) ?? "";
-                    }
-                }
-                catch
-                {
-                    // If before context fails, continue with empty
-                }
-
-                // Get AFTER context by cloning and moving end forward
-                string afterContext = "";
-                try
-                {
-                    var afterRange = selectionRange.Clone();
-                    // Move END endpoint forward by WINDOW_PADDING characters
-                    var moved = afterRange.MoveEndpointByUnit(
-                        TextPatternRangeEndpoint.End,
-                        TextUnit.Character,
-                        Constants.WINDOW_PADDING);
-
-                    if (moved != 0)
-                    {
-                        // Move START to selection END to get just the after text
-                        afterRange.MoveEndpointByRange(
-                            TextPatternRangeEndpoint.Start,
-                            selectionRange,
-                            TextPatternRangeEndpoint.End);
-
-                        var rawAfter = afterRange.GetText(Constants.WINDOW_PADDING);
-                        afterContext = StringHelpers.NormalizeNewlines(rawAfter) ?? "";
-                    }
-                }
-                catch
-                {
-                    // If after context fails, continue with empty
-                }
-
-                // Combine windowed content
-                var windowedContent = beforeContext + (selectedText ?? "") + afterContext;
-
-                // Ensure windowed content doesn't exceed MAX
-                if (windowedContent.Length > Constants.MAX_FULL_CONTENT_LENGTH)
-                {
-                    // Truncate symmetrically around selection
-                    var availableForContext = Constants.MAX_FULL_CONTENT_LENGTH - selectionLength;
-                    var contextPerSide = availableForContext / 2;
-
-                    if (beforeContext.Length > contextPerSide)
-                    {
-                        var trimStart = beforeContext.Length - contextPerSide;
-                        trimStart = StringHelpers.AdjustForSurrogatePairs(beforeContext, trimStart, SurrogatePairDirection.Forward);
-                        beforeContext = beforeContext.Substring(trimStart);
-                    }
-
-                    if (afterContext.Length > contextPerSide)
-                    {
-                        var trimLength = StringHelpers.AdjustForSurrogatePairs(afterContext, contextPerSide, SurrogatePairDirection.Backward);
-                        afterContext = afterContext.Substring(0, trimLength);
-                    }
-
-                    windowedContent = beforeContext + (selectedText ?? "") + afterContext;
-                }
-
-                // Location is RELATIVE to windowed content (= length of beforeContext)
-                var relativeLocation = beforeContext.Length;
-
-                return new TextExtractionResult
-                {
-                    SelectedText = selectedText,
-                    SelectionRange = new SelectionRange { Location = relativeLocation, Length = selectionLength },
-                    HasMultipleRanges = hasMultipleRanges,
-                    FullContent = windowedContent,
-                    FullContentTruncated = true,
-                    IsLargeDoc = true
-                };
-            }
-            catch (Exception ex)
-            {
-                metricsBuilder.RecordError($"TextPattern large doc extraction failed: {ex.Message}");
-                return null;
-            }
-        }
-
-        // =============================================================================
-        // SelectedTextRange Extraction (Path B)
-        // =============================================================================
-
-        /// <summary>
-        /// Extract selection via basic TextPattern.GetSelection() without full index calculation.
-        /// Maps to Swift's extractViaSelectedTextRange.
-        /// </summary>
-        private static TextExtractionResult? ExtractViaSelectedTextRange(AutomationElement element)
-        {
-            if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
-                return null;
-
-            var textPattern = (TextPattern)tp;
-
-            try
-            {
-                var selections = textPattern.GetSelection();
-                if (selections == null || selections.Length == 0)
-                    return null;
-
-                // IMPORTANT: If multiple ranges exist, return null so Path C handles it
-                // This ensures hasMultipleRanges gets set correctly for multi-select scenarios
-                // (Round 12 fix)
-                if (selections.Length > 1)
-                    return null;
-
-                var selRange = selections[0];
-
-                // Get selected text directly (normalize IMMEDIATELY)
-                var rawSelectedText = selRange.GetText(-1);
-                var selectedText = StringHelpers.NormalizeNewlines(rawSelectedText);
-                var length = selectedText?.Length ?? 0;
-
-                // Get location via endpoint comparison
-                var docRange = textPattern.DocumentRange;
-                var beforeRange = docRange.Clone();
-                beforeRange.MoveEndpointByRange(
-                    TextPatternRangeEndpoint.End,
-                    selRange,
-                    TextPatternRangeEndpoint.Start);
-                var rawBeforeText = beforeRange.GetText(-1);
-                var beforeText = StringHelpers.NormalizeNewlines(rawBeforeText);
-                var location = beforeText?.Length ?? 0;
-
-                return new TextExtractionResult
-                {
-                    SelectedText = selectedText,
-                    SelectionRange = new SelectionRange { Location = location, Length = length },
-                    HasMultipleRanges = false
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        // =============================================================================
-        // SelectedTextRanges Extraction (Path C - Multi-select)
-        // =============================================================================
-
-        /// <summary>
-        /// Extract selection via TextPattern.GetSelection() handling multiple ranges.
-        /// Maps to Swift's extractViaSelectedTextRanges.
-        /// </summary>
-        private static TextExtractionResult? ExtractViaSelectedTextRanges(AutomationElement element)
-        {
-            if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
-                return null;
-
-            var textPattern = (TextPattern)tp;
-
-            try
-            {
-                var selections = textPattern.GetSelection();
-                if (selections == null || selections.Length == 0)
-                    return null;
-
-                var hasMultipleRanges = selections.Length > 1;
-
-                // If only one range, this is same as selectedTextRange - should have been handled
-                if (!hasMultipleRanges)
-                    return null;
-
-                // Sort ranges by position and use first (lowest)
-                var docRange = textPattern.DocumentRange;
-                TextPatternRange? primaryRange = null;
-                int primaryPosition = int.MaxValue;
-
-                foreach (var selRange in selections)
-                {
-                    try
-                    {
-                        var beforeRange = docRange.Clone();
-                        beforeRange.MoveEndpointByRange(
-                            TextPatternRangeEndpoint.End,
-                            selRange,
-                            TextPatternRangeEndpoint.Start);
-                        // IMPORTANT: Normalize BEFORE computing position to keep indices aligned
-                        var rawBeforeText = beforeRange.GetText(-1);
-                        var beforeText = StringHelpers.NormalizeNewlines(rawBeforeText);
-                        var position = beforeText?.Length ?? 0;
-
-                        if (position < primaryPosition)
-                        {
-                            primaryPosition = position;
-                            primaryRange = selRange;
-                        }
-                    }
-                    catch
-                    {
-                        // Skip this range if we can't calculate position
-                    }
-                }
-
-                if (primaryRange == null)
-                    return null;
-
-                // Extract from primary range
-                var rawSelectedText = primaryRange.GetText(-1);
-                var selectedText = StringHelpers.NormalizeNewlines(rawSelectedText);
-                var length = selectedText?.Length ?? 0;
-
-                return new TextExtractionResult
-                {
-                    SelectedText = selectedText,
-                    SelectionRange = new SelectionRange { Location = primaryPosition, Length = length },
-                    HasMultipleRanges = true
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        // =============================================================================
-        // Caret Range (Cursor-Only Position)
-        // =============================================================================
-
-        /// <summary>
-        /// Get caret range when no selection exists (cursor-only position).
-        /// Returns a TextPatternRange representing the cursor position (zero-length).
-        /// </summary>
-        private static TextPatternRange? GetCaretRange(AutomationElement element)
-        {
-            try
-            {
-                if (!element.TryGetCurrentPattern(TextPattern2.Pattern, out var pattern))
-                    return null;
-
-                var textPattern2 = (TextPattern2)pattern;
-                var caretRange = textPattern2.GetCaretRange(out bool isActive);
-
-                if (!isActive || caretRange == null)
-                    return null;
+                var caretRange = textPattern2.GetCaretRange(out int isActive);
+                if (isActive == 0 || caretRange == null) return null;
 
                 return caretRange;
             }
@@ -769,19 +324,25 @@ namespace WindowsHelper.Services
             }
         }
 
-        // =============================================================================
-        // App Focused Element (for containsFocus scoring)
-        // =============================================================================
-
         /// <summary>
-        /// Get the application-level focused element.
-        /// Equivalent to Swift's getAppFocusedElement(forPid:).
+        /// Extract value using ValuePattern.
         /// </summary>
-        private static AutomationElement? GetAppFocusedElement()
+        private static string? ExtractViaValuePattern(IUIAutomationElement element)
         {
+            if (element == null) return null;
+
             try
             {
-                return AutomationElement.FocusedElement;
+                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
+                var valuePattern = pattern as IUIAutomationValuePattern;
+                if (valuePattern == null) return null;
+
+                var value = valuePattern.CurrentValue;
+                if (string.IsNullOrEmpty(value)) return null;
+
+                var normalized = StringHelpers.NormalizeNewlines(value);
+                var (truncated, _) = TruncateIfNeeded(normalized);
+                return truncated;
             }
             catch
             {
@@ -789,374 +350,420 @@ namespace WindowsHelper.Services
             }
         }
 
-        // =============================================================================
-        // Document Search
-        // =============================================================================
-
         /// <summary>
-        /// Find best Document element matching Swift's selectBestWebArea scoring.
+        /// Check if element is editable.
         /// </summary>
-        private static AutomationElement? FindDocumentElement(
-            AutomationElement focusedElement,
-            AutomationElement? appFocusedElement = null)
+        private static bool IsElementEditable(IUIAutomationElement element)
         {
-            var focusedIsDocument = focusedElement.Current.ControlType == ControlType.Document;
-            var candidates = new List<DocumentCandidate>();
+            if (element == null) return false;
 
-            // 1. Collect from ancestors (only if focused is NOT already a Document)
-            if (!focusedIsDocument)
+            try
             {
-                var ancestorDocs = UIAutomationHelpers.FindDocumentsInAncestors(focusedElement);
-                candidates.AddRange(ancestorDocs);
+                // Check ValuePattern IsReadOnly
+                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
+                var valuePattern = pattern as IUIAutomationValuePattern;
+                if (valuePattern != null)
+                {
+                    return valuePattern.CurrentIsReadOnly == 0;
+                }
+
+                // Check control type
+                var controlType = element.CurrentControlType;
+                if (controlType == Constants.UIA_EditControlTypeId ||
+                    controlType == Constants.UIA_DocumentControlTypeId)
+                {
+                    return element.CurrentIsEnabled != 0;
+                }
+            }
+            catch
+            {
             }
 
-            // 2. Collect from descendants (ALWAYS, even if focused is Document)
-            var descendantDocs = UIAutomationHelpers.FindDocumentsInDescendants(focusedElement);
-            candidates.AddRange(descendantDocs);
-
-            // 3. Select best candidate using 4-tier scoring
-            return SelectBestDocument(candidates, focusedElement, appFocusedElement);
+            return false;
         }
 
         /// <summary>
-        /// Select best Document using Swift's 4-tier scoring.
+        /// Check if element is a secure/password field.
         /// </summary>
-        private static AutomationElement? SelectBestDocument(
-            List<DocumentCandidate> candidates,
-            AutomationElement focusedElement,
-            AutomationElement? appFocusedElement)
+        private static bool IsSecureField(IUIAutomationElement element)
         {
-            if (candidates.Count == 0) return null;
+            if (element == null) return false;
 
-            // Score each candidate
-            var scored = candidates.Select(c =>
+            try
             {
-                var hasTextPattern = UIAutomationHelpers.HasTextPatternSelection(c.Element);
-
-                // Focus is "related" if either:
-                // 1. Focus is inside the Document
-                // 2. Document is inside focus
-                bool containsFocus = false;
-                if (appFocusedElement != null)
-                {
-                    containsFocus = UIAutomationHelpers.IsDescendantOrEqual(appFocusedElement, c.Element) ||
-                                   UIAutomationHelpers.IsDescendantOrEqual(c.Element, appFocusedElement);
-                }
-
-                return new { Candidate = c, HasTextPattern = hasTextPattern, ContainsFocus = containsFocus };
-            }).ToList();
-
-            // Tier 1: TextPattern + contains focus (DEEPEST descendant wins)
-            var tier1 = scored.Where(s => s.HasTextPattern && s.ContainsFocus).ToList();
-            if (tier1.Count > 0)
-            {
-                var descendant = tier1.Where(s => !s.Candidate.IsAncestor)
-                                     .OrderByDescending(s => s.Candidate.Depth)
-                                     .FirstOrDefault();
-                if (descendant != null) return descendant.Candidate.Element;
-
-                var ancestor = tier1.Where(s => s.Candidate.IsAncestor)
-                                   .OrderByDescending(s => s.Candidate.Depth)
-                                   .FirstOrDefault();
-                if (ancestor != null) return ancestor.Candidate.Element;
+                return element.CurrentIsPassword != 0;
             }
-
-            // Tier 2: TextPattern without focus
-            var tier2 = scored.Where(s => s.HasTextPattern && !s.ContainsFocus).ToList();
-            if (tier2.Count > 0)
+            catch
             {
-                var descendant = tier2.Where(s => !s.Candidate.IsAncestor)
-                                     .OrderByDescending(s => s.Candidate.Depth)
-                                     .FirstOrDefault();
-                if (descendant != null) return descendant.Candidate.Element;
-
-                var ancestor = tier2.Where(s => s.Candidate.IsAncestor)
-                                   .OrderByDescending(s => s.Candidate.Depth)
-                                   .FirstOrDefault();
-                if (ancestor != null) return ancestor.Candidate.Element;
+                return false;
             }
-
-            // Tier 3: Contains focus without TextPattern
-            var tier3 = scored.Where(s => s.ContainsFocus && !s.HasTextPattern).ToList();
-            if (tier3.Count > 0)
-            {
-                var descendant = tier3.Where(s => !s.Candidate.IsAncestor)
-                                     .OrderByDescending(s => s.Candidate.Depth)
-                                     .FirstOrDefault();
-                if (descendant != null) return descendant.Candidate.Element;
-
-                var ancestor = tier3.Where(s => s.Candidate.IsAncestor)
-                                   .OrderByDescending(s => s.Candidate.Depth)
-                                   .FirstOrDefault();
-                if (ancestor != null) return ancestor.Candidate.Element;
-            }
-
-            // Tier 4: Deepest descendant, then nearest ancestor
-            var descendantFallback = candidates.Where(c => !c.IsAncestor)
-                                               .OrderByDescending(c => c.Depth)
-                                               .FirstOrDefault();
-            if (descendantFallback.Element != null) return descendantFallback.Element;
-
-            var ancestorFallback = candidates.Where(c => c.IsAncestor)
-                                             .OrderByDescending(c => c.Depth)
-                                             .FirstOrDefault();
-            return ancestorFallback.Element;
         }
 
-        // =============================================================================
-        // Full Content Retrieval
-        // =============================================================================
-
         /// <summary>
-        /// Get full content from element, trying ValuePattern then TextPattern.
+        /// Check if placeholder is showing.
         /// </summary>
-        private static string? GetFullContent(AutomationElement element)
+        private static bool IsPlaceholderShowing(IUIAutomationElement element)
         {
-            // Try AXValue first
-            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var vp))
+            if (element == null) return false;
+
+            try
             {
-                try
+                // Check if value is empty but name has content (common placeholder pattern)
+                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
+                var valuePattern = pattern as IUIAutomationValuePattern;
+                if (valuePattern != null)
                 {
-                    var value = ((ValuePattern)vp).Current.Value;
-                    if (value != null)
-                        return StringHelpers.NormalizeNewlines(value);
+                    var value = valuePattern.CurrentValue;
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        var name = element.CurrentName;
+                        return !string.IsNullOrEmpty(name);
+                    }
                 }
-                catch { }
+            }
+            catch
+            {
             }
 
-            // Try TextPattern DocumentRange
-            if (element.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
+            return false;
+        }
+
+        /// <summary>
+        /// Truncate content if it exceeds max length.
+        /// Uses surrogate-safe boundaries to avoid splitting emoji/unicode characters.
+        /// </summary>
+        private static (string content, bool truncated) TruncateIfNeeded(string? content)
+        {
+            if (content == null) return ("", false);
+            if (content.Length <= Constants.MAX_FULL_CONTENT_LENGTH) return (content, false);
+
+            // Head + tail truncation with surrogate-safe boundaries
+            const string delimiter = "\n...\n";
+            var availableSpace = Constants.MAX_FULL_CONTENT_LENGTH - delimiter.Length;
+            var headSize = availableSpace / 2;
+            var tailSize = availableSpace - headSize;
+
+            // Ensure we don't split surrogate pairs
+            var head = StringHelpers.TruncateAtSurrogateBoundary(content, headSize);
+            var tailStart = StringHelpers.AdjustForSurrogatePair(content, content.Length - tailSize);
+            var tail = content.Substring(tailStart);
+
+            return (head + delimiter + tail, true);
+        }
+
+        /// <summary>
+        /// Window content around selection.
+        /// </summary>
+        private static (string Content, int AdjustedLocation) WindowContent(
+            string content, int location, int selectionLength)
+        {
+            // Window around selection with padding
+            var windowStart = Math.Max(0, location - Constants.WINDOW_PADDING);
+            var windowEnd = Math.Min(content.Length, location + selectionLength + Constants.WINDOW_PADDING);
+
+            // Ensure window doesn't exceed max
+            if (windowEnd - windowStart > Constants.MAX_FULL_CONTENT_LENGTH)
             {
+                var center = location + selectionLength / 2;
+                windowStart = Math.Max(0, center - Constants.MAX_FULL_CONTENT_LENGTH / 2);
+                windowEnd = Math.Min(content.Length, windowStart + Constants.MAX_FULL_CONTENT_LENGTH);
+                windowStart = Math.Max(0, windowEnd - Constants.MAX_FULL_CONTENT_LENGTH);
+            }
+
+            var windowed = content.Substring(windowStart, windowEnd - windowStart);
+            var adjustedLocation = location - windowStart;
+
+            return (windowed, adjustedLocation);
+        }
+
+        /// <summary>
+        /// Compute pre-selection context.
+        /// </summary>
+        private static string? ComputePreContext(string fullContent, SelectionRange range)
+        {
+            var location = (int)range.Location;
+            if (location == 0) return "";
+
+            var start = Math.Max(0, location - Constants.MAX_CONTEXT_LENGTH);
+            return fullContent.Substring(start, location - start);
+        }
+
+        /// <summary>
+        /// Compute post-selection context.
+        /// </summary>
+        private static string? ComputePostContext(string fullContent, SelectionRange range)
+        {
+            var end = (int)(range.Location + range.Length);
+            if (end >= fullContent.Length) return "";
+
+            var length = Math.Min(Constants.MAX_CONTEXT_LENGTH, fullContent.Length - end);
+            return fullContent.Substring(end, length);
+        }
+
+        /// <summary>
+        /// Find the Edit element that contains the caret within a Group element.
+        /// This handles Chromium contenteditable where the focused element is a Group
+        /// containing multiple Edit children (e.g., title and content in Notion).
+        /// </summary>
+        private static IUIAutomationElement? FindEditWithCaret(
+            IUIAutomationElement groupElement,
+            MetricsBuilder metricsBuilder)
+        {
+            try
+            {
+                // First, find the parent Document with TextPattern to get selection
+                var docTextPattern = FindParentTextPattern(groupElement);
+                if (docTextPattern == null) return null;
+
+                // Get the current selection/caret position
+                IUIAutomationTextRange? caretRange = null;
                 try
                 {
-                    var textPattern = (TextPattern)tp;
-                    // Use unbounded GetText(-1) to handle CRLF-heavy docs correctly
-                    var content = textPattern.DocumentRange.GetText(-1);
-                    return StringHelpers.NormalizeNewlines(content);
+                    var selections = docTextPattern.GetSelection();
+                    if (selections != null && selections.Length > 0)
+                    {
+                        caretRange = selections.GetElement(0);
+                    }
                 }
-                catch { }
+                catch (COMException)
+                {
+                    return null;
+                }
+
+                if (caretRange == null) return null;
+
+                // Search for Edit descendants
+                var edits = FindEditDescendants(groupElement, maxDepth: Constants.EDIT_SEARCH_MAX_DEPTH, maxEdits: Constants.EDIT_SEARCH_MAX_EDITS);
+                if (edits.Count == 0) return null;
+
+                // Find which Edit contains the caret using range comparison
+                foreach (var edit in edits)
+                {
+                    try
+                    {
+                        var editRange = docTextPattern.RangeFromChild(edit);
+                        if (editRange == null) continue;
+
+                        // Check if caret is within this Edit's range
+                        // caret.start >= edit.start AND caret.start <= edit.end
+                        int startCompare = caretRange.CompareEndpoints(
+                            TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
+                            editRange,
+                            TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
+                        int endCompare = caretRange.CompareEndpoints(
+                            TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
+                            editRange,
+                            TextPatternRangeEndpoint.TextPatternRangeEndpoint_End);
+
+                        if (startCompare >= 0 && endCompare <= 0)
+                        {
+                            return edit;
+                        }
+                    }
+                    catch (COMException)
+                    {
+                        continue;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                metricsBuilder.RecordError($"FindEditWithCaret: {ex.Message}");
             }
 
             return null;
         }
 
-        // =============================================================================
-        // Selection Range Clamping
-        // =============================================================================
-
         /// <summary>
-        /// Clamp selection range to content bounds and re-derive selectedText.
+        /// Find parent element with TextPattern.
         /// </summary>
-        private static (SelectionRange? range, string? selectedText) ClampAndRederive(
-            string? fullContent,
-            SelectionRange? range)
+        private static IUIAutomationTextPattern? FindParentTextPattern(IUIAutomationElement element)
         {
-            if (fullContent == null || range == null)
-                return (range, null);
+            var walker = UIAutomationService.ControlViewWalker;
+            var current = element;
 
-            var contentLength = fullContent.Length;
-
-            // Clamp location to content bounds
-            var location = StringHelpers.Clamp((int)range.Location, 0, contentLength);
-
-            // Clamp length so selection doesn't exceed content
-            var maxLength = contentLength - location;
-            var length = StringHelpers.Clamp((int)range.Length, 0, maxLength);
-
-            // Re-derive selectedText from clamped range
-            string? selectedText = null;
-            if (length > 0)
+            for (int i = 0; i < Constants.PARENT_CHAIN_MAX_DEPTH; i++)
             {
-                selectedText = StringHelpers.SubstringUtf16(fullContent, location, length);
-            }
-            else if (length == 0 && location <= contentLength)
-            {
-                selectedText = "";  // Cursor-only position
+                try
+                {
+                    var parent = walker.GetParentElement(current);
+                    if (parent == null) break;
+
+                    var parentType = parent.CurrentControlType;
+                    if (parentType == Constants.UIA_EditControlTypeId ||
+                        parentType == Constants.UIA_DocumentControlTypeId)
+                    {
+                        var tp = parent.GetCurrentPattern(Constants.UIA_TextPatternId) as IUIAutomationTextPattern;
+                        if (tp != null) return tp;
+                    }
+
+                    current = parent;
+                }
+                catch (COMException)
+                {
+                    break;
+                }
             }
 
-            return (new SelectionRange { Location = location, Length = length }, selectedText);
+            return null;
         }
 
-        // =============================================================================
-        // Content Windowing
-        // =============================================================================
+        /// <summary>
+        /// Find Edit element descendants using BFS.
+        /// </summary>
+        private static List<IUIAutomationElement> FindEditDescendants(
+            IUIAutomationElement root, int maxDepth, int maxEdits)
+        {
+            var edits = new List<IUIAutomationElement>();
+            var walker = UIAutomationService.ControlViewWalker;
+            var queue = new Queue<(IUIAutomationElement elem, int depth)>();
+            queue.Enqueue((root, 0));
+
+            while (queue.Count > 0 && edits.Count < maxEdits)
+            {
+                var (current, depth) = queue.Dequeue();
+                if (depth > maxDepth) continue;
+
+                try
+                {
+                    var child = walker.GetFirstChildElement(current);
+                    while (child != null && edits.Count < maxEdits)
+                    {
+                        var childType = child.CurrentControlType;
+                        if (childType == Constants.UIA_EditControlTypeId)
+                        {
+                            edits.Add(child);
+                        }
+
+                        if (depth + 1 <= maxDepth)
+                        {
+                            queue.Enqueue((child, depth + 1));
+                        }
+
+                        child = walker.GetNextSiblingElement(child);
+                    }
+                }
+                catch (COMException)
+                {
+                    continue;
+                }
+            }
+
+            return edits;
+        }
 
         /// <summary>
-        /// Apply content windowing based on the spec algorithm.
+        /// Extract text from an Edit element using its ValuePattern and TextPattern.
         /// </summary>
-        private static WindowResult WindowContent(
-            string content,
-            SelectionRange? selectionRange,
+        private static TextSelection? ExtractFromEditElement(
+            IUIAutomationElement editElement,
             MetricsBuilder metricsBuilder)
         {
-            var totalLength = content.Length;
-
-            // CASE A: No selection - head+tail truncation
-            if (selectionRange == null)
+            try
             {
-                var (truncated, _) = TruncateHeadTail(content);
-                return new WindowResult
+                var builder = new TextSelectionBuilder();
+                builder.IsEditable = true;
+                builder.ExtractionMethod = The0.TextMarkerRange;
+
+                // Get content from ValuePattern
+                var valuePattern = editElement.GetCurrentPattern(Constants.UIA_ValuePatternId) as IUIAutomationValuePattern;
+                var textPattern = editElement.GetCurrentPattern(Constants.UIA_TextPatternId) as IUIAutomationTextPattern;
+
+                string? fullContent = null;
+
+                // Prefer TextPattern for caret position, ValuePattern for content
+                if (valuePattern != null)
                 {
-                    WindowedContent = truncated,
-                    AdjustedRange = null,
-                    SelectedText = null,
-                    Truncated = true
-                };
-            }
-
-            var location = (int)selectionRange.Location;
-            var length = (int)selectionRange.Length;
-
-            // CASE B: Selection exceeds max - clamp to selection start
-            if (length > Constants.MAX_FULL_CONTENT_LENGTH)
-            {
-                var windowStart = location;
-                var windowEnd = Math.Min(location + Constants.MAX_FULL_CONTENT_LENGTH, totalLength);
-
-                // Adjust for surrogate pairs
-                windowStart = StringHelpers.AdjustForSurrogatePairs(content, windowStart, SurrogatePairDirection.Forward);
-                windowEnd = StringHelpers.AdjustForSurrogatePairs(content, windowEnd, SurrogatePairDirection.Backward);
-
-                var windowedContent = StringHelpers.SubstringUtf16(content, windowStart, windowEnd - windowStart) ?? "";
-                var windowLength = windowedContent.Length;
-
-                // Compute adjusted range
-                var rawLocation = location - windowStart;
-                var adjustedLocation = StringHelpers.Clamp(rawLocation, 0, windowLength);
-                var maxPossibleLength = windowLength - adjustedLocation;
-                var adjustedLength = StringHelpers.Clamp(length, 0, maxPossibleLength);
-
-                var selectedText = StringHelpers.SubstringUtf16(windowedContent, adjustedLocation, adjustedLength);
-
-                return new WindowResult
+                    fullContent = StringHelpers.NormalizeNewlines(valuePattern.CurrentValue);
+                    builder.IsEditable = valuePattern.CurrentIsReadOnly == 0;
+                }
+                else if (textPattern != null)
                 {
-                    WindowedContent = windowedContent,
-                    AdjustedRange = new SelectionRange { Location = adjustedLocation, Length = adjustedLength },
-                    SelectedText = selectedText,
-                    Truncated = true
-                };
+                    var docRange = textPattern.DocumentRange;
+                    fullContent = StringHelpers.NormalizeNewlines(docRange?.GetText(-1));
+                }
+
+                if (string.IsNullOrEmpty(fullContent))
+                {
+                    return null;
+                }
+
+                // Truncate if content is too large
+                var (truncatedContent, wasTruncated) = TruncateIfNeeded(fullContent);
+                builder.FullContent = truncatedContent;
+                builder.FullContentTruncated = wasTruncated;
+
+                // Try to get caret position from TextPattern
+                if (textPattern != null)
+                {
+                    try
+                    {
+                        var selections = textPattern.GetSelection();
+                        if (selections != null && selections.Length > 0)
+                        {
+                            var selRange = selections.GetElement(0);
+                            var selectedText = StringHelpers.NormalizeNewlines(selRange.GetText(-1));
+                            builder.SelectedText = selectedText;
+
+                            // Get location using before text
+                            var docRange = textPattern.DocumentRange;
+                            var beforeRange = selRange.Clone();
+                            beforeRange.MoveEndpointByRange(
+                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
+                                docRange,
+                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
+                            beforeRange.MoveEndpointByRange(
+                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_End,
+                                selRange,
+                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
+
+                            var beforeText = StringHelpers.NormalizeNewlines(beforeRange.GetText(-1));
+                            var location = beforeText?.Length ?? 0;
+                            var selectionLength = selectedText?.Length ?? 0;
+
+                            builder.SelectionRange = new SelectionRange
+                            {
+                                Location = location,
+                                Length = selectionLength
+                            };
+
+                            // Compute pre/post context
+                            if (fullContent != null)
+                            {
+                                builder.PreSelectionText = ComputePreContext(fullContent, builder.SelectionRange);
+                                builder.PostSelectionText = ComputePostContext(fullContent, builder.SelectionRange);
+                            }
+                        }
+                    }
+                    catch (COMException)
+                    {
+                        // No selection available, return content without position
+                    }
+                }
+
+                // Check placeholder
+                builder.IsPlaceholder = IsPlaceholderShowing(editElement);
+
+                return builder.Build();
             }
-
-            // CASE C: Selection fits - window around selection
-            var caseC_windowStart = Math.Max(0, location - Constants.WINDOW_PADDING);
-            var caseC_windowEnd = Math.Min(totalLength, location + length + Constants.WINDOW_PADDING);
-
-            // Shrink symmetrically if needed
-            if (caseC_windowEnd - caseC_windowStart > Constants.MAX_FULL_CONTENT_LENGTH)
+            catch (Exception ex)
             {
-                var selectionCenter = location + length / 2;
-                caseC_windowStart = Math.Max(0, selectionCenter - Constants.MAX_FULL_CONTENT_LENGTH / 2);
-                caseC_windowEnd = Math.Min(totalLength, caseC_windowStart + Constants.MAX_FULL_CONTENT_LENGTH);
-                caseC_windowStart = Math.Max(0, caseC_windowEnd - Constants.MAX_FULL_CONTENT_LENGTH);
+                metricsBuilder.RecordError($"ExtractFromEditElement: {ex.Message}");
+                return null;
             }
-
-            // Adjust for surrogate pairs
-            caseC_windowStart = StringHelpers.AdjustForSurrogatePairs(content, caseC_windowStart, SurrogatePairDirection.Forward);
-            caseC_windowEnd = StringHelpers.AdjustForSurrogatePairs(content, caseC_windowEnd, SurrogatePairDirection.Backward);
-
-            var caseC_windowedContent = StringHelpers.SubstringUtf16(content, caseC_windowStart, caseC_windowEnd - caseC_windowStart) ?? "";
-            var caseC_windowLength = caseC_windowedContent.Length;
-
-            // Compute adjusted range
-            var caseC_rawLocation = location - caseC_windowStart;
-            var caseC_adjustedLocation = StringHelpers.Clamp(caseC_rawLocation, 0, caseC_windowLength);
-            var caseC_maxPossibleLength = caseC_windowLength - caseC_adjustedLocation;
-            var caseC_adjustedLength = StringHelpers.Clamp(length, 0, caseC_maxPossibleLength);
-
-            var caseC_selectedText = StringHelpers.SubstringUtf16(caseC_windowedContent, caseC_adjustedLocation, caseC_adjustedLength);
-
-            return new WindowResult
-            {
-                WindowedContent = caseC_windowedContent,
-                AdjustedRange = new SelectionRange { Location = caseC_adjustedLocation, Length = caseC_adjustedLength },
-                SelectedText = caseC_selectedText,
-                Truncated = true
-            };
         }
+    }
 
-        /// <summary>
-        /// Truncate large content using head+tail strategy when no selection is available.
-        /// </summary>
-        private static (string content, bool truncated) TruncateHeadTail(string? content)
-        {
-            if (content == null)
-                return ("", false);
-
-            var normalized = StringHelpers.NormalizeNewlines(content);
-            if (normalized == null || normalized.Length <= Constants.MAX_FULL_CONTENT_LENGTH)
-                return (normalized ?? "", false);
-
-            // Head+tail truncation with delimiter (matching Swift)
-            const string delimiter = "\n...\n";
-            var delimiterLength = delimiter.Length;
-            var availableSpace = Constants.MAX_FULL_CONTENT_LENGTH - delimiterLength;
-            var headSize = availableSpace / 2;
-            var tailSize = availableSpace - headSize;
-            var tailStart = normalized.Length - tailSize;
-
-            // Adjust for surrogate pairs
-            headSize = StringHelpers.AdjustForSurrogatePairs(normalized, headSize, SurrogatePairDirection.Backward);
-            tailStart = StringHelpers.AdjustForSurrogatePairs(normalized, tailStart, SurrogatePairDirection.Forward);
-
-            var headContent = StringHelpers.SubstringUtf16(normalized, 0, headSize) ?? "";
-            var tailContent = StringHelpers.SubstringUtf16(normalized, tailStart, normalized.Length - tailStart) ?? "";
-
-            return (headContent + delimiter + tailContent, true);
-        }
-
-        // =============================================================================
-        // Context Computation
-        // =============================================================================
-
-        /// <summary>
-        /// Compute pre-selection context (up to MAX_CONTEXT_LENGTH chars before selection).
-        /// </summary>
-        private static string? ComputePreContext(string? fullContent, SelectionRange? range)
-        {
-            if (fullContent == null || range == null)
-                return null;
-
-            var location = (int)range.Location;
-            var contentLength = fullContent.Length;
-
-            if (location == 0)
-                return "";
-
-            var preStart = Math.Max(0, location - Constants.MAX_CONTEXT_LENGTH);
-            var preLength = location - preStart;
-
-            // Adjust for surrogate pairs - move START forward to not split pair
-            preStart = StringHelpers.AdjustForSurrogatePairs(fullContent, preStart, SurrogatePairDirection.Forward);
-            preLength = location - preStart;
-
-            return StringHelpers.SubstringUtf16(fullContent, preStart, preLength);
-        }
-
-        /// <summary>
-        /// Compute post-selection context (up to MAX_CONTEXT_LENGTH chars after selection).
-        /// </summary>
-        private static string? ComputePostContext(string? fullContent, SelectionRange? range)
-        {
-            if (fullContent == null || range == null)
-                return null;
-
-            var location = (int)range.Location;
-            var length = (int)range.Length;
-            var contentLength = fullContent.Length;
-
-            var postStart = location + length;
-
-            if (postStart >= contentLength)
-                return "";
-
-            var postLength = Math.Min(Constants.MAX_CONTEXT_LENGTH, contentLength - postStart);
-
-            // Adjust for surrogate pairs - move END backward to not split pair
-            var adjustedEnd = StringHelpers.AdjustForSurrogatePairs(
-                fullContent, postStart + postLength, SurrogatePairDirection.Backward);
-            postLength = adjustedEnd - postStart;
-
-            return StringHelpers.SubstringUtf16(fullContent, postStart, postLength);
-        }
+    /// <summary>
+    /// Result of text extraction.
+    /// </summary>
+    internal class TextExtractionResult
+    {
+        public string? SelectedText { get; set; }
+        public SelectionRange? SelectionRange { get; set; }
+        public string? FullContent { get; set; }
+        public bool HasMultipleRanges { get; set; }
+        public bool FullContentTruncated { get; set; }
+        public bool IsLargeDoc { get; set; }
     }
 }
