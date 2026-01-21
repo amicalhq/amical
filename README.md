@@ -44,6 +44,12 @@
   </a>
 </p>
 
+### Homebrew (macOS)
+
+```bash
+brew install --cask amical
+```
+
 ## 🔮 Overview
 
 Local-first AI Dictation app.
