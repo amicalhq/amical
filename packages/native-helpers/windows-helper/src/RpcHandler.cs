@@ -13,37 +13,18 @@ namespace WindowsHelper
         private readonly AccessibilityService accessibilityService;
         private readonly AudioService audioService;
         private readonly StaThreadRunner? staRunner;
-        private readonly StaThreadRunner? ownedStaRunner; // Track fallback runner we created
         private Action<string>? audioCompletionHandler;
         private bool disposed;
 
-        public RpcHandler(StaThreadRunner? staRunner = null, ClipboardService? clipboardService = null)
+        public RpcHandler(StaThreadRunner? staRunner, ClipboardService clipboardService)
         {
             this.staRunner = staRunner;
 
             // Use the generated converter settings from the models
             jsonOptions = WindowsHelper.Models.Converter.Settings;
 
-            // Create AccessibilityService with ClipboardService if provided
-            if (clipboardService != null)
-            {
-                accessibilityService = new AccessibilityService(clipboardService);
-            }
-            else if (staRunner != null)
-            {
-                // Create ClipboardService from StaThreadRunner if not provided
-                var clipboard = new ClipboardService(staRunner);
-                accessibilityService = new AccessibilityService(clipboard);
-            }
-            else
-            {
-                // Fallback: create a minimal StaThreadRunner for clipboard operations
-                // Track it so we can stop it on disposal
-                ownedStaRunner = new StaThreadRunner();
-                ownedStaRunner.Start();
-                var clipboard = new ClipboardService(ownedStaRunner);
-                accessibilityService = new AccessibilityService(clipboard);
-            }
+            // Create AccessibilityService with ClipboardService
+            accessibilityService = new AccessibilityService(clipboardService);
 
             audioService = new AudioService();
             audioService.SoundPlaybackCompleted += OnSoundPlaybackCompleted;
@@ -58,9 +39,6 @@ namespace WindowsHelper
         {
             if (disposed) return;
             disposed = true;
-
-            // Stop the fallback runner if we created it
-            ownedStaRunner?.Stop();
         }
 
         public void ProcessRpcRequests(CancellationToken cancellationToken)

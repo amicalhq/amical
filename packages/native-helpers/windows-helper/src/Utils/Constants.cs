@@ -33,6 +33,12 @@ namespace WindowsHelper.Utils
         /// </summary>
         public const int PARENT_CHAIN_MAX_DEPTH = 10;
 
+        /// <summary>
+        /// Maximum depth to search for window element (deeper than normal parent chain
+        /// because browser windows can be 12+ levels up from focused element)
+        /// </summary>
+        public const int WINDOW_SEARCH_MAX_DEPTH = 25;
+
         // =============================================================================
         // Timeouts (milliseconds)
         // =============================================================================
@@ -50,16 +56,6 @@ namespace WindowsHelper.Utils
         // =============================================================================
         // Search Limits
         // =============================================================================
-
-        /// <summary>
-        /// Maximum depth for URL address bar search in browsers
-        /// </summary>
-        public const int URL_SEARCH_MAX_DEPTH = 15;
-
-        /// <summary>
-        /// Maximum elements to visit during URL search
-        /// </summary>
-        public const int URL_SEARCH_MAX_ELEMENTS = 150;
 
         /// <summary>
         /// Maximum depth for finding Edit descendants

@@ -51,8 +51,21 @@ namespace WindowsHelper.Services
                 }
                 else
                 {
-                    // No text-capable element, but still get basic element info
+                    // No text-capable element found via ancestor search.
+                    // Still try SelectionExtractor - it has logic to find Edit descendants with caret
+                    // (handles Chromium contenteditable where Document isn't "editable" but Edit children are)
                     focusedElementInfo = FocusService.GetElementInfo(focusedElement);
+                    
+                    textSelectionInfo = SelectionExtractor.Extract(
+                        focusedElement: focusedElement,
+                        extractionElement: focusedElement,  // Use focused element as starting point
+                        metricsBuilder: metricsBuilder);
+                    
+                    // Apply editableOnly filter
+                    if (editableOnly && textSelectionInfo != null && !textSelectionInfo.IsEditable)
+                    {
+                        textSelectionInfo = null;
+                    }
                 }
 
                 // Get window info

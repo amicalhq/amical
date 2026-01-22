@@ -38,16 +38,38 @@ namespace WindowsHelper.Services
             // Try to find the specific Edit element that contains the caret.
             // This handles cases where the focused element is a container (Group, Pane, etc.)
             // containing multiple editable regions (e.g., Notion title + content).
-            // By finding the exact Edit with the caret, we avoid extracting the entire page.
             var editWithCaret = FindEditWithCaret(focusedElement, metricsBuilder);
             if (editWithCaret != null)
             {
-                // Use the Edit's ValuePattern directly - much cleaner extraction
                 var editResult = ExtractFromEditElement(editWithCaret, metricsBuilder);
                 if (editResult != null)
                 {
                     metricsBuilder.TextPatternSucceeded = true;
                     return editResult;
+                }
+            }
+            else
+            {
+                // No Edit with caret found - this often happens for empty lines in Notion
+                // where the caret is in a placeholder position not within any Edit.
+                var focusedClass = "";
+                try { focusedClass = focusedElement?.CurrentClassName ?? ""; } catch { }
+                
+                if (focusedClass.Contains("ContentEditable") || focusedClass.Contains("contentEditable") || 
+                    focusedClass.Contains("whenContentEditable"))
+                {
+                    metricsBuilder.TextPatternSucceeded = true;
+                    return new TextSelectionBuilder
+                    {
+                        FullContent = "",
+                        SelectedText = "",
+                        SelectionRange = new SelectionRange { Location = 0, Length = 0 },
+                        PreSelectionText = "",
+                        PostSelectionText = "",
+                        IsEditable = true,
+                        IsPlaceholder = true,
+                        ExtractionMethod = The0.TextMarkerRange
+                    }.Build();
                 }
             }
 
@@ -74,10 +96,7 @@ namespace WindowsHelper.Services
                         if (current == null) break;
 
                         textPattern = GetTextPattern(current);
-                        if (textPattern != null)
-                        {
-                            break;
-                        }
+                        if (textPattern != null) break;
                     }
                     catch (COMException)
                     {
@@ -125,6 +144,11 @@ namespace WindowsHelper.Services
                 builder.FullContent = valueResult;
                 builder.ExtractionMethod = The0.ValueAttribute;
                 builder.IsEditable = focusedIsEditable || IsElementEditable(extractionElement);
+                builder.IsPlaceholder = IsPlaceholderShowing(focusedElement) || IsPlaceholderShowing(extractionElement);
+                // ValuePattern doesn't provide caret info, but provide empty strings for consistency
+                builder.SelectedText = "";
+                builder.PreSelectionText = "";
+                builder.PostSelectionText = "";
                 return builder.Build();
             }
 
@@ -210,35 +234,8 @@ namespace WindowsHelper.Services
                     return null;
                 }
 
-                // Try to get a scoped range for the focused element using RangeFromChild.
-                // This prevents extracting the entire page (e.g., Notion sidebar + content)
-                // when we only care about the focused text block.
-                IUIAutomationTextRange? scopedRange = null;
-                try
-                {
-                    scopedRange = textPattern.RangeFromChild(focusedElement);
-                }
-                catch (COMException)
-                {
-                    // RangeFromChild may fail if the element isn't a direct text child
-                    // Fall back to document range
-                }
-
-                // Use scoped range if available and non-empty, otherwise fall back to doc range
-                var contentRange = scopedRange;
-                if (contentRange != null)
-                {
-                    var testText = contentRange.GetText(1);
-                    if (string.IsNullOrEmpty(testText))
-                    {
-                        // Scoped range is empty, fall back to doc range
-                        contentRange = docRange;
-                    }
-                }
-                else
-                {
-                    contentRange = docRange;
-                }
+                // Use document range for text extraction
+                var contentRange = docRange;
 
                 // Get selected text
                 var rawSelectedText = selectionRange.GetText(-1);
@@ -481,8 +478,11 @@ namespace WindowsHelper.Services
         /// </summary>
         private static string? ComputePreContext(string fullContent, SelectionRange range)
         {
+            if (string.IsNullOrEmpty(fullContent)) return "";
+            
             var location = (int)range.Location;
-            if (location == 0) return "";
+            if (location <= 0) return "";
+            if (location > fullContent.Length) location = fullContent.Length;
 
             var start = Math.Max(0, location - Constants.MAX_CONTEXT_LENGTH);
             return fullContent.Substring(start, location - start);
@@ -493,7 +493,10 @@ namespace WindowsHelper.Services
         /// </summary>
         private static string? ComputePostContext(string fullContent, SelectionRange range)
         {
+            if (string.IsNullOrEmpty(fullContent)) return "";
+            
             var end = (int)(range.Location + range.Length);
+            if (end < 0) end = 0;
             if (end >= fullContent.Length) return "";
 
             var length = Math.Min(Constants.MAX_CONTEXT_LENGTH, fullContent.Length - end);
@@ -683,10 +686,8 @@ namespace WindowsHelper.Services
                     fullContent = StringHelpers.NormalizeNewlines(docRange?.GetText(-1));
                 }
 
-                if (string.IsNullOrEmpty(fullContent))
-                {
-                    return null;
-                }
+                // Empty content is valid (empty editable field)
+                fullContent = fullContent ?? "";
 
                 // Truncate if content is too large
                 var (truncatedContent, wasTruncated) = TruncateIfNeeded(fullContent);
@@ -766,4 +767,5 @@ namespace WindowsHelper.Services
         public bool FullContentTruncated { get; set; }
         public bool IsLargeDoc { get; set; }
     }
+
 }

@@ -56,7 +56,7 @@ namespace WindowsHelper
                 hiddenForm.Hide();
 
                 // Initialize services after form is ready
-                InitializeServices();
+                InitializeServices(hiddenForm);
             };
 
             // Handle Ctrl+C gracefully
@@ -77,15 +77,15 @@ namespace WindowsHelper
             WinFormsApp.Run(hiddenForm);
         }
 
-        static void InitializeServices()
+        static void InitializeServices(Form mainForm)
         {
             try
             {
                 // 1. Keyboard STA thread - dedicated for hooks, must pump messages quickly
                 keyboardStaRunner = new StaThreadRunner();
 
-                // 2. ClipboardService - uses keyboard STA thread for clipboard operations
-                clipboardService = new ClipboardService(keyboardStaRunner);
+                // 2. ClipboardService - uses main STA thread via Form.Invoke
+                clipboardService = new ClipboardService(mainForm);
 
                 // 3. ShortcutMonitor - uses dedicated keyboard STA thread
                 shortcutMonitor = new ShortcutMonitor(keyboardStaRunner);

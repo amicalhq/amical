@@ -14,18 +14,25 @@ namespace WindowsHelper.Utils
         private const char BOM = '\uFEFF';
 
         /// <summary>
-        /// Normalize text content: remove BOM and normalize newlines.
+        /// Object Replacement Character - used in rich text for embedded objects.
+        /// Should be stripped as it's not meaningful text content.
+        /// </summary>
+        private const char OBJ_REPLACEMENT = '\uFFFC';
+
+        /// <summary>
+        /// Normalize text content: remove special chars and normalize newlines.
         /// CRITICAL: This must be called before any index calculations.
         /// </summary>
-        /// <param name="content">Content potentially containing BOM and/or CRLF</param>
-        /// <returns>Normalized content with BOM removed and only LF newlines</returns>
+        /// <param name="content">Content potentially containing special chars and/or CRLF</param>
+        /// <returns>Normalized content with special chars removed and only LF newlines</returns>
         public static string? NormalizeNewlines(string? content)
         {
             if (content == null) return null;
-            // Strip BOM characters (can appear at start or throughout text)
+            // Strip BOM and Object Replacement characters
             // Then replace CRLF, then any remaining standalone CR
             return content
                 .Replace(BOM.ToString(), "")
+                .Replace(OBJ_REPLACEMENT.ToString(), "")
                 .Replace("\r\n", "\n")
                 .Replace("\r", "\n");
         }

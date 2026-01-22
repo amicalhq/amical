@@ -8,7 +8,7 @@ using System.Windows.Forms;
 namespace WindowsHelper.Services
 {
     /// <summary>
-    /// Handles clipboard operations using a shared STA thread.
+    /// Handles clipboard operations on the main STA thread via Form.Invoke.
     /// Provides save/set/restore functionality for clipboard content.
     /// </summary>
     public class ClipboardService
@@ -16,7 +16,7 @@ namespace WindowsHelper.Services
         [DllImport("user32.dll")]
         private static extern int GetClipboardSequenceNumber();
 
-        private readonly StaThreadRunner staRunner;
+        private readonly Form mainForm;
 
         internal enum StoredDataType { Direct, Image, Stream }
 
@@ -31,9 +31,30 @@ namespace WindowsHelper.Services
             public bool SaveFailed { get; set; }  // Track save failure separately - don't clear clipboard on restore
         }
 
-        public ClipboardService(StaThreadRunner staRunner)
+        public ClipboardService(Form mainForm)
         {
-            this.staRunner = staRunner;
+            this.mainForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
+        }
+        
+        private T InvokeOnMainThread<T>(Func<T> action)
+        {
+            if (mainForm.InvokeRequired)
+            {
+                return (T)mainForm.Invoke(action);
+            }
+            return action();
+        }
+        
+        private void InvokeOnMainThread(Action action)
+        {
+            if (mainForm.InvokeRequired)
+            {
+                mainForm.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
 
         /// <summary>
@@ -46,12 +67,10 @@ namespace WindowsHelper.Services
 
         /// <summary>
         /// Saves the current clipboard content to memory.
-        /// Must be called from STA thread or via StaThreadRunner.
         /// </summary>
         internal ClipboardContent Save()
         {
-            ThrowIfNotRunning();
-            return staRunner.InvokeOnSta(() => DoSave()).Result;
+            return InvokeOnMainThread(() => DoSave());
         }
 
         /// <summary>
@@ -59,20 +78,7 @@ namespace WindowsHelper.Services
         /// </summary>
         public void SetText(string text)
         {
-            ThrowIfNotRunning();
-            staRunner.InvokeOnSta(() =>
-            {
-                Clipboard.SetText(text);
-                return true;
-            }).Wait();
-        }
-
-        private void ThrowIfNotRunning()
-        {
-            if (!staRunner.IsRunning)
-            {
-                throw new InvalidOperationException("StaThreadRunner is not running. Call Start() before using ClipboardService.");
-            }
+            InvokeOnMainThread(() => Clipboard.SetText(text));
         }
 
         /// <summary>
@@ -81,8 +87,7 @@ namespace WindowsHelper.Services
         /// </summary>
         internal string? RestoreSync(ClipboardContent content, int expectedSeq)
         {
-            ThrowIfNotRunning();
-            return staRunner.InvokeOnSta(() => DoRestore(content, expectedSeq)).Result;
+            return InvokeOnMainThread(() => DoRestore(content, expectedSeq));
         }
 
         private ClipboardContent DoSave()

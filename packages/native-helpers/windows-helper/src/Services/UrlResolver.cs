@@ -26,14 +26,15 @@ namespace WindowsHelper.Services
             ["opera"] = new[] { "OmniboxViewViews" },
             ["vivaldi"] = new[] { "OmniboxViewViews" },
             ["chromium"] = new[] { "OmniboxViewViews" },
-            // Firefox uses different class names
-            ["firefox"] = new[] { "MozillaWindowClass" }
+            // Firefox-based browsers (use AutomationId, not ClassName)
+            ["firefox"] = new[] { "MozillaWindowClass" },
+            ["zen"] = new[] { "MozillaWindowClass" }
         };
 
         /// <summary>
-        /// Firefox-specific AutomationIds (Firefox doesn't use semantic ClassNames for address bar)
+        /// Firefox-based browser AutomationIds (Firefox/Zen don't use semantic ClassNames for address bar)
         /// </summary>
-        private static readonly string[] FirefoxAutomationIds = new[] { "urlbar", "urlbar-input" };
+        private static readonly string[] GeckoAutomationIds = new[] { "urlbar", "urlbar-input" };
 
         /// <summary>
         /// Extract URL from a browser window.
@@ -57,10 +58,10 @@ namespace WindowsHelper.Services
                 return null;
             }
 
-            // Firefox needs special handling with AutomationId
-            if (browser == "firefox")
+            // Firefox-based browsers need special handling with AutomationId
+            if (browser == "firefox" || browser == "zen")
             {
-                return ExtractFirefoxUrl(windowElement);
+                return ExtractGeckoUrl(windowElement);
             }
 
             // Chromium-based browsers: search by ClassName
@@ -70,11 +71,7 @@ namespace WindowsHelper.Services
             foreach (var className in classNames)
             {
                 LogToStderr($"Searching for ClassName='{className}'");
-                var addressBar = FindElementByClassNameBounded(
-                    windowElement,
-                    className,
-                    maxDepth: Constants.URL_SEARCH_MAX_DEPTH,
-                    maxElements: Constants.URL_SEARCH_MAX_ELEMENTS);
+                var addressBar = FindElementByClassName(windowElement, className);
 
                 if (addressBar != null)
                 {
@@ -92,20 +89,16 @@ namespace WindowsHelper.Services
         }
 
         /// <summary>
-        /// Extract URL from Firefox using AutomationId (Firefox doesn't expose semantic ClassNames).
+        /// Extract URL from Firefox-based browsers using AutomationId (Gecko doesn't expose semantic ClassNames).
         /// </summary>
-        private static string? ExtractFirefoxUrl(IUIAutomationElement windowElement)
+        private static string? ExtractGeckoUrl(IUIAutomationElement windowElement)
         {
-            LogToStderr($"Firefox: trying AutomationIds: {string.Join(", ", FirefoxAutomationIds)}");
+            LogToStderr($"Gecko browser: trying AutomationIds: {string.Join(", ", GeckoAutomationIds)}");
 
-            foreach (var automationId in FirefoxAutomationIds)
+            foreach (var automationId in GeckoAutomationIds)
             {
                 LogToStderr($"Searching for AutomationId='{automationId}'");
-                var addressBar = FindElementByAutomationIdBounded(
-                    windowElement,
-                    automationId,
-                    maxDepth: Constants.URL_SEARCH_MAX_DEPTH,
-                    maxElements: Constants.URL_SEARCH_MAX_ELEMENTS);
+                var addressBar = FindElementByAutomationId(windowElement, automationId);
 
                 if (addressBar != null)
                 {
@@ -155,109 +148,83 @@ namespace WindowsHelper.Services
         }
 
         /// <summary>
-        /// Bounded BFS search for element by ClassName.
+        /// Find element by ClassName using UIA's built-in FindFirst.
         /// </summary>
-        private static IUIAutomationElement? FindElementByClassNameBounded(
+        private static IUIAutomationElement? FindElementByClassName(
             IUIAutomationElement root,
-            string className,
-            int maxDepth,
-            int maxElements)
+            string className)
         {
-            var queue = new Queue<(IUIAutomationElement element, int depth)>();
-            queue.Enqueue((root, 0));
-            int visited = 0;
-
-            var walker = UIAutomationService.ControlViewWalker;
-            if (walker == null)
+            try
             {
-                LogToStderr("BFS: ControlViewWalker is null!");
+                var automation = UIAutomationService.Automation;
+                if (automation == null)
+                {
+                    LogToStderr("FindElementByClassName: Automation is null!");
+                    return null;
+                }
+
+                // UIA_ClassNamePropertyId = 30012
+                var condition = automation.CreatePropertyCondition(30012, className);
+                
+                // TreeScope_Descendants = 4
+                var element = root.FindFirst((TreeScope)4, condition);
+                
+                if (element != null)
+                {
+                    LogToStderr($"FindFirst: Found ClassName='{className}'");
+                }
+                else
+                {
+                    LogToStderr($"FindFirst: ClassName='{className}' not found");
+                }
+                
+                return element;
+            }
+            catch (COMException ex)
+            {
+                LogToStderr($"FindElementByClassName error: {ex.Message}");
                 return null;
             }
-
-            while (queue.Count > 0 && visited < maxElements)
-            {
-                var (current, depth) = queue.Dequeue();
-                visited++;
-
-                try
-                {
-                    var currentClass = current.CurrentClassName;
-                    if (string.Equals(currentClass, className, StringComparison.Ordinal))
-                    {
-                        LogToStderr($"BFS: Found ClassName='{className}' at depth={depth}, visited={visited}");
-                        return current;
-                    }
-
-                    if (depth >= maxDepth) continue;
-
-                    var child = walker.GetFirstChildElement(current);
-                    while (child != null && visited < maxElements)
-                    {
-                        queue.Enqueue((child, depth + 1));
-                        child = walker.GetNextSiblingElement(child);
-                    }
-                }
-                catch (COMException ex)
-                {
-                    LogToStderr($"BFS: COMException at depth={depth}: {ex.Message}");
-                }
-            }
-
-            LogToStderr($"BFS: ClassName='{className}' not found: visited={visited}, maxDepth={maxDepth}");
-            return null;
         }
 
         /// <summary>
-        /// Bounded BFS search for element by AutomationId (Firefox fallback).
+        /// Find element by AutomationId using UIA's built-in FindFirst (much faster than BFS).
         /// </summary>
-        private static IUIAutomationElement? FindElementByAutomationIdBounded(
+        private static IUIAutomationElement? FindElementByAutomationId(
             IUIAutomationElement root,
-            string automationId,
-            int maxDepth,
-            int maxElements)
+            string automationId)
         {
-            var queue = new Queue<(IUIAutomationElement element, int depth)>();
-            queue.Enqueue((root, 0));
-            int visited = 0;
-
-            var walker = UIAutomationService.ControlViewWalker;
-            if (walker == null)
+            try
             {
-                LogToStderr("BFS: ControlViewWalker is null!");
+                var automation = UIAutomationService.Automation;
+                if (automation == null)
+                {
+                    LogToStderr("FindElementByAutomationId: Automation is null!");
+                    return null;
+                }
+
+                // UIA_AutomationIdPropertyId = 30011
+                var condition = automation.CreatePropertyCondition(30011, automationId);
+                
+                // TreeScope_Descendants = 4
+                var element = root.FindFirst((TreeScope)4, condition);
+                
+                if (element != null)
+                {
+                    LogToStderr($"FindFirst: Found AutomationId='{automationId}'");
+                }
+                else
+                {
+                    LogToStderr($"FindFirst: AutomationId='{automationId}' not found");
+                }
+                
+                return element;
+            }
+            catch (COMException ex)
+            {
+                LogToStderr($"FindElementByAutomationId error: {ex.Message}");
                 return null;
             }
-
-            while (queue.Count > 0 && visited < maxElements)
-            {
-                var (current, depth) = queue.Dequeue();
-                visited++;
-
-                try
-                {
-                    var currentId = current.CurrentAutomationId;
-                    if (string.Equals(currentId, automationId, StringComparison.Ordinal))
-                    {
-                        LogToStderr($"BFS: Found AutomationId='{automationId}' at depth={depth}, visited={visited}");
-                        return current;
-                    }
-
-                    if (depth >= maxDepth) continue;
-
-                    var child = walker.GetFirstChildElement(current);
-                    while (child != null && visited < maxElements)
-                    {
-                        queue.Enqueue((child, depth + 1));
-                        child = walker.GetNextSiblingElement(child);
-                    }
-                }
-                catch (COMException ex)
-                {
-                    LogToStderr($"BFS: COMException at depth={depth}: {ex.Message}");
-                }
-            }
-
-            LogToStderr($"BFS: AutomationId='{automationId}' not found: visited={visited}, maxDepth={maxDepth}");
-            return null;
         }
 
         /// <summary>

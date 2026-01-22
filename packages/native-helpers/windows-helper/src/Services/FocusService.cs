@@ -43,9 +43,11 @@ namespace WindowsHelper.Services
             try
             {
                 // Check if current element is text-capable
-                if (IsTextCapable(element))
+                var isTextCapable = IsTextCapable(element);
+                if (isTextCapable)
                 {
-                    if (!editableOnly || IsElementEditable(element))
+                    var isEditable = IsElementEditable(element);
+                    if (!editableOnly || isEditable)
                     {
                         return new FocusResult { Element = element, WasSearched = false };
                     }
@@ -68,12 +70,14 @@ namespace WindowsHelper.Services
 
                         // Check if we've reached root
                         var automationId = parent.CurrentAutomationId;
-                        if (string.IsNullOrEmpty(automationId) && parent.CurrentControlType == 0)
+                        var parentType = parent.CurrentControlType;
+                        if (string.IsNullOrEmpty(automationId) && parentType == 0)
                             break;
 
                         if (IsTextCapable(parent))
                         {
-                            if (!editableOnly || IsElementEditable(parent))
+                            var parentEditable = IsElementEditable(parent);
+                            if (!editableOnly || parentEditable)
                             {
                                 return new FocusResult { Element = parent, WasSearched = true };
                             }
@@ -306,10 +310,8 @@ namespace WindowsHelper.Services
 
             try
             {
-                var windowElement = GetWindowElement(element);
-                if (windowElement == null) return (null, null);
-
-                var processId = windowElement.CurrentProcessId;
+                // Get process ID directly from element (all elements have this)
+                var processId = element.CurrentProcessId;
                 var process = Process.GetProcessById(processId);
 
                 var processName = process.ProcessName;
@@ -357,11 +359,11 @@ namespace WindowsHelper.Services
                     return element;
                 }
 
-                // Walk up to find window
+                // Walk up to find window (use higher depth limit - windows can be far up the tree)
                 var walker = UIAutomationService.ControlViewWalker;
                 var current = element;
 
-                for (int i = 0; i < Constants.PARENT_CHAIN_MAX_DEPTH; i++)
+                for (int i = 0; i < Constants.WINDOW_SEARCH_MAX_DEPTH; i++)
                 {
                     var parent = walker.GetParentElement(current);
                     if (parent == null) break;

@@ -37,7 +37,7 @@ namespace WindowsHelper.Utils
                 
                 var current = element;
 
-                for (int i = 0; i < Constants.PARENT_CHAIN_MAX_DEPTH; i++)
+                for (int i = 0; i < Constants.WINDOW_SEARCH_MAX_DEPTH; i++)
                 {
                     var parent = walker.GetParentElement(current);
                     if (parent == null)
@@ -55,7 +55,7 @@ namespace WindowsHelper.Utils
                     current = parent;
                 }
                 
-                LogToStderr($"No Window found within {Constants.PARENT_CHAIN_MAX_DEPTH} levels");
+                LogToStderr($"No Window found within {Constants.WINDOW_SEARCH_MAX_DEPTH} levels");
             }
             catch (Exception ex)
             {
