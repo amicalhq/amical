@@ -84,8 +84,23 @@ private let macOSKeycodeToKey: [Int: String] = [
     50: "`",
 ]
 
+/// Reverse lookup: key name to keycode
+private let macOSKeyToKeycode: [String: Int] = {
+    var reverse: [String: Int] = [:]
+    for (keyCode, name) in macOSKeycodeToKey {
+        reverse[name] = keyCode
+    }
+    return reverse
+}()
+
 /// Convert a macOS CGKeyCode to a key name string
 /// Returns nil if the keycode is not mapped
 func keyCodeToName(_ keyCode: Int) -> String? {
     return macOSKeycodeToKey[keyCode]
+}
+
+/// Convert a key name string to a macOS CGKeyCode
+/// Returns nil if the key name is not mapped
+func nameToKeyCode(_ name: String) -> Int? {
+    return macOSKeyToKeycode[name]
 }

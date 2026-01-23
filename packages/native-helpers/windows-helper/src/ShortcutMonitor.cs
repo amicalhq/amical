@@ -32,6 +32,9 @@ namespace WindowsHelper
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr GetModuleHandle(string lpModuleName);
 
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct KBDLLHOOKSTRUCT
         {
@@ -235,6 +238,26 @@ namespace WindowsHelper
 
                             if (ShortcutManager.Instance.ShouldConsumeKey((int)kbStruct.vkCode, modifierState))
                             {
+                                // Before consuming, validate that all tracked keys are actually pressed.
+                                // This prevents stuck keys (missed keyUp events) from blocking input system-wide.
+                                if (!ValidateKeyStateBeforeConsume())
+                                {
+                                    // State was invalid (some keys were stuck), re-check with corrected state
+                                    var correctedModifierState = new ModifierState
+                                    {
+                                        Win = winPressed,
+                                        Ctrl = ctrlPressed,
+                                        Alt = altPressed,
+                                        Shift = shiftPressed
+                                    };
+
+                                    if (!ShortcutManager.Instance.ShouldConsumeKey((int)kbStruct.vkCode, correctedModifierState))
+                                    {
+                                        // After correction, we should NOT consume - let the key through
+                                        return CallNextHookEx(hookId, nCode, wParam, lParam);
+                                    }
+                                }
+
                                 // Consume - prevent default behavior (e.g., cursor movement for arrow keys)
                                 return (IntPtr)1;
                             }
@@ -345,6 +368,85 @@ namespace WindowsHelper
             var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             Console.Error.WriteLine($"[{timestamp}] [ShortcutMonitor] {message}");
             Console.Error.Flush();
+        }
+
+        /// <summary>
+        /// Check if a key is actually pressed using GetAsyncKeyState.
+        /// </summary>
+        private bool IsKeyActuallyPressed(int vkCode)
+        {
+            // High-order bit is set if key is currently down
+            return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+        }
+
+        /// <summary>
+        /// Validate that all tracked key states match actual OS state.
+        /// If any key is not actually pressed, resync state and return false.
+        /// This prevents stuck keys from causing keys to be consumed incorrectly.
+        /// </summary>
+        private bool ValidateKeyStateBeforeConsume()
+        {
+            bool stateValid = true;
+
+            // Validate modifier keys
+            if (leftShiftPressed && !IsKeyActuallyPressed(VK_LSHIFT))
+            {
+                LogToStderr("Resync: leftShift was stuck, clearing");
+                leftShiftPressed = false;
+                stateValid = false;
+            }
+            if (rightShiftPressed && !IsKeyActuallyPressed(VK_RSHIFT))
+            {
+                LogToStderr("Resync: rightShift was stuck, clearing");
+                rightShiftPressed = false;
+                stateValid = false;
+            }
+            if (leftCtrlPressed && !IsKeyActuallyPressed(VK_LCONTROL))
+            {
+                LogToStderr("Resync: leftCtrl was stuck, clearing");
+                leftCtrlPressed = false;
+                stateValid = false;
+            }
+            if (rightCtrlPressed && !IsKeyActuallyPressed(VK_RCONTROL))
+            {
+                LogToStderr("Resync: rightCtrl was stuck, clearing");
+                rightCtrlPressed = false;
+                stateValid = false;
+            }
+            if (leftAltPressed && !IsKeyActuallyPressed(VK_LMENU))
+            {
+                LogToStderr("Resync: leftAlt was stuck, clearing");
+                leftAltPressed = false;
+                stateValid = false;
+            }
+            if (rightAltPressed && !IsKeyActuallyPressed(VK_RMENU))
+            {
+                LogToStderr("Resync: rightAlt was stuck, clearing");
+                rightAltPressed = false;
+                stateValid = false;
+            }
+            if (leftWinPressed && !IsKeyActuallyPressed(VK_LWIN))
+            {
+                LogToStderr("Resync: leftWin was stuck, clearing");
+                leftWinPressed = false;
+                stateValid = false;
+            }
+            if (rightWinPressed && !IsKeyActuallyPressed(VK_RWIN))
+            {
+                LogToStderr("Resync: rightWin was stuck, clearing");
+                rightWinPressed = false;
+                stateValid = false;
+            }
+
+            // Validate regular keys tracked in ShortcutManager
+            var staleKeys = ShortcutManager.Instance.ValidateAndClearStaleKeys();
+            if (staleKeys.Count > 0)
+            {
+                LogToStderr($"Resync: Regular keys were stuck, cleared: [{string.Join(", ", staleKeys)}]");
+                stateValid = false;
+            }
+
+            return stateValid;
         }
     }
 }

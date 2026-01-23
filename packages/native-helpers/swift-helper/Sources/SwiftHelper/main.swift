@@ -84,6 +84,22 @@ func eventTapCallback(
         }
 
         if ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode), modifiers: modifiers) {
+            // Before consuming, validate that all tracked keys are actually pressed.
+            // This prevents stuck keys (missed keyUp events) from blocking input.
+            if !ShortcutManager.shared.validateAndResyncKeyState() {
+                // State was invalid (some keys were stuck), re-check with corrected state
+                let correctedModifiers = ModifierState(
+                    fn: event.flags.contains(.maskSecondaryFn),
+                    cmd: event.flags.contains(.maskCommand),
+                    ctrl: event.flags.contains(.maskControl),
+                    alt: event.flags.contains(.maskAlternate),
+                    shift: event.flags.contains(.maskShift)
+                )
+                if !ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode), modifiers: correctedModifiers) {
+                    // After correction, we should NOT consume - let the key through
+                    return Unmanaged.passRetained(event)
+                }
+            }
             // CONSUME - prevent default behavior (e.g., cursor movement for arrow keys)
             return nil
         }

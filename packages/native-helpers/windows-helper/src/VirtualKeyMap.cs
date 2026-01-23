@@ -25,6 +25,7 @@ namespace WindowsHelper
 
         private static readonly Dictionary<int, string> VkCodeToKey = new()
         {
+            // Note: Reverse lookup dictionary (KeyToVkCode) is auto-generated below
             // Letters (A-Z: 0x41-0x5A)
             { 0x41, "A" },
             { 0x42, "B" },
@@ -106,6 +107,18 @@ namespace WindowsHelper
             { 0xC0, "`" },      // VK_OEM_3
         };
 
+        // Reverse lookup: key name to VK code (auto-generated from VkCodeToKey)
+        private static readonly Dictionary<string, int> KeyToVkCode;
+
+        static VirtualKeyMap()
+        {
+            KeyToVkCode = new Dictionary<string, int>();
+            foreach (var kvp in VkCodeToKey)
+            {
+                KeyToVkCode[kvp.Value] = kvp.Key;
+            }
+        }
+
         /// <summary>
         /// Convert a Windows Virtual Key code to a key name string.
         /// Returns null if the keycode is not mapped.
@@ -113,6 +126,15 @@ namespace WindowsHelper
         public static string? GetKeyName(int vkCode)
         {
             return VkCodeToKey.TryGetValue(vkCode, out var name) ? name : null;
+        }
+
+        /// <summary>
+        /// Convert a key name string to a Windows Virtual Key code.
+        /// Returns null if the key name is not mapped.
+        /// </summary>
+        public static int? GetVkCode(string keyName)
+        {
+            return KeyToVkCode.TryGetValue(keyName, out var vkCode) ? vkCode : null;
         }
     }
 }

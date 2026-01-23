@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Represents the state of modifier keys at a given moment
@@ -98,6 +99,50 @@ class ShortcutManager {
         lock.lock()
         defer { lock.unlock() }
         pressedRegularKeys.remove(key)
+    }
+
+    /// Check if a key is actually pressed using CGEventSource
+    private func isKeyActuallyPressed(_ keyCode: CGKeyCode) -> Bool {
+        return CGEventSource.keyState(.combinedSessionState, key: keyCode)
+    }
+
+    /// Validate all tracked key states against actual OS state.
+    /// Removes any keys that are not actually pressed (stuck keys).
+    /// Returns true if state was valid, false if corrections were made.
+    func validateAndResyncKeyState() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var stateValid = true
+
+        // Validate Fn key state
+        // Fn key code is 0x3F (63)
+        let fnKeyCode: CGKeyCode = 0x3F
+        if fnKeyDown && !isKeyActuallyPressed(fnKeyCode) {
+            logToStderr("[ShortcutManager] Resync: Fn key was stuck, clearing")
+            fnKeyDown = false
+            stateValid = false
+        }
+
+        // Validate regular keys
+        var staleKeys: [String] = []
+        for keyName in pressedRegularKeys {
+            if let keyCode = nameToKeyCode(keyName) {
+                if !isKeyActuallyPressed(CGKeyCode(keyCode)) {
+                    staleKeys.append(keyName)
+                }
+            }
+        }
+
+        if !staleKeys.isEmpty {
+            for key in staleKeys {
+                pressedRegularKeys.remove(key)
+            }
+            logToStderr("[ShortcutManager] Resync: Regular keys were stuck, cleared: \(staleKeys)")
+            stateValid = false
+        }
+
+        return stateValid
     }
 
     /// Check if this key event should be consumed (prevent default behavior)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace WindowsHelper
 {
@@ -23,6 +24,9 @@ namespace WindowsHelper
     /// </summary>
     public class ShortcutManager
     {
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
         private static readonly Lazy<ShortcutManager> _instance = new(() => new ShortcutManager());
         public static ShortcutManager Instance => _instance.Value;
 
@@ -85,6 +89,41 @@ namespace WindowsHelper
             {
                 _pressedRegularKeys.Remove(key);
             }
+        }
+
+        /// <summary>
+        /// Check if a key is actually pressed using GetAsyncKeyState.
+        /// </summary>
+        private bool IsKeyActuallyPressed(int vkCode)
+        {
+            // High-order bit is set if key is currently down
+            return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+        }
+
+        /// <summary>
+        /// Validate all tracked regular keys against actual OS state.
+        /// Removes any keys that are not actually pressed (stuck keys).
+        /// Returns the list of keys that were removed.
+        /// </summary>
+        public List<string> ValidateAndClearStaleKeys()
+        {
+            var staleKeys = new List<string>();
+
+            lock (_lock)
+            {
+                var keysToCheck = _pressedRegularKeys.ToList();
+                foreach (var keyName in keysToCheck)
+                {
+                    var vkCode = VirtualKeyMap.GetVkCode(keyName);
+                    if (vkCode.HasValue && !IsKeyActuallyPressed(vkCode.Value))
+                    {
+                        _pressedRegularKeys.Remove(keyName);
+                        staleKeys.Add(keyName);
+                    }
+                }
+            }
+
+            return staleKeys;
         }
 
         /// <summary>
