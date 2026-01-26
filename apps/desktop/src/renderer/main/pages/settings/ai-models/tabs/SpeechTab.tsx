@@ -337,7 +337,11 @@ export default function SpeechTab() {
     }
   };
 
-  const handleDeleteClick = (modelId: string) => {
+  const handleDeleteClick = (modelId: string, event?: React.MouseEvent) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     setModelToDelete(modelId);
     setShowDeleteDialog(true);
   };
@@ -624,7 +628,7 @@ export default function SpeechTab() {
                                 {!isCloudModel && isDownloaded && (
                                   <button
                                     type="button"
-                                    onClick={() => handleDeleteClick(model.id)}
+                                    onClick={(e) => handleDeleteClick(model.id, e)}
                                     className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
                                     title="Click to delete model"
                                     aria-label={`Delete ${model.name}`}
