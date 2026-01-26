@@ -173,31 +173,15 @@ export default function SpeechTab() {
   });
 
   const setSelectedModelMutation = api.models.setSelectedModel.useMutation({
-    onMutate: async ({ modelId }) => {
-      // Cancel outgoing refetches
-      await utils.models.getSelectedModel.cancel();
-      // Snapshot previous value
-      const previousModel = utils.models.getSelectedModel.getData();
-      // Optimistically update to new value
-      utils.models.getSelectedModel.setData(undefined, modelId);
-      return { previousModel };
-    },
     onSuccess: (_data, variables) => {
+      utils.models.getSelectedModel.invalidate();
       if (variables.modelId === "amical-cloud") {
         toast.success("Amical Cloud selected. Cloud formatting enabled.");
       }
     },
-    onError: (error, _variables, context) => {
-      // Rollback to previous value on error
-      if (context?.previousModel !== undefined) {
-        utils.models.getSelectedModel.setData(undefined, context.previousModel);
-      }
+    onError: (error) => {
       console.error("Failed to select model:", error);
       toast.error("Failed to select model");
-    },
-    onSettled: () => {
-      // Always refetch to ensure consistency
-      utils.models.getSelectedModel.invalidate();
     },
   });
 
