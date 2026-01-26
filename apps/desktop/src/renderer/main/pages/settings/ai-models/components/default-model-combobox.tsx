@@ -66,15 +66,34 @@ export default function DefaultModelCombobox({
 
   // Unified mutation
   const setDefaultModelMutation = api.models.setDefaultModel.useMutation({
+    onMutate: async ({ type, modelId }) => {
+      // Cancel outgoing refetches
+      await utils.models.getDefaultModel.cancel({ type });
+      // Snapshot previous value
+      const previousModel = utils.models.getDefaultModel.getData({ type });
+      // Optimistically update to new value
+      utils.models.getDefaultModel.setData({ type }, modelId);
+      return { previousModel };
+    },
     onSuccess: () => {
-      utils.models.getDefaultModel.invalidate({ type: modelType });
       toast.success(`Default ${modelType} model updated!`);
     },
-    onError: (error) => {
+    onError: (error, variables, context) => {
+      // Rollback to previous value on error
+      if (context?.previousModel !== undefined) {
+        utils.models.getDefaultModel.setData(
+          { type: variables.type },
+          context.previousModel,
+        );
+      }
       console.error(`Failed to set default ${modelType} model:`, error);
       toast.error(
         `Failed to set default ${modelType} model. Please try again.`,
       );
+    },
+    onSettled: (_data, _error, variables) => {
+      // Always refetch to ensure consistency
+      utils.models.getDefaultModel.invalidate({ type: variables.type });
     },
   });
 
@@ -135,7 +154,7 @@ export default function DefaultModelCombobox({
           <Combobox
             options={[]}
             value=""
-            onChange={() => {}}
+            onChange={() => { }}
             placeholder="Loading..."
             disabled
           />
