@@ -109,13 +109,16 @@ export const settingsRouter = createRouter({
 
         await settingsService.setTranscriptionSettings(mergedSettings);
 
-        // Handle model preloading change
+        // Handle model preloading change (fire-and-forget to avoid blocking UI)
         if (preloadChanged) {
           const transcriptionService = ctx.serviceManager.getService(
             "transcriptionService",
           );
           if (transcriptionService) {
-            await transcriptionService.handleModelChange();
+            transcriptionService.handleModelChange().catch((err) => {
+              const logger = ctx.serviceManager.getLogger();
+              logger?.main.error("Failed to handle model change:", err);
+            });
           }
         }
 

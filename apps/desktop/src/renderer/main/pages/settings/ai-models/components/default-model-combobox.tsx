@@ -135,7 +135,7 @@ export default function DefaultModelCombobox({
           <Combobox
             options={[]}
             value=""
-            onChange={() => {}}
+            onChange={() => { }}
             placeholder="Loading..."
             disabled
           />
