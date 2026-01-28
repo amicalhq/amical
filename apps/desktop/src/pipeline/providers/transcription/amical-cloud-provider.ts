@@ -242,7 +242,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         audioData: Buffer.from(
           audioData.buffer,
           audioData.byteOffset,
-          audioData.byteLength
+          audioData.byteLength,
         ).toString("base64"),
         vadProbs,
         language: this.currentLanguage,

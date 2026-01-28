@@ -36,6 +36,7 @@ export class TranscriptionService {
   private settingsService: SettingsService;
   private vadMutex: Mutex;
   private transcriptionMutex: Mutex;
+  private modelLoadMutex: Mutex;
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private modelWasPreloaded: boolean = false;
@@ -54,6 +55,7 @@ export class TranscriptionService {
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
     this.transcriptionMutex = new Mutex();
+    this.modelLoadMutex = new Mutex();
     this.telemetryService = telemetryService;
     this.modelService = modelService;
   }
@@ -178,39 +180,40 @@ export class TranscriptionService {
   }
 
   /**
-   * Handle model change - dispose old model and load new one if preloading is enabled
+   * Handle model change - load new model if preloading is enabled
+   * Uses mutex to serialize concurrent model loads
    */
   async handleModelChange(): Promise<void> {
-    try {
-      // Dispose current model
-      await this.whisperProvider.dispose();
-      this.modelWasPreloaded = false; // Reset preload flag on model change
+    this.modelLoadMutex.runExclusive(async () => {
+      try {
+        this.modelWasPreloaded = false;
 
-      // Check if preloading is enabled and models are available
-      if (this.settingsService) {
-        const transcriptionSettings =
-          await this.settingsService.getTranscriptionSettings();
-        const shouldPreload =
-          transcriptionSettings?.preloadWhisperModel !== false;
+        // Check if preloading is enabled and models are available
+        if (this.settingsService) {
+          const transcriptionSettings =
+            await this.settingsService.getTranscriptionSettings();
+          const shouldPreload =
+            transcriptionSettings?.preloadWhisperModel !== false;
 
-        if (shouldPreload) {
-          const hasModels = await this.isModelAvailable();
-          if (hasModels) {
-            logger.transcription.info(
-              "Reloading Whisper model after model change...",
-            );
-            await this.whisperProvider.preloadModel();
-            this.modelWasPreloaded = true;
-            logger.transcription.info("Whisper model reloaded successfully");
-          } else {
-            logger.transcription.info("No models available to preload");
+          if (shouldPreload) {
+            const hasModels = await this.isModelAvailable();
+            if (hasModels) {
+              logger.transcription.info(
+                "Loading Whisper model after model change...",
+              );
+              await this.whisperProvider.preloadModel();
+              this.modelWasPreloaded = true;
+              logger.transcription.info("Whisper model loaded successfully");
+            } else {
+              logger.transcription.info("No models available to preload");
+            }
           }
         }
+      } catch (error) {
+        logger.transcription.error("Failed to handle model change:", error);
+        // Don't throw - model will be loaded on first use
       }
-    } catch (error) {
-      logger.transcription.error("Failed to handle model change:", error);
-      // Don't throw - model will be loaded on first use
-    }
+    });
   }
 
   /**
