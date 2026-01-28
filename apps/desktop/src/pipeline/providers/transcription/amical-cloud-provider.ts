@@ -239,7 +239,11 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       body: JSON.stringify({
         sessionId: this.currentSessionId,
         isFinal,
-        audioData: Array.from(audioData),
+        audioData: Buffer.from(
+          audioData.buffer,
+          audioData.byteOffset,
+          audioData.byteLength
+        ).toString("base64"),
         vadProbs,
         language: this.currentLanguage,
         vocabulary: this.currentVocabulary,
