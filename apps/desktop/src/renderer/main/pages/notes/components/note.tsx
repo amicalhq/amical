@@ -16,7 +16,6 @@ import {
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
@@ -67,31 +66,29 @@ type InvitedUser = {
 export type NotePageUIProps = {
   noteId: string;
   noteTitle: string;
-  noteBody: string;
   noteEmoji: string | null;
   isLoading: boolean;
   isSyncing: boolean;
   lastEditDate: Date;
   onTitleChange: (value: string) => void;
-  onBodyChange: (value: string) => void;
   onDelete: () => void;
   onEmojiChange: (emoji: string | null) => void;
   onBack?: () => void;
   isDeleting?: boolean;
+  children?: React.ReactNode;
 };
 
 export default function Note({
   noteTitle,
-  noteBody,
   noteEmoji,
   isLoading,
   isSyncing,
   lastEditDate,
   onTitleChange,
-  onBodyChange,
   onDelete,
   onEmojiChange,
   isDeleting = false,
+  children,
 }: NotePageUIProps) {
   const { t, i18n } = useTranslation();
   // Local UI state
@@ -472,17 +469,8 @@ export default function Note({
             </div>
           </div>
 
-          {/* Note Body */}
-          <Textarea
-            value={noteBody}
-            onChange={(e) => onBodyChange(e.target.value)}
-            placeholder={t("settings.notes.note.bodyPlaceholder")}
-            className="min-h-[500px] resize-none border-none bg-transparent px-4 py-2 focus-visible:ring-0 text-base leading-relaxed placeholder:text-muted-foreground"
-            style={{
-              backgroundColor: "transparent",
-            }}
-            disabled={isSyncing}
-          />
+          {/* Note Body - Lexical Editor */}
+          {children}
         </div>
 
         {/* Delete Confirmation Dialog */}

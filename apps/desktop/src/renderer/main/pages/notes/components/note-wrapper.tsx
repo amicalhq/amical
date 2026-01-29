@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import * as Y from "yjs";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import { debounce } from "../../../utils/debounce";
+import { debounce } from "@/renderer/main/utils/debounce";
 import Note from "./note";
+import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
@@ -21,13 +21,10 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
 
   // State
   const [noteTitle, setNoteTitle] = useState("");
-  const [noteBody, setNoteBody] = useState("");
-  const [isSyncing, setIsSyncing] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [noteIcon, setNoteIcon] = useState<string | null>(null);
 
   // Refs
-  const ydocRef = useRef<Y.Doc | null>(null);
-  const textRef = useRef<Y.Text | null>(null);
   const noteRef = useRef<typeof note>(null);
 
   // Fetch note data
@@ -91,109 +88,6 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     [], // No dependencies - function should remain stable
   );
 
-  // Debounced YJS update
-  const debouncedYjsUpdate = useMemo(
-    () =>
-      debounce((newContent: string) => {
-        if (textRef.current && ydocRef.current) {
-          ydocRef.current.transact(() => {
-            const oldLength = textRef.current!.length;
-            textRef.current!.delete(0, oldLength);
-            textRef.current!.insert(0, newContent);
-          }, "user-input-debounced");
-        }
-      }, 500),
-    [],
-  );
-
-  // Initialize YJS document
-  useEffect(() => {
-    if (!note) return;
-
-    // Cancel any pending updates
-    debouncedYjsUpdate.cancel();
-
-    let mounted = true;
-
-    const initializeYjs = async () => {
-      try {
-        // Create YJS document
-        const ydoc = new Y.Doc();
-        const text = ydoc.getText("content");
-
-        // Store references
-        ydocRef.current = ydoc;
-        textRef.current = text;
-
-        // Load existing updates from backend
-        try {
-          const updates = await window.electronAPI.notes.loadYjsUpdates(
-            note.id,
-          );
-
-          if (updates.length > 0) {
-            // Apply all updates to reconstruct the document
-            updates.forEach((update: ArrayBuffer) => {
-              Y.applyUpdate(ydoc, new Uint8Array(update));
-            });
-
-            // Set content from the reconstructed document
-            const reconstructedContent = text.toString();
-            setNoteBody(reconstructedContent);
-          }
-        } catch (error) {
-          console.error("Failed to load yjs updates:", error);
-        }
-
-        setIsSyncing(false);
-
-        // Listen for changes from YJS
-        const observer = () => {
-          if (!mounted) return;
-          const newContent = text.toString();
-          setNoteBody(newContent);
-        };
-
-        text.observe(observer);
-
-        // Save YJS updates to backend
-        ydoc.on("update", async (update: Uint8Array) => {
-          try {
-            // Convert Uint8Array to ArrayBuffer for IPC
-            const buffer = update.buffer.slice(
-              update.byteOffset,
-              update.byteOffset + update.byteLength,
-            );
-
-            await window.electronAPI.notes.saveYjsUpdate(
-              note.id,
-              buffer as ArrayBuffer,
-            );
-          } catch (error) {
-            console.error("Failed to save yjs update:", error);
-            toast.error(t("settings.notes.toast.saveFailed"));
-          }
-        });
-
-        // Cleanup
-        return () => {
-          text.unobserve(observer);
-        };
-      } catch (error) {
-        console.error("Failed to initialize yjs:", error);
-        setIsSyncing(false);
-        toast.error(t("settings.notes.toast.loadFailed"));
-      }
-    };
-
-    initializeYjs();
-
-    return () => {
-      mounted = false;
-      debouncedYjsUpdate.cancel();
-    };
-  }, [note, debouncedYjsUpdate]);
-
   // Update note ref and set initial title and emoji
   useEffect(() => {
     noteRef.current = note;
@@ -203,14 +97,10 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     }
   }, [note]);
 
-  // Handle content changes
-  const handleContentChange = useCallback(
-    (newContent: string) => {
-      setNoteBody(newContent);
-      debouncedYjsUpdate(newContent);
-    },
-    [debouncedYjsUpdate],
-  );
+  // Handle sync status change from NoteEditor
+  const handleSyncStatusChange = useCallback((syncing: boolean) => {
+    setIsSyncing(syncing);
+  }, []);
 
   // Handle title change
   const handleTitleChange = useCallback(
@@ -264,17 +154,20 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     <Note
       noteId={noteId}
       noteTitle={noteTitle}
-      noteBody={noteBody}
       noteEmoji={noteIcon}
       isLoading={isLoading}
       isSyncing={isSyncing}
       lastEditDate={lastEditDate}
       onTitleChange={handleTitleChange}
-      onBodyChange={handleContentChange}
       onDelete={handleDelete}
       onEmojiChange={handleEmojiChange}
       onBack={onBack}
       isDeleting={deleteMutation.isPending}
-    />
+    >
+      <NoteEditor
+        noteId={parseInt(noteId)}
+        onSyncStatusChange={handleSyncStatusChange}
+      />
+    </Note>
   );
 }
