@@ -51,6 +51,7 @@ export const defaultAppSettings: AppSettingsData = {
     launchAtLogin: false,
     minimizeToTray: true,
     showWidgetWhileInactive: true,
+    muteSystemAudio: true,
   },
   telemetry: {
     enabled: false,
@@ -177,7 +178,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: defaultAppSettings,
-      version: 1,
+      version: 4,
     });
   },
 
@@ -237,7 +238,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: { ...defaultAppSettings, ...settings },
-      version: 1,
+      version: 4,
     });
   },
 

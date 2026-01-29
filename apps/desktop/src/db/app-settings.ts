@@ -27,7 +27,7 @@ import {
 import { isMacOS } from "../utils/platform";
 
 // Current settings schema version - increment when making breaking changes
-const CURRENT_SETTINGS_VERSION = 3;
+const CURRENT_SETTINGS_VERSION = 4;
 
 // Type for v1 settings (before shortcuts array migration)
 interface AppSettingsDataV1 extends Omit<AppSettingsData, "shortcuts"> {
@@ -91,6 +91,18 @@ const migrations: Record<number, MigrationFn> = {
 
     return oldData;
   },
+
+  // v3 -> v4: Default muteSystemAudio to preferences (default true)
+  4: (data: unknown): AppSettingsData => {
+    const oldData = data as AppSettingsData;
+    return {
+      ...oldData,
+      preferences: {
+        ...(oldData.preferences ?? {}),
+        muteSystemAudio: oldData.preferences?.muteSystemAudio ?? true,
+      },
+    };
+  },
 };
 
 /**
@@ -141,6 +153,7 @@ const defaultSettings: AppSettingsData = {
     launchAtLogin: true,
     showWidgetWhileInactive: true,
     showInDock: true,
+    muteSystemAudio: true,
   },
   transcription: {
     language: "en",

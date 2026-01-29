@@ -159,6 +159,7 @@ export interface AppSettingsData {
     minimizeToTray?: boolean;
     showWidgetWhileInactive?: boolean;
     showInDock?: boolean;
+    muteSystemAudio?: boolean;
   };
   telemetry?: {
     enabled?: boolean;
