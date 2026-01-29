@@ -87,7 +87,7 @@ const theme = {
     url: "text-cyan-500",
     variable: "text-orange-500",
   },
-  link: "text-blue-500 underline cursor-pointer",
+  link: "text-muted-foreground underline underline-offset-2 cursor-pointer hover:text-foreground",
   text: {
     bold: "font-bold",
     italic: "italic",
