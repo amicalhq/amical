@@ -177,7 +177,7 @@ export default function Note({
 
   return (
     <TooltipProvider>
-      <div className="">
+      <div className="max-w-4xl mx-auto w-full">
         {/* Note Content */}
         <div className="mt-0 space-y-2">
           {/* Note Title with Emoji Picker */}
