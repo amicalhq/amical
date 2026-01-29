@@ -138,7 +138,7 @@ export class WindowManager {
         symbolColor: colors.symbolColor,
         height: 32,
       },
-      trafficLightPosition: { x: 20, y: 16 },
+      trafficLightPosition: { x: 20, y: 12 },
       useContentSize: true,
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -290,7 +290,7 @@ export class WindowManager {
         symbolColor: colors.symbolColor,
         height: 32,
       },
-      trafficLightPosition: { x: 20, y: 16 },
+      trafficLightPosition: { x: 20, y: 12 },
       resizable: false,
       center: true,
       modal: true,
