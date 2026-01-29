@@ -230,7 +230,6 @@ export default function Note({
               className="!text-4xl font-semibold border-none px-4 py-2 focus-visible:ring-0 placeholder:text-muted-foreground flex-1"
               style={{ backgroundColor: "transparent" }}
               placeholder={t("settings.notes.note.titlePlaceholder")}
-              disabled={isSyncing}
             />
           </div>
 
