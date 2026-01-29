@@ -37,8 +37,12 @@ export function NotesList() {
   });
 
   const onCreateNote = () => {
+    const dateStr = new Date().toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+    });
     createNoteMutation.mutate({
-      title: t("settings.notes.untitledTitle"),
+      title: `Note - ${dateStr}`,
       initialContent: "",
     });
   };
