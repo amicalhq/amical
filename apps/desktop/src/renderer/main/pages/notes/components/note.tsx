@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sparkles,
   Share,
@@ -78,6 +78,46 @@ export type NotePageUIProps = {
   children?: React.ReactNode;
 };
 
+function formatRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  // Less than 1 minute
+  if (diffMins < 1) {
+    return "now";
+  }
+
+  // Less than 1 hour
+  if (diffMins < 60) {
+    return `${diffMins} min${diffMins === 1 ? "" : "s"} ago`;
+  }
+
+  // Less than 24 hours
+  if (diffHours < 24) {
+    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  }
+
+  // Check if yesterday
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear()
+  ) {
+    return "yesterday";
+  }
+
+  // Older than yesterday - show date
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+}
+
 export default function Note({
   noteTitle,
   noteEmoji,
@@ -90,7 +130,7 @@ export default function Note({
   isDeleting = false,
   children,
 }: NotePageUIProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   // Local UI state
   const [shareEmail, setShareEmail] = useState("");
   const [accessLevel, setAccessLevel] = useState("can-read");
@@ -99,6 +139,23 @@ export default function Note({
   const [starred, setStarred] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [, setTick] = useState(0);
+  const [localEditTime, setLocalEditTime] = useState<Date | null>(null);
+
+  // Update relative time every 1 minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update local edit time when syncing starts (user just edited)
+  useEffect(() => {
+    if (isSyncing) {
+      setLocalEditTime(new Date());
+    }
+  }, [isSyncing]);
 
   // Mock shared users data
   /* const sharedUsers = [
@@ -240,14 +297,11 @@ export default function Note({
               {/* Last edited date */}
               <span className="text-sm text-muted-foreground">
                 {t("settings.notes.note.edited", {
-                  date: lastEditDate.toLocaleDateString(i18n.language, {
-                    month: "short",
-                    day: "numeric",
-                    year:
-                      lastEditDate.getFullYear() !== new Date().getFullYear()
-                        ? "numeric"
-                        : undefined,
-                  }),
+                  date: formatRelativeTime(
+                    localEditTime && localEditTime > lastEditDate
+                      ? localEditTime
+                      : lastEditDate,
+                  ),
                 })}
               </span>
 
