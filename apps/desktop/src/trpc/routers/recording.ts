@@ -6,8 +6,13 @@ import type { RecordingMode } from "../../main/managers/recording-manager";
 import type {
   WidgetNotification,
   WidgetNotificationType,
+  WidgetNotificationConfig,
 } from "../../types/widget-notification";
-import { WIDGET_NOTIFICATION_CONFIG } from "../../types/widget-notification";
+import {
+  WIDGET_NOTIFICATION_CONFIG,
+  ERROR_CODE_CONFIG,
+} from "../../types/widget-notification";
+import { ErrorCodes, type ErrorCode } from "../../types/error";
 
 interface RecordingStateUpdate {
   state: RecordingState;
@@ -118,13 +123,35 @@ export const recordingRouter = createRouter({
         throw new Error("Recording manager not available");
       }
 
-      const handleNotification = (data: { type: WidgetNotificationType }) => {
-        const config = WIDGET_NOTIFICATION_CONFIG[data.type];
+      const handleNotification = (data: {
+        type: WidgetNotificationType;
+        errorCode?: ErrorCode;
+        uiTitle?: string;
+        uiMessage?: string;
+        traceId?: string;
+      }) => {
+        let config: WidgetNotificationConfig;
+
+        if (data.type === "transcription_failed" && data.errorCode) {
+          config =
+            ERROR_CODE_CONFIG[data.errorCode] ??
+            ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN];
+        } else {
+          config = WIDGET_NOTIFICATION_CONFIG[data.type];
+        }
+
         emit.next({
           id: uuid(),
           type: data.type,
-          title: config.title,
-          // Description will be hydrated on frontend with mic name
+          // Use UI overrides if provided, fall back to config
+          title: data.uiTitle ?? config.title,
+          // Only send description for transcription_failed; audio notifications use mic-name template on frontend
+          description:
+            data.type === "transcription_failed"
+              ? data.uiMessage ?? config.description
+              : undefined,
+          errorCode: data.errorCode,
+          traceId: data.traceId,
           primaryAction: config.primaryAction,
           secondaryAction: config.secondaryAction,
           timestamp: Date.now(),

@@ -31,9 +31,12 @@ import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { format } from "date-fns";
 
 // Helper to get formatted title
-function getTitle(text: string) {
+function getTitle(text: string, meta?: { status?: string }) {
   if (!text || text.trim() === "") {
-    return `no words detected`;
+    if (meta?.status === "failed") {
+      return "transcription failed";
+    }
+    return "no words detected";
   }
   return text;
 }
@@ -130,9 +133,16 @@ function HistoryTableCard({
                   <TableCell className="align-top py-4 px-4">
                     <div className="text-foreground max-w-[500px]">
                       <div
-                        className={`line-clamp-3 whitespace-pre-line ${!item.text.trim() ? "font-mono text-muted-foreground" : ""}`}
+                        className={`line-clamp-3 whitespace-pre-line ${
+                          !item.text.trim()
+                            ? (item.meta as { status?: string })?.status ===
+                              "failed"
+                              ? "font-mono text-destructive"
+                              : "font-mono text-muted-foreground"
+                            : ""
+                        }`}
                       >
-                        {getTitle(item.text)}
+                        {getTitle(item.text, item.meta as { status?: string })}
                       </div>
                       {item.text.split("\n").length > 3 ||
                       item.text.length > 200 ? (

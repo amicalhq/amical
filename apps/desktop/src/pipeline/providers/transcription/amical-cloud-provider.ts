@@ -8,15 +8,32 @@ import { AuthService } from "../../../services/auth-service";
 import { getUserAgent } from "../../../utils/http-client";
 import { detectApplicationType } from "../formatting/formatter-prompt";
 import type { GetAccessibilityContextResult } from "@amical/types";
+import {
+  AppError,
+  ErrorCodes,
+  type ErrorCode,
+  type CloudErrorResponse,
+} from "../../../types/error";
 
-interface CloudTranscriptionResponse {
-  success: boolean;
-  transcription?: string;
+// Type guard to validate error codes from server
+const isValidErrorCode = (code: string | undefined): code is ErrorCode =>
+  code !== undefined && Object.values(ErrorCodes).includes(code as ErrorCode);
+
+// Success response from cloud API (HTTP 200)
+interface CloudTranscriptionSuccess {
+  success: true;
+  transcription: string;
   originalTranscription?: string;
   language?: string;
   duration?: number;
-  error?: string;
 }
+
+// Error response from cloud API (HTTP 4xx/5xx)
+interface CloudTranscriptionError {
+  error: CloudErrorResponse;
+}
+
+type CloudTranscriptionResponse = CloudTranscriptionSuccess | CloudTranscriptionError;
 
 export class AmicalCloudProvider implements TranscriptionProvider {
   readonly name = "amical-cloud";
@@ -70,7 +87,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
-        throw new Error("Authentication required for cloud transcription");
+        throw new AppError(
+          "Authentication required for cloud transcription",
+          ErrorCodes.AUTH_REQUIRED,
+        );
       }
 
       // Add frame to buffer with speech probability
@@ -116,7 +136,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
-        throw new Error("Authentication required for cloud transcription");
+        throw new AppError(
+          "Authentication required for cloud transcription",
+          ErrorCodes.AUTH_REQUIRED,
+        );
       }
 
       const enableFormatting = context.formattingEnabled ?? false;
@@ -213,7 +236,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     // Get auth token
     const idToken = await this.authService.getIdToken();
     if (!idToken) {
-      throw new Error("No authentication token available");
+      throw new AppError(
+        "No authentication token available",
+        ErrorCodes.AUTH_REQUIRED,
+      );
     }
 
     // Calculate duration in seconds
@@ -229,57 +255,86 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       isFinal,
     });
 
-    const response = await fetch(`${this.apiEndpoint}/transcribe`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-        "User-Agent": getUserAgent(),
-      },
-      body: JSON.stringify({
-        sessionId: this.currentSessionId,
-        isFinal,
-        audioData: Buffer.from(
-          audioData.buffer,
-          audioData.byteOffset,
-          audioData.byteLength,
-        ).toString("base64"),
-        vadProbs,
-        language: this.currentLanguage,
-        vocabulary: this.currentVocabulary,
-        previousTranscription: this.currentAggregatedTranscription,
-        formatting: {
-          enabled: enableFormatting,
+    // Wrap fetch in try-catch to handle network errors
+    let response: Response;
+    try {
+      response = await fetch(`${this.apiEndpoint}/transcribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+          "User-Agent": getUserAgent(),
         },
-        sharedContext: this.currentAccessibilityContext
-          ? {
-              selectedText:
-                this.currentAccessibilityContext.context?.textSelection
-                  ?.selectedText,
-              beforeText:
-                this.currentAccessibilityContext.context?.textSelection
-                  ?.preSelectionText,
-              afterText:
-                this.currentAccessibilityContext.context?.textSelection
-                  ?.postSelectionText,
-              appType: detectApplicationType(this.currentAccessibilityContext),
-              appBundleId:
-                this.currentAccessibilityContext.context?.application
-                  ?.bundleIdentifier,
-              appName:
-                this.currentAccessibilityContext.context?.application?.name,
-              appUrl: this.currentAccessibilityContext.context?.windowInfo?.url,
-              surroundingContext: "", // Empty for now, future enhancement
-            }
-          : undefined,
-      }),
-    });
+        body: JSON.stringify({
+          sessionId: this.currentSessionId,
+          isFinal,
+          audioData: Buffer.from(
+            audioData.buffer,
+            audioData.byteOffset,
+            audioData.byteLength,
+          ).toString("base64"),
+          vadProbs,
+          language: this.currentLanguage,
+          vocabulary: this.currentVocabulary,
+          previousTranscription: this.currentAggregatedTranscription,
+          formatting: {
+            enabled: enableFormatting,
+          },
+          sharedContext: this.currentAccessibilityContext
+            ? {
+                selectedText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.selectedText,
+                beforeText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.preSelectionText,
+                afterText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.postSelectionText,
+                appType: detectApplicationType(
+                  this.currentAccessibilityContext,
+                ),
+                appBundleId:
+                  this.currentAccessibilityContext.context?.application
+                    ?.bundleIdentifier,
+                appName:
+                  this.currentAccessibilityContext.context?.application?.name,
+                appUrl:
+                  this.currentAccessibilityContext.context?.windowInfo?.url,
+                surroundingContext: "", // Empty for now, future enhancement
+              }
+            : undefined,
+        }),
+      });
+    } catch (fetchError) {
+      // Network error (ENOTFOUND, ECONNREFUSED, ETIMEDOUT, etc.)
+      throw new AppError(
+        fetchError instanceof Error ? fetchError.message : "Network error",
+        ErrorCodes.NETWORK_ERROR,
+      );
+    }
 
     // Handle 401 with token refresh and retry
     if (response.status === 401) {
       if (isRetry) {
         // Already retried once, give up
-        throw new Error("Authentication failed - please log in again");
+        let errorData: CloudErrorResponse | undefined;
+        try {
+          const result: CloudTranscriptionResponse = await response.json();
+          if ("error" in result) {
+            errorData = result.error;
+          }
+        } catch {
+          // Response body wasn't valid JSON
+        }
+        throw new AppError(
+          "Cloud auth failed after retry",
+          ErrorCodes.AUTH_REQUIRED,
+          401,
+          errorData?.ui?.title,
+          errorData?.message,
+          errorData?.id,
+        );
       }
 
       logger.transcription.warn(
@@ -300,44 +355,68 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         );
       } catch (refreshError) {
         logger.transcription.error("Token refresh failed:", refreshError);
-        throw new Error("Authentication failed - please log in again");
+        throw new AppError(
+          "Authentication failed - please log in again",
+          ErrorCodes.AUTH_REQUIRED,
+          401,
+        );
       }
     }
 
-    if (response.status === 403) {
-      throw new Error("Subscription required for cloud transcription");
-    }
-
-    if (response.status === 429) {
-      const errorData = await response.json();
-      throw new Error(
-        `Word limit exceeded: ${errorData.currentWords}/${errorData.limit}`,
-      );
-    }
-
+    // Handle all non-ok responses
     if (!response.ok) {
-      const errorText = await response.text();
+      let errorData: CloudErrorResponse | undefined;
+      try {
+        const result: CloudTranscriptionResponse = await response.json();
+        if ("error" in result) {
+          errorData = result.error;
+        }
+      } catch {
+        // Response body wasn't valid JSON
+      }
+
       logger.transcription.error("Cloud API error:", {
         status: response.status,
         statusText: response.statusText,
-        error: errorText,
+        errorCode: errorData?.code,
+        errorTitle: errorData?.ui?.title,
+        errorMessage: errorData?.message,
+        traceId: errorData?.id,
       });
-      throw new Error(`Cloud API error: ${response.statusText}`);
+
+      // Use server error code if valid, otherwise fallback based on HTTP status
+      let errorCode: ErrorCode;
+      if (isValidErrorCode(errorData?.code)) {
+        errorCode = errorData.code;
+      } else if (response.status === 403) {
+        errorCode = ErrorCodes.AUTH_REQUIRED;
+      } else if (response.status === 429) {
+        errorCode = ErrorCodes.RATE_LIMIT_EXCEEDED;
+      } else if (response.status >= 500) {
+        errorCode = ErrorCodes.INTERNAL_SERVER_ERROR;
+      } else {
+        errorCode = ErrorCodes.UNKNOWN;
+      }
+
+      throw new AppError(
+        `Cloud API error: ${response.status} ${response.statusText}`,
+        errorCode,
+        response.status,
+        errorData?.ui?.title,
+        errorData?.message,
+        errorData?.id,
+      );
     }
 
-    const result: CloudTranscriptionResponse = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.error || "Cloud transcription failed");
-    }
+    const result: CloudTranscriptionSuccess = await response.json();
 
     logger.transcription.info("Cloud transcription successful", {
-      textLength: result.transcription?.length || 0,
+      textLength: result.transcription.length,
       language: result.language,
       duration: result.duration,
       transcription: result.transcription,
     });
 
-    return result.transcription || "";
+    return result.transcription;
   }
 }

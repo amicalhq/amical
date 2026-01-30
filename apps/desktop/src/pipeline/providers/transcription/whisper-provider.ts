@@ -8,6 +8,7 @@ import { ModelService } from "../../../services/model-service";
 import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
+import { AppError, ErrorCodes } from "../../../types/error";
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
@@ -149,7 +150,10 @@ export class WhisperProvider implements TranscriptionProvider {
       );
 
       if (!this.workerWrapper) {
-        throw new Error("Worker wrapper is not initialized");
+        throw new AppError(
+          "Worker wrapper is not initialized",
+          ErrorCodes.WORKER_INITIALIZATION_FAILED,
+        );
       }
 
       // Generate initial prompt from vocabulary and recent context
@@ -177,7 +181,14 @@ export class WhisperProvider implements TranscriptionProvider {
       return text;
     } catch (error) {
       logger.transcription.error("Transcription failed:", error);
-      throw new Error(`Transcription failed: ${error}`);
+      // Re-throw AppError as-is, wrap other errors
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError(
+        `Whisper transcription failed: ${error instanceof Error ? error.message : error}`,
+        ErrorCodes.LOCAL_TRANSCRIPTION_FAILED,
+      );
     }
   }
 
@@ -346,8 +357,9 @@ export class WhisperProvider implements TranscriptionProvider {
 
     const modelPath = await this.modelService.getBestAvailableModelPath();
     if (!modelPath) {
-      throw new Error(
+      throw new AppError(
         "No Whisper models available. Please download a model first.",
+        ErrorCodes.MODEL_MISSING,
       );
     }
 
@@ -355,7 +367,14 @@ export class WhisperProvider implements TranscriptionProvider {
       await this.workerWrapper.exec("initializeModel", [modelPath]);
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);
-      throw new Error(`Failed to initialize whisper wrapper: ${error}`);
+      // Re-throw AppError as-is, wrap other errors
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError(
+        `Whisper model initialization failed: ${error instanceof Error ? error.message : error}`,
+        ErrorCodes.WORKER_INITIALIZATION_FAILED,
+      );
     }
   }
 
