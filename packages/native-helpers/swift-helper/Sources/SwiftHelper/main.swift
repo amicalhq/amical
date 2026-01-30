@@ -29,6 +29,35 @@ struct HelperEvent: Codable {
     }
 }
 
+/// Get key name from keycode with fallback mechanisms
+/// Tries keycode mapping first, then Unicode string extraction, then generic name
+func getKeyNameWithFallback(keyCode: Int, event: CGEvent) -> String {
+    // First, try the keycode mapping
+    if let name = keyCodeToName(keyCode) {
+        return name
+    }
+    
+    // Fallback: Try to extract Unicode string from the event
+    var char = UniChar()
+    var length = 0
+    event.keyboardGetUnicodeString(maxStringLength: 1, actualStringLength: &length, unicodeString: &char)
+    
+    if length > 0 {
+        // Convert UniChar to String safely
+        if let unicodeScalar = UnicodeScalar(char) {
+            let unicodeString = String(unicodeScalar)
+            // Only use Unicode string if it's a printable character (not control characters)
+            if !unicodeString.isEmpty, let firstScalar = unicodeString.unicodeScalars.first, firstScalar.value >= 32 {
+                return unicodeString.uppercased()
+            }
+        }
+    }
+    
+    // Last resort: Generate generic name from keycode
+    // This ensures unmapped keys are still tracked and reported
+    return "Key\(keyCode)"
+}
+
 // Function to handle the event tap
 func eventTapCallback(
     proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?
@@ -41,10 +70,13 @@ func eventTapCallback(
     if type == .keyDown || type == .keyUp {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let eventTypeString = (type == .keyDown) ? "keyDown" : "keyUp"
+        
+        // Get key name with fallback mechanism
+        let keyName = getKeyNameWithFallback(keyCode: Int(keyCode), event: event)
 
         // Create the proper payload structure
         let payload = KeyEventPayload(
-            key: nil,  // We could map keyCode to key string if needed
+            key: keyName,  // Include key name from fallback mechanism
             code: nil,  // We could map keyCode to code string if needed
             altKey: event.flags.contains(.maskAlternate),
             ctrlKey: event.flags.contains(.maskControl),
@@ -75,12 +107,11 @@ func eventTapCallback(
         // Track regular key state for multi-key shortcuts
         // We need to track which non-modifier keys are held down so that
         // shortcuts like Shift+A+B can work properly
-        if let keyName = keyCodeToName(Int(keyCode)) {
-            if type == .keyDown {
-                ShortcutManager.shared.addRegularKey(keyName)
-            } else {
-                ShortcutManager.shared.removeRegularKey(keyName)
-            }
+        // Use the keyName we already computed above
+        if type == .keyDown {
+            ShortcutManager.shared.addRegularKey(keyName)
+        } else {
+            ShortcutManager.shared.removeRegularKey(keyName)
         }
 
         if ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode), modifiers: modifiers) {
