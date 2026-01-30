@@ -24,6 +24,7 @@ import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
+import { applyTextReplacements } from "../utils/text-replacement";
 
 /**
  * Service for audio transcription and optional formatting
@@ -560,7 +561,7 @@ export class TranscriptionService {
       const replacements = session.context.sharedData.replacements;
       if (replacements.size > 0) {
         const beforeReplacements = completeTranscription;
-        completeTranscription = this.applyReplacements(
+        completeTranscription = applyTextReplacements(
           completeTranscription,
           replacements,
         );
@@ -741,39 +742,6 @@ export class TranscriptionService {
       (preSelectionText.length === 0 || /[ \t\r\n]$/.test(preSelectionText));
 
     return shouldStripLeadingSpace ? transcription.slice(1) : transcription;
-  }
-
-  /**
-   * Apply vocabulary replacements to transcription text.
-   * Uses case-insensitive Unicode-aware word boundary matching to replace terms.
-   * Works across all languages and scripts (Latin, Cyrillic, CJK, Arabic, etc.).
-   * Runs after LLM formatting as the final post-processing step.
-   */
-  private applyReplacements(
-    text: string,
-    replacements: Map<string, string>,
-  ): string {
-    if (replacements.size === 0 || !text) {
-      return text;
-    }
-
-    let result = text;
-
-    for (const [word, replacement] of replacements) {
-      // Escape special regex characters in the word
-      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Use Unicode-aware word boundaries:
-      // - \p{L} matches any Unicode letter (Latin, Cyrillic, CJK, Arabic, etc.)
-      // - \p{N} matches any Unicode number
-      // - Negative lookbehind/lookahead ensures word is not part of a larger word
-      const regex = new RegExp(
-        `(?<![\\p{L}\\p{N}])${escapedWord}(?![\\p{L}\\p{N}])`,
-        "giu",
-      );
-      result = result.replace(regex, replacement);
-    }
-
-    return result;
   }
 
   private async formatWithProvider(
