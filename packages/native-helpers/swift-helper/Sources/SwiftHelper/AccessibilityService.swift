@@ -390,15 +390,23 @@ class AccessibilityService {
             return true
         } else {
             logToStderr(
-                "[AccessibilityService] Failed to set mute property (status: \(muteStatus)). Attempting to set volume to 0."
+                "[AccessibilityService] Failed to set mute property (status: \(muteStatus))."
             )
-            let volumeStatus = setDeviceVolume(deviceID: deviceID, volume: 0.0)
-            if volumeStatus == noErr {
-                logToStderr("[AccessibilityService] System audio silenced by setting volume to 0.")
-            } else {
+            // Only fall back to volume=0 when the original mute state is false or unknown.
+            if self.originalSystemMuteState != true {
                 logToStderr(
-                    "[AccessibilityService] Failed to silence system audio by setting volume to 0 (status: \(volumeStatus))."
+                    "[AccessibilityService] Attempting to set volume to 0 as fallback."
                 )
+                let volumeStatus = setDeviceVolume(deviceID: deviceID, volume: 0.0)
+                if volumeStatus == noErr {
+                    logToStderr("[AccessibilityService] System audio silenced by setting volume to 0.")
+                    return true
+                } else {
+                    logToStderr(
+                        "[AccessibilityService] Failed to silence system audio by setting volume to 0 (status: \(volumeStatus))."
+                    )
+                    return false
+                }
             }
             return false
         }

@@ -65,6 +65,9 @@ export class RecordingManager extends EventEmitter {
   private recordingStartedAt: number | null = null;
   private recordingStoppedAt: number | null = null;
 
+  // System audio state tracking
+  private systemAudioMuted: boolean = false;
+
   constructor(private serviceManager: ServiceManager) {
     super();
     this.setupIPCHandlers();
@@ -289,9 +292,23 @@ export class RecordingManager extends EventEmitter {
       const nativeBridge = this.serviceManager.getService("nativeBridge");
       nativeBridge.refreshAccessibilityContext();
 
-      // AWAIT mute to ensure it completes before mutex releases
-      await nativeBridge.call("muteSystemAudio", {});
+      // Conditionally mute system audio based on preferences
+      const settingsService = this.serviceManager.getService("settingsService");
+      const preferences = await settingsService.getPreferences();
+      const shouldMute = preferences?.muteSystemAudio ?? true;
+
+      if (shouldMute) {
+        const result = await nativeBridge.call("muteSystemAudio", {});
+        this.systemAudioMuted = !!result?.success;
+        logger.audio.info("System audio mute requested", {
+          success: this.systemAudioMuted,
+        });
+      } else {
+        this.systemAudioMuted = false;
+        logger.audio.info("System audio mute skipped by settings");
+      }
     } catch (error) {
+      this.systemAudioMuted = false;
       logger.audio.error("Failed to initialize session", { error });
     }
   }
@@ -333,9 +350,18 @@ export class RecordingManager extends EventEmitter {
 
       // Restore audio after state change (can happen while final chunk is in flight)
       try {
-        const nativeBridge = this.serviceManager.getService("nativeBridge");
-        await nativeBridge.call("restoreSystemAudio", {});
+        if (this.systemAudioMuted) {
+          const nativeBridge = this.serviceManager.getService("nativeBridge");
+          const result = await nativeBridge.call("restoreSystemAudio", {});
+          this.systemAudioMuted = false;
+          logger.audio.info("System audio restore requested", {
+            success: !!result?.success,
+          });
+        } else {
+          logger.audio.info("Skipped restoring system audio (not muted by app)");
+        }
       } catch (error) {
+        this.systemAudioMuted = false;
         logger.main.warn("Failed to restore system audio", { error });
       }
 
@@ -679,6 +705,23 @@ export class RecordingManager extends EventEmitter {
       }
     }
 
+    // Restore system audio if we muted it earlier
+    if (this.systemAudioMuted) {
+      try {
+        const nativeBridge = this.serviceManager.getService("nativeBridge");
+        const result = await nativeBridge.call("restoreSystemAudio", {});
+        logger.audio.info("System audio restore requested (forceIdle)", {
+          success: !!result?.success,
+        });
+      } catch (error) {
+        logger.main.warn("Failed to restore system audio in forceIdle", {
+          error,
+        });
+      } finally {
+        this.systemAudioMuted = false;
+      }
+    }
+
     this.audioChunks = [];
     this.resetSessionState();
     this.setState("idle");
@@ -692,6 +735,7 @@ export class RecordingManager extends EventEmitter {
     this.recordingMode = "idle";
     this.audioChunks = [];
     this.terminationCode = null;
+    this.systemAudioMuted = false;
     this.clearTimers();
   }
 
@@ -813,6 +857,23 @@ export class RecordingManager extends EventEmitter {
     // Stop recording if active
     if (this.recordingState === "recording") {
       await this.endRecording();
+    }
+
+    // Restore system audio if we muted it and are not recording anymore
+    if (this.systemAudioMuted) {
+      try {
+        const nativeBridge = this.serviceManager.getService("nativeBridge");
+        const result = await nativeBridge.call("restoreSystemAudio", {});
+        logger.audio.info("System audio restore requested (cleanup)", {
+          success: !!result?.success,
+        });
+      } catch (error) {
+        logger.main.warn("Failed to restore system audio during cleanup", {
+          error,
+        });
+      } finally {
+        this.systemAudioMuted = false;
+      }
     }
 
     // Clear any active session

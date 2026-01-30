@@ -23,6 +23,7 @@ export interface AppPreferences {
   minimizeToTray: boolean;
   showWidgetWhileInactive: boolean;
   showInDock: boolean;
+  muteSystemAudio: boolean;
 }
 
 export class SettingsService extends EventEmitter {
@@ -295,6 +296,7 @@ export class SettingsService extends EventEmitter {
       minimizeToTray: preferences?.minimizeToTray ?? true,
       showWidgetWhileInactive: preferences?.showWidgetWhileInactive ?? true,
       showInDock: preferences?.showInDock ?? true,
+      muteSystemAudio: preferences?.muteSystemAudio ?? true,
     };
   }
 
@@ -322,6 +324,7 @@ export class SettingsService extends EventEmitter {
       showWidgetWhileInactiveChanged:
         preferences.showWidgetWhileInactive !== undefined,
       showInDockChanged: preferences.showInDock !== undefined,
+      muteSystemAudioChanged: preferences.muteSystemAudio !== undefined,
     });
   }
 

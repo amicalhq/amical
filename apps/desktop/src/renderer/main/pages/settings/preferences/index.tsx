@@ -46,11 +46,18 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleMuteSystemAudioChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      muteSystemAudio: checked,
+    });
+  };
+
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
   const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
   const showInDock = preferencesQuery.data?.showInDock ?? true;
+  const muteSystemAudio = preferencesQuery.data?.muteSystemAudio ?? true;
   const isMac = window.electronAPI.platform === "darwin";
 
   return (
@@ -145,6 +152,27 @@ export default function PreferencesSettingsPage() {
                 <Separator />
               </>
             )}
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  Mute system audio during recording
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Silence system output while capturing microphone audio
+                </p>
+              </div>
+              <Switch
+                checked={muteSystemAudio}
+                onCheckedChange={handleMuteSystemAudioChange}
+                disabled={
+                  updatePreferencesMutation.isPending ||
+                  preferencesQuery.isLoading
+                }
+              />
+            </div>
+
+            <Separator />
 
             {/* Theme Section */}
             <div className="flex items-center justify-between">
