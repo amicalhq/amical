@@ -1,9 +1,9 @@
 {
   "name": "@amical/desktop",
-  "version": "0.1.17",
-  "description": "Amical Desktop app",
+  "version": "0.0.1",
+  "description": "Vox Desktop app",
   "main": ".vite/build/main.js",
-  "productName": "Amical",
+  "productName": "Vox",
   "repository": {
     "type": "git",
     "url": "https://github.com/amicalhq/amical"

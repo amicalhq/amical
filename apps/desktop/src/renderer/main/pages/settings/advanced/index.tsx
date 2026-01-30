@@ -172,7 +172,7 @@ export default function AdvancedSettingsPage() {
             <div>
               <Label htmlFor="telemetry">Anonymous Telemetry</Label>
               <p className="text-sm text-muted-foreground">
-                Help improve Amical by sharing anonymous usage data.{" "}
+                Help improve Vox by sharing anonymous usage data.{" "}
                 <button
                   onClick={handleOpenTelemetryDocs}
                   className="text-primary hover:underline"

@@ -99,7 +99,7 @@ export function ModelSelectionScreen({
   return (
     <OnboardingLayout
       title="Choose Your AI Model"
-      subtitle="Select how you want Amical to process your audio"
+      subtitle="Select how you want Vox to process your audio"
       footer={
         <NavigationButtons
           onBack={onBack}

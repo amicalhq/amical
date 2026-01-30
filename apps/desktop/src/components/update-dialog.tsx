@@ -117,7 +117,7 @@ export function UpdateDialog({
               Check for Updates
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Click below to check for the latest version of Amical.
+              Click below to check for the latest version of Vox.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

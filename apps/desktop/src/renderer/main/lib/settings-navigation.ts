@@ -79,7 +79,7 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
     title: "About",
     url: "/settings/about",
-    description: "About Amical and version information",
+    description: "About Vox and version information",
     icon: IconInfoCircle,
     type: "settings",
   },

@@ -1,5 +1,5 @@
 {
-  "name": "amical",
+  "name": "vox",
   "private": true,
   "scripts": {
     "build": "turbo run build",

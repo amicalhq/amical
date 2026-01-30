@@ -85,7 +85,7 @@ export function WelcomeScreen({
 
   return (
     <OnboardingLayout
-      title="Welcome to Amical"
+      title="Welcome to Vox"
       subtitle="Select the features you're interested in to personalize your experience"
       footer={
         <div className="space-y-4">

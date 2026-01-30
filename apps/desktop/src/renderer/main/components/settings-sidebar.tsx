@@ -61,10 +61,10 @@ export function SettingsSidebar({
               <div className="inline-flex items-center gap-2.5 font-semibold w-full">
                 <img
                   src="assets/logo.svg"
-                  alt="Amical Logo"
+                  alt="Vox Logo"
                   className="!size-7"
                 />
-                <span className="font-semibold">Amical</span>
+                <span className="font-semibold">Vox</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

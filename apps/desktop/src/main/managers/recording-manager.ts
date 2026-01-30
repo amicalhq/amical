@@ -659,7 +659,7 @@ export class RecordingManager extends EventEmitter {
    * Create audio file for recording session
    */
   private async createAudioFile(sessionId: string): Promise<string> {
-    const audioDir = path.join(app.getPath("temp"), "amical-audio");
+    const audioDir = path.join(app.getPath("temp"), "vox-audio");
     await fs.promises.mkdir(audioDir, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");

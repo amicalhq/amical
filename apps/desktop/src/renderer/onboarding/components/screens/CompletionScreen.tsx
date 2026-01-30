@@ -39,7 +39,7 @@ export function CompletionScreen({
           showBack={true}
           showNext={false}
           showComplete={true}
-          completeLabel="Start Using Amical"
+          completeLabel="Start Using Vox"
         />
       }
     >

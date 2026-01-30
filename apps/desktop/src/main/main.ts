@@ -28,18 +28,18 @@ if (started) {
 
 // Set App User Model ID for Windows (required for Squirrel.Windows)
 if (isWindows()) {
-  app.setAppUserModelId("com.amical.desktop");
+  app.setAppUserModelId("com.vox.desktop");
 }
 
-// Register the amical:// protocol
+// Register the vox:// protocol
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("amical", process.execPath, [
+    app.setAsDefaultProtocolClient("vox", process.execPath, [
       process.argv[1],
     ]);
   }
 } else {
-  app.setAsDefaultProtocolClient("amical");
+  app.setAsDefaultProtocolClient("vox");
 }
 
 // Enforce single instance
@@ -93,7 +93,7 @@ app.on("second-instance", (_event, commandLine) => {
   }
 
   // Check if this is a protocol launch on Windows/Linux
-  const url = commandLine.find((arg) => arg.startsWith("amical://"));
+  const url = commandLine.find((arg) => arg.startsWith("vox://"));
   if (url) {
     if (isInitialized) {
       appManager.handleDeepLink(url);

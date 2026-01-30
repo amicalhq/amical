@@ -66,7 +66,7 @@ export class AuthService extends EventEmitter {
         __BUNDLED_AUTH_AUTHORIZATION_ENDPOINT,
       tokenEndpoint:
         process.env.AUTH_TOKEN_ENDPOINT || __BUNDLED_AUTH_TOKEN_ENDPOINT,
-      redirectUri: "amical://oauth/callback",
+      redirectUri: "vox://oauth/callback",
     };
 
     logger.main.info("AuthService initialized with config:", {

@@ -126,11 +126,11 @@ export function UnifiedPermissionsStep({
     <div className="max-w-lg w-full space-y-6">
       {/* Header with logo */}
       <div className="text-center space-y-4">
-        <img src="assets/logo.svg" alt="Amical" className="w-20 h-20 mx-auto" />
+        <img src="assets/logo.svg" alt="Vox" className="w-20 h-20 mx-auto" />
         <div>
           <h1 className="text-2xl font-bold">Permissions Required</h1>
           <p className="text-muted-foreground mt-2">
-            Amical needs these permissions to work properly
+            Vox needs these permissions to work properly
           </p>
         </div>
       </div>
@@ -238,7 +238,7 @@ export function UnifiedPermissionsStep({
       {/* Action buttons */}
       <div className="flex justify-between gap-4 pt-4">
         <Button onClick={() => quitApp.mutate()} variant="outline" size="lg">
-          Quit Amical
+          Quit Vox
         </Button>
         <Button
           onClick={onComplete}
