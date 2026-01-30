@@ -295,6 +295,9 @@ namespace WindowsHelper.Models
 
     public partial class SetShortcutsParams
     {
+        [JsonPropertyName("pasteLastTranscript")]
+        public List<string> PasteLastTranscript { get; set; }
+
         [JsonPropertyName("pushToTalk")]
         public List<string> PushToTalk { get; set; }
 

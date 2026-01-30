@@ -488,6 +488,7 @@ export class NativeBridge extends EventEmitter {
       this.logger.info("Shortcuts synced to native helper", {
         pushToTalk: shortcuts.pushToTalk,
         toggleRecording: shortcuts.toggleRecording,
+        pasteLastTranscript: shortcuts.pasteLastTranscript,
         success: result.success,
       });
       return result.success;

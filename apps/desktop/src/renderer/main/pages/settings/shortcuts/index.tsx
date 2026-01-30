@@ -11,8 +11,10 @@ export function ShortcutsSettingsPage() {
   const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState<
     string[]
   >([]);
+  const [pasteLastTranscriptShortcut, setPasteLastTranscriptShortcut] =
+    useState<string[]>([]);
   const [recordingShortcut, setRecordingShortcut] = useState<
-    "pushToTalk" | "toggleRecording" | null
+    "pushToTalk" | "toggleRecording" | "pasteLastTranscript" | null
   >(null);
 
   // tRPC queries and mutations
@@ -27,11 +29,12 @@ export function ShortcutsSettingsPage() {
       if (data.warning) {
         toast.warning(data.warning);
       } else {
-        toast.success(
-          variables.type === "pushToTalk"
-            ? "Push to talk shortcut updated"
-            : "Toggle Recording shortcut updated",
-        );
+        const successMessages = {
+          pushToTalk: "Push to talk shortcut updated",
+          toggleRecording: "Hands-free mode shortcut updated",
+          pasteLastTranscript: "Paste last transcript shortcut updated",
+        } as const;
+        toast.success(successMessages[variables.type]);
       }
     },
     onError: (error) => {
@@ -46,6 +49,7 @@ export function ShortcutsSettingsPage() {
     if (shortcutsQuery.data) {
       setPushToTalkShortcut(shortcutsQuery.data.pushToTalk);
       setToggleRecordingShortcut(shortcutsQuery.data.toggleRecording);
+      setPasteLastTranscriptShortcut(shortcutsQuery.data.pasteLastTranscript);
     }
   }, [shortcutsQuery.data]);
 
@@ -61,6 +65,14 @@ export function ShortcutsSettingsPage() {
     setToggleRecordingShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "toggleRecording",
+      shortcut: shortcut,
+    });
+  };
+
+  const handlePasteLastTranscriptChange = (shortcut: string[]) => {
+    setPasteLastTranscriptShortcut(shortcut);
+    setShortcutMutation.mutate({
+      type: "pasteLastTranscript",
       shortcut: shortcut,
     });
   };
@@ -121,6 +133,34 @@ export function ShortcutsSettingsPage() {
                     }
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "toggleRecording" : null)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Separator className="my-4" />
+              <div className="flex flex-col md:flex-row md:justify-between gap-4">
+                <div>
+                  <Label className="text-base font-semibold text-foreground">
+                    Paste last transcript
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                    Paste your most recent transcription into the active app
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 items-end min-w-[260px]">
+                  <ShortcutInput
+                    value={pasteLastTranscriptShortcut}
+                    onChange={handlePasteLastTranscriptChange}
+                    isRecordingShortcut={
+                      recordingShortcut === "pasteLastTranscript"
+                    }
+                    onRecordingShortcutChange={(recording) =>
+                      setRecordingShortcut(
+                        recording ? "pasteLastTranscript" : null,
+                      )
                     }
                   />
                 </div>

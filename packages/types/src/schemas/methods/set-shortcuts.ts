@@ -6,6 +6,7 @@ import { z } from "zod";
 export const SetShortcutsParamsSchema = z.object({
   pushToTalk: z.array(z.string()),
   toggleRecording: z.array(z.string()),
+  pasteLastTranscript: z.array(z.string()),
 });
 export type SetShortcutsParams = z.infer<typeof SetShortcutsParamsSchema>;
 

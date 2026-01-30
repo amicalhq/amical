@@ -22,6 +22,7 @@ interface KeyInfo {
 interface ShortcutConfig {
   pushToTalk: string[];
   toggleRecording: string[];
+  pasteLastTranscript: string[];
 }
 
 export class ShortcutManager extends EventEmitter {
@@ -29,10 +30,15 @@ export class ShortcutManager extends EventEmitter {
   private shortcuts: ShortcutConfig = {
     pushToTalk: [],
     toggleRecording: [],
+    pasteLastTranscript: [],
   };
   private settingsService: SettingsService;
   private nativeBridge: NativeBridge | null = null;
   private isRecordingShortcut: boolean = false;
+  private exactMatchState = {
+    toggleRecording: false,
+    pasteLastTranscript: false,
+  };
 
   constructor(settingsService: SettingsService) {
     super();
@@ -71,6 +77,7 @@ export class ShortcutManager extends EventEmitter {
       await this.nativeBridge.setShortcuts({
         pushToTalk: this.shortcuts.pushToTalk,
         toggleRecording: this.shortcuts.toggleRecording,
+        pasteLastTranscript: this.shortcuts.pasteLastTranscript,
       });
       log.info("Shortcuts synced to native helper");
     } catch (error) {
@@ -91,17 +98,11 @@ export class ShortcutManager extends EventEmitter {
     type: ShortcutType,
     keys: string[],
   ): Promise<ValidationResult> {
-    // Get the other shortcut for cross-validation
-    const otherShortcut =
-      type === "pushToTalk"
-        ? this.shortcuts.toggleRecording
-        : this.shortcuts.pushToTalk;
-
     // Validate the shortcut
     const result = validateShortcutComprehensive({
-      currentShortcut: keys,
-      otherShortcut,
-      shortcutType: type,
+      candidateShortcut: keys,
+      candidateType: type,
+      shortcutsByType: this.shortcuts,
       platform: process.platform,
     });
 
@@ -128,6 +129,10 @@ export class ShortcutManager extends EventEmitter {
 
   setIsRecordingShortcut(isRecording: boolean) {
     this.isRecordingShortcut = isRecording;
+    if (isRecording) {
+      this.exactMatchState.toggleRecording = false;
+      this.exactMatchState.pasteLastTranscript = false;
+    }
     log.info("Shortcut recording state changed", { isRecording });
   }
 
@@ -228,9 +233,18 @@ export class ShortcutManager extends EventEmitter {
     this.emit("ptt-state-changed", isPTTPressed);
 
     // Check toggle recording shortcut
-    if (this.isToggleRecordingShortcutPressed()) {
+    const toggleMatch = this.isToggleRecordingShortcutPressed();
+    if (toggleMatch && !this.exactMatchState.toggleRecording) {
       this.emit("toggle-recording-triggered");
     }
+    this.exactMatchState.toggleRecording = toggleMatch;
+
+    // Check paste last transcript shortcut
+    const pasteMatch = this.isPasteLastTranscriptShortcutPressed();
+    if (pasteMatch && !this.exactMatchState.pasteLastTranscript) {
+      this.emit("paste-last-transcript-triggered");
+    }
+    this.exactMatchState.pasteLastTranscript = pasteMatch;
   }
 
   private isPTTShortcutPressed(): boolean {
@@ -257,6 +271,21 @@ export class ShortcutManager extends EventEmitter {
     return (
       toggleKeys.length === activeKeysList.length &&
       toggleKeys.every((key) => activeKeysList.includes(key))
+    );
+  }
+
+  private isPasteLastTranscriptShortcutPressed(): boolean {
+    const pasteKeys = this.shortcuts.pasteLastTranscript;
+    if (!pasteKeys || pasteKeys.length === 0) {
+      return false;
+    }
+
+    const activeKeysList = this.getActiveKeys();
+
+    // Exact match - only these keys pressed, no extra keys
+    return (
+      pasteKeys.length === activeKeysList.length &&
+      pasteKeys.every((key) => activeKeysList.includes(key))
     );
   }
 

@@ -33,7 +33,9 @@ interface CloudTranscriptionError {
   error: CloudErrorResponse;
 }
 
-type CloudTranscriptionResponse = CloudTranscriptionSuccess | CloudTranscriptionError;
+type CloudTranscriptionResponse =
+  | CloudTranscriptionSuccess
+  | CloudTranscriptionError;
 
 export class AmicalCloudProvider implements TranscriptionProvider {
   readonly name = "amical-cloud";

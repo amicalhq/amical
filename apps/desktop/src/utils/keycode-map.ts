@@ -360,7 +360,7 @@ export function getKeyNameFromPayload(payload: {
     }
     return payload.key;
   }
-  
+
   // Fallback: Try to map keycode
   if (payload.keyCode !== undefined) {
     const keyName = getKeyFromKeycode(payload.keyCode);
@@ -372,7 +372,7 @@ export function getKeyNameFromPayload(payload: {
     // This helps with debugging and ensures unmapped keys don't break shortcut recording
     return `Key${payload.keyCode}`;
   }
-  
+
   return undefined;
 }
 

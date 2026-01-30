@@ -148,7 +148,7 @@ export const recordingRouter = createRouter({
           // Only send description for transcription_failed; audio notifications use mic-name template on frontend
           description:
             data.type === "transcription_failed"
-              ? data.uiMessage ?? config.description
+              ? (data.uiMessage ?? config.description)
               : undefined,
           errorCode: data.errorCode,
           traceId: data.traceId,

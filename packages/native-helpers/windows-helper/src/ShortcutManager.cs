@@ -33,6 +33,7 @@ namespace WindowsHelper
         private readonly object _lock = new();
         private string[] _pushToTalkKeys = Array.Empty<string>();
         private string[] _toggleRecordingKeys = Array.Empty<string>();
+        private string[] _pasteLastTranscriptKeys = Array.Empty<string>();
 
         // Track currently pressed non-modifier keys across keyDown/keyUp events.
         // This is necessary for multi-key shortcuts like Shift+A+B where we need to
@@ -57,13 +58,14 @@ namespace WindowsHelper
         /// Update the configured shortcuts.
         /// Called from RpcHandler when setShortcuts RPC is received.
         /// </summary>
-        public void SetShortcuts(string[] pushToTalk, string[] toggleRecording)
+        public void SetShortcuts(string[] pushToTalk, string[] toggleRecording, string[] pasteLastTranscript)
         {
             lock (_lock)
             {
                 _pushToTalkKeys = pushToTalk ?? Array.Empty<string>();
                 _toggleRecordingKeys = toggleRecording ?? Array.Empty<string>();
-                LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}]");
+                _pasteLastTranscriptKeys = pasteLastTranscript ?? Array.Empty<string>();
+                LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}], Paste: [{string.Join(", ", _pasteLastTranscriptKeys)}]");
             }
         }
 
@@ -135,7 +137,7 @@ namespace WindowsHelper
             lock (_lock)
             {
                 // Early exit if no shortcuts configured
-                if (_pushToTalkKeys.Length == 0 && _toggleRecordingKeys.Length == 0)
+                if (_pushToTalkKeys.Length == 0 && _toggleRecordingKeys.Length == 0 && _pasteLastTranscriptKeys.Length == 0)
                 {
                     return false;
                 }
@@ -174,7 +176,11 @@ namespace WindowsHelper
                 var toggleKeys = new HashSet<string>(_toggleRecordingKeys);
                 var toggleMatch = toggleKeys.Count > 0 && toggleKeys.SetEquals(activeKeys);
 
-                return pttMatch || toggleMatch;
+                // Paste last transcript: exact match (only these keys pressed)
+                var pasteKeys = new HashSet<string>(_pasteLastTranscriptKeys);
+                var pasteMatch = pasteKeys.Count > 0 && pasteKeys.SetEquals(activeKeys);
+
+                return pttMatch || toggleMatch || pasteMatch;
             }
         }
     }

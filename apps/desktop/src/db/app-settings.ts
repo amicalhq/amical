@@ -27,7 +27,7 @@ import {
 import { isMacOS } from "../utils/platform";
 
 // Current settings schema version - increment when making breaking changes
-const CURRENT_SETTINGS_VERSION = 3;
+const CURRENT_SETTINGS_VERSION = 4;
 
 // Type for v1 settings (before shortcuts array migration)
 interface AppSettingsDataV1 extends Omit<AppSettingsData, "shortcuts"> {
@@ -91,6 +91,28 @@ const migrations: Record<number, MigrationFn> = {
 
     return oldData;
   },
+
+  // v3 -> v4: Add default paste-last-transcript shortcut if missing
+  4: (data: unknown): AppSettingsData => {
+    const oldData = data as AppSettingsData;
+    const shortcuts = oldData.shortcuts ?? {};
+
+    if (shortcuts.pasteLastTranscript !== undefined) {
+      return oldData;
+    }
+
+    const defaultPasteShortcut = isMacOS()
+      ? ["Cmd", "Ctrl", "V"]
+      : ["Alt", "Shift", "Z"];
+
+    return {
+      ...oldData,
+      shortcuts: {
+        ...shortcuts,
+        pasteLastTranscript: defaultPasteShortcut,
+      },
+    };
+  },
 };
 
 /**
@@ -119,12 +141,14 @@ const getDefaultShortcuts = () => {
     return {
       pushToTalk: ["Fn"],
       toggleRecording: ["Fn", "Space"],
+      pasteLastTranscript: ["Cmd", "Ctrl", "V"],
     };
   } else {
     // Windows and Linux
     return {
       pushToTalk: ["Ctrl", "Win"],
       toggleRecording: ["Ctrl", "Win", "Space"],
+      pasteLastTranscript: ["Alt", "Shift", "Z"],
     };
   }
 };

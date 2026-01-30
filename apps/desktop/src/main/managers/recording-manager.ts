@@ -6,11 +6,8 @@ import type { ServiceManager } from "@/main/managers/service-manager";
 import type { RecordingState } from "../../types/recording";
 import type { ShortcutManager } from "./shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
-import {
-  AppError,
-  ErrorCodes,
-  type ErrorCode,
-} from "../../types/error";
+import { AppError, ErrorCodes, type ErrorCode } from "../../types/error";
+import { getLatestTranscription } from "../../db/transcriptions";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -94,6 +91,11 @@ export class RecordingManager extends EventEmitter {
     // Handle toggle recording
     shortcutManager.on("toggle-recording-triggered", async () => {
       await this.toggleHandsFree();
+    });
+
+    // Handle paste last transcription shortcut
+    shortcutManager.on("paste-last-transcript-triggered", async () => {
+      await this.pasteLatestTranscription();
     });
   }
 
@@ -734,6 +736,22 @@ export class RecordingManager extends EventEmitter {
         "Native bridge not available, cannot paste transcription",
         { error: error instanceof Error ? error.message : String(error) },
       );
+    }
+  }
+
+  private async pasteLatestTranscription(): Promise<void> {
+    try {
+      const latest = await getLatestTranscription();
+      if (!latest || !latest.text?.trim()) {
+        logger.main.info("No previous transcription available to paste");
+        return;
+      }
+
+      await this.pasteTranscription(latest.text);
+    } catch (error) {
+      logger.main.warn("Failed to paste last transcription", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
