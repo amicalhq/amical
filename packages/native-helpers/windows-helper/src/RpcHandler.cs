@@ -101,7 +101,9 @@ namespace WindowsHelper
 
                     case Method.MuteSystemAudio:
                         response = await HandleMuteSystemAudio(request);
-                        return; // Response sent after audio playback
+                        // Return early so we don't send the placeholder response; the real response is sent
+                        // by the completion callback after the rec-start sound finishes.
+                        return;
 
                     case Method.RestoreSystemAudio:
                         response = HandleRestoreSystemAudio(request);
