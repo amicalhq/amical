@@ -122,6 +122,9 @@ export default function SpeechTab() {
   const [pendingCloudModel, setPendingCloudModel] = useState<string | null>(
     null,
   );
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | undefined>(
+    undefined,
+  );
 
   // tRPC queries
   const availableModelsQuery = api.models.getAvailableModels.useQuery();
@@ -130,9 +133,6 @@ export default function SpeechTab() {
   const isTranscriptionAvailableQuery =
     api.models.isTranscriptionAvailable.useQuery();
   const selectedModelQuery = api.models.getSelectedModel.useQuery();
-
-  // Auth queries
-  const isAuthenticatedQuery = api.auth.isAuthenticated.useQuery();
 
   const utils = api.useUtils();
 
@@ -272,9 +272,11 @@ export default function SpeechTab() {
     },
   });
 
-  // Auth state subscription - handle login completion
+  // Auth state subscription - update auth state and handle pending cloud model selection
   api.auth.onAuthStateChange.useSubscription(undefined, {
     onData: (authState) => {
+      setIsAuthenticated(authState.isAuthenticated);
+
       if (authState.isAuthenticated && pendingCloudModel) {
         toast.success("Login successful!");
         setSelectedModelMutation.mutate({ modelId: pendingCloudModel });
@@ -319,7 +321,11 @@ export default function SpeechTab() {
     }
   };
 
-  const handleDeleteClick = (modelId: string) => {
+  const handleDeleteClick = (modelId: string, event?: React.MouseEvent) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     setModelToDelete(modelId);
     setShowDeleteDialog(true);
   };
@@ -346,7 +352,7 @@ export default function SpeechTab() {
     const isCloudModel = model?.provider === "Amical Cloud";
 
     // If cloud model and not authenticated, show login dialog
-    if (isCloudModel && !isAuthenticatedQuery.data) {
+    if (isCloudModel && !isAuthenticated) {
       setPendingCloudModel(modelId);
       setShowLoginDialog(true);
       return;
@@ -429,18 +435,19 @@ export default function SpeechTab() {
                         const isDownloading =
                           progress?.status === "downloading";
                         const isCloudModel = model.provider === "Amical Cloud";
-                        const isAuthenticated =
-                          isAuthenticatedQuery.data || false;
 
                         // Cloud models can be selected if authenticated, local models need to be downloaded
                         const canSelect = isCloudModel
-                          ? isAuthenticated
+                          ? (isAuthenticated ?? false)
                           : isDownloaded && isTranscriptionAvailable;
 
                         return (
                           <TableRow
                             key={model.id}
-                            className="hover:bg-muted/50"
+                            className={`hover:bg-muted/50 ${canSelect ? "cursor-pointer" : ""}`}
+                            onClick={() =>
+                              canSelect && handleSelectModel(model.id)
+                            }
                           >
                             <TableCell>
                               <div className="flex items-center space-x-3">
@@ -607,7 +614,9 @@ export default function SpeechTab() {
                                 {!isCloudModel && isDownloaded && (
                                   <button
                                     type="button"
-                                    onClick={() => handleDeleteClick(model.id)}
+                                    onClick={(e) =>
+                                      handleDeleteClick(model.id, e)
+                                    }
                                     className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
                                     title="Click to delete model"
                                     aria-label={`Delete ${model.name}`}

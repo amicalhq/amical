@@ -8,15 +8,34 @@ import { AuthService } from "../../../services/auth-service";
 import { getUserAgent } from "../../../utils/http-client";
 import { detectApplicationType } from "../formatting/formatter-prompt";
 import type { GetAccessibilityContextResult } from "@amical/types";
+import {
+  AppError,
+  ErrorCodes,
+  type ErrorCode,
+  type CloudErrorResponse,
+} from "../../../types/error";
 
-interface CloudTranscriptionResponse {
-  success: boolean;
-  transcription?: string;
+// Type guard to validate error codes from server
+const isValidErrorCode = (code: string | undefined): code is ErrorCode =>
+  code !== undefined && Object.values(ErrorCodes).includes(code as ErrorCode);
+
+// Success response from cloud API (HTTP 200)
+interface CloudTranscriptionSuccess {
+  success: true;
+  transcription: string;
   originalTranscription?: string;
   language?: string;
   duration?: number;
-  error?: string;
 }
+
+// Error response from cloud API (HTTP 4xx/5xx)
+interface CloudTranscriptionError {
+  error: CloudErrorResponse;
+}
+
+type CloudTranscriptionResponse =
+  | CloudTranscriptionSuccess
+  | CloudTranscriptionError;
 
 export class AmicalCloudProvider implements TranscriptionProvider {
   readonly name = "amical-cloud";
@@ -34,6 +53,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     null;
   private currentAggregatedTranscription: string | undefined;
   private currentVocabulary: string[] = [];
+  private currentSessionId: string | undefined;
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -65,10 +85,14 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       this.currentAccessibilityContext = context?.accessibilityContext ?? null;
       this.currentAggregatedTranscription = context?.aggregatedTranscription;
       this.currentVocabulary = context?.vocabulary ?? [];
+      this.currentSessionId = context?.sessionId;
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
-        throw new Error("Authentication required for cloud transcription");
+        throw new AppError(
+          "Authentication required for cloud transcription",
+          ErrorCodes.AUTH_REQUIRED,
+        );
       }
 
       // Add frame to buffer with speech probability
@@ -110,14 +134,19 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       this.currentAccessibilityContext = context?.accessibilityContext ?? null;
       this.currentAggregatedTranscription = context?.aggregatedTranscription;
       this.currentVocabulary = context?.vocabulary ?? [];
+      this.currentSessionId = context?.sessionId;
 
       // Check authentication
       if (!(await this.authService.isAuthenticated())) {
-        throw new Error("Authentication required for cloud transcription");
+        throw new AppError(
+          "Authentication required for cloud transcription",
+          ErrorCodes.AUTH_REQUIRED,
+        );
       }
 
       const enableFormatting = context.formattingEnabled ?? false;
-      return this.doTranscription(enableFormatting);
+      // flush() is called at session end, so this is the final call
+      return this.doTranscription(enableFormatting, true);
     } catch (error) {
       logger.transcription.error("Cloud transcription error:", error);
       throw error;
@@ -126,8 +155,13 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   /**
    * Shared transcription logic - aggregates buffer, calls cloud API, clears state
+   * @param enableFormatting - Whether to enable formatting
+   * @param isFinal - Whether this is the final call for the session (default: false)
    */
-  private async doTranscription(enableFormatting: boolean): Promise<string> {
+  private async doTranscription(
+    enableFormatting: boolean,
+    isFinal = false,
+  ): Promise<string> {
     // Combine all frames into a single Float32Array
     const totalLength = this.frameBuffer.reduce(
       (acc, frame) => acc + frame.length,
@@ -154,6 +188,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       vadProbs,
       false,
       enableFormatting,
+      isFinal,
     );
   }
 
@@ -168,6 +203,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     this.currentLanguage = undefined;
     this.currentAccessibilityContext = null;
     this.currentAggregatedTranscription = undefined;
+    this.currentSessionId = undefined;
   }
 
   private shouldTranscribe(): boolean {
@@ -188,6 +224,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     vadProbs: number[],
     isRetry = false,
     enableFormatting = false,
+    isFinal = false,
   ): Promise<string> {
     // Skip API call if there's nothing to process
     if (audioData.length === 0) {
@@ -201,7 +238,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     // Get auth token
     const idToken = await this.authService.getIdToken();
     if (!idToken) {
-      throw new Error("No authentication token available");
+      throw new AppError(
+        "No authentication token available",
+        ErrorCodes.AUTH_REQUIRED,
+      );
     }
 
     // Calculate duration in seconds
@@ -213,53 +253,90 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       duration,
       isRetry,
       formatting: enableFormatting,
+      sessionId: this.currentSessionId,
+      isFinal,
     });
 
-    const response = await fetch(`${this.apiEndpoint}/transcribe`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-        "User-Agent": getUserAgent(),
-      },
-      body: JSON.stringify({
-        audioData: Array.from(audioData),
-        vadProbs,
-        language: this.currentLanguage,
-        vocabulary: this.currentVocabulary,
-        previousTranscription: this.currentAggregatedTranscription,
-        formatting: {
-          enabled: enableFormatting,
+    // Wrap fetch in try-catch to handle network errors
+    let response: Response;
+    try {
+      response = await fetch(`${this.apiEndpoint}/transcribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+          "User-Agent": getUserAgent(),
         },
-        sharedContext: this.currentAccessibilityContext
-          ? {
-              selectedText:
-                this.currentAccessibilityContext.context?.textSelection
-                  ?.selectedText,
-              beforeText:
-                this.currentAccessibilityContext.context?.textSelection
-                  ?.preSelectionText,
-              afterText:
-                this.currentAccessibilityContext.context?.textSelection
-                  ?.postSelectionText,
-              appType: detectApplicationType(this.currentAccessibilityContext),
-              appBundleId:
-                this.currentAccessibilityContext.context?.application
-                  ?.bundleIdentifier,
-              appName:
-                this.currentAccessibilityContext.context?.application?.name,
-              appUrl: this.currentAccessibilityContext.context?.windowInfo?.url,
-              surroundingContext: "", // Empty for now, future enhancement
-            }
-          : undefined,
-      }),
-    });
+        body: JSON.stringify({
+          sessionId: this.currentSessionId,
+          isFinal,
+          audioData: Buffer.from(
+            audioData.buffer,
+            audioData.byteOffset,
+            audioData.byteLength,
+          ).toString("base64"),
+          vadProbs,
+          language: this.currentLanguage,
+          vocabulary: this.currentVocabulary,
+          previousTranscription: this.currentAggregatedTranscription,
+          formatting: {
+            enabled: enableFormatting,
+          },
+          sharedContext: this.currentAccessibilityContext
+            ? {
+                selectedText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.selectedText,
+                beforeText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.preSelectionText,
+                afterText:
+                  this.currentAccessibilityContext.context?.textSelection
+                    ?.postSelectionText,
+                appType: detectApplicationType(
+                  this.currentAccessibilityContext,
+                ),
+                appBundleId:
+                  this.currentAccessibilityContext.context?.application
+                    ?.bundleIdentifier,
+                appName:
+                  this.currentAccessibilityContext.context?.application?.name,
+                appUrl:
+                  this.currentAccessibilityContext.context?.windowInfo?.url,
+                surroundingContext: "", // Empty for now, future enhancement
+              }
+            : undefined,
+        }),
+      });
+    } catch (fetchError) {
+      // Network error (ENOTFOUND, ECONNREFUSED, ETIMEDOUT, etc.)
+      throw new AppError(
+        fetchError instanceof Error ? fetchError.message : "Network error",
+        ErrorCodes.NETWORK_ERROR,
+      );
+    }
 
     // Handle 401 with token refresh and retry
     if (response.status === 401) {
       if (isRetry) {
         // Already retried once, give up
-        throw new Error("Authentication failed - please log in again");
+        let errorData: CloudErrorResponse | undefined;
+        try {
+          const result: CloudTranscriptionResponse = await response.json();
+          if ("error" in result) {
+            errorData = result.error;
+          }
+        } catch {
+          // Response body wasn't valid JSON
+        }
+        throw new AppError(
+          "Cloud auth failed after retry",
+          ErrorCodes.AUTH_REQUIRED,
+          401,
+          errorData?.ui?.title,
+          errorData?.message,
+          errorData?.id,
+        );
       }
 
       logger.transcription.warn(
@@ -270,52 +347,78 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         // Force token refresh
         await this.authService.refreshTokenIfNeeded();
 
-        // Retry the request once (preserve formatting flag)
+        // Retry the request once (preserve formatting and isFinal flags)
         return await this.makeTranscriptionRequest(
           audioData,
           vadProbs,
           true,
           enableFormatting,
+          isFinal,
         );
       } catch (refreshError) {
         logger.transcription.error("Token refresh failed:", refreshError);
-        throw new Error("Authentication failed - please log in again");
+        throw new AppError(
+          "Authentication failed - please log in again",
+          ErrorCodes.AUTH_REQUIRED,
+          401,
+        );
       }
     }
 
-    if (response.status === 403) {
-      throw new Error("Subscription required for cloud transcription");
-    }
-
-    if (response.status === 429) {
-      const errorData = await response.json();
-      throw new Error(
-        `Word limit exceeded: ${errorData.currentWords}/${errorData.limit}`,
-      );
-    }
-
+    // Handle all non-ok responses
     if (!response.ok) {
-      const errorText = await response.text();
+      let errorData: CloudErrorResponse | undefined;
+      try {
+        const result: CloudTranscriptionResponse = await response.json();
+        if ("error" in result) {
+          errorData = result.error;
+        }
+      } catch {
+        // Response body wasn't valid JSON
+      }
+
       logger.transcription.error("Cloud API error:", {
         status: response.status,
         statusText: response.statusText,
-        error: errorText,
+        errorCode: errorData?.code,
+        errorTitle: errorData?.ui?.title,
+        errorMessage: errorData?.message,
+        traceId: errorData?.id,
       });
-      throw new Error(`Cloud API error: ${response.statusText}`);
+
+      // Use server error code if valid, otherwise fallback based on HTTP status
+      let errorCode: ErrorCode;
+      if (isValidErrorCode(errorData?.code)) {
+        errorCode = errorData.code;
+      } else if (response.status === 403) {
+        errorCode = ErrorCodes.AUTH_REQUIRED;
+      } else if (response.status === 429) {
+        errorCode = ErrorCodes.RATE_LIMIT_EXCEEDED;
+      } else if (response.status >= 500) {
+        errorCode = ErrorCodes.INTERNAL_SERVER_ERROR;
+      } else {
+        errorCode = ErrorCodes.UNKNOWN;
+      }
+
+      throw new AppError(
+        `Cloud API error: ${response.status} ${response.statusText}`,
+        errorCode,
+        response.status,
+        errorData?.ui?.title,
+        errorData?.message,
+        errorData?.id,
+      );
     }
 
-    const result: CloudTranscriptionResponse = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.error || "Cloud transcription failed");
-    }
+    const result: CloudTranscriptionSuccess = await response.json();
 
     logger.transcription.info("Cloud transcription successful", {
-      textLength: result.transcription?.length || 0,
+      textLength: result.transcription.length,
       language: result.language,
       duration: result.duration,
+      transcription: result.transcription,
     });
 
-    return result.transcription || "";
+    return result.transcription;
   }
 }

@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import type { FormatterConfig } from "@/types/formatter";
@@ -40,7 +40,9 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
   const defaultLanguageModelQuery = api.models.getDefaultModel.useQuery({
     type: "language",
   });
-  const isAuthenticatedQuery = api.auth.isAuthenticated.useQuery();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | undefined>(
+    undefined,
+  );
   const utils = api.useUtils();
 
   // Use query data directly
@@ -102,8 +104,8 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
   });
 
   api.auth.onAuthStateChange.useSubscription(undefined, {
-    onData: () => {
-      utils.auth.isAuthenticated.invalidate();
+    onData: (authState) => {
+      setIsAuthenticated(authState.isAuthenticated);
     },
     onError: (error) => {
       console.error("Auth state subscription error:", error);
@@ -114,8 +116,8 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
   const languageModels = languageModelsQuery.data || [];
   const hasLanguageModels = languageModels.length > 0;
   const isCloudSpeechSelected = speechModelQuery.data === "amical-cloud";
-  const isAuthenticated = isAuthenticatedQuery.data || false;
-  const canUseCloudFormatting = isCloudSpeechSelected && isAuthenticated;
+  const canUseCloudFormatting =
+    isCloudSpeechSelected && (isAuthenticated ?? false);
   const hasFormattingOptions = hasLanguageModels || canUseCloudFormatting;
   const formattingEnabled = formatterConfig?.enabled ?? false;
   const disableFormattingToggle = !hasFormattingOptions;

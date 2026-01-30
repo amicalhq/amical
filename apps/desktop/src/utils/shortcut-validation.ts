@@ -3,12 +3,15 @@
  * Provides comprehensive validation for keyboard shortcuts
  */
 
-export type ShortcutType = "pushToTalk" | "toggleRecording";
+export type ShortcutType =
+  | "pushToTalk"
+  | "toggleRecording"
+  | "pasteLastTranscript";
 
 export interface ValidationContext {
-  currentShortcut: string[];
-  otherShortcut: string[];
-  shortcutType: ShortcutType;
+  candidateShortcut: string[];
+  candidateType: ShortcutType;
+  shortcutsByType: Record<ShortcutType, string[]>;
   platform: NodeJS.Platform;
 }
 
@@ -246,18 +249,21 @@ export function checkMaxKeysLength(keys: string[]): ValidationResult {
  */
 export function checkDuplicateShortcut(
   currentKeys: string[],
-  otherKeys: string[],
+  otherShortcuts: string[][],
 ): ValidationResult {
-  if (otherKeys.length === 0) return { valid: true };
+  if (otherShortcuts.length === 0) return { valid: true };
 
   const currentNormalized = normalizeKeys(currentKeys);
-  const otherNormalized = normalizeKeys(otherKeys);
 
-  if (arraysEqual(currentNormalized, otherNormalized)) {
-    return {
-      valid: false,
-      error: "Shortcut already assigned to another action",
-    };
+  for (const otherKeys of otherShortcuts) {
+    if (otherKeys.length === 0) continue;
+    const otherNormalized = normalizeKeys(otherKeys);
+    if (arraysEqual(currentNormalized, otherNormalized)) {
+      return {
+        valid: false,
+        error: "Shortcut already assigned to another action",
+      };
+    }
   }
   return { valid: true };
 }
@@ -341,20 +347,20 @@ export function checkDuplicateModifierPairs(
 
 /**
  * Check if toggle shortcut is a subset of PTT shortcut (soft warning)
- * Only warns when setting toggleRecording
  */
 export function checkSubsetConflict(
-  currentKeys: string[],
-  otherKeys: string[],
-  shortcutType: ShortcutType,
+  candidateShortcut: string[],
+  candidateType: ShortcutType,
+  shortcutsByType: Record<ShortcutType, string[]>,
 ): ValidationResult {
-  // Only warn when setting toggleRecording
-  if (shortcutType !== "toggleRecording") return { valid: true };
-  if (otherKeys.length === 0 || currentKeys.length === 0)
+  if (candidateType !== "toggleRecording") return { valid: true };
+
+  const pushToTalkKeys = shortcutsByType.pushToTalk ?? [];
+  if (pushToTalkKeys.length === 0 || candidateShortcut.length === 0)
     return { valid: true };
 
-  const toggleNormalized = normalizeKeys(currentKeys);
-  const pttNormalized = normalizeKeys(otherKeys);
+  const toggleNormalized = normalizeKeys(candidateShortcut);
+  const pttNormalized = normalizeKeys(pushToTalkKeys);
 
   // Check if toggle shortcut is a subset of PTT shortcut
   const isSubset = toggleNormalized.every((key) =>
@@ -379,33 +385,40 @@ export function checkSubsetConflict(
 export function validateShortcutComprehensive(
   context: ValidationContext,
 ): ValidationResult {
-  const { currentShortcut, otherShortcut, shortcutType, platform } = context;
+  const { candidateShortcut, candidateType, shortcutsByType, platform } =
+    context;
+  const otherShortcuts = Object.entries(shortcutsByType)
+    .filter(([shortcutType]) => shortcutType !== candidateType)
+    .map(([, shortcutKeys]) => shortcutKeys);
 
   // 1. Max keys length check
-  const maxKeysCheck = checkMaxKeysLength(currentShortcut);
+  const maxKeysCheck = checkMaxKeysLength(candidateShortcut);
   if (!maxKeysCheck.valid) return maxKeysCheck;
 
   // 2. Duplicate shortcut check
-  const duplicateCheck = checkDuplicateShortcut(currentShortcut, otherShortcut);
+  const duplicateCheck = checkDuplicateShortcut(
+    candidateShortcut,
+    otherShortcuts,
+  );
   if (!duplicateCheck.valid) return duplicateCheck;
 
   // 3. Reserved shortcut check
-  const reservedCheck = checkReservedShortcut(currentShortcut, platform);
+  const reservedCheck = checkReservedShortcut(candidateShortcut, platform);
   if (!reservedCheck.valid) return reservedCheck;
 
   // 4. Alphanumeric-only check
-  const alphaCheck = checkAlphanumericOnly(currentShortcut);
+  const alphaCheck = checkAlphanumericOnly(candidateShortcut);
   if (!alphaCheck.valid) return alphaCheck;
 
   // 5. Duplicate modifier pair check (Windows only)
-  const pairCheck = checkDuplicateModifierPairs(currentShortcut, platform);
+  const pairCheck = checkDuplicateModifierPairs(candidateShortcut, platform);
   if (!pairCheck.valid) return pairCheck;
 
   // 6. Subset conflict check (soft warning - returns valid:true with warning)
   const subsetCheck = checkSubsetConflict(
-    currentShortcut,
-    otherShortcut,
-    shortcutType,
+    candidateShortcut,
+    candidateType,
+    shortcutsByType,
   );
 
   return {

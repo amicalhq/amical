@@ -1,12 +1,19 @@
 import Foundation
 import ObjCExceptionCatcher
 
+/// Flexible RPC request that can parse any method string
+struct FlexibleRPCRequest: Codable {
+    let id: String
+    let method: String
+    let params: JSONAny?
+}
+
 class IOBridge: NSObject {
-    private let jsonEncoder: JSONEncoder
-    private let jsonDecoder: JSONDecoder
+    let jsonEncoder: JSONEncoder
+    let jsonDecoder: JSONDecoder
     private let accessibilityService: AccessibilityService
     private let audioService: AudioService
-    private let dateFormatter: DateFormatter
+    let dateFormatter: DateFormatter
 
     init(jsonEncoder: JSONEncoder, jsonDecoder: JSONDecoder) {
         self.jsonEncoder = jsonEncoder
@@ -38,11 +45,19 @@ class IOBridge: NSObject {
             return
 
         case .getAccessibilityContext:
-            // Process accessibility context requests on dedicated thread
+            // Process accessibility context requests on dedicated thread (uses v2 service)
             AccessibilityQueue.shared.async { [weak self] in
                 guard let self = self else { return }
-                self.handleAccessibilityContext(request)
+                self.handleGetAccessibilityContext(id: request.id, params: request.params)
             }
+            return
+
+        case .getAccessibilityStatus:
+            handleGetAccessibilityStatus(id: request.id)
+            return
+
+        case .requestAccessibilityPermission:
+            handleRequestAccessibilityPermission(id: request.id)
             return
 
         case .pasteText:
@@ -166,7 +181,8 @@ class IOBridge: NSObject {
                 // Update the ShortcutManager with the new shortcuts
                 ShortcutManager.shared.setShortcuts(
                     pushToTalk: shortcutsParams.pushToTalk,
-                    toggleRecording: shortcutsParams.toggleRecording
+                    toggleRecording: shortcutsParams.toggleRecording,
+                    pasteLastTranscript: shortcutsParams.pasteLastTranscript
                 )
 
                 let resultPayload = SetShortcutsResultSchema(success: true)
@@ -308,71 +324,70 @@ class IOBridge: NSObject {
         }
     }
 
-    private func handleAccessibilityContext(_ request: RPCRequestSchema) {
-        var contextParams: GetAccessibilityContextParamsSchema? = nil
-        logToStderr("[IOBridge] Handling getAccessibilityContext for ID: \(request.id)")
+    // MARK: - Accessibility Handlers (using consolidated service)
 
-        if let paramsAnyCodable = request.params {
+    private func handleGetAccessibilityContext(id: String, params: JSONAny?) {
+        logToStderr("[IOBridge] Handling getAccessibilityContext for ID: \(id)")
+
+        // Parse params (default editableOnly = false per spec)
+        var editableOnly = false
+        if let paramsAnyCodable = params {
             do {
                 let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                contextParams = try jsonDecoder.decode(
-                    GetAccessibilityContextParamsSchema.self, from: paramsData)
-                logToStderr(
-                    "[IOBridge] Decoded contextParams.editableOnly: \(contextParams?.editableOnly ?? false) for ID: \(request.id)"
-                )
+                let contextParams = try jsonDecoder.decode(GetAccessibilityContextParams.self, from: paramsData)
+                editableOnly = contextParams.editableOnly ?? false
             } catch {
-                logToStderr(
-                    "[IOBridge] Error decoding getAccessibilityContext params: \(error.localizedDescription)"
-                )
-                let errPayload = Error(
-                    code: -32602, data: request.params,
-                    message: "Invalid params: \(error.localizedDescription)")
-                let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-                sendRpcResponse(rpcResponse)
-                return
+                logToStderr("[IOBridge] Error decoding params: \(error.localizedDescription)")
             }
         }
 
-        let editableOnly = contextParams?.editableOnly ?? false
-
+        // Call service with exception handling
         switch ExceptionCatcher.try({
             AccessibilityContextService.getAccessibilityContext(editableOnly: editableOnly)
         }) {
         case .success(let context):
-            logToStderr("[IOBridge] Retrieved context for ID: \(request.id)")
-            let resultPayload = GetAccessibilityContextResultSchema(context: context)
-            do {
-                let resultData = try jsonEncoder.encode(resultPayload)
-                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-                let rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-                sendRpcResponse(rpcResponse)
-            } catch {
-                logToStderr("[IOBridge] Error encoding result: \(error.localizedDescription) for ID: \(request.id)")
-                let errPayload = Error(code: -32603, data: nil, message: "Error encoding result: \(error.localizedDescription)")
-                let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-                sendRpcResponse(rpcResponse)
-            }
+            logToStderr("[IOBridge] Retrieved context for ID: \(id)")
+            let result = GetAccessibilityContextResult(context: context)
+            sendResult(id: id, result: result)
 
         case .exception(let exception):
             logToStderr("[IOBridge] NSException in getAccessibilityContext: \(exception.name) - \(exception.reason)")
-            let exceptionData: [String: Any] = [
-                "name": exception.name,
-                "reason": exception.reason,
-                "callStack": exception.callStack.prefix(10).joined(separator: "\n")
-            ]
-            var exceptionJsonAny: JSONAny? = nil
-            if let jsonData = try? JSONSerialization.data(withJSONObject: exceptionData),
-               let decoded = try? jsonDecoder.decode(JSONAny.self, from: jsonData) {
-                exceptionJsonAny = decoded
-            }
-            let errPayload = Error(
-                code: -32603,
-                data: exceptionJsonAny,
-                message: "\(exception.name): \(exception.reason)"
-            )
-            let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            sendRpcResponse(rpcResponse)
+            sendError(id: id, code: -32603, message: "\(exception.name): \(exception.reason)")
         }
+    }
+
+    private func handleGetAccessibilityStatus(id: String) {
+        logToStderr("[IOBridge] Handling getAccessibilityStatus for ID: \(id)")
+
+        let result = AccessibilityContextService.getAccessibilityStatus()
+        sendResult(id: id, result: result)
+    }
+
+    private func handleRequestAccessibilityPermission(id: String) {
+        logToStderr("[IOBridge] Handling requestAccessibilityPermission for ID: \(id)")
+
+        let result = AccessibilityContextService.requestAccessibilityPermission()
+        sendResult(id: id, result: result)
+    }
+
+    // MARK: - Response Helpers
+
+    private func sendResult<T: Encodable>(id: String, result: T) {
+        do {
+            let resultData = try jsonEncoder.encode(result)
+            let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
+            let rpcResponse = RPCResponseSchema(error: nil, id: id, result: resultAsJsonAny)
+            sendRpcResponse(rpcResponse)
+        } catch {
+            logToStderr("[IOBridge] Error encoding result: \(error.localizedDescription)")
+            sendError(id: id, code: -32603, message: "Error encoding result: \(error.localizedDescription)")
+        }
+    }
+
+    private func sendError(id: String, code: Int, message: String) {
+        let errPayload = Error(code: code, data: nil, message: message)
+        let rpcResponse = RPCResponseSchema(error: errPayload, id: id, result: nil)
+        sendRpcResponse(rpcResponse)
     }
 
 }

@@ -218,7 +218,7 @@ export const modelsRouter = createRouter({
       }
       await modelService.setSelectedModel(input.modelId);
 
-      // Notify transcription service about model change
+      // Notify transcription service about model change (fire-and-forget to avoid blocking UI)
       const transcriptionService = ctx.serviceManager.getService(
         "transcriptionService",
       );
@@ -338,16 +338,20 @@ export const modelsRouter = createRouter({
       }
 
       switch (input.type) {
-        case "speech":
+        case "speech": {
           await modelService.setSelectedModel(input.modelId);
-          // Notify transcription service about model change
+          // Notify transcription service about model change (fire-and-forget to avoid blocking UI)
           const transcriptionService = ctx.serviceManager.getService(
             "transcriptionService",
           );
           if (transcriptionService) {
-            await transcriptionService.handleModelChange();
+            transcriptionService.handleModelChange().catch((err) => {
+              const logger = ctx.serviceManager.getLogger();
+              logger?.main.error("Failed to handle model change:", err);
+            });
           }
           break;
+        }
         case "language":
           await modelService.setDefaultLanguageModel(input.modelId);
           break;

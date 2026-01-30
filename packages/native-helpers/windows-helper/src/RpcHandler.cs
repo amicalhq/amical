@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,35 +7,44 @@ using WindowsHelper.Services;
 
 namespace WindowsHelper
 {
-    public class RpcHandler
+    public class RpcHandler : IDisposable
     {
         private readonly JsonSerializerOptions jsonOptions;
         private readonly AccessibilityService accessibilityService;
         private readonly AudioService audioService;
-        private readonly ShortcutMonitor? shortcutMonitor;
+        private readonly StaThreadRunner? staRunner;
         private Action<string>? audioCompletionHandler;
+        private bool disposed;
 
-        public RpcHandler(ShortcutMonitor? shortcutMonitor = null)
+        public RpcHandler(StaThreadRunner? staRunner, ClipboardService clipboardService)
         {
-            this.shortcutMonitor = shortcutMonitor;
+            this.staRunner = staRunner;
 
             // Use the generated converter settings from the models
             jsonOptions = WindowsHelper.Models.Converter.Settings;
 
-            accessibilityService = new AccessibilityService();
+            // Create AccessibilityService with ClipboardService
+            accessibilityService = new AccessibilityService(clipboardService);
+
             audioService = new AudioService();
             audioService.SoundPlaybackCompleted += OnSoundPlaybackCompleted;
 
-            if (shortcutMonitor != null)
+            if (staRunner != null)
             {
-                LogToStderr("RpcHandler: STA thread dispatch enabled via ShortcutMonitor");
+                LogToStderr("RpcHandler: STA thread dispatch enabled via StaThreadRunner");
             }
+        }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
         }
 
         public void ProcessRpcRequests(CancellationToken cancellationToken)
         {
             LogToStderr("RpcHandler: Starting RPC request processing loop.");
-            
+
             try
             {
                 string? line;
@@ -67,14 +75,14 @@ namespace WindowsHelper
             {
                 LogToStderr($"Fatal error in RPC processing: {ex.Message}");
             }
-            
+
             LogToStderr("RpcHandler: RPC request processing loop finished.");
         }
 
         private async void HandleRpcRequest(RpcRequest request)
         {
             RpcResponse response;
-            
+
             try
             {
                 switch (request.Method)
@@ -82,19 +90,19 @@ namespace WindowsHelper
                     case Method.GetAccessibilityTreeDetails:
                         response = await HandleGetAccessibilityTreeDetails(request);
                         break;
-                        
+
                     case Method.GetAccessibilityContext:
                         response = await HandleGetAccessibilityContext(request);
                         break;
-                        
+
                     case Method.PasteText:
                         response = HandlePasteText(request);
                         break;
-                        
+
                     case Method.MuteSystemAudio:
                         response = await HandleMuteSystemAudio(request);
                         return; // Response sent after audio playback
-                        
+
                     case Method.RestoreSystemAudio:
                         response = HandleRestoreSystemAudio(request);
                         break;
@@ -130,14 +138,14 @@ namespace WindowsHelper
                     }
                 };
             }
-            
+
             SendRpcResponse(response);
         }
 
         private async Task<RpcResponse> HandleGetAccessibilityTreeDetails(RpcRequest request)
         {
             LogToStderr($"Handling getAccessibilityTreeDetails for ID: {request.Id}");
-            
+
             GetAccessibilityTreeDetailsParams? parameters = null;
             if (request.Params != null)
             {
@@ -164,7 +172,7 @@ namespace WindowsHelper
 
             // Get accessibility tree on UI thread
             var tree = await Task.Run(() => accessibilityService.FetchAccessibilityTree(parameters?.RootId));
-            
+
             return new RpcResponse
             {
                 Id = request.Id.ToString(),
@@ -175,7 +183,7 @@ namespace WindowsHelper
         private async Task<RpcResponse> HandleGetAccessibilityContext(RpcRequest request)
         {
             LogToStderr($"Handling getAccessibilityContext for ID: {request.Id}");
-            
+
             GetAccessibilityContextParams? parameters = null;
             if (request.Params != null)
             {
@@ -202,7 +210,7 @@ namespace WindowsHelper
 
             var editableOnly = parameters?.EditableOnly ?? false;
             var context = await Task.Run(() => accessibilityService.GetAccessibilityContext(editableOnly));
-            
+
             return new RpcResponse
             {
                 Id = request.Id.ToString(),
@@ -213,7 +221,7 @@ namespace WindowsHelper
         private RpcResponse HandlePasteText(RpcRequest request)
         {
             LogToStderr($"Handling pasteText for ID: {request.Id}");
-            
+
             if (request.Params == null)
             {
                 return new RpcResponse
@@ -231,24 +239,34 @@ namespace WindowsHelper
             {
                 var json = JsonSerializer.Serialize(request.Params, jsonOptions);
                 var parameters = JsonSerializer.Deserialize<PasteTextParams>(json, jsonOptions);
-                
+
                 if (parameters != null)
                 {
-                    var success = accessibilityService.PasteText(parameters.Transcript);
+                    var success = accessibilityService.PasteText(parameters.Transcript, out var errorMessage);
                     return new RpcResponse
                     {
                         Id = request.Id.ToString(),
                         Result = new PasteTextResult
                         {
                             Success = success,
-                            Message = success ? "Pasted successfully" : "Paste failed"
+                            Message = success ? "Pasted successfully" : (errorMessage ?? "Paste failed")
                         }
                     };
                 }
             }
             catch (Exception ex)
             {
-                LogToStderr($"Error processing pasteText: {ex.Message}");
+                LogToStderr($"Error processing pasteText: {ex}");
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Error = new Error
+                    {
+                        Code = -32603,
+                        Message = $"Error during paste operation: {ex.Message}",
+                        Data = ex.ToString()
+                    }
+                };
             }
 
             return new RpcResponse
@@ -286,20 +304,8 @@ namespace WindowsHelper
                 audioCompletionHandler = null;
             };
 
-            // Play sound on STA thread if available (faster due to COM/audio API preferences)
-            if (shortcutMonitor != null)
-            {
-                LogToStderr("Dispatching audio playback to STA thread");
-                await shortcutMonitor.InvokeOnStaAsync(async () =>
-                {
-                    await audioService.PlaySound("rec-start", requestId);
-                    return true;
-                });
-            }
-            else
-            {
-                await audioService.PlaySound("rec-start", requestId);
-            }
+            // Play sound on thread pool - NAudio handles its own threading internally
+            await audioService.PlaySound("rec-start", requestId);
 
             // Return dummy response (real response sent after audio completion)
             return new RpcResponse { Id = request.Id.ToString() };
@@ -312,18 +318,8 @@ namespace WindowsHelper
             var success = audioService.RestoreSystemAudio();
             if (success)
             {
-                // Play sound asynchronously on STA thread if available (don't wait)
-                if (shortcutMonitor != null)
-                {
-                    shortcutMonitor.PostToSta(async () =>
-                    {
-                        await audioService.PlaySound("rec-stop", request.Id.ToString());
-                    });
-                }
-                else
-                {
-                    _ = audioService.PlaySound("rec-stop", request.Id.ToString());
-                }
+                // Play sound asynchronously - NAudio handles its own threading, don't wait
+                _ = audioService.PlaySound("rec-stop", request.Id.ToString());
             }
 
             return new RpcResponse
@@ -366,7 +362,8 @@ namespace WindowsHelper
 
                 ShortcutManager.Instance.SetShortcuts(
                     setShortcutsParams.PushToTalk?.ToArray() ?? Array.Empty<string>(),
-                    setShortcutsParams.ToggleRecording?.ToArray() ?? Array.Empty<string>()
+                    setShortcutsParams.ToggleRecording?.ToArray() ?? Array.Empty<string>(),
+                    setShortcutsParams.PasteLastTranscript?.ToArray() ?? Array.Empty<string>()
                 );
 
                 return new RpcResponse

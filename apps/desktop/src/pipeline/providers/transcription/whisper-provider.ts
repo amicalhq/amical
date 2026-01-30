@@ -8,6 +8,7 @@ import { ModelService } from "../../../services/model-service";
 import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
+import { AppError, ErrorCodes } from "../../../types/error";
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
@@ -149,13 +150,17 @@ export class WhisperProvider implements TranscriptionProvider {
       );
 
       if (!this.workerWrapper) {
-        throw new Error("Worker wrapper is not initialized");
+        throw new AppError(
+          "Worker wrapper is not initialized",
+          ErrorCodes.WORKER_INITIALIZATION_FAILED,
+        );
       }
 
       // Generate initial prompt from vocabulary and recent context
       const initialPrompt = this.generateInitialPrompt(
         vocabulary,
         aggregatedTranscription,
+        context.accessibilityContext,
       );
 
       const text = await this.workerWrapper.exec<string>("transcribeAudio", [
@@ -176,7 +181,14 @@ export class WhisperProvider implements TranscriptionProvider {
       return text;
     } catch (error) {
       logger.transcription.error("Transcription failed:", error);
-      throw new Error(`Transcription failed: ${error}`);
+      // Re-throw AppError as-is, wrap other errors
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError(
+        `Whisper transcription failed: ${error instanceof Error ? error.message : error}`,
+        ErrorCodes.LOCAL_TRANSCRIPTION_FAILED,
+      );
     }
   }
 
@@ -296,6 +308,7 @@ export class WhisperProvider implements TranscriptionProvider {
   private generateInitialPrompt(
     vocabulary?: string[],
     aggregatedTranscription?: string,
+    accessibilityContext?: TranscribeContext["accessibilityContext"],
   ): string {
     const promptParts: string[] = [];
 
@@ -304,17 +317,19 @@ export class WhisperProvider implements TranscriptionProvider {
       promptParts.push(vocabulary.join(", "));
     }
 
-    // Add last 8 words from aggregated transcription if available
-    if (aggregatedTranscription && aggregatedTranscription.trim().length > 0) {
-      const words = aggregatedTranscription.trim().split(/\s+/);
-      const lastWords = words.slice(-8).join(" ");
-      if (lastWords.length > 0) {
-        promptParts.push(lastWords);
+    if (aggregatedTranscription) {
+      // Pass full transcription - whisper.cpp auto-truncates to last ~224 tokens
+      promptParts.push(aggregatedTranscription);
+    } else {
+      const beforeText =
+        accessibilityContext?.context?.textSelection?.preSelectionText;
+      if (beforeText && beforeText.trim().length > 0) {
+        promptParts.push(beforeText);
       }
     }
 
     // Combine parts with a separator, or return empty string if no context
-    const prompt = promptParts.join(". ");
+    const prompt = promptParts.join(" ");
 
     logger.transcription.debug(`Generated initial prompt: "${prompt}"`);
 
@@ -342,8 +357,9 @@ export class WhisperProvider implements TranscriptionProvider {
 
     const modelPath = await this.modelService.getBestAvailableModelPath();
     if (!modelPath) {
-      throw new Error(
+      throw new AppError(
         "No Whisper models available. Please download a model first.",
+        ErrorCodes.MODEL_MISSING,
       );
     }
 
@@ -351,7 +367,14 @@ export class WhisperProvider implements TranscriptionProvider {
       await this.workerWrapper.exec("initializeModel", [modelPath]);
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);
-      throw new Error(`Failed to initialize whisper wrapper: ${error}`);
+      // Re-throw AppError as-is, wrap other errors
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError(
+        `Whisper model initialization failed: ${error instanceof Error ? error.message : error}`,
+        ErrorCodes.WORKER_INITIALIZATION_FAILED,
+      );
     }
   }
 

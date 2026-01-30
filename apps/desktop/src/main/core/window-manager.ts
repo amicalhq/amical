@@ -26,6 +26,27 @@ export class WindowManager {
   // On Windows, inset from all edges to allow taskbar auto-hide detection
   private readonly widgetEdgeInset = process.platform === "win32" ? 4 : 0;
 
+  /**
+   * Get the correct traffic light position based on macOS version.
+   * macOS Tahoe (26+) has larger, redesigned traffic light buttons as part of
+   * the "Liquid Glass" design language that require a different y-offset.
+   * Electron does not handle this automatically - apps must detect OS version.
+   * See: https://github.com/microsoft/vscode/pull/280593
+   */
+  private getTrafficLightPosition(): { x: number; y: number } {
+    if (process.platform !== "darwin") {
+      return { x: 20, y: 16 }; // Not used on non-macOS, but return default
+    }
+
+    // process.getSystemVersion() returns marketing version (e.g., "26.0.0")
+    // vs os.release() which returns Darwin kernel version (e.g., "25.1.0")
+    const systemVersion = process.getSystemVersion();
+    const majorVersion = parseInt(systemVersion.split(".")[0], 10);
+    const isTahoeOrLater = majorVersion >= 26;
+
+    return { x: 20, y: isTahoeOrLater ? 12 : 16 };
+  }
+
   /** Calculate widget bounds with edge inset applied for taskbar auto-hide */
   private getWidgetBounds(workArea: Electron.Rectangle): Electron.Rectangle {
     const inset = this.widgetEdgeInset;
@@ -138,7 +159,7 @@ export class WindowManager {
         symbolColor: colors.symbolColor,
         height: 32,
       },
-      trafficLightPosition: { x: 20, y: 16 },
+      trafficLightPosition: this.getTrafficLightPosition(),
       useContentSize: true,
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -290,7 +311,7 @@ export class WindowManager {
         symbolColor: colors.symbolColor,
         height: 32,
       },
-      trafficLightPosition: { x: 20, y: 16 },
+      trafficLightPosition: this.getTrafficLightPosition(),
       resizable: false,
       center: true,
       modal: true,

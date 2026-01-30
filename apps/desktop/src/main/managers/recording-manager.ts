@@ -6,6 +6,8 @@ import type { ServiceManager } from "@/main/managers/service-manager";
 import type { RecordingState } from "../../types/recording";
 import type { ShortcutManager } from "./shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
+import { AppError, ErrorCodes, type ErrorCode } from "../../types/error";
+import { getLatestTranscription } from "../../db/transcriptions";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -92,6 +94,11 @@ export class RecordingManager extends EventEmitter {
     // Handle toggle recording
     shortcutManager.on("toggle-recording-triggered", async () => {
       await this.toggleHandsFree();
+    });
+
+    // Handle paste last transcription shortcut
+    shortcutManager.on("paste-last-transcript-triggered", async () => {
+      await this.pasteLatestTranscription();
     });
   }
 
@@ -281,7 +288,7 @@ export class RecordingManager extends EventEmitter {
       const vadService = this.serviceManager.getService("vadService");
       vadService.reset();
 
-      // Refresh accessibility context
+      // Refresh accessibility context (TextMarker API for Electron support)
       const nativeBridge = this.serviceManager.getService("nativeBridge");
       nativeBridge.refreshAccessibilityContext();
 
@@ -563,6 +570,39 @@ export class RecordingManager extends EventEmitter {
       });
     } catch (error) {
       logger.audio.error("Failed to get final transcription", { error });
+
+      // Extract error properties for notification (DB write handled by TranscriptionService)
+      let errorCode: ErrorCode = ErrorCodes.UNKNOWN;
+      let uiTitle: string | undefined;
+      let uiMessage: string | undefined;
+      let traceId: string | undefined;
+
+      if (error instanceof AppError) {
+        errorCode = error.errorCode;
+        uiTitle = error.uiTitle;
+        uiMessage = error.uiMessage;
+        traceId = error.traceId;
+      }
+
+      // Notify user with error code and optional UI overrides
+      this.emit("widget-notification", {
+        type: "transcription_failed",
+        errorCode,
+        uiTitle,
+        uiMessage,
+        traceId,
+      });
+      logger.audio.info("Emitted widget notification", {
+        type: "transcription_failed",
+        errorCode,
+        hasUiTitle: !!uiTitle,
+        hasUiMessage: !!uiMessage,
+        hasTraceId: !!traceId,
+      });
+
+      this.resetSessionState();
+      this.setState("idle");
+      return;
     }
 
     logPerformance("streaming transcription complete", Date.now(), {
@@ -740,6 +780,22 @@ export class RecordingManager extends EventEmitter {
         "Native bridge not available, cannot paste transcription",
         { error: error instanceof Error ? error.message : String(error) },
       );
+    }
+  }
+
+  private async pasteLatestTranscription(): Promise<void> {
+    try {
+      const latest = await getLatestTranscription();
+      if (!latest || !latest.text?.trim()) {
+        logger.main.info("No previous transcription available to paste");
+        return;
+      }
+
+      await this.pasteTranscription(latest.text);
+    } catch (error) {
+      logger.main.warn("Failed to paste last transcription", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

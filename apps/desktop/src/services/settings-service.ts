@@ -15,6 +15,7 @@ import type { AppSettingsData } from "../db/schema";
 export interface ShortcutsConfig {
   pushToTalk: string[];
   toggleRecording: string[];
+  pasteLastTranscript: string[];
 }
 
 export interface AppPreferences {
@@ -141,6 +142,7 @@ export class SettingsService extends EventEmitter {
     return {
       pushToTalk: shortcuts?.pushToTalk ?? [],
       toggleRecording: shortcuts?.toggleRecording ?? [],
+      pasteLastTranscript: shortcuts?.pasteLastTranscript ?? [],
     };
   }
 
@@ -155,6 +157,9 @@ export class SettingsService extends EventEmitter {
         : undefined,
       toggleRecording: shortcuts.toggleRecording?.length
         ? shortcuts.toggleRecording
+        : undefined,
+      pasteLastTranscript: shortcuts.pasteLastTranscript?.length
+        ? shortcuts.pasteLastTranscript
         : undefined,
     };
     await updateSettingsSection("shortcuts", dataToStore);

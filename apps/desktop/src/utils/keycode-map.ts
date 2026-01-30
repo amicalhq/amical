@@ -1,6 +1,9 @@
 import { isWindows } from "./platform";
 
 // macOS keycode mappings
+// Note: PrintScreen is not standard on macOS keyboards. External keyboards may send it,
+// but it may not have a standard macOS keycode. The fallback mechanism will handle
+// unmapped keys (including PrintScreen) by generating a "Key{keycode}" name.
 const macOSKeycodeToKey: Record<number, string> = {
   // Letters
   0: "A",
@@ -48,8 +51,10 @@ const macOSKeycodeToKey: Record<number, string> = {
   51: "Delete",
   52: "Enter",
   53: "Escape",
+  57: "CapsLock",
+  117: "ForwardDelete", // Forward delete (different from Delete/Backspace)
 
-  // Function keys
+  // Function keys (F1-F12 - using macOS keycodes)
   122: "F1",
   120: "F2",
   99: "F3",
@@ -62,6 +67,23 @@ const macOSKeycodeToKey: Record<number, string> = {
   109: "F10",
   103: "F11",
   111: "F12",
+
+  // Extended function keys (F13-F20)
+  105: "F13",
+  107: "F14",
+  113: "F15",
+  106: "F16",
+  64: "F17",
+  79: "F18",
+  80: "F19",
+  90: "F20",
+
+  // Navigation keys
+  115: "Home",
+  116: "PageUp",
+  121: "PageDown",
+  119: "End",
+  114: "Help",
 
   // Arrow keys
   123: "Left",
@@ -81,6 +103,31 @@ const macOSKeycodeToKey: Record<number, string> = {
   47: ".",
   44: "/",
   50: "`",
+
+  // Keypad keys
+  65: "KeypadDecimal",
+  67: "KeypadMultiply",
+  69: "KeypadPlus",
+  71: "KeypadClear",
+  75: "KeypadDivide",
+  76: "KeypadEnter",
+  78: "KeypadMinus",
+  81: "KeypadEquals",
+  82: "Keypad0",
+  83: "Keypad1",
+  84: "Keypad2",
+  85: "Keypad3",
+  86: "Keypad4",
+  87: "Keypad5",
+  88: "Keypad6",
+  89: "Keypad7",
+  91: "Keypad8",
+  92: "Keypad9",
+
+  // Media keys
+  72: "VolumeUp",
+  73: "VolumeDown",
+  74: "Mute",
 };
 
 // Windows Virtual Key code mappings
@@ -302,14 +349,30 @@ export function getKeyNameFromPayload(payload: {
   keyCode?: number;
 }): string | undefined {
   // Try to get key name from various sources
-  if (payload.key) return payload.key;
+  // First, use the key name from the payload (may come from Swift fallback)
+  if (payload.key) {
+    // If it's a generic "Key{keycode}" format, try to map it properly first
+    if (payload.key.startsWith("Key") && payload.keyCode !== undefined) {
+      const mappedKey = getKeyFromKeycode(payload.keyCode);
+      if (mappedKey) {
+        return normalizeKeyName(mappedKey);
+      }
+    }
+    return payload.key;
+  }
+
+  // Fallback: Try to map keycode
   if (payload.keyCode !== undefined) {
     const keyName = getKeyFromKeycode(payload.keyCode);
     if (keyName) {
       // Normalize key names for consistency across platforms
       return normalizeKeyName(keyName);
     }
+    // Last resort: Return generic identifier to ensure key is reported
+    // This helps with debugging and ensures unmapped keys don't break shortcut recording
+    return `Key${payload.keyCode}`;
   }
+
   return undefined;
 }
 

@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
@@ -18,6 +19,7 @@
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="9.0.7" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
   </ItemGroup>
   
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(RuntimeIdentifier)' == 'win-x64'">

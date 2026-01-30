@@ -23,6 +23,8 @@ import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
+import { AppError, ErrorCodes } from "../types/error";
+import { applyTextReplacements } from "../utils/text-replacement";
 
 /**
  * Service for audio transcription and optional formatting
@@ -36,6 +38,7 @@ export class TranscriptionService {
   private settingsService: SettingsService;
   private vadMutex: Mutex;
   private transcriptionMutex: Mutex;
+  private modelLoadMutex: Mutex;
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private modelWasPreloaded: boolean = false;
@@ -54,6 +57,7 @@ export class TranscriptionService {
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
     this.transcriptionMutex = new Mutex();
+    this.modelLoadMutex = new Mutex();
     this.telemetryService = telemetryService;
     this.modelService = modelService;
   }
@@ -178,39 +182,40 @@ export class TranscriptionService {
   }
 
   /**
-   * Handle model change - dispose old model and load new one if preloading is enabled
+   * Handle model change - load new model if preloading is enabled
+   * Uses mutex to serialize concurrent model loads
    */
   async handleModelChange(): Promise<void> {
-    try {
-      // Dispose current model
-      await this.whisperProvider.dispose();
-      this.modelWasPreloaded = false; // Reset preload flag on model change
+    this.modelLoadMutex.runExclusive(async () => {
+      try {
+        this.modelWasPreloaded = false;
 
-      // Check if preloading is enabled and models are available
-      if (this.settingsService) {
-        const transcriptionSettings =
-          await this.settingsService.getTranscriptionSettings();
-        const shouldPreload =
-          transcriptionSettings?.preloadWhisperModel !== false;
+        // Check if preloading is enabled and models are available
+        if (this.settingsService) {
+          const transcriptionSettings =
+            await this.settingsService.getTranscriptionSettings();
+          const shouldPreload =
+            transcriptionSettings?.preloadWhisperModel !== false;
 
-        if (shouldPreload) {
-          const hasModels = await this.isModelAvailable();
-          if (hasModels) {
-            logger.transcription.info(
-              "Reloading Whisper model after model change...",
-            );
-            await this.whisperProvider.preloadModel();
-            this.modelWasPreloaded = true;
-            logger.transcription.info("Whisper model reloaded successfully");
-          } else {
-            logger.transcription.info("No models available to preload");
+          if (shouldPreload) {
+            const hasModels = await this.isModelAvailable();
+            if (hasModels) {
+              logger.transcription.info(
+                "Loading Whisper model after model change...",
+              );
+              await this.whisperProvider.preloadModel();
+              this.modelWasPreloaded = true;
+              logger.transcription.info("Whisper model loaded successfully");
+            } else {
+              logger.transcription.info("No models available to preload");
+            }
           }
         }
+      } catch (error) {
+        logger.transcription.error("Failed to handle model change:", error);
+        // Don't throw - model will be loaded on first use
       }
-    } catch (error) {
-      logger.transcription.error("Failed to handle model change:", error);
-      // Don't throw - model will be loaded on first use
-    }
+    });
   }
 
   /**
@@ -290,9 +295,7 @@ export class TranscriptionService {
               session.transcriptionResults.length - 1
             ]
           : undefined;
-      const aggregatedTranscription = session.transcriptionResults
-        .join(" ")
-        .trim();
+      const aggregatedTranscription = session.transcriptionResults.join("");
 
       // Select the appropriate provider
       const provider = await this.selectProvider();
@@ -302,6 +305,7 @@ export class TranscriptionService {
         audioData: audioChunk,
         speechProbability: speechProbability,
         context: {
+          sessionId,
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
           previousChunk,
@@ -313,7 +317,13 @@ export class TranscriptionService {
       // Accumulate the result only if Whisper returned something
       // (it returns empty string while buffering)
       if (chunkTranscription.trim()) {
-        session.transcriptionResults.push(chunkTranscription);
+        // Cloud provider concatenates previousTranscription with new transcription,
+        // so we need to replace the array instead of appending to avoid duplication
+        if (provider.name === "amical-cloud" && aggregatedTranscription) {
+          session.transcriptionResults = [chunkTranscription];
+        } else {
+          session.transcriptionResults.push(chunkTranscription);
+        }
         logger.transcription.info("Whisper returned transcription", {
           sessionId,
           transcriptionLength: chunkTranscription.length,
@@ -331,7 +341,7 @@ export class TranscriptionService {
       this.transcriptionMutex.release();
     }
 
-    return session.transcriptionResults.join(" ").trim();
+    return session.transcriptionResults.join("");
   }
 
   /**
@@ -373,244 +383,311 @@ export class TranscriptionService {
       return "";
     }
 
-    // Update session timestamps
-    session.finalizationStartedAt = performance.now();
-    session.recordingStoppedAt = recordingStoppedAt;
-    if (recordingStartedAt && !session.recordingStartedAt) {
-      session.recordingStartedAt = recordingStartedAt;
-    }
-
-    const formatterConfig = await this.settingsService.getFormatterConfig();
-    const shouldUseCloudFormatting =
-      formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
-    let usedCloudProvider = false;
-
-    // Flush provider to get any remaining buffered audio
-    await this.transcriptionMutex.acquire();
     try {
-      const previousChunk =
-        session.transcriptionResults.length > 0
-          ? session.transcriptionResults[
-              session.transcriptionResults.length - 1
-            ]
-          : undefined;
-      const aggregatedTranscription = session.transcriptionResults
-        .join(" ")
-        .trim();
+      // Update session timestamps
+      session.finalizationStartedAt = performance.now();
+      session.recordingStoppedAt = recordingStoppedAt;
+      if (recordingStartedAt && !session.recordingStartedAt) {
+        session.recordingStartedAt = recordingStartedAt;
+      }
 
-      const provider = await this.selectProvider();
-      usedCloudProvider = provider.name === "amical-cloud";
-      const finalTranscription = await provider.flush({
-        vocabulary: session.context.sharedData.vocabulary,
-        accessibilityContext: session.context.sharedData.accessibilityContext,
-        previousChunk,
-        aggregatedTranscription: aggregatedTranscription || undefined,
-        language: session.context.sharedData.userPreferences?.language,
-        formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+      const formatterConfig = await this.settingsService.getFormatterConfig();
+      const shouldUseCloudFormatting =
+        formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+      let usedCloudProvider = false;
+
+      // Flush provider to get any remaining buffered audio
+      await this.transcriptionMutex.acquire();
+      try {
+        const previousChunk =
+          session.transcriptionResults.length > 0
+            ? session.transcriptionResults[
+                session.transcriptionResults.length - 1
+              ]
+            : undefined;
+        const aggregatedTranscription = session.transcriptionResults.join("");
+
+        const provider = await this.selectProvider();
+        usedCloudProvider = provider.name === "amical-cloud";
+        const finalTranscription = await provider.flush({
+          sessionId,
+          vocabulary: session.context.sharedData.vocabulary,
+          accessibilityContext: session.context.sharedData.accessibilityContext,
+          previousChunk,
+          aggregatedTranscription: aggregatedTranscription || undefined,
+          language: session.context.sharedData.userPreferences?.language,
+          formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+        });
+
+        if (finalTranscription.trim()) {
+          // Cloud provider concatenates previousTranscription with new transcription,
+          // so we need to replace the array instead of appending to avoid duplication
+          if (usedCloudProvider && aggregatedTranscription) {
+            session.transcriptionResults = [finalTranscription];
+          } else {
+            session.transcriptionResults.push(finalTranscription);
+          }
+          logger.transcription.info("Whisper returned final transcription", {
+            sessionId,
+            transcriptionLength: finalTranscription.length,
+            totalResults: session.transcriptionResults.length,
+          });
+        }
+      } finally {
+        this.transcriptionMutex.release();
+      }
+
+      let completeTranscription = session.transcriptionResults.join("");
+
+      // Apply simple pre-formatting for local models (handles Whisper leading space artifact)
+      if (!usedCloudProvider) {
+        const preSelectionText =
+          session.context.sharedData.accessibilityContext?.context
+            ?.textSelection?.preSelectionText;
+        completeTranscription = this.preFormatLocalTranscription(
+          completeTranscription,
+          preSelectionText,
+        );
+      }
+
+      let formattingDuration: number | undefined;
+
+      logger.transcription.info("Finalizing streaming session", {
+        sessionId,
+        rawTranscriptionLength: completeTranscription.length,
+        chunkCount: session.transcriptionResults.length,
       });
 
-      if (finalTranscription.trim()) {
-        session.transcriptionResults.push(finalTranscription);
-        logger.transcription.info("Whisper returned final transcription", {
-          sessionId,
-          transcriptionLength: finalTranscription.length,
-          totalResults: session.transcriptionResults.length,
-        });
-      }
-    } finally {
-      this.transcriptionMutex.release();
-    }
+      // Fetch formatter config on-demand
+      let formattingUsed = false;
+      let formattingModel: string | undefined;
 
-    let completeTranscription = session.transcriptionResults.join(" ");
-    let formattingDuration: number | undefined;
-
-    logger.transcription.info("Finalizing streaming session", {
-      sessionId,
-      rawTranscriptionLength: completeTranscription.length,
-      chunkCount: session.transcriptionResults.length,
-    });
-
-    // Fetch formatter config on-demand
-    let formattingUsed = false;
-    let formattingModel: string | undefined;
-
-    if (!formatterConfig || !formatterConfig.enabled) {
-      logger.transcription.debug("Formatting skipped: disabled in config");
-    } else if (!completeTranscription.trim().length) {
-      logger.transcription.debug("Formatting skipped: empty transcription");
-    } else if (formatterConfig.modelId === "amical-cloud") {
-      if (!usedCloudProvider) {
-        logger.transcription.warn(
-          "Formatting skipped: Amical Cloud formatting requires cloud transcription",
-        );
-      } else {
-        formattingUsed = true;
-        formattingModel = "amical-cloud";
-      }
-    } else {
-      // Get default language model and look up provider
-      const modelId =
-        formatterConfig.modelId ||
-        (await this.settingsService.getDefaultLanguageModel());
-      if (!modelId) {
-        logger.transcription.debug(
-          "Formatting skipped: no default language model",
-        );
-      } else {
-        const allModels = await this.modelService.getSyncedProviderModels();
-        const model = allModels.find(
-          (m) => m.id === modelId && m.type === "language",
-        );
-
-        if (!model) {
-          logger.transcription.warn("Formatting skipped: model not found", {
-            modelId,
-          });
-        } else if (model.provider === "OpenRouter") {
-          const config = await this.settingsService.getOpenRouterConfig();
-          if (!config?.apiKey) {
-            logger.transcription.warn(
-              "Formatting skipped: OpenRouter API key missing",
-            );
-          } else {
-            logger.transcription.info("Starting formatting", {
-              sessionId,
-              provider: model.provider,
-              model: modelId,
-            });
-            const provider = new OpenRouterProvider(config.apiKey, modelId);
-            const result = await this.formatWithProvider(
-              provider,
-              sessionId,
-              completeTranscription,
-              session,
-            );
-            if (result) {
-              completeTranscription = result.text;
-              formattingDuration = result.duration;
-              formattingUsed = true;
-              formattingModel = modelId;
-            }
-          }
-        } else if (model.provider === "Ollama") {
-          const config = await this.settingsService.getOllamaConfig();
-          if (!config?.url) {
-            logger.transcription.warn("Formatting skipped: Ollama URL missing");
-          } else {
-            logger.transcription.info("Starting formatting", {
-              sessionId,
-              provider: model.provider,
-              model: modelId,
-            });
-            const provider = new OllamaFormatter(config.url, modelId);
-            const result = await this.formatWithProvider(
-              provider,
-              sessionId,
-              completeTranscription,
-              session,
-            );
-            if (result) {
-              completeTranscription = result.text;
-              formattingDuration = result.duration;
-              formattingUsed = true;
-              formattingModel = modelId;
-            }
-          }
-        } else {
+      if (!formatterConfig || !formatterConfig.enabled) {
+        logger.transcription.debug("Formatting skipped: disabled in config");
+      } else if (!completeTranscription.trim().length) {
+        logger.transcription.debug("Formatting skipped: empty transcription");
+      } else if (formatterConfig.modelId === "amical-cloud") {
+        if (!usedCloudProvider) {
           logger.transcription.warn(
-            "Formatting skipped: unsupported provider",
-            {
-              provider: model.provider,
-            },
+            "Formatting skipped: Amical Cloud formatting requires cloud transcription",
           );
+        } else {
+          formattingUsed = true;
+          formattingModel = "amical-cloud";
+        }
+      } else {
+        // Get default language model and look up provider
+        const modelId =
+          formatterConfig.modelId ||
+          (await this.settingsService.getDefaultLanguageModel());
+        if (!modelId) {
+          logger.transcription.debug(
+            "Formatting skipped: no default language model",
+          );
+        } else {
+          const allModels = await this.modelService.getSyncedProviderModels();
+          const model = allModels.find(
+            (m) => m.id === modelId && m.type === "language",
+          );
+
+          if (!model) {
+            logger.transcription.warn("Formatting skipped: model not found", {
+              modelId,
+            });
+          } else if (model.provider === "OpenRouter") {
+            const config = await this.settingsService.getOpenRouterConfig();
+            if (!config?.apiKey) {
+              logger.transcription.warn(
+                "Formatting skipped: OpenRouter API key missing",
+              );
+            } else {
+              logger.transcription.info("Starting formatting", {
+                sessionId,
+                provider: model.provider,
+                model: modelId,
+              });
+              const provider = new OpenRouterProvider(config.apiKey, modelId);
+              const result = await this.formatWithProvider(
+                provider,
+                sessionId,
+                completeTranscription,
+                session,
+              );
+              if (result) {
+                completeTranscription = result.text;
+                formattingDuration = result.duration;
+                formattingUsed = true;
+                formattingModel = modelId;
+              }
+            }
+          } else if (model.provider === "Ollama") {
+            const config = await this.settingsService.getOllamaConfig();
+            if (!config?.url) {
+              logger.transcription.warn(
+                "Formatting skipped: Ollama URL missing",
+              );
+            } else {
+              logger.transcription.info("Starting formatting", {
+                sessionId,
+                provider: model.provider,
+                model: modelId,
+              });
+              const provider = new OllamaFormatter(config.url, modelId);
+              const result = await this.formatWithProvider(
+                provider,
+                sessionId,
+                completeTranscription,
+                session,
+              );
+              if (result) {
+                completeTranscription = result.text;
+                formattingDuration = result.duration;
+                formattingUsed = true;
+                formattingModel = modelId;
+              }
+            }
+          } else {
+            logger.transcription.warn(
+              "Formatting skipped: unsupported provider",
+              {
+                provider: model.provider,
+              },
+            );
+          }
         }
       }
-    }
 
-    // Save directly to database
-    logger.transcription.info("Saving transcription with audio file", {
-      sessionId,
-      audioFilePath,
-      hasAudioFile: !!audioFilePath,
-    });
+      // Apply vocabulary replacements (final post-processing step)
+      const replacements = session.context.sharedData.replacements;
+      if (replacements.size > 0) {
+        const beforeReplacements = completeTranscription;
+        completeTranscription = applyTextReplacements(
+          completeTranscription,
+          replacements,
+        );
+        if (beforeReplacements !== completeTranscription) {
+          logger.transcription.info("Applied vocabulary replacements", {
+            sessionId,
+            replacementCount: replacements.size,
+            originalLength: beforeReplacements.length,
+            newLength: completeTranscription.length,
+          });
+        }
+      }
 
-    await createTranscription({
-      text: completeTranscription,
-      language: session.context.sharedData.userPreferences?.language || "en",
-      duration: session.context.sharedData.audioMetadata?.duration,
-      speechModel: "whisper-local",
-      formattingModel,
-      audioFile: audioFilePath,
-      meta: {
+      // Save directly to database
+      logger.transcription.info("Saving transcription with audio file", {
         sessionId,
-        source: session.context.sharedData.audioMetadata?.source,
-        vocabularySize: session.context.sharedData.vocabulary?.length || 0,
-        formattingStyle:
-          session.context.sharedData.userPreferences?.formattingStyle,
-      },
-    });
+        audioFilePath,
+        hasAudioFile: !!audioFilePath,
+      });
 
-    // Track transcription completion
-    const completionTime = performance.now();
+      await createTranscription({
+        text: completeTranscription,
+        language: session.context.sharedData.userPreferences?.language || "en",
+        duration: session.context.sharedData.audioMetadata?.duration,
+        speechModel: "whisper-local",
+        formattingModel,
+        audioFile: audioFilePath,
+        meta: {
+          sessionId,
+          source: session.context.sharedData.audioMetadata?.source,
+          vocabularySize: session.context.sharedData.vocabulary?.length || 0,
+          formattingStyle:
+            session.context.sharedData.userPreferences?.formattingStyle,
+        },
+      });
 
-    // Calculate durations:
-    // - Recording duration: from when recording started to when it ended
-    // - Processing duration: from when recording ended to completion
-    // - Total duration: from recording start to completion
-    const recordingDuration =
-      session.recordingStartedAt && session.recordingStoppedAt
-        ? session.recordingStoppedAt - session.recordingStartedAt
+      // Track transcription completion
+      const completionTime = performance.now();
+
+      // Calculate durations:
+      // - Recording duration: from when recording started to when it ended
+      // - Processing duration: from when recording ended to completion
+      // - Total duration: from recording start to completion
+      const recordingDuration =
+        session.recordingStartedAt && session.recordingStoppedAt
+          ? session.recordingStoppedAt - session.recordingStartedAt
+          : undefined;
+      const processingDuration = session.recordingStoppedAt
+        ? completionTime - session.recordingStoppedAt
         : undefined;
-    const processingDuration = session.recordingStoppedAt
-      ? completionTime - session.recordingStoppedAt
-      : undefined;
-    const totalDuration = session.recordingStartedAt
-      ? completionTime - session.recordingStartedAt
-      : undefined;
+      const totalDuration = session.recordingStartedAt
+        ? completionTime - session.recordingStartedAt
+        : undefined;
 
-    const selectedModel = await this.modelService.getSelectedModel();
-    const audioDurationSeconds =
-      session.context.sharedData.audioMetadata?.duration;
+      const selectedModel = await this.modelService.getSelectedModel();
+      const audioDurationSeconds =
+        session.context.sharedData.audioMetadata?.duration;
 
-    // Get native binding info if using local whisper
-    let whisperNativeBinding: string | undefined;
-    if (this.whisperProvider && "getBindingInfo" in this.whisperProvider) {
-      const bindingInfo = await this.whisperProvider.getBindingInfo();
-      whisperNativeBinding = bindingInfo?.type;
-      logger.transcription.info(
-        "whisper native binding used",
-        whisperNativeBinding,
-      );
+      // Get native binding info if using local whisper
+      let whisperNativeBinding: string | undefined;
+      if (this.whisperProvider && "getBindingInfo" in this.whisperProvider) {
+        const bindingInfo = await this.whisperProvider.getBindingInfo();
+        whisperNativeBinding = bindingInfo?.type;
+        logger.transcription.info(
+          "whisper native binding used",
+          whisperNativeBinding,
+        );
+      }
+
+      this.telemetryService.trackTranscriptionCompleted({
+        session_id: sessionId,
+        model_id: selectedModel!,
+        model_preloaded: this.modelWasPreloaded,
+        whisper_native_binding: whisperNativeBinding,
+        total_duration_ms: totalDuration || 0,
+        recording_duration_ms: recordingDuration,
+        processing_duration_ms: processingDuration,
+        audio_duration_seconds: audioDurationSeconds,
+        realtime_factor:
+          audioDurationSeconds && totalDuration
+            ? audioDurationSeconds / (totalDuration / 1000)
+            : undefined,
+        text_length: completeTranscription.length,
+        word_count: completeTranscription.trim().split(/\s+/).length,
+        formatting_enabled: formattingUsed,
+        formatting_model: formattingModel,
+        formatting_duration_ms: formattingDuration,
+        vad_enabled: !!this.vadService,
+        session_type: "streaming",
+        language: session.context.sharedData.userPreferences?.language || "en",
+        vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
+      });
+
+      this.streamingSessions.delete(sessionId);
+
+      logger.transcription.info("Streaming session completed", { sessionId });
+      return completeTranscription;
+    } catch (error) {
+      // Save failed transcription record
+      const errorCode =
+        error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      await createTranscription({
+        text: "",
+        audioFile: audioFilePath || undefined,
+        meta: {
+          sessionId,
+          status: "failed",
+          failureReason: errorCode,
+          errorMessage,
+        },
+      });
+      logger.transcription.info("Saved failed transcription record", {
+        sessionId,
+        errorCode,
+        audioFilePath,
+      });
+
+      // Clean up session
+      this.streamingSessions.delete(sessionId);
+
+      // Re-throw for RecordingManager to handle notifications
+      throw error;
     }
-
-    this.telemetryService.trackTranscriptionCompleted({
-      session_id: sessionId,
-      model_id: selectedModel!,
-      model_preloaded: this.modelWasPreloaded,
-      whisper_native_binding: whisperNativeBinding,
-      total_duration_ms: totalDuration || 0,
-      recording_duration_ms: recordingDuration,
-      processing_duration_ms: processingDuration,
-      audio_duration_seconds: audioDurationSeconds,
-      realtime_factor:
-        audioDurationSeconds && totalDuration
-          ? audioDurationSeconds / (totalDuration / 1000)
-          : undefined,
-      text_length: completeTranscription.length,
-      word_count: completeTranscription.trim().split(/\s+/).length,
-      formatting_enabled: formattingUsed,
-      formatting_model: formattingModel,
-      formatting_duration_ms: formattingDuration,
-      vad_enabled: !!this.vadService,
-      session_type: "streaming",
-      language: session.context.sharedData.userPreferences?.language || "en",
-      vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
-    });
-
-    this.streamingSessions.delete(sessionId);
-
-    logger.transcription.info("Streaming session completed", { sessionId });
-    return completeTranscription;
   }
 
   private async buildContext(): Promise<PipelineContext> {
@@ -642,6 +719,29 @@ export class TranscriptionService {
     // TODO: Load formatter config from settings
 
     return context;
+  }
+
+  /**
+   * Simple pre-formatter for local Transcription models.
+   * Handles leading space based on insertion context to avoid double spaces or unwanted leading whitespace.
+   * Runs before LLM formatter (if configured) to ensure clean input.
+   */
+  private preFormatLocalTranscription(
+    transcription: string,
+    preSelectionText: string | null | undefined,
+  ): string {
+    if (!transcription.startsWith(" ")) {
+      return transcription;
+    }
+
+    // Strip leading space only if previous text exists and ends with ASCII whitespace.
+    // When there's no previous text (null/undefined/""), keep the leading space.
+    const shouldStripLeadingSpace =
+      preSelectionText !== undefined &&
+      preSelectionText !== null &&
+      (preSelectionText.length === 0 || /[ \t\r\n]$/.test(preSelectionText));
+
+    return shouldStripLeadingSpace ? transcription.slice(1) : transcription;
   }
 
   private async formatWithProvider(

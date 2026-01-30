@@ -43,13 +43,6 @@ export const authRouter = createRouter({
     };
   }),
 
-  // Check if authenticated (for UI updates)
-  isAuthenticated: procedure.query(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService");
-
-    return await authService.isAuthenticated();
-  }),
-
   // Subscribe to auth state changes
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // eslint-disable-next-line deprecation/deprecation

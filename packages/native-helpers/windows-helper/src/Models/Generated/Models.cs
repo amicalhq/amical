@@ -111,6 +111,12 @@ namespace WindowsHelper.Models
         [JsonPropertyName("focusedElement")]
         public FocusedElement FocusedElement { get; set; }
 
+        [JsonPropertyName("metrics")]
+        public Metrics Metrics { get; set; }
+
+        [JsonPropertyName("schemaVersion")]
+        public SchemaVersion SchemaVersion { get; set; }
+
         [JsonPropertyName("textSelection")]
         public TextSelection TextSelection { get; set; }
 
@@ -129,6 +135,9 @@ namespace WindowsHelper.Models
         [JsonPropertyName("name")]
         public string Name { get; set; }
 
+        [JsonPropertyName("pid")]
+        public long Pid { get; set; }
+
         [JsonPropertyName("version")]
         public string Version { get; set; }
     }
@@ -141,8 +150,20 @@ namespace WindowsHelper.Models
         [JsonPropertyName("isEditable")]
         public bool IsEditable { get; set; }
 
+        [JsonPropertyName("isFocused")]
+        public bool IsFocused { get; set; }
+
+        [JsonPropertyName("isPlaceholder")]
+        public bool IsPlaceholder { get; set; }
+
+        [JsonPropertyName("isSecure")]
+        public bool IsSecure { get; set; }
+
         [JsonPropertyName("role")]
         public string Role { get; set; }
+
+        [JsonPropertyName("subrole")]
+        public string Subrole { get; set; }
 
         [JsonPropertyName("title")]
         public string Title { get; set; }
@@ -151,13 +172,59 @@ namespace WindowsHelper.Models
         public string Value { get; set; }
     }
 
+    public partial class Metrics
+    {
+        [JsonPropertyName("errors")]
+        public List<string> Errors { get; set; }
+
+        [JsonPropertyName("fallbacksUsed")]
+        public List<The0> FallbacksUsed { get; set; }
+
+        [JsonPropertyName("textMarkerAttempted")]
+        public bool TextMarkerAttempted { get; set; }
+
+        [JsonPropertyName("textMarkerSucceeded")]
+        public bool TextMarkerSucceeded { get; set; }
+
+        [JsonPropertyName("timedOut")]
+        public bool TimedOut { get; set; }
+
+        [JsonPropertyName("totalTimeMs")]
+        [JsonConverter(typeof(MinMaxValueCheckConverter))]
+        public double TotalTimeMs { get; set; }
+
+        [JsonPropertyName("webAreaFound")]
+        public bool WebAreaFound { get; set; }
+
+        [JsonPropertyName("webAreaRetryAttempted")]
+        public bool WebAreaRetryAttempted { get; set; }
+
+        [JsonPropertyName("webAreaRetrySucceeded")]
+        public bool WebAreaRetrySucceeded { get; set; }
+    }
+
     public partial class TextSelection
     {
+        [JsonPropertyName("extractionMethod")]
+        public The0 ExtractionMethod { get; set; }
+
         [JsonPropertyName("fullContent")]
         public string FullContent { get; set; }
 
+        [JsonPropertyName("fullContentTruncated")]
+        public bool FullContentTruncated { get; set; }
+
+        [JsonPropertyName("hasMultipleRanges")]
+        public bool HasMultipleRanges { get; set; }
+
         [JsonPropertyName("isEditable")]
         public bool IsEditable { get; set; }
+
+        [JsonPropertyName("isPlaceholder")]
+        public bool IsPlaceholder { get; set; }
+
+        [JsonPropertyName("isSecure")]
+        public bool IsSecure { get; set; }
 
         [JsonPropertyName("postSelectionText")]
         public string PostSelectionText { get; set; }
@@ -228,6 +295,9 @@ namespace WindowsHelper.Models
 
     public partial class SetShortcutsParams
     {
+        [JsonPropertyName("pasteLastTranscript")]
+        public List<string> PasteLastTranscript { get; set; }
+
         [JsonPropertyName("pushToTalk")]
         public List<string> PushToTalk { get; set; }
 
@@ -457,7 +527,11 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RestoreSystemAudio, SetShortcuts };
+    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts };
+
+    public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
+
+    public enum SchemaVersion { The20 };
 
     public enum KeyDownEventType { KeyDown };
 
@@ -585,6 +659,8 @@ namespace WindowsHelper.Models
             Converters =
             {
                 MethodConverter.Singleton,
+                The0Converter.Singleton,
+                SchemaVersionConverter.Singleton,
                 KeyDownEventTypeConverter.Singleton,
                 KeyUpEventTypeConverter.Singleton,
                 FlagsChangedEventTypeConverter.Singleton,
@@ -607,12 +683,16 @@ namespace WindowsHelper.Models
             {
                 case "getAccessibilityContext":
                     return Method.GetAccessibilityContext;
+                case "getAccessibilityStatus":
+                    return Method.GetAccessibilityStatus;
                 case "getAccessibilityTreeDetails":
                     return Method.GetAccessibilityTreeDetails;
                 case "muteSystemAudio":
                     return Method.MuteSystemAudio;
                 case "pasteText":
                     return Method.PasteText;
+                case "requestAccessibilityPermission":
+                    return Method.RequestAccessibilityPermission;
                 case "restoreSystemAudio":
                     return Method.RestoreSystemAudio;
                 case "setShortcuts":
@@ -628,6 +708,9 @@ namespace WindowsHelper.Models
                 case Method.GetAccessibilityContext:
                     JsonSerializer.Serialize(writer, "getAccessibilityContext", options);
                     return;
+                case Method.GetAccessibilityStatus:
+                    JsonSerializer.Serialize(writer, "getAccessibilityStatus", options);
+                    return;
                 case Method.GetAccessibilityTreeDetails:
                     JsonSerializer.Serialize(writer, "getAccessibilityTreeDetails", options);
                     return;
@@ -636,6 +719,9 @@ namespace WindowsHelper.Models
                     return;
                 case Method.PasteText:
                     JsonSerializer.Serialize(writer, "pasteText", options);
+                    return;
+                case Method.RequestAccessibilityPermission:
+                    JsonSerializer.Serialize(writer, "requestAccessibilityPermission", options);
                     return;
                 case Method.RestoreSystemAudio:
                     JsonSerializer.Serialize(writer, "restoreSystemAudio", options);
@@ -648,6 +734,119 @@ namespace WindowsHelper.Models
         }
 
         public static readonly MethodConverter Singleton = new MethodConverter();
+    }
+
+    internal class The0Converter : JsonConverter<The0>
+    {
+        public override bool CanConvert(Type t) => t == typeof(The0);
+
+        public override The0 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = reader.GetString();
+            switch (value)
+            {
+                case "clipboardCopy":
+                    return The0.ClipboardCopy;
+                case "none":
+                    return The0.None;
+                case "selectedTextRange":
+                    return The0.SelectedTextRange;
+                case "selectedTextRanges":
+                    return The0.SelectedTextRanges;
+                case "stringForRange":
+                    return The0.StringForRange;
+                case "textMarkerRange":
+                    return The0.TextMarkerRange;
+                case "valueAttribute":
+                    return The0.ValueAttribute;
+            }
+            throw new Exception("Cannot unmarshal type The0");
+        }
+
+        public override void Write(Utf8JsonWriter writer, The0 value, JsonSerializerOptions options)
+        {
+            switch (value)
+            {
+                case The0.ClipboardCopy:
+                    JsonSerializer.Serialize(writer, "clipboardCopy", options);
+                    return;
+                case The0.None:
+                    JsonSerializer.Serialize(writer, "none", options);
+                    return;
+                case The0.SelectedTextRange:
+                    JsonSerializer.Serialize(writer, "selectedTextRange", options);
+                    return;
+                case The0.SelectedTextRanges:
+                    JsonSerializer.Serialize(writer, "selectedTextRanges", options);
+                    return;
+                case The0.StringForRange:
+                    JsonSerializer.Serialize(writer, "stringForRange", options);
+                    return;
+                case The0.TextMarkerRange:
+                    JsonSerializer.Serialize(writer, "textMarkerRange", options);
+                    return;
+                case The0.ValueAttribute:
+                    JsonSerializer.Serialize(writer, "valueAttribute", options);
+                    return;
+            }
+            throw new Exception("Cannot marshal type The0");
+        }
+
+        public static readonly The0Converter Singleton = new The0Converter();
+    }
+
+    internal class MinMaxValueCheckConverter : JsonConverter<double>
+    {
+        public override bool CanConvert(Type t) => t == typeof(double);
+
+        public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = reader.GetDouble();
+            if (value >= 0)
+            {
+                return value;
+            }
+            throw new Exception("Cannot unmarshal type double");
+        }
+
+        public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
+        {
+            if (value >= 0)
+            {
+                JsonSerializer.Serialize(writer, value, options);
+                return;
+            }
+            throw new Exception("Cannot marshal type double");
+        }
+
+        public static readonly MinMaxValueCheckConverter Singleton = new MinMaxValueCheckConverter();
+    }
+
+    internal class SchemaVersionConverter : JsonConverter<SchemaVersion>
+    {
+        public override bool CanConvert(Type t) => t == typeof(SchemaVersion);
+
+        public override SchemaVersion Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = reader.GetString();
+            if (value == "2.0")
+            {
+                return SchemaVersion.The20;
+            }
+            throw new Exception("Cannot unmarshal type SchemaVersion");
+        }
+
+        public override void Write(Utf8JsonWriter writer, SchemaVersion value, JsonSerializerOptions options)
+        {
+            if (value == SchemaVersion.The20)
+            {
+                JsonSerializer.Serialize(writer, "2.0", options);
+                return;
+            }
+            throw new Exception("Cannot marshal type SchemaVersion");
+        }
+
+        public static readonly SchemaVersionConverter Singleton = new SchemaVersionConverter();
     }
 
     internal class KeyDownEventTypeConverter : JsonConverter<KeyDownEventType>

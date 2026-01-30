@@ -1,13 +1,14 @@
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowsHelper.Models;
 
 namespace WindowsHelper
 {
+    /// <summary>
+    /// Monitors global keyboard shortcuts using low-level hooks.
+    /// Uses StaThreadRunner for STA thread execution.
+    /// </summary>
     public class ShortcutMonitor
     {
         #region Windows API
@@ -16,13 +17,6 @@ namespace WindowsHelper
         private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
-
-        // For MsgWaitForMultipleObjects
-        private const uint QS_ALLINPUT = 0x04FF;
-        private const uint WAIT_OBJECT_0 = 0;
-        private const uint WAIT_TIMEOUT = 258;
-        private const uint INFINITE = 0xFFFFFFFF;
-        private const int PM_REMOVE = 0x0001;
 
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -41,12 +35,6 @@ namespace WindowsHelper
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
 
-        [DllImport("user32.dll")]
-        private static extern uint MsgWaitForMultipleObjects(uint nCount, IntPtr[] pHandles, bool bWaitAll, uint dwMilliseconds, uint dwWakeMask);
-
-        [DllImport("user32.dll")]
-        private static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, int wRemoveMsg);
-
         [StructLayout(LayoutKind.Sequential)]
         private struct KBDLLHOOKSTRUCT
         {
@@ -63,8 +51,7 @@ namespace WindowsHelper
         private const int VK_MENU = 0x12; // Alt key
         private const int VK_LWIN = 0x5B; // Left Windows key
         private const int VK_RWIN = 0x5C; // Right Windows key
-        private const int VK_FUNCTION = 0xFF; // Fn key (not standard, varies by keyboard)
-        
+
         // Left/right specific virtual key codes (Windows low-level hooks send these)
         private const int VK_LSHIFT = 0xA0;
         private const int VK_RSHIFT = 0xA1;
@@ -74,14 +61,9 @@ namespace WindowsHelper
         private const int VK_RMENU = 0xA5;
         #endregion
 
+        private readonly StaThreadRunner staRunner;
         private IntPtr hookId = IntPtr.Zero;
         private LowLevelKeyboardProc? hookProc;
-        private Thread? messageLoopThread;
-        private bool isRunning = false;
-
-        // STA thread work queue for dispatching work from other threads
-        private readonly ConcurrentQueue<Action> staWorkQueue = new();
-        private readonly AutoResetEvent staWorkEvent = new(false);
 
         // Track modifier key states internally to avoid GetAsyncKeyState issues
         // Track left and right separately to handle cases where both are pressed
@@ -93,7 +75,7 @@ namespace WindowsHelper
         private bool rightAltPressed = false;
         private bool leftWinPressed = false;
         private bool rightWinPressed = false;
-        
+
         // Computed properties that combine left/right states
         private bool shiftPressed => leftShiftPressed || rightShiftPressed;
         private bool ctrlPressed => leftCtrlPressed || rightCtrlPressed;
@@ -102,171 +84,74 @@ namespace WindowsHelper
 
         public event EventHandler<HelperEvent>? KeyEventOccurred;
 
-        /// <summary>
-        /// Invokes an async action on the STA thread and waits for completion.
-        /// Use this for audio/COM operations that require STA thread.
-        /// </summary>
-        public Task<T> InvokeOnStaAsync<T>(Func<Task<T>> asyncAction)
+        public ShortcutMonitor(StaThreadRunner staRunner)
         {
-            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            staWorkQueue.Enqueue(async () =>
-            {
-                try
-                {
-                    var result = await asyncAction();
-                    tcs.SetResult(result);
-                }
-                catch (Exception ex)
-                {
-                    tcs.SetException(ex);
-                }
-            });
-            staWorkEvent.Set();
-
-            return tcs.Task;
+            this.staRunner = staRunner;
         }
 
         /// <summary>
-        /// Invokes a synchronous action on the STA thread and waits for completion.
-        /// Use this for audio/COM operations that require STA thread.
+        /// Installs the keyboard hook on the STA thread.
         /// </summary>
-        public Task<T> InvokeOnSta<T>(Func<T> action)
-        {
-            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            staWorkQueue.Enqueue(() =>
-            {
-                try
-                {
-                    var result = action();
-                    tcs.SetResult(result);
-                }
-                catch (Exception ex)
-                {
-                    tcs.SetException(ex);
-                }
-            });
-            staWorkEvent.Set();
-
-            return tcs.Task;
-        }
-
-        /// <summary>
-        /// Posts an action to the STA thread without waiting for completion.
-        /// </summary>
-        public void PostToSta(Action action)
-        {
-            staWorkQueue.Enqueue(action);
-            staWorkEvent.Set();
-        }
-
         public void Start()
         {
-            if (isRunning) return;
+            // Guard against multiple hook installations
+            if (hookId != IntPtr.Zero) return;
 
-            isRunning = true;
-            messageLoopThread = new Thread(MessageLoop)
+            staRunner.InvokeOnSta(() =>
             {
-                Name = "ShortcutHook",
-                IsBackground = false
-            };
-            messageLoopThread.SetApartmentState(ApartmentState.STA);
-            messageLoopThread.Start();
+                InstallHook();
+                return true;
+            }).Wait();
         }
 
+        /// <summary>
+        /// Removes the keyboard hook. Must be called before StaThreadRunner.Stop().
+        /// </summary>
         public void Stop()
         {
-            isRunning = false;
-            if (hookId != IntPtr.Zero)
-            {
-                UnhookWindowsHookEx(hookId);
-                hookId = IntPtr.Zero;
-            }
-        }
+            if (hookId == IntPtr.Zero) return;
 
-        private void MessageLoop()
-        {
-            try
-            {
-                // Keep a reference to the delegate to prevent GC
-                hookProc = HookCallback;
-
-                using (Process curProcess = Process.GetCurrentProcess())
-                using (ProcessModule? curModule = curProcess.MainModule)
-                {
-                    if (curModule != null)
-                    {
-                        hookId = SetWindowsHookEx(WH_KEYBOARD_LL, hookProc,
-                            GetModuleHandle(curModule.ModuleName), 0);
-                    }
-                }
-
-                if (hookId == IntPtr.Zero)
-                {
-                    LogToStderr("Failed to install shortcut hook");
-                    return;
-                }
-
-                LogToStderr("Shortcut hook installed successfully");
-                LogToStderr("STA thread ready for work dispatch");
-
-                // Run Windows message loop with support for STA work queue
-                var waitHandles = new IntPtr[] { staWorkEvent.SafeWaitHandle.DangerousGetHandle() };
-
-                while (isRunning)
-                {
-                    // Wait for either a Windows message or a work item
-                    var waitResult = MsgWaitForMultipleObjects(1, waitHandles, false, INFINITE, QS_ALLINPUT);
-
-                    if (waitResult == WAIT_OBJECT_0)
-                    {
-                        // Work item signaled - process all queued work
-                        ProcessStaWorkQueue();
-                    }
-                    else if (waitResult == WAIT_OBJECT_0 + 1)
-                    {
-                        // Windows message available - process all pending messages
-                        MSG msg;
-                        while (PeekMessage(out msg, IntPtr.Zero, 0, 0, PM_REMOVE))
-                        {
-                            if (msg.message == 0x0012) // WM_QUIT
-                            {
-                                isRunning = false;
-                                break;
-                            }
-                            TranslateMessage(ref msg);
-                            DispatchMessage(ref msg);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"Error in shortcut message loop: {ex.Message}");
-            }
-            finally
+            // Unhook must be called from the same thread that installed the hook
+            var task = staRunner.InvokeOnSta(() =>
             {
                 if (hookId != IntPtr.Zero)
                 {
                     UnhookWindowsHookEx(hookId);
                     hookId = IntPtr.Zero;
+                    LogToStderr("Shortcut hook removed");
                 }
+                return true;
+            });
+
+            // Wait with timeout to prevent hang if STA thread is already stopped
+            if (!task.Wait(TimeSpan.FromSeconds(5)))
+            {
+                LogToStderr("Warning: Timeout waiting to unhook - STA thread may be unresponsive");
             }
         }
 
-        private void ProcessStaWorkQueue()
+        private void InstallHook()
         {
-            while (staWorkQueue.TryDequeue(out var action))
+            // Keep a reference to the delegate to prevent GC
+            hookProc = HookCallback;
+
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule? curModule = curProcess.MainModule)
             {
-                try
+                if (curModule != null)
                 {
-                    action();
+                    hookId = SetWindowsHookEx(WH_KEYBOARD_LL, hookProc,
+                        GetModuleHandle(curModule.ModuleName), 0);
                 }
-                catch (Exception ex)
-                {
-                    LogToStderr($"Error processing STA work item: {ex.Message}");
-                }
+            }
+
+            if (hookId == IntPtr.Zero)
+            {
+                LogToStderr("Failed to install shortcut hook");
+            }
+            else
+            {
+                LogToStderr("Shortcut hook installed successfully");
             }
         }
 
@@ -307,7 +192,6 @@ namespace WindowsHelper
                         if (IsModifierKey(kbStruct.vkCode))
                         {
                             // Send flagsChanged event for modifier keys with current tracked state
-                            // State is already updated by UpdateModifierState above
                             var flagsEvent = new HelperEvent
                             {
                                 Type = HelperEventType.FlagsChanged,
@@ -330,8 +214,6 @@ namespace WindowsHelper
                             KeyEventOccurred?.Invoke(this, keyEvent);
 
                             // Track regular key state for multi-key shortcuts
-                            // We need to track which non-modifier keys are held down so that
-                            // shortcuts like Shift+A+B can work properly
                             var keyName = VirtualKeyMap.GetKeyName((int)kbStruct.vkCode);
                             if (keyName != null)
                             {
@@ -346,7 +228,6 @@ namespace WindowsHelper
                             }
 
                             // Check if this key event should be consumed (prevent default behavior)
-                            // Only for regular key events, not modifiers
                             var modifierState = new ModifierState
                             {
                                 Win = winPressed,
@@ -357,6 +238,26 @@ namespace WindowsHelper
 
                             if (ShortcutManager.Instance.ShouldConsumeKey((int)kbStruct.vkCode, modifierState))
                             {
+                                // Before consuming, validate that all tracked keys are actually pressed.
+                                // This prevents stuck keys (missed keyUp events) from blocking input system-wide.
+                                if (!ValidateKeyStateBeforeConsume())
+                                {
+                                    // State was invalid (some keys were stuck), re-check with corrected state
+                                    var correctedModifierState = new ModifierState
+                                    {
+                                        Win = winPressed,
+                                        Ctrl = ctrlPressed,
+                                        Alt = altPressed,
+                                        Shift = shiftPressed
+                                    };
+
+                                    if (!ShortcutManager.Instance.ShouldConsumeKey((int)kbStruct.vkCode, correctedModifierState))
+                                    {
+                                        // After correction, we should NOT consume - let the key through
+                                        return CallNextHookEx(hookId, nCode, wParam, lParam);
+                                    }
+                                }
+
                                 // Consume - prevent default behavior (e.g., cursor movement for arrow keys)
                                 return (IntPtr)1;
                             }
@@ -377,13 +278,9 @@ namespace WindowsHelper
             switch (vkCode)
             {
                 // Handle generic codes (fallback - Windows low-level hooks typically send left/right specific codes)
-                // For generic codes, we update both sides to be safe, but this should rarely happen
                 case VK_SHIFT:
-                    // If we get a generic code, assume left (most common case)
-                    // But also check if right is actually pressed to handle edge cases
                     if (isPressed)
                     {
-                        // If right shift is already pressed, don't override it
                         if (!rightShiftPressed)
                         {
                             leftShiftPressed = true;
@@ -391,7 +288,6 @@ namespace WindowsHelper
                     }
                     else
                     {
-                        // On release, clear left unless right is still pressed
                         if (!rightShiftPressed)
                         {
                             leftShiftPressed = false;
@@ -430,7 +326,7 @@ namespace WindowsHelper
                         }
                     }
                     break;
-                
+
                 // Handle left/right specific codes (what Windows low-level hooks actually send)
                 case VK_LSHIFT:
                     leftShiftPressed = isPressed;
@@ -459,11 +355,6 @@ namespace WindowsHelper
             }
         }
 
-        private bool IsKeyPressed(int vKey)
-        {
-            return (GetAsyncKeyState(vKey) & 0x8000) != 0;
-        }
-
         private bool IsModifierKey(uint vkCode)
         {
             return vkCode == VK_SHIFT || vkCode == VK_LSHIFT || vkCode == VK_RSHIFT ||
@@ -479,33 +370,83 @@ namespace WindowsHelper
             Console.Error.Flush();
         }
 
-        #region Windows Message Loop
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MSG
+        /// <summary>
+        /// Check if a key is actually pressed using GetAsyncKeyState.
+        /// </summary>
+        private bool IsKeyActuallyPressed(int vkCode)
         {
-            public IntPtr hwnd;
-            public uint message;
-            public IntPtr wParam;
-            public IntPtr lParam;
-            public uint time;
-            public POINT pt;
+            // High-order bit is set if key is currently down
+            return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
         }
 
-        [StructLayout(LayoutKind.Sequential)]
-        private struct POINT
+        /// <summary>
+        /// Validate that all tracked key states match actual OS state.
+        /// If any key is not actually pressed, resync state and return false.
+        /// This prevents stuck keys from causing keys to be consumed incorrectly.
+        /// </summary>
+        private bool ValidateKeyStateBeforeConsume()
         {
-            public int x;
-            public int y;
+            bool stateValid = true;
+
+            // Validate modifier keys
+            if (leftShiftPressed && !IsKeyActuallyPressed(VK_LSHIFT))
+            {
+                LogToStderr("Resync: leftShift was stuck, clearing");
+                leftShiftPressed = false;
+                stateValid = false;
+            }
+            if (rightShiftPressed && !IsKeyActuallyPressed(VK_RSHIFT))
+            {
+                LogToStderr("Resync: rightShift was stuck, clearing");
+                rightShiftPressed = false;
+                stateValid = false;
+            }
+            if (leftCtrlPressed && !IsKeyActuallyPressed(VK_LCONTROL))
+            {
+                LogToStderr("Resync: leftCtrl was stuck, clearing");
+                leftCtrlPressed = false;
+                stateValid = false;
+            }
+            if (rightCtrlPressed && !IsKeyActuallyPressed(VK_RCONTROL))
+            {
+                LogToStderr("Resync: rightCtrl was stuck, clearing");
+                rightCtrlPressed = false;
+                stateValid = false;
+            }
+            if (leftAltPressed && !IsKeyActuallyPressed(VK_LMENU))
+            {
+                LogToStderr("Resync: leftAlt was stuck, clearing");
+                leftAltPressed = false;
+                stateValid = false;
+            }
+            if (rightAltPressed && !IsKeyActuallyPressed(VK_RMENU))
+            {
+                LogToStderr("Resync: rightAlt was stuck, clearing");
+                rightAltPressed = false;
+                stateValid = false;
+            }
+            if (leftWinPressed && !IsKeyActuallyPressed(VK_LWIN))
+            {
+                LogToStderr("Resync: leftWin was stuck, clearing");
+                leftWinPressed = false;
+                stateValid = false;
+            }
+            if (rightWinPressed && !IsKeyActuallyPressed(VK_RWIN))
+            {
+                LogToStderr("Resync: rightWin was stuck, clearing");
+                rightWinPressed = false;
+                stateValid = false;
+            }
+
+            // Validate regular keys tracked in ShortcutManager
+            var staleKeys = ShortcutManager.Instance.ValidateAndClearStaleKeys();
+            if (staleKeys.Count > 0)
+            {
+                LogToStderr($"Resync: Regular keys were stuck, cleared: [{string.Join(", ", staleKeys)}]");
+                stateValid = false;
+            }
+
+            return stateValid;
         }
-
-        [DllImport("user32.dll")]
-        private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
-
-        [DllImport("user32.dll")]
-        private static extern bool TranslateMessage(ref MSG lpMsg);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr DispatchMessage(ref MSG lpMsg);
-        #endregion
     }
 }

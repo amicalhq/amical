@@ -132,6 +132,16 @@ export async function getTranscriptionsCount(search?: string) {
   }
 }
 
+// Get latest non-empty transcription
+export async function getLatestTranscription() {
+  const result = await db
+    .select()
+    .from(transcriptions)
+    .orderBy(desc(transcriptions.timestamp))
+    .limit(1);
+  return result[0] || null;
+}
+
 // Get transcriptions by date range
 export async function getTranscriptionsByDateRange(
   startDate: Date,

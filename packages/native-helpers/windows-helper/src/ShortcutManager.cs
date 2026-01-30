@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace WindowsHelper
 {
@@ -23,12 +24,16 @@ namespace WindowsHelper
     /// </summary>
     public class ShortcutManager
     {
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
         private static readonly Lazy<ShortcutManager> _instance = new(() => new ShortcutManager());
         public static ShortcutManager Instance => _instance.Value;
 
         private readonly object _lock = new();
         private string[] _pushToTalkKeys = Array.Empty<string>();
         private string[] _toggleRecordingKeys = Array.Empty<string>();
+        private string[] _pasteLastTranscriptKeys = Array.Empty<string>();
 
         // Track currently pressed non-modifier keys across keyDown/keyUp events.
         // This is necessary for multi-key shortcuts like Shift+A+B where we need to
@@ -53,13 +58,14 @@ namespace WindowsHelper
         /// Update the configured shortcuts.
         /// Called from RpcHandler when setShortcuts RPC is received.
         /// </summary>
-        public void SetShortcuts(string[] pushToTalk, string[] toggleRecording)
+        public void SetShortcuts(string[] pushToTalk, string[] toggleRecording, string[] pasteLastTranscript)
         {
             lock (_lock)
             {
                 _pushToTalkKeys = pushToTalk ?? Array.Empty<string>();
                 _toggleRecordingKeys = toggleRecording ?? Array.Empty<string>();
-                LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}]");
+                _pasteLastTranscriptKeys = pasteLastTranscript ?? Array.Empty<string>();
+                LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}], Paste: [{string.Join(", ", _pasteLastTranscriptKeys)}]");
             }
         }
 
@@ -88,6 +94,41 @@ namespace WindowsHelper
         }
 
         /// <summary>
+        /// Check if a key is actually pressed using GetAsyncKeyState.
+        /// </summary>
+        private bool IsKeyActuallyPressed(int vkCode)
+        {
+            // High-order bit is set if key is currently down
+            return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+        }
+
+        /// <summary>
+        /// Validate all tracked regular keys against actual OS state.
+        /// Removes any keys that are not actually pressed (stuck keys).
+        /// Returns the list of keys that were removed.
+        /// </summary>
+        public List<string> ValidateAndClearStaleKeys()
+        {
+            var staleKeys = new List<string>();
+
+            lock (_lock)
+            {
+                var keysToCheck = _pressedRegularKeys.ToList();
+                foreach (var keyName in keysToCheck)
+                {
+                    var vkCode = VirtualKeyMap.GetVkCode(keyName);
+                    if (vkCode.HasValue && !IsKeyActuallyPressed(vkCode.Value))
+                    {
+                        _pressedRegularKeys.Remove(keyName);
+                        staleKeys.Add(keyName);
+                    }
+                }
+            }
+
+            return staleKeys;
+        }
+
+        /// <summary>
         /// Check if this key event should be consumed (prevent default behavior).
         /// Called from ShortcutMonitor hook callback for keyDown/keyUp events only.
         /// </summary>
@@ -96,7 +137,7 @@ namespace WindowsHelper
             lock (_lock)
             {
                 // Early exit if no shortcuts configured
-                if (_pushToTalkKeys.Length == 0 && _toggleRecordingKeys.Length == 0)
+                if (_pushToTalkKeys.Length == 0 && _toggleRecordingKeys.Length == 0 && _pasteLastTranscriptKeys.Length == 0)
                 {
                     return false;
                 }
@@ -135,7 +176,11 @@ namespace WindowsHelper
                 var toggleKeys = new HashSet<string>(_toggleRecordingKeys);
                 var toggleMatch = toggleKeys.Count > 0 && toggleKeys.SetEquals(activeKeys);
 
-                return pttMatch || toggleMatch;
+                // Paste last transcript: exact match (only these keys pressed)
+                var pasteKeys = new HashSet<string>(_pasteLastTranscriptKeys);
+                var pasteMatch = pasteKeys.Count > 0 && pasteKeys.SetEquals(activeKeys);
+
+                return pttMatch || toggleMatch || pasteMatch;
             }
         }
     }

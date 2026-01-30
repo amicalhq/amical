@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Represents the state of modifier keys at a given moment
@@ -17,6 +18,7 @@ class ShortcutManager {
 
     private var pushToTalkKeys: [String] = []
     private var toggleRecordingKeys: [String] = []
+    private var pasteLastTranscriptKeys: [String] = []
 
     // ============================================================================
     // IMPORTANT: Fn Key State Tracking
@@ -67,12 +69,15 @@ class ShortcutManager {
 
     /// Update the configured shortcuts
     /// Called from IOBridge when setShortcuts RPC is received
-    func setShortcuts(pushToTalk: [String], toggleRecording: [String]) {
+    func setShortcuts(pushToTalk: [String], toggleRecording: [String], pasteLastTranscript: [String]) {
         lock.lock()
         defer { lock.unlock() }
         self.pushToTalkKeys = pushToTalk
         self.toggleRecordingKeys = toggleRecording
-        logToStderr("[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording)")
+        self.pasteLastTranscriptKeys = pasteLastTranscript
+        logToStderr(
+            "[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording), Paste: \(pasteLastTranscript)"
+        )
     }
 
     /// Update the tracked Fn key state
@@ -100,6 +105,50 @@ class ShortcutManager {
         pressedRegularKeys.remove(key)
     }
 
+    /// Check if a key is actually pressed using CGEventSource
+    private func isKeyActuallyPressed(_ keyCode: CGKeyCode) -> Bool {
+        return CGEventSource.keyState(.combinedSessionState, key: keyCode)
+    }
+
+    /// Validate all tracked key states against actual OS state.
+    /// Removes any keys that are not actually pressed (stuck keys).
+    /// Returns true if state was valid, false if corrections were made.
+    func validateAndResyncKeyState() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var stateValid = true
+
+        // Validate Fn key state
+        // Fn key code is 0x3F (63)
+        let fnKeyCode: CGKeyCode = 0x3F
+        if fnKeyDown && !isKeyActuallyPressed(fnKeyCode) {
+            logToStderr("[ShortcutManager] Resync: Fn key was stuck, clearing")
+            fnKeyDown = false
+            stateValid = false
+        }
+
+        // Validate regular keys
+        var staleKeys: [String] = []
+        for keyName in pressedRegularKeys {
+            if let keyCode = nameToKeyCode(keyName) {
+                if !isKeyActuallyPressed(CGKeyCode(keyCode)) {
+                    staleKeys.append(keyName)
+                }
+            }
+        }
+
+        if !staleKeys.isEmpty {
+            for key in staleKeys {
+                pressedRegularKeys.remove(key)
+            }
+            logToStderr("[ShortcutManager] Resync: Regular keys were stuck, cleared: \(staleKeys)")
+            stateValid = false
+        }
+
+        return stateValid
+    }
+
     /// Check if this key event should be consumed (prevent default behavior)
     /// Called from event tap callback for keyDown/keyUp events only
     func shouldConsumeKey(keyCode: Int, modifiers: ModifierState) -> Bool {
@@ -107,7 +156,7 @@ class ShortcutManager {
         defer { lock.unlock() }
 
         // Early exit if no shortcuts configured
-        if pushToTalkKeys.isEmpty && toggleRecordingKeys.isEmpty {
+        if pushToTalkKeys.isEmpty && toggleRecordingKeys.isEmpty && pasteLastTranscriptKeys.isEmpty {
             return false
         }
 
@@ -144,6 +193,10 @@ class ShortcutManager {
         let toggleKeys = Set(toggleRecordingKeys)
         let toggleMatch = !toggleKeys.isEmpty && toggleKeys == activeKeys
 
-        return pttMatch || toggleMatch
+        // Paste last transcript: exact match (only these keys pressed)
+        let pasteKeys = Set(pasteLastTranscriptKeys)
+        let pasteMatch = !pasteKeys.isEmpty && pasteKeys == activeKeys
+
+        return pttMatch || toggleMatch || pasteMatch
     }
 }
