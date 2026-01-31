@@ -358,7 +358,9 @@ export class RecordingManager extends EventEmitter {
             success: !!result?.success,
           });
         } else {
-          logger.audio.info("Skipped restoring system audio (not muted by app)");
+          logger.audio.info(
+            "Skipped restoring system audio (not muted by app)",
+          );
         }
       } catch (error) {
         this.systemAudioMuted = false;

@@ -10,11 +10,7 @@ export const KeyEventPayloadSchema = z.object({
   shiftKey: z.boolean().optional(),
   metaKey: z.boolean().optional(),
   // Adding fields from the existing ipc-schemas.ts for richer event data
-  keyCode: z
-    .number()
-    .int()
-    .optional()
-    .describe("Raw key code, e.g., from CGEvent"),
+  keyCode: z.number().int().describe("Raw key code, e.g., from CGEvent"),
   fnKeyPressed: z.boolean().optional().describe("State of the Fn key."),
   // Consider adding raw flags if useful for the client
   // rawFlags: z.number().int().optional().describe("Raw platform-specific event flags"),

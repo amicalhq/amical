@@ -134,9 +134,9 @@ export interface AppSettingsData {
     preferredMicrophoneName?: string;
   };
   shortcuts?: {
-    pushToTalk?: string[];
-    toggleRecording?: string[];
-    pasteLastTranscript?: string[];
+    pushToTalk?: number[];
+    toggleRecording?: number[];
+    pasteLastTranscript?: number[];
   };
 
   modelProvidersConfig?: {

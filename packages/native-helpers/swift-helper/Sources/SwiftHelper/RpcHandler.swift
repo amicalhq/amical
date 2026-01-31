@@ -13,22 +13,17 @@ class IOBridge: NSObject {
     let jsonDecoder: JSONDecoder
     private let accessibilityService: AccessibilityService
     private let audioService: AudioService
-    let dateFormatter: DateFormatter
 
     init(jsonEncoder: JSONEncoder, jsonDecoder: JSONDecoder) {
         self.jsonEncoder = jsonEncoder
         self.jsonDecoder = jsonDecoder
         self.accessibilityService = AccessibilityService()
         self.audioService = AudioService()  // Audio preloaded here at startup
-        self.dateFormatter = DateFormatter()
-        self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         super.init()
     }
 
     private func logToStderr(_ message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        let logMessage = "[\(timestamp)] \(message)\n"
-        FileHandle.standardError.write(logMessage.data(using: .utf8)!)
+        HelperLogger.logToStderr(message)
     }
 
     // Handles a single RPC Request
@@ -102,10 +97,9 @@ class IOBridge: NSObject {
 
             audioService.playSound(named: "rec-start") { [weak self] in
                 guard let self = self else {
-                    let timestamp = DateFormatter().string(from: Date())
-                    let logMessage =
-                        "[\(timestamp)] [IOBridge] self is nil in playSound completion for muteSystemAudio. ID: \(request.id)\n"
-                    FileHandle.standardError.write(logMessage.data(using: .utf8)!)
+                    HelperLogger.logToStderr(
+                        "[IOBridge] self is nil in playSound completion for muteSystemAudio. ID: \(request.id)"
+                    )
                     return
                 }
 
@@ -214,8 +208,7 @@ class IOBridge: NSObject {
             let responseData = try jsonEncoder.encode(response)
             if let responseString = String(data: responseData, encoding: .utf8) {
                 logToStderr("[Swift Biz Logic] FINAL JSON RESPONSE to stdout: \(responseString)")
-                print(responseString)
-                fflush(stdout)
+                StdoutWriter.writeLine(responseString)
             }
         } catch {
             logToStderr("Error encoding RpcResponse: \(error.localizedDescription)")

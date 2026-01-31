@@ -3,15 +3,27 @@
  * Provides comprehensive validation for keyboard shortcuts
  */
 
+import { getKeyFromKeycode } from "./keycode-map";
+import {
+  MAC_MODIFIER_KEYCODES,
+  WINDOWS_MODIFIER_KEYCODES,
+  MAC_MODIFIER_PAIRS,
+  WINDOWS_MODIFIER_PAIRS,
+  MAC_SPECIAL_KEYCODES,
+  WINDOWS_SPECIAL_KEYCODES,
+  RESERVED_SHORTCUTS_MACOS,
+  RESERVED_SHORTCUTS_WINDOWS,
+} from "./shortcut-constants";
+
 export type ShortcutType =
   | "pushToTalk"
   | "toggleRecording"
   | "pasteLastTranscript";
 
 export interface ValidationContext {
-  candidateShortcut: string[];
+  candidateShortcut: number[];
   candidateType: ShortcutType;
-  shortcutsByType: Record<ShortcutType, string[]>;
+  shortcutsByType: Record<ShortcutType, number[]>;
   platform: NodeJS.Platform;
 }
 
@@ -24,214 +36,29 @@ export interface ValidationResult {
 // Maximum number of keys allowed in a shortcut
 const MAX_KEY_COMBINATION_LENGTH = 4;
 
-// Keys considered modifiers
-const MODIFIER_KEYS = ["Cmd", "Win", "Ctrl", "Alt", "Shift", "Fn"];
-
-// Left/right modifier pairs (for duplicate modifier detection)
-const MODIFIER_PAIRS: [string, string][] = [
-  ["LShift", "RShift"],
-  ["LCtrl", "RCtrl"],
-  ["LAlt", "RAlt"],
-  ["LCmd", "RCmd"],
-  ["LWin", "RWin"],
-];
-
-// Keys that are valid on their own (not alphanumeric)
-const SPECIAL_KEYS = [
-  "Space",
-  "Tab",
-  "Enter",
-  "Escape",
-  "Delete",
-  "Backspace",
-  "Up",
-  "Down",
-  "Left",
-  "Right",
-  "Home",
-  "End",
-  "PageUp",
-  "PageDown",
-  "Insert",
-  "F1",
-  "F2",
-  "F3",
-  "F4",
-  "F5",
-  "F6",
-  "F7",
-  "F8",
-  "F9",
-  "F10",
-  "F11",
-  "F12",
-  "F13",
-  "F14",
-  "F15",
-  "F16",
-  "F17",
-  "F18",
-  "F19",
-  "F20",
-  "F21",
-  "F22",
-  "F23",
-  "F24",
-];
-
-// macOS reserved shortcuts
-const RESERVED_SHORTCUTS_MACOS: string[][] = [
-  // Clipboard
-  ["Cmd", "C"],
-  ["Cmd", "V"],
-  ["Cmd", "X"],
-  ["Cmd", "Z"],
-  ["Cmd", "Shift", "Z"],
-  // Window/App management
-  ["Cmd", "Q"],
-  ["Cmd", "W"],
-  ["Cmd", "M"],
-  ["Cmd", "H"],
-  ["Cmd", "Tab"],
-  ["Cmd", "Space"],
-  // Screenshots
-  ["Cmd", "Shift", "3"],
-  ["Cmd", "Shift", "4"],
-  ["Cmd", "Shift", "5"],
-  // Mission Control
-  ["Ctrl", "Up"],
-  ["Ctrl", "Down"],
-  ["Ctrl", "Left"],
-  ["Ctrl", "Right"],
-  // File operations
-  ["Cmd", "N"],
-  ["Cmd", "O"],
-  ["Cmd", "S"],
-  ["Cmd", "P"],
-  // Edit
-  ["Cmd", "A"],
-  ["Cmd", "F"],
-  ["Cmd", "G"],
-  ["Cmd", "Shift", "G"],
-  ["Cmd", "R"],
-  // Text formatting
-  ["Cmd", "B"],
-  ["Cmd", "I"],
-  ["Cmd", "U"],
-  // Navigation
-  ["Cmd", "Left"],
-  ["Cmd", "Right"],
-  ["Cmd", "Up"],
-  ["Cmd", "Down"],
-  // Selection
-  ["Cmd", "Shift", "Left"],
-  ["Cmd", "Shift", "Right"],
-  ["Cmd", "Shift", "Up"],
-  ["Cmd", "Shift", "Down"],
-  // System
-  ["Cmd", "Alt", "Escape"],
-  // Delete
-  ["Cmd", "Backspace"],
-  ["Alt", "Backspace"],
-  ["Alt", "Delete"],
-  // Tabs
-  ["Cmd", "T"],
-  ["Cmd", "Shift", "T"],
-  // Zoom
-  ["Cmd", "="],
-  ["Cmd", "-"],
-  // Other common
-  ["Cmd", ","],
-];
-
-// Windows reserved shortcuts
-const RESERVED_SHORTCUTS_WINDOWS: string[][] = [
-  // Clipboard
-  ["Ctrl", "C"],
-  ["Ctrl", "V"],
-  ["Ctrl", "X"],
-  ["Ctrl", "Z"],
-  ["Ctrl", "Y"],
-  // Window/App management
-  ["Alt", "Tab"],
-  ["Alt", "F4"],
-  ["F11"],
-  // File operations
-  ["Ctrl", "N"],
-  ["Ctrl", "O"],
-  ["Ctrl", "S"],
-  ["Ctrl", "P"],
-  ["Ctrl", "T"],
-  ["Ctrl", "W"],
-  // Edit
-  ["Ctrl", "A"],
-  ["Ctrl", "F"],
-  ["Ctrl", "G"],
-  ["Ctrl", "R"],
-  ["F5"],
-  // Text formatting
-  ["Ctrl", "B"],
-  ["Ctrl", "I"],
-  ["Ctrl", "U"],
-  // Navigation
-  ["Home"],
-  ["End"],
-  ["Ctrl", "Home"],
-  ["Ctrl", "End"],
-  ["Alt", "Left"],
-  ["Alt", "Right"],
-  // Selection
-  ["Shift", "Home"],
-  ["Shift", "End"],
-  ["Ctrl", "Shift", "Home"],
-  ["Ctrl", "Shift", "End"],
-  // System
-  ["Ctrl", "Alt", "Delete"],
-  ["Ctrl", "Shift", "Escape"],
-  // Windows key shortcuts
-  ["Win", "E"],
-  ["Win", "R"],
-  ["Win", "L"],
-  ["Win", "D"],
-  ["Win", "Tab"],
-  ["Win", "I"],
-  ["Win", "S"],
-  ["Win", "X"],
-  ["Win", "P"],
-  ["Win", "Up"],
-  ["Win", "Down"],
-  ["Win", "Q"],
-  // Delete
-  ["Ctrl", "Backspace"],
-  ["Ctrl", "Delete"],
-  // Tabs
-  ["Ctrl", "Shift", "T"],
-  // Zoom
-  ["Ctrl", "="],
-  ["Ctrl", "-"],
-  // Other
-  ["Ctrl", "K"],
-];
-
 /**
  * Helper function to compare two sorted arrays
  */
-function arraysEqual(a: string[], b: string[]): boolean {
+function arraysEqual(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false;
-  return a.every((val, idx) => val.toUpperCase() === b[idx].toUpperCase());
+  return a.every((val, idx) => val === b[idx]);
 }
 
 /**
  * Normalize and sort keys for comparison
  */
-function normalizeKeys(keys: string[]): string[] {
-  return keys.map((k) => k.toUpperCase()).sort();
+function normalizeKeys(keys: number[]): number[] {
+  return [...keys].sort((a, b) => a - b);
+}
+
+function keycodesToDisplayNames(keys: number[]): string[] {
+  return keys.map((keycode) => getKeyFromKeycode(keycode) ?? `Key${keycode}`);
 }
 
 /**
  * Check if the shortcut has too many keys
  */
-export function checkMaxKeysLength(keys: string[]): ValidationResult {
+export function checkMaxKeysLength(keys: number[]): ValidationResult {
   if (keys.length === 0) {
     return { valid: false, error: "No keys detected" };
   }
@@ -248,8 +75,8 @@ export function checkMaxKeysLength(keys: string[]): ValidationResult {
  * Check if the shortcut is already assigned to another action
  */
 export function checkDuplicateShortcut(
-  currentKeys: string[],
-  otherShortcuts: string[][],
+  currentKeys: number[],
+  otherShortcuts: number[][],
 ): ValidationResult {
   if (otherShortcuts.length === 0) return { valid: true };
 
@@ -272,7 +99,7 @@ export function checkDuplicateShortcut(
  * Check if the shortcut conflicts with a system shortcut
  */
 export function checkReservedShortcut(
-  keys: string[],
+  keys: number[],
   platform: NodeJS.Platform,
 ): ValidationResult {
   const reserved =
@@ -285,7 +112,7 @@ export function checkReservedShortcut(
   for (const reservedShortcut of reserved) {
     const normalizedReserved = normalizeKeys(reservedShortcut);
     if (arraysEqual(normalizedKeys, normalizedReserved)) {
-      const displayShortcut = keys.join("+");
+      const displayShortcut = keycodesToDisplayNames(keys).join("+");
       return {
         valid: false,
         error: `${displayShortcut} conflicts with a system shortcut`,
@@ -299,15 +126,23 @@ export function checkReservedShortcut(
  * Check if all keys are alphanumeric (letters, digits, punctuation only)
  * Without a modifier, such shortcuts are not valid
  */
-export function checkAlphanumericOnly(keys: string[]): ValidationResult {
+export function checkAlphanumericOnly(
+  keys: number[],
+  platform: NodeJS.Platform,
+): ValidationResult {
+  const modifierSet =
+    platform === "darwin" ? MAC_MODIFIER_KEYCODES : WINDOWS_MODIFIER_KEYCODES;
+  const specialSet =
+    platform === "darwin" ? MAC_SPECIAL_KEYCODES : WINDOWS_SPECIAL_KEYCODES;
+
   // Check if any key is a modifier
-  const hasModifier = keys.some((key) => MODIFIER_KEYS.includes(key));
+  const hasModifier = keys.some((key) => modifierSet.has(key));
   if (hasModifier) {
     return { valid: true };
   }
 
   // Check if any key is a special key (Space, F1-F24, navigation, etc.)
-  const hasSpecialKey = keys.some((key) => SPECIAL_KEYS.includes(key));
+  const hasSpecialKey = keys.some((key) => specialSet.has(key));
   if (hasSpecialKey) {
     return { valid: true };
   }
@@ -324,18 +159,15 @@ export function checkAlphanumericOnly(keys: string[]): ValidationResult {
  * macOS can't distinguish left/right modifiers via its event system
  */
 export function checkDuplicateModifierPairs(
-  keys: string[],
+  keys: number[],
   platform: NodeJS.Platform,
 ): ValidationResult {
-  // Only applies to Windows
-  if (platform === "darwin") {
-    return { valid: true };
-  }
+  const modifierPairs =
+    platform === "darwin" ? MAC_MODIFIER_PAIRS : WINDOWS_MODIFIER_PAIRS;
 
-  for (const [left, right] of MODIFIER_PAIRS) {
+  for (const [left, right] of modifierPairs) {
     if (keys.includes(left) && keys.includes(right)) {
-      // Extract base modifier name (remove L/R prefix)
-      const baseName = left.substring(1);
+      const baseName = getKeyFromKeycode(left) ?? "modifier";
       return {
         valid: false,
         error: `Can't use both left and right ${baseName} together`,
@@ -349,9 +181,9 @@ export function checkDuplicateModifierPairs(
  * Check if toggle shortcut is a subset of PTT shortcut (soft warning)
  */
 export function checkSubsetConflict(
-  candidateShortcut: string[],
+  candidateShortcut: number[],
   candidateType: ShortcutType,
-  shortcutsByType: Record<ShortcutType, string[]>,
+  shortcutsByType: Record<ShortcutType, number[]>,
 ): ValidationResult {
   if (candidateType !== "toggleRecording") return { valid: true };
 
@@ -387,6 +219,7 @@ export function validateShortcutComprehensive(
 ): ValidationResult {
   const { candidateShortcut, candidateType, shortcutsByType, platform } =
     context;
+
   const otherShortcuts = Object.entries(shortcutsByType)
     .filter(([shortcutType]) => shortcutType !== candidateType)
     .map(([, shortcutKeys]) => shortcutKeys);
@@ -407,7 +240,7 @@ export function validateShortcutComprehensive(
   if (!reservedCheck.valid) return reservedCheck;
 
   // 4. Alphanumeric-only check
-  const alphaCheck = checkAlphanumericOnly(candidateShortcut);
+  const alphaCheck = checkAlphanumericOnly(candidateShortcut, platform);
   if (!alphaCheck.valid) return alphaCheck;
 
   // 5. Duplicate modifier pair check (Windows only)

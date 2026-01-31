@@ -102,12 +102,12 @@ class AccessibilityContextService {
     // MARK: - Logging
 
     private static func logError(_ message: String) {
-        FileHandle.standardError.write("❌ \(message)\n".data(using: .utf8)!)
+        HelperLogger.logRawToStderr("❌ \(message)\n")
     }
 
     private static func logDebug(_ message: String) {
         #if DEBUG
-        FileHandle.standardError.write("🔍 \(message)\n".data(using: .utf8)!)
+        HelperLogger.logRawToStderr("🔍 \(message)\n")
         #endif
     }
 }

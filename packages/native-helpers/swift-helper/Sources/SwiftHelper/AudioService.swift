@@ -5,11 +5,7 @@ class AudioService: NSObject, AVAudioPlayerDelegate {
     private var audioPlayer: AVAudioPlayer?
     private var audioCompletionHandler: (() -> Void)?
     private var preloadedAudio: [String: Data] = [:]
-    private let dateFormatter: DateFormatter
-
     override init() {
-        self.dateFormatter = DateFormatter()
-        self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         super.init()
         preloadSounds()
     }
@@ -99,8 +95,6 @@ class AudioService: NSObject, AVAudioPlayerDelegate {
     }
 
     private func logToStderr(_ message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        let logMessage = "[\(timestamp)] \(message)\n"
-        FileHandle.standardError.write(logMessage.data(using: .utf8)!)
+        HelperLogger.logToStderr(message)
     }
 }

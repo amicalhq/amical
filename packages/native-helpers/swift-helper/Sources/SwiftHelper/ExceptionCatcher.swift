@@ -30,8 +30,8 @@ enum ExceptionCatcher {
                 reason: info.reason,
                 callStack: info.callStackSymbols ?? []
             )
-            FileHandle.standardError.write(
-                "[ExceptionCatcher] NSException caught: \(info.name) - \(info.reason)\n".data(using: .utf8)!
+            HelperLogger.logRawToStderr(
+                "[ExceptionCatcher] NSException caught: \(info.name) - \(info.reason)\n"
             )
             return .exception(exception)
         }

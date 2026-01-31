@@ -49,21 +49,13 @@ struct AccessibilityElementNode: Codable {
 class AccessibilityService {
 
     private let maxDepth = ACCESSIBILITY_TREE_MAX_DEPTH  // To prevent excessively deep recursion and large payloads
-    private let dateFormatter: DateFormatter
 
     // Properties to store original audio states
     private var originalSystemMuteState: Bool?
     private var originalSystemVolume: Float32?
 
-    init() {
-        self.dateFormatter = DateFormatter()
-        self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-    }
-
     private func logToStderr(_ message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        let logMessage = "[\(timestamp)] \(message)\n"
-        FileHandle.standardError.write(logMessage.data(using: .utf8)!)
+        HelperLogger.logToStderr(message)
     }
 
     // Fetches a value for a given accessibility attribute from an element.

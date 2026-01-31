@@ -54,6 +54,17 @@ const macOSKeycodeToKey: Record<number, string> = {
   57: "CapsLock",
   117: "ForwardDelete", // Forward delete (different from Delete/Backspace)
 
+  // Modifier keys (left/right distinct)
+  55: "Cmd",
+  54: "RCmd",
+  59: "Ctrl",
+  62: "RCtrl",
+  58: "Alt",
+  61: "RAlt",
+  56: "Shift",
+  60: "RShift",
+  63: "Fn",
+
   // Function keys (F1-F12 - using macOS keycodes)
   122: "F1",
   120: "F2",
@@ -144,9 +155,6 @@ const windowsVKToKey: Record<number, string> = {
   0x09: "Tab",
   0x0c: "Clear",
   0x0d: "Enter",
-  0x10: "Shift",
-  0x11: "Ctrl",
-  0x12: "Alt",
   0x13: "Pause",
   0x14: "CapsLock",
   0x1b: "Escape",
@@ -208,7 +216,7 @@ const windowsVKToKey: Record<number, string> = {
   0x5a: "Z",
 
   // Windows keys
-  0x5b: "LWin",
+  0x5b: "Win",
   0x5c: "RWin",
   0x5d: "Apps",
   0x5f: "Sleep",
@@ -260,11 +268,11 @@ const windowsVKToKey: Record<number, string> = {
   // Other keys
   0x90: "NumLock",
   0x91: "ScrollLock",
-  0xa0: "LShift",
+  0xa0: "Shift",
   0xa1: "RShift",
-  0xa2: "LCtrl",
+  0xa2: "Ctrl",
   0xa3: "RCtrl",
-  0xa4: "LAlt",
+  0xa4: "Alt",
   0xa5: "RAlt",
 
   // Browser control keys
@@ -317,79 +325,36 @@ const windowsVKToKey: Record<number, string> = {
   0xe7: "Packet",
 };
 
-// Export the appropriate mapping based on platform
-export const keycodeToKey: Record<number, string> = isWindows()
-  ? windowsVKToKey
-  : macOSKeycodeToKey;
-
 export function getKeyFromKeycode(keycode: number): string | undefined {
   // Use the appropriate mapping based on platform
   const mapping = isWindows() ? windowsVKToKey : macOSKeycodeToKey;
   return mapping[keycode];
 }
 
-export function matchesShortcutKey(
-  keycode: number | undefined,
-  keyName: string,
-): boolean {
-  if (keycode === undefined) return false;
-
-  const mappedKey = getKeyFromKeycode(keycode);
-  if (!mappedKey) return false;
-
-  // Normalize Windows modifier key names for comparison
-  const normalizedMappedKey = normalizeKeyName(mappedKey);
-  const normalizedKeyName = normalizeKeyName(keyName);
-
-  return normalizedMappedKey.toUpperCase() === normalizedKeyName.toUpperCase();
+function buildReverseMap(
+  mapping: Record<number, string>,
+): Record<string, number> {
+  const reverse: Record<string, number> = {};
+  for (const [keycode, name] of Object.entries(mapping)) {
+    if (reverse[name] === undefined) {
+      reverse[name] = Number(keycode);
+    }
+  }
+  return reverse;
 }
 
-export function getKeyNameFromPayload(payload: {
-  key?: string;
-  keyCode?: number;
-}): string | undefined {
-  // Try to get key name from various sources
-  // First, use the key name from the payload (may come from Swift fallback)
-  if (payload.key) {
-    // If it's a generic "Key{keycode}" format, try to map it properly first
-    if (payload.key.startsWith("Key") && payload.keyCode !== undefined) {
-      const mappedKey = getKeyFromKeycode(payload.keyCode);
-      if (mappedKey) {
-        return normalizeKeyName(mappedKey);
-      }
+const macKeyToKeycode = buildReverseMap(macOSKeycodeToKey);
+const windowsKeyToKeycode = buildReverseMap(windowsVKToKey);
+
+export function getKeycodeFromKeyName(keyName: string): number | undefined {
+  if (keyName.startsWith("Key")) {
+    const suffix = keyName.slice(3);
+    const parsed = Number(suffix);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
     }
-    return payload.key;
   }
 
-  // Fallback: Try to map keycode
-  if (payload.keyCode !== undefined) {
-    const keyName = getKeyFromKeycode(payload.keyCode);
-    if (keyName) {
-      // Normalize key names for consistency across platforms
-      return normalizeKeyName(keyName);
-    }
-    // Last resort: Return generic identifier to ensure key is reported
-    // This helps with debugging and ensures unmapped keys don't break shortcut recording
-    return `Key${payload.keyCode}`;
-  }
-
-  return undefined;
-}
-
-// Helper function to normalize key names across platforms
-function normalizeKeyName(keyName: string): string {
-  // Normalize left/right variants to single names
-  const normalizations: Record<string, string> = {
-    LWin: "Win",
-    RWin: "Win",
-    LShift: "Shift",
-    RShift: "Shift",
-    LCtrl: "Ctrl",
-    RCtrl: "Ctrl",
-    LAlt: "Alt",
-    RAlt: "Alt",
-    // Keep other keys as-is
-  };
-
-  return normalizations[keyName] || keyName;
+  const mapping = isWindows() ? windowsKeyToKeycode : macKeyToKeycode;
+  return mapping[keyName];
 }

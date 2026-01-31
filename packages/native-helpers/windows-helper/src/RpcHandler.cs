@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -363,9 +365,9 @@ namespace WindowsHelper
                 }
 
                 ShortcutManager.Instance.SetShortcuts(
-                    setShortcutsParams.PushToTalk?.ToArray() ?? Array.Empty<string>(),
-                    setShortcutsParams.ToggleRecording?.ToArray() ?? Array.Empty<string>(),
-                    setShortcutsParams.PasteLastTranscript?.ToArray() ?? Array.Empty<string>()
+                    ConvertKeycodes(setShortcutsParams.PushToTalk),
+                    ConvertKeycodes(setShortcutsParams.ToggleRecording),
+                    ConvertKeycodes(setShortcutsParams.PasteLastTranscript)
                 );
 
                 return new RpcResponse
@@ -395,8 +397,7 @@ namespace WindowsHelper
             {
                 var json = JsonSerializer.Serialize(response, jsonOptions);
                 LogToStderr($"[RpcHandler] Sending response to stdout: {json}");
-                Console.WriteLine(json);
-                Console.Out.Flush();
+                StdoutWriter.WriteLine(json);
             }
             catch (Exception ex)
             {
@@ -406,9 +407,13 @@ namespace WindowsHelper
 
         private void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] {message}");
-            Console.Error.Flush();
+            HelperLogger.LogToStderr(message);
+        }
+
+        private static int[] ConvertKeycodes(List<long>? keycodes)
+        {
+            if (keycodes == null || keycodes.Count == 0) return Array.Empty<int>();
+            return keycodes.Select(keycode => (int)keycode).ToArray();
         }
     }
 }

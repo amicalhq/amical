@@ -13,9 +13,9 @@ import type { AppSettingsData } from "../db/schema";
  * Database-backed settings service with typed configuration
  */
 export interface ShortcutsConfig {
-  pushToTalk: string[];
-  toggleRecording: string[];
-  pasteLastTranscript: string[];
+  pushToTalk: number[];
+  toggleRecording: number[];
+  pasteLastTranscript: number[];
 }
 
 export interface AppPreferences {

@@ -218,9 +218,7 @@ namespace WindowsHelper
 
         private void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] [StaThreadRunner] {message}");
-            Console.Error.Flush();
+            HelperLogger.LogToStderr($"[StaThreadRunner] {message}");
         }
     }
 }

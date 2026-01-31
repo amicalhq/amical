@@ -35,6 +35,7 @@ namespace WindowsHelper
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 
             // Log startup
+            HelperLogger.Start();
             LogToStderr("WindowsHelper starting...");
 
             // Create hidden form for WinForms message pump (required for COM interop)
@@ -81,6 +82,8 @@ namespace WindowsHelper
         {
             try
             {
+                StdoutWriter.Start();
+
                 // 1. Keyboard STA thread - dedicated for hooks, must pump messages quickly
                 keyboardStaRunner = new StaThreadRunner();
 
@@ -127,7 +130,9 @@ namespace WindowsHelper
                 shortcutMonitor?.Stop();
                 keyboardStaRunner?.Stop();
                 cancellationTokenSource.Cancel();
+                StdoutWriter.Stop();
                 LogToStderr("WindowsHelper stopped.");
+                HelperLogger.Stop();
             }
             catch (Exception ex)
             {
@@ -137,24 +142,12 @@ namespace WindowsHelper
 
         private static void OnKeyEvent(object? sender, HelperEvent e)
         {
-            try
-            {
-                // Serialize and send the event to stdout using generated serializer
-                var json = e.ToJson();
-                Console.WriteLine(json);
-                Console.Out.Flush();
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"Error sending key event: {ex.Message}");
-            }
+            StdoutWriter.WriteEvent(e);
         }
 
         private static void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] {message}");
-            Console.Error.Flush();
+            HelperLogger.LogToStderr(message);
         }
     }
 }

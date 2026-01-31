@@ -8,13 +8,38 @@ import type {
   NewNote,
   AppSettingsData,
 } from "@db/schema";
+import { isMacOS } from "../../src/utils/platform";
+import { getKeycodeFromKeyName } from "../../src/utils/keycode-map";
+
+const defaultShortcutNames = isMacOS()
+  ? {
+      pushToTalk: ["Fn"],
+      toggleRecording: ["Fn", "Space"],
+      pasteLastTranscript: ["Cmd", "Ctrl", "V"],
+    }
+  : {
+      pushToTalk: ["Ctrl", "Win"],
+      toggleRecording: ["Ctrl", "Win", "Space"],
+      pasteLastTranscript: ["Alt", "Shift", "Z"],
+    };
+
+const toKeycodes = (keys: string[]): number[] =>
+  keys
+    .map((key) => getKeycodeFromKeyName(key))
+    .filter((keycode): keycode is number => keycode !== undefined);
+
+const defaultShortcuts = {
+  pushToTalk: toKeycodes(defaultShortcutNames.pushToTalk),
+  toggleRecording: toKeycodes(defaultShortcutNames.toggleRecording),
+  pasteLastTranscript: toKeycodes(defaultShortcutNames.pasteLastTranscript),
+};
 
 /**
  * Default app settings for testing
  */
 export const defaultAppSettings: AppSettingsData = {
   formatterConfig: {
-    model: "gpt-4o-mini",
+    modelId: "gpt-4o-mini",
     enabled: false,
   },
   ui: {
@@ -36,9 +61,9 @@ export const defaultAppSettings: AppSettingsData = {
     maxRecordingDuration: 600,
   },
   shortcuts: {
-    pushToTalk: "CommandOrControl+Shift+Space",
-    toggleRecording: "CommandOrControl+Shift+R",
-    toggleWindow: "CommandOrControl+Shift+W",
+    pushToTalk: defaultShortcuts.pushToTalk,
+    toggleRecording: defaultShortcuts.toggleRecording,
+    pasteLastTranscript: defaultShortcuts.pasteLastTranscript,
   },
   modelProvidersConfig: {
     defaultSpeechModel: "local-whisper:ggml-base.en",
@@ -178,7 +203,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: defaultAppSettings,
-      version: 4,
+      version: 6,
     });
   },
 
@@ -238,7 +263,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: { ...defaultAppSettings, ...settings },
-      version: 4,
+      version: 6,
     });
   },
 

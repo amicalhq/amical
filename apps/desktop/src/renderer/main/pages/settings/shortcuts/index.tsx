@@ -7,12 +7,12 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
 export function ShortcutsSettingsPage() {
-  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<string[]>([]);
+  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<number[]>([]);
   const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState<
-    string[]
+    number[]
   >([]);
   const [pasteLastTranscriptShortcut, setPasteLastTranscriptShortcut] =
-    useState<string[]>([]);
+    useState<number[]>([]);
   const [recordingShortcut, setRecordingShortcut] = useState<
     "pushToTalk" | "toggleRecording" | "pasteLastTranscript" | null
   >(null);
@@ -39,8 +39,14 @@ export function ShortcutsSettingsPage() {
     },
     onError: (error) => {
       toast.error(error.message);
-      // Revert to saved value
-      utils.settings.getShortcuts.invalidate();
+      const cached = utils.settings.getShortcuts.getData();
+      if (cached) {
+        setPushToTalkShortcut(cached.pushToTalk);
+        setToggleRecordingShortcut(cached.toggleRecording);
+        setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
+      } else {
+        utils.settings.getShortcuts.invalidate();
+      }
     },
   });
 
@@ -53,7 +59,7 @@ export function ShortcutsSettingsPage() {
     }
   }, [shortcutsQuery.data]);
 
-  const handlePushToTalkChange = (shortcut: string[]) => {
+  const handlePushToTalkChange = (shortcut: number[]) => {
     setPushToTalkShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "pushToTalk",
@@ -61,7 +67,7 @@ export function ShortcutsSettingsPage() {
     });
   };
 
-  const handleToggleRecordingChange = (shortcut: string[]) => {
+  const handleToggleRecordingChange = (shortcut: number[]) => {
     setToggleRecordingShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "toggleRecording",
@@ -69,7 +75,7 @@ export function ShortcutsSettingsPage() {
     });
   };
 
-  const handlePasteLastTranscriptChange = (shortcut: string[]) => {
+  const handlePasteLastTranscriptChange = (shortcut: number[]) => {
     setPasteLastTranscriptShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "pasteLastTranscript",

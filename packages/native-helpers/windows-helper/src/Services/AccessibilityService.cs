@@ -106,9 +106,7 @@ namespace WindowsHelper.Services
 
         private void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] [AccessibilityService] {message}");
-            Console.Error.Flush();
+            HelperLogger.LogToStderr($"[AccessibilityService] {message}");
         }
     }
 }

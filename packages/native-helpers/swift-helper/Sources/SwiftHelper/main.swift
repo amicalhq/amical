@@ -2,183 +2,6 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
-// Import the generated models
-// Note: We'll manually create the proper HelperEvent structure since quicktype doesn't handle discriminated unions well
-
-// Define the proper event structures that match the TypeScript schemas
-struct KeyEventPayload: Codable {
-    let key: String?
-    let code: String?
-    let altKey: Bool?
-    let ctrlKey: Bool?
-    let shiftKey: Bool?
-    let metaKey: Bool?
-    let keyCode: Int?
-    let fnKeyPressed: Bool?
-}
-
-struct HelperEvent: Codable {
-    let type: String
-    let payload: KeyEventPayload
-    let timestamp: String?
-
-    init(type: String, payload: KeyEventPayload, timestamp: String? = nil) {
-        self.type = type
-        self.payload = payload
-        self.timestamp = timestamp
-    }
-}
-
-/// Get key name from keycode with fallback mechanisms
-/// Tries keycode mapping first, then Unicode string extraction, then generic name
-func getKeyNameWithFallback(keyCode: Int, event: CGEvent) -> String {
-    // First, try the keycode mapping
-    if let name = keyCodeToName(keyCode) {
-        return name
-    }
-    
-    // Fallback: Try to extract Unicode string from the event
-    var char = UniChar()
-    var length = 0
-    event.keyboardGetUnicodeString(maxStringLength: 1, actualStringLength: &length, unicodeString: &char)
-    
-    if length > 0 {
-        // Convert UniChar to String safely
-        if let unicodeScalar = UnicodeScalar(char) {
-            let unicodeString = String(unicodeScalar)
-            // Only use Unicode string if it's a printable character (not control characters)
-            if !unicodeString.isEmpty, let firstScalar = unicodeString.unicodeScalars.first, firstScalar.value >= 32 {
-                return unicodeString.uppercased()
-            }
-        }
-    }
-    
-    // Last resort: Generate generic name from keycode
-    // This ensures unmapped keys are still tracked and reported
-    return "Key\(keyCode)"
-}
-
-// Function to handle the event tap
-func eventTapCallback(
-    proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?
-) -> Unmanaged<CGEvent>? {
-    guard let refcon = refcon else {
-        return Unmanaged.passRetained(event)
-    }
-    let anInstance = Unmanaged<SwiftHelper>.fromOpaque(refcon).takeUnretainedValue()
-
-    if type == .keyDown || type == .keyUp {
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let eventTypeString = (type == .keyDown) ? "keyDown" : "keyUp"
-        
-        // Get key name with fallback mechanism
-        let keyName = getKeyNameWithFallback(keyCode: Int(keyCode), event: event)
-
-        // Create the proper payload structure
-        let payload = KeyEventPayload(
-            key: keyName,  // Include key name from fallback mechanism
-            code: nil,  // We could map keyCode to code string if needed
-            altKey: event.flags.contains(.maskAlternate),
-            ctrlKey: event.flags.contains(.maskControl),
-            shiftKey: event.flags.contains(.maskShift),
-            metaKey: event.flags.contains(.maskCommand),
-            keyCode: Int(keyCode),
-            fnKeyPressed: event.flags.contains(.maskSecondaryFn)
-        )
-
-        let helperEvent = HelperEvent(
-            type: eventTypeString,
-            payload: payload,
-            timestamp: ISO8601DateFormatter().string(from: Date())
-        )
-
-        anInstance.sendKeyEvent(helperEvent)
-
-        // Check if this key event matches a configured shortcut and should be consumed
-        // Only check for regular key events (not modifier-only events)
-        let modifiers = ModifierState(
-            fn: event.flags.contains(.maskSecondaryFn),
-            cmd: event.flags.contains(.maskCommand),
-            ctrl: event.flags.contains(.maskControl),
-            alt: event.flags.contains(.maskAlternate),
-            shift: event.flags.contains(.maskShift)
-        )
-
-        // Track regular key state for multi-key shortcuts
-        // We need to track which non-modifier keys are held down so that
-        // shortcuts like Shift+A+B can work properly
-        // Use the keyName we already computed above
-        if type == .keyDown {
-            ShortcutManager.shared.addRegularKey(keyName)
-        } else {
-            ShortcutManager.shared.removeRegularKey(keyName)
-        }
-
-        if ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode), modifiers: modifiers) {
-            // Before consuming, validate that all tracked keys are actually pressed.
-            // This prevents stuck keys (missed keyUp events) from blocking input.
-            if !ShortcutManager.shared.validateAndResyncKeyState() {
-                // State was invalid (some keys were stuck), re-check with corrected state
-                let correctedModifiers = ModifierState(
-                    fn: event.flags.contains(.maskSecondaryFn),
-                    cmd: event.flags.contains(.maskCommand),
-                    ctrl: event.flags.contains(.maskControl),
-                    alt: event.flags.contains(.maskAlternate),
-                    shift: event.flags.contains(.maskShift)
-                )
-                if !ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode), modifiers: correctedModifiers) {
-                    // After correction, we should NOT consume - let the key through
-                    return Unmanaged.passRetained(event)
-                }
-            }
-            // CONSUME - prevent default behavior (e.g., cursor movement for arrow keys)
-            return nil
-        }
-    } else if type == .flagsChanged {
-        // Handle flags changed events (like Fn key press/release)
-        // Modifier-only events always pass through - they don't cause unwanted behavior on their own
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-
-        // ====================================================================
-        // IMPORTANT: Track Fn key state via flagsChanged (NOT keyDown flags)
-        // ====================================================================
-        // macOS reports UNRELIABLE .maskSecondaryFn on keyDown events,
-        // especially on MacBooks. The flag can be TRUE even when Fn is NOT
-        // pressed! flagsChanged events are reliable, so we track Fn state
-        // here and use it in ShortcutManager.shouldConsumeKey().
-        // See ShortcutManager.swift for more details.
-        // ====================================================================
-        let fnPressed = event.flags.contains(.maskSecondaryFn)
-        ShortcutManager.shared.setFnKeyState(fnPressed)
-
-        let payload = KeyEventPayload(
-            key: nil,
-            code: nil,
-            altKey: event.flags.contains(.maskAlternate),
-            ctrlKey: event.flags.contains(.maskControl),
-            shiftKey: event.flags.contains(.maskShift),
-            metaKey: event.flags.contains(.maskCommand),
-            keyCode: Int(keyCode),
-            fnKeyPressed: event.flags.contains(.maskSecondaryFn)
-        )
-
-        let helperEvent = HelperEvent(
-            type: "flagsChanged",
-            payload: payload,
-            timestamp: ISO8601DateFormatter().string(from: Date())
-        )
-
-        anInstance.sendKeyEvent(helperEvent)
-    } else if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        // Re-enable the tap if it times out or is disabled by user input
-        if let tap = anInstance.eventTap {
-            CGEvent.tapEnable(tap: tap, enable: true)
-        }
-    }
-
-    return Unmanaged.passRetained(event)
-}
-
 class SwiftHelper {
     var eventTap: CFMachPort?
     let outputPipe = Pipe()
@@ -192,21 +15,7 @@ class SwiftHelper {
     }
 
     func sendKeyEvent(_ eventData: HelperEvent) {
-        let encoder = JSONEncoder()
-        do {
-            let jsonData = try encoder.encode(eventData)
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                // Print to stdout, which will be captured by the Electron process
-                print(jsonString)
-                fflush(stdout)  // Ensure the output is sent immediately
-            }
-        } catch {
-            // Log errors to the helper's stderr
-            let errorMsg = "Error encoding HelperEvent: \(error)\n"
-            if let data = errorMsg.data(using: .utf8) {
-                FileHandle.standardError.write(data)
-            }
-        }
+        StdoutWriter.writeEvent(eventData)
     }
 
     func checkAccessibilityPermission() -> Bool {
@@ -222,7 +31,9 @@ class SwiftHelper {
 
         // Check accessibility permission before attempting
         guard checkAccessibilityPermission() else {
-            FileHandle.standardError.write("Accessibility permission not granted. Event tap disabled. RPC methods still available.\n".data(using: .utf8)!)
+            HelperLogger.logRawToStderr(
+                "Accessibility permission not granted. Event tap disabled. RPC methods still available.\n"
+            )
             return
         }
 
@@ -248,9 +59,13 @@ class SwiftHelper {
             // Enable the event tap
             CGEvent.tapEnable(tap: tap, enable: true)
 
-            FileHandle.standardError.write("Event tap created successfully. Keyboard monitoring active.\n".data(using: .utf8)!)
+            HelperLogger.logRawToStderr(
+                "Event tap created successfully. Keyboard monitoring active.\n"
+            )
         } else {
-            FileHandle.standardError.write("Failed to create event tap despite having permissions.\n".data(using: .utf8)!)
+            HelperLogger.logRawToStderr(
+                "Failed to create event tap despite having permissions.\n"
+            )
         }
     }
 
@@ -279,7 +94,7 @@ class SwiftHelper {
         let startMsg = eventTap != nil
             ? "SwiftHelper started and listening for events...\n"
             : "SwiftHelper started in degraded mode (no accessibility permission). RPC methods available.\n"
-        FileHandle.standardError.write(startMsg.data(using: .utf8)!)
+        HelperLogger.logRawToStderr(startMsg)
 
         CFRunLoopRun()
     }
@@ -291,9 +106,7 @@ class SwiftHelper {
             // CFRelease(tap) // And this
         }
         let endMsg = "SwiftHelper stopping.\n"
-        if let data = endMsg.data(using: .utf8) {
-            FileHandle.standardError.write(data)
-        }
+        HelperLogger.logRawToStderr(endMsg)
     }
 }
 
@@ -304,11 +117,10 @@ let ioBridge = IOBridge(jsonEncoder: JSONEncoder(), jsonDecoder: JSONDecoder())
 // Start RPC processing in a background thread
 // Using .userInteractive QoS for high priority (reduces latency for audio muting)
 DispatchQueue.global(qos: .userInteractive).async {
-    FileHandle.standardError.write(
-        "Starting IOBridge RPC processing in background thread...\n".data(using: .utf8)!)
+    HelperLogger.logRawToStderr("Starting IOBridge RPC processing in background thread...\n")
     ioBridge.processRpcRequests()
 }
 
 // Start Swift helper in the main thread (this will run the main run loop)
-FileHandle.standardError.write("Starting SwiftHelper in main thread...\n".data(using: .utf8)!)
+HelperLogger.logRawToStderr("Starting SwiftHelper in main thread...\n")
 swiftHelper.start()

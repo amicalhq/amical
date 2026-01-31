@@ -247,9 +247,7 @@ namespace WindowsHelper.Services
 
         private void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] [ClipboardService] {message}");
-            Console.Error.Flush();
+            HelperLogger.LogToStderr($"[ClipboardService] {message}");
         }
     }
 }

@@ -4,27 +4,49 @@ import { Pencil, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
+import { getKeyFromKeycode } from "@/utils/keycode-map";
 
 interface ShortcutInputProps {
-  value?: string[];
-  onChange: (value: string[]) => void;
+  value?: number[];
+  onChange: (value: number[]) => void;
   isRecordingShortcut?: boolean;
   onRecordingShortcutChange: (recording: boolean) => void;
 }
 
-const MODIFIER_KEYS = ["Cmd", "Win", "Ctrl", "Alt", "Shift", "Fn"];
+const MODIFIER_KEYS = new Set([
+  "Cmd",
+  "RCmd",
+  "Win",
+  "RWin",
+  "Ctrl",
+  "RCtrl",
+  "Alt",
+  "RAlt",
+  "Shift",
+  "RShift",
+  "Fn",
+]);
 const MAX_KEY_COMBINATION_LENGTH = 4;
 
 type ValidationResult = {
   valid: boolean;
-  shortcut?: string[];
+  shortcut?: number[];
   error?: string;
 };
+
+function keycodeToDisplay(keycode: number): string {
+  return getKeyFromKeycode(keycode) ?? `Key${keycode}`;
+}
+
+function isModifierKeycode(keycode: number): boolean {
+  const name = getKeyFromKeycode(keycode);
+  return name ? MODIFIER_KEYS.has(name) : false;
+}
 
 /**
  * Basic format validation only - business logic validation happens on backend
  */
-function validateShortcutFormat(keys: string[]): ValidationResult {
+function validateShortcutFormat(keys: number[]): ValidationResult {
   if (keys.length === 0) {
     return { valid: false, error: "No keys detected" };
   }
@@ -36,8 +58,8 @@ function validateShortcutFormat(keys: string[]): ValidationResult {
     };
   }
 
-  const modifierKeys = keys.filter((key) => MODIFIER_KEYS.includes(key));
-  const regularKeys = keys.filter((key) => !MODIFIER_KEYS.includes(key));
+  const modifierKeys = keys.filter((keycode) => isModifierKeycode(keycode));
+  const regularKeys = keys.filter((keycode) => !isModifierKeycode(keycode));
 
   // Return array format: modifiers first, then regular keys
   return {
@@ -50,7 +72,7 @@ function RecordingDisplay({
   activeKeys,
   onCancel,
 }: {
-  activeKeys: string[];
+  activeKeys: number[];
   onCancel: () => void;
 }) {
   return (
@@ -65,7 +87,7 @@ function RecordingDisplay({
               key={index}
               className="px-1.5 py-0.5 text-xs bg-background rounded border"
             >
-              {key}
+              {keycodeToDisplay(key)}
             </kbd>
           ))}
         </div>
@@ -88,11 +110,13 @@ function ShortcutDisplay({
   value,
   onEdit,
 }: {
-  value?: string[];
+  value?: number[];
   onEdit: () => void;
 }) {
   // Format array as display string (e.g., ["Fn", "Space"] -> "Fn+Space")
-  const displayValue = value?.length ? value.join("+") : undefined;
+  const displayValue = value?.length
+    ? value.map((key) => keycodeToDisplay(key)).join("+")
+    : undefined;
 
   return (
     <>
@@ -122,7 +146,7 @@ export function ShortcutInput({
   isRecordingShortcut = false,
   onRecordingShortcutChange,
 }: ShortcutInputProps) {
-  const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  const [activeKeys, setActiveKeys] = useState<number[]>([]);
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
 
@@ -143,7 +167,7 @@ export function ShortcutInput({
   // previous state value when onData fires.
   api.settings.activeKeysUpdates.useSubscription(undefined, {
     enabled: isRecordingShortcut,
-    onData: (keys: string[]) => {
+    onData: (keys: number[]) => {
       const previousKeys = activeKeys;
       setActiveKeys(keys);
 

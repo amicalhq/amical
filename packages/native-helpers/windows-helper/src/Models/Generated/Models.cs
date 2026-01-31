@@ -296,13 +296,13 @@ namespace WindowsHelper.Models
     public partial class SetShortcutsParams
     {
         [JsonPropertyName("pasteLastTranscript")]
-        public List<string> PasteLastTranscript { get; set; }
+        public List<long> PasteLastTranscript { get; set; }
 
         [JsonPropertyName("pushToTalk")]
-        public List<string> PushToTalk { get; set; }
+        public List<long> PushToTalk { get; set; }
 
         [JsonPropertyName("toggleRecording")]
-        public List<string> ToggleRecording { get; set; }
+        public List<long> ToggleRecording { get; set; }
     }
 
     public partial class SetShortcutsResult
@@ -352,9 +352,8 @@ namespace WindowsHelper.Models
         /// <summary>
         /// Raw key code, e.g., from CGEvent
         /// </summary>
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("keyCode")]
-        public long? KeyCode { get; set; }
+        public long KeyCode { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("metaKey")]
@@ -406,9 +405,8 @@ namespace WindowsHelper.Models
         /// <summary>
         /// Raw key code, e.g., from CGEvent
         /// </summary>
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("keyCode")]
-        public long? KeyCode { get; set; }
+        public long KeyCode { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("metaKey")]
@@ -460,9 +458,8 @@ namespace WindowsHelper.Models
         /// <summary>
         /// Raw key code, e.g., from CGEvent
         /// </summary>
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("keyCode")]
-        public long? KeyCode { get; set; }
+        public long KeyCode { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("metaKey")]
@@ -514,9 +511,8 @@ namespace WindowsHelper.Models
         /// <summary>
         /// Raw key code, e.g., from CGEvent
         /// </summary>
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("keyCode")]
-        public long? KeyCode { get; set; }
+        public long KeyCode { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("metaKey")]

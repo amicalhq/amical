@@ -6,17 +6,6 @@ using System.Runtime.InteropServices;
 namespace WindowsHelper
 {
     /// <summary>
-    /// Represents the state of modifier keys at a given moment.
-    /// </summary>
-    public struct ModifierState
-    {
-        public bool Win;
-        public bool Ctrl;
-        public bool Alt;
-        public bool Shift;
-    }
-
-    /// <summary>
     /// Manages configured shortcuts and determines if key events should be consumed.
     /// Thread-safe singleton that can be updated from RpcHandler (background thread)
     /// and queried from ShortcutMonitor hook callback (main thread).
@@ -31,9 +20,10 @@ namespace WindowsHelper
         public static ShortcutManager Instance => _instance.Value;
 
         private readonly object _lock = new();
-        private string[] _pushToTalkKeys = Array.Empty<string>();
-        private string[] _toggleRecordingKeys = Array.Empty<string>();
-        private string[] _pasteLastTranscriptKeys = Array.Empty<string>();
+        private int[] _pushToTalkKeys = Array.Empty<int>();
+        private int[] _toggleRecordingKeys = Array.Empty<int>();
+        private int[] _pasteLastTranscriptKeys = Array.Empty<int>();
+        private HashSet<int> _shortcutKeysSet = new();
 
         // Track currently pressed non-modifier keys across keyDown/keyUp events.
         // This is necessary for multi-key shortcuts like Shift+A+B where we need to
@@ -43,29 +33,41 @@ namespace WindowsHelper
         // (e.g., hook restarts, sleep/wake cycles). This will cause shortcuts to
         // stop matching because activeKeys retains extra keys. Consider clearing
         // this state on app re-initialization or power management events.
-        private readonly HashSet<string> _pressedRegularKeys = new();
+        private readonly HashSet<int> _pressedRegularKeys = new();
 
         private ShortcutManager() { }
 
         private void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] [ShortcutManager] {message}");
-            Console.Error.Flush();
+            HelperLogger.LogToStderr($"[ShortcutManager] {message}");
         }
 
         /// <summary>
         /// Update the configured shortcuts.
         /// Called from RpcHandler when setShortcuts RPC is received.
         /// </summary>
-        public void SetShortcuts(string[] pushToTalk, string[] toggleRecording, string[] pasteLastTranscript)
+        public void SetShortcuts(int[] pushToTalk, int[] toggleRecording, int[] pasteLastTranscript)
         {
             lock (_lock)
             {
-                _pushToTalkKeys = pushToTalk ?? Array.Empty<string>();
-                _toggleRecordingKeys = toggleRecording ?? Array.Empty<string>();
-                _pasteLastTranscriptKeys = pasteLastTranscript ?? Array.Empty<string>();
+                _pushToTalkKeys = pushToTalk ?? Array.Empty<int>();
+                _toggleRecordingKeys = toggleRecording ?? Array.Empty<int>();
+                _pasteLastTranscriptKeys = pasteLastTranscript ?? Array.Empty<int>();
+                _shortcutKeysSet = new HashSet<int>(_pushToTalkKeys
+                    .Concat(_toggleRecordingKeys)
+                    .Concat(_pasteLastTranscriptKeys));
                 LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}], Paste: [{string.Join(", ", _pasteLastTranscriptKeys)}]");
+            }
+        }
+
+        /// <summary>
+        /// Check if a key is part of any configured shortcut.
+        /// </summary>
+        public bool IsShortcutKey(int keyCode)
+        {
+            lock (_lock)
+            {
+                return _shortcutKeysSet.Contains(keyCode);
             }
         }
 
@@ -73,11 +75,11 @@ namespace WindowsHelper
         /// Add a regular (non-modifier) key to the tracked set.
         /// Called from ShortcutMonitor hook callback on keyDown events.
         /// </summary>
-        public void AddRegularKey(string key)
+        public void AddRegularKey(int keyCode)
         {
             lock (_lock)
             {
-                _pressedRegularKeys.Add(key);
+                _pressedRegularKeys.Add(keyCode);
             }
         }
 
@@ -85,11 +87,11 @@ namespace WindowsHelper
         /// Remove a regular (non-modifier) key from the tracked set.
         /// Called from ShortcutMonitor hook callback on keyUp events.
         /// </summary>
-        public void RemoveRegularKey(string key)
+        public void RemoveRegularKey(int keyCode)
         {
             lock (_lock)
             {
-                _pressedRegularKeys.Remove(key);
+                _pressedRegularKeys.Remove(keyCode);
             }
         }
 
@@ -107,20 +109,19 @@ namespace WindowsHelper
         /// Removes any keys that are not actually pressed (stuck keys).
         /// Returns the list of keys that were removed.
         /// </summary>
-        public List<string> ValidateAndClearStaleKeys()
+        public List<int> ValidateAndClearStaleKeys()
         {
-            var staleKeys = new List<string>();
+            var staleKeys = new List<int>();
 
             lock (_lock)
             {
                 var keysToCheck = _pressedRegularKeys.ToList();
-                foreach (var keyName in keysToCheck)
+                foreach (var keyCode in keysToCheck)
                 {
-                    var vkCode = VirtualKeyMap.GetVkCode(keyName);
-                    if (vkCode.HasValue && !IsKeyActuallyPressed(vkCode.Value))
+                    if (!IsKeyActuallyPressed(keyCode))
                     {
-                        _pressedRegularKeys.Remove(keyName);
-                        staleKeys.Add(keyName);
+                        _pressedRegularKeys.Remove(keyCode);
+                        staleKeys.Add(keyCode);
                     }
                 }
             }
@@ -132,7 +133,7 @@ namespace WindowsHelper
         /// Check if this key event should be consumed (prevent default behavior).
         /// Called from ShortcutMonitor hook callback for keyDown/keyUp events only.
         /// </summary>
-        public bool ShouldConsumeKey(int vkCode, ModifierState modifiers)
+        public bool ShouldConsumeKey(int vkCode, IReadOnlyCollection<int> activeModifiers)
         {
             lock (_lock)
             {
@@ -142,42 +143,27 @@ namespace WindowsHelper
                     return false;
                 }
 
-                // If we can't map this key, don't consume it - prevents unmapped keys
-                // (like PageUp, Home) from being incorrectly consumed when a modifier is held
-                var currentKeyName = VirtualKeyMap.GetKeyName(vkCode);
-                if (currentKeyName == null)
-                {
-                    return false;
-                }
-
-                // Build set of currently active modifier keys
-                var activeModifiers = new HashSet<string>();
-                if (modifiers.Win) activeModifiers.Add("Win");
-                if (modifiers.Ctrl) activeModifiers.Add("Ctrl");
-                if (modifiers.Alt) activeModifiers.Add("Alt");
-                if (modifiers.Shift) activeModifiers.Add("Shift");
-
                 // Build full set of active keys (modifiers + tracked regular keys + current key)
-                var activeKeys = new HashSet<string>(activeModifiers);
+                var activeKeys = new HashSet<int>(activeModifiers);
                 activeKeys.UnionWith(_pressedRegularKeys);
-                activeKeys.Add(currentKeyName);
+                activeKeys.Add(vkCode);
 
                 // PTT: consume if building toward the shortcut
                 // - At least one modifier from the shortcut must be held (signals intent)
                 // - All currently pressed keys must be part of the shortcut (activeKeys ⊆ pttKeys)
-                var pttKeys = new HashSet<string>(_pushToTalkKeys);
-                var modifierKeys = new HashSet<string> { "Win", "Ctrl", "Alt", "Shift" };
-                var pttModifiers = new HashSet<string>(pttKeys);
+                var pttKeys = new HashSet<int>(_pushToTalkKeys);
+                var modifierKeys = new HashSet<int>(KeycodeConstants.ModifierKeyCodes);
+                var pttModifiers = new HashSet<int>(pttKeys);
                 pttModifiers.IntersectWith(modifierKeys);
                 var hasRequiredModifier = pttModifiers.Count > 0 && pttModifiers.Overlaps(activeModifiers);
                 var pttMatch = pttKeys.Count > 0 && hasRequiredModifier && activeKeys.IsSubsetOf(pttKeys);
 
                 // Toggle: exact match (only these keys pressed)
-                var toggleKeys = new HashSet<string>(_toggleRecordingKeys);
+                var toggleKeys = new HashSet<int>(_toggleRecordingKeys);
                 var toggleMatch = toggleKeys.Count > 0 && toggleKeys.SetEquals(activeKeys);
 
                 // Paste last transcript: exact match (only these keys pressed)
-                var pasteKeys = new HashSet<string>(_pasteLastTranscriptKeys);
+                var pasteKeys = new HashSet<int>(_pasteLastTranscriptKeys);
                 var pasteMatch = pasteKeys.Count > 0 && pasteKeys.SetEquals(activeKeys);
 
                 return pttMatch || toggleMatch || pasteMatch;

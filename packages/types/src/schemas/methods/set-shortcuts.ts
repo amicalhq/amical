@@ -4,9 +4,9 @@ import { z } from "zod";
 // Used to sync configured shortcuts to the native helper for event consumption
 
 export const SetShortcutsParamsSchema = z.object({
-  pushToTalk: z.array(z.string()),
-  toggleRecording: z.array(z.string()),
-  pasteLastTranscript: z.array(z.string()),
+  pushToTalk: z.array(z.number().int()),
+  toggleRecording: z.array(z.number().int()),
+  pasteLastTranscript: z.array(z.number().int()),
 });
 export type SetShortcutsParams = z.infer<typeof SetShortcutsParamsSchema>;
 

@@ -9,7 +9,7 @@ import { toast } from "sonner";
  * Wraps ShortcutInput with label and handles data fetching/saving
  */
 export function OnboardingShortcutInput() {
-  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<string[]>([]);
+  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<number[]>([]);
   const [isRecording, setIsRecording] = useState(false);
 
   const utils = api.useUtils();
@@ -32,7 +32,7 @@ export function OnboardingShortcutInput() {
     }
   }, [shortcutsQuery.data]);
 
-  const handleShortcutChange = (shortcut: string[]) => {
+  const handleShortcutChange = (shortcut: number[]) => {
     setPushToTalkShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "pushToTalk",

@@ -25,144 +25,42 @@ import {
   type AppSettingsData,
 } from "./schema";
 import { isMacOS } from "../utils/platform";
-
-// Current settings schema version - increment when making breaking changes
-const CURRENT_SETTINGS_VERSION = 5;
-
-// Type for v1 settings (before shortcuts array migration)
-interface AppSettingsDataV1 extends Omit<AppSettingsData, "shortcuts"> {
-  shortcuts?: {
-    pushToTalk?: string;
-    toggleRecording?: string;
-    toggleWindow?: string;
-  };
-}
-
-// Migration function type
-type MigrationFn = (data: unknown) => AppSettingsData;
-
-// Migration functions - keyed by target version
-const migrations: Record<number, MigrationFn> = {
-  // v1 -> v2: Convert shortcuts from string ("Fn+Space") to array (["Fn", "Space"])
-  2: (data: unknown): AppSettingsData => {
-    const oldData = data as AppSettingsDataV1;
-    const oldShortcuts = oldData.shortcuts;
-
-    // Convert string shortcuts to arrays
-    const convertShortcut = (
-      shortcut: string | undefined,
-    ): string[] | undefined => {
-      if (!shortcut || shortcut === "") {
-        return undefined;
-      }
-      return shortcut.split("+");
-    };
-
-    return {
-      ...oldData,
-      shortcuts: oldShortcuts
-        ? {
-            pushToTalk: convertShortcut(oldShortcuts.pushToTalk),
-            toggleRecording: convertShortcut(oldShortcuts.toggleRecording),
-          }
-        : undefined,
-    } as AppSettingsData;
-  },
-
-  // v2 -> v3: Auto-enable formatting with amical-cloud for users already on cloud transcription
-  3: (data: unknown): AppSettingsData => {
-    const oldData = data as AppSettingsData;
-    const isCloudSpeech =
-      oldData.modelProvidersConfig?.defaultSpeechModel === "amical-cloud";
-    const hasNoFormattingModel = !oldData.formatterConfig?.modelId;
-
-    // If user is on Amical Cloud transcription and hasn't set a formatting model,
-    // auto-enable formatting with Amical Cloud
-    if (isCloudSpeech && hasNoFormattingModel) {
-      return {
-        ...oldData,
-        formatterConfig: {
-          ...oldData.formatterConfig,
-          enabled: true,
-          modelId: "amical-cloud",
-        },
-      };
-    }
-
-    return oldData;
-  },
-
-  // v3 -> v4: Add default paste-last-transcript shortcut if missing
-  4: (data: unknown): AppSettingsData => {
-    const oldData = data as AppSettingsData;
-    const shortcuts = oldData.shortcuts ?? {};
-
-    if (shortcuts.pasteLastTranscript !== undefined) {
-      return oldData;
-    }
-
-    const defaultPasteShortcut = isMacOS()
-      ? ["Cmd", "Ctrl", "V"]
-      : ["Alt", "Shift", "Z"];
-
-    return {
-      ...oldData,
-      shortcuts: {
-        ...shortcuts,
-        pasteLastTranscript: defaultPasteShortcut,
-      },
-    };
-  },
-
-  // v4 -> v5: Default muteSystemAudio to preferences (default true)
-  5: (data: unknown): AppSettingsData => {
-    const oldData = data as AppSettingsData;
-    return {
-      ...oldData,
-      preferences: {
-        ...(oldData.preferences ?? {}),
-        muteSystemAudio: oldData.preferences?.muteSystemAudio ?? true,
-      },
-    };
-  },
-};
-
-/**
- * Run migrations from current version to target version
- */
-function migrateSettings(data: unknown, fromVersion: number): AppSettingsData {
-  let currentData = data;
-
-  for (let v = fromVersion + 1; v <= CURRENT_SETTINGS_VERSION; v++) {
-    const migrationFn = migrations[v];
-    if (migrationFn) {
-      currentData = migrationFn(currentData);
-      console.log(`[Settings] Migrated settings from v${v - 1} to v${v}`);
-    }
-  }
-
-  return currentData as AppSettingsData;
-}
+import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../utils/keycodes";
+import {
+  CURRENT_SETTINGS_VERSION,
+  migrateSettings,
+} from "./settings-migrations";
 
 // Singleton ID for app settings (we only have one settings record)
 const SETTINGS_ID = 1;
 
-// Platform-specific default shortcuts (array format)
+// Platform-specific default shortcuts (keycode array format)
 const getDefaultShortcuts = () => {
   if (isMacOS()) {
     return {
-      pushToTalk: ["Fn"],
-      toggleRecording: ["Fn", "Space"],
-      pasteLastTranscript: ["Cmd", "Ctrl", "V"],
-    };
-  } else {
-    // Windows and Linux
-    return {
-      pushToTalk: ["Ctrl", "Win"],
-      toggleRecording: ["Ctrl", "Win", "Space"],
-      pasteLastTranscript: ["Alt", "Shift", "Z"],
+      pushToTalk: [MAC_KEYCODES.FN],
+      toggleRecording: [MAC_KEYCODES.FN, MAC_KEYCODES.SPACE],
+      pasteLastTranscript: [
+        MAC_KEYCODES.CMD,
+        MAC_KEYCODES.CTRL,
+        MAC_KEYCODES.V,
+      ],
     };
   }
+
+  return {
+    pushToTalk: [WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.WIN],
+    toggleRecording: [
+      WINDOWS_KEYCODES.CTRL,
+      WINDOWS_KEYCODES.WIN,
+      WINDOWS_KEYCODES.SPACE,
+    ],
+    pasteLastTranscript: [
+      WINDOWS_KEYCODES.ALT,
+      WINDOWS_KEYCODES.SHIFT,
+      WINDOWS_KEYCODES.Z,
+    ],
+  };
 };
 
 // Default settings

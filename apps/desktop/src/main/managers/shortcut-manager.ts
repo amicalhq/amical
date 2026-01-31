@@ -2,10 +2,9 @@ import { EventEmitter } from "events";
 import { globalShortcut } from "electron";
 import { SettingsService } from "@/services/settings-service";
 import { NativeBridge } from "@/services/platform/native-bridge-service";
-import { getKeyNameFromPayload } from "@/utils/keycode-map";
-import { isWindows } from "@/utils/platform";
 import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
+import { getKeyFromKeycode } from "@/utils/keycode-map";
 import {
   validateShortcutComprehensive,
   type ShortcutType,
@@ -15,18 +14,18 @@ import {
 const log = logger.main;
 
 interface KeyInfo {
-  key: string;
+  keyCode: number;
   timestamp: number;
 }
 
 interface ShortcutConfig {
-  pushToTalk: string[];
-  toggleRecording: string[];
-  pasteLastTranscript: string[];
+  pushToTalk: number[];
+  toggleRecording: number[];
+  pasteLastTranscript: number[];
 }
 
 export class ShortcutManager extends EventEmitter {
-  private activeKeys = new Map<string, KeyInfo>();
+  private activeKeys = new Map<number, KeyInfo>();
   private shortcuts: ShortcutConfig = {
     pushToTalk: [],
     toggleRecording: [],
@@ -96,7 +95,7 @@ export class ShortcutManager extends EventEmitter {
    */
   async setShortcut(
     type: ShortcutType,
-    keys: string[],
+    keys: number[],
   ): Promise<ValidationResult> {
     // Validate the shortcut
     const result = validateShortcutComprehensive({
@@ -144,9 +143,6 @@ export class ShortcutManager extends EventEmitter {
 
     this.nativeBridge.on("helperEvent", (event: HelperEvent) => {
       switch (event.type) {
-        case "flagsChanged":
-          this.handleFlagsChanged(event.payload);
-          break;
         case "keyDown":
           this.handleKeyDown(event.payload);
           break;
@@ -157,60 +153,31 @@ export class ShortcutManager extends EventEmitter {
     });
   }
 
-  private handleFlagsChanged(payload: KeyEventPayload) {
-    // Track Fn key state
-    if (payload.fnKeyPressed !== undefined) {
-      if (payload.fnKeyPressed) {
-        this.addActiveKey("Fn");
-      } else {
-        this.removeActiveKey("Fn");
-      }
+  private handleKeyDown(payload: KeyEventPayload) {
+    const keyCode = this.getKeycodeFromPayload(payload);
+    if (!this.isKnownKeycode(keyCode)) {
+      return;
     }
-
-    // Track modifier keys with platform-aware names
-    const modifiers = [
-      { flag: payload.metaKey, name: isWindows() ? "Win" : "Cmd" },
-      { flag: payload.ctrlKey, name: "Ctrl" },
-      { flag: payload.altKey, name: "Alt" },
-      { flag: payload.shiftKey, name: "Shift" },
-    ];
-
-    modifiers.forEach(({ flag, name }) => {
-      if (flag !== undefined) {
-        if (flag) {
-          this.addActiveKey(name);
-        } else {
-          this.removeActiveKey(name);
-        }
-      }
-    });
-
+    this.addActiveKey(keyCode);
     this.checkShortcuts();
   }
 
-  private handleKeyDown(payload: KeyEventPayload) {
-    const keyName = getKeyNameFromPayload(payload);
-    if (keyName) {
-      this.addActiveKey(keyName);
-      this.checkShortcuts();
-    }
-  }
-
   private handleKeyUp(payload: KeyEventPayload) {
-    const keyName = getKeyNameFromPayload(payload);
-    if (keyName) {
-      this.removeActiveKey(keyName);
-      this.checkShortcuts();
+    const keyCode = this.getKeycodeFromPayload(payload);
+    if (!this.isKnownKeycode(keyCode)) {
+      return;
     }
+    this.removeActiveKey(keyCode);
+    this.checkShortcuts();
   }
 
-  private addActiveKey(key: string) {
-    this.activeKeys.set(key, { key, timestamp: Date.now() });
+  private addActiveKey(keyCode: number) {
+    this.activeKeys.set(keyCode, { keyCode, timestamp: Date.now() });
     this.emitActiveKeysChanged();
   }
 
-  private removeActiveKey(key: string) {
-    this.activeKeys.delete(key);
+  private removeActiveKey(keyCode: number) {
+    this.activeKeys.delete(keyCode);
     this.emitActiveKeysChanged();
   }
 
@@ -218,7 +185,7 @@ export class ShortcutManager extends EventEmitter {
     this.emit("activeKeysChanged", this.getActiveKeys());
   }
 
-  getActiveKeys(): string[] {
+  getActiveKeys(): number[] {
     return Array.from(this.activeKeys.keys());
   }
 
@@ -256,7 +223,7 @@ export class ShortcutManager extends EventEmitter {
     const activeKeysList = this.getActiveKeys();
 
     // PTT: subset match - all PTT keys must be pressed (can have extra keys)
-    return pttKeys.every((key) => activeKeysList.includes(key));
+    return pttKeys.every((keyCode) => activeKeysList.includes(keyCode));
   }
 
   private isToggleRecordingShortcutPressed(): boolean {
@@ -270,7 +237,7 @@ export class ShortcutManager extends EventEmitter {
     // Toggle: exact match - only these keys pressed, no extra keys
     return (
       toggleKeys.length === activeKeysList.length &&
-      toggleKeys.every((key) => activeKeysList.includes(key))
+      toggleKeys.every((keyCode) => activeKeysList.includes(keyCode))
     );
   }
 
@@ -285,8 +252,16 @@ export class ShortcutManager extends EventEmitter {
     // Exact match - only these keys pressed, no extra keys
     return (
       pasteKeys.length === activeKeysList.length &&
-      pasteKeys.every((key) => activeKeysList.includes(key))
+      pasteKeys.every((keyCode) => activeKeysList.includes(keyCode))
     );
+  }
+
+  private getKeycodeFromPayload(payload: KeyEventPayload): number {
+    return payload.keyCode;
+  }
+
+  private isKnownKeycode(keyCode: number): boolean {
+    return getKeyFromKeycode(keyCode) !== undefined;
   }
 
   // Register/unregister global shortcuts (for non-Swift platforms)

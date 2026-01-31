@@ -142,9 +142,7 @@ namespace WindowsHelper.Services
 
         private static void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] [UIAutomationService] {message}");
-            Console.Error.Flush();
+            HelperLogger.LogToStderr($"[UIAutomationService] {message}");
         }
     }
 }

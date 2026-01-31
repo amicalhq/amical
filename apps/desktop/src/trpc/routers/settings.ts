@@ -14,10 +14,10 @@ const FormatterConfigSchema = z.object({
   fallbackModelId: z.string().optional(),
 });
 
-// Shortcut schema (array of key names)
+// Shortcut schema (array of keycodes)
 const SetShortcutSchema = z.object({
   type: z.enum(["pushToTalk", "toggleRecording", "pasteLastTranscript"]),
-  shortcut: z.array(z.string()),
+  shortcut: z.array(z.number()),
 });
 
 // Model providers schemas
@@ -281,7 +281,7 @@ export const settingsRouter = createRouter({
 
   // Active keys subscription for shortcut recording
   activeKeysUpdates: procedure.subscription(({ ctx }) => {
-    return observable<string[]>((emit) => {
+    return observable<number[]>((emit) => {
       const shortcutManager = ctx.serviceManager.getService("shortcutManager");
       const logger = ctx.serviceManager.getLogger();
 
@@ -297,7 +297,7 @@ export const settingsRouter = createRouter({
       emit.next(shortcutManager.getActiveKeys());
 
       // Set up listener for changes
-      const handleActiveKeysChanged = (keys: string[]) => {
+      const handleActiveKeysChanged = (keys: number[]) => {
         emit.next(keys);
       };
 

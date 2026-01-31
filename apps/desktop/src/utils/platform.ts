@@ -1,25 +1,33 @@
-import process from "node:process";
-
 /**
  * Platform detection utilities
  */
 
-export type Platform = "darwin" | "win32" | "linux";
+export type Platform = NodeJS.Platform;
+
+function getRendererPlatform(): Platform | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.electronAPI?.platform;
+}
+
+function getNodePlatform(): Platform | undefined {
+  if (typeof process === "undefined") return undefined;
+  return process.platform;
+}
 
 export function getPlatform(): Platform {
-  return process.platform as Platform;
+  return getRendererPlatform() ?? getNodePlatform() ?? ("unknown" as Platform);
 }
 
 export function isWindows(): boolean {
-  return process.platform === "win32";
+  return getPlatform() === "win32";
 }
 
 export function isMacOS(): boolean {
-  return process.platform === "darwin";
+  return getPlatform() === "darwin";
 }
 
 export function isLinux(): boolean {
-  return process.platform === "linux";
+  return getPlatform() === "linux";
 }
 
 /**
@@ -40,7 +48,8 @@ export function getNativeHelperDir(): string {
  * Get a platform-specific display name
  */
 export function getPlatformDisplayName(): string {
-  switch (process.platform) {
+  const platform = getPlatform();
+  switch (platform) {
     case "darwin":
       return "macOS";
     case "win32":
@@ -48,6 +57,6 @@ export function getPlatformDisplayName(): string {
     case "linux":
       return "Linux";
     default:
-      return process.platform;
+      return platform;
   }
 }

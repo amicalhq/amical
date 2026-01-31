@@ -67,8 +67,7 @@ namespace WindowsHelper.Utils
 
         private static void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.Error.WriteLine($"[{timestamp}] [UIAutomationHelpers] {message}");
+            HelperLogger.LogToStderr($"[UIAutomationHelpers] {message}");
         }
     }
 }
