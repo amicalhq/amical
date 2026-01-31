@@ -250,6 +250,36 @@ export const modelsRouter = createRouter({
       return await modelService.validateOllamaConnection(input.url);
     }),
 
+  validateOpenAIConnection: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateOpenAIConnection(input.apiKey);
+    }),
+
+  validateAnthropicConnection: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateAnthropicConnection(input.apiKey);
+    }),
+
+  validateGoogleConnection: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateGoogleConnection(input.apiKey);
+    }),
+
   // Provider model fetching
   fetchOpenRouterModels: procedure
     .input(z.object({ apiKey: z.string() }))
@@ -269,6 +299,36 @@ export const modelsRouter = createRouter({
         throw new Error("Model manager service not initialized");
       }
       return await modelService.fetchOllamaModels(input.url);
+    }),
+
+  fetchOpenAIModels: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.fetchOpenAIModels(input.apiKey);
+    }),
+
+  fetchAnthropicModels: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.fetchAnthropicModels(input.apiKey);
+    }),
+
+  fetchGoogleModels: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.fetchGoogleModels(input.apiKey);
     }),
 
   // Provider model database sync
@@ -491,6 +551,100 @@ export const modelsRouter = createRouter({
         ollamaModels.some((m) => m.id === currentConfig.defaultEmbeddingModel)
       ) {
         updatedConfig.defaultEmbeddingModel = undefined;
+      }
+
+      await settingsService.setModelProvidersConfig(updatedConfig);
+    }
+
+    return true;
+  }),
+
+  removeOpenAIProvider: procedure.mutation(async ({ ctx }) => {
+    const modelService = ctx.serviceManager.getService("modelService");
+    if (!modelService) {
+      throw new Error("Model manager service not initialized");
+    }
+
+    await modelService.removeProviderModels("OpenAI");
+
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (settingsService) {
+      const currentConfig = await settingsService.getModelProvidersConfig();
+      const updatedConfig = { ...currentConfig };
+      delete updatedConfig.openAI;
+
+      const allModels = await modelService.getSyncedProviderModels();
+      const openAIModels = allModels.filter((m) => m.provider === "OpenAI");
+
+      if (
+        currentConfig?.defaultLanguageModel &&
+        openAIModels.some((m) => m.id === currentConfig.defaultLanguageModel)
+      ) {
+        updatedConfig.defaultLanguageModel = undefined;
+      }
+
+      await settingsService.setModelProvidersConfig(updatedConfig);
+    }
+
+    return true;
+  }),
+
+  removeAnthropicProvider: procedure.mutation(async ({ ctx }) => {
+    const modelService = ctx.serviceManager.getService("modelService");
+    if (!modelService) {
+      throw new Error("Model manager service not initialized");
+    }
+
+    await modelService.removeProviderModels("Anthropic");
+
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (settingsService) {
+      const currentConfig = await settingsService.getModelProvidersConfig();
+      const updatedConfig = { ...currentConfig };
+      delete updatedConfig.anthropic;
+
+      const allModels = await modelService.getSyncedProviderModels();
+      const anthropicModels = allModels.filter(
+        (m) => m.provider === "Anthropic",
+      );
+
+      if (
+        currentConfig?.defaultLanguageModel &&
+        anthropicModels.some(
+          (m) => m.id === currentConfig.defaultLanguageModel,
+        )
+      ) {
+        updatedConfig.defaultLanguageModel = undefined;
+      }
+
+      await settingsService.setModelProvidersConfig(updatedConfig);
+    }
+
+    return true;
+  }),
+
+  removeGoogleProvider: procedure.mutation(async ({ ctx }) => {
+    const modelService = ctx.serviceManager.getService("modelService");
+    if (!modelService) {
+      throw new Error("Model manager service not initialized");
+    }
+
+    await modelService.removeProviderModels("Google");
+
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (settingsService) {
+      const currentConfig = await settingsService.getModelProvidersConfig();
+      const updatedConfig = { ...currentConfig };
+      delete updatedConfig.google;
+
+      const allModels = await modelService.getSyncedProviderModels();
+      const googleModels = allModels.filter((m) => m.provider === "Google");
+
+      if (
+        currentConfig?.defaultLanguageModel &&
+        googleModels.some((m) => m.id === currentConfig.defaultLanguageModel)
+      ) {
+        updatedConfig.defaultLanguageModel = undefined;
       }
 
       await settingsService.setModelProvidersConfig(updatedConfig);

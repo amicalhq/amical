@@ -19,6 +19,9 @@ export default function LanguageTab() {
         <Accordion type="multiple" className="w-full">
           <ProviderAccordion provider="OpenRouter" modelType="language" />
           <ProviderAccordion provider="Ollama" modelType="language" />
+          <ProviderAccordion provider="OpenAI" modelType="language" />
+          <ProviderAccordion provider="Anthropic" modelType="language" />
+          <ProviderAccordion provider="Google" modelType="language" />
         </Accordion>
 
         {/* Synced Models List */}

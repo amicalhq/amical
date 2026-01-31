@@ -10,6 +10,9 @@ import { WhisperProvider } from "../pipeline/providers/transcription/whisper-pro
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
+import { OpenAIFormatter } from "../pipeline/providers/formatting/openai-formatter";
+import { AnthropicFormatter } from "../pipeline/providers/formatting/anthropic-formatter";
+import { GoogleFormatter } from "../pipeline/providers/formatting/google-formatter";
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
@@ -528,6 +531,84 @@ export class TranscriptionService {
               model: modelId,
             });
             const provider = new OllamaFormatter(config.url, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "OpenAI") {
+          const config = await this.settingsService.getOpenAIConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: OpenAI API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new OpenAIFormatter(config.apiKey, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "Anthropic") {
+          const config = await this.settingsService.getAnthropicConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: Anthropic API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new AnthropicFormatter(config.apiKey, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "Google") {
+          const config = await this.settingsService.getGoogleConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: Google API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new GoogleFormatter(config.apiKey, modelId);
             const result = await this.formatWithProvider(
               provider,
               sessionId,

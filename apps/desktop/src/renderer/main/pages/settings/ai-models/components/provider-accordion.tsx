@@ -22,8 +22,15 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import SyncModelsDialog from "./sync-models-dialog";
 
+type ProviderName =
+  | "OpenRouter"
+  | "Ollama"
+  | "OpenAI"
+  | "Anthropic"
+  | "Google";
+
 interface ProviderAccordionProps {
-  provider: "OpenRouter" | "Ollama";
+  provider: ProviderName;
   modelType: "language" | "embedding";
 }
 
@@ -47,6 +54,7 @@ export default function ProviderAccordion({
   const modelProvidersConfigQuery =
     api.settings.getModelProvidersConfig.useQuery();
 
+  // --- Config save mutations ---
   const setOpenRouterConfigMutation =
     api.settings.setOpenRouterConfig.useMutation({
       onSuccess: () => {
@@ -72,101 +80,186 @@ export default function ProviderAccordion({
     },
   });
 
-  const validateOpenRouterMutation =
-    api.models.validateOpenRouterConnection.useMutation({
-      onSuccess: (result) => {
-        setIsValidating(false);
-        if (result.success) {
-          setOpenRouterConfigMutation.mutate({ apiKey: inputValue.trim() });
-          setValidationError("");
-          toast.success("OpenRouter connection validated successfully!");
-        } else {
-          setValidationError(result.error || "Validation failed");
-          toast.error(`OpenRouter validation failed: ${result.error}`);
-        }
+  const setOpenAIConfigMutation = api.settings.setOpenAIConfig.useMutation({
+    onSuccess: () => {
+      toast.success("OpenAI configuration saved successfully!");
+      utils.settings.getModelProvidersConfig.invalidate();
+    },
+    onError: (error) => {
+      console.error("Failed to save OpenAI config:", error);
+      toast.error("Failed to save OpenAI configuration. Please try again.");
+    },
+  });
+
+  const setAnthropicConfigMutation =
+    api.settings.setAnthropicConfig.useMutation({
+      onSuccess: () => {
+        toast.success("Anthropic configuration saved successfully!");
+        utils.settings.getModelProvidersConfig.invalidate();
       },
       onError: (error) => {
-        setIsValidating(false);
-        setValidationError(error.message);
-        toast.error(`OpenRouter validation error: ${error.message}`);
+        console.error("Failed to save Anthropic config:", error);
+        toast.error(
+          "Failed to save Anthropic configuration. Please try again.",
+        );
       },
+    });
+
+  const setGoogleConfigMutation = api.settings.setGoogleConfig.useMutation({
+    onSuccess: () => {
+      toast.success("Google configuration saved successfully!");
+      utils.settings.getModelProvidersConfig.invalidate();
+    },
+    onError: (error) => {
+      console.error("Failed to save Google config:", error);
+      toast.error("Failed to save Google configuration. Please try again.");
+    },
+  });
+
+  // --- Validation mutations ---
+  const onValidationSuccess = (
+    result: { success: boolean; error?: string },
+    providerName: ProviderName,
+    saveConfig: () => void,
+  ) => {
+    setIsValidating(false);
+    if (result.success) {
+      saveConfig();
+      setValidationError("");
+      toast.success(`${providerName} connection validated successfully!`);
+    } else {
+      setValidationError(result.error || "Validation failed");
+      toast.error(`${providerName} validation failed: ${result.error}`);
+    }
+  };
+
+  const onValidationError = (error: { message: string }, providerName: ProviderName) => {
+    setIsValidating(false);
+    setValidationError(error.message);
+    toast.error(`${providerName} validation error: ${error.message}`);
+  };
+
+  const validateOpenRouterMutation =
+    api.models.validateOpenRouterConnection.useMutation({
+      onSuccess: (result) =>
+        onValidationSuccess(result, "OpenRouter", () =>
+          setOpenRouterConfigMutation.mutate({ apiKey: inputValue.trim() }),
+        ),
+      onError: (error) => onValidationError(error, "OpenRouter"),
     });
 
   const validateOllamaMutation =
     api.models.validateOllamaConnection.useMutation({
-      onSuccess: (result) => {
-        setIsValidating(false);
-        if (result.success) {
-          setOllamaConfigMutation.mutate({ url: inputValue.trim() });
-          setValidationError("");
-          toast.success("Ollama connection validated successfully!");
-        } else {
-          setValidationError(result.error || "Validation failed");
-          toast.error(`Ollama validation failed: ${result.error}`);
-        }
-      },
-      onError: (error) => {
-        setIsValidating(false);
-        setValidationError(error.message);
-        toast.error(`Ollama validation error: ${error.message}`);
-      },
+      onSuccess: (result) =>
+        onValidationSuccess(result, "Ollama", () =>
+          setOllamaConfigMutation.mutate({ url: inputValue.trim() }),
+        ),
+      onError: (error) => onValidationError(error, "Ollama"),
     });
+
+  const validateOpenAIMutation =
+    api.models.validateOpenAIConnection.useMutation({
+      onSuccess: (result) =>
+        onValidationSuccess(result, "OpenAI", () =>
+          setOpenAIConfigMutation.mutate({ apiKey: inputValue.trim() }),
+        ),
+      onError: (error) => onValidationError(error, "OpenAI"),
+    });
+
+  const validateAnthropicMutation =
+    api.models.validateAnthropicConnection.useMutation({
+      onSuccess: (result) =>
+        onValidationSuccess(result, "Anthropic", () =>
+          setAnthropicConfigMutation.mutate({ apiKey: inputValue.trim() }),
+        ),
+      onError: (error) => onValidationError(error, "Anthropic"),
+    });
+
+  const validateGoogleMutation =
+    api.models.validateGoogleConnection.useMutation({
+      onSuccess: (result) =>
+        onValidationSuccess(result, "Google", () =>
+          setGoogleConfigMutation.mutate({ apiKey: inputValue.trim() }),
+        ),
+      onError: (error) => onValidationError(error, "Google"),
+    });
+
+  // --- Remove provider mutations ---
+  const onRemoveSuccess = (providerName: ProviderName) => {
+    utils.settings.getModelProvidersConfig.invalidate();
+    utils.models.getSyncedProviderModels.invalidate();
+    utils.models.getDefaultLanguageModel.invalidate();
+    utils.models.getDefaultEmbeddingModel.invalidate();
+    setStatus("disconnected");
+    setInputValue("");
+    toast.success(`${providerName} provider removed successfully!`);
+  };
+
+  const onRemoveError = (error: unknown, providerName: ProviderName) => {
+    console.error(`Failed to remove ${providerName} provider:`, error);
+    toast.error(`Failed to remove ${providerName} provider. Please try again.`);
+  };
 
   const removeOpenRouterProviderMutation =
     api.models.removeOpenRouterProvider.useMutation({
-      onSuccess: () => {
-        utils.settings.getModelProvidersConfig.invalidate();
-        utils.models.getSyncedProviderModels.invalidate();
-        utils.models.getDefaultLanguageModel.invalidate();
-        utils.models.getDefaultEmbeddingModel.invalidate();
-        setStatus("disconnected");
-        setInputValue("");
-        toast.success("OpenRouter provider removed successfully!");
-      },
-      onError: (error) => {
-        console.error("Failed to remove OpenRouter provider:", error);
-        toast.error("Failed to remove OpenRouter provider. Please try again.");
-      },
+      onSuccess: () => onRemoveSuccess("OpenRouter"),
+      onError: (error) => onRemoveError(error, "OpenRouter"),
     });
 
   const removeOllamaProviderMutation =
     api.models.removeOllamaProvider.useMutation({
-      onSuccess: () => {
-        utils.settings.getModelProvidersConfig.invalidate();
-        utils.models.getSyncedProviderModels.invalidate();
-        utils.models.getDefaultLanguageModel.invalidate();
-        utils.models.getDefaultEmbeddingModel.invalidate();
-        setStatus("disconnected");
-        setInputValue("");
-        toast.success("Ollama provider removed successfully!");
-      },
-      onError: (error) => {
-        console.error("Failed to remove Ollama provider:", error);
-        toast.error("Failed to remove Ollama provider. Please try again.");
-      },
+      onSuccess: () => onRemoveSuccess("Ollama"),
+      onError: (error) => onRemoveError(error, "Ollama"),
+    });
+
+  const removeOpenAIProviderMutation =
+    api.models.removeOpenAIProvider.useMutation({
+      onSuccess: () => onRemoveSuccess("OpenAI"),
+      onError: (error) => onRemoveError(error, "OpenAI"),
+    });
+
+  const removeAnthropicProviderMutation =
+    api.models.removeAnthropicProvider.useMutation({
+      onSuccess: () => onRemoveSuccess("Anthropic"),
+      onError: (error) => onRemoveError(error, "Anthropic"),
+    });
+
+  const removeGoogleProviderMutation =
+    api.models.removeGoogleProvider.useMutation({
+      onSuccess: () => onRemoveSuccess("Google"),
+      onError: (error) => onRemoveError(error, "Google"),
     });
 
   // Load configuration when query data is available
   useEffect(() => {
     if (modelProvidersConfigQuery.data) {
       const config = modelProvidersConfigQuery.data;
+      let credential: string | undefined;
 
-      if (provider === "OpenRouter") {
-        if (config.openRouter?.apiKey) {
-          setInputValue(config.openRouter.apiKey);
-          setStatus("connected");
-        } else {
-          setInputValue("");
-          setStatus("disconnected");
-        }
-      } else if (provider === "Ollama") {
-        if (config.ollama?.url && config.ollama.url !== "") {
-          setInputValue(config.ollama.url);
-          setStatus("connected");
-        } else {
-          setInputValue("");
-          setStatus("disconnected");
-        }
+      switch (provider) {
+        case "OpenRouter":
+          credential = config.openRouter?.apiKey;
+          break;
+        case "Ollama":
+          credential = config.ollama?.url && config.ollama.url !== "" ? config.ollama.url : undefined;
+          break;
+        case "OpenAI":
+          credential = config.openAI?.apiKey;
+          break;
+        case "Anthropic":
+          credential = config.anthropic?.apiKey;
+          break;
+        case "Google":
+          credential = config.google?.apiKey;
+          break;
+      }
+
+      if (credential) {
+        setInputValue(credential);
+        setStatus("connected");
+      } else {
+        setInputValue("");
+        setStatus("disconnected");
       }
     }
   }, [modelProvidersConfigQuery.data, provider]);
@@ -178,10 +271,22 @@ export default function ProviderAccordion({
     setIsValidating(true);
     setValidationError("");
 
-    if (provider === "OpenRouter") {
-      validateOpenRouterMutation.mutate({ apiKey: inputValue.trim() });
-    } else {
-      validateOllamaMutation.mutate({ url: inputValue.trim() });
+    switch (provider) {
+      case "OpenRouter":
+        validateOpenRouterMutation.mutate({ apiKey: inputValue.trim() });
+        break;
+      case "Ollama":
+        validateOllamaMutation.mutate({ url: inputValue.trim() });
+        break;
+      case "OpenAI":
+        validateOpenAIMutation.mutate({ apiKey: inputValue.trim() });
+        break;
+      case "Anthropic":
+        validateAnthropicMutation.mutate({ apiKey: inputValue.trim() });
+        break;
+      case "Google":
+        validateGoogleMutation.mutate({ apiKey: inputValue.trim() });
+        break;
     }
   };
 
@@ -196,10 +301,22 @@ export default function ProviderAccordion({
   };
 
   const confirmRemoveProvider = () => {
-    if (provider === "OpenRouter") {
-      removeOpenRouterProviderMutation.mutate();
-    } else {
-      removeOllamaProviderMutation.mutate();
+    switch (provider) {
+      case "OpenRouter":
+        removeOpenRouterProviderMutation.mutate();
+        break;
+      case "Ollama":
+        removeOllamaProviderMutation.mutate();
+        break;
+      case "OpenAI":
+        removeOpenAIProviderMutation.mutate();
+        break;
+      case "Anthropic":
+        removeAnthropicProviderMutation.mutate();
+        break;
+      case "Google":
+        removeGoogleProviderMutation.mutate();
+        break;
     }
     setRemoveProviderDialogOpen(false);
   };
@@ -231,15 +348,14 @@ export default function ProviderAccordion({
   }
 
   const getPlaceholder = () => {
-    if (provider === "OpenRouter") {
-      return "API Key";
-    } else {
+    if (provider === "Ollama") {
       return "Ollama URL (e.g., http://localhost:11434)";
     }
+    return "API Key";
   };
 
   const getInputType = () => {
-    return provider === "OpenRouter" ? "password" : "text";
+    return provider === "Ollama" ? "text" : "password";
   };
 
   return (

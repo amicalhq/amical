@@ -145,6 +145,15 @@ export interface AppSettingsData {
     ollama?: {
       url: string;
     };
+    openAI?: {
+      apiKey: string;
+    };
+    anthropic?: {
+      apiKey: string;
+    };
+    google?: {
+      apiKey: string;
+    };
     defaultSpeechModel?: string; // Model ID for default speech model (Whisper)
     defaultLanguageModel?: string; // Model ID for default language model
     defaultEmbeddingModel?: string; // Model ID for default embedding model

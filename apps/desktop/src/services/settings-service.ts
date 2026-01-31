@@ -224,6 +224,63 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
+   * Get OpenAI configuration
+   */
+  async getOpenAIConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.openAI;
+  }
+
+  /**
+   * Update OpenAI configuration
+   */
+  async setOpenAIConfig(config: { apiKey: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      openAI: config,
+    });
+  }
+
+  /**
+   * Get Anthropic configuration
+   */
+  async getAnthropicConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.anthropic;
+  }
+
+  /**
+   * Update Anthropic configuration
+   */
+  async setAnthropicConfig(config: { apiKey: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      anthropic: config,
+    });
+  }
+
+  /**
+   * Get Google configuration
+   */
+  async getGoogleConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.google;
+  }
+
+  /**
+   * Update Google configuration
+   */
+  async setGoogleConfig(config: { apiKey: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      google: config,
+    });
+  }
+
+  /**
    * Get default speech model (Whisper)
    */
   async getDefaultSpeechModel(): Promise<string | undefined> {

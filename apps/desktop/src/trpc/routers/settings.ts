@@ -29,9 +29,24 @@ const OllamaConfigSchema = z.object({
   url: z.string().url().or(z.literal("")),
 });
 
+const OpenAIConfigSchema = z.object({
+  apiKey: z.string(),
+});
+
+const AnthropicConfigSchema = z.object({
+  apiKey: z.string(),
+});
+
+const GoogleConfigSchema = z.object({
+  apiKey: z.string(),
+});
+
 const ModelProvidersConfigSchema = z.object({
   openRouter: OpenRouterConfigSchema.optional(),
   ollama: OllamaConfigSchema.optional(),
+  openAI: OpenAIConfigSchema.optional(),
+  anthropic: AnthropicConfigSchema.optional(),
+  google: GoogleConfigSchema.optional(),
 });
 
 const DictationSettingsSchema = z.object({
@@ -481,6 +496,87 @@ export const settingsRouter = createRouter({
       }
     }),
 
+  // Set OpenAI configuration
+  setOpenAIConfig: procedure
+    .input(OpenAIConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setOpenAIConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("OpenAI configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting OpenAI config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set Anthropic configuration
+  setAnthropicConfig: procedure
+    .input(AnthropicConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setAnthropicConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Anthropic configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting Anthropic config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set Google configuration
+  setGoogleConfig: procedure
+    .input(GoogleConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setGoogleConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Google configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting Google config:", error);
+        }
+        throw error;
+      }
+    }),
+
   // Get data path
   getDataPath: procedure.query(() => {
     return app.getPath("userData");
@@ -490,8 +586,8 @@ export const settingsRouter = createRouter({
   getLogFilePath: procedure.query(() => {
     const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
     return isDev
-      ? path.join(app.getPath("userData"), "logs", "amical-dev.log")
-      : path.join(app.getPath("logs"), "amical.log");
+      ? path.join(app.getPath("userData"), "logs", "vox-dev.log")
+      : path.join(app.getPath("logs"), "vox.log");
   }),
 
   // Get machine ID for display
@@ -518,8 +614,8 @@ export const settingsRouter = createRouter({
     const { dialog, BrowserWindow } = await import("electron");
     const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
     const logPath = isDev
-      ? path.join(app.getPath("userData"), "logs", "amical-dev.log")
-      : path.join(app.getPath("logs"), "amical.log");
+      ? path.join(app.getPath("userData"), "logs", "vox-dev.log")
+      : path.join(app.getPath("logs"), "vox.log");
 
     const focusedWindow = BrowserWindow.getFocusedWindow();
     const saveOptions = {

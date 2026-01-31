@@ -28,6 +28,12 @@ import {
   OllamaResponse,
   OpenRouterModel,
   OllamaModel,
+  OpenAIModelsResponse,
+  OpenAIModel,
+  AnthropicModelsResponse,
+  AnthropicModel,
+  GoogleModelsResponse,
+  GoogleModel,
 } from "../types/providers";
 import { SettingsService } from "./settings-service";
 import { AuthService } from "./auth-service";
@@ -1017,6 +1023,240 @@ class ModelService extends EventEmitter {
         error instanceof Error
           ? error.message
           : "Failed to fetch Ollama models",
+      );
+    }
+  }
+
+  /**
+   * Validate OpenAI connection by testing API key
+   */
+  async validateOpenAIConnection(apiKey: string): Promise<ValidationResult> {
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": getUserAgent(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          (errorData as any)?.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        return { success: false, error: errorMessage };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Connection failed",
+      };
+    }
+  }
+
+  /**
+   * Validate Anthropic connection by testing API key
+   */
+  async validateAnthropicConnection(
+    apiKey: string,
+  ): Promise<ValidationResult> {
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/models", {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "User-Agent": getUserAgent(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          (errorData as any)?.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        return { success: false, error: errorMessage };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Connection failed",
+      };
+    }
+  }
+
+  /**
+   * Validate Google Generative AI connection by testing API key
+   */
+  async validateGoogleConnection(apiKey: string): Promise<ValidationResult> {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+        {
+          method: "GET",
+          headers: {
+            "User-Agent": getUserAgent(),
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          (errorData as any)?.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        return { success: false, error: errorMessage };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Connection failed",
+      };
+    }
+  }
+
+  /**
+   * Fetch available models from OpenAI
+   */
+  async fetchOpenAIModels(apiKey: string): Promise<FetchedModel[]> {
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": getUserAgent(),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data: OpenAIModelsResponse = await response.json();
+
+      // Filter to chat/completion models only
+      const chatModelPatterns = [
+        /^gpt-/,
+        /^o[0-9]/, // o1, o3, etc.
+        /^chatgpt-/,
+      ];
+
+      return data.data
+        .filter((model: OpenAIModel) =>
+          chatModelPatterns.some((pattern) => pattern.test(model.id)),
+        )
+        .map((model: OpenAIModel): FetchedModel => ({
+          id: model.id,
+          name: model.id,
+          provider: "OpenAI",
+          context: "Unknown",
+          originalModel: model,
+        }));
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch OpenAI models",
+      );
+    }
+  }
+
+  /**
+   * Fetch available models from Anthropic
+   */
+  async fetchAnthropicModels(apiKey: string): Promise<FetchedModel[]> {
+    try {
+      const response = await fetch(
+        "https://api.anthropic.com/v1/models?limit=100",
+        {
+          method: "GET",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "User-Agent": getUserAgent(),
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data: AnthropicModelsResponse = await response.json();
+
+      return data.data
+        .filter((model: AnthropicModel) => model.type === "model")
+        .map((model: AnthropicModel): FetchedModel => ({
+          id: model.id,
+          name: model.display_name,
+          provider: "Anthropic",
+          context: "200k",
+          originalModel: model,
+        }));
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch Anthropic models",
+      );
+    }
+  }
+
+  /**
+   * Fetch available models from Google Generative AI
+   */
+  async fetchGoogleModels(apiKey: string): Promise<FetchedModel[]> {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+        {
+          method: "GET",
+          headers: {
+            "User-Agent": getUserAgent(),
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data: GoogleModelsResponse = await response.json();
+
+      // Filter to models that support text generation
+      return data.models
+        .filter((model: GoogleModel) =>
+          model.supportedGenerationMethods?.includes("generateContent"),
+        )
+        .map((model: GoogleModel): FetchedModel => {
+          const contextLength = model.inputTokenLimit
+            ? `${Math.floor(model.inputTokenLimit / 1000)}k`
+            : "Unknown";
+
+          // Strip "models/" prefix from name for the ID
+          const modelId = model.name.replace(/^models\//, "");
+
+          return {
+            id: modelId,
+            name: model.displayName,
+            provider: "Google",
+            context: contextLength,
+            description: model.description,
+            originalModel: model,
+          };
+        });
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch Google models",
       );
     }
   }

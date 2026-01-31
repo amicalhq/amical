@@ -16,10 +16,17 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import type { Model } from "@/db/schema";
 
+type ProviderName =
+  | "OpenRouter"
+  | "Ollama"
+  | "OpenAI"
+  | "Anthropic"
+  | "Google";
+
 interface SyncModelsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  provider: "OpenRouter" | "Ollama";
+  provider: ProviderName;
   modelType?: "language" | "embedding";
 }
 
@@ -35,6 +42,9 @@ export default function SyncModelsDialog({
   const [credentials, setCredentials] = useState<{
     openRouterApiKey?: string;
     ollamaUrl?: string;
+    openAIApiKey?: string;
+    anthropicApiKey?: string;
+    googleApiKey?: string;
   }>({});
 
   // tRPC queries and mutations
@@ -49,22 +59,32 @@ export default function SyncModelsDialog({
 
   const fetchOpenRouterModelsQuery = api.models.fetchOpenRouterModels.useQuery(
     { apiKey: credentials.openRouterApiKey ?? "" },
-    {
-      enabled: false, // We'll trigger manually
-    },
+    { enabled: false },
   );
 
   const fetchOllamaModelsQuery = api.models.fetchOllamaModels.useQuery(
     { url: credentials.ollamaUrl ?? "" },
-    {
-      enabled: false, // We'll trigger manually
-    },
+    { enabled: false },
+  );
+
+  const fetchOpenAIModelsQuery = api.models.fetchOpenAIModels.useQuery(
+    { apiKey: credentials.openAIApiKey ?? "" },
+    { enabled: false },
+  );
+
+  const fetchAnthropicModelsQuery = api.models.fetchAnthropicModels.useQuery(
+    { apiKey: credentials.anthropicApiKey ?? "" },
+    { enabled: false },
+  );
+
+  const fetchGoogleModelsQuery = api.models.fetchGoogleModels.useQuery(
+    { apiKey: credentials.googleApiKey ?? "" },
+    { enabled: false },
   );
 
   const syncProviderModelsMutation =
     api.models.syncProviderModelsToDatabase.useMutation({
       onSuccess: () => {
-        // Invalidate all related queries to refresh parent components
         utils.models.getSyncedProviderModels.invalidate();
         utils.models.getDefaultLanguageModel.invalidate();
         utils.models.getDefaultEmbeddingModel.invalidate();
@@ -97,6 +117,9 @@ export default function SyncModelsDialog({
       setCredentials({
         openRouterApiKey: config.openRouter?.apiKey,
         ollamaUrl: config.ollama?.url,
+        openAIApiKey: config.openAI?.apiKey,
+        anthropicApiKey: config.anthropic?.apiKey,
+        googleApiKey: config.google?.apiKey,
       });
     }
   }, [modelProvidersConfigQuery.data]);
@@ -111,19 +134,45 @@ export default function SyncModelsDialog({
       setSearchTerm("");
 
       // Start fetching models if we have credentials
-      if (provider === "OpenRouter" && credentials.openRouterApiKey) {
-        fetchOpenRouterModelsQuery.refetch();
-      } else if (provider === "Ollama" && credentials.ollamaUrl) {
-        fetchOllamaModelsQuery.refetch();
+      switch (provider) {
+        case "OpenRouter":
+          if (credentials.openRouterApiKey)
+            fetchOpenRouterModelsQuery.refetch();
+          break;
+        case "Ollama":
+          if (credentials.ollamaUrl) fetchOllamaModelsQuery.refetch();
+          break;
+        case "OpenAI":
+          if (credentials.openAIApiKey) fetchOpenAIModelsQuery.refetch();
+          break;
+        case "Anthropic":
+          if (credentials.anthropicApiKey)
+            fetchAnthropicModelsQuery.refetch();
+          break;
+        case "Google":
+          if (credentials.googleApiKey) fetchGoogleModelsQuery.refetch();
+          break;
       }
     }
   }, [open, syncedModelsQuery.data, provider, credentials]);
 
   // Get the appropriate query based on provider
-  const activeQuery =
-    provider === "OpenRouter"
-      ? fetchOpenRouterModelsQuery
-      : fetchOllamaModelsQuery;
+  const getActiveQuery = () => {
+    switch (provider) {
+      case "OpenRouter":
+        return fetchOpenRouterModelsQuery;
+      case "Ollama":
+        return fetchOllamaModelsQuery;
+      case "OpenAI":
+        return fetchOpenAIModelsQuery;
+      case "Anthropic":
+        return fetchAnthropicModelsQuery;
+      case "Google":
+        return fetchGoogleModelsQuery;
+    }
+  };
+
+  const activeQuery = getActiveQuery();
   const availableModels = activeQuery.data || [];
   const isFetching = activeQuery.isLoading || activeQuery.isFetching;
   const fetchError = activeQuery.error?.message || "";
@@ -156,14 +205,12 @@ export default function SyncModelsDialog({
       models: modelsToSync,
     });
 
-    // Set first model as default if no default is set and this is a language model
+    // Set first model as default if no default is set
     if (modelType === "language" && modelsToSync.length > 0) {
       if (!defaultLanguageModelQuery.data) {
         setDefaultLanguageModelMutation.mutate({ modelId: modelsToSync[0].id });
       }
     } else if (modelType === "embedding" && modelsToSync.length > 0) {
-      // For embedding models, only set default if no default is set and this is Ollama provider
-      // (embedding models only work with Ollama)
       if (provider === "Ollama" && !defaultEmbeddingModelQuery.data) {
         setDefaultEmbeddingModelMutation.mutate({
           modelId: modelsToSync[0].id,
@@ -190,8 +237,8 @@ export default function SyncModelsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="min-w-4xl">
-        <DialogHeader>
+      <DialogContent className="min-w-4xl max-h-screen flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>
             Select {provider} {modelType === "embedding" ? "Embedding " : ""}
             Models
@@ -202,35 +249,17 @@ export default function SyncModelsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div
-          className={
-            provider === "Ollama"
-              ? "overflow-y-auto"
-              : "max-h-96 overflow-y-auto"
-          }
-        >
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {isFetching ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              <span>
-                Fetching {provider === "Ollama" ? "available " : ""}models...
-              </span>
+              <span>Fetching models...</span>
             </div>
           ) : fetchError ? (
             <div className="text-center py-8">
-              <p
-                className={
-                  provider === "Ollama"
-                    ? "text-red-500 mb-2"
-                    : "text-destructive"
-                }
-              >
-                Failed to fetch models
-                {provider === "Ollama" ? "" : `: ${fetchError}`}
+              <p className="text-destructive">
+                Failed to fetch models: {fetchError}
               </p>
-              {provider === "Ollama" && (
-                <p className="text-sm text-muted-foreground">{fetchError}</p>
-              )}
             </div>
           ) : (
             <>
@@ -275,11 +304,6 @@ export default function SyncModelsDialog({
                         {model.size && <span>Size: {model.size}</span>}
                         <span>Context: {model.context}</span>
                       </div>
-                      {/* {model.description && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {model.description}
-                        </p>
-                      )} */}
                     </div>
                   </div>
                 ))}
@@ -288,7 +312,7 @@ export default function SyncModelsDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
