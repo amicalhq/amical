@@ -3,7 +3,12 @@ import { z } from "zod";
 import NotePage from "../../pages/notes/components/note-wrapper";
 
 const noteSearchSchema = z.object({
-  autoRecord: z.boolean().optional(),
+  autoRecord: z.preprocess((value) => {
+    if (value === undefined) return undefined;
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") return value === "true";
+    return undefined;
+  }, z.boolean().optional()),
 });
 
 export const Route = createFileRoute("/settings/notes/$noteId")({

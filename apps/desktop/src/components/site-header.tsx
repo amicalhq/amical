@@ -26,9 +26,17 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
   const preferencesQuery = api.settings.getPreferences.useQuery();
 
   const createNoteMutation = api.notes.createNote.useMutation({
-    onSuccess: (newNote) => {
+    onSuccess: async (newNote) => {
       utils.notes.getNotes.invalidate();
-      const autoRecord = preferencesQuery.data?.autoDictateOnNewNote ?? false;
+      let autoRecord = preferencesQuery.data?.autoDictateOnNewNote;
+      if (autoRecord === undefined) {
+        try {
+          const prefs = await utils.settings.getPreferences.fetch();
+          autoRecord = prefs?.autoDictateOnNewNote;
+        } catch {
+          autoRecord = false;
+        }
+      }
       navigate({
         to: "/settings/notes/$noteId",
         params: { noteId: String(newNote.id) },
