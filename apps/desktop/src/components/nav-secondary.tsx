@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AuthButton } from "@/components/auth-button";
 import { FeedbackButton } from "@/components/feedback-button";
+import { DevThemeToggle } from "@/components/dev-theme-toggle";
 
 export function NavSecondary({
   items,
@@ -40,6 +41,7 @@ export function NavSecondary({
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+          {process.env.NODE_ENV === "development" && <DevThemeToggle />}
           <FeedbackButton />
           <AuthButton />
         </SidebarMenu>
