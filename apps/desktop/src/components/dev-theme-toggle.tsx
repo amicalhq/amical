@@ -7,12 +7,12 @@ import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 export function DevThemeToggle() {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
-  const toggleTheme = () => {
-    const currentTheme = resolvedTheme || theme;
-    setTheme(currentTheme === "dark" ? "light" : "dark");
-  };
+  const effectiveTheme = resolvedTheme ?? theme;
+  const isDark = effectiveTheme === "dark";
 
-  const isDark = resolvedTheme === "dark";
+  const toggleTheme = () => {
+    setTheme(isDark ? "light" : "dark");
+  };
 
   return (
     <SidebarMenuItem>
