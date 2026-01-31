@@ -224,7 +224,7 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
 
         <div className="ml-auto flex items-center gap-2 px-4 lg:px-6">
           <Button
-            variant="outline"
+            variant="default"
             size="sm"
             onClick={onCreateNote}
             disabled={createNoteMutation.isPending}
