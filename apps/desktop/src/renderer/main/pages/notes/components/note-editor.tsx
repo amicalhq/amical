@@ -31,6 +31,7 @@ import { ChecklistShortcutPlugin } from "@/renderer/main/components/editor/check
 interface NoteEditorProps {
   noteId: number;
   onSyncStatusChange?: (isSyncing: boolean) => void;
+  onReady?: () => void;
 }
 
 const theme = {
@@ -172,12 +173,14 @@ const MATCHERS = [
 export function NoteEditor({
   noteId,
   onSyncStatusChange,
+  onReady,
 }: NoteEditorProps): React.ReactNode {
   const [isLoading, setIsLoading] = useState(true);
   const [syncProvider, setSyncProvider] = useState<NoteSyncProvider | null>(
     null,
   );
   const providerRef = useRef<NoteSyncProvider | null>(null);
+  const onReadyCalledRef = useRef(false);
 
   // Handle sync status changes and propagate to parent
   const handleSyncStatusChange = useCallback(
@@ -186,6 +189,19 @@ export function NoteEditor({
     },
     [onSyncStatusChange],
   );
+
+  // Reset onReady tracking when noteId changes
+  useEffect(() => {
+    onReadyCalledRef.current = false;
+  }, [noteId]);
+
+  // Notify parent when editor is ready
+  useEffect(() => {
+    if (!isLoading && syncProvider && !onReadyCalledRef.current) {
+      onReadyCalledRef.current = true;
+      onReady?.();
+    }
+  }, [isLoading, syncProvider, onReady]);
 
   useEffect(() => {
     let mounted = true;

@@ -11,6 +11,7 @@ export function NotesList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const utils = api.useUtils();
+  const preferencesQuery = api.settings.getPreferences.useQuery();
 
   const { data: notes, isLoading } = api.notes.getNotes.useQuery({
     sortBy: "updatedAt",
@@ -22,10 +23,12 @@ export function NotesList() {
     onSuccess: (newNote) => {
       // Invalidate notes list to refetch
       utils.notes.getNotes.invalidate();
-      // Navigate to the new note
+      // Navigate to the new note, with autoRecord flag if preference is enabled
+      const autoRecord = preferencesQuery.data?.autoDictateOnNewNote ?? false;
       navigate({
         to: "/settings/notes/$noteId",
         params: { noteId: String(newNote.id) },
+        search: autoRecord ? { autoRecord: true } : {},
       });
       toast.success(t("settings.notes.toast.created"));
     },
@@ -51,6 +54,7 @@ export function NotesList() {
     navigate({
       to: "/settings/notes/$noteId",
       params: { noteId: String(noteId) },
+      search: {}, // Clear search params to prevent autoRecord from persisting
     });
   };
 

@@ -18,7 +18,7 @@ const BASE_INSTRUCTIONS = [
 ];
 
 // Application type union
-type AppType = "email" | "chat" | "notes" | "default";
+type AppType = "email" | "chat" | "notes" | "amical-notes" | "default";
 
 // Application type specific rules
 const APPLICATION_TYPE_RULES: Record<AppType, string[]> = {
@@ -43,6 +43,21 @@ const APPLICATION_TYPE_RULES: Record<AppType, string[]> = {
     "Maintain hierarchical structure of ideas",
     "Format action items and tasks clearly",
     "Preserve any existing formatting hints",
+  ],
+  "amical-notes": [
+    "Format output as clean Markdown",
+    "Adapt formatting to content length and complexity:",
+    "  - For short, simple content (1-2 sentences): use a single paragraph, no special formatting",
+    "  - For medium content with distinct points: use bullet points or numbered lists",
+    "  - For longer content with topics: use headers (##, ###) to organize sections",
+    "  - For mixed content: combine paragraphs, lists, and headers as appropriate",
+    "Use bullet points (-) for unordered lists of items, ideas, or notes",
+    "Use numbered lists (1. 2. 3.) for sequential steps, priorities, or ranked items",
+    "Use headers for distinct topics or sections (## for main sections, ### for subsections)",
+    "Use bold (**text**) for emphasis on key terms or action items",
+    "Use code blocks (```) for technical content, commands, or code snippets",
+    "Keep formatting minimal and purposeful - don't over-format simple content",
+    "Preserve natural speech flow while adding structure where it improves clarity",
   ],
   default: [
     "Apply standard formatting for general text",
@@ -150,12 +165,17 @@ export function constructFormatterPrompt(context: FormatParams["context"]): {
 
 export function detectApplicationType(
   accessibilityContext: GetAccessibilityContextResult | null | undefined,
-): "email" | "chat" | "notes" | "default" {
+): "email" | "chat" | "notes" | "amical-notes" | "default" {
   if (!accessibilityContext?.context?.application?.bundleIdentifier) {
     return "default";
   }
 
   const bundleId = accessibilityContext.context.application.bundleIdentifier;
+
+  // Check if we're in Amical's own app - use amical-notes formatting
+  if (bundleId === "com.amical.desktop") {
+    return "amical-notes";
+  }
 
   // Check if it's a browser
   const isBrowser = BROWSER_BUNDLE_IDS.some(
