@@ -6,6 +6,7 @@ on:
       - feat.windows.support
       - feat/whisper.migration
       - feat/vulkan-support
+      - ui2
     tags:
       - 'v*'
   workflow_dispatch:
