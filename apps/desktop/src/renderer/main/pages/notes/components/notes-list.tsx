@@ -26,10 +26,9 @@ export function NotesList() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <NotebookText className="w-4 h-4" />
-          <h2 className="text-sm font-medium">Notes</h2>
+      <div className="container mx-auto p-6 max-w-5xl">
+        <div className="mb-8">
+          <h1 className="text-xl font-bold">Notes</h1>
         </div>
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
@@ -47,11 +46,10 @@ export function NotesList() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <NotebookText className="w-4 h-4" />
-        <h2 className="text-sm font-medium">Notes</h2>
+    <div className="container mx-auto p-6 max-w-5xl">
+      {/* Header Section */}
+      <div className="mb-8">
+        <h1 className="text-xl font-bold">Notes</h1>
       </div>
 
       {formattedNotes.length > 0 && (
