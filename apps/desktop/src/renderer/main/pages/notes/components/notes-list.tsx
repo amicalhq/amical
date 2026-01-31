@@ -66,7 +66,7 @@ export function NotesList() {
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">No notes yet</p>
             <p className="text-xs text-muted-foreground">
-              Click "+ Note" in the header to create your first note
+              Click "Note" in the header to create your first note
             </p>
           </div>
         </div>

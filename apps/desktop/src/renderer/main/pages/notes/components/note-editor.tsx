@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -254,12 +254,15 @@ export function NoteEditor({
     );
   }
 
-  const initialConfig = {
-    namespace: `note-${noteId}`,
-    theme,
-    onError,
-    nodes: EDITOR_NODES,
-  };
+  const initialConfig = useMemo(
+    () => ({
+      namespace: `note-${noteId}`,
+      theme,
+      onError,
+      nodes: EDITOR_NODES,
+    }),
+    [noteId],
+  );
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
