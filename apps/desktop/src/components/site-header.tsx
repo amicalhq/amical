@@ -2,9 +2,11 @@ import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useRouter } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 interface SiteHeaderProps {
   currentView?: string;
@@ -15,9 +17,39 @@ const noDragRegion = { WebkitAppRegion: "no-drag" } as CSSProperties;
 
 export function SiteHeader({ currentView }: SiteHeaderProps) {
   const router = useRouter();
+  const navigate = useNavigate();
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [isMacOS, setIsMacOS] = useState(false);
+
+  const utils = api.useUtils();
+  const preferencesQuery = api.settings.getPreferences.useQuery();
+
+  const createNoteMutation = api.notes.createNote.useMutation({
+    onSuccess: (newNote) => {
+      utils.notes.getNotes.invalidate();
+      const autoRecord = preferencesQuery.data?.autoDictateOnNewNote ?? false;
+      navigate({
+        to: "/settings/notes/$noteId",
+        params: { noteId: String(newNote.id) },
+        search: autoRecord ? { autoRecord: true } : {},
+      });
+    },
+    onError: (error) => {
+      toast.error("Failed to create note: " + error.message);
+    },
+  });
+
+  const onCreateNote = () => {
+    const dateStr = new Date().toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+    });
+    createNoteMutation.mutate({
+      title: `Note - ${dateStr}`,
+      initialContent: "",
+    });
+  };
 
   useEffect(() => {
     // Detect if running on macOS
@@ -182,24 +214,18 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
           <h1 className="text-base font-medium">{currentView || "Amical"}</h1>
         </div>
 
-        {/* <div className="ml-auto flex items-center gap-2 px-4 lg:px-6">
-          <Button 
-            variant="ghost" 
-            asChild 
-            size="sm" 
-            className="hidden sm:flex"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        <div className="ml-auto flex items-center gap-2 px-4 lg:px-6">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCreateNote}
+            disabled={createNoteMutation.isPending}
+            style={noDragRegion}
           >
-            <a
-              href="https://github.com/shadcn-ui/ui/tree/main/apps/v4/app/(examples)/dashboard"
-              rel="noopener noreferrer"
-              target="_blank"
-              className="dark:text-foreground"
-            >
-              GitHub
-            </a>
+            <Plus className="w-4 h-4" />
+            Note
           </Button>
-        </div> */}
+        </div>
       </div>
     </header>
   );
