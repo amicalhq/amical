@@ -246,14 +246,6 @@ export function NoteEditor({
     };
   }, [noteId]);
 
-  if (isLoading || !syncProvider) {
-    return (
-      <div className="flex items-center justify-center min-h-[200px]">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   const initialConfig = useMemo(
     () => ({
       namespace: `note-${noteId}`,
@@ -263,6 +255,14 @@ export function NoteEditor({
     }),
     [noteId],
   );
+
+  if (isLoading || !syncProvider) {
+    return (
+      <div className="flex items-center justify-center min-h-[200px]">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
