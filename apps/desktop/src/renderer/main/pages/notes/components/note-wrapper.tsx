@@ -7,23 +7,32 @@ import Note from "./note";
 import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useRecording } from "@/hooks/useRecording";
 
 type NotePageProps = {
   noteId: string;
   onBack?: () => void;
+  autoRecord?: boolean;
 };
 
-export default function NotePage({ noteId, onBack }: NotePageProps) {
+export default function NotePage({
+  noteId,
+  onBack,
+  autoRecord,
+}: NotePageProps) {
   const navigate = useNavigate();
   const utils = api.useUtils();
+  const { startRecording } = useRecording();
 
   // State
   const [noteTitle, setNoteTitle] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
   const [noteIcon, setNoteIcon] = useState<string | null>(null);
+  const [editorReady, setEditorReady] = useState(false);
 
   // Refs
   const noteRef = useRef<typeof note>(null);
+  const autoRecordTriggeredRef = useRef(false);
 
   // Fetch note data
   const { data: note, isLoading } = api.notes.getNoteById.useQuery(
@@ -96,6 +105,27 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     setIsSyncing(syncing);
   }, []);
 
+  // Reset state when noteId changes
+  useEffect(() => {
+    setEditorReady(false);
+    autoRecordTriggeredRef.current = false;
+  }, [noteId]);
+
+  // Handle editor ready
+  const handleEditorReady = useCallback(() => {
+    setEditorReady(true);
+  }, []);
+
+  // Auto-start recording when editor is ready and autoRecord flag is set
+  useEffect(() => {
+    if (editorReady && autoRecord && !autoRecordTriggeredRef.current) {
+      autoRecordTriggeredRef.current = true;
+      startRecording().catch((error) => {
+        console.error("Failed to auto-start recording:", error);
+      });
+    }
+  }, [editorReady, autoRecord, startRecording]);
+
   // Handle title change
   const handleTitleChange = useCallback(
     (newTitle: string) => {
@@ -161,6 +191,7 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
       <NoteEditor
         noteId={parseInt(noteId)}
         onSyncStatusChange={handleSyncStatusChange}
+        onReady={handleEditorReady}
       />
     </Note>
   );
