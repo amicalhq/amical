@@ -148,6 +148,39 @@ function ShortcutDisplay({
   );
 }
 
+function NoneDisplay({
+  previousKeys,
+  onEdit,
+  onRestore,
+}: {
+  previousKeys?: number[];
+  onEdit: () => void;
+  onRestore: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        buttonVariants({ variant: "outline", size: "sm" }),
+        "gap-2",
+      )}
+    >
+      <Button variant="ghost" size="sm" onClick={onEdit}>
+        Set shortcut...
+      </Button>
+      {previousKeys && previousKeys.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+          onClick={onRestore}
+        >
+          <Undo2 className="h-3 w-3" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function ShortcutInput({
   value,
   onChange,
@@ -155,9 +188,9 @@ export function ShortcutInput({
   onRecordingShortcutChange,
 }: ShortcutInputProps) {
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
-  const [previousKeys, setPreviousKeys] = useState<number[] | null>(() => {
+  const [previousKeys, setPreviousKeys] = useState<number[] | undefined>(() => {
     const stored = localStorage.getItem("shortcuts");
-    return stored ? JSON.parse(stored) : null;
+    return stored ? JSON.parse(stored) : undefined;
   });
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
@@ -185,7 +218,7 @@ export function ShortcutInput({
   const handleRestorePrevious = () => {
     if (previousKeys && previousKeys.length > 0) {
       onChange(previousKeys);
-      setPreviousKeys(null);
+      setPreviousKeys(undefined);
     }
   };
 
@@ -204,9 +237,8 @@ export function ShortcutInput({
         const result = validateShortcutFormat(previousKeys);
 
         if (result.valid && result.shortcut) {
-          // Basic format is valid - let parent handle backend validation
           onChange(result.shortcut);
-          setPreviousKeys(null);
+          setPreviousKeys(undefined);
         } else {
           toast.error(result.error || "Invalid key combination");
         }
@@ -236,37 +268,32 @@ export function ShortcutInput({
     }
   }, [previousKeys]);
 
+  if (value === undefined) {
+    return null;
+  }
+
   return (
     <TooltipProvider>
-      {isRecordingShortcut ? (
-        <RecordingDisplay
-          activeKeys={activeKeys}
-          onCancel={handleCancelRecording}
-        />
-      ) : hasShortcut ? (
-        <ShortcutDisplay
-          value={value}
-          onEdit={handleStartRecording}
-          onClear={handleClearRecording}
-        />
-      ) : (
-        <div className="inline-flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleStartRecording}>
-            Set shortcut...
-          </Button>
-          {previousKeys && previousKeys.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={handleRestorePrevious}
-              title="Restore previous shortcut"
-            >
-              <Undo2 className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="inline-flex items-center gap-2">
+        {isRecordingShortcut ? (
+          <RecordingDisplay
+            activeKeys={activeKeys}
+            onCancel={handleCancelRecording}
+          />
+        ) : hasShortcut ? (
+          <ShortcutDisplay
+            value={value}
+            onEdit={handleStartRecording}
+            onClear={handleClearRecording}
+          />
+        ) : (
+          <NoneDisplay
+            previousKeys={previousKeys}
+            onEdit={handleStartRecording}
+            onRestore={handleRestorePrevious}
+          />
+        )}
+      </div>
     </TooltipProvider>
   );
 }

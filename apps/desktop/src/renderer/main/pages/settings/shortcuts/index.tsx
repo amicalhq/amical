@@ -7,12 +7,14 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
 export function ShortcutsSettingsPage() {
-  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<number[]>([]);
+  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<
+    number[] | undefined
+  >();
   const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState<
-    number[]
-  >([]);
+    number[] | undefined
+  >();
   const [pasteLastTranscriptShortcut, setPasteLastTranscriptShortcut] =
-    useState<number[]>([]);
+    useState<number[] | undefined>();
   const [recordingShortcut, setRecordingShortcut] = useState<
     "pushToTalk" | "toggleRecording" | "pasteLastTranscript" | null
   >(null);
