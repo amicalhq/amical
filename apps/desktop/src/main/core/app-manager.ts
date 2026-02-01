@@ -188,12 +188,14 @@ export class AppManager {
       "preferences-changed",
       async ({
         showWidgetWhileInactiveChanged,
+        showWidgetWhileActiveChanged,
         showInDockChanged,
       }: {
         showWidgetWhileInactiveChanged: boolean;
+        showWidgetWhileActiveChanged: boolean;
         showInDockChanged: boolean;
       }) => {
-        if (showWidgetWhileInactiveChanged) {
+        if (showWidgetWhileInactiveChanged || showWidgetWhileActiveChanged) {
           const recordingManager =
             this.serviceManager.getService("recordingManager");
           const isIdle = recordingManager.getState() === "idle";
@@ -217,7 +219,11 @@ export class AppManager {
     const settingsService = this.serviceManager.getService("settingsService");
     const preferences = await settingsService.getPreferences();
 
-    if (preferences.showWidgetWhileInactive || !isIdle) {
+    const shouldShow = isIdle
+      ? preferences.showWidgetWhileInactive
+      : preferences.showWidgetWhileActive;
+
+    if (shouldShow) {
       this.windowManager.showWidget();
     } else {
       this.windowManager.hideWidget();
