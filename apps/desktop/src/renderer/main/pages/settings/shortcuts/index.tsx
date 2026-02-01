@@ -115,6 +115,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "pushToTalk" : null)
                     }
+                    shortcutId="pushToTalk"
                   />
                 </div>
               </div>
@@ -142,6 +143,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "toggleRecording" : null)
                     }
+                    shortcutId="toggleRecording"
                   />
                 </div>
               </div>
@@ -170,6 +172,7 @@ export function ShortcutsSettingsPage() {
                         recording ? "pasteLastTranscript" : null,
                       )
                     }
+                    shortcutId="pasteLastTranscript"
                   />
                 </div>
               </div>

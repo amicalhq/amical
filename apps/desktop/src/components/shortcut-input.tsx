@@ -13,6 +13,7 @@ interface ShortcutInputProps {
   onChange: (value: number[]) => void;
   isRecordingShortcut?: boolean;
   onRecordingShortcutChange: (recording: boolean) => void;
+  shortcutId: string;
 }
 
 const MODIFIER_KEYS = new Set([
@@ -187,9 +188,11 @@ export function ShortcutInput({
   onChange,
   isRecordingShortcut = false,
   onRecordingShortcutChange,
+  shortcutId,
 }: ShortcutInputProps) {
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
-  const { previousKeys, savePrevious, clearPrevious } = usePreviousShortcut();
+  const { previousKeys, savePrevious, clearPrevious } =
+    usePreviousShortcut(shortcutId);
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
 
@@ -227,12 +230,12 @@ export function ShortcutInput({
   api.settings.activeKeysUpdates.useSubscription(undefined, {
     enabled: isRecordingShortcut,
     onData: (keys: number[]) => {
-      const previousKeys = activeKeys;
+      const prevActiveKeys = activeKeys;
       setActiveKeys(keys);
 
       // When any key is released, validate the combination
-      if (previousKeys.length > 0 && keys.length < previousKeys.length) {
-        const result = validateShortcutFormat(previousKeys);
+      if (prevActiveKeys.length > 0 && keys.length < prevActiveKeys.length) {
+        const result = validateShortcutFormat(prevActiveKeys);
 
         if (result.valid && result.shortcut) {
           onChange(result.shortcut);

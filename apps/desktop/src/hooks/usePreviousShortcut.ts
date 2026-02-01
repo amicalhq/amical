@@ -1,11 +1,10 @@
 import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 
-const STORAGE_KEY = "previous-shortcut";
-
-export function usePreviousShortcut() {
+export function usePreviousShortcut(shortcutId: string) {
+  const storageKey = `previous-shortcut-${shortcutId}`;
   const [previousKeys, setPreviousKeys] = useLocalStorage<number[]>(
-    STORAGE_KEY,
+    storageKey,
     [],
   );
 

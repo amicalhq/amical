@@ -5,15 +5,24 @@ export function useLocalStorage<T>(
   initialValue: T,
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [storedValue, setStoredValue] = useState<T>(() => {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : initialValue;
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch {
+      localStorage.removeItem(key);
+      return initialValue;
+    }
   });
 
   useEffect(() => {
-    if (JSON.stringify(storedValue) === JSON.stringify(initialValue)) {
-      localStorage.removeItem(key);
-    } else {
-      localStorage.setItem(key, JSON.stringify(storedValue));
+    try {
+      if (JSON.stringify(storedValue) === JSON.stringify(initialValue)) {
+        localStorage.removeItem(key);
+      } else {
+        localStorage.setItem(key, JSON.stringify(storedValue));
+      }
+    } catch {
+      // Silently fail - localStorage may be unavailable or full
     }
   }, [key, storedValue, initialValue]);
 
