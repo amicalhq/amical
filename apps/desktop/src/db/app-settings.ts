@@ -178,7 +178,7 @@ const defaultSettings: AppSettingsData = {
     showWidgetWhileInactive: true,
     showInDock: true,
     muteSystemAudio: true,
-    autoDictateOnNewNote: false,
+    autoDictateOnNewNote: true,
   },
   transcription: {
     language: "en",

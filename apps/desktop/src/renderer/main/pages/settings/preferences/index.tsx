@@ -65,7 +65,7 @@ export default function PreferencesSettingsPage() {
   const showInDock = preferencesQuery.data?.showInDock ?? true;
   const muteSystemAudio = preferencesQuery.data?.muteSystemAudio ?? true;
   const autoDictateOnNewNote =
-    preferencesQuery.data?.autoDictateOnNewNote ?? false;
+    preferencesQuery.data?.autoDictateOnNewNote ?? true;
   const isMac = window.electronAPI.platform === "darwin";
 
   return (

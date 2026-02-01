@@ -298,7 +298,7 @@ export class SettingsService extends EventEmitter {
       showWidgetWhileInactive: preferences?.showWidgetWhileInactive ?? true,
       showInDock: preferences?.showInDock ?? true,
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
-      autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
+      autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? true,
     };
   }
 
