@@ -161,6 +161,7 @@ export interface AppSettingsData {
     showWidgetWhileInactive?: boolean;
     showInDock?: boolean;
     muteSystemAudio?: boolean;
+    autoDictateOnNewNote?: boolean;
   };
   telemetry?: {
     enabled?: boolean;

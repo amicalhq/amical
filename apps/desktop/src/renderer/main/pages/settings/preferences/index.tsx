@@ -52,12 +52,20 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleAutoDictateOnNewNoteChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      autoDictateOnNewNote: checked,
+    });
+  };
+
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
   const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
   const showInDock = preferencesQuery.data?.showInDock ?? true;
   const muteSystemAudio = preferencesQuery.data?.muteSystemAudio ?? true;
+  const autoDictateOnNewNote =
+    preferencesQuery.data?.autoDictateOnNewNote ?? true;
   const isMac = window.electronAPI.platform === "darwin";
 
   return (
@@ -169,6 +177,25 @@ export default function PreferencesSettingsPage() {
                   updatePreferencesMutation.isPending ||
                   preferencesQuery.isLoading
                 }
+              />
+            </div>
+
+            <Separator />
+
+            {/* Auto-dictate on new note */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  Auto-dictate on new note
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically start dictation when creating a new note
+                </p>
+              </div>
+              <Switch
+                checked={autoDictateOnNewNote}
+                onCheckedChange={handleAutoDictateOnNewNoteChange}
+                disabled={updatePreferencesMutation.isPending}
               />
             </div>
 

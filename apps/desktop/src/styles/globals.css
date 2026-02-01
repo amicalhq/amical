@@ -134,3 +134,58 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Lexical Checklist - shadcn-style checkboxes */
+.listitemChecked,
+.listitemUnchecked {
+  position: relative;
+  margin-left: 0.5rem;
+  padding-left: 1.5rem;
+  list-style-type: none;
+  outline: none;
+}
+
+.listitemChecked {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+.listitemChecked:before,
+.listitemUnchecked:before {
+  content: "";
+  width: 1rem;
+  height: 1rem;
+  top: 0.15rem;
+  left: 0;
+  cursor: pointer;
+  display: block;
+  background-size: cover;
+  position: absolute;
+  border: 1.5px solid var(--muted-foreground);
+  border-radius: 0.25rem;
+  transition: all 0.15s ease;
+}
+
+.listitemChecked:before {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.listitemChecked:after {
+  content: "";
+  cursor: pointer;
+  border-color: var(--primary-foreground);
+  border-style: solid;
+  position: absolute;
+  display: block;
+  top: 0.35rem;
+  width: 0.25rem;
+  left: 0.35rem;
+  height: 0.5rem;
+  transform: rotate(45deg);
+  border-width: 0 2px 2px 0;
+}
+
+.listitemUnchecked:hover:before {
+  border-color: var(--primary);
+}

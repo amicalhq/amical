@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sparkles,
   Share,
@@ -16,7 +16,6 @@ import {
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
@@ -66,31 +65,69 @@ type InvitedUser = {
 export type NotePageUIProps = {
   noteId: string;
   noteTitle: string;
-  noteBody: string;
   noteEmoji: string | null;
   isLoading: boolean;
   isSyncing: boolean;
   lastEditDate: Date;
   onTitleChange: (value: string) => void;
-  onBodyChange: (value: string) => void;
   onDelete: () => void;
   onEmojiChange: (emoji: string | null) => void;
   onBack?: () => void;
   isDeleting?: boolean;
+  children?: React.ReactNode;
 };
+
+function formatRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  // Less than 1 minute
+  if (diffMins < 1) {
+    return "now";
+  }
+
+  // Less than 1 hour
+  if (diffMins < 60) {
+    return `${diffMins} min${diffMins === 1 ? "" : "s"} ago`;
+  }
+
+  // Less than 24 hours
+  if (diffHours < 24) {
+    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  }
+
+  // Check if yesterday
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear()
+  ) {
+    return "yesterday";
+  }
+
+  // Older than yesterday - show date
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+}
 
 export default function Note({
   noteTitle,
-  noteBody,
   noteEmoji,
   isLoading,
   isSyncing,
   lastEditDate,
   onTitleChange,
-  onBodyChange,
   onDelete,
   onEmojiChange,
   isDeleting = false,
+  children,
 }: NotePageUIProps) {
   // Local UI state
   const [shareEmail, setShareEmail] = useState("");
@@ -100,6 +137,23 @@ export default function Note({
   const [starred, setStarred] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [, setTick] = useState(0);
+  const [localEditTime, setLocalEditTime] = useState<Date | null>(null);
+
+  // Update relative time every 1 minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update local edit time when syncing starts (user just edited)
+  useEffect(() => {
+    if (isSyncing) {
+      setLocalEditTime(new Date());
+    }
+  }, [isSyncing]);
 
   // Mock shared users data
   /* const sharedUsers = [
@@ -178,7 +232,7 @@ export default function Note({
 
   return (
     <TooltipProvider>
-      <div className="">
+      <div className="max-w-4xl mx-auto w-full">
         {/* Note Content */}
         <div className="mt-0 space-y-2">
           {/* Note Title with Emoji Picker */}
@@ -228,10 +282,9 @@ export default function Note({
             <Input
               value={noteTitle}
               onChange={(e) => onTitleChange(e.target.value)}
-              className="!text-4xl font-semibold border-none px-4 py-2 focus-visible:ring-0 placeholder:text-muted-foreground flex-1"
+              className="!text-4xl font-semibold !border-0 !shadow-none px-4 py-2 focus-visible:!ring-0 focus-visible:!border-0 placeholder:text-muted-foreground flex-1"
               style={{ backgroundColor: "transparent" }}
               placeholder="Note title..."
-              disabled={isSyncing}
             />
           </div>
 
@@ -242,14 +295,11 @@ export default function Note({
               {/* Last edited date */}
               <span className="text-sm text-muted-foreground">
                 Edited{" "}
-                {lastEditDate.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year:
-                    lastEditDate.getFullYear() !== new Date().getFullYear()
-                      ? "numeric"
-                      : undefined,
-                })}
+                {formatRelativeTime(
+                  localEditTime && localEditTime > lastEditDate
+                    ? localEditTime
+                    : lastEditDate
+                )}
               </span>
 
               {/* {console.log("[v0] Note ID:", noteId)} */}
@@ -469,17 +519,8 @@ export default function Note({
             </div>
           </div>
 
-          {/* Note Body */}
-          <Textarea
-            value={noteBody}
-            onChange={(e) => onBodyChange(e.target.value)}
-            placeholder="Start writing your note..."
-            className="min-h-[500px] resize-none border-none bg-transparent px-4 py-2 focus-visible:ring-0 text-base leading-relaxed placeholder:text-muted-foreground"
-            style={{
-              backgroundColor: "transparent",
-            }}
-            disabled={isSyncing}
-          />
+          {/* Note Body - Lexical Editor */}
+          {children}
         </div>
 
         {/* Delete Confirmation Dialog */}

@@ -1,48 +1,22 @@
-import { NotebookText, Plus } from "lucide-react";
+import { NotebookText } from "lucide-react";
 import { NoteCard } from "./note-card";
-import { Button } from "@/components/ui/button";
 import { api } from "@/trpc/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
 
 export function NotesList() {
   const navigate = useNavigate();
-  const utils = api.useUtils();
 
   const { data: notes, isLoading } = api.notes.getNotes.useQuery({
     sortBy: "updatedAt",
     sortOrder: "desc",
   });
 
-  // Create note mutation
-  const createNoteMutation = api.notes.createNote.useMutation({
-    onSuccess: (newNote) => {
-      // Invalidate notes list to refetch
-      utils.notes.getNotes.invalidate();
-      // Navigate to the new note
-      navigate({
-        to: "/settings/notes/$noteId",
-        params: { noteId: String(newNote.id) },
-      });
-      toast.success("Note created");
-    },
-    onError: (error) => {
-      toast.error("Failed to create note: " + error.message);
-    },
-  });
-
-  const onCreateNote = () => {
-    createNoteMutation.mutate({
-      title: "Untitled Note",
-      initialContent: "",
-    });
-  };
-
   const onNoteClick = (noteId: number) => {
     navigate({
       to: "/settings/notes/$noteId",
       params: { noteId: String(noteId) },
+      search: {}, // Clear search params to prevent autoRecord from persisting
     });
   };
 
@@ -52,10 +26,9 @@ export function NotesList() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <NotebookText className="w-4 h-4" />
-          <h2 className="text-sm font-medium">Notes</h2>
+      <div className="container mx-auto p-6 max-w-5xl">
+        <div className="mb-8">
+          <h1 className="text-xl font-bold">Notes</h1>
         </div>
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
@@ -73,22 +46,10 @@ export function NotesList() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header with Create button - always visible */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <NotebookText className="w-4 h-4" />
-          <h2 className="text-sm font-medium">Notes</h2>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onCreateNote}
-          disabled={createNoteMutation.isPending}
-        >
-          <Plus className="w-4 h-4" />
-          Create note
-        </Button>
+    <div className="container mx-auto p-6 max-w-5xl">
+      {/* Header Section */}
+      <div className="mb-8">
+        <h1 className="text-xl font-bold">Notes</h1>
       </div>
 
       {formattedNotes.length > 0 && (
@@ -105,17 +66,8 @@ export function NotesList() {
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">No notes yet</p>
             <p className="text-xs text-muted-foreground">
-              Create your first note to get started
+              Click "New Note" in the sidebar to create your first note
             </p>
-            <Button
-              className="mt-4"
-              size={"sm"}
-              variant={"outline"}
-              onClick={onCreateNote}
-            >
-              <Plus className="w-4 h-4" />
-              Create note
-            </Button>
           </div>
         </div>
       )}

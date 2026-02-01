@@ -289,6 +289,7 @@ export class RecordingManager extends EventEmitter {
       vadService.reset();
 
       // Refresh accessibility context (TextMarker API for Electron support)
+      // Fire and forget - context will be ready by the time first audio chunk arrives
       const nativeBridge = this.serviceManager.getService("nativeBridge");
       nativeBridge.refreshAccessibilityContext();
 

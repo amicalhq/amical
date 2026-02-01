@@ -1,32 +1,41 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import * as Y from "yjs";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import { debounce } from "../../../utils/debounce";
+import { debounce } from "@/renderer/main/utils/debounce";
 import Note from "./note";
+import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type NotePageProps = {
   noteId: string;
   onBack?: () => void;
+  autoRecord?: boolean;
 };
 
-export default function NotePage({ noteId, onBack }: NotePageProps) {
+export default function NotePage({
+  noteId,
+  onBack,
+  autoRecord,
+}: NotePageProps) {
   const navigate = useNavigate();
   const utils = api.useUtils();
 
+  // Use tRPC mutation directly to signal recording start
+  // We don't use the full useRecording hook here because the widget handles
+  // audio capture. Using useRecording in both places causes double transcription.
+  const startRecordingMutation = api.recording.signalStart.useMutation();
+
   // State
   const [noteTitle, setNoteTitle] = useState("");
-  const [noteBody, setNoteBody] = useState("");
-  const [isSyncing, setIsSyncing] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [noteIcon, setNoteIcon] = useState<string | null>(null);
+  const [editorReady, setEditorReady] = useState(false);
 
   // Refs
-  const ydocRef = useRef<Y.Doc | null>(null);
-  const textRef = useRef<Y.Text | null>(null);
   const noteRef = useRef<typeof note>(null);
+  const autoRecordTriggeredRef = useRef(false);
 
   // Fetch note data
   const { data: note, isLoading } = api.notes.getNoteById.useQuery(
@@ -85,109 +94,6 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     [], // No dependencies - function should remain stable
   );
 
-  // Debounced YJS update
-  const debouncedYjsUpdate = useMemo(
-    () =>
-      debounce((newContent: string) => {
-        if (textRef.current && ydocRef.current) {
-          ydocRef.current.transact(() => {
-            const oldLength = textRef.current!.length;
-            textRef.current!.delete(0, oldLength);
-            textRef.current!.insert(0, newContent);
-          }, "user-input-debounced");
-        }
-      }, 500),
-    [],
-  );
-
-  // Initialize YJS document
-  useEffect(() => {
-    if (!note) return;
-
-    // Cancel any pending updates
-    debouncedYjsUpdate.cancel();
-
-    let mounted = true;
-
-    const initializeYjs = async () => {
-      try {
-        // Create YJS document
-        const ydoc = new Y.Doc();
-        const text = ydoc.getText("content");
-
-        // Store references
-        ydocRef.current = ydoc;
-        textRef.current = text;
-
-        // Load existing updates from backend
-        try {
-          const updates = await window.electronAPI.notes.loadYjsUpdates(
-            note.id,
-          );
-
-          if (updates.length > 0) {
-            // Apply all updates to reconstruct the document
-            updates.forEach((update: ArrayBuffer) => {
-              Y.applyUpdate(ydoc, new Uint8Array(update));
-            });
-
-            // Set content from the reconstructed document
-            const reconstructedContent = text.toString();
-            setNoteBody(reconstructedContent);
-          }
-        } catch (error) {
-          console.error("Failed to load yjs updates:", error);
-        }
-
-        setIsSyncing(false);
-
-        // Listen for changes from YJS
-        const observer = () => {
-          if (!mounted) return;
-          const newContent = text.toString();
-          setNoteBody(newContent);
-        };
-
-        text.observe(observer);
-
-        // Save YJS updates to backend
-        ydoc.on("update", async (update: Uint8Array) => {
-          try {
-            // Convert Uint8Array to ArrayBuffer for IPC
-            const buffer = update.buffer.slice(
-              update.byteOffset,
-              update.byteOffset + update.byteLength,
-            );
-
-            await window.electronAPI.notes.saveYjsUpdate(
-              note.id,
-              buffer as ArrayBuffer,
-            );
-          } catch (error) {
-            console.error("Failed to save yjs update:", error);
-            toast.error("Failed to save changes");
-          }
-        });
-
-        // Cleanup
-        return () => {
-          text.unobserve(observer);
-        };
-      } catch (error) {
-        console.error("Failed to initialize yjs:", error);
-        setIsSyncing(false);
-        toast.error("Failed to load note");
-      }
-    };
-
-    initializeYjs();
-
-    return () => {
-      mounted = false;
-      debouncedYjsUpdate.cancel();
-    };
-  }, [note, debouncedYjsUpdate]);
-
   // Update note ref and set initial title and emoji
   useEffect(() => {
     noteRef.current = note;
@@ -197,14 +103,31 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     }
   }, [note]);
 
-  // Handle content changes
-  const handleContentChange = useCallback(
-    (newContent: string) => {
-      setNoteBody(newContent);
-      debouncedYjsUpdate(newContent);
-    },
-    [debouncedYjsUpdate],
-  );
+  // Handle sync status change from NoteEditor
+  const handleSyncStatusChange = useCallback((syncing: boolean) => {
+    setIsSyncing(syncing);
+  }, []);
+
+  // Reset state when noteId changes
+  useEffect(() => {
+    setEditorReady(false);
+    autoRecordTriggeredRef.current = false;
+  }, [noteId]);
+
+  // Handle editor ready
+  const handleEditorReady = useCallback(() => {
+    setEditorReady(true);
+  }, []);
+
+  // Auto-start recording when editor is ready and autoRecord flag is set
+  useEffect(() => {
+    if (editorReady && autoRecord && !autoRecordTriggeredRef.current) {
+      autoRecordTriggeredRef.current = true;
+      startRecordingMutation.mutateAsync().catch((error) => {
+        console.error("Failed to auto-start recording:", error);
+      });
+    }
+  }, [editorReady, autoRecord, startRecordingMutation]);
 
   // Handle title change
   const handleTitleChange = useCallback(
@@ -258,17 +181,21 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     <Note
       noteId={noteId}
       noteTitle={noteTitle}
-      noteBody={noteBody}
       noteEmoji={noteIcon}
       isLoading={isLoading}
       isSyncing={isSyncing}
       lastEditDate={lastEditDate}
       onTitleChange={handleTitleChange}
-      onBodyChange={handleContentChange}
       onDelete={handleDelete}
       onEmojiChange={handleEmojiChange}
       onBack={onBack}
       isDeleting={deleteMutation.isPending}
-    />
+    >
+      <NoteEditor
+        noteId={parseInt(noteId)}
+        onSyncStatusChange={handleSyncStatusChange}
+        onReady={handleEditorReady}
+      />
+    </Note>
   );
 }
