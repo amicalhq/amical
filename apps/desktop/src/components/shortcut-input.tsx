@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Pencil, X } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { X, Undo2 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
+import { cn } from "@/lib/utils";
 
 interface ShortcutInputProps {
   value?: number[];
@@ -109,9 +110,11 @@ function RecordingDisplay({
 function ShortcutDisplay({
   value,
   onEdit,
+  onClear,
 }: {
   value?: number[];
   onEdit: () => void;
+  onClear: () => void;
 }) {
   // Format array as display string (e.g., ["Fn", "Space"] -> "Fn+Space")
   const displayValue = value?.length
@@ -119,7 +122,12 @@ function ShortcutDisplay({
     : undefined;
 
   return (
-    <>
+    <div
+      className={cn(
+        buttonVariants({ variant: "outline", size: "sm" }),
+        "gap-2",
+      )}
+    >
       {displayValue && (
         <kbd
           onClick={onEdit}
@@ -132,11 +140,11 @@ function ShortcutDisplay({
         variant="ghost"
         size="sm"
         className="h-6 w-6 p-0"
-        onClick={onEdit}
+        onClick={onClear}
       >
-        <Pencil className="h-3 w-3" />
+        <X className="h-3 w-3" />
       </Button>
-    </>
+    </div>
   );
 }
 
@@ -147,8 +155,14 @@ export function ShortcutInput({
   onRecordingShortcutChange,
 }: ShortcutInputProps) {
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
+  const [previousKeys, setPreviousKeys] = useState<number[] | null>(() => {
+    const stored = localStorage.getItem("shortcuts");
+    return stored ? JSON.parse(stored) : null;
+  });
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
+
+  const hasShortcut = value && value.length > 0;
 
   const handleStartRecording = () => {
     onRecordingShortcutChange(true);
@@ -159,6 +173,20 @@ export function ShortcutInput({
     onRecordingShortcutChange(false);
     setActiveKeys([]);
     setRecordingStateMutation.mutate(false);
+  };
+
+  const handleClearRecording = () => {
+    if (value && value.length > 0) {
+      setPreviousKeys(value);
+    }
+    onChange([]);
+  };
+
+  const handleRestorePrevious = () => {
+    if (previousKeys && previousKeys.length > 0) {
+      onChange(previousKeys);
+      setPreviousKeys(null);
+    }
   };
 
   // Subscribe to key events when recording
@@ -178,6 +206,7 @@ export function ShortcutInput({
         if (result.valid && result.shortcut) {
           // Basic format is valid - let parent handle backend validation
           onChange(result.shortcut);
+          setPreviousKeys(null);
         } else {
           toast.error(result.error || "Invalid key combination");
         }
@@ -198,18 +227,46 @@ export function ShortcutInput({
     }
   }, [isRecordingShortcut]);
 
+  // Sync previousValue to localStorage
+  useEffect(() => {
+    if (previousKeys) {
+      localStorage.setItem("shortcuts", JSON.stringify(previousKeys));
+    } else {
+      localStorage.removeItem("shortcuts");
+    }
+  }, [previousKeys]);
+
   return (
     <TooltipProvider>
-      <div className="inline-flex items-center gap-2">
-        {isRecordingShortcut ? (
-          <RecordingDisplay
-            activeKeys={activeKeys}
-            onCancel={handleCancelRecording}
-          />
-        ) : (
-          <ShortcutDisplay value={value} onEdit={handleStartRecording} />
-        )}
-      </div>
+      {isRecordingShortcut ? (
+        <RecordingDisplay
+          activeKeys={activeKeys}
+          onCancel={handleCancelRecording}
+        />
+      ) : hasShortcut ? (
+        <ShortcutDisplay
+          value={value}
+          onEdit={handleStartRecording}
+          onClear={handleClearRecording}
+        />
+      ) : (
+        <div className="inline-flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleStartRecording}>
+            Set shortcut...
+          </Button>
+          {previousKeys && previousKeys.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={handleRestorePrevious}
+              title="Restore previous shortcut"
+            >
+              <Undo2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      )}
     </TooltipProvider>
   );
 }

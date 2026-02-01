@@ -220,6 +220,11 @@ export function validateShortcutComprehensive(
   const { candidateShortcut, candidateType, shortcutsByType, platform } =
     context;
 
+  // Allow empty shortcut (user intentionally disabling)
+  if (candidateShortcut.length === 0) {
+    return { valid: true };
+  }
+
   const otherShortcuts = Object.entries(shortcutsByType)
     .filter(([shortcutType]) => shortcutType !== candidateType)
     .map(([, shortcutKeys]) => shortcutKeys);
