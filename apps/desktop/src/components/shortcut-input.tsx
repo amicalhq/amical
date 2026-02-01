@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Undo2, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { X, Undo2 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
 import { cn } from "@/lib/utils";
+import { usePreviousShortcut } from "@/hooks/usePreviousShortcut";
 
 interface ShortcutInputProps {
   value?: number[];
@@ -188,10 +189,7 @@ export function ShortcutInput({
   onRecordingShortcutChange,
 }: ShortcutInputProps) {
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
-  const [previousKeys, setPreviousKeys] = useState<number[] | undefined>(() => {
-    const stored = localStorage.getItem("shortcuts");
-    return stored ? JSON.parse(stored) : undefined;
-  });
+  const { previousKeys, savePrevious, clearPrevious } = usePreviousShortcut();
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
 
@@ -210,15 +208,15 @@ export function ShortcutInput({
 
   const handleClearRecording = () => {
     if (value && value.length > 0) {
-      setPreviousKeys(value);
+      savePrevious(value);
     }
     onChange([]);
   };
 
   const handleRestorePrevious = () => {
-    if (previousKeys && previousKeys.length > 0) {
+    if (previousKeys.length > 0) {
       onChange(previousKeys);
-      setPreviousKeys(undefined);
+      clearPrevious();
     }
   };
 
@@ -238,7 +236,7 @@ export function ShortcutInput({
 
         if (result.valid && result.shortcut) {
           onChange(result.shortcut);
-          setPreviousKeys(undefined);
+          clearPrevious();
         } else {
           toast.error(result.error || "Invalid key combination");
         }
@@ -258,15 +256,6 @@ export function ShortcutInput({
       setActiveKeys([]);
     }
   }, [isRecordingShortcut]);
-
-  // Sync previousValue to localStorage
-  useEffect(() => {
-    if (previousKeys) {
-      localStorage.setItem("shortcuts", JSON.stringify(previousKeys));
-    } else {
-      localStorage.removeItem("shortcuts");
-    }
-  }, [previousKeys]);
 
   if (value === undefined) {
     return null;
