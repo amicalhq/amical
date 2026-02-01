@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Pencil, X } from "lucide-react";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { api } from "@/trpc/react";
+import { Undo2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { usePreviousShortcut } from "@/hooks/usePreviousShortcut";
+import { api } from "@/trpc/react";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
 
 interface ShortcutInputProps {
@@ -11,6 +12,7 @@ interface ShortcutInputProps {
   onChange: (value: number[]) => void;
   isRecordingShortcut?: boolean;
   onRecordingShortcutChange: (recording: boolean) => void;
+  shortcutId: string;
 }
 
 const MODIFIER_KEYS = new Set([
@@ -99,6 +101,7 @@ function RecordingDisplay({
         size="sm"
         className="h-6 w-6 p-0"
         onClick={onCancel}
+        aria-label="Cancel recording"
       >
         <X className="h-3 w-3" />
       </Button>
@@ -109,9 +112,11 @@ function RecordingDisplay({
 function ShortcutDisplay({
   value,
   onEdit,
+  onClear,
 }: {
   value?: number[];
   onEdit: () => void;
+  onClear: () => void;
 }) {
   // Format array as display string (e.g., ["Fn", "Space"] -> "Fn+Space")
   const displayValue = value?.length
@@ -119,7 +124,7 @@ function ShortcutDisplay({
     : undefined;
 
   return (
-    <>
+    <div className="inline-flex items-center gap-2">
       {displayValue && (
         <kbd
           onClick={onEdit}
@@ -132,11 +137,41 @@ function ShortcutDisplay({
         variant="ghost"
         size="sm"
         className="h-6 w-6 p-0"
-        onClick={onEdit}
+        onClick={onClear}
+        aria-label="Clear shortcut"
       >
-        <Pencil className="h-3 w-3" />
+        <X className="h-3 w-3" />
       </Button>
-    </>
+    </div>
+  );
+}
+
+function NoneDisplay({
+  previousKeys,
+  onEdit,
+  onRestore,
+}: {
+  previousKeys?: number[];
+  onEdit: () => void;
+  onRestore: () => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-2">
+      <Button variant="ghost" size="sm" onClick={onEdit}>
+        Set shortcut...
+      </Button>
+      {previousKeys && previousKeys.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+          onClick={onRestore}
+          aria-label="Restore previous shortcut"
+        >
+          <Undo2 className="h-3 w-3" />
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -145,10 +180,16 @@ export function ShortcutInput({
   onChange,
   isRecordingShortcut = false,
   onRecordingShortcutChange,
+  shortcutId,
 }: ShortcutInputProps) {
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
+  const activeKeysRef = useRef<number[]>([]);
+  const { previousKeys, savePrevious, clearPrevious } =
+    usePreviousShortcut(shortcutId);
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
+
+  const hasShortcut = value && value.length > 0;
 
   const handleStartRecording = () => {
     onRecordingShortcutChange(true);
@@ -161,23 +202,39 @@ export function ShortcutInput({
     setRecordingStateMutation.mutate(false);
   };
 
+  const handleClearRecording = () => {
+    if (value && value.length > 0) {
+      savePrevious(value);
+    }
+    onChange([]);
+  };
+
+  const handleRestorePrevious = () => {
+    if (previousKeys.length > 0) {
+      onChange(previousKeys);
+      clearPrevious();
+    }
+  };
+
+  // Keep ref in sync with state for use in subscription callback
+  useEffect(() => {
+    activeKeysRef.current = activeKeys;
+  }, [activeKeys]);
+
   // Subscribe to key events when recording
-  // Note: activeKeys closure is fresh on each render because useSubscription
-  // updates its callback reference, so previousKeys correctly captures the
-  // previous state value when onData fires.
   api.settings.activeKeysUpdates.useSubscription(undefined, {
     enabled: isRecordingShortcut,
     onData: (keys: number[]) => {
-      const previousKeys = activeKeys;
+      const prevActiveKeys = activeKeysRef.current;
       setActiveKeys(keys);
 
       // When any key is released, validate the combination
-      if (previousKeys.length > 0 && keys.length < previousKeys.length) {
-        const result = validateShortcutFormat(previousKeys);
+      if (prevActiveKeys.length > 0 && keys.length < prevActiveKeys.length) {
+        const result = validateShortcutFormat(prevActiveKeys);
 
         if (result.valid && result.shortcut) {
-          // Basic format is valid - let parent handle backend validation
           onChange(result.shortcut);
+          clearPrevious();
         } else {
           toast.error(result.error || "Invalid key combination");
         }
@@ -198,6 +255,10 @@ export function ShortcutInput({
     }
   }, [isRecordingShortcut]);
 
+  if (value === undefined) {
+    return null;
+  }
+
   return (
     <TooltipProvider>
       <div className="inline-flex items-center gap-2">
@@ -206,8 +267,18 @@ export function ShortcutInput({
             activeKeys={activeKeys}
             onCancel={handleCancelRecording}
           />
+        ) : hasShortcut ? (
+          <ShortcutDisplay
+            value={value}
+            onEdit={handleStartRecording}
+            onClear={handleClearRecording}
+          />
         ) : (
-          <ShortcutDisplay value={value} onEdit={handleStartRecording} />
+          <NoneDisplay
+            previousKeys={previousKeys}
+            onEdit={handleStartRecording}
+            onRestore={handleRestorePrevious}
+          />
         )}
       </div>
     </TooltipProvider>

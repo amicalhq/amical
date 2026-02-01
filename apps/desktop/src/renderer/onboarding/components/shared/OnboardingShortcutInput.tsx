@@ -56,6 +56,7 @@ export function OnboardingShortcutInput() {
           onChange={handleShortcutChange}
           isRecordingShortcut={isRecording}
           onRecordingShortcutChange={setIsRecording}
+          shortcutId="pushToTalk"
         />
       </div>
     </div>
