@@ -49,6 +49,7 @@ body {
   --sidebar-ring: oklch(0.708 0 0);
   --content-padding: 2rem;
   --content-max-width: 75rem;
+  --header-height: 3rem;
 }
 
 .dark {
