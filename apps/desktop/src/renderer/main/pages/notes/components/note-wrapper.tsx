@@ -7,7 +7,6 @@ import Note from "./note";
 import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useRecording } from "@/hooks/useRecording";
 
 type NotePageProps = {
   noteId: string;
@@ -22,7 +21,11 @@ export default function NotePage({
 }: NotePageProps) {
   const navigate = useNavigate();
   const utils = api.useUtils();
-  const { startRecording } = useRecording();
+
+  // Use tRPC mutation directly to signal recording start
+  // We don't use the full useRecording hook here because the widget handles
+  // audio capture. Using useRecording in both places causes double transcription.
+  const startRecordingMutation = api.recording.signalStart.useMutation();
 
   // State
   const [noteTitle, setNoteTitle] = useState("");
@@ -120,11 +123,11 @@ export default function NotePage({
   useEffect(() => {
     if (editorReady && autoRecord && !autoRecordTriggeredRef.current) {
       autoRecordTriggeredRef.current = true;
-      startRecording().catch((error) => {
+      startRecordingMutation.mutateAsync().catch((error) => {
         console.error("Failed to auto-start recording:", error);
       });
     }
-  }, [editorReady, autoRecord, startRecording]);
+  }, [editorReady, autoRecord, startRecordingMutation]);
 
   // Handle title change
   const handleTitleChange = useCallback(
