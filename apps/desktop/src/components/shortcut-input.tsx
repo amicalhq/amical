@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Undo2, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
-import { cn } from "@/lib/utils";
 import { usePreviousShortcut } from "@/hooks/usePreviousShortcut";
 
 interface ShortcutInputProps {
@@ -124,12 +123,7 @@ function ShortcutDisplay({
     : undefined;
 
   return (
-    <div
-      className={cn(
-        buttonVariants({ variant: "outline", size: "sm" }),
-        "gap-2",
-      )}
-    >
+    <div className="inline-flex items-center gap-2">
       {displayValue && (
         <kbd
           onClick={onEdit}
@@ -160,12 +154,7 @@ function NoneDisplay({
   onRestore: () => void;
 }) {
   return (
-    <div
-      className={cn(
-        buttonVariants({ variant: "outline", size: "sm" }),
-        "gap-2",
-      )}
-    >
+    <div className="inline-flex items-center gap-2">
       <Button variant="ghost" size="sm" onClick={onEdit}>
         Set shortcut...
       </Button>
