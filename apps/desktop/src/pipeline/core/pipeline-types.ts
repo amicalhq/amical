@@ -34,6 +34,7 @@ export interface FormatParams {
     accessibilityContext?: GetAccessibilityContextResult | null;
     previousChunk?: string;
     aggregatedTranscription?: string;
+    customInstructions?: string;
   };
 }
 

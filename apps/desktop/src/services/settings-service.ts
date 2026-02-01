@@ -7,7 +7,7 @@ import {
   getAppSettings,
   updateAppSettings,
 } from "../db/app-settings";
-import type { AppSettingsData } from "../db/schema";
+import type { AppSettingsData, ModeConfig } from "../db/schema";
 
 /**
  * Database-backed settings service with typed configuration
@@ -426,5 +426,136 @@ export class SettingsService extends EventEmitter {
     telemetrySettings: AppSettingsData["telemetry"],
   ): Promise<void> {
     await updateSettingsSection("telemetry", telemetrySettings);
+  }
+
+  // --- Modes CRUD ---
+
+  private static readonly MAX_MODES = 20;
+
+  private buildFallbackMode(settings: AppSettingsData): ModeConfig {
+    const now = new Date().toISOString();
+    return {
+      id: "default",
+      name: "Default",
+      isDefault: true,
+      dictation: settings.dictation ?? {
+        autoDetectEnabled: true,
+        selectedLanguage: "en",
+      },
+      formatterConfig: settings.formatterConfig ?? { enabled: false },
+      customInstructions: undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  async getModes(): Promise<{ items: ModeConfig[]; activeModeId: string }> {
+    const settings = await getAppSettings();
+    if (settings.modes && settings.modes.items.length > 0) {
+      return settings.modes;
+    }
+    // Fallback: construct from legacy settings
+    const fallback = this.buildFallbackMode(settings);
+    return { items: [fallback], activeModeId: "default" };
+  }
+
+  async getActiveMode(): Promise<ModeConfig> {
+    const { items, activeModeId } = await this.getModes();
+    const active = items.find((m) => m.id === activeModeId);
+    if (active) return active;
+    // Fallback to first item (should always exist)
+    return items[0];
+  }
+
+  async setActiveMode(modeId: string): Promise<void> {
+    const { items } = await this.getModes();
+    if (!items.find((m) => m.id === modeId)) {
+      throw new Error(`Mode with id "${modeId}" not found`);
+    }
+    const settings = await getAppSettings();
+    await updateAppSettings({
+      modes: { ...settings.modes!, activeModeId: modeId },
+    });
+    this.emit("active-mode-changed", { modeId });
+  }
+
+  async createMode(
+    input: Omit<ModeConfig, "id" | "isDefault" | "createdAt" | "updatedAt">,
+  ): Promise<ModeConfig> {
+    const { items, activeModeId } = await this.getModes();
+    if (items.length >= SettingsService.MAX_MODES) {
+      throw new Error(
+        `Maximum number of modes (${SettingsService.MAX_MODES}) reached`,
+      );
+    }
+    const now = new Date().toISOString();
+    const newMode: ModeConfig = {
+      ...input,
+      id: crypto.randomUUID(),
+      isDefault: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await updateAppSettings({
+      modes: { items: [...items, newMode], activeModeId },
+    });
+    return newMode;
+  }
+
+  async updateMode(
+    modeId: string,
+    updates: Partial<
+      Pick<ModeConfig, "name" | "dictation" | "formatterConfig" | "customInstructions" | "speechModelId" | "appBindings">
+    >,
+  ): Promise<ModeConfig> {
+    const { items, activeModeId } = await this.getModes();
+    const index = items.findIndex((m) => m.id === modeId);
+    if (index === -1) {
+      throw new Error(`Mode with id "${modeId}" not found`);
+    }
+    const updated: ModeConfig = {
+      ...items[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    const newItems = [...items];
+    newItems[index] = updated;
+    await updateAppSettings({
+      modes: { items: newItems, activeModeId },
+    });
+    return updated;
+  }
+
+  async deleteMode(modeId: string): Promise<void> {
+    const { items, activeModeId } = await this.getModes();
+    const mode = items.find((m) => m.id === modeId);
+    if (!mode) {
+      throw new Error(`Mode with id "${modeId}" not found`);
+    }
+    if (mode.isDefault) {
+      throw new Error("Cannot delete the default mode");
+    }
+    if (items.length <= 1) {
+      throw new Error("Cannot delete the last remaining mode");
+    }
+    const newItems = items.filter((m) => m.id !== modeId);
+    const newActiveModeId =
+      activeModeId === modeId ? "default" : activeModeId;
+    await updateAppSettings({
+      modes: { items: newItems, activeModeId: newActiveModeId },
+    });
+    if (activeModeId === modeId) {
+      this.emit("active-mode-changed", { modeId: newActiveModeId });
+    }
+  }
+
+  async findModeByBundleId(bundleId: string): Promise<ModeConfig | null> {
+    const { items } = await this.getModes();
+    for (const mode of items) {
+      if (mode.appBindings?.includes(bundleId)) {
+        return mode;
+      }
+    }
+    return null;
   }
 }

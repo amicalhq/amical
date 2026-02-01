@@ -27,7 +27,7 @@ export function ComboboxMulti({
   className,
   disabled,
 }: {
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; icon?: string }[];
   value: string[];
   onChange: (value: string[]) => void;
   placeholder?: string;
@@ -48,19 +48,47 @@ export function ComboboxMulti({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            "w-[250px] justify-between flex-wrap min-h-[40px]",
+            "w-full justify-between flex-wrap min-h-[40px] h-auto",
             className,
           )}
         >
           <div className="flex flex-wrap gap-1 items-center">
-            <span className="text-muted-foreground">
-              {placeholder || "Select..."}
-            </span>
+            {selectedOptions.length === 0 ? (
+              <span className="text-muted-foreground">
+                {placeholder || "Select..."}
+              </span>
+            ) : (
+              selectedOptions.map((opt) => (
+                <span
+                  key={opt.value}
+                  className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-xs"
+                >
+                  {opt.icon && (
+                    <img
+                      src={opt.icon}
+                      alt=""
+                      className="h-4 w-4 shrink-0"
+                    />
+                  )}
+                  {opt.label}
+                  <button
+                    type="button"
+                    className="ml-0.5 rounded-sm hover:bg-muted-foreground/20"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onChange(value.filter((v) => v !== opt.value));
+                    }}
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </button>
+                </span>
+              ))
+            )}
           </div>
           <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[250px] p-0">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput placeholder={placeholder || "Search..."} />
           <CommandList>
@@ -69,7 +97,8 @@ export function ComboboxMulti({
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.value}
+                  value={option.label}
+                  keywords={[option.value]}
                   onSelect={() => {
                     if (value.includes(option.value)) {
                       onChange(value.filter((v) => v !== option.value));
@@ -84,6 +113,13 @@ export function ComboboxMulti({
                     tabIndex={-1}
                     className="pointer-events-none"
                   />
+                  {option.icon && (
+                    <img
+                      src={option.icon}
+                      alt=""
+                      className="h-5 w-5 shrink-0"
+                    />
+                  )}
                   <span>{option.label}</span>
                 </CommandItem>
               ))}

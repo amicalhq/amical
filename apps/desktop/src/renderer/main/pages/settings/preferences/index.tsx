@@ -3,6 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MicrophoneSettings } from "../dictation/components";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 
@@ -161,7 +162,12 @@ export default function PreferencesSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* add future preferences here in a card */}
+        {/* Microphone settings */}
+        <Card>
+          <CardContent>
+            <MicrophoneSettings />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

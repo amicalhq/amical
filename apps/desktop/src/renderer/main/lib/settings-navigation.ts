@@ -1,6 +1,6 @@
 import {
   IconSettings,
-  IconMicrophone,
+  IconSparkles,
   IconBook,
   IconBrain,
   IconHistory,
@@ -28,24 +28,10 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     type: "settings",
   },
   {
-    title: "Preferences",
-    url: "/settings/preferences",
-    description: "Configure general application preferences and behavior",
-    icon: IconSettings,
-    type: "settings",
-  },
-  {
-    title: "Dictation",
-    url: "/settings/dictation",
-    description: "Configure speech recognition and dictation settings",
-    icon: IconMicrophone,
-    type: "settings",
-  },
-  {
-    title: "Shortcuts",
-    url: "/settings/shortcuts",
-    description: "Customize keyboard shortcuts and hotkeys",
-    icon: IconKeyboard,
+    title: "Modes",
+    url: "/settings/modes",
+    description: "Create and manage transcription modes",
+    icon: IconSparkles,
     type: "settings",
   },
   {
@@ -53,6 +39,13 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/vocabulary",
     description: "Manage custom vocabulary and word recognition",
     icon: IconBook,
+    type: "settings",
+  },
+  {
+    title: "Shortcuts",
+    url: "/settings/shortcuts",
+    description: "Customize keyboard shortcuts and hotkeys",
+    icon: IconKeyboard,
     type: "settings",
   },
   {
@@ -67,6 +60,13 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/history",
     description: "View and manage transcription history",
     icon: IconHistory,
+    type: "settings",
+  },
+  {
+    title: "Preferences",
+    url: "/settings/preferences",
+    description: "Configure general application preferences and behavior",
+    icon: IconSettings,
     type: "settings",
   },
   {

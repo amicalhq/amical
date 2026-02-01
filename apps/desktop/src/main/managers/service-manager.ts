@@ -12,6 +12,7 @@ import { isMacOS, isWindows } from "../../utils/platform";
 import { TelemetryService } from "../../services/telemetry-service";
 import { AuthService } from "../../services/auth-service";
 import { OnboardingService } from "../../services/onboarding-service";
+import { InstalledAppsService } from "../../services/installed-apps-service";
 
 /**
  * Service map for type-safe service access
@@ -29,6 +30,7 @@ export interface ServiceMap {
   shortcutManager: ShortcutManager;
   windowManager: WindowManager;
   onboardingService: OnboardingService;
+  installedAppsService: InstalledAppsService;
 }
 
 /**
@@ -45,6 +47,7 @@ export class ServiceManager {
   private authService: AuthService | null = null;
   private vadService: VADService | null = null;
   private onboardingService: OnboardingService | null = null;
+  private installedAppsService: InstalledAppsService | null = null;
 
   private nativeBridge: NativeBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
@@ -62,6 +65,7 @@ export class ServiceManager {
 
     try {
       this.initializeSettingsService();
+      this.initializeInstalledAppsService();
       this.initializeAuthService();
       await this.initializeTelemetryService();
       await this.initializeModelServices();
@@ -91,6 +95,11 @@ export class ServiceManager {
   private initializeSettingsService(): void {
     this.settingsService = new SettingsService();
     logger.main.info("Settings service initialized");
+  }
+
+  private initializeInstalledAppsService(): void {
+    this.installedAppsService = new InstalledAppsService();
+    logger.main.info("Installed apps service initialized");
   }
 
   private initializeAuthService(): void {
@@ -224,6 +233,7 @@ export class ServiceManager {
       shortcutManager: this.shortcutManager!,
       windowManager: this.windowManager!,
       onboardingService: this.onboardingService!,
+      installedAppsService: this.installedAppsService!,
     };
 
     return services[serviceName];

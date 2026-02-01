@@ -23,6 +23,7 @@ import {
   appSettings,
   type NewAppSettings,
   type AppSettingsData,
+  type ModeConfig,
 } from "./schema";
 import { isMacOS } from "../utils/platform";
 
@@ -110,6 +111,52 @@ function migrateSettings(data: unknown, fromVersion: number): AppSettingsData {
   return currentData as AppSettingsData;
 }
 
+// --- Vox custom migrations (independent from upstream `version` column) ---
+const CURRENT_VOX_VERSION = 1;
+
+const voxMigrations: Record<number, MigrationFn> = {
+  // vox v0 → v1: Create "Default" mode from existing dictation + formatterConfig
+  1: (data: unknown): AppSettingsData => {
+    const oldData = data as AppSettingsData;
+    const now = new Date().toISOString();
+    const defaultMode: ModeConfig = {
+      id: "default",
+      name: "Default",
+      isDefault: true,
+      dictation: oldData.dictation ?? {
+        autoDetectEnabled: true,
+        selectedLanguage: "en",
+      },
+      formatterConfig: oldData.formatterConfig ?? { enabled: false },
+      customInstructions: undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+    return {
+      ...oldData,
+      modes: { items: [defaultMode], activeModeId: "default" },
+      _voxVersion: 1,
+    };
+  },
+};
+
+function migrateVoxSettings(
+  data: AppSettingsData,
+  fromVersion: number,
+): AppSettingsData {
+  let currentData: unknown = data;
+
+  for (let v = fromVersion + 1; v <= CURRENT_VOX_VERSION; v++) {
+    const migrationFn = voxMigrations[v];
+    if (migrationFn) {
+      currentData = migrationFn(currentData);
+      console.log(`[Settings] Vox migration: v${v - 1} → v${v}`);
+    }
+  }
+
+  return currentData as AppSettingsData;
+}
+
 // Singleton ID for app settings (we only have one settings record)
 const SETTINGS_ID = 1;
 
@@ -162,6 +209,22 @@ const defaultSettings: AppSettingsData = {
     defaultLanguageModel: "",
     defaultEmbeddingModel: "",
   },
+  modes: {
+    items: [
+      {
+        id: "default",
+        name: "Default",
+        isDefault: true,
+        dictation: { autoDetectEnabled: true, selectedLanguage: "en" },
+        formatterConfig: { enabled: false },
+        customInstructions: undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+    activeModeId: "default",
+  },
+  _voxVersion: CURRENT_VOX_VERSION,
 };
 
 // Get all app settings (with automatic migration if needed)
@@ -200,7 +263,27 @@ export async function getAppSettings(): Promise<AppSettingsData> {
     return migratedData;
   }
 
-  return record.data;
+  // Run Vox custom migrations (independent from upstream version)
+  let settingsData = record.data;
+  const voxVersion = settingsData._voxVersion ?? 0;
+  if (voxVersion < CURRENT_VOX_VERSION) {
+    settingsData = migrateVoxSettings(settingsData, voxVersion);
+
+    const now = new Date();
+    await db
+      .update(appSettings)
+      .set({
+        data: settingsData,
+        updatedAt: now,
+      })
+      .where(eq(appSettings.id, SETTINGS_ID));
+
+    console.log(
+      `[Settings] Vox migration complete: v${voxVersion} -> v${CURRENT_VOX_VERSION}`,
+    );
+  }
+
+  return settingsData;
 }
 
 // Update app settings (shallow merge at top level only)

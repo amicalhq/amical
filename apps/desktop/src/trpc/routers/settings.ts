@@ -5,6 +5,7 @@ import { app } from "electron";
 import path from "node:path";
 import { createRouter, procedure } from "../trpc";
 import { dbPath, closeDatabase } from "../../db";
+import type { ModeConfig } from "../../db/schema";
 import * as fs from "fs/promises";
 
 // FormatterConfig schema
@@ -52,6 +53,44 @@ const ModelProvidersConfigSchema = z.object({
 const DictationSettingsSchema = z.object({
   autoDetectEnabled: z.boolean(),
   selectedLanguage: z.string().min(1), // Must be valid when autoDetectEnabled is false
+});
+
+// Mode schemas
+const CreateModeSchema = z.object({
+  name: z.string().min(1).max(50),
+  dictation: z.object({
+    autoDetectEnabled: z.boolean(),
+    selectedLanguage: z.string(),
+  }),
+  formatterConfig: z.object({
+    enabled: z.boolean(),
+    modelId: z.string().optional(),
+    fallbackModelId: z.string().optional(),
+  }),
+  customInstructions: z.string().max(2000).optional(),
+  speechModelId: z.string().optional(),
+  appBindings: z.array(z.string()).max(20).optional(),
+});
+
+const UpdateModeSchema = z.object({
+  modeId: z.string().min(1),
+  name: z.string().min(1).max(50).optional(),
+  dictation: z
+    .object({
+      autoDetectEnabled: z.boolean(),
+      selectedLanguage: z.string(),
+    })
+    .optional(),
+  formatterConfig: z
+    .object({
+      enabled: z.boolean(),
+      modelId: z.string().optional(),
+      fallbackModelId: z.string().optional(),
+    })
+    .optional(),
+  customInstructions: z.string().max(2000).optional().nullable(),
+  speechModelId: z.string().optional().nullable(),
+  appBindings: z.array(z.string()).max(20).optional().nullable(),
 });
 
 const AppPreferencesSchema = z.object({
@@ -736,6 +775,141 @@ export const settingsRouter = createRouter({
       }
     }),
 
+  // Get all modes
+  getModes: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "SettingsService not available",
+      });
+    }
+    return await settingsService.getModes();
+  }),
+
+  // Get active mode
+  getActiveMode: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "SettingsService not available",
+      });
+    }
+    return await settingsService.getActiveMode();
+  }),
+
+  // Set active mode
+  setActiveMode: procedure
+    .input(z.object({ modeId: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "SettingsService not available",
+        });
+      }
+      try {
+        await settingsService.setActiveMode(input.modeId);
+        return true;
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error ? error.message : "Failed to set active mode",
+        });
+      }
+    }),
+
+  // Create a new mode
+  createMode: procedure
+    .input(CreateModeSchema)
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "SettingsService not available",
+        });
+      }
+      try {
+        return await settingsService.createMode(input);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error ? error.message : "Failed to create mode",
+        });
+      }
+    }),
+
+  // Update an existing mode
+  updateMode: procedure
+    .input(UpdateModeSchema)
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "SettingsService not available",
+        });
+      }
+      const { modeId, ...updates } = input;
+      // Build cleanUpdates from only the keys actually present in `updates`.
+      // Zod strips absent optional fields, so Object.entries only yields
+      // fields the caller explicitly provided. Convert null → undefined
+      // to signal "clear this field" when spread over the existing mode.
+      const cleanUpdates = Object.fromEntries(
+        Object.entries(updates).map(([key, value]) => [
+          key,
+          value === null ? undefined : value,
+        ]),
+      ) as Partial<
+        Pick<
+          ModeConfig,
+          | "name"
+          | "dictation"
+          | "formatterConfig"
+          | "customInstructions"
+          | "speechModelId"
+          | "appBindings"
+        >
+      >;
+      try {
+        return await settingsService.updateMode(modeId, cleanUpdates);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error ? error.message : "Failed to update mode",
+        });
+      }
+    }),
+
+  // Delete a mode
+  deleteMode: procedure
+    .input(z.object({ modeId: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "SettingsService not available",
+        });
+      }
+      try {
+        await settingsService.deleteMode(input.modeId);
+        return true;
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error ? error.message : "Failed to delete mode",
+        });
+      }
+    }),
+
   // Reset app - deletes database and models, then restarts
   resetApp: procedure.mutation(async ({ ctx }) => {
     try {
@@ -789,6 +963,11 @@ export const settingsRouter = createRouter({
       }
       throw new Error("Failed to reset app");
     }
+  }),
+
+  getInstalledApps: procedure.query(async ({ ctx }) => {
+    const service = ctx.serviceManager.getService("installedAppsService");
+    return await service.getInstalledApps();
   }),
 });
 // This comment prevents prettier from removing the trailing newline
