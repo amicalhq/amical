@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import { Undo2, X } from "lucide-react";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { api } from "@/trpc/react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { getKeyFromKeycode } from "@/utils/keycode-map";
+import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePreviousShortcut } from "@/hooks/usePreviousShortcut";
+import { api } from "@/trpc/react";
+import { getKeyFromKeycode } from "@/utils/keycode-map";
 
 interface ShortcutInputProps {
   value?: number[];
@@ -101,6 +101,7 @@ function RecordingDisplay({
         size="sm"
         className="h-6 w-6 p-0"
         onClick={onCancel}
+        aria-label="Cancel recording"
       >
         <X className="h-3 w-3" />
       </Button>
@@ -137,6 +138,7 @@ function ShortcutDisplay({
         size="sm"
         className="h-6 w-6 p-0"
         onClick={onClear}
+        aria-label="Clear shortcut"
       >
         <X className="h-3 w-3" />
       </Button>
@@ -164,6 +166,7 @@ function NoneDisplay({
           size="sm"
           className="h-6 w-6 p-0"
           onClick={onRestore}
+          aria-label="Restore previous shortcut"
         >
           <Undo2 className="h-3 w-3" />
         </Button>
@@ -180,6 +183,7 @@ export function ShortcutInput({
   shortcutId,
 }: ShortcutInputProps) {
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
+  const activeKeysRef = useRef<number[]>([]);
   const { previousKeys, savePrevious, clearPrevious } =
     usePreviousShortcut(shortcutId);
   const setRecordingStateMutation =
@@ -212,14 +216,16 @@ export function ShortcutInput({
     }
   };
 
+  // Keep ref in sync with state for use in subscription callback
+  useEffect(() => {
+    activeKeysRef.current = activeKeys;
+  }, [activeKeys]);
+
   // Subscribe to key events when recording
-  // Note: activeKeys closure is fresh on each render because useSubscription
-  // updates its callback reference, so previousKeys correctly captures the
-  // previous state value when onData fires.
   api.settings.activeKeysUpdates.useSubscription(undefined, {
     enabled: isRecordingShortcut,
     onData: (keys: number[]) => {
-      const prevActiveKeys = activeKeys;
+      const prevActiveKeys = activeKeysRef.current;
       setActiveKeys(keys);
 
       // When any key is released, validate the combination
