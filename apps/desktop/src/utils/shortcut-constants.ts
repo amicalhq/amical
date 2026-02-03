@@ -44,7 +44,7 @@ function expandReservedShortcuts(
   return results;
 }
 
-export const MAC_MODIFIER_KEYCODES = new Set([
+export const MAC_MODIFIER_KEYCODES = new Set<number>([
   MAC_KEYCODES.CMD,
   MAC_KEYCODES.RCMD,
   MAC_KEYCODES.CTRL,
@@ -56,7 +56,7 @@ export const MAC_MODIFIER_KEYCODES = new Set([
   MAC_KEYCODES.FN,
 ]);
 
-export const WINDOWS_MODIFIER_KEYCODES = new Set([
+export const WINDOWS_MODIFIER_KEYCODES = new Set<number>([
   WINDOWS_KEYCODES.WIN,
   WINDOWS_KEYCODES.RWIN,
   WINDOWS_KEYCODES.CTRL,
@@ -81,7 +81,7 @@ export const WINDOWS_MODIFIER_PAIRS: [number, number][] = [
   [WINDOWS_KEYCODES.WIN, WINDOWS_KEYCODES.RWIN],
 ];
 
-export const MAC_SPECIAL_KEYCODES = new Set([
+export const MAC_SPECIAL_KEYCODES = new Set<number>([
   MAC_KEYCODES.SPACE,
   MAC_KEYCODES.TAB,
   MAC_KEYCODES.ENTER,
@@ -118,7 +118,7 @@ export const MAC_SPECIAL_KEYCODES = new Set([
   MAC_KEYCODES.F20,
 ]);
 
-export const WINDOWS_SPECIAL_KEYCODES = new Set([
+export const WINDOWS_SPECIAL_KEYCODES = new Set<number>([
   WINDOWS_KEYCODES.SPACE,
   WINDOWS_KEYCODES.TAB,
   WINDOWS_KEYCODES.ENTER,

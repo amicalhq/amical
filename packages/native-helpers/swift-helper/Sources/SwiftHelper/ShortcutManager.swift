@@ -4,7 +4,6 @@ import Foundation
 struct KeyResyncResult {
     let clearedRegularKeys: [Int]
     let clearedModifiers: [Int]
-    let addedModifiers: [Int]
 }
 
 /// Manages configured shortcuts and determines if key events should be consumed
@@ -119,13 +118,12 @@ class ShortcutManager {
     /// Returns details about any corrections performed.
     func validateAndResyncKeyState(
         flags: CGEventFlags,
-        preferredModifierKeyCode: Int? = nil
+        excluding keyCodeToExclude: Int? = nil
     ) -> KeyResyncResult {
         lock.lock()
         defer { lock.unlock() }
 
         var clearedModifiers: [Int] = []
-        var addedModifiers: [Int] = []
 
         let modifierGroups: [(flag: CGEventFlags, keyCodes: [Int])] = [
             (.maskCommand, [leftCommandKeyCode, rightCommandKeyCode]),
@@ -138,16 +136,11 @@ class ShortcutManager {
         // Validate modifier keys using event flags.
         for group in modifierGroups {
             let flagIsSet = flags.contains(group.flag)
-            let trackedKeys = group.keyCodes.filter { pressedModifierKeys.contains($0) }
+            let trackedKeys = group.keyCodes.filter {
+                pressedModifierKeys.contains($0) && $0 != keyCodeToExclude
+            }
 
-            if flagIsSet {
-                if trackedKeys.isEmpty,
-                   let preferred = preferredModifierKeyCode,
-                   group.keyCodes.contains(preferred) {
-                    pressedModifierKeys.insert(preferred)
-                    addedModifiers.append(preferred)
-                }
-            } else if !trackedKeys.isEmpty {
+            if !flagIsSet && !trackedKeys.isEmpty {
                 for keyCode in trackedKeys {
                     pressedModifierKeys.remove(keyCode)
                     clearedModifiers.append(keyCode)
@@ -155,9 +148,6 @@ class ShortcutManager {
             }
         }
 
-        if !addedModifiers.isEmpty {
-            logToStderr("[ShortcutManager] Resync: Modifiers were missing, added: \(addedModifiers)")
-        }
         if !clearedModifiers.isEmpty {
             logToStderr("[ShortcutManager] Resync: Modifiers were stuck, cleared: \(clearedModifiers)")
         }
@@ -165,6 +155,7 @@ class ShortcutManager {
         // Validate regular keys
         var staleKeys: [Int] = []
         for keyCode in pressedRegularKeys {
+            if keyCode == keyCodeToExclude { continue }
             if !isKeyActuallyPressed(CGKeyCode(keyCode)) {
                 staleKeys.append(keyCode)
             }
@@ -179,8 +170,7 @@ class ShortcutManager {
 
         return KeyResyncResult(
             clearedRegularKeys: staleKeys,
-            clearedModifiers: clearedModifiers,
-            addedModifiers: addedModifiers
+            clearedModifiers: clearedModifiers
         )
     }
 

@@ -25,6 +25,9 @@ namespace WindowsHelper
         private int[] _pasteLastTranscriptKeys = Array.Empty<int>();
         private HashSet<int> _shortcutKeysSet = new();
 
+        // Track currently pressed modifier keys (left/right distinct).
+        private readonly HashSet<int> _pressedModifierKeys = new();
+
         // Track currently pressed non-modifier keys across keyDown/keyUp events.
         // This is necessary for multi-key shortcuts like Shift+A+B where we need to
         // know that 'A' is still held when 'B' is pressed.
@@ -96,6 +99,55 @@ namespace WindowsHelper
         }
 
         /// <summary>
+        /// Update the tracked modifier key state (left/right).
+        /// Called from ShortcutMonitor hook callback when modifier keyDown/keyUp is received.
+        /// </summary>
+        public void SetModifierKey(int keyCode, bool isDown)
+        {
+            lock (_lock)
+            {
+                if (isDown)
+                {
+                    _pressedModifierKeys.Add(keyCode);
+                }
+                else
+                {
+                    _pressedModifierKeys.Remove(keyCode);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check if a modifier is currently pressed.
+        /// </summary>
+        public bool IsModifierPressed(int keyCode)
+        {
+            lock (_lock)
+            {
+                return _pressedModifierKeys.Contains(keyCode);
+            }
+        }
+
+        /// <summary>
+        /// Snapshot combined modifier state for payloads.
+        /// </summary>
+        public (bool Shift, bool Ctrl, bool Alt, bool Win) GetModifierState()
+        {
+            lock (_lock)
+            {
+                var shift = _pressedModifierKeys.Contains(KeycodeConstants.VkLShift)
+                    || _pressedModifierKeys.Contains(KeycodeConstants.VkRShift);
+                var ctrl = _pressedModifierKeys.Contains(KeycodeConstants.VkLControl)
+                    || _pressedModifierKeys.Contains(KeycodeConstants.VkRControl);
+                var alt = _pressedModifierKeys.Contains(KeycodeConstants.VkLMenu)
+                    || _pressedModifierKeys.Contains(KeycodeConstants.VkRMenu);
+                var win = _pressedModifierKeys.Contains(KeycodeConstants.VkLWin)
+                    || _pressedModifierKeys.Contains(KeycodeConstants.VkRWin);
+                return (shift, ctrl, alt, win);
+            }
+        }
+
+        /// <summary>
         /// Check if a key is actually pressed using GetAsyncKeyState.
         /// </summary>
         private bool IsKeyActuallyPressed(int vkCode)
@@ -105,35 +157,65 @@ namespace WindowsHelper
         }
 
         /// <summary>
-        /// Validate all tracked regular keys against actual OS state.
+        /// Validate all tracked key states against actual OS state.
         /// Removes any keys that are not actually pressed (stuck keys).
-        /// Returns the list of keys that were removed.
+        /// Returns details about any corrections performed.
         /// </summary>
-        public List<int> ValidateAndClearStaleKeys()
+        public KeyResyncResult ValidateAndResyncKeyState(int? excludingKeyCode = null)
         {
-            var staleKeys = new List<int>();
+            var result = new KeyResyncResult();
 
             lock (_lock)
             {
-                var keysToCheck = _pressedRegularKeys.ToList();
-                foreach (var keyCode in keysToCheck)
+                var modifierKeysToCheck = _pressedModifierKeys.ToList();
+                foreach (var keyCode in modifierKeysToCheck)
                 {
+                    if (excludingKeyCode.HasValue && keyCode == excludingKeyCode.Value)
+                    {
+                        continue;
+                    }
+
+                    if (!IsKeyActuallyPressed(keyCode))
+                    {
+                        _pressedModifierKeys.Remove(keyCode);
+                        result.ClearedModifiers.Add(keyCode);
+                    }
+                }
+
+                var regularKeysToCheck = _pressedRegularKeys.ToList();
+                foreach (var keyCode in regularKeysToCheck)
+                {
+                    if (excludingKeyCode.HasValue && keyCode == excludingKeyCode.Value)
+                    {
+                        continue;
+                    }
+
                     if (!IsKeyActuallyPressed(keyCode))
                     {
                         _pressedRegularKeys.Remove(keyCode);
-                        staleKeys.Add(keyCode);
+                        result.ClearedRegularKeys.Add(keyCode);
                     }
+                }
+
+                if (result.ClearedModifiers.Count > 0)
+                {
+                    LogToStderr($"Resync: Modifiers were stuck, cleared: [{string.Join(", ", result.ClearedModifiers)}]");
+                }
+
+                if (result.ClearedRegularKeys.Count > 0)
+                {
+                    LogToStderr($"Resync: Regular keys were stuck, cleared: [{string.Join(", ", result.ClearedRegularKeys)}]");
                 }
             }
 
-            return staleKeys;
+            return result;
         }
 
         /// <summary>
         /// Check if this key event should be consumed (prevent default behavior).
         /// Called from ShortcutMonitor hook callback for keyDown/keyUp events only.
         /// </summary>
-        public bool ShouldConsumeKey(int vkCode, IReadOnlyCollection<int> activeModifiers)
+        public bool ShouldConsumeKey(int vkCode)
         {
             lock (_lock)
             {
@@ -144,6 +226,7 @@ namespace WindowsHelper
                 }
 
                 // Build full set of active keys (modifiers + tracked regular keys + current key)
+                var activeModifiers = new HashSet<int>(_pressedModifierKeys);
                 var activeKeys = new HashSet<int>(activeModifiers);
                 activeKeys.UnionWith(_pressedRegularKeys);
                 activeKeys.Add(vkCode);
@@ -152,9 +235,8 @@ namespace WindowsHelper
                 // - At least one modifier from the shortcut must be held (signals intent)
                 // - All currently pressed keys must be part of the shortcut (activeKeys ⊆ pttKeys)
                 var pttKeys = new HashSet<int>(_pushToTalkKeys);
-                var modifierKeys = new HashSet<int>(KeycodeConstants.ModifierKeyCodes);
                 var pttModifiers = new HashSet<int>(pttKeys);
-                pttModifiers.IntersectWith(modifierKeys);
+                pttModifiers.IntersectWith(KeycodeConstants.ModifierKeyCodeSet);
                 var hasRequiredModifier = pttModifiers.Count > 0 && pttModifiers.Overlaps(activeModifiers);
                 var pttMatch = pttKeys.Count > 0 && hasRequiredModifier && activeKeys.IsSubsetOf(pttKeys);
 
@@ -168,6 +250,12 @@ namespace WindowsHelper
 
                 return pttMatch || toggleMatch || pasteMatch;
             }
+        }
+
+        public sealed class KeyResyncResult
+        {
+            public List<int> ClearedModifiers { get; } = new();
+            public List<int> ClearedRegularKeys { get; } = new();
         }
     }
 }

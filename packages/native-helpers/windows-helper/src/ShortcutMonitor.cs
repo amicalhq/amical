@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using WindowsHelper.Models;
@@ -33,9 +32,6 @@ namespace WindowsHelper
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr GetModuleHandle(string lpModuleName);
 
-        [DllImport("user32.dll")]
-        private static extern short GetAsyncKeyState(int vKey);
-
         [StructLayout(LayoutKind.Sequential)]
         private struct KBDLLHOOKSTRUCT
         {
@@ -51,23 +47,6 @@ namespace WindowsHelper
         private readonly StaThreadRunner staRunner;
         private IntPtr hookId = IntPtr.Zero;
         private LowLevelKeyboardProc? hookProc;
-
-        // Track modifier key states internally to avoid GetAsyncKeyState issues
-        // Track left and right separately to handle cases where both are pressed
-        private bool leftShiftPressed = false;
-        private bool rightShiftPressed = false;
-        private bool leftCtrlPressed = false;
-        private bool rightCtrlPressed = false;
-        private bool leftAltPressed = false;
-        private bool rightAltPressed = false;
-        private bool leftWinPressed = false;
-        private bool rightWinPressed = false;
-
-        // Computed properties that combine left/right states
-        private bool shiftPressed => leftShiftPressed || rightShiftPressed;
-        private bool ctrlPressed => leftCtrlPressed || rightCtrlPressed;
-        private bool altPressed => leftAltPressed || rightAltPressed;
-        private bool winPressed => leftWinPressed || rightWinPressed;
 
         public event EventHandler<HelperEvent>? KeyEventOccurred;
 
@@ -156,52 +135,54 @@ namespace WindowsHelper
                     {
                         var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
-                        var vkCode = kbStruct.vkCode;
-
-                        var isModifier = IsModifierKey(vkCode);
-                        var wasModifierDown = isModifier && IsModifierDown(vkCode);
-
-                        // Update our internal modifier state tracking based on the actual key being pressed/released
-                        UpdateModifierState(vkCode, isKeyDown);
-
-                        if (ShortcutManager.Instance.IsShortcutKey((int)vkCode))
-                        {
-                            var resyncResult = ResyncKeyState();
-                            var excludeKey = isKeyUp ? (int?)vkCode : null;
-                            EmitResyncKeyEvents(resyncResult, excludeKey);
-                        }
+                        var vkCode = (int)kbStruct.vkCode;
+                        var isModifier = IsModifierKey(kbStruct.vkCode);
 
                         if (isModifier)
                         {
-                            var isDown = IsModifierDown(vkCode);
-                            if (isDown != wasModifierDown)
+                            var wasDown = ShortcutManager.Instance.IsModifierPressed(vkCode);
+                            var isDown = isKeyDown;
+
+                            if (wasDown == isDown)
                             {
-                                EmitKeyEvent(
-                                    isDown ? HelperEventType.KeyDown : HelperEventType.KeyUp,
-                                    (int)vkCode
-                                );
+                                return CallNextHookEx(hookId, nCode, wParam, lParam);
                             }
+
+                            if (ShortcutManager.Instance.IsShortcutKey(vkCode))
+                            {
+                                var resyncResult = ShortcutManager.Instance.ValidateAndResyncKeyState(vkCode);
+                                EmitResyncKeyEvents(resyncResult, vkCode);
+                            }
+
+                            ShortcutManager.Instance.SetModifierKey(vkCode, isDown);
+                            EmitKeyEvent(isDown ? HelperEventType.KeyDown : HelperEventType.KeyUp, vkCode);
                         }
                         else
                         {
+                            if (isKeyUp)
+                            {
+                                ShortcutManager.Instance.RemoveRegularKey(vkCode);
+                            }
+
+                            if (ShortcutManager.Instance.IsShortcutKey(vkCode))
+                            {
+                                var resyncResult = ShortcutManager.Instance.ValidateAndResyncKeyState(vkCode);
+                                EmitResyncKeyEvents(resyncResult, vkCode);
+                            }
+
                             EmitKeyEvent(
                                 isKeyDown ? HelperEventType.KeyDown : HelperEventType.KeyUp,
-                                (int)vkCode
+                                vkCode
                             );
 
                             // Track regular key state for multi-key shortcuts
                             if (isKeyDown)
                             {
-                                ShortcutManager.Instance.AddRegularKey((int)vkCode);
-                            }
-                            else
-                            {
-                                ShortcutManager.Instance.RemoveRegularKey((int)vkCode);
+                                ShortcutManager.Instance.AddRegularKey(vkCode);
                             }
 
                             // Check if this key event should be consumed (prevent default behavior)
-                            var activeModifiers = GetActiveModifierKeyCodes();
-                            if (ShortcutManager.Instance.ShouldConsumeKey((int)vkCode, activeModifiers))
+                            if (ShortcutManager.Instance.ShouldConsumeKey(vkCode))
                             {
                                 // Consume - prevent default behavior (e.g., cursor movement for arrow keys)
                                 return (IntPtr)1;
@@ -218,68 +199,6 @@ namespace WindowsHelper
             return CallNextHookEx(hookId, nCode, wParam, lParam);
         }
 
-        private bool IsModifierDown(uint vkCode)
-        {
-            return vkCode switch
-            {
-                KeycodeConstants.VkLShift => leftShiftPressed,
-                KeycodeConstants.VkRShift => rightShiftPressed,
-                KeycodeConstants.VkLControl => leftCtrlPressed,
-                KeycodeConstants.VkRControl => rightCtrlPressed,
-                KeycodeConstants.VkLMenu => leftAltPressed,
-                KeycodeConstants.VkRMenu => rightAltPressed,
-                KeycodeConstants.VkLWin => leftWinPressed,
-                KeycodeConstants.VkRWin => rightWinPressed,
-                _ => false
-            };
-        }
-
-        private HashSet<int> GetActiveModifierKeyCodes()
-        {
-            var active = new HashSet<int>();
-            if (leftShiftPressed) active.Add(KeycodeConstants.VkLShift);
-            if (rightShiftPressed) active.Add(KeycodeConstants.VkRShift);
-            if (leftCtrlPressed) active.Add(KeycodeConstants.VkLControl);
-            if (rightCtrlPressed) active.Add(KeycodeConstants.VkRControl);
-            if (leftAltPressed) active.Add(KeycodeConstants.VkLMenu);
-            if (rightAltPressed) active.Add(KeycodeConstants.VkRMenu);
-            if (leftWinPressed) active.Add(KeycodeConstants.VkLWin);
-            if (rightWinPressed) active.Add(KeycodeConstants.VkRWin);
-            return active;
-        }
-
-        private void UpdateModifierState(uint vkCode, bool isPressed)
-        {
-            switch (vkCode)
-            {
-                // Handle left/right specific codes (what Windows low-level hooks actually send)
-                case KeycodeConstants.VkLShift:
-                    leftShiftPressed = isPressed;
-                    break;
-                case KeycodeConstants.VkRShift:
-                    rightShiftPressed = isPressed;
-                    break;
-                case KeycodeConstants.VkLControl:
-                    leftCtrlPressed = isPressed;
-                    break;
-                case KeycodeConstants.VkRControl:
-                    rightCtrlPressed = isPressed;
-                    break;
-                case KeycodeConstants.VkLMenu:
-                    leftAltPressed = isPressed;
-                    break;
-                case KeycodeConstants.VkRMenu:
-                    rightAltPressed = isPressed;
-                    break;
-                case KeycodeConstants.VkLWin:
-                    leftWinPressed = isPressed;
-                    break;
-                case KeycodeConstants.VkRWin:
-                    rightWinPressed = isPressed;
-                    break;
-            }
-        }
-
         private bool IsModifierKey(uint vkCode)
         {
             return KeycodeConstants.ModifierKeyCodeSet.Contains((int)vkCode);
@@ -287,6 +206,7 @@ namespace WindowsHelper
 
         private void EmitKeyEvent(HelperEventType type, int keyCode)
         {
+            var modifiers = ShortcutManager.Instance.GetModifierState();
             var keyEvent = new HelperEvent
             {
                 Type = type,
@@ -295,10 +215,10 @@ namespace WindowsHelper
                 {
                     Key = null,
                     KeyCode = keyCode,
-                    AltKey = altPressed,
-                    CtrlKey = ctrlPressed,
-                    ShiftKey = shiftPressed,
-                    MetaKey = winPressed,
+                    AltKey = modifiers.Alt,
+                    CtrlKey = modifiers.Ctrl,
+                    ShiftKey = modifiers.Shift,
+                    MetaKey = modifiers.Win,
                     FnKeyPressed = false // Windows doesn't have standard Fn key detection
                 }
             };
@@ -306,7 +226,7 @@ namespace WindowsHelper
             KeyEventOccurred?.Invoke(this, keyEvent);
         }
 
-        private void EmitResyncKeyEvents(ResyncResult resyncResult, int? excludeKeyCode)
+        private void EmitResyncKeyEvents(ShortcutManager.KeyResyncResult resyncResult, int? excludeKeyCode)
         {
             foreach (var keyCode in resyncResult.ClearedModifiers)
             {
@@ -320,11 +240,6 @@ namespace WindowsHelper
                 EmitKeyEvent(HelperEventType.KeyUp, keyCode);
             }
 
-            foreach (var keyCode in resyncResult.AddedModifiers)
-            {
-                if (keyCode == excludeKeyCode) continue;
-                EmitKeyEvent(HelperEventType.KeyDown, keyCode);
-            }
         }
 
         private void LogToStderr(string message)
@@ -332,66 +247,5 @@ namespace WindowsHelper
             HelperLogger.LogToStderr($"[ShortcutMonitor] {message}");
         }
 
-        /// <summary>
-        /// Check if a key is actually pressed using GetAsyncKeyState.
-        /// </summary>
-        private bool IsKeyActuallyPressed(int vkCode)
-        {
-            // High-order bit is set if key is currently down
-            return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
-        }
-
-        private sealed class ResyncResult
-        {
-            public List<int> ClearedModifiers { get; } = new();
-            public List<int> AddedModifiers { get; } = new();
-            public List<int> ClearedRegularKeys { get; set; } = new();
-        }
-
-        /// <summary>
-        /// Validate that all tracked key states match actual OS state.
-        /// If any key is not actually pressed, resync state and return details.
-        /// This prevents stuck keys from blocking shortcuts.
-        /// </summary>
-        private ResyncResult ResyncKeyState()
-        {
-            var result = new ResyncResult();
-
-            void ResyncModifier(int vkCode, ref bool trackedState, string name)
-            {
-                var isPressed = IsKeyActuallyPressed(vkCode);
-                if (isPressed && !trackedState)
-                {
-                    LogToStderr($"Resync: {name} was missing, setting");
-                    trackedState = true;
-                    result.AddedModifiers.Add(vkCode);
-                }
-                else if (!isPressed && trackedState)
-                {
-                    LogToStderr($"Resync: {name} was stuck, clearing");
-                    trackedState = false;
-                    result.ClearedModifiers.Add(vkCode);
-                }
-            }
-
-            ResyncModifier(KeycodeConstants.VkLShift, ref leftShiftPressed, "leftShift");
-            ResyncModifier(KeycodeConstants.VkRShift, ref rightShiftPressed, "rightShift");
-            ResyncModifier(KeycodeConstants.VkLControl, ref leftCtrlPressed, "leftCtrl");
-            ResyncModifier(KeycodeConstants.VkRControl, ref rightCtrlPressed, "rightCtrl");
-            ResyncModifier(KeycodeConstants.VkLMenu, ref leftAltPressed, "leftAlt");
-            ResyncModifier(KeycodeConstants.VkRMenu, ref rightAltPressed, "rightAlt");
-            ResyncModifier(KeycodeConstants.VkLWin, ref leftWinPressed, "leftWin");
-            ResyncModifier(KeycodeConstants.VkRWin, ref rightWinPressed, "rightWin");
-
-            // Validate regular keys tracked in ShortcutManager
-            var staleKeys = ShortcutManager.Instance.ValidateAndClearStaleKeys();
-            if (staleKeys.Count > 0)
-            {
-                LogToStderr($"Resync: Regular keys were stuck, cleared: [{string.Join(", ", staleKeys)}]");
-                result.ClearedRegularKeys = staleKeys;
-            }
-
-            return result;
-        }
     }
 }

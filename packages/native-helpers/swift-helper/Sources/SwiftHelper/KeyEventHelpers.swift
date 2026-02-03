@@ -16,7 +16,7 @@ func buildKeyPayload(keyName: String?, keyCode: Int?, event: CGEvent) -> KeyEven
         shiftKey: event.flags.contains(.maskShift),
         metaKey: event.flags.contains(.maskCommand),
         keyCode: keyCode,
-        fnKeyPressed: ShortcutManager.shared.isModifierPressed(63)
+        fnKeyPressed: ShortcutManager.shared.isModifierPressed(fnKeyCode)
     )
 }
 
@@ -52,10 +52,5 @@ func emitResyncKeyEvents(
     for keyCode in resyncResult.clearedRegularKeys {
         if keyCode == keyCodeToExclude { continue }
         emitHelperEvent(helper, type: "keyUp", keyName: nil, keyCode: keyCode, event: event)
-    }
-
-    for keyCode in resyncResult.addedModifiers {
-        if keyCode == keyCodeToExclude { continue }
-        emitHelperEvent(helper, type: "keyDown", keyName: nil, keyCode: keyCode, event: event)
     }
 }
