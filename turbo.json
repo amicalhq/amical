@@ -54,7 +54,7 @@
       "dependsOn": ["format:check"]
     },
     "type:check": {
-      "dependsOn": ["^type:check"]
+      "dependsOn": ["^build", "^type:check"]
     },
     "dev": {
       "dependsOn": ["^build"],
