@@ -3,18 +3,21 @@ import { toast } from "sonner";
 
 export interface SyncProviderConfig {
   noteId: number;
+  onSaveError?: () => void;
 }
 
 export class NoteSyncProvider {
   private ydoc: Y.Doc;
   private text: Y.Text;
   private noteId: number;
+  private onSaveError: (() => void) | undefined;
   private destroyed = false;
   private updateHandler: ((update: Uint8Array, origin: unknown) => void) | null =
     null;
 
   constructor(config: SyncProviderConfig) {
     this.noteId = config.noteId;
+    this.onSaveError = config.onSaveError;
 
     // Initialize Y.Doc and Y.Text
     this.ydoc = new Y.Doc();
@@ -44,7 +47,11 @@ export class NoteSyncProvider {
       } catch (error) {
         if (!this.destroyed) {
           console.error("Failed to save yjs update:", error);
-          toast.error("Failed to save changes");
+          if (this.onSaveError) {
+            this.onSaveError();
+          } else {
+            toast.error("Failed to save changes");
+          }
         }
       }
     };

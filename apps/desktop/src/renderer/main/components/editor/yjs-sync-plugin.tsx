@@ -4,6 +4,7 @@ import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
 import type * as Y from "yjs";
 import { toast } from "sonner";
 import { debounce } from "@/renderer/main/utils/debounce";
+import { useTranslation } from "react-i18next";
 
 interface YjsSyncPluginProps {
   yText: Y.Text;
@@ -14,6 +15,7 @@ export function YjsSyncPlugin({
   yText,
   onSyncStatusChange,
 }: YjsSyncPluginProps): null {
+  const { t } = useTranslation();
   const [editor] = useLexicalComposerContext();
   const isUpdatingFromYjsRef = useRef(false);
   const isUpdatingFromLexicalRef = useRef(false);
@@ -105,7 +107,7 @@ export function YjsSyncPlugin({
       }
 
       toast.success(
-        "Your notes have been upgraded to rich notes with markdown formatting.",
+        t("settings.notes.toast.upgradedToRichNotes"),
       );
 
       isMigratingRef.current = false;

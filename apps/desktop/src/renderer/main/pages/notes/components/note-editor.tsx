@@ -27,6 +27,8 @@ import { NoteSyncProvider } from "@/renderer/main/providers/sync-provider";
 import { YjsSyncPlugin } from "@/renderer/main/components/editor/yjs-sync-plugin";
 import { CodeBlockShortcutPlugin } from "@/renderer/main/components/editor/code-block-plugin";
 import { ChecklistShortcutPlugin } from "@/renderer/main/components/editor/checklist-shortcut-plugin";
+import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface NoteEditorProps {
   noteId: number;
@@ -175,6 +177,7 @@ export function NoteEditor({
   onSyncStatusChange,
   onReady,
 }: NoteEditorProps): React.ReactNode {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
   const [syncProvider, setSyncProvider] = useState<NoteSyncProvider | null>(
     null,
@@ -182,6 +185,9 @@ export function NoteEditor({
   const providerRef = useRef<NoteSyncProvider | null>(null);
   const destroyQueueRef = useRef<Array<NoteSyncProvider>>([]);
   const onReadyCalledRef = useRef(false);
+  const onSaveErrorRef = useRef(() =>
+    toast.error(t("settings.notes.toast.saveFailed")),
+  );
 
   // Handle sync status changes and propagate to parent
   const handleSyncStatusChange = useCallback(
@@ -195,6 +201,11 @@ export function NoteEditor({
   useEffect(() => {
     onReadyCalledRef.current = false;
   }, [noteId]);
+
+  useEffect(() => {
+    onSaveErrorRef.current = () =>
+      toast.error(t("settings.notes.toast.saveFailed"));
+  }, [t]);
 
   // Notify parent when editor is ready
   useEffect(() => {
@@ -236,6 +247,7 @@ export function NoteEditor({
 
       const provider = new NoteSyncProvider({
         noteId,
+        onSaveError: () => onSaveErrorRef.current(),
       });
 
       providerRef.current = provider;
@@ -299,10 +311,10 @@ export function NoteEditor({
           contentEditable={
             <ContentEditable
               className="min-h-[500px] px-4 py-2 outline-none text-base leading-relaxed"
-              aria-placeholder="Start writing your note..."
+              aria-placeholder={t("settings.notes.note.bodyPlaceholder")}
               placeholder={
                 <div className="absolute top-2 left-4 text-muted-foreground pointer-events-none">
-                  Start writing your note...
+                  {t("settings.notes.note.bodyPlaceholder")}
                 </div>
               }
             />

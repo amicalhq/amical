@@ -78,28 +78,25 @@ export type NotePageUIProps = {
   children?: React.ReactNode;
 };
 
-function formatRelativeTime(date: Date): string {
+function formatRelativeTime(date: Date, locale: string): string {
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
 
-  // Less than 1 minute
-  if (diffMins < 1) {
-    return "now";
+  if (diffSeconds < 60) {
+    return rtf.format(0, "second");
   }
 
-  // Less than 1 hour
+  const diffMins = Math.floor(diffSeconds / 60);
   if (diffMins < 60) {
-    return `${diffMins} min${diffMins === 1 ? "" : "s"} ago`;
+    return rtf.format(-diffMins, "minute");
   }
 
-  // Less than 24 hours
+  const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) {
-    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+    return rtf.format(-diffHours, "hour");
   }
 
-  // Check if yesterday
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   if (
@@ -107,15 +104,14 @@ function formatRelativeTime(date: Date): string {
     date.getMonth() === yesterday.getMonth() &&
     date.getFullYear() === yesterday.getFullYear()
   ) {
-    return "yesterday";
+    return rtf.format(-1, "day");
   }
 
-  // Older than yesterday - show date
-  return date.toLocaleDateString("en-GB", {
+  return new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "short",
     year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
+  }).format(date);
 }
 
 export default function Note({
@@ -130,7 +126,7 @@ export default function Note({
   isDeleting = false,
   children,
 }: NotePageUIProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Local UI state
   const [shareEmail, setShareEmail] = useState("");
   const [accessLevel, setAccessLevel] = useState("can-read");
@@ -301,6 +297,7 @@ export default function Note({
                     localEditTime && localEditTime > lastEditDate
                       ? localEditTime
                       : lastEditDate,
+                    i18n.language,
                   ),
                 })}
               </span>

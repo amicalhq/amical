@@ -3,8 +3,10 @@ import { NoteCard } from "./note-card";
 import { api } from "@/trpc/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 export function NotesList() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const { data: notes, isLoading } = api.notes.getNotes.useQuery({
@@ -28,7 +30,7 @@ export function NotesList() {
     return (
       <div className="container mx-auto p-6 max-w-5xl">
         <div className="mb-8">
-          <h1 className="text-xl font-bold">Notes</h1>
+          <h1 className="text-xl font-bold">{t("settings.nav.notes.title")}</h1>
         </div>
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
@@ -49,7 +51,7 @@ export function NotesList() {
     <div className="container mx-auto p-6 max-w-5xl">
       {/* Header Section */}
       <div className="mb-8">
-        <h1 className="text-xl font-bold">Notes</h1>
+        <h1 className="text-xl font-bold">{t("settings.nav.notes.title")}</h1>
       </div>
 
       {formattedNotes.length > 0 && (
@@ -64,9 +66,11 @@ export function NotesList() {
         <div className="border border-dashed rounded-lg p-6 text-center space-y-4">
           <NotebookText className="w-8 h-8 text-muted-foreground mx-auto" />
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">No notes yet</p>
+            <p className="text-sm text-muted-foreground">
+              {t("settings.notes.empty.title")}
+            </p>
             <p className="text-xs text-muted-foreground">
-              Click "New Note" in the sidebar to create your first note
+              {t("settings.notes.empty.description")}
             </p>
           </div>
         </div>

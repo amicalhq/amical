@@ -245,10 +245,10 @@ export default function PreferencesSettingsPage() {
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label className="text-base font-medium text-foreground">
-                  Auto-dictate on new note
+                  {t("settings.preferences.autoDictateOnNewNote.label")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Automatically start dictation when creating a new note
+                  {t("settings.preferences.autoDictateOnNewNote.description")}
                 </p>
               </div>
               <Switch

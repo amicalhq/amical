@@ -4,8 +4,10 @@ import { useNavigate } from "@tanstack/react-router";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export function CreateNoteButton() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const utils = api.useUtils();
   const preferencesQuery = api.settings.getPreferences.useQuery();
@@ -31,21 +33,23 @@ export function CreateNoteButton() {
       });
     },
     onError: (error) => {
-      toast.error("Failed to create note: " + error.message);
+      toast.error(
+        t("settings.notes.toast.createFailed", { message: error.message }),
+      );
     },
   });
 
   const onCreateNote = useCallback(() => {
     if (createNoteMutation.isPending) return;
-    const dateStr = new Date().toLocaleDateString("en-GB", {
+    const dateStr = new Date().toLocaleDateString(i18n.language, {
       day: "numeric",
       month: "short",
     });
     createNoteMutation.mutate({
-      title: `Note - ${dateStr}`,
+      title: t("settings.notes.defaultTitleWithDate", { date: dateStr }),
       initialContent: "",
     });
-  }, [createNoteMutation]);
+  }, [createNoteMutation, i18n.language, t]);
 
   // Keyboard shortcut: Cmd+N (Mac) / Ctrl+N (Windows/Linux)
   useEffect(() => {
@@ -69,7 +73,7 @@ export function CreateNoteButton() {
       disabled={createNoteMutation.isPending}
     >
       <Plus />
-      <span>New Note</span>
+      <span>{t("settings.notes.create")}</span>
       <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground ml-auto">
         {shortcutDisplay}
       </kbd>
