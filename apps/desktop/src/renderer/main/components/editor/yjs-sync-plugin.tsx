@@ -106,9 +106,7 @@ export function YjsSyncPlugin({
         isUpdatingFromLexicalRef.current = false;
       }
 
-      toast.success(
-        t("settings.notes.toast.upgradedToRichNotes"),
-      );
+      toast.success(t("settings.notes.toast.upgradedToRichNotes"));
 
       isMigratingRef.current = false;
     };

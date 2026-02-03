@@ -8,7 +8,6 @@ import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
-import { useRecording } from "@/hooks/useRecording";
 
 type NotePageProps = {
   noteId: string;
@@ -24,7 +23,7 @@ export default function NotePage({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const utils = api.useUtils();
-  const { startRecording } = useRecording();
+  const startRecordingMutation = api.recording.signalStart.useMutation();
 
   // State
   const [noteTitle, setNoteTitle] = useState("");
@@ -126,11 +125,11 @@ export default function NotePage({
   useEffect(() => {
     if (editorReady && autoRecord && !autoRecordTriggeredRef.current) {
       autoRecordTriggeredRef.current = true;
-      startRecording().catch((error) => {
+      startRecordingMutation.mutateAsync().catch((error) => {
         console.error("Failed to auto-start recording:", error);
       });
     }
-  }, [editorReady, autoRecord, startRecording]);
+  }, [editorReady, autoRecord, startRecordingMutation]);
 
   // Handle title change
   const handleTitleChange = useCallback(

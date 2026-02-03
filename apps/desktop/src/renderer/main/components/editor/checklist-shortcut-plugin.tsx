@@ -1,9 +1,6 @@
 import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import {
-  $createListItemNode,
-  $createListNode,
-} from "@lexical/list";
+import { $createListItemNode, $createListNode } from "@lexical/list";
 import {
   $getSelection,
   $isRangeSelection,

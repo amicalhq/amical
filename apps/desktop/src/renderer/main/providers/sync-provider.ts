@@ -12,8 +12,9 @@ export class NoteSyncProvider {
   private noteId: number;
   private onSaveError: (() => void) | undefined;
   private destroyed = false;
-  private updateHandler: ((update: Uint8Array, origin: unknown) => void) | null =
-    null;
+  private updateHandler:
+    | ((update: Uint8Array, origin: unknown) => void)
+    | null = null;
 
   constructor(config: SyncProviderConfig) {
     this.noteId = config.noteId;
