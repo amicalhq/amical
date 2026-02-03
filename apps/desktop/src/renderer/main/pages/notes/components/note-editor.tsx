@@ -180,6 +180,7 @@ export function NoteEditor({
     null,
   );
   const providerRef = useRef<NoteSyncProvider | null>(null);
+  const destroyQueueRef = useRef<Array<NoteSyncProvider>>([]);
   const onReadyCalledRef = useRef(false);
 
   // Handle sync status changes and propagate to parent
@@ -203,6 +204,21 @@ export function NoteEditor({
     }
   }, [isLoading, syncProvider, onReady]);
 
+  // After `syncProvider` changes (either unmounting or swapping to a new
+  // provider), it is safe to destroy the previous provider(s). This ensures
+  // YjsSyncPlugin can flush any pending debounced writes during its cleanup
+  // while the persistence listener is still attached.
+  useEffect(() => {
+    if (destroyQueueRef.current.length === 0) return;
+
+    const providersToDestroy = destroyQueueRef.current;
+    destroyQueueRef.current = [];
+
+    providersToDestroy.forEach((provider) => {
+      provider.destroy();
+    });
+  }, [syncProvider]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -211,9 +227,10 @@ export function NoteEditor({
       setIsLoading(true);
       setSyncProvider(null);
 
-      // Clean up previous provider if noteId changed
+      // Queue the previous provider for destruction after unmount. This avoids
+      // dropping any pending debounced flushes when switching notes quickly.
       if (providerRef.current) {
-        providerRef.current.destroy();
+        destroyQueueRef.current.push(providerRef.current);
         providerRef.current = null;
       }
 
@@ -239,12 +256,23 @@ export function NoteEditor({
 
     return () => {
       mounted = false;
+    };
+  }, [noteId]);
+
+  // Clean up providers on unmount.
+  useEffect(() => {
+    return () => {
       if (providerRef.current) {
         providerRef.current.destroy();
         providerRef.current = null;
       }
+
+      destroyQueueRef.current.forEach((provider) => {
+        provider.destroy();
+      });
+      destroyQueueRef.current = [];
     };
-  }, [noteId]);
+  }, []);
 
   const initialConfig = useMemo(
     () => ({
