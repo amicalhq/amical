@@ -16,6 +16,8 @@ declare const WIDGET_WINDOW_VITE_NAME: string;
 declare const ONBOARDING_WINDOW_VITE_NAME: string;
 
 export class WindowManager {
+  private static readonly WIDGET_MAX_WIDTH = 640 as const;
+  private static readonly WIDGET_MAX_HEIGHT = 320 as const;
   private mainWindow: BrowserWindow | null = null;
   private widgetWindow: BrowserWindow | null = null;
   private onboardingWindow: BrowserWindow | null = null;
@@ -50,11 +52,18 @@ export class WindowManager {
   /** Calculate widget bounds with edge inset applied for taskbar auto-hide */
   private getWidgetBounds(workArea: Electron.Rectangle): Electron.Rectangle {
     const inset = this.widgetEdgeInset;
+    const maxWidth = Math.max(0, workArea.width - inset * 2);
+    const maxHeight = Math.max(0, workArea.height - inset * 2);
+    const width = Math.min(WindowManager.WIDGET_MAX_WIDTH, maxWidth);
+    const height = Math.min(WindowManager.WIDGET_MAX_HEIGHT, maxHeight);
+    const x = workArea.x + Math.round((workArea.width - width) / 2);
+    const y = workArea.y + workArea.height - height - inset;
+
     return {
-      x: workArea.x + inset,
-      y: workArea.y + inset,
-      width: workArea.width - inset * 2,
-      height: workArea.height - inset * 2,
+      x,
+      y,
+      width,
+      height,
     };
   }
 
