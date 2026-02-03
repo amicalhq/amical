@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Keep aligned with .github/workflows/release.yml
+          node-version: "24.1.0"
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          GGML_NATIVE: OFF
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm type:check
+
+  build_desktop:
+    name: Build Desktop (${{ matrix.os }})
+    needs: typecheck
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            runner: macos-latest
+          - os: windows
+            runner: windows-2025
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Keep aligned with .github/workflows/release.yml
+          node-version: "24.1.0"
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          GGML_NATIVE: OFF
+        run: pnpm install --frozen-lockfile
+
+      - name: Build whisper wrapper JS
+        run: pnpm --filter @amical/whisper-wrapper build
+
+      - name: Build whisper native binaries
+        env:
+          GGML_NATIVE: OFF
+        run: pnpm --filter @amical/whisper-wrapper build:native
+
+      - name: Download Node.js binaries
+        working-directory: apps/desktop
+        run: pnpm download-node
+
+      - name: Package desktop app (no signing)
+        working-directory: apps/desktop
+        env:
+          SKIP_CODESIGNING: "true"
+          SKIP_NOTARIZATION: "true"
+          TELEMETRY_ENABLED: "false"
+          POSTHOG_HOST: https://app.posthog.com
+          POSTHOG_API_KEY: ""
+          FEEDBACK_SURVEY_ID: ""
+          AUTH_CLIENT_ID: ""
+          AUTHORIZATION_ENDPOINT: ""
+          AUTH_TOKEN_ENDPOINT: ""
+          API_ENDPOINT: ""
+        run: pnpm package
