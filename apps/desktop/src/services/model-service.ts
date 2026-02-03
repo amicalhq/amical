@@ -4,7 +4,7 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { app } from "electron";
 import {
-  AvailableWhisperModel,
+  AvailableSpeechModel,
   DownloadProgress,
   ModelManagerState,
   AVAILABLE_MODELS,
@@ -111,8 +111,11 @@ class ModelService extends EventEmitter {
   // Initialize and validate models on startup
   async initialize(): Promise<void> {
     try {
-      // Sync Whisper models with filesystem
-      const whisperModelsData = AVAILABLE_MODELS.map((model) => ({
+      // Sync Whisper models with filesystem (only offline models have files)
+      const offlineModels = AVAILABLE_MODELS.filter(
+        (m) => m.setup === "offline",
+      );
+      const whisperModelsData = offlineModels.map((model) => ({
         id: model.id,
         name: model.name,
         description: model.description,
@@ -144,7 +147,7 @@ class ModelService extends EventEmitter {
         );
 
         // Check if it's a cloud model and user is authenticated
-        if (availableModel?.setup === "cloud") {
+        if (availableModel?.setup === "amical") {
           const authService = AuthService.getInstance();
           const isAuthenticated = await authService.isAuthenticated();
 
@@ -256,7 +259,7 @@ class ModelService extends EventEmitter {
             (m) => m.id === selectedModelId,
           );
 
-          if (availableModel?.setup === "cloud") {
+          if (availableModel?.setup === "amical") {
             // Cloud model selected but user logged out - auto-switch to first downloaded local model
             const downloadedModels = await this.getValidDownloadedModels();
             const downloadedModelIds = Object.keys(downloadedModels);
@@ -325,7 +328,7 @@ class ModelService extends EventEmitter {
   }
 
   // Get all available models from manifest
-  getAvailableModels(): AvailableWhisperModel[] {
+  getAvailableModels(): AvailableSpeechModel[] {
     return AVAILABLE_MODELS;
   }
 
@@ -364,11 +367,14 @@ class ModelService extends EventEmitter {
     return Array.from(this.state.activeDownloads.values());
   }
 
-  // Download a model
+  // Download a model (only offline models can be downloaded)
   async downloadModel(modelId: string): Promise<void> {
     const model = AVAILABLE_MODELS.find((m) => m.id === modelId);
     if (!model) {
       throw new Error(`Model not found: ${modelId}`);
+    }
+    if (model.setup !== "offline") {
+      throw new Error(`Model ${modelId} is not a downloadable offline model`);
     }
 
     if (await this.isModelDownloaded(modelId)) {
@@ -758,7 +764,7 @@ class ModelService extends EventEmitter {
       // Check if it's a cloud model
       const availableModel = AVAILABLE_MODELS.find((m) => m.id === modelId);
 
-      if (availableModel?.setup === "cloud") {
+      if (availableModel?.setup === "amical") {
         // Cloud model - check authentication
         const authService = AuthService.getInstance();
         const isAuthenticated = await authService.isAuthenticated();
@@ -768,6 +774,12 @@ class ModelService extends EventEmitter {
         }
 
         logger.main.info("Selecting cloud model", { modelId });
+      } else if (availableModel?.setup === "api") {
+        // API model - no download needed, just log selection
+        logger.main.info("Selecting API model", {
+          modelId,
+          provider: availableModel.provider,
+        });
       } else {
         // Offline model - must be downloaded
         const downloadedModels = await this.getValidDownloadedModels();
@@ -1122,6 +1134,98 @@ class ModelService extends EventEmitter {
     }
   }
 
+  // --- Transcription Provider Validation ---
+
+  async validateTranscriptionOpenAIConnection(
+    apiKey: string,
+  ): Promise<ValidationResult> {
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": getUserAgent(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          (errorData as any)?.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        return { success: false, error: errorMessage };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Connection failed",
+      };
+    }
+  }
+
+  async validateTranscriptionGroqConnection(
+    apiKey: string,
+  ): Promise<ValidationResult> {
+    try {
+      const response = await fetch(
+        "https://api.groq.com/openai/v1/models",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "User-Agent": getUserAgent(),
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          (errorData as any)?.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        return { success: false, error: errorMessage };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Connection failed",
+      };
+    }
+  }
+
+  async validateTranscriptionGrokConnection(
+    apiKey: string,
+  ): Promise<ValidationResult> {
+    try {
+      const response = await fetch("https://api.x.ai/v1/models", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": getUserAgent(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          (errorData as any)?.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        return { success: false, error: errorMessage };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Connection failed",
+      };
+    }
+  }
+
   /**
    * Fetch available models from OpenAI
    */
@@ -1370,11 +1474,12 @@ class ModelService extends EventEmitter {
       const availableModel = AVAILABLE_MODELS.find(
         (m) => m.id === defaultSpeechModel,
       );
-      const isAmicalModel = availableModel?.provider === "Amical Cloud";
+      const isNonLocalModel =
+        availableModel?.setup === "amical" || availableModel?.setup === "api";
       const existsInDb = await modelExists("local-whisper", defaultSpeechModel);
 
-      // Amical cloud models are always valid; local models must exist in DB
-      if (!isAmicalModel && !existsInDb) {
+      // Amical cloud / API models are always valid; local models must exist in DB
+      if (!isNonLocalModel && !existsInDb) {
         logger.main.info("Clearing invalid default speech model", {
           modelId: defaultSpeechModel,
         });

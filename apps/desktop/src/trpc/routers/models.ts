@@ -2,7 +2,7 @@ import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
 import type {
-  AvailableWhisperModel,
+  AvailableSpeechModel,
   DownloadProgress,
 } from "../../constants/models";
 import type { Model } from "../../db/schema";
@@ -28,7 +28,7 @@ export const modelsRouter = createRouter({
       // For speech models (local whisper)
       if (input.type === "speech") {
         // Return all available whisper models as Model type
-        // We need to convert from AvailableWhisperModel to Model format
+        // We need to convert from AvailableSpeechModel to Model format
         const availableModels = modelService.getAvailableModels();
         const downloadedModels = await modelService.getDownloadedModels();
 
@@ -44,7 +44,7 @@ export const modelsRouter = createRouter({
             return {
               ...downloaded,
               setup: m.setup,
-            } as Model & { setup: "offline" | "cloud" };
+            } as Model & { setup: "offline" | "amical" | "api" };
           }
           // Create a partial Model for non-downloaded models
           return {
@@ -52,7 +52,7 @@ export const modelsRouter = createRouter({
             name: m.name,
             provider: m.provider,
             type: "speech" as const,
-            size: m.sizeFormatted,
+            size: m.setup === "offline" ? m.sizeFormatted : m.setup === "api" ? "API" : "Cloud",
             context: null,
             description: m.description,
             localPath: null,
@@ -65,16 +65,29 @@ export const modelsRouter = createRouter({
             createdAt: new Date(),
             updatedAt: new Date(),
             setup: m.setup,
-          } as Model & { setup: "offline" | "cloud" };
+          } as Model & { setup: "offline" | "amical" | "api" };
         });
 
         // Apply selectable filtering for dropdown/combobox
         if (input.selectable) {
+          // Check transcription API key status for API models
+          const settingsService = ctx.serviceManager.getService("settingsService");
+          const transcriptionConfig = await settingsService?.getTranscriptionProvidersConfig();
+          const apiKeyStatus: Record<string, boolean> = {
+            OpenAI: !!transcriptionConfig?.openAI?.apiKey,
+            Groq: !!transcriptionConfig?.groq?.apiKey,
+            Grok: !!transcriptionConfig?.grok?.apiKey,
+          };
+
           models = models.filter((m) => {
-            const model = m as Model & { setup: "offline" | "cloud" };
+            const model = m as Model & { setup: "offline" | "amical" | "api" };
             // Filter cloud models if not authenticated
-            if (model.setup === "cloud") {
+            if (model.setup === "amical") {
               return isAuthenticated;
+            }
+            // Filter API models by whether their provider's API key is configured
+            if (model.setup === "api") {
+              return apiKeyStatus[model.provider] ?? false;
             }
             // Filter local models that aren't downloaded
             return model.downloadedAt !== null;
@@ -112,7 +125,7 @@ export const modelsRouter = createRouter({
 
   // Legacy endpoints (kept for backward compatibility)
   getAvailableModels: procedure.query(
-    async ({ ctx }): Promise<AvailableWhisperModel[]> => {
+    async ({ ctx }): Promise<AvailableSpeechModel[]> => {
       const modelService = ctx.serviceManager.getService("modelService");
       return modelService?.getAvailableModels() || [];
     },
@@ -279,6 +292,145 @@ export const modelsRouter = createRouter({
       }
       return await modelService.validateGoogleConnection(input.apiKey);
     }),
+
+  // Transcription provider validation endpoints
+  validateTranscriptionOpenAIConnection: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateTranscriptionOpenAIConnection(
+        input.apiKey,
+      );
+    }),
+
+  validateTranscriptionGroqConnection: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateTranscriptionGroqConnection(
+        input.apiKey,
+      );
+    }),
+
+  validateTranscriptionGrokConnection: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateTranscriptionGrokConnection(
+        input.apiKey,
+      );
+    }),
+
+  // Transcription provider removal endpoints
+  removeTranscriptionOpenAIProvider: procedure.mutation(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+    const currentConfig =
+      await settingsService.getTranscriptionProvidersConfig();
+    const updatedConfig = { ...currentConfig };
+    delete updatedConfig.openAI;
+    await settingsService.setTranscriptionProvidersConfig(updatedConfig);
+
+    // Clear cached API providers so removed key is no longer used
+    ctx.serviceManager
+      .getService("transcriptionService")
+      ?.clearApiProviderCache();
+
+    // Clear selected model if it's an OpenAI transcription model
+    const modelService = ctx.serviceManager.getService("modelService");
+    const { AVAILABLE_MODELS } = await import("../../constants/models");
+    const selectedModelId = await modelService?.getSelectedModel();
+    if (selectedModelId) {
+      const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+      if (model?.setup === "api" && model.provider === "OpenAI") {
+        await modelService?.setSelectedModel(null);
+      }
+    }
+
+    return true;
+  }),
+
+  removeTranscriptionGroqProvider: procedure.mutation(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+    const currentConfig =
+      await settingsService.getTranscriptionProvidersConfig();
+    const updatedConfig = { ...currentConfig };
+    delete updatedConfig.groq;
+    await settingsService.setTranscriptionProvidersConfig(updatedConfig);
+
+    ctx.serviceManager
+      .getService("transcriptionService")
+      ?.clearApiProviderCache();
+
+    const modelService = ctx.serviceManager.getService("modelService");
+    const { AVAILABLE_MODELS } = await import("../../constants/models");
+    const selectedModelId = await modelService?.getSelectedModel();
+    if (selectedModelId) {
+      const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+      if (model?.setup === "api" && model.provider === "Groq") {
+        await modelService?.setSelectedModel(null);
+      }
+    }
+
+    return true;
+  }),
+
+  removeTranscriptionGrokProvider: procedure.mutation(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+    const currentConfig =
+      await settingsService.getTranscriptionProvidersConfig();
+    const updatedConfig = { ...currentConfig };
+    delete updatedConfig.grok;
+    await settingsService.setTranscriptionProvidersConfig(updatedConfig);
+
+    ctx.serviceManager
+      .getService("transcriptionService")
+      ?.clearApiProviderCache();
+
+    const modelService = ctx.serviceManager.getService("modelService");
+    const { AVAILABLE_MODELS } = await import("../../constants/models");
+    const selectedModelId = await modelService?.getSelectedModel();
+    if (selectedModelId) {
+      const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+      if (model?.setup === "api" && model.provider === "Grok") {
+        await modelService?.setSelectedModel(null);
+      }
+    }
+
+    return true;
+  }),
+
+  // Transcription provider status query
+  getTranscriptionProviderStatus: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+    const config =
+      await settingsService.getTranscriptionProvidersConfig();
+    return {
+      openAI: !!config?.openAI?.apiKey,
+      groq: !!config?.groq?.apiKey,
+      grok: !!config?.grok?.apiKey,
+    };
+  }),
 
   // Provider model fetching
   fetchOpenRouterModels: procedure

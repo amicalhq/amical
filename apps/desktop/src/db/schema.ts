@@ -180,6 +180,18 @@ export interface AppSettingsData {
     defaultEmbeddingModel?: string; // Model ID for default embedding model
   };
 
+  transcriptionProvidersConfig?: {
+    openAI?: {
+      apiKey: string;
+    };
+    groq?: {
+      apiKey: string;
+    };
+    grok?: {
+      apiKey: string;
+    };
+  };
+
   dictation?: {
     autoDetectEnabled: boolean;
     selectedLanguage: string; // Required when autoDetectEnabled is false, defaults to "en"

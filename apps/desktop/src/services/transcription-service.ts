@@ -8,6 +8,7 @@ import {
 import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
+import { OpenAITranscriptionProvider } from "../pipeline/providers/transcription/openai-transcription-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
 import { OpenAIFormatter } from "../pipeline/providers/formatting/openai-formatter";
@@ -25,7 +26,13 @@ import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { dialog } from "electron";
-import { AVAILABLE_MODELS } from "../constants/models";
+import { AVAILABLE_MODELS, type OpenAISpeechModel } from "../constants/models";
+
+const TRANSCRIPTION_API_ENDPOINTS: Record<string, string> = {
+  OpenAI: "https://api.openai.com/v1/audio/transcriptions",
+  Groq: "https://api.groq.com/openai/v1/audio/transcriptions",
+  Grok: "https://api.x.ai/v1/audio/transcriptions",
+};
 
 /**
  * Service for audio transcription and optional formatting
@@ -33,6 +40,7 @@ import { AVAILABLE_MODELS } from "../constants/models";
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private cloudProvider: AmicalCloudProvider;
+  private apiProviders = new Map<string, OpenAITranscriptionProvider>();
   private currentProvider: TranscriptionProvider | null = null;
   private streamingSessions = new Map<string, StreamingSession>();
   private vadService: VADService | null;
@@ -82,14 +90,67 @@ export class TranscriptionService {
     const model = AVAILABLE_MODELS.find((m) => m.id === effectiveModelId);
 
     // Use cloud provider for Amical Cloud models
-    if (model?.provider === "Amical Cloud") {
+    if (model?.setup === "amical") {
       this.currentProvider = this.cloudProvider;
       return this.cloudProvider;
     }
 
-    // Default to whisper for all other models
+    // Use API provider for external API models (OpenAI, Groq, Grok)
+    if (model?.setup === "api") {
+      const apiProvider = await this.getOrCreateApiProvider(model);
+      this.currentProvider = apiProvider;
+      return apiProvider;
+    }
+
+    // Default to whisper for offline models
     this.currentProvider = this.whisperProvider;
     return this.whisperProvider;
+  }
+
+  private async getOrCreateApiProvider(
+    model: OpenAISpeechModel,
+  ): Promise<OpenAITranscriptionProvider> {
+    // Return cached provider if it exists
+    const cached = this.apiProviders.get(model.id);
+    if (cached) {
+      return cached;
+    }
+
+    // Get API key from transcriptionProvidersConfig based on provider
+    const config =
+      await this.settingsService.getTranscriptionProvidersConfig();
+    let apiKey: string | undefined;
+
+    if (model.provider === "OpenAI") {
+      apiKey = config?.openAI?.apiKey;
+    } else if (model.provider === "Groq") {
+      apiKey = config?.groq?.apiKey;
+    } else if (model.provider === "Grok") {
+      apiKey = config?.grok?.apiKey;
+    }
+
+    if (!apiKey) {
+      throw new Error(
+        `API key not configured for ${model.provider}. Please set it in Speech settings.`,
+      );
+    }
+
+    const endpoint = TRANSCRIPTION_API_ENDPOINTS[model.provider];
+    if (!endpoint) {
+      throw new Error(
+        `No transcription endpoint configured for provider: ${model.provider}`,
+      );
+    }
+
+    const provider = new OpenAITranscriptionProvider(
+      apiKey,
+      model.apiModelId,
+      endpoint,
+      `${model.provider.toLowerCase()}-transcription`,
+    );
+
+    this.apiProviders.set(model.id, provider);
+    return provider;
   }
 
   async initialize(): Promise<void> {
@@ -98,10 +159,11 @@ export class TranscriptionService {
     const model = selectedModelId
       ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
       : null;
-    const isCloudModel = model?.provider === "Amical Cloud";
+    const isNonLocalModel =
+      model?.setup === "amical" || model?.setup === "api";
 
     // Only preload for local models
-    if (!isCloudModel) {
+    if (!isNonLocalModel) {
       // Check if we should preload Whisper model
       const transcriptionSettings =
         await this.settingsService.getTranscriptionSettings();
@@ -140,7 +202,7 @@ export class TranscriptionService {
       }
     } else {
       logger.transcription.info(
-        "Using cloud model - skipping local model preload",
+        "Using cloud/API model - skipping local model preload",
       );
     }
 
@@ -166,12 +228,21 @@ export class TranscriptionService {
    */
   public async isModelAvailable(): Promise<boolean> {
     try {
-      // Check if selected model is a cloud model (doesn't need download)
+      // Check if selected model is a cloud/API model (doesn't need download)
       const selectedModelId = await this.modelService.getSelectedModel();
       if (selectedModelId) {
         const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
-        if (model?.provider === "Amical Cloud") {
+        if (model?.setup === "amical") {
           return true;
+        }
+        if (model?.setup === "api") {
+          // API models are available if the corresponding API key is set
+          const config =
+            await this.settingsService.getTranscriptionProvidersConfig();
+          if (model.provider === "OpenAI" && config?.openAI?.apiKey) return true;
+          if (model.provider === "Groq" && config?.groq?.apiKey) return true;
+          if (model.provider === "Grok" && config?.grok?.apiKey) return true;
+          return false;
         }
       }
 
@@ -186,10 +257,20 @@ export class TranscriptionService {
   }
 
   /**
+   * Clear cached API providers (e.g., when API keys are updated)
+   */
+  clearApiProviderCache(): void {
+    this.apiProviders.clear();
+  }
+
+  /**
    * Handle model change - load new model if preloading is enabled
    * Uses mutex to serialize concurrent model loads
    */
   async handleModelChange(): Promise<void> {
+    // Clear cached API providers since model or API key may have changed
+    this.apiProviders.clear();
+
     this.modelLoadMutex.runExclusive(async () => {
       try {
         this.modelWasPreloaded = false;
@@ -893,6 +974,7 @@ export class TranscriptionService {
    */
   async dispose(): Promise<void> {
     await this.whisperProvider.dispose();
+    this.apiProviders.clear();
     // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }

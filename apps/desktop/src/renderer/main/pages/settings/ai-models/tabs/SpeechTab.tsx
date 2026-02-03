@@ -52,6 +52,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DownloadProgress } from "@/constants/models";
+import { Accordion } from "@/components/ui/accordion";
+import ProviderAccordion from "../components/provider-accordion";
+import { Key } from "lucide-react";
 import { api } from "@/trpc/react";
 
 const SpeedRating = ({ rating }: { rating: number }) => {
@@ -133,6 +136,8 @@ export default function SpeechTab() {
   const isTranscriptionAvailableQuery =
     api.models.isTranscriptionAvailable.useQuery();
   const selectedModelQuery = api.models.getSelectedModel.useQuery();
+  const transcriptionProviderStatusQuery =
+    api.models.getTranscriptionProviderStatus.useQuery();
 
   const utils = api.useUtils();
 
@@ -347,15 +352,27 @@ export default function SpeechTab() {
   };
 
   const handleSelectModel = async (modelId: string) => {
-    // Check if this is a cloud model
     const model = availableModels.find((m) => m.id === modelId);
-    const isCloudModel = model?.provider === "Amical Cloud";
 
     // If cloud model and not authenticated, show login dialog
-    if (isCloudModel && !isAuthenticated) {
+    if (model?.setup === "amical" && !isAuthenticated) {
       setPendingCloudModel(modelId);
       setShowLoginDialog(true);
       return;
+    }
+
+    // If API model without configured API key, show guidance
+    if (model?.setup === "api") {
+      const hasKey =
+        (model.provider === "OpenAI" && apiKeyStatus.openAI) ||
+        (model.provider === "Groq" && apiKeyStatus.groq) ||
+        (model.provider === "Grok" && apiKeyStatus.grok);
+      if (!hasKey) {
+        toast.error(
+          `Please configure your ${model.provider} API key in the Transcription API Providers section above.`,
+        );
+        return;
+      }
     }
 
     try {
@@ -390,6 +407,11 @@ export default function SpeechTab() {
   const downloadedModels = downloadedModelsQuery.data || {};
   const isTranscriptionAvailable = isTranscriptionAvailableQuery.data || false;
   const selectedModel = selectedModelQuery.data;
+  const apiKeyStatus = transcriptionProviderStatusQuery.data || {
+    openAI: false,
+    groq: false,
+    grok: false,
+  };
 
   if (loading) {
     return (
@@ -408,6 +430,19 @@ export default function SpeechTab() {
             modelType="speech"
             title="Default Speech Model"
           />
+
+          {/* Transcription API Providers */}
+          <div>
+            <Label className="text-lg font-semibold mb-2 block">
+              Transcription API Providers
+            </Label>
+            <Accordion type="multiple" className="w-full">
+              <ProviderAccordion provider="OpenAI" modelType="transcription" />
+              <ProviderAccordion provider="Groq" modelType="transcription" />
+              <ProviderAccordion provider="Grok" modelType="transcription" />
+            </Accordion>
+          </div>
+
           <div>
             <Label className="text-lg font-semibold mb-2 block">
               Available Models
@@ -434,12 +469,23 @@ export default function SpeechTab() {
                         const progress = downloadProgress[model.id];
                         const isDownloading =
                           progress?.status === "downloading";
-                        const isCloudModel = model.provider === "Amical Cloud";
+                        const isCloudModel = model.setup === "amical";
+                        const isApiModel = model.setup === "api";
+                        const isOfflineModel = model.setup === "offline";
 
-                        // Cloud models can be selected if authenticated, local models need to be downloaded
+                        // Check if API model's provider has API key configured
+                        const hasApiKey = isApiModel
+                          ? (model.provider === "OpenAI" && apiKeyStatus.openAI) ||
+                            (model.provider === "Groq" && apiKeyStatus.groq) ||
+                            (model.provider === "Grok" && apiKeyStatus.grok)
+                          : false;
+
+                        // Selection logic based on model setup type
                         const canSelect = isCloudModel
                           ? (isAuthenticated ?? false)
-                          : isDownloaded && isTranscriptionAvailable;
+                          : isApiModel
+                            ? hasApiKey
+                            : isDownloaded && isTranscriptionAvailable;
 
                         return (
                           <TableRow
@@ -548,8 +594,32 @@ export default function SpeechTab() {
                                   </>
                                 )}
 
-                                {/* Local models show download/delete buttons */}
-                                {!isCloudModel &&
+                                {/* API models show key icon with status */}
+                                {isApiModel && (
+                                  <div
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                      hasApiKey
+                                        ? "bg-green-500/10"
+                                        : "bg-muted"
+                                    }`}
+                                    title={
+                                      hasApiKey
+                                        ? "API key configured"
+                                        : "API key required - configure in provider settings above"
+                                    }
+                                  >
+                                    <Key
+                                      className={`w-4 h-4 ${
+                                        hasApiKey
+                                          ? "text-green-500"
+                                          : "text-muted-foreground"
+                                      }`}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Offline models show download/delete buttons */}
+                                {isOfflineModel &&
                                   !isDownloaded &&
                                   !isDownloading && (
                                     <button
@@ -563,7 +633,7 @@ export default function SpeechTab() {
                                     </button>
                                   )}
 
-                                {!isCloudModel &&
+                                {isOfflineModel &&
                                   !isDownloaded &&
                                   isDownloading && (
                                     <div className="relative">
@@ -611,7 +681,7 @@ export default function SpeechTab() {
                                     </div>
                                   )}
 
-                                {!isCloudModel && isDownloaded && (
+                                {isOfflineModel && isDownloaded && (
                                   <button
                                     type="button"
                                     onClick={(e) =>
@@ -626,7 +696,11 @@ export default function SpeechTab() {
                                 )}
 
                                 <div className="text-xs text-muted-foreground text-center">
-                                  {model.sizeFormatted}
+                                  {isOfflineModel
+                                    ? model.sizeFormatted
+                                    : isApiModel
+                                      ? "API"
+                                      : "Cloud"}
                                 </div>
                               </div>
                             </TableCell>

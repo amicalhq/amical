@@ -1,24 +1,46 @@
-export interface AvailableWhisperModel {
+// ─── Base type ───
+interface BaseSpeechModel {
   id: string;
   name: string;
   type: "whisper" | "tts" | "other";
-  size: number; // Approximate size in bytes (for UI display only)
-  sizeFormatted: string; // Human readable size (e.g., "~39 MB")
   description: string;
-  downloadUrl: string;
-  filename: string; // Expected filename after download
-  checksum?: string; // Optional checksum for validation
   features: {
     icon: string;
     tooltip: string;
   }[];
   speed: number;
   accuracy: number;
-  setup: "offline" | "cloud";
   provider: string;
   providerIcon: string;
-  modelSize: string;
 }
+
+// ─── Offline Whisper model (local - requires download) ───
+export interface OfflineWhisperModel extends BaseSpeechModel {
+  setup: "offline";
+  size: number; // Approximate size in bytes (for UI display only)
+  sizeFormatted: string; // Human readable size (e.g., "~39 MB")
+  modelSize: string;
+  downloadUrl: string;
+  filename: string; // Expected filename after download
+  checksum?: string; // Optional checksum for validation
+}
+
+// ─── Amical Cloud model (requires Amical auth) ───
+export interface AmicalSpeechModel extends BaseSpeechModel {
+  setup: "amical";
+}
+
+// ─── API model (OpenAI, Groq, Grok - requires API key) ───
+export interface OpenAISpeechModel extends BaseSpeechModel {
+  setup: "api";
+  apiModelId: string; // Model ID to send to the API (e.g., "whisper-1")
+}
+
+// ─── Union type ───
+export type AvailableSpeechModel =
+  | OfflineWhisperModel
+  | AmicalSpeechModel
+  | OpenAISpeechModel;
 
 // DownloadedModel type is now imported from the database schema
 
@@ -36,98 +58,13 @@ export interface ModelManagerState {
   activeDownloads: Map<string, DownloadProgress>;
 }
 
-// Available Whisper models manifest
-// export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
-//   {
-//     id: "whisper-tiny",
-//     name: "Whisper Tiny",
-//     type: "whisper",
-//     size: 77.7 * 1024 * 1024, // ~77.7 MB
-//     sizeFormatted: "~78 MB",
-//     description:
-//       "Fastest model with basic accuracy. Good for real-time transcription.",
-//     downloadUrl:
-//       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
-//     filename: "ggml-tiny.bin",
-//     checksum: "bd577a113a864445d4c299885e0cb97d4ba92b5f",
-//   },
-//   {
-//     id: "whisper-base",
-//     name: "Whisper Base",
-//     type: "whisper",
-//     size: 148 * 1024 * 1024, // ~148 MB
-//     sizeFormatted: "~148 MB",
-//     description: "Balanced speed and accuracy. Recommended for most use cases.",
-//     downloadUrl:
-//       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
-//     filename: "ggml-base.bin",
-//     checksum: "465707469ff3a37a2b9b8d8f89f2f99de7299dac",
-//   },
-//   {
-//     id: "whisper-small",
-//     name: "Whisper Small",
-//     type: "whisper",
-//     size: 488 * 1024 * 1024, // ~488 MB
-//     sizeFormatted: "~488 MB",
-//     description:
-//       "Higher accuracy with moderate speed. Good for quality transcription.",
-//     downloadUrl:
-//       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
-//     filename: "ggml-small.bin",
-//     checksum: "55356645c2b361a969dfd0ef2c5a50d530afd8d5",
-//   },
-//   {
-//     id: "whisper-medium",
-//     name: "Whisper Medium",
-//     type: "whisper",
-//     size: 1.53 * 1024 * 1024 * 1024, // ~1.53 GB
-//     sizeFormatted: "~1.5 GB",
-//     description: "High accuracy model. Slower but more precise transcription.",
-//     downloadUrl:
-//       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
-//     filename: "ggml-medium.bin",
-//     checksum: "fd9727b6e1217c2f614f9b698455c4ffd82463b4",
-//   },
-//   {
-//     id: "whisper-large-v3",
-//     name: "Whisper Large v3",
-//     type: "whisper",
-//     size: 3.1 * 1024 * 1024 * 1024, // ~3.1 GB
-//     sizeFormatted: "~3.1 GB",
-//     description:
-//       "Highest accuracy model. Best quality but slowest transcription.",
-//     downloadUrl:
-//       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
-//     filename: "ggml-large-v3.bin",
-//     checksum: "ad82bf6a9043ceed055076d0fd39f5f186ff8062",
-//   },
-//   {
-//     id: "whisper-large-v3-turbo",
-//     name: "Whisper Large v3 Turbo",
-//     type: "whisper",
-//     size: 1.5 * 1024 * 1024 * 1024, // ~1.5 GB
-//     sizeFormatted: "~1.5 GB",
-//     description:
-//       "Optimized Large v3 variant with only 4 decoder layers, offering significantly faster transcription with accuracy comparable to Large v2/v3.",
-//     downloadUrl:
-//       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-//     filename: "ggml-large-v3-turbo.bin",
-//     checksum: "4af2b29d7ec73d781377bfd1758ca957a807e941",
-//   },
-// ];
-
-export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
+export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
+  // ─── Amical Cloud ───
   {
     id: "amical-cloud",
     name: "Amical Cloud",
     type: "whisper",
     description: "Fast cloud-based transcription with high accuracy.",
-    checksum: "", // No checksum for cloud model
-    filename: "", // No file for cloud model
-    downloadUrl: "", // No download for cloud model
-    size: 0, // No size for cloud model
-    sizeFormatted: "Cloud",
-    modelSize: "Cloud",
     features: [
       {
         icon: "cloud",
@@ -144,10 +81,12 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     ],
     speed: 4.5,
     accuracy: 4.5,
-    setup: "cloud",
+    setup: "amical",
     provider: "Amical Cloud",
     providerIcon: "/assets/logo.svg",
   },
+
+  // ─── Offline Whisper models ───
   {
     id: "whisper-tiny",
     name: "Whisper Tiny",
@@ -340,5 +279,220 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     setup: "offline",
     provider: "OpenAI",
     providerIcon: "/icons/models/openai_dark.svg",
+  },
+
+  // ─── OpenAI API models ───
+  {
+    id: "openai-whisper-1",
+    name: "OpenAI Whisper",
+    type: "whisper",
+    description: "OpenAI cloud-based Whisper model via API.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "bolt",
+        tooltip: "Fast transcription",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 4.0,
+    accuracy: 4.0,
+    setup: "api",
+    apiModelId: "whisper-1",
+    provider: "OpenAI",
+    providerIcon: "/icons/models/openai_dark.svg",
+  },
+  {
+    id: "openai-gpt-4o-transcribe",
+    name: "OpenAI GPT-4o Transcribe",
+    type: "whisper",
+    description:
+      "GPT-4o powered transcription with superior accuracy and context understanding.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "award",
+        tooltip: "Superior accuracy",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 3.5,
+    accuracy: 4.8,
+    setup: "api",
+    apiModelId: "gpt-4o-transcribe",
+    provider: "OpenAI",
+    providerIcon: "/icons/models/openai_dark.svg",
+  },
+  {
+    id: "openai-gpt-4o-mini-transcribe",
+    name: "OpenAI GPT-4o Mini Transcribe",
+    type: "whisper",
+    description:
+      "Lightweight GPT-4o transcription model, fast and cost-effective.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "bolt",
+        tooltip: "Fast and cost-effective",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 4.5,
+    accuracy: 4.3,
+    setup: "api",
+    apiModelId: "gpt-4o-mini-transcribe",
+    provider: "OpenAI",
+    providerIcon: "/icons/models/openai_dark.svg",
+  },
+
+  // ─── Groq API models ───
+  {
+    id: "groq-whisper-large-v3",
+    name: "Groq Whisper Large v3",
+    type: "whisper",
+    description: "Whisper Large v3 on Groq's ultra-fast inference platform.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "rocket",
+        tooltip: "Ultra-fast inference",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 5.0,
+    accuracy: 4.7,
+    setup: "api",
+    apiModelId: "whisper-large-v3",
+    provider: "Groq",
+    providerIcon: "/icons/models/groq_dark.svg",
+  },
+  {
+    id: "groq-whisper-large-v3-turbo",
+    name: "Groq Whisper Large v3 Turbo",
+    type: "whisper",
+    description:
+      "Turbo-optimized Whisper on Groq for maximum speed with high accuracy.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "rocket",
+        tooltip: "Maximum inference speed",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 5.0,
+    accuracy: 4.2,
+    setup: "api",
+    apiModelId: "whisper-large-v3-turbo",
+    provider: "Groq",
+    providerIcon: "/icons/models/groq_dark.svg",
+  },
+  {
+    id: "groq-distil-whisper-large-v3-en",
+    name: "Groq Distil Whisper Large v3 EN",
+    type: "whisper",
+    description:
+      "Distilled English-only Whisper model on Groq, optimized for speed.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "rocket",
+        tooltip: "Ultra-fast English transcription",
+      },
+    ],
+    speed: 5.0,
+    accuracy: 4.0,
+    setup: "api",
+    apiModelId: "distil-whisper-large-v3-en",
+    provider: "Groq",
+    providerIcon: "/icons/models/groq_dark.svg",
+  },
+
+  // ─── Grok (xAI) API models ───
+  {
+    id: "grok-whisper-large-v3",
+    name: "Grok Whisper Large v3",
+    type: "whisper",
+    description: "Whisper Large v3 on xAI's Grok inference platform.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "bolt",
+        tooltip: "Fast transcription",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 4.5,
+    accuracy: 4.7,
+    setup: "api",
+    apiModelId: "whisper-large-v3",
+    provider: "Grok",
+    providerIcon: "/icons/models/grok_dark.svg",
+  },
+  {
+    id: "grok-whisper-large-v3-turbo",
+    name: "Grok Whisper Large v3 Turbo",
+    type: "whisper",
+    description:
+      "Turbo-optimized Whisper on xAI's Grok for fast transcription.",
+    features: [
+      {
+        icon: "cloud",
+        tooltip: "Cloud-based API",
+      },
+      {
+        icon: "rocket",
+        tooltip: "Turbo speed",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 4.5,
+    accuracy: 4.2,
+    setup: "api",
+    apiModelId: "whisper-large-v3-turbo",
+    provider: "Grok",
+    providerIcon: "/icons/models/grok_dark.svg",
   },
 ];

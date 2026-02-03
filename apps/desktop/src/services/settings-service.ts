@@ -337,6 +337,67 @@ export class SettingsService extends EventEmitter {
     });
   }
 
+  // --- Transcription Providers Config ---
+
+  async getTranscriptionProvidersConfig(): Promise<
+    AppSettingsData["transcriptionProvidersConfig"]
+  > {
+    return await getSettingsSection("transcriptionProvidersConfig");
+  }
+
+  async setTranscriptionProvidersConfig(
+    config: AppSettingsData["transcriptionProvidersConfig"],
+  ): Promise<void> {
+    await updateSettingsSection("transcriptionProvidersConfig", config);
+  }
+
+  async getTranscriptionOpenAIConfig(): Promise<
+    { apiKey: string } | undefined
+  > {
+    const config = await this.getTranscriptionProvidersConfig();
+    return config?.openAI;
+  }
+
+  async setTranscriptionOpenAIConfig(config: {
+    apiKey: string;
+  }): Promise<void> {
+    const currentConfig = await this.getTranscriptionProvidersConfig();
+    await this.setTranscriptionProvidersConfig({
+      ...currentConfig,
+      openAI: config,
+    });
+  }
+
+  async getTranscriptionGroqConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getTranscriptionProvidersConfig();
+    return config?.groq;
+  }
+
+  async setTranscriptionGroqConfig(config: {
+    apiKey: string;
+  }): Promise<void> {
+    const currentConfig = await this.getTranscriptionProvidersConfig();
+    await this.setTranscriptionProvidersConfig({
+      ...currentConfig,
+      groq: config,
+    });
+  }
+
+  async getTranscriptionGrokConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getTranscriptionProvidersConfig();
+    return config?.grok;
+  }
+
+  async setTranscriptionGrokConfig(config: {
+    apiKey: string;
+  }): Promise<void> {
+    const currentConfig = await this.getTranscriptionProvidersConfig();
+    await this.setTranscriptionProvidersConfig({
+      ...currentConfig,
+      grok: config,
+    });
+  }
+
   /**
    * Get app preferences (launch at login, minimize to tray, etc.)
    */

@@ -616,6 +616,70 @@ export const settingsRouter = createRouter({
       }
     }),
 
+  // --- Transcription Providers Config ---
+
+  getTranscriptionProvidersConfig: procedure.query(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      return await settingsService.getTranscriptionProvidersConfig();
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error(
+          "Error getting transcription providers config:",
+          error,
+        );
+      }
+      return null;
+    }
+  }),
+
+  setTranscriptionOpenAIConfig: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      await settingsService.setTranscriptionOpenAIConfig(input);
+      // Clear cached API providers so new key is used
+      ctx.serviceManager
+        .getService("transcriptionService")
+        ?.clearApiProviderCache();
+      return true;
+    }),
+
+  setTranscriptionGroqConfig: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      await settingsService.setTranscriptionGroqConfig(input);
+      ctx.serviceManager
+        .getService("transcriptionService")
+        ?.clearApiProviderCache();
+      return true;
+    }),
+
+  setTranscriptionGrokConfig: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      await settingsService.setTranscriptionGrokConfig(input);
+      ctx.serviceManager
+        .getService("transcriptionService")
+        ?.clearApiProviderCache();
+      return true;
+    }),
+
   // Get data path
   getDataPath: procedure.query(() => {
     return app.getPath("userData");

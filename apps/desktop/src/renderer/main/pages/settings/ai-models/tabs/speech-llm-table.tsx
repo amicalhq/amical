@@ -49,7 +49,7 @@ interface SpeechModel {
   }>;
   speed: number; // out of 5
   accuracy: number; // out of 5
-  setup: "cloud" | "offline";
+  setup: "amical" | "offline" | "api";
   provider: string;
   modelSize?: string; // for offline models
 }
@@ -112,7 +112,7 @@ const models: SpeechModel[] = [
     ],
     speed: 4.5,
     accuracy: 4.0,
-    setup: "cloud",
+    setup: "amical",
     provider: "Google",
   },
   {
@@ -145,7 +145,7 @@ const models: SpeechModel[] = [
     ],
     speed: 4.0,
     accuracy: 4.0,
-    setup: "cloud",
+    setup: "amical",
     provider: "Microsoft",
   },
   {
@@ -178,7 +178,7 @@ const models: SpeechModel[] = [
     ],
     speed: 4.0,
     accuracy: 3.5,
-    setup: "cloud",
+    setup: "amical",
     provider: "Amazon",
   },
   {
@@ -208,7 +208,7 @@ const models: SpeechModel[] = [
     ],
     speed: 4.5,
     accuracy: 4.5,
-    setup: "cloud",
+    setup: "amical",
     provider: "AssemblyAI",
   },
   {
@@ -238,7 +238,7 @@ const models: SpeechModel[] = [
     ],
     speed: 5.0,
     accuracy: 4.0,
-    setup: "cloud",
+    setup: "amical",
     provider: "Deepgram",
   },
   {
@@ -474,8 +474,16 @@ const DownloadButton = ({ modelName, modelSize }: DownloadButtonProps) => {
 };
 
 const SetupCell = ({ model }: { model: SpeechModel }) => {
-  if (model.setup === "cloud") {
+  if (model.setup === "amical") {
     return <CloudBadge />;
+  }
+
+  if (model.setup === "api") {
+    return (
+      <Badge variant="outline" className="text-xs">
+        API
+      </Badge>
+    );
   }
 
   return (

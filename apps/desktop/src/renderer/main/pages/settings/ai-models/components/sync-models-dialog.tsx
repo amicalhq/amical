@@ -21,7 +21,9 @@ type ProviderName =
   | "Ollama"
   | "OpenAI"
   | "Anthropic"
-  | "Google";
+  | "Google"
+  | "Groq"
+  | "Grok";
 
 interface SyncModelsDialogProps {
   open: boolean;
@@ -169,13 +171,15 @@ export default function SyncModelsDialog({
         return fetchAnthropicModelsQuery;
       case "Google":
         return fetchGoogleModelsQuery;
+      default:
+        return undefined;
     }
   };
 
   const activeQuery = getActiveQuery();
-  const availableModels = activeQuery.data || [];
-  const isFetching = activeQuery.isLoading || activeQuery.isFetching;
-  const fetchError = activeQuery.error?.message || "";
+  const availableModels = activeQuery?.data || [];
+  const isFetching = activeQuery?.isLoading || activeQuery?.isFetching || false;
+  const fetchError = activeQuery?.error?.message || "";
 
   // Filter models based on search
   const filteredModels = availableModels.filter(

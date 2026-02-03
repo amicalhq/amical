@@ -27,11 +27,13 @@ type ProviderName =
   | "Ollama"
   | "OpenAI"
   | "Anthropic"
-  | "Google";
+  | "Google"
+  | "Groq"
+  | "Grok";
 
 interface ProviderAccordionProps {
   provider: ProviderName;
-  modelType: "language" | "embedding";
+  modelType: "language" | "embedding" | "transcription";
 }
 
 export default function ProviderAccordion({
@@ -49,10 +51,18 @@ export default function ProviderAccordion({
   const [removeProviderDialogOpen, setRemoveProviderDialogOpen] =
     useState(false);
 
+  const isTranscriptionMode = modelType === "transcription";
+
   // tRPC queries and mutations
   const utils = api.useUtils();
   const modelProvidersConfigQuery =
-    api.settings.getModelProvidersConfig.useQuery();
+    api.settings.getModelProvidersConfig.useQuery(undefined, {
+      enabled: !isTranscriptionMode,
+    });
+  const transcriptionProvidersConfigQuery =
+    api.settings.getTranscriptionProvidersConfig.useQuery(undefined, {
+      enabled: isTranscriptionMode,
+    });
 
   // --- Config save mutations ---
   const setOpenRouterConfigMutation =
@@ -115,6 +125,126 @@ export default function ProviderAccordion({
       toast.error("Failed to save Google configuration. Please try again.");
     },
   });
+
+  // --- Transcription config save mutations ---
+  const setTranscriptionOpenAIConfigMutation =
+    api.settings.setTranscriptionOpenAIConfig.useMutation({
+      onSuccess: () => {
+        toast.success("OpenAI transcription configuration saved!");
+        utils.settings.getTranscriptionProvidersConfig.invalidate();
+        utils.models.getTranscriptionProviderStatus.invalidate();
+        utils.models.getModels.invalidate();
+      },
+      onError: (error) => {
+        console.error("Failed to save transcription OpenAI config:", error);
+        toast.error("Failed to save configuration.");
+      },
+    });
+
+  const setTranscriptionGroqConfigMutation =
+    api.settings.setTranscriptionGroqConfig.useMutation({
+      onSuccess: () => {
+        toast.success("Groq transcription configuration saved!");
+        utils.settings.getTranscriptionProvidersConfig.invalidate();
+        utils.models.getTranscriptionProviderStatus.invalidate();
+        utils.models.getModels.invalidate();
+      },
+      onError: (error) => {
+        console.error("Failed to save transcription Groq config:", error);
+        toast.error("Failed to save configuration.");
+      },
+    });
+
+  const setTranscriptionGrokConfigMutation =
+    api.settings.setTranscriptionGrokConfig.useMutation({
+      onSuccess: () => {
+        toast.success("Grok transcription configuration saved!");
+        utils.settings.getTranscriptionProvidersConfig.invalidate();
+        utils.models.getTranscriptionProviderStatus.invalidate();
+        utils.models.getModels.invalidate();
+      },
+      onError: (error) => {
+        console.error("Failed to save transcription Grok config:", error);
+        toast.error("Failed to save configuration.");
+      },
+    });
+
+  // --- Transcription validation mutations ---
+  const validateTranscriptionOpenAIMutation =
+    api.models.validateTranscriptionOpenAIConnection.useMutation({
+      onSuccess: (result) =>
+        onValidationSuccess(result, "OpenAI", () =>
+          setTranscriptionOpenAIConfigMutation.mutate({
+            apiKey: inputValue.trim(),
+          }),
+        ),
+      onError: (error) => onValidationError(error, "OpenAI"),
+    });
+
+  const validateTranscriptionGroqMutation =
+    api.models.validateTranscriptionGroqConnection.useMutation({
+      onSuccess: (result) =>
+        onValidationSuccess(result, "Groq", () =>
+          setTranscriptionGroqConfigMutation.mutate({
+            apiKey: inputValue.trim(),
+          }),
+        ),
+      onError: (error) => onValidationError(error, "Groq"),
+    });
+
+  const validateTranscriptionGrokMutation =
+    api.models.validateTranscriptionGrokConnection.useMutation({
+      onSuccess: (result) =>
+        onValidationSuccess(result, "Grok", () =>
+          setTranscriptionGrokConfigMutation.mutate({
+            apiKey: inputValue.trim(),
+          }),
+        ),
+      onError: (error) => onValidationError(error, "Grok"),
+    });
+
+  // --- Transcription remove provider mutations ---
+  const removeTranscriptionOpenAIProviderMutation =
+    api.models.removeTranscriptionOpenAIProvider.useMutation({
+      onSuccess: () => {
+        utils.settings.getTranscriptionProvidersConfig.invalidate();
+        utils.models.getTranscriptionProviderStatus.invalidate();
+        utils.models.getSelectedModel.invalidate();
+        utils.models.getModels.invalidate();
+        setStatus("disconnected");
+        setInputValue("");
+        toast.success("OpenAI transcription provider removed!");
+      },
+      onError: (error) => onRemoveError(error, "OpenAI"),
+    });
+
+  const removeTranscriptionGroqProviderMutation =
+    api.models.removeTranscriptionGroqProvider.useMutation({
+      onSuccess: () => {
+        utils.settings.getTranscriptionProvidersConfig.invalidate();
+        utils.models.getTranscriptionProviderStatus.invalidate();
+        utils.models.getSelectedModel.invalidate();
+        utils.models.getModels.invalidate();
+        setStatus("disconnected");
+        setInputValue("");
+        toast.success("Groq transcription provider removed!");
+      },
+      onError: (error) => onRemoveError(error, "Groq"),
+    });
+
+  const removeTranscriptionGrokProviderMutation =
+    api.models.removeTranscriptionGrokProvider.useMutation({
+      onSuccess: () => {
+        utils.settings.getTranscriptionProvidersConfig.invalidate();
+        utils.models.getTranscriptionProviderStatus.invalidate();
+        utils.models.getSelectedModel.invalidate();
+        utils.models.getModels.invalidate();
+        setStatus("disconnected");
+        setInputValue("");
+        toast.success("Grok transcription provider removed!");
+      },
+      onError: (error) => onRemoveError(error, "Grok"),
+    });
 
   // --- Validation mutations ---
   const onValidationSuccess = (
@@ -232,7 +362,30 @@ export default function ProviderAccordion({
 
   // Load configuration when query data is available
   useEffect(() => {
-    if (modelProvidersConfigQuery.data) {
+    if (isTranscriptionMode && transcriptionProvidersConfigQuery.data) {
+      const config = transcriptionProvidersConfigQuery.data;
+      let credential: string | undefined;
+
+      switch (provider) {
+        case "OpenAI":
+          credential = config.openAI?.apiKey;
+          break;
+        case "Groq":
+          credential = config.groq?.apiKey;
+          break;
+        case "Grok":
+          credential = config.grok?.apiKey;
+          break;
+      }
+
+      if (credential) {
+        setInputValue(credential);
+        setStatus("connected");
+      } else {
+        setInputValue("");
+        setStatus("disconnected");
+      }
+    } else if (!isTranscriptionMode && modelProvidersConfigQuery.data) {
       const config = modelProvidersConfigQuery.data;
       let credential: string | undefined;
 
@@ -262,7 +415,7 @@ export default function ProviderAccordion({
         setStatus("disconnected");
       }
     }
-  }, [modelProvidersConfigQuery.data, provider]);
+  }, [modelProvidersConfigQuery.data, transcriptionProvidersConfigQuery.data, provider, isTranscriptionMode]);
 
   // Connect functions with validation
   const handleConnect = () => {
@@ -271,22 +424,42 @@ export default function ProviderAccordion({
     setIsValidating(true);
     setValidationError("");
 
-    switch (provider) {
-      case "OpenRouter":
-        validateOpenRouterMutation.mutate({ apiKey: inputValue.trim() });
-        break;
-      case "Ollama":
-        validateOllamaMutation.mutate({ url: inputValue.trim() });
-        break;
-      case "OpenAI":
-        validateOpenAIMutation.mutate({ apiKey: inputValue.trim() });
-        break;
-      case "Anthropic":
-        validateAnthropicMutation.mutate({ apiKey: inputValue.trim() });
-        break;
-      case "Google":
-        validateGoogleMutation.mutate({ apiKey: inputValue.trim() });
-        break;
+    if (isTranscriptionMode) {
+      switch (provider) {
+        case "OpenAI":
+          validateTranscriptionOpenAIMutation.mutate({
+            apiKey: inputValue.trim(),
+          });
+          break;
+        case "Groq":
+          validateTranscriptionGroqMutation.mutate({
+            apiKey: inputValue.trim(),
+          });
+          break;
+        case "Grok":
+          validateTranscriptionGrokMutation.mutate({
+            apiKey: inputValue.trim(),
+          });
+          break;
+      }
+    } else {
+      switch (provider) {
+        case "OpenRouter":
+          validateOpenRouterMutation.mutate({ apiKey: inputValue.trim() });
+          break;
+        case "Ollama":
+          validateOllamaMutation.mutate({ url: inputValue.trim() });
+          break;
+        case "OpenAI":
+          validateOpenAIMutation.mutate({ apiKey: inputValue.trim() });
+          break;
+        case "Anthropic":
+          validateAnthropicMutation.mutate({ apiKey: inputValue.trim() });
+          break;
+        case "Google":
+          validateGoogleMutation.mutate({ apiKey: inputValue.trim() });
+          break;
+      }
     }
   };
 
@@ -301,22 +474,36 @@ export default function ProviderAccordion({
   };
 
   const confirmRemoveProvider = () => {
-    switch (provider) {
-      case "OpenRouter":
-        removeOpenRouterProviderMutation.mutate();
-        break;
-      case "Ollama":
-        removeOllamaProviderMutation.mutate();
-        break;
-      case "OpenAI":
-        removeOpenAIProviderMutation.mutate();
-        break;
-      case "Anthropic":
-        removeAnthropicProviderMutation.mutate();
-        break;
-      case "Google":
-        removeGoogleProviderMutation.mutate();
-        break;
+    if (isTranscriptionMode) {
+      switch (provider) {
+        case "OpenAI":
+          removeTranscriptionOpenAIProviderMutation.mutate();
+          break;
+        case "Groq":
+          removeTranscriptionGroqProviderMutation.mutate();
+          break;
+        case "Grok":
+          removeTranscriptionGrokProviderMutation.mutate();
+          break;
+      }
+    } else {
+      switch (provider) {
+        case "OpenRouter":
+          removeOpenRouterProviderMutation.mutate();
+          break;
+        case "Ollama":
+          removeOllamaProviderMutation.mutate();
+          break;
+        case "OpenAI":
+          removeOpenAIProviderMutation.mutate();
+          break;
+        case "Anthropic":
+          removeAnthropicProviderMutation.mutate();
+          break;
+        case "Google":
+          removeGoogleProviderMutation.mutate();
+          break;
+      }
     }
     setRemoveProviderDialogOpen(false);
   };
@@ -394,9 +581,11 @@ export default function ProviderAccordion({
               </Button>
             ) : (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={openSyncDialog}>
-                  Sync models
-                </Button>
+                {!isTranscriptionMode && (
+                  <Button variant="outline" onClick={openSyncDialog}>
+                    Sync models
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={openRemoveProviderDialog}
@@ -413,13 +602,15 @@ export default function ProviderAccordion({
         </AccordionContent>
       </AccordionItem>
 
-      {/* Sync Models Dialog */}
-      <SyncModelsDialog
-        open={syncDialogOpen}
-        onOpenChange={setSyncDialogOpen}
-        provider={provider}
-        modelType={modelType}
-      />
+      {/* Sync Models Dialog (not used in transcription mode - models are static) */}
+      {!isTranscriptionMode && (
+        <SyncModelsDialog
+          open={syncDialogOpen}
+          onOpenChange={setSyncDialogOpen}
+          provider={provider}
+          modelType={modelType}
+        />
+      )}
 
       {/* Remove Provider Confirmation Dialog */}
       <Dialog
