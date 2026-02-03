@@ -7,8 +7,10 @@ import {
   type WidgetNotificationAction,
 } from "@/types/widget-notification";
 import { WidgetToast } from "../components/WidgetToast";
+import { useTranslation } from "react-i18next";
 
 export const useWidgetNotifications = () => {
+  const { t } = useTranslation();
   const navigateMainWindow = api.widget.navigateMainWindow.useMutation();
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
   const { data: settings } = api.settings.getSettings.useQuery();
@@ -37,9 +39,11 @@ export const useWidgetNotifications = () => {
   api.recording.widgetNotifications.useSubscription(undefined, {
     onData: (notification) => {
       // Use provided description, or generate with mic name for audio-related notifications
+      const micName =
+        getEffectiveMicName() || t("widget.notifications.micFallback");
       const description =
         notification.description ||
-        getNotificationDescription(notification.type, getEffectiveMicName());
+        getNotificationDescription(notification.type, micName);
 
       toast.custom(
         (toastId) => (

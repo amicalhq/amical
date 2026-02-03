@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/tooltip";
 import { Combobox } from "@/components/ui/combobox";
 import { useFormattingSettings } from "../hooks/use-formatting-settings";
+import { useTranslation } from "react-i18next";
 
 export function FormattingSettings() {
+  const { t } = useTranslation();
   const {
     formattingEnabled,
     selectedModelId,
@@ -35,14 +37,14 @@ export function FormattingSettings() {
         <div>
           <div className="flex items-center gap-2">
             <Label className="text-base font-semibold text-foreground">
-              Formatting
+              {t("settings.dictation.formatting.label")}
             </Label>
             <Badge className="text-[10px] px-1.5 py-0 bg-orange-500/20 text-orange-500 hover:bg-orange-500/20">
-              Alpha
+              {t("settings.dictation.formatting.badge")}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mb-2">
-            Apply punctuation and structure to your transcriptions.
+            {t("settings.dictation.formatting.description")}
           </p>
         </div>
         <Tooltip delayDuration={100}>
@@ -57,8 +59,7 @@ export function FormattingSettings() {
           </TooltipTrigger>
           {disableFormattingToggle && (
             <TooltipContent className="max-w-sm text-center">
-              Sync a language model or select Amical Cloud transcription to
-              enable formatting.
+              {t("settings.dictation.formatting.disabledTooltip")}
             </TooltipContent>
           )}
         </Tooltip>
@@ -71,7 +72,7 @@ export function FormattingSettings() {
       >
         <Button variant="link" className="text-xs px-0">
           <Plus className="w-4 h-4" />
-          Manage language models
+          {t("settings.dictation.formatting.manageLanguageModels")}
         </Button>
       </Link>
 
@@ -80,10 +81,10 @@ export function FormattingSettings() {
           <div className="space-y-4">
             <div>
               <Label className="text-sm font-medium text-foreground mb-2 block">
-                Formatting model
+                {t("settings.dictation.formatting.modelLabel")}
               </Label>
               <p className="text-xs text-muted-foreground mb-4">
-                Choose the model used to format your transcription.
+                {t("settings.dictation.formatting.modelDescription")}
               </p>
             </div>
             <div className="space-y-3">
@@ -91,46 +92,50 @@ export function FormattingSettings() {
                 options={formattingOptions}
                 value={selectedModelId}
                 onChange={handleFormattingModelChange}
-                placeholder="Select a model..."
+                placeholder={t(
+                  "settings.dictation.formatting.modelPlaceholder",
+                )}
                 disabled={!hasFormattingOptions}
               />
               {showCloudRequiresSpeech && (
                 <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  <span>Requires Amical Cloud transcription.</span>
+                  <span>
+                    {t("settings.dictation.formatting.requiresCloudSpeech")}
+                  </span>
                   <Link to="/settings/ai-models" search={{ tab: "speech" }}>
                     <Button variant="outline" size="sm">
-                      Switch speech model
+                      {t("settings.dictation.formatting.switchSpeechModel")}
                     </Button>
                   </Link>
                 </div>
               )}
               {showCloudRequiresAuth && (
                 <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  <span>Sign in to use Amical Cloud formatting.</span>
+                  <span>{t("settings.dictation.formatting.signInCloud")}</span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleCloudLogin}
                     disabled={isLoginPending}
                   >
-                    Sign in
+                    {t("settings.dictation.formatting.signIn")}
                   </Button>
                 </div>
               )}
               {showCloudReady && (
                 <p className="text-xs text-muted-foreground">
-                  Using Amical Cloud formatting.
+                  {t("settings.dictation.formatting.cloudReady")}
                 </p>
               )}
               {showNoLanguageModels && (
                 <div className="flex items-center justify-between rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-muted-foreground">
                   <span>
-                    Formatting won't run — no language model available.
+                    {t("settings.dictation.formatting.noLanguageModels")}
                   </span>
                   <Link to="/settings/ai-models" search={{ tab: "language" }}>
                     <Button variant="outline" size="sm">
                       <Plus className="w-4 h-4 mr-1" />
-                      Sync language models
+                      {t("settings.dictation.formatting.syncLanguageModels")}
                     </Button>
                   </Link>
                 </div>

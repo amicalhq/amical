@@ -1,0 +1,898 @@
+{
+  "app": {
+    "loading": "Loading Amical..."
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again."
+  },
+  "menu": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "window": "Window",
+    "help": "Help",
+    "settings": "Settings",
+    "checkForUpdates": "Check for Updates...",
+    "openAllDevTools": "Open All Dev Tools",
+    "learnMore": "Learn More",
+    "speech": "Speech",
+    "version": "Version {{version}}"
+  },
+  "tray": {
+    "tooltip": "Amical",
+    "openConsole": "Open Console",
+    "about": "About",
+    "quit": "Quit"
+  },
+  "onboarding": {
+    "app": {
+      "loading": "Loading onboarding...",
+      "unknownScreen": "Unknown screen"
+    },
+    "navigation": {
+      "back": "Back",
+      "continue": "Continue",
+      "complete": "Complete"
+    },
+    "progress": {
+      "step": "Step {{current}} of {{total}}",
+      "percent": "{{percent}}%"
+    },
+    "toast": {
+      "loadStateFailed": "Failed to load onboarding state",
+      "savePreferencesFailed": "Failed to save your preferences. Please try again.",
+      "completed": "Onboarding complete!",
+      "completeFailed": "Failed to complete onboarding. Please try again.",
+      "resetSuccess": "Onboarding reset successfully",
+      "resetFailed": "Failed to reset onboarding"
+    },
+    "errorBoundary": {
+      "title": "Something went wrong",
+      "description": "We encountered an error during the onboarding process. Please try again.",
+      "tryAgain": "Try again",
+      "restart": "Restart onboarding",
+      "supportNote": "If this problem persists, please contact support or check the documentation for help."
+    },
+    "welcome": {
+      "title": "Welcome to Amical",
+      "subtitle": "Select the features you're interested in to personalize your experience",
+      "skip": "Skip onboarding",
+      "comingSoon": "Coming Soon",
+      "selectAria": "Select {{feature}}",
+      "features": {
+        "contextualDictation": {
+          "title": "Contextual Dictation",
+          "description": "Quick voice input in any application for seamless speech-to-text"
+        },
+        "noteTaking": {
+          "title": "Note Taking",
+          "description": "Capture thoughts and ideas through speech with smart formatting"
+        },
+        "meetingTranscriptions": {
+          "title": "Meeting Transcriptions",
+          "description": "Record and transcribe meetings and conversations with high accuracy"
+        },
+        "voiceCommands": {
+          "title": "Voice Commands",
+          "description": "Control your apps hands-free - act on tasks with natural voice commands"
+        }
+      },
+      "toast": {
+        "maxFeatures": "You can select up to {{max}} features",
+        "selectAtLeastOne": "Please select at least one feature to personalize your experience"
+      },
+      "selection": {
+        "none": "Select at least one feature",
+        "selected": "{{count}} selected"
+      },
+      "note": "Your choices help personalize setup - all features remain available anytime."
+    },
+    "permissions": {
+      "title": "Setup Permissions",
+      "subtitle": "Amical needs a few permissions to work properly",
+      "waiting": "Waiting for permissions...",
+      "polling": "Checking for permission changes...",
+      "allGranted": {
+        "title": "All permissions granted",
+        "description": "You're all set! You can continue to the next step."
+      },
+      "status": {
+        "granted": "Permission granted",
+        "denied": "Permission denied",
+        "notRequested": "Permission not yet requested",
+        "required": "Permission required"
+      },
+      "actions": {
+        "request": "Request permission",
+        "requesting": "Requesting...",
+        "openSettings": "Open settings"
+      },
+      "microphone": {
+        "title": "Microphone Access",
+        "description": "Required for recording and transcribing audio",
+        "deniedHelp": "Please grant microphone access in System Settings"
+      },
+      "accessibility": {
+        "title": "Accessibility Access",
+        "description": "Required for pasting transcription and global keyboard shortcuts (macOS only)",
+        "deniedHelp": "Add Amical to Accessibility in System Settings"
+      }
+    },
+    "discovery": {
+      "title": "How did you discover Amical?",
+      "subtitle": "This helps us understand where our users come from",
+      "sources": {
+        "searchEngine": "Search engine (Google, Bing, etc.)",
+        "socialMedia": "Social media (Twitter, LinkedIn, etc.)",
+        "wordOfMouth": "Friend or colleague recommendation",
+        "blogArticle": "Blog post or article",
+        "github": "GitHub",
+        "aiAssistant": "AI assistant (ChatGPT, Claude, etc.)",
+        "other": "Other"
+      },
+      "toast": {
+        "selectSource": "Please select how you discovered Amical",
+        "otherDetailsRequired": "Please provide details for \"Other\""
+      },
+      "other": {
+        "label": "Please specify",
+        "placeholder": "Tell us more...",
+        "charCount": "{{count}}/{{max}} characters"
+      }
+    },
+    "modelSelection": {
+      "title": "Choose Your AI Model",
+      "subtitle": "Select how you want Amical to process your audio",
+      "completeSetupToContinue": "Complete setup to continue",
+      "recommended": "Recommended",
+      "prosLabel": "Pros:",
+      "consLabel": "Cons:",
+      "note": "You can change your model later in Settings - nothing is permanent.",
+      "recommendation": {
+        "label": "Recommendation:",
+        "text": "Based on your system specs, we recommend"
+      },
+      "toast": {
+        "selectModel": "Please select a model type",
+        "completeSetup": "Please complete setup to continue"
+      },
+      "models": {
+        "cloud": {
+          "title": "Amical Cloud",
+          "subtitle": "Fast, more accurate, and free - no setup needed",
+          "description": "Ideal if you want the best accuracy or your device can't run local models.\\nSecure processing; audio is never stored.",
+          "pros": {
+            "free": "Free",
+            "fast": "Fast",
+            "accurate": "More accurate",
+            "noSetup": "No setup needed"
+          },
+          "cons": {
+            "internetLogin": "Needs internet and login"
+          }
+        },
+        "local": {
+          "title": "Local Models",
+          "subtitle": "Private, offline, and free - runs fully on your device.",
+          "description": "Great for privacy-focused users with capable hardware. No login required.",
+          "pros": {
+            "privacy": "Full privacy",
+            "offline": "Works offline"
+          },
+          "cons": {
+            "resources": "Uses device resources"
+          }
+        }
+      }
+    },
+    "modelSetup": {
+      "toast": {
+        "loginInBrowser": "Complete login in your browser",
+        "authenticated": "Successfully authenticated!"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "signIn": "Sign in",
+        "retry": "Retry"
+      },
+      "cloud": {
+        "title": "Sign in required",
+        "description": "Cloud transcription needs authentication to continue.",
+        "error": {
+          "loginStartFailed": "Failed to open login. Please try again."
+        }
+      },
+      "local": {
+        "downloadingTitle": "Downloading Local Model",
+        "downloadingDescription": "Setting up local model for private, offline transcription",
+        "readyTitle": "Local Model Ready",
+        "readyDescription": "Ready for private, offline transcription.",
+        "alreadyInstalled": "Model Already Installed",
+        "downloadComplete": "Download Complete",
+        "using": "Using: {{model}}",
+        "error": {
+          "downloadFailed": "Failed to download model: {{message}}"
+        }
+      }
+    },
+    "completion": {
+      "title": "Setup Complete!",
+      "start": "Start Using Amical",
+      "quickConfig": {
+        "title": "Quick Configuration"
+      },
+      "community": {
+        "discordAlt": "Discord",
+        "title": "Join our Community",
+        "description": "Get help, share feedback, and connect with other users",
+        "joinDiscord": "Join Discord"
+      },
+      "next": {
+        "title": "You're All Set!",
+        "items": {
+          "pushToTalk": "Use your push-to-talk shortcut to start transcribing",
+          "widget": "Click the floating widget for quick access",
+          "settings": "Explore Settings for more customization options"
+        }
+      },
+      "info": "All settings can be changed anytime in the application preferences.",
+      "infoLocalModel": "Your selected local model is ready to use offline."
+    }
+  },
+  "widget": {
+    "notifications": {
+      "micFallback": "your microphone",
+      "discordAlt": "Discord",
+      "copyErrorId": "Copy Error ID",
+      "recordingSaved": "Your recording is saved. You can access it in History.",
+      "description": {
+        "noAudio": "No audio from \"{{microphone}}\"",
+        "emptyTranscript": "No speech detected from \"{{microphone}}\"",
+        "transcriptionFailed": "An error occurred during transcription"
+      },
+      "action": {
+        "logIn": "Log In",
+        "support": "Support",
+        "viewUsage": "View Usage",
+        "viewHistory": "View History",
+        "settings": "Settings",
+        "aiModels": "AI Models",
+        "configureMicrophone": "Configure Microphone"
+      },
+      "type": {
+        "noAudio": {
+          "title": "No audio detected",
+          "description": "Check your microphone settings"
+        },
+        "emptyTranscript": {
+          "title": "No speech detected",
+          "description": "Try speaking louder or closer to the mic"
+        }
+      },
+      "errorCode": {
+        "authRequired": {
+          "title": "Login required",
+          "description": "Please log in to use cloud transcription"
+        },
+        "rateLimitExceeded": {
+          "title": "Rate limit exceeded",
+          "description": "You've reached your transcription limit"
+        },
+        "internalServerError": {
+          "title": "Server error",
+          "description": "Please try again later"
+        },
+        "unknown": {
+          "title": "Transcription failed",
+          "description": "Something went wrong"
+        },
+        "networkError": {
+          "title": "Connection error",
+          "description": "Check your internet connection"
+        },
+        "modelMissing": {
+          "title": "No model available",
+          "description": "Download a local model or switch to cloud"
+        },
+        "workerInitializationFailed": {
+          "title": "Initialization failed",
+          "description": "Failed to start transcription engine"
+        },
+        "workerCrashed": {
+          "title": "Transcription engine crashed",
+          "description": "Please try again"
+        },
+        "localTranscriptionFailed": {
+          "title": "Local transcription failed",
+          "description": "Whisper audio processing failed"
+        }
+      }
+    }
+  },
+  "settings": {
+    "nav": {
+      "notes": {
+        "title": "Notes",
+        "description": "Manage your notes"
+      },
+      "preferences": {
+        "title": "Preferences",
+        "description": "Configure general application preferences and behavior"
+      },
+      "dictation": {
+        "title": "Dictation",
+        "description": "Configure speech recognition and dictation settings"
+      },
+      "shortcuts": {
+        "title": "Shortcuts",
+        "description": "Customize keyboard shortcuts and hotkeys"
+      },
+      "vocabulary": {
+        "title": "Vocabulary",
+        "description": "Manage custom vocabulary and word recognition"
+      },
+      "aiModels": {
+        "title": "AI Models",
+        "description": "Configure AI models and providers"
+      },
+      "history": {
+        "title": "History",
+        "description": "View and manage transcription history"
+      },
+      "advanced": {
+        "title": "Advanced",
+        "description": "Advanced configuration options"
+      },
+      "about": {
+        "title": "About",
+        "description": "About Amical and version information"
+      }
+    },
+    "sidebar": {
+      "docs": "Docs",
+      "community": "Community",
+      "discordAlt": "Discord",
+      "logoAlt": "Amical Logo",
+      "brand": "Amical"
+    },
+    "search": {
+      "buttonPlaceholder": "Search...",
+      "inputPlaceholder": "Search settings and notes...",
+      "noResults": "No results found.",
+      "settingsHeading": "Settings",
+      "notesHeading": "Notes"
+    },
+    "preferences": {
+      "title": "Preferences",
+      "description": "Customize your application behavior and appearance",
+      "toast": {
+        "updated": "Preferences updated",
+        "updateFailed": "Failed to update preferences. Please try again."
+      },
+      "launchAtLogin": {
+        "label": "Launch at login",
+        "description": "Automatically start the application when you log in"
+      },
+      "showWidgetWhileInactive": {
+        "label": "Show widget while inactive",
+        "description": "Keep the widget visible on screen when not recording"
+      },
+      "showInDock": {
+        "label": "Show app in dock",
+        "description": "Display the application icon in the macOS dock"
+      },
+      "muteSystemAudio": {
+        "label": "Mute system audio during recording",
+        "description": "Silence system output while capturing microphone audio"
+      },
+      "language": {
+        "label": "Language",
+        "description": "Choose the language used throughout the app",
+        "options": {
+          "system": "System",
+          "en": "English"
+        },
+        "restartDialog": {
+          "title": "Restart required",
+          "description": "Restart Amical to apply language changes. You can also apply on next start.",
+          "restartNow": "Restart now",
+          "later": "Apply on next start"
+        },
+        "toast": {
+          "applyNextStart": "Language will apply on next start.",
+          "restarting": "Restarting..."
+        }
+      },
+      "theme": {
+        "label": "Theme",
+        "description": "Choose your preferred color scheme"
+      }
+    },
+    "advanced": {
+      "title": "Advanced",
+      "description": "Advanced configuration options and experimental features",
+      "cardTitle": "Advanced Settings",
+      "cardDescription": "Advanced configuration options",
+      "preloadModel": {
+        "label": "Preload Whisper Model",
+        "description": "Load AI model at startup for faster transcription"
+      },
+      "debugMode": {
+        "label": "Debug Mode",
+        "description": "Enable detailed logging"
+      },
+      "autoUpdates": {
+        "label": "Auto Updates",
+        "description": "Automatically check for updates"
+      },
+      "telemetry": {
+        "label": "Anonymous Telemetry",
+        "description": "Help improve Amical by sharing anonymous usage data.",
+        "learnMore": "Learn more"
+      },
+      "dataLocation": {
+        "label": "Data Location"
+      },
+      "logLocation": {
+        "label": "Log File Location",
+        "download": "Download"
+      },
+      "machineId": {
+        "label": "Machine ID",
+        "copy": "Copy"
+      },
+      "loadingValue": "Loading...",
+      "dangerZone": {
+        "title": "Danger Zone",
+        "description": "Actions here are irreversible and will delete all your data"
+      },
+      "reset": {
+        "label": "Reset App",
+        "description": "Delete all data and start fresh",
+        "button": "Reset App",
+        "dialog": {
+          "title": "Are you absolutely sure?",
+          "description": "This action cannot be undone. This will permanently delete:",
+          "items": {
+            "transcriptions": "All your transcriptions",
+            "notes": "All your notes",
+            "vocabulary": "Your vocabulary",
+            "settings": "All settings and preferences",
+            "models": "Downloaded models"
+          },
+          "footer": "The app will restart with a fresh installation.",
+          "cancel": "Cancel",
+          "confirm": "Yes, delete everything"
+        }
+      },
+      "toast": {
+        "settingsUpdated": "Settings updated",
+        "settingsUpdateFailed": "Failed to update settings. Please try again.",
+        "telemetryUpdated": "Telemetry settings updated",
+        "telemetryUpdateFailed": "Failed to update telemetry settings. Please try again.",
+        "resetting": "Resetting app...",
+        "resetSuccess": "App reset successfully. Restarting...",
+        "resetFailed": "Failed to reset app. Please try again.",
+        "logSaved": "Log file saved successfully",
+        "logSaveFailed": "Failed to save log file",
+        "machineIdCopied": "Machine ID copied to clipboard"
+      }
+    },
+    "about": {
+      "title": "About",
+      "description": "Version information, resources, and support links",
+      "toast": {
+        "upToDate": "Version is up to date"
+      },
+      "currentVersion": "Current Version",
+      "resources": {
+        "title": "Resources",
+        "description": "Get help, report issues, and stay updated with the latest changes",
+        "changeLog": {
+          "title": "Change Log",
+          "description": "View release notes and updates"
+        },
+        "github": {
+          "title": "GitHub Repository",
+          "description": "Source code and issue tracking",
+          "alt": "GitHub"
+        },
+        "discord": {
+          "title": "Discord Community",
+          "description": "Join our community for support and discussions",
+          "alt": "Discord"
+        }
+      },
+      "contact": {
+        "title": "Contact",
+        "description": "Get in touch with our team for support and inquiries",
+        "emailCta": "Send us an email"
+      }
+    },
+    "history": {
+      "title": "History",
+      "description": "Your recent transcription history",
+      "item": {
+        "failed": "transcription failed",
+        "noWords": "no words detected"
+      },
+      "readMore": "Read more",
+      "actions": {
+        "copy": "Copy",
+        "pauseAudio": "Pause audio",
+        "playAudio": "Play audio",
+        "downloadAudio": "Download Audio",
+        "delete": "Delete"
+      },
+      "dialog": {
+        "title": "Transcription Details"
+      },
+      "toast": {
+        "deleted": "Transcription deleted",
+        "deleteFailed": "Failed to delete transcription",
+        "downloaded": "Audio file downloaded",
+        "downloadFailed": "Failed to download audio file",
+        "loadAudioFailed": "Failed to load audio file",
+        "copied": "Copied to clipboard"
+      },
+      "search": {
+        "placeholder": "Search transcriptions..."
+      },
+      "empty": {
+        "searchTitle": "No transcriptions found",
+        "searchDescription": "Try adjusting your search terms.",
+        "defaultTitle": "No transcription history yet",
+        "defaultDescription": "Your recent transcriptions will appear here."
+      },
+      "group": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "earlier": "Earlier"
+      }
+    },
+    "dictation": {
+      "title": "Dictation",
+      "description": "Configure dictation, language, microphone, and AI model settings",
+      "language": {
+        "autoDetect": {
+          "label": "Auto detect language",
+          "description": "Automatically detect spoken language. Turn off to select specific languages.",
+          "tooltip": "Disable auto detection to select languages. Selecting specific languages may increase accuracy."
+        },
+        "languagesLabel": "Languages",
+        "languagesPlaceholder": "Select languages..."
+      },
+      "microphone": {
+        "label": "Microphone",
+        "description": "Choose your preferred microphone.",
+        "placeholder": "Select a microphone",
+        "systemDefault": "System Default",
+        "systemDefaultWithName": "System Default ({{deviceName}})",
+        "noDevices": "No microphones available",
+        "noDevicesHelp": "No microphones detected. Please check your audio devices.",
+        "toast": {
+          "changed": "Microphone changed to {{deviceName}}",
+          "systemDefault": "Using system default microphone",
+          "changeFailed": "Failed to change microphone"
+        }
+      },
+      "formatting": {
+        "label": "Formatting",
+        "badge": "Alpha",
+        "description": "Apply punctuation and structure to your transcriptions.",
+        "cloudOptionLabel": "Amical Cloud (Amical)",
+        "disabledTooltip": "Sync a language model or select Amical Cloud transcription to enable formatting.",
+        "disabledReason": {
+          "cloudAndSignIn": "Requires Amical Cloud transcription and sign in",
+          "cloud": "Requires Amical Cloud transcription",
+          "signIn": "Requires sign in"
+        },
+        "manageLanguageModels": "Manage language models",
+        "modelLabel": "Formatting model",
+        "modelDescription": "Choose the model used to format your transcription.",
+        "modelPlaceholder": "Select a model...",
+        "requiresCloudSpeech": "Requires Amical Cloud transcription.",
+        "switchSpeechModel": "Switch speech model",
+        "signInCloud": "Sign in to use Amical Cloud formatting.",
+        "signIn": "Sign in",
+        "cloudReady": "Using Amical Cloud formatting.",
+        "noLanguageModels": "Formatting won't run - no language model available.",
+        "syncLanguageModels": "Sync language models",
+        "toast": {
+          "saveFailed": "Failed to save formatting settings. Please try again.",
+          "loginInBrowser": "Complete login in your browser",
+          "loginStartFailed": "Failed to start login process"
+        }
+      }
+    },
+    "shortcuts": {
+      "title": "Shortcuts",
+      "description": "Configure keyboard shortcuts for dictation and hands-free modes",
+      "toast": {
+        "pushToTalkUpdated": "Push to talk shortcut updated",
+        "handsFreeUpdated": "Hands-free mode shortcut updated",
+        "pasteLastTranscriptUpdated": "Paste last transcript shortcut updated"
+      },
+      "pushToTalk": {
+        "label": "Push to talk",
+        "description": "Hold to dictate while key is pressed"
+      },
+      "handsFree": {
+        "label": "Hands-free mode",
+        "description": "Start/stop dictation by pressing once to start and pressing again to stop"
+      },
+      "pasteLastTranscript": {
+        "label": "Paste last transcript",
+        "description": "Paste your most recent transcription into the active app"
+      },
+      "validation": {
+        "noKeysDetected": "No keys detected",
+        "tooManyKeys": "Too many keys - use {{max}} or fewer",
+        "invalidKeyCombination": "Invalid key combination",
+        "alreadyAssigned": "Shortcut already assigned to another action",
+        "conflictsWithSystem": "{{shortcut}} conflicts with a system shortcut",
+        "addModifier": "Add a modifier key like Cmd, Ctrl, or Fn",
+        "duplicateModifierPairs": "Can't use both left and right {{modifier}} together",
+        "overlapsWithPushToTalk": "This overlaps with your Push-to-talk shortcut and may cause issues"
+      },
+      "input": {
+        "pressKeys": "Press keys..."
+      }
+    },
+    "notes": {
+      "create": "Create note",
+      "untitledTitle": "Untitled Note",
+      "empty": {
+        "title": "No notes yet",
+        "description": "Create your first note to get started"
+      },
+      "notFound": "Note not found",
+      "backToNotes": "Back to notes",
+      "toast": {
+        "created": "Note created",
+        "createFailed": "Failed to create note: {{message}}",
+        "emojiUpdated": "Emoji updated",
+        "emojiUpdateFailed": "Failed to update emoji: {{message}}",
+        "deleted": "Note deleted",
+        "deleteFailed": "Failed to delete note: {{message}}",
+        "saveFailed": "Failed to save changes",
+        "loadFailed": "Failed to load note"
+      },
+      "note": {
+        "removeEmoji": "Remove emoji",
+        "titlePlaceholder": "Note title...",
+        "bodyPlaceholder": "Start writing your note...",
+        "edited": "Edited {{date}}",
+        "actions": {
+          "delete": "Delete"
+        },
+        "deleteDialog": {
+          "title": "Delete Note",
+          "description": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone and the note will be permanently removed.",
+          "cancel": "Cancel",
+          "deleting": "Deleting...",
+          "confirm": "Delete Note"
+        }
+      },
+      "upcomingEvents": {
+        "title": "Upcoming events",
+        "takeNotes": "Take notes",
+        "empty": "No upcoming events",
+        "connect": {
+          "title": "Connect your calendar",
+          "description": "Connect your calendar to get started",
+          "button": "Connect calendar"
+        }
+      }
+    },
+    "vocabulary": {
+      "title": "Vocabulary",
+      "description": "Manage your custom vocabulary and word replacements for dictation.",
+      "addButton": "Add Word",
+      "loading": "Loading vocabulary...",
+      "empty": "No vocabulary words found. Add your first word to get started.",
+      "toast": {
+        "added": "Word added to vocabulary",
+        "addFailed": "Failed to add word: {{message}}",
+        "updated": "Vocabulary updated",
+        "updateFailed": "Failed to update word: {{message}}",
+        "deleted": "Word deleted from vocabulary",
+        "deleteFailed": "Failed to delete word: {{message}}"
+      },
+      "dialog": {
+        "addTitle": "Add to vocabulary",
+        "editTitle": "Edit vocabulary",
+        "replacementLabel": "Make it a replacement",
+        "misspellingPlaceholder": "Misspelling",
+        "correctSpellingPlaceholder": "Correct spelling",
+        "newWordPlaceholder": "Add a new word",
+        "cancel": "Cancel",
+        "saving": "Saving...",
+        "addWord": "Add word",
+        "saveChanges": "Save changes"
+      },
+      "delete": {
+        "title": "Delete vocabulary item",
+        "description": "Are you sure you want to delete \"{{item}}\"? This action cannot be undone.",
+        "cancel": "Cancel",
+        "deleting": "Deleting...",
+        "confirm": "Delete"
+      }
+    },
+    "aiModels": {
+      "title": "AI Models",
+      "tabs": {
+        "speech": "Speech",
+        "language": "Language",
+        "embedding": "Embedding"
+      },
+      "modelTypes": {
+        "speech": "speech",
+        "language": "language",
+        "embedding": "embedding"
+      },
+      "defaultModels": {
+        "default": "Default Model",
+        "speech": "Default Speech Model",
+        "language": "Default Language Model",
+        "embedding": "Default Embedding Model"
+      },
+      "defaultModel": {
+        "toast": {
+          "updated": "Default {{modelType}} model updated!",
+          "updateFailed": "Failed to set default {{modelType}} model. Please try again."
+        },
+        "loading": "Loading...",
+        "placeholder": "Select a model..."
+      },
+      "changeDefaultDialog": {
+        "title": "Change Default Model",
+        "description": "Are you sure you want to set \"{{modelName}}\" as your default {{modelType}} model?",
+        "cancel": "Cancel",
+        "confirm": "Change Default"
+      },
+      "providers": {
+        "openRouter": "OpenRouter",
+        "ollama": "Ollama"
+      },
+      "provider": {
+        "status": {
+          "connected": "Connected",
+          "disconnected": "Disconnected"
+        },
+        "placeholders": {
+          "openRouter": "API Key",
+          "ollama": "Ollama URL (e.g., http://localhost:11434)"
+        },
+        "buttons": {
+          "connect": "Connect",
+          "validating": "Validating...",
+          "syncModels": "Sync models",
+          "removeProvider": "Remove Provider"
+        },
+        "removeDialog": {
+          "title": "Remove Provider Connection",
+          "description": "Are you sure you want to remove your {{provider}} connection? This will disconnect and remove all synced models from this provider. This action cannot be undone.",
+          "cancel": "Cancel",
+          "confirm": "Remove Provider"
+        },
+        "toast": {
+          "configSaved": "{{provider}} configuration saved successfully!",
+          "configSaveFailed": "Failed to save {{provider}} configuration. Please try again.",
+          "validated": "{{provider}} connection validated successfully!",
+          "validationFailed": "{{provider}} validation failed: {{message}}",
+          "validationError": "{{provider}} validation error: {{message}}",
+          "removed": "{{provider}} provider removed successfully!",
+          "removeFailed": "Failed to remove {{provider}} provider. Please try again."
+        },
+        "validationFailed": "Validation failed"
+      },
+      "syncedModels": {
+        "title": "Synced Models",
+        "toast": {
+          "removed": "Model removed successfully!",
+          "removeFailed": "Failed to remove model. Please try again.",
+          "defaultLanguageUpdated": "Default language model updated!",
+          "defaultLanguageFailed": "Failed to set default language model. Please try again.",
+          "defaultEmbeddingUpdated": "Default embedding model updated!",
+          "defaultEmbeddingFailed": "Failed to set default embedding model. Please try again."
+        },
+        "errorDefaultRemove": "Please select another model as default before removing this model.",
+        "empty": {
+          "title": "No models synced yet.",
+          "description": "Connect to a provider and sync models to see them here."
+        },
+        "table": {
+          "name": "Name",
+          "provider": "Provider",
+          "size": "Size",
+          "context": "Context",
+          "actions": "Actions",
+          "unknown": "Unknown",
+          "currentDefault": "Current default model",
+          "setDefault": "Set as default model",
+          "remove": "Remove model"
+        },
+        "deleteDialog": {
+          "title": "Confirm Deletion",
+          "description": "Are you sure you want to remove \"{{modelName}}\" from your synced models? This action cannot be undone.",
+          "cancel": "Cancel",
+          "confirm": "Remove Model"
+        },
+        "errorDialog": {
+          "title": "Cannot Remove Model",
+          "confirm": "OK"
+        }
+      },
+      "syncDialog": {
+        "title": "Select {{provider}} {{modelType}}Models",
+        "description": "Choose which {{modelType}}models you want to sync from {{provider}}.",
+        "fetching": "Fetching {{available}}models...",
+        "available": "available ",
+        "fetchFailed": "Failed to fetch models",
+        "fetchFailedWithMessage": "Failed to fetch models: {{message}}",
+        "searchPlaceholder": "Search models...",
+        "clear": "Clear",
+        "size": "Size: {{size}}",
+        "context": "Context: {{context}}",
+        "cancel": "Cancel",
+        "syncing": "Syncing...",
+        "syncButton": "Sync {{count}} model",
+        "syncButton_other": "Sync {{count}} models",
+        "toast": {
+          "synced": "Models synced to database successfully!",
+          "syncFailed": "Failed to sync models to database. Please try again."
+        }
+      },
+      "speech": {
+        "loading": "Loading models...",
+        "availableModels": "Available Models",
+        "table": {
+          "model": "Model",
+          "features": "Features",
+          "speed": "Speed",
+          "accuracy": "Accuracy"
+        },
+        "providerIconAlt": "{{provider}} icon",
+        "cloudFormatting": {
+          "badge": "Formatting available",
+          "tooltip": "Cloud formatting is available when this model is selected.",
+          "signInTitle": "Sign in to use cloud model"
+        },
+        "actions": {
+          "downloadTitle": "Click to download",
+          "cancelDownloadTitle": "Click to cancel download",
+          "cancelDownloadAria": "Cancel downloading {{modelName}}",
+          "deleteTitle": "Click to delete model",
+          "deleteAria": "Delete {{modelName}}"
+        },
+        "deleteDialog": {
+          "title": "Delete Model",
+          "description": "Are you sure you want to delete this model? This action cannot be undone and you will need to download the model again if you want to use it.",
+          "cancel": "Cancel",
+          "confirm": "Delete"
+        },
+        "loginDialog": {
+          "title": "Sign In Required",
+          "description": "To use Amical Cloud transcription, you need to sign in with your Amical account. This enables secure cloud-based transcription with high accuracy.",
+          "browserNotice": "After clicking \"Sign In\", you'll be redirected to your browser to complete the login process.",
+          "cloudBenefit": "Fast, accurate cloud transcription",
+          "cancel": "Cancel",
+          "openingBrowser": "Opening Browser...",
+          "signIn": "Sign In"
+        },
+        "toast": {
+          "downloadStartFailed": "Failed to start download",
+          "downloadCancelFailed": "Failed to cancel download",
+          "deleteFailed": "Failed to delete model",
+          "cloudSelected": "Amical Cloud selected. Cloud formatting enabled.",
+          "selectFailed": "Failed to select model",
+          "loginInBrowser": "Please complete login in your browser",
+          "loginStartFailed": "Failed to start login process",
+          "downloadFailed": "Download failed: {{message}}",
+          "loginSuccess": "Login successful!"
+        }
+      }
+    }
+  }
+}

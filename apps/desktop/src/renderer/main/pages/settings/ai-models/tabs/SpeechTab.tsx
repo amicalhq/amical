@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/dialog";
 import { DownloadProgress } from "@/constants/models";
 import { api } from "@/trpc/react";
+import { useTranslation } from "react-i18next";
 
 const SpeedRating = ({ rating }: { rating: number }) => {
   const fullIcons = Math.floor(rating);
@@ -113,6 +114,7 @@ const AccuracyRating = ({ rating }: { rating: number }) => {
 };
 
 export default function SpeechTab() {
+  const { t } = useTranslation();
   const [downloadProgress, setDownloadProgress] = useState<
     Record<string, DownloadProgress>
   >({});
@@ -144,7 +146,7 @@ export default function SpeechTab() {
     },
     onError: (error) => {
       console.error("Failed to start download:", error);
-      toast.error("Failed to start download");
+      toast.error(t("settings.aiModels.speech.toast.downloadStartFailed"));
     },
   });
 
@@ -154,7 +156,7 @@ export default function SpeechTab() {
     },
     onError: (error) => {
       console.error("Failed to cancel download:", error);
-      toast.error("Failed to cancel download");
+      toast.error(t("settings.aiModels.speech.toast.downloadCancelFailed"));
     },
   });
 
@@ -166,7 +168,7 @@ export default function SpeechTab() {
     },
     onError: (error) => {
       console.error("Failed to delete model:", error);
-      toast.error("Failed to delete model");
+      toast.error(t("settings.aiModels.speech.toast.deleteFailed"));
       setShowDeleteDialog(false);
       setModelToDelete(null);
     },
@@ -176,23 +178,23 @@ export default function SpeechTab() {
     onSuccess: (_data, variables) => {
       utils.models.getSelectedModel.invalidate();
       if (variables.modelId === "amical-cloud") {
-        toast.success("Amical Cloud selected. Cloud formatting enabled.");
+        toast.success(t("settings.aiModels.speech.toast.cloudSelected"));
       }
     },
     onError: (error) => {
       console.error("Failed to select model:", error);
-      toast.error("Failed to select model");
+      toast.error(t("settings.aiModels.speech.toast.selectFailed"));
     },
   });
 
   // Auth mutations
   const loginMutation = api.auth.login.useMutation({
     onSuccess: () => {
-      toast.info("Please complete login in your browser");
+      toast.info(t("settings.aiModels.speech.toast.loginInBrowser"));
     },
     onError: (error) => {
       console.error("Failed to initiate login:", error);
-      toast.error("Failed to start login process");
+      toast.error(t("settings.aiModels.speech.toast.loginStartFailed"));
     },
   });
 
@@ -241,7 +243,9 @@ export default function SpeechTab() {
         delete newProgress[modelId];
         return newProgress;
       });
-      toast.error(`Download failed: ${error}`);
+      toast.error(
+        t("settings.aiModels.speech.toast.downloadFailed", { message: error }),
+      );
       utils.models.getActiveDownloads.invalidate();
     },
     onError: (error) => {
@@ -278,7 +282,7 @@ export default function SpeechTab() {
       setIsAuthenticated(authState.isAuthenticated);
 
       if (authState.isAuthenticated && pendingCloudModel) {
-        toast.success("Login successful!");
+        toast.success(t("settings.aiModels.speech.toast.loginSuccess"));
         setSelectedModelMutation.mutate({ modelId: pendingCloudModel });
         setPendingCloudModel(null);
       }
@@ -370,11 +374,11 @@ export default function SpeechTab() {
     try {
       await loginMutation.mutateAsync();
       setShowLoginDialog(false);
-      toast.info("Complete login in your browser");
+      toast.info(t("settings.aiModels.speech.toast.loginInBrowser"));
       // Auth state subscription will handle the rest when login completes
     } catch (err) {
       console.error("Failed to login:", err);
-      toast.error("Failed to start login");
+      toast.error(t("settings.aiModels.speech.toast.loginStartFailed"));
     }
   };
 
@@ -395,7 +399,7 @@ export default function SpeechTab() {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin" />
-        <span className="ml-2">Loading models...</span>
+        <span className="ml-2">{t("settings.aiModels.speech.loading")}</span>
       </div>
     );
   }
@@ -406,11 +410,11 @@ export default function SpeechTab() {
           {/* Default model picker using unified component */}
           <DefaultModelCombobox
             modelType="speech"
-            title="Default Speech Model"
+            title={t("settings.aiModels.defaultModels.speech")}
           />
           <div>
             <Label className="text-lg font-semibold mb-2 block">
-              Available Models
+              {t("settings.aiModels.speech.availableModels")}
             </Label>
             <div className="divide-y border rounded-md bg-muted/30">
               <TooltipProvider>
@@ -421,10 +425,18 @@ export default function SpeechTab() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Model</TableHead>
-                        <TableHead>Features</TableHead>
-                        <TableHead>Speed</TableHead>
-                        <TableHead>Accuracy</TableHead>
+                        <TableHead>
+                          {t("settings.aiModels.speech.table.model")}
+                        </TableHead>
+                        <TableHead>
+                          {t("settings.aiModels.speech.table.features")}
+                        </TableHead>
+                        <TableHead>
+                          {t("settings.aiModels.speech.table.speed")}
+                        </TableHead>
+                        <TableHead>
+                          {t("settings.aiModels.speech.table.accuracy")}
+                        </TableHead>
                         <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -467,7 +479,10 @@ export default function SpeechTab() {
                                     <Avatar className="w-4 h-4">
                                       <AvatarImage
                                         src={model.providerIcon}
-                                        alt={`${model.provider} icon`}
+                                        alt={t(
+                                          "settings.aiModels.speech.providerIconAlt",
+                                          { provider: model.provider },
+                                        )}
                                       />
                                       <AvatarFallback className="text-xs">
                                         {model.provider.charAt(0).toUpperCase()}
@@ -483,12 +498,15 @@ export default function SpeechTab() {
                                             variant="secondary"
                                             className="text-[10px] px-1.5 py-0"
                                           >
-                                            Formatting available
+                                            {t(
+                                              "settings.aiModels.speech.cloudFormatting.badge",
+                                            )}
                                           </Badge>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                          Cloud formatting is available when
-                                          this model is selected.
+                                          {t(
+                                            "settings.aiModels.speech.cloudFormatting.tooltip",
+                                          )}
                                         </TooltipContent>
                                       </Tooltip>
                                     </div>
@@ -540,7 +558,9 @@ export default function SpeechTab() {
                                       <button
                                         onClick={() => setShowLoginDialog(true)}
                                         className="w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center text-white transition-colors"
-                                        title="Sign in to use cloud model"
+                                        title={t(
+                                          "settings.aiModels.speech.cloudFormatting.signInTitle",
+                                        )}
                                       >
                                         <LogIn className="w-4 h-4" />
                                       </button>
@@ -557,7 +577,9 @@ export default function SpeechTab() {
                                         handleDownload(model.id, e)
                                       }
                                       className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-primary-foreground transition-colors"
-                                      title="Click to download"
+                                      title={t(
+                                        "settings.aiModels.speech.actions.downloadTitle",
+                                      )}
                                     >
                                       <Download className="w-4 h-4 text-muted-foreground" />
                                     </button>
@@ -573,8 +595,13 @@ export default function SpeechTab() {
                                           handleCancelDownload(model.id, e)
                                         }
                                         className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center text-white transition-colors"
-                                        title="Click to cancel download"
-                                        aria-label={`Cancel downloading ${model.name}`}
+                                        title={t(
+                                          "settings.aiModels.speech.actions.cancelDownloadTitle",
+                                        )}
+                                        aria-label={t(
+                                          "settings.aiModels.speech.actions.cancelDownloadAria",
+                                          { modelName: model.name },
+                                        )}
                                       >
                                         <Square className="w-4 h-4" />
                                       </button>
@@ -618,8 +645,13 @@ export default function SpeechTab() {
                                       handleDeleteClick(model.id, e)
                                     }
                                     className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
-                                    title="Click to delete model"
-                                    aria-label={`Delete ${model.name}`}
+                                    title={t(
+                                      "settings.aiModels.speech.actions.deleteTitle",
+                                    )}
+                                    aria-label={t(
+                                      "settings.aiModels.speech.actions.deleteAria",
+                                      { modelName: model.name },
+                                    )}
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -645,22 +677,22 @@ export default function SpeechTab() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Model</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("settings.aiModels.speech.deleteDialog.title")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this model? This action cannot be
-              undone and you will need to download the model again if you want
-              to use it.
+              {t("settings.aiModels.speech.deleteDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleDeleteCancel}>
-              Cancel
+              {t("settings.aiModels.speech.deleteDialog.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-red-500 hover:bg-red-600"
             >
-              Delete
+              {t("settings.aiModels.speech.deleteDialog.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -669,37 +701,38 @@ export default function SpeechTab() {
       <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Sign In Required</DialogTitle>
+            <DialogTitle>
+              {t("settings.aiModels.speech.loginDialog.title")}
+            </DialogTitle>
             <DialogDescription>
-              To use Amical Cloud transcription, you need to sign in with your
-              Amical account. This enables secure cloud-based transcription with
-              high accuracy.
+              {t("settings.aiModels.speech.loginDialog.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
-              After clicking "Sign In", you'll be redirected to your browser to
-              complete the login process.
+              {t("settings.aiModels.speech.loginDialog.browserNotice")}
             </p>
             <div className="flex items-center space-x-2 text-sm">
               <Cloud className="w-4 h-4 text-blue-500" />
-              <span>Fast, accurate cloud transcription</span>
+              <span>
+                {t("settings.aiModels.speech.loginDialog.cloudBenefit")}
+              </span>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLoginDialog(false)}>
-              Cancel
+              {t("settings.aiModels.speech.loginDialog.cancel")}
             </Button>
             <Button onClick={handleLogin} disabled={loginMutation.isPending}>
               {loginMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Opening Browser...
+                  {t("settings.aiModels.speech.loginDialog.openingBrowser")}
                 </>
               ) : (
                 <>
                   <LogIn className="w-4 h-4 mr-2" />
-                  Sign In
+                  {t("settings.aiModels.speech.loginDialog.signIn")}
                 </>
               )}
             </Button>

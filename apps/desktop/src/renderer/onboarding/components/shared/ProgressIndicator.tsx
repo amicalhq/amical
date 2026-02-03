@@ -1,6 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
+import { useTranslation } from "react-i18next";
 
 interface ProgressIndicatorProps {
   current: number;
@@ -19,16 +20,17 @@ export function ProgressIndicator({
   className,
   showSteps = true,
 }: ProgressIndicatorProps) {
+  const { t } = useTranslation();
   const percentage = Math.round((current / total) * 100);
 
   return (
     <div className={cn("w-full", className)}>
       {showSteps && (
         <div className="mb-2 flex justify-between text-sm text-muted-foreground">
+          <span>{t("onboarding.progress.step", { current, total })}</span>
           <span>
-            Step {current} of {total}
+            {t("onboarding.progress.percent", { percent: percentage })}
           </span>
-          <span>{percentage}%</span>
         </div>
       )}
       <Progress value={percentage} className="h-2" />

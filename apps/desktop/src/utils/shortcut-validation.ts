@@ -29,8 +29,13 @@ export interface ValidationContext {
 
 export interface ValidationResult {
   valid: boolean;
-  error?: string;
-  warning?: string;
+  error?: I18nMessage;
+  warning?: I18nMessage;
+}
+
+export interface I18nMessage {
+  key: string;
+  params?: Record<string, string | number>;
 }
 
 // Maximum number of keys allowed in a shortcut
@@ -60,12 +65,18 @@ function keycodesToDisplayNames(keys: number[]): string[] {
  */
 export function checkMaxKeysLength(keys: number[]): ValidationResult {
   if (keys.length === 0) {
-    return { valid: false, error: "No keys detected" };
+    return {
+      valid: false,
+      error: { key: "settings.shortcuts.validation.noKeysDetected" },
+    };
   }
   if (keys.length > MAX_KEY_COMBINATION_LENGTH) {
     return {
       valid: false,
-      error: `Too many keys - use ${MAX_KEY_COMBINATION_LENGTH} or fewer`,
+      error: {
+        key: "settings.shortcuts.validation.tooManyKeys",
+        params: { max: MAX_KEY_COMBINATION_LENGTH },
+      },
     };
   }
   return { valid: true };
@@ -88,7 +99,7 @@ export function checkDuplicateShortcut(
     if (arraysEqual(currentNormalized, otherNormalized)) {
       return {
         valid: false,
-        error: "Shortcut already assigned to another action",
+        error: { key: "settings.shortcuts.validation.alreadyAssigned" },
       };
     }
   }
@@ -115,7 +126,10 @@ export function checkReservedShortcut(
       const displayShortcut = keycodesToDisplayNames(keys).join("+");
       return {
         valid: false,
-        error: `${displayShortcut} conflicts with a system shortcut`,
+        error: {
+          key: "settings.shortcuts.validation.conflictsWithSystem",
+          params: { shortcut: displayShortcut },
+        },
       };
     }
   }
@@ -150,7 +164,7 @@ export function checkAlphanumericOnly(
   // All keys are alphanumeric - need a modifier
   return {
     valid: false,
-    error: "Add a modifier key like Cmd, Ctrl, or Fn",
+    error: { key: "settings.shortcuts.validation.addModifier" },
   };
 }
 
@@ -170,7 +184,10 @@ export function checkDuplicateModifierPairs(
       const baseName = getKeyFromKeycode(left) ?? "modifier";
       return {
         valid: false,
-        error: `Can't use both left and right ${baseName} together`,
+        error: {
+          key: "settings.shortcuts.validation.duplicateModifierPairs",
+          params: { modifier: baseName },
+        },
       };
     }
   }
@@ -202,8 +219,7 @@ export function checkSubsetConflict(
   if (isSubset && toggleNormalized.length < pttNormalized.length) {
     return {
       valid: true, // Still valid, just warning
-      warning:
-        "This overlaps with your Push-to-talk shortcut and may cause issues",
+      warning: { key: "settings.shortcuts.validation.overlapsWithPushToTalk" },
     };
   }
 

@@ -30,6 +30,7 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import ChangeDefaultModelDialog from "./change-default-model-dialog";
 import type { Model } from "@/db/schema";
+import { useTranslation } from "react-i18next";
 
 interface SyncedModelsListProps {
   modelType: "language" | "embedding";
@@ -38,8 +39,11 @@ interface SyncedModelsListProps {
 
 export default function SyncedModelsList({
   modelType,
-  title = "Synced Models",
+  title,
 }: SyncedModelsListProps) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("settings.aiModels.syncedModels.title");
+
   // Local state
   const [syncedModels, setSyncedModels] = useState<Model[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
@@ -64,11 +68,11 @@ export default function SyncedModelsList({
     api.models.removeProviderModel.useMutation({
       onSuccess: () => {
         utils.models.getSyncedProviderModels.invalidate();
-        toast.success("Model removed successfully!");
+        toast.success(t("settings.aiModels.syncedModels.toast.removed"));
       },
       onError: (error) => {
         console.error("Failed to remove model:", error);
-        toast.error("Failed to remove model. Please try again.");
+        toast.error(t("settings.aiModels.syncedModels.toast.removeFailed"));
       },
     });
 
@@ -76,11 +80,15 @@ export default function SyncedModelsList({
     api.models.setDefaultLanguageModel.useMutation({
       onSuccess: () => {
         utils.models.getDefaultLanguageModel.invalidate();
-        toast.success("Default language model updated!");
+        toast.success(
+          t("settings.aiModels.syncedModels.toast.defaultLanguageUpdated"),
+        );
       },
       onError: (error) => {
         console.error("Failed to set default language model:", error);
-        toast.error("Failed to set default language model. Please try again.");
+        toast.error(
+          t("settings.aiModels.syncedModels.toast.defaultLanguageFailed"),
+        );
       },
     });
 
@@ -88,11 +96,15 @@ export default function SyncedModelsList({
     api.models.setDefaultEmbeddingModel.useMutation({
       onSuccess: () => {
         utils.models.getDefaultEmbeddingModel.invalidate();
-        toast.success("Default embedding model updated!");
+        toast.success(
+          t("settings.aiModels.syncedModels.toast.defaultEmbeddingUpdated"),
+        );
       },
       onError: (error) => {
         console.error("Failed to set default embedding model:", error);
-        toast.error("Failed to set default embedding model. Please try again.");
+        toast.error(
+          t("settings.aiModels.syncedModels.toast.defaultEmbeddingFailed"),
+        );
       },
     });
 
@@ -135,9 +147,7 @@ export default function SyncedModelsList({
   const openDeleteDialog = (modelId: string) => {
     // Check if trying to remove the default model
     if (modelId === defaultModel) {
-      setErrorMessage(
-        "Please select another model as default before removing this model.",
-      );
+      setErrorMessage(t("settings.aiModels.syncedModels.errorDefaultRemove"));
       setErrorDialogOpen(true);
       return;
     }
@@ -190,12 +200,14 @@ export default function SyncedModelsList({
     <>
       {/* Model Table */}
       <div>
-        <Label className="text-lg font-semibold mb-2 block">{title}</Label>
+        <Label className="text-lg font-semibold mb-2 block">
+          {resolvedTitle}
+        </Label>
         {syncedModels.length === 0 ? (
           <div className="border rounded-md p-8 text-center text-muted-foreground">
-            <p>No models synced yet.</p>
+            <p>{t("settings.aiModels.syncedModels.empty.title")}</p>
             <p className="text-sm mt-1">
-              Connect to a provider and sync models to see them here.
+              {t("settings.aiModels.syncedModels.empty.description")}
             </p>
           </div>
         ) : (
@@ -203,11 +215,21 @@ export default function SyncedModelsList({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Context</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>
+                    {t("settings.aiModels.syncedModels.table.name")}
+                  </TableHead>
+                  <TableHead>
+                    {t("settings.aiModels.syncedModels.table.provider")}
+                  </TableHead>
+                  <TableHead>
+                    {t("settings.aiModels.syncedModels.table.size")}
+                  </TableHead>
+                  <TableHead>
+                    {t("settings.aiModels.syncedModels.table.context")}
+                  </TableHead>
+                  <TableHead>
+                    {t("settings.aiModels.syncedModels.table.actions")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -215,7 +237,10 @@ export default function SyncedModelsList({
                   <TableRow key={model.id}>
                     <TableCell className="font-medium">{model.name}</TableCell>
                     <TableCell>{model.provider}</TableCell>
-                    <TableCell>{model.size || "Unknown"}</TableCell>
+                    <TableCell>
+                      {model.size ||
+                        t("settings.aiModels.syncedModels.table.unknown")}
+                    </TableCell>
                     <TableCell>{model.context}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -242,8 +267,12 @@ export default function SyncedModelsList({
                             <TooltipContent>
                               <p>
                                 {defaultModel === model.id
-                                  ? "Current default model"
-                                  : "Set as default model"}
+                                  ? t(
+                                      "settings.aiModels.syncedModels.table.currentDefault",
+                                    )
+                                  : t(
+                                      "settings.aiModels.syncedModels.table.setDefault",
+                                    )}
                               </p>
                             </TooltipContent>
                           </Tooltip>
@@ -260,7 +289,11 @@ export default function SyncedModelsList({
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Remove model</p>
+                              <p>
+                                {t(
+                                  "settings.aiModels.syncedModels.table.remove",
+                                )}
+                              </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -278,19 +311,22 @@ export default function SyncedModelsList({
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogTitle>
+              {t("settings.aiModels.syncedModels.deleteDialog.title")}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove "
-              {syncedModels.find((m) => m.id === modelToDelete)?.name}" from
-              your synced models? This action cannot be undone.
+              {t("settings.aiModels.syncedModels.deleteDialog.description", {
+                modelName:
+                  syncedModels.find((m) => m.id === modelToDelete)?.name ?? "",
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={cancelDelete}>
-              Cancel
+              {t("settings.aiModels.syncedModels.deleteDialog.cancel")}
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              Remove Model
+              {t("settings.aiModels.syncedModels.deleteDialog.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -308,11 +344,15 @@ export default function SyncedModelsList({
       <Dialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cannot Remove Model</DialogTitle>
+            <DialogTitle>
+              {t("settings.aiModels.syncedModels.errorDialog.title")}
+            </DialogTitle>
             <DialogDescription>{errorMessage}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={() => setErrorDialogOpen(false)}>OK</Button>
+            <Button onClick={() => setErrorDialogOpen(false)}>
+              {t("settings.aiModels.syncedModels.errorDialog.confirm")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -7,6 +7,7 @@ import { debounce } from "../../../utils/debounce";
 import Note from "./note";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 type NotePageProps = {
   noteId: string;
@@ -14,6 +15,7 @@ type NotePageProps = {
 };
 
 export default function NotePage({ noteId, onBack }: NotePageProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const utils = api.useUtils();
 
@@ -49,10 +51,12 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     onSuccess: () => {
       utils.notes.getNotes.invalidate();
       utils.notes.getNoteById.invalidate({ id: parseInt(noteId) });
-      toast.success("Emoji updated");
+      toast.success(t("settings.notes.toast.emojiUpdated"));
     },
     onError: (error) => {
-      toast.error("Failed to update emoji: " + error.message);
+      toast.error(
+        t("settings.notes.toast.emojiUpdateFailed", { message: error.message }),
+      );
     },
   });
 
@@ -66,10 +70,12 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
       } else {
         navigate({ to: "/settings/notes" });
       }
-      toast.success("Note deleted");
+      toast.success(t("settings.notes.toast.deleted"));
     },
     onError: (error) => {
-      toast.error("Failed to delete note: " + error.message);
+      toast.error(
+        t("settings.notes.toast.deleteFailed", { message: error.message }),
+      );
     },
   });
 
@@ -165,7 +171,7 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
             );
           } catch (error) {
             console.error("Failed to save yjs update:", error);
-            toast.error("Failed to save changes");
+            toast.error(t("settings.notes.toast.saveFailed"));
           }
         });
 
@@ -176,7 +182,7 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
       } catch (error) {
         console.error("Failed to initialize yjs:", error);
         setIsSyncing(false);
-        toast.error("Failed to load note");
+        toast.error(t("settings.notes.toast.loadFailed"));
       }
     };
 
@@ -234,7 +240,7 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <FileTextIcon className="h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">Note not found</p>
+        <p className="text-muted-foreground">{t("settings.notes.notFound")}</p>
         <Button
           variant="outline"
           onClick={() => {
@@ -245,7 +251,7 @@ export default function NotePage({ noteId, onBack }: NotePageProps) {
             }
           }}
         >
-          Back to notes
+          {t("settings.notes.backToNotes")}
         </Button>
       </div>
     );

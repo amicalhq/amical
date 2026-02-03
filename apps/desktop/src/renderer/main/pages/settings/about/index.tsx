@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { RefreshCw, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/trpc/react";
+import { useTranslation } from "react-i18next";
 
 const CHANGELOG_URL = "https://github.com/amicalhq/amical/releases";
 const GITHUB_URL = "https://github.com/amicalhq/amical";
@@ -12,6 +13,7 @@ const DISCORD_URL = "https://amical.ai/community";
 const CONTACT_EMAIL = "contact@amical.ai";
 
 export default function AboutSettingsPage() {
+  const { t } = useTranslation();
   const [checking, setChecking] = useState(false);
   const { data: version } = api.settings.getAppVersion.useQuery();
 
@@ -19,7 +21,7 @@ export default function AboutSettingsPage() {
     setChecking(true);
     setTimeout(() => {
       setChecking(false);
-      toast.success("Version is up to date");
+      toast.success(t("settings.about.toast.upToDate"));
     }, 2000);
   }
 
@@ -27,9 +29,9 @@ export default function AboutSettingsPage() {
     <div className="container mx-auto p-6 max-w-5xl">
       {/* Header Section */}
       <div className="mb-8">
-        <h1 className="text-xl font-bold">About</h1>
+        <h1 className="text-xl font-bold">{t("settings.about.title")}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Version information, resources, and support links
+          {t("settings.about.description")}
         </p>
       </div>
 
@@ -37,7 +39,9 @@ export default function AboutSettingsPage() {
         <Card>
           <CardContent className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <div className="text-lg font-semibold">Current Version</div>
+              <div className="text-lg font-semibold">
+                {t("settings.about.currentVersion")}
+              </div>
               <Badge variant="secondary" className="mt-1">
                 v{version || "..."}
               </Badge>
@@ -60,11 +64,10 @@ export default function AboutSettingsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-1">
               <div className="text-lg font-semibold text-foreground">
-                Resources
+                {t("settings.about.resources.title")}
               </div>
               <p className="text-xs text-muted-foreground">
-                Get help, report issues, and stay updated with the latest
-                changes
+                {t("settings.about.resources.description")}
               </p>
             </div>
             <div className="divide-y">
@@ -73,10 +76,10 @@ export default function AboutSettingsPage() {
                   <div>
                     <div className="flex items-center gap-2 font-semibold text-base group-hover:underline">
                       <BookOpen className="w-5 h-5 text-muted-foreground" />
-                      Change Log
+                      {t("settings.about.resources.changeLog.title")}
                     </div>
                     <div className="text-muted-foreground text-xs">
-                      View release notes and updates
+                      {t("settings.about.resources.changeLog.description")}
                     </div>
                   </div>
                 </div>
@@ -88,13 +91,13 @@ export default function AboutSettingsPage() {
                       {/* GitHub icon as image */}
                       <img
                         src="icons/integrations/github.svg"
-                        alt="GitHub"
+                        alt={t("settings.about.resources.github.alt")}
                         className="w-5 h-5 inline-block align-middle"
                       />
-                      GitHub Repository
+                      {t("settings.about.resources.github.title")}
                     </div>
                     <div className="text-muted-foreground text-xs">
-                      Source code and issue tracking
+                      {t("settings.about.resources.github.description")}
                     </div>
                   </div>
                 </div>
@@ -106,13 +109,13 @@ export default function AboutSettingsPage() {
                       {/* Discord icon as image */}
                       <img
                         src="icons/integrations/discord.svg"
-                        alt="Discord"
+                        alt={t("settings.about.resources.discord.alt")}
                         className="w-5 h-5 inline-block align-middle"
                       />
-                      Discord Community
+                      {t("settings.about.resources.discord.title")}
                     </div>
                     <div className="text-muted-foreground text-xs">
-                      Join our community for support and discussions
+                      {t("settings.about.resources.discord.description")}
                     </div>
                   </div>
                 </div>
@@ -125,10 +128,10 @@ export default function AboutSettingsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-1">
               <div className="text-lg font-semibold text-foreground">
-                Contact
+                {t("settings.about.contact.title")}
               </div>
               <p className="text-xs text-muted-foreground">
-                Get in touch with our team for support and inquiries
+                {t("settings.about.contact.description")}
               </p>
             </div>
             <ExternalLink href={`mailto:${CONTACT_EMAIL}`}>
@@ -138,7 +141,7 @@ export default function AboutSettingsPage() {
                     {CONTACT_EMAIL}
                   </div>
                   <div className="text-muted-foreground text-xs">
-                    Send us an email
+                    {t("settings.about.contact.emailCta")}
                   </div>
                 </div>
               </div>

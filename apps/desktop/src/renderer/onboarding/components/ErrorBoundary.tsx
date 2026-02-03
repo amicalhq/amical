@@ -2,8 +2,9 @@ import React, { Component, ErrorInfo, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { withTranslation, type WithTranslation } from "react-i18next";
 
-interface Props {
+interface Props extends WithTranslation {
   children: ReactNode;
 }
 
@@ -16,7 +17,7 @@ interface State {
  * Error boundary for onboarding flow
  * T044 - Catches and displays errors gracefully
  */
-export class OnboardingErrorBoundary extends Component<Props, State> {
+class OnboardingErrorBoundaryBase extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -42,6 +43,7 @@ export class OnboardingErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const { t } = this.props;
       return (
         <div className="flex min-h-screen items-center justify-center bg-background p-8">
           <Card className="max-w-md p-8">
@@ -53,10 +55,11 @@ export class OnboardingErrorBoundary extends Component<Props, State> {
 
               {/* Error Message */}
               <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Something went wrong</h2>
+                <h2 className="text-2xl font-semibold">
+                  {t("onboarding.errorBoundary.title")}
+                </h2>
                 <p className="text-muted-foreground">
-                  We encountered an error during the onboarding process. Please
-                  try again.
+                  {t("onboarding.errorBoundary.description")}
                 </p>
               </div>
 
@@ -77,17 +80,16 @@ export class OnboardingErrorBoundary extends Component<Props, State> {
                   className="flex-1 gap-2"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Try Again
+                  {t("onboarding.errorBoundary.tryAgain")}
                 </Button>
                 <Button onClick={this.handleRestart} className="flex-1">
-                  Restart Onboarding
+                  {t("onboarding.errorBoundary.restart")}
                 </Button>
               </div>
 
               {/* Support Note */}
               <p className="text-xs text-muted-foreground">
-                If this problem persists, please contact support or check the
-                documentation for help.
+                {t("onboarding.errorBoundary.supportNote")}
               </p>
             </div>
           </Card>
@@ -98,3 +100,8 @@ export class OnboardingErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+
+// `withTranslation` gives this class component access to `t()` via props.
+export const OnboardingErrorBoundary = withTranslation()(
+  OnboardingErrorBoundaryBase,
+);

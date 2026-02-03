@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
+import { useTranslation } from "react-i18next";
 
 interface PermissionsScreenProps {
   onNext: () => void;
@@ -35,6 +36,7 @@ export function PermissionsScreen({
   platform,
   checkPermissions,
 }: PermissionsScreenProps) {
+  const { t } = useTranslation();
   const [isRequestingMic, setIsRequestingMic] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
 
@@ -134,15 +136,17 @@ export function PermissionsScreen({
 
   return (
     <OnboardingLayout
-      title="Setup Permissions"
-      subtitle="Amical needs a few permissions to work properly"
+      title={t("onboarding.permissions.title")}
+      subtitle={t("onboarding.permissions.subtitle")}
       footer={
         <NavigationButtons
           onBack={onBack}
           onNext={onNext}
           disableNext={!allPermissionsGranted}
           nextLabel={
-            allPermissionsGranted ? "Continue" : "Waiting for permissions..."
+            allPermissionsGranted
+              ? t("onboarding.navigation.continue")
+              : t("onboarding.permissions.waiting")
           }
         />
       }
@@ -155,10 +159,10 @@ export function PermissionsScreen({
               <CheckCircle className="h-5 w-5 text-green-500" />
               <div>
                 <p className="font-medium text-green-900 dark:text-green-100">
-                  All permissions granted
+                  {t("onboarding.permissions.allGranted.title")}
                 </p>
                 <p className="text-sm text-green-800 dark:text-green-200">
-                  You're all set! You can continue to the next step.
+                  {t("onboarding.permissions.allGranted.description")}
                 </p>
               </div>
             </div>
@@ -169,7 +173,7 @@ export function PermissionsScreen({
         {isPolling && !allPermissionsGranted && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
-            <span>Checking for permission changes...</span>
+            <span>{t("onboarding.permissions.polling")}</span>
           </div>
         )}
 
@@ -183,16 +187,18 @@ export function PermissionsScreen({
                   <Mic className={`h-5 w-5 ${micStatus.color}`} />
                 </div>
                 <div>
-                  <h3 className="font-medium">Microphone Access</h3>
+                  <h3 className="font-medium">
+                    {t("onboarding.permissions.microphone.title")}
+                  </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Required for recording and transcribing audio
+                    {t("onboarding.permissions.microphone.description")}
                   </p>
 
                   {permissions.microphone === "granted" && (
                     <div className="mt-2 flex items-center gap-2">
                       <MicIcon className={`h-4 w-4 ${micStatus.color}`} />
                       <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                        Permission granted
+                        {t("onboarding.permissions.status.granted")}
                       </span>
                     </div>
                   )}
@@ -202,11 +208,11 @@ export function PermissionsScreen({
                       <div className="flex items-center gap-2">
                         <MicIcon className={`h-4 w-4 ${micStatus.color}`} />
                         <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                          Permission denied
+                          {t("onboarding.permissions.status.denied")}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Please grant microphone access in System Preferences
+                        {t("onboarding.permissions.microphone.deniedHelp")}
                       </p>
                     </div>
                   )}
@@ -215,7 +221,7 @@ export function PermissionsScreen({
                     <div className="mt-2 flex items-center gap-2">
                       <MicIcon className={`h-4 w-4 ${micStatus.color}`} />
                       <span className="text-sm font-medium">
-                        Permission not yet requested
+                        {t("onboarding.permissions.status.notRequested")}
                       </span>
                     </div>
                   )}
@@ -231,7 +237,9 @@ export function PermissionsScreen({
                       size="sm"
                       variant="default"
                     >
-                      {isRequestingMic ? "Requesting..." : "Request Permission"}
+                      {isRequestingMic
+                        ? t("onboarding.permissions.actions.requesting")
+                        : t("onboarding.permissions.actions.request")}
                     </Button>
                   )}
 
@@ -243,7 +251,7 @@ export function PermissionsScreen({
                       className="gap-2"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      Open Settings
+                      {t("onboarding.permissions.actions.openSettings")}
                     </Button>
                   )}
                 </div>
@@ -260,17 +268,18 @@ export function PermissionsScreen({
                     <Accessibility className={`h-5 w-5 ${accStatus.color}`} />
                   </div>
                   <div>
-                    <h3 className="font-medium">Accessibility Access</h3>
+                    <h3 className="font-medium">
+                      {t("onboarding.permissions.accessibility.title")}
+                    </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Required for pasting transcription and global keyboard
-                      shortcuts (macOS only)
+                      {t("onboarding.permissions.accessibility.description")}
                     </p>
 
                     {permissions.accessibility ? (
                       <div className="mt-2 flex items-center gap-2">
                         <AccIcon className={`h-4 w-4 ${accStatus.color}`} />
                         <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                          Permission granted
+                          {t("onboarding.permissions.status.granted")}
                         </span>
                       </div>
                     ) : (
@@ -278,11 +287,11 @@ export function PermissionsScreen({
                         <div className="flex items-center gap-2">
                           <AccIcon className={`h-4 w-4 ${accStatus.color}`} />
                           <span className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                            Permission required
+                            {t("onboarding.permissions.status.required")}
                           </span>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Add Amical to Accessibility in System Preferences
+                          {t("onboarding.permissions.accessibility.deniedHelp")}
                         </p>
                       </div>
                     )}
@@ -297,7 +306,7 @@ export function PermissionsScreen({
                     className="gap-2"
                   >
                     <ExternalLink className="h-4 w-4" />
-                    Open Settings
+                    {t("onboarding.permissions.actions.openSettings")}
                   </Button>
                 )}
               </div>

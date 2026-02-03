@@ -1,10 +1,12 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { I18nextProvider } from "react-i18next";
 import { WidgetPage } from "./pages/widget";
 import { api, trpcClient } from "@/trpc/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToasterWrapper } from "./components/ToasterWrapper";
+import { initializeRendererI18n } from "@/renderer/lib/initialize-i18n";
 import "@/styles/globals.css";
 
 // Extend Console interface to include original methods
@@ -70,16 +72,26 @@ const queryClient = new QueryClient({
 const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
-  root.render(
-    <ThemeProvider>
-      <api.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <WidgetPage />
-          <ToasterWrapper />
-        </QueryClientProvider>
-      </api.Provider>
-    </ThemeProvider>,
-  );
+  const bootstrap = async () => {
+    const i18n = await initializeRendererI18n();
+
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <ThemeProvider>
+          <api.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+              <WidgetPage />
+              <ToasterWrapper />
+            </QueryClientProvider>
+          </api.Provider>
+        </ThemeProvider>
+      </I18nextProvider>,
+    );
+  };
+
+  void bootstrap().catch((error) => {
+    console.error("Failed to initialize i18n", error);
+  });
 } else {
   console.error(
     "FloatingButton: Root element not found in floating-button.html",

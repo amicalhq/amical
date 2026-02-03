@@ -23,8 +23,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export default function AdvancedSettingsPage() {
+  const { t } = useTranslation();
   const [preloadWhisperModel, setPreloadWhisperModel] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -40,11 +42,11 @@ export default function AdvancedSettingsPage() {
     api.settings.updateTranscriptionSettings.useMutation({
       onSuccess: () => {
         utils.settings.getSettings.invalidate();
-        toast.success("Settings updated");
+        toast.success(t("settings.advanced.toast.settingsUpdated"));
       },
       onError: (error) => {
         console.error("Failed to update transcription settings:", error);
-        toast.error("Failed to update settings. Please try again.");
+        toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
       },
     });
 
@@ -53,37 +55,37 @@ export default function AdvancedSettingsPage() {
       onSuccess: () => {
         utils.settings.getTelemetrySettings.invalidate();
         utils.settings.getTelemetryConfig.invalidate();
-        toast.success("Telemetry settings updated");
+        toast.success(t("settings.advanced.toast.telemetryUpdated"));
       },
       onError: (error) => {
         console.error("Failed to update telemetry settings:", error);
-        toast.error("Failed to update telemetry settings. Please try again.");
+        toast.error(t("settings.advanced.toast.telemetryUpdateFailed"));
       },
     });
 
   const resetAppMutation = api.settings.resetApp.useMutation({
     onMutate: () => {
       setIsResetting(true);
-      toast.info("Resetting app...");
+      toast.info(t("settings.advanced.toast.resetting"));
     },
     onSuccess: () => {
-      toast.success("App reset successfully. Restarting...");
+      toast.success(t("settings.advanced.toast.resetSuccess"));
     },
     onError: (error) => {
       setIsResetting(false);
       console.error("Failed to reset app:", error);
-      toast.error("Failed to reset app. Please try again.");
+      toast.error(t("settings.advanced.toast.resetFailed"));
     },
   });
 
   const downloadLogFileMutation = api.settings.downloadLogFile.useMutation({
     onSuccess: (data) => {
       if (data.success) {
-        toast.success("Log file saved successfully");
+        toast.success(t("settings.advanced.toast.logSaved"));
       }
     },
     onError: () => {
-      toast.error("Failed to save log file");
+      toast.error(t("settings.advanced.toast.logSaveFailed"));
     },
   });
 
@@ -116,29 +118,33 @@ export default function AdvancedSettingsPage() {
   const handleCopyMachineId = async () => {
     if (machineIdQuery.data) {
       await navigator.clipboard.writeText(machineIdQuery.data);
-      toast.success("Machine ID copied to clipboard");
+      toast.success(t("settings.advanced.toast.machineIdCopied"));
     }
   };
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-xl font-bold">Advanced</h1>
+        <h1 className="text-xl font-bold">{t("settings.advanced.title")}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Advanced configuration options and experimental features
+          {t("settings.advanced.description")}
         </p>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Advanced Settings</CardTitle>
-          <CardDescription>Advanced configuration options</CardDescription>
+          <CardTitle>{t("settings.advanced.cardTitle")}</CardTitle>
+          <CardDescription>
+            {t("settings.advanced.cardDescription")}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="preload-whisper">Preload Whisper Model</Label>
+              <Label htmlFor="preload-whisper">
+                {t("settings.advanced.preloadModel.label")}
+              </Label>
               <p className="text-sm text-muted-foreground">
-                Load AI model at startup for faster transcription
+                {t("settings.advanced.preloadModel.description")}
               </p>
             </div>
             <Switch
@@ -150,9 +156,11 @@ export default function AdvancedSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="debug-mode">Debug Mode</Label>
+              <Label htmlFor="debug-mode">
+                {t("settings.advanced.debugMode.label")}
+              </Label>
               <p className="text-sm text-muted-foreground">
-                Enable detailed logging
+                {t("settings.advanced.debugMode.description")}
               </p>
             </div>
             <Switch id="debug-mode" />
@@ -160,9 +168,11 @@ export default function AdvancedSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="auto-update">Auto Updates</Label>
+              <Label htmlFor="auto-update">
+                {t("settings.advanced.autoUpdates.label")}
+              </Label>
               <p className="text-sm text-muted-foreground">
-                Automatically check for updates
+                {t("settings.advanced.autoUpdates.description")}
               </p>
             </div>
             <Switch id="auto-update" defaultChecked />
@@ -170,14 +180,16 @@ export default function AdvancedSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="telemetry">Anonymous Telemetry</Label>
+              <Label htmlFor="telemetry">
+                {t("settings.advanced.telemetry.label")}
+              </Label>
               <p className="text-sm text-muted-foreground">
-                Help improve Amical by sharing anonymous usage data.{" "}
+                {t("settings.advanced.telemetry.description")}{" "}
                 <button
                   onClick={handleOpenTelemetryDocs}
                   className="text-primary hover:underline"
                 >
-                  Learn more
+                  {t("settings.advanced.telemetry.learnMore")}
                 </button>
               </p>
             </div>
@@ -189,21 +201,27 @@ export default function AdvancedSettingsPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="data-location">Data Location</Label>
+            <Label htmlFor="data-location">
+              {t("settings.advanced.dataLocation.label")}
+            </Label>
             <Input
               id="data-location"
-              value={dataPathQuery.data || "Loading..."}
+              value={dataPathQuery.data || t("settings.advanced.loadingValue")}
               disabled
               className="cursor-default"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="log-location">Log File Location</Label>
+            <Label htmlFor="log-location">
+              {t("settings.advanced.logLocation.label")}
+            </Label>
             <div className="flex gap-2">
               <Input
                 id="log-location"
-                value={logFilePathQuery.data || "Loading..."}
+                value={
+                  logFilePathQuery.data || t("settings.advanced.loadingValue")
+                }
                 disabled
                 className="cursor-default flex-1"
               />
@@ -212,17 +230,21 @@ export default function AdvancedSettingsPage() {
                 onClick={() => downloadLogFileMutation.mutate()}
                 disabled={downloadLogFileMutation.isPending}
               >
-                Download
+                {t("settings.advanced.logLocation.download")}
               </Button>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="machine-id">Machine ID</Label>
+            <Label htmlFor="machine-id">
+              {t("settings.advanced.machineId.label")}
+            </Label>
             <div className="flex gap-2">
               <Input
                 id="machine-id"
-                value={machineIdQuery.data || "Loading..."}
+                value={
+                  machineIdQuery.data || t("settings.advanced.loadingValue")
+                }
                 disabled
                 className="cursor-default flex-1 font-mono text-xs"
               />
@@ -231,7 +253,7 @@ export default function AdvancedSettingsPage() {
                 onClick={handleCopyMachineId}
                 disabled={!machineIdQuery.data}
               >
-                Copy
+                {t("settings.advanced.machineId.copy")}
               </Button>
             </div>
           </div>
@@ -240,18 +262,22 @@ export default function AdvancedSettingsPage() {
 
       <Card className="border-destructive/50 mt-6">
         <CardHeader>
-          <CardTitle className="text-destructive">Danger Zone</CardTitle>
+          <CardTitle className="text-destructive">
+            {t("settings.advanced.dangerZone.title")}
+          </CardTitle>
           <CardDescription>
-            Actions here are irreversible and will delete all your data
+            {t("settings.advanced.dangerZone.description")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <Label htmlFor="reset-app">Reset App</Label>
+                <Label htmlFor="reset-app">
+                  {t("settings.advanced.reset.label")}
+                </Label>
                 <p className="text-sm text-muted-foreground">
-                  Delete all data and start fresh
+                  {t("settings.advanced.reset.description")}
                 </p>
               </div>
               <AlertDialog>
@@ -261,35 +287,48 @@ export default function AdvancedSettingsPage() {
                     disabled={isResetting}
                     id="reset-app"
                   >
-                    Reset App
+                    {t("settings.advanced.reset.button")}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>
-                      Are you absolutely sure?
+                      {t("settings.advanced.reset.dialog.title")}
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                      This action cannot be undone. This will permanently
-                      delete:
+                      {t("settings.advanced.reset.dialog.description")}
                       <ul className="list-disc list-inside mt-2">
-                        <li>All your transcriptions</li>
-                        <li>All your notes</li>
-                        <li>Your vocabulary</li>
-                        <li>All settings and preferences</li>
-                        <li>Downloaded models</li>
+                        <li>
+                          {t(
+                            "settings.advanced.reset.dialog.items.transcriptions",
+                          )}
+                        </li>
+                        <li>
+                          {t("settings.advanced.reset.dialog.items.notes")}
+                        </li>
+                        <li>
+                          {t("settings.advanced.reset.dialog.items.vocabulary")}
+                        </li>
+                        <li>
+                          {t("settings.advanced.reset.dialog.items.settings")}
+                        </li>
+                        <li>
+                          {t("settings.advanced.reset.dialog.items.models")}
+                        </li>
                       </ul>
                       <br />
-                      The app will restart with a fresh installation.
+                      {t("settings.advanced.reset.dialog.footer")}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel>
+                      {t("settings.advanced.reset.dialog.cancel")}
+                    </AlertDialogCancel>
                     <Button
                       variant="destructive"
                       onClick={() => resetAppMutation.mutate()}
                     >
-                      Yes, delete everything
+                      {t("settings.advanced.reset.dialog.confirm")}
                     </Button>
                   </AlertDialogFooter>
                 </AlertDialogContent>

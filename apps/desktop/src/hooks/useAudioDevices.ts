@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface AudioDevice {
   deviceId: string;
@@ -7,6 +8,7 @@ export interface AudioDevice {
 }
 
 export function useAudioDevices() {
+  const { t } = useTranslation();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [defaultDeviceName, setDefaultDeviceName] = useState<string>("");
 
@@ -34,17 +36,25 @@ export function useAudioDevices() {
       let foundDefaultName = "";
       const defaultDevice = allDevices.find(
         (device) =>
-          device.kind === "audioinput" &&
-          device.label.toLowerCase().startsWith("default"),
+          device.kind === "audioinput" && device.deviceId === "default",
       );
 
       if (defaultDevice) {
-        // Extract the actual device name from "Default - DeviceName" or "Default (DeviceName)"
-        const match = defaultDevice.label.match(
-          /Default\s*[-–]\s*(.+)|Default\s*\((.+)\)/i,
-        );
+        const label = defaultDevice.label || "";
+
+        // Extract the actual device name from common patterns like:
+        // "Default - DeviceName" or "Default (DeviceName)".
+        const match = label.match(/Default\s*[-–]\s*(.+)|Default\s*\((.+)\)/i);
         if (match) {
-          foundDefaultName = match[1] || match[2] || "";
+          foundDefaultName = (match[1] || match[2] || "").trim();
+        } else if (label.includes("-")) {
+          // Fallback for non-English environments that still include a dash separator.
+          foundDefaultName = label.split("-").slice(1).join("-").trim();
+        } else {
+          const paren = label.match(/\((.+)\)/);
+          if (paren) {
+            foundDefaultName = (paren[1] || "").trim();
+          }
         }
       }
 
@@ -64,8 +74,11 @@ export function useAudioDevices() {
             return false;
           }
 
-          // Skip "Default" entries entirely - we'll add our own
-          if (lowerLabel.startsWith("default")) {
+          // Skip special entries entirely - we'll add our own.
+          if (
+            device.deviceId === "default" ||
+            device.deviceId === "communications"
+          ) {
             return false;
           }
 
@@ -87,8 +100,10 @@ export function useAudioDevices() {
         {
           deviceId: "default",
           label: foundDefaultName
-            ? `System Default (${foundDefaultName})`
-            : "System Default",
+            ? t("settings.dictation.microphone.systemDefaultWithName", {
+                deviceName: foundDefaultName,
+              })
+            : t("settings.dictation.microphone.systemDefault"),
           isDefault: true,
         },
         ...audioInputs,
@@ -99,7 +114,7 @@ export function useAudioDevices() {
     } catch (error) {
       console.error("Failed to fetch audio devices:", error);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchDevices();

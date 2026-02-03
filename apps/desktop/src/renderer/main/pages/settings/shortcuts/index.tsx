@@ -5,8 +5,10 @@ import { ShortcutInput } from "@/components/shortcut-input";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export function ShortcutsSettingsPage() {
+  const { t } = useTranslation();
   const [pushToTalkShortcut, setPushToTalkShortcut] = useState<number[]>([]);
   const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState<
     number[]
@@ -23,22 +25,38 @@ export function ShortcutsSettingsPage() {
 
   const setShortcutMutation = api.settings.setShortcut.useMutation({
     onSuccess: (data, variables) => {
+      if (!data.success) {
+        toast.error(t(data.error.key, data.error.params));
+        const cached = utils.settings.getShortcuts.getData();
+        if (cached) {
+          setPushToTalkShortcut(cached.pushToTalk);
+          setToggleRecordingShortcut(cached.toggleRecording);
+          setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
+        } else {
+          utils.settings.getShortcuts.invalidate();
+        }
+        return;
+      }
+
       utils.settings.getShortcuts.invalidate();
 
       // Show warning if there is one
       if (data.warning) {
-        toast.warning(data.warning);
+        toast.warning(t(data.warning.key, data.warning.params));
       } else {
         const successMessages = {
-          pushToTalk: "Push to talk shortcut updated",
-          toggleRecording: "Hands-free mode shortcut updated",
-          pasteLastTranscript: "Paste last transcript shortcut updated",
+          pushToTalk: t("settings.shortcuts.toast.pushToTalkUpdated"),
+          toggleRecording: t("settings.shortcuts.toast.handsFreeUpdated"),
+          pasteLastTranscript: t(
+            "settings.shortcuts.toast.pasteLastTranscriptUpdated",
+          ),
         } as const;
         toast.success(successMessages[variables.type]);
       }
     },
     onError: (error) => {
-      toast.error(error.message);
+      console.error(error);
+      toast.error(t("errors.generic"));
       const cached = utils.settings.getShortcuts.getData();
       if (cached) {
         setPushToTalkShortcut(cached.pushToTalk);
@@ -86,9 +104,9 @@ export function ShortcutsSettingsPage() {
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-xl font-bold">Shortcuts</h1>
+        <h1 className="text-xl font-bold">{t("settings.shortcuts.title")}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Configure keyboard shortcuts for dictation and hands-free modes
+          {t("settings.shortcuts.description")}
         </p>
       </div>
 
@@ -99,10 +117,10 @@ export function ShortcutsSettingsPage() {
               <div className="flex flex-col md:flex-row md:justify-between gap-4">
                 <div>
                   <Label className="text-base font-semibold text-foreground">
-                    Push to talk
+                    {t("settings.shortcuts.pushToTalk.label")}
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                    Hold to dictate while key is pressed
+                    {t("settings.shortcuts.pushToTalk.description")}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 items-end min-w-[260px]">
@@ -123,11 +141,10 @@ export function ShortcutsSettingsPage() {
               <div className="flex flex-col md:flex-row md:justify-between gap-4">
                 <div>
                   <Label className="text-base font-semibold text-foreground">
-                    Hands-free mode
+                    {t("settings.shortcuts.handsFree.label")}
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                    Start/stop dictation by pressing once to start and pressing
-                    again to stop
+                    {t("settings.shortcuts.handsFree.description")}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 items-end min-w-[260px]">
@@ -150,10 +167,10 @@ export function ShortcutsSettingsPage() {
               <div className="flex flex-col md:flex-row md:justify-between gap-4">
                 <div>
                   <Label className="text-base font-semibold text-foreground">
-                    Paste last transcript
+                    {t("settings.shortcuts.pasteLastTranscript.label")}
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                    Paste your most recent transcription into the active app
+                    {t("settings.shortcuts.pasteLastTranscript.description")}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 items-end min-w-[260px]">

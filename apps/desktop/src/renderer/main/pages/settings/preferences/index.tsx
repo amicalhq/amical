@@ -1,26 +1,69 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export default function PreferencesSettingsPage() {
+  const { t } = useTranslation();
   const utils = api.useUtils();
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+  const [selectedLocale, setSelectedLocale] = useState<string>("system");
 
   // tRPC queries and mutations
   const preferencesQuery = api.settings.getPreferences.useQuery();
+  const uiSettingsQuery = api.settings.getUISettings.useQuery();
   const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
     onSuccess: () => {
-      toast.success("Preferences updated");
+      toast.success(t("settings.preferences.toast.updated"));
       utils.settings.getPreferences.invalidate();
     },
     onError: (error) => {
       console.error("Failed to update preferences:", error);
-      toast.error("Failed to update preferences. Please try again.");
+      toast.error(t("settings.preferences.toast.updateFailed"));
     },
   });
+  const updateUILocaleMutation = api.settings.updateUILocale.useMutation({
+    onSuccess: () => {
+      utils.settings.getUISettings.invalidate();
+      utils.settings.getSettings.invalidate();
+      setRestartDialogOpen(true);
+    },
+    onError: (error) => {
+      console.error("Failed to update UI locale:", error);
+      toast.error(t("errors.generic"));
+      // Revert selection back to persisted value.
+      const persisted = uiSettingsQuery.data?.locale ?? null;
+      setSelectedLocale(persisted ?? "system");
+    },
+  });
+  const restartAppMutation = api.settings.restartApp.useMutation();
+
+  useEffect(() => {
+    const persisted = uiSettingsQuery.data?.locale ?? null;
+    setSelectedLocale(persisted ?? "system");
+  }, [uiSettingsQuery.data?.locale]);
 
   const handleLaunchAtLoginChange = (checked: boolean) => {
     updatePreferencesMutation.mutate({
@@ -52,6 +95,18 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleLanguageChange = (value: string) => {
+    setSelectedLocale(value);
+
+    const nextLocale = value === "system" ? null : value;
+    const currentLocale = uiSettingsQuery.data?.locale ?? null;
+    if (nextLocale === currentLocale) {
+      return;
+    }
+
+    updateUILocaleMutation.mutate({ locale: nextLocale });
+  };
+
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
@@ -59,14 +114,16 @@ export default function PreferencesSettingsPage() {
   const showInDock = preferencesQuery.data?.showInDock ?? true;
   const muteSystemAudio = preferencesQuery.data?.muteSystemAudio ?? true;
   const isMac = window.electronAPI.platform === "darwin";
+  const localeDisabled =
+    uiSettingsQuery.isLoading || updateUILocaleMutation.isPending;
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       {/* Header Section */}
       <div className="mb-8">
-        <h1 className="text-xl font-bold">Preferences</h1>
+        <h1 className="text-xl font-bold">{t("settings.preferences.title")}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Customize your application behavior and appearance
+          {t("settings.preferences.description")}
         </p>
       </div>
 
@@ -77,10 +134,10 @@ export default function PreferencesSettingsPage() {
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label className="text-base font-medium text-foreground">
-                  Launch at login
+                  {t("settings.preferences.launchAtLogin.label")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Automatically start the application when you log in
+                  {t("settings.preferences.launchAtLogin.description")}
                 </p>
               </div>
               <Switch
@@ -115,10 +172,12 @@ export default function PreferencesSettingsPage() {
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label className="text-base font-medium text-foreground">
-                  Show widget while inactive
+                  {t("settings.preferences.showWidgetWhileInactive.label")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Keep the widget visible on screen when not recording
+                  {t(
+                    "settings.preferences.showWidgetWhileInactive.description",
+                  )}
                 </p>
               </div>
               <Switch
@@ -136,10 +195,10 @@ export default function PreferencesSettingsPage() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <Label className="text-base font-medium text-foreground">
-                      Show app in dock
+                      {t("settings.preferences.showInDock.label")}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Display the application icon in the macOS dock
+                      {t("settings.preferences.showInDock.description")}
                     </p>
                   </div>
                   <Switch
@@ -156,10 +215,10 @@ export default function PreferencesSettingsPage() {
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label className="text-base font-medium text-foreground">
-                  Mute system audio during recording
+                  {t("settings.preferences.muteSystemAudio.label")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Silence system output while capturing microphone audio
+                  {t("settings.preferences.muteSystemAudio.description")}
                 </p>
               </div>
               <Switch
@@ -174,14 +233,45 @@ export default function PreferencesSettingsPage() {
 
             <Separator />
 
+            {/* Language */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  {t("settings.preferences.language.label")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.preferences.language.description")}
+                </p>
+              </div>
+              <Select
+                value={selectedLocale}
+                onValueChange={handleLanguageChange}
+                disabled={localeDisabled}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="system">
+                    {t("settings.preferences.language.options.system")}
+                  </SelectItem>
+                  <SelectItem value="en">
+                    {t("settings.preferences.language.options.en")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
             {/* Theme Section */}
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label className="text-base font-medium text-foreground">
-                  Theme
+                  {t("settings.preferences.theme.label")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Choose your preferred color scheme
+                  {t("settings.preferences.theme.description")}
                 </p>
               </div>
               <ThemeToggle />
@@ -191,6 +281,39 @@ export default function PreferencesSettingsPage() {
 
         {/* add future preferences here in a card */}
       </div>
+
+      <AlertDialog open={restartDialogOpen} onOpenChange={setRestartDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("settings.preferences.language.restartDialog.title")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("settings.preferences.language.restartDialog.description")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                toast.success(
+                  t("settings.preferences.language.toast.applyNextStart"),
+                );
+              }}
+            >
+              {t("settings.preferences.language.restartDialog.later")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                toast.info(t("settings.preferences.language.toast.restarting"));
+                restartAppMutation.mutate();
+              }}
+              disabled={restartAppMutation.isPending}
+            >
+              {t("settings.preferences.language.restartDialog.restartNow")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 type VocabularyItem = {
   id: number;
@@ -55,18 +56,23 @@ function VocabularyDialog({
   onSubmit,
   isLoading = false,
 }: VocabularyDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {mode === "add" ? "Add to vocabulary" : "Edit vocabulary"}
+            {mode === "add"
+              ? t("settings.vocabulary.dialog.addTitle")
+              : t("settings.vocabulary.dialog.editTitle")}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Label htmlFor="replacement-toggle">Make it a replacement</Label>
+              <Label htmlFor="replacement-toggle">
+                {t("settings.vocabulary.dialog.replacementLabel")}
+              </Label>
               <Info className="w-4 h-4 text-muted-foreground" />
             </div>
             <Switch
@@ -82,7 +88,9 @@ function VocabularyDialog({
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Input
-                  placeholder="Misspelling"
+                  placeholder={t(
+                    "settings.vocabulary.dialog.misspellingPlaceholder",
+                  )}
                   value={formData.word}
                   onChange={(e) =>
                     onFormDataChange({ ...formData, word: e.target.value })
@@ -90,7 +98,9 @@ function VocabularyDialog({
                 />
                 <span className="text-muted-foreground">→</span>
                 <Input
-                  placeholder="Correct spelling"
+                  placeholder={t(
+                    "settings.vocabulary.dialog.correctSpellingPlaceholder",
+                  )}
                   value={formData.replacementWord}
                   onChange={(e) =>
                     onFormDataChange({
@@ -103,7 +113,7 @@ function VocabularyDialog({
             </div>
           ) : (
             <Input
-              placeholder="Add a new word"
+              placeholder={t("settings.vocabulary.dialog.newWordPlaceholder")}
               value={formData.word}
               onChange={(e) =>
                 onFormDataChange({ ...formData, word: e.target.value })
@@ -113,7 +123,7 @@ function VocabularyDialog({
 
           <DialogFooter className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("settings.vocabulary.dialog.cancel")}
             </Button>
             <Button
               onClick={onSubmit}
@@ -124,10 +134,10 @@ function VocabularyDialog({
               }
             >
               {isLoading
-                ? "Saving..."
+                ? t("settings.vocabulary.dialog.saving")
                 : mode === "add"
-                  ? "Add word"
-                  : "Save changes"}
+                  ? t("settings.vocabulary.dialog.addWord")
+                  : t("settings.vocabulary.dialog.saveChanges")}
             </Button>
           </DialogFooter>
         </div>
@@ -152,32 +162,35 @@ function DeleteDialog({
   onConfirm,
   isLoading = false,
 }: DeleteDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete vocabulary item</DialogTitle>
+          <DialogTitle>{t("settings.vocabulary.delete.title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete "
-            {deletingItem?.isReplacement
-              ? `${deletingItem?.word} → ${deletingItem?.replacementWord}`
-              : deletingItem?.word}
-            "? This action cannot be undone.
+            {t("settings.vocabulary.delete.description", {
+              item: deletingItem?.isReplacement
+                ? `${deletingItem?.word} → ${deletingItem?.replacementWord}`
+                : deletingItem?.word,
+            })}
           </p>
         </div>
 
         <DialogFooter className="flex justify-end gap-2 pt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("settings.vocabulary.delete.cancel")}
           </Button>
           <Button
             variant="destructive"
             onClick={onConfirm}
             disabled={isLoading}
           >
-            {isLoading ? "Deleting..." : "Delete"}
+            {isLoading
+              ? t("settings.vocabulary.delete.deleting")
+              : t("settings.vocabulary.delete.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -186,6 +199,7 @@ function DeleteDialog({
 }
 
 export default function VocabularySettingsPage() {
+  const { t } = useTranslation();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -213,30 +227,38 @@ export default function VocabularySettingsPage() {
     api.vocabulary.createVocabularyWord.useMutation({
       onSuccess: () => {
         utils.vocabulary.getVocabulary.invalidate();
-        toast.success("Word added to vocabulary");
+        toast.success(t("settings.vocabulary.toast.added"));
       },
       onError: (error) => {
-        toast.error(`Failed to add word: ${error.message}`);
+        toast.error(
+          t("settings.vocabulary.toast.addFailed", { message: error.message }),
+        );
       },
     });
 
   const updateVocabularyMutation = api.vocabulary.updateVocabulary.useMutation({
     onSuccess: () => {
       utils.vocabulary.getVocabulary.invalidate();
-      toast.success("Vocabulary updated");
+      toast.success(t("settings.vocabulary.toast.updated"));
     },
     onError: (error) => {
-      toast.error(`Failed to update word: ${error.message}`);
+      toast.error(
+        t("settings.vocabulary.toast.updateFailed", { message: error.message }),
+      );
     },
   });
 
   const deleteVocabularyMutation = api.vocabulary.deleteVocabulary.useMutation({
     onSuccess: () => {
       utils.vocabulary.getVocabulary.invalidate();
-      toast.success("Word deleted from vocabulary");
+      toast.success(t("settings.vocabulary.toast.deleted"));
     },
     onError: (error) => {
-      toast.error(`Failed to delete word: ${error.message}`);
+      toast.error(
+        t("settings.vocabulary.toast.deleteFailed", {
+          message: error.message,
+        }),
+      );
     },
   });
 
@@ -320,9 +342,11 @@ export default function VocabularySettingsPage() {
       {/* Header Section */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-xl font-bold">Vocabulary</h1>
+          <h1 className="text-xl font-bold">
+            {t("settings.vocabulary.title")}
+          </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Manage your custom vocabulary and word replacements for dictation.
+            {t("settings.vocabulary.description")}
           </p>
         </div>
 
@@ -333,7 +357,7 @@ export default function VocabularySettingsPage() {
               className="flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              Add Word
+              {t("settings.vocabulary.addButton")}
             </Button>
           </DialogTrigger>
         </Dialog>
@@ -344,11 +368,11 @@ export default function VocabularySettingsPage() {
         <CardContent className="p-0">
           {vocabularyLoading ? (
             <div className="p-8 text-center text-muted-foreground">
-              Loading vocabulary...
+              {t("settings.vocabulary.loading")}
             </div>
           ) : vocabularyItems.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              No vocabulary words found. Add your first word to get started.
+              {t("settings.vocabulary.empty")}
             </div>
           ) : (
             <div className="space-y-0">

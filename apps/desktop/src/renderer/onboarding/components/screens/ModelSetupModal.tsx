@@ -13,6 +13,7 @@ import { Loader2, Download, AlertCircle, Check } from "lucide-react";
 import { api } from "@/trpc/react";
 import { ModelType } from "../../../../types/onboarding";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface ModelSetupModalProps {
   isOpen: boolean;
@@ -32,6 +33,7 @@ export function ModelSetupModal({
   modelType,
   onContinue,
 }: ModelSetupModalProps) {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -54,11 +56,11 @@ export function ModelSetupModal({
   const loginMutation = api.auth.login.useMutation({
     onSuccess: () => {
       // Browser opened, waiting for OAuth completion via subscription
-      toast.info("Complete login in your browser");
+      toast.info(t("onboarding.modelSetup.toast.loginInBrowser"));
     },
     onError: (err) => {
       console.error("OAuth error:", err);
-      setError("Failed to open login. Please try again.");
+      setError(t("onboarding.modelSetup.cloud.error.loginStartFailed"));
       setIsLoading(false);
     },
   });
@@ -68,7 +70,7 @@ export function ModelSetupModal({
   api.auth.onAuthStateChange.useSubscription(undefined, {
     onData: (authState) => {
       if (authState.isAuthenticated && isLoading) {
-        toast.success("Successfully authenticated!");
+        toast.success(t("onboarding.modelSetup.toast.authenticated"));
         setIsLoading(false);
         onContinue();
       }
@@ -128,7 +130,11 @@ export function ModelSetupModal({
     } catch (err) {
       console.error("Download error:", err);
       const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to download model: ${errorMessage}`);
+      setError(
+        t("onboarding.modelSetup.local.error.downloadFailed", {
+          message: errorMessage,
+        }),
+      );
       setIsLoading(false);
     }
   };
@@ -163,19 +169,19 @@ export function ModelSetupModal({
       return (
         <>
           <DialogHeader>
-            <DialogTitle>Sign in required</DialogTitle>
+            <DialogTitle>{t("onboarding.modelSetup.cloud.title")}</DialogTitle>
             <DialogDescription>
-              Cloud transcription needs authentication to continue.
+              {t("onboarding.modelSetup.cloud.description")}
             </DialogDescription>
           </DialogHeader>
 
           <DialogFooter className="space-x-2">
             <Button variant="outline" onClick={() => onClose(false)}>
-              Cancel
+              {t("onboarding.modelSetup.actions.cancel")}
             </Button>
             <Button onClick={handleAmicalLogin} disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign In
+              {t("onboarding.modelSetup.actions.signIn")}
             </Button>
           </DialogFooter>
         </>
@@ -188,13 +194,13 @@ export function ModelSetupModal({
         <DialogHeader>
           <DialogTitle>
             {modelAlreadyInstalled || downloadComplete
-              ? "Local Model Ready"
-              : "Downloading Local Model"}
+              ? t("onboarding.modelSetup.local.readyTitle")
+              : t("onboarding.modelSetup.local.downloadingTitle")}
           </DialogTitle>
           <DialogDescription>
             {modelAlreadyInstalled || downloadComplete
-              ? "Ready for private, offline transcription."
-              : "Setting up local model for private, offline transcription"}
+              ? t("onboarding.modelSetup.local.readyDescription")
+              : t("onboarding.modelSetup.local.downloadingDescription")}
           </DialogDescription>
         </DialogHeader>
 
@@ -208,11 +214,13 @@ export function ModelSetupModal({
               <div className="text-center">
                 <p className="font-medium">
                   {modelAlreadyInstalled
-                    ? "Model Already Installed"
-                    : "Download Complete"}
+                    ? t("onboarding.modelSetup.local.alreadyInstalled")
+                    : t("onboarding.modelSetup.local.downloadComplete")}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Using: {installedModelName || recommendedModelId}
+                  {t("onboarding.modelSetup.local.using", {
+                    model: installedModelName || recommendedModelId,
+                  })}
                 </p>
               </div>
             </div>
@@ -226,7 +234,7 @@ export function ModelSetupModal({
                 variant="outline"
                 className="ml-auto"
               >
-                Retry
+                {t("onboarding.modelSetup.actions.retry")}
               </Button>
             </div>
           ) : (
@@ -257,13 +265,13 @@ export function ModelSetupModal({
 
         <DialogFooter className="space-x-2">
           <Button variant="outline" onClick={() => onClose(false)}>
-            Cancel
+            {t("onboarding.modelSetup.actions.cancel")}
           </Button>
           <Button
             onClick={onContinue}
             disabled={!modelAlreadyInstalled && !downloadComplete}
           >
-            Continue
+            {t("onboarding.navigation.continue")}
           </Button>
         </DialogFooter>
       </>

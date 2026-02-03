@@ -2,6 +2,7 @@ import { useMemo, useCallback, useState } from "react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import type { FormatterConfig } from "@/types/formatter";
+import { useTranslation } from "react-i18next";
 
 import type { ComboboxOption } from "@/components/ui/combobox";
 
@@ -29,6 +30,7 @@ interface UseFormattingSettingsReturn {
 }
 
 export function useFormattingSettings(): UseFormattingSettingsReturn {
+  const { t } = useTranslation();
   // tRPC queries
   const formatterConfigQuery = api.settings.getFormatterConfig.useQuery();
   const languageModelsQuery = api.models.getModels.useQuery({
@@ -72,7 +74,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
           );
         }
         console.error("Failed to save formatting settings:", error);
-        toast.error("Failed to save formatting settings. Please try again.");
+        toast.error(t("settings.dictation.formatting.toast.saveFailed"));
       },
       onSettled: () => {
         // Refetch to ensure consistency
@@ -82,11 +84,11 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
 
   const loginMutation = api.auth.login.useMutation({
     onSuccess: () => {
-      toast.info("Complete login in your browser");
+      toast.info(t("settings.dictation.formatting.toast.loginInBrowser"));
     },
     onError: (error) => {
       console.error("Failed to initiate login:", error);
-      toast.error("Failed to start login process");
+      toast.error(t("settings.dictation.formatting.toast.loginStartFailed"));
     },
   });
 
@@ -125,13 +127,13 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
   const formattingOptions = useMemo<ComboboxOption[]>(() => {
     const getCloudDisabledReason = () => {
       if (!isCloudSpeechSelected && !isAuthenticated) {
-        return "Requires Amical Cloud transcription and sign in";
+        return t("settings.dictation.formatting.disabledReason.cloudAndSignIn");
       }
       if (!isCloudSpeechSelected) {
-        return "Requires Amical Cloud transcription";
+        return t("settings.dictation.formatting.disabledReason.cloud");
       }
       if (!isAuthenticated) {
-        return "Requires sign in";
+        return t("settings.dictation.formatting.disabledReason.signIn");
       }
       return undefined;
     };
@@ -139,7 +141,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     const options: ComboboxOption[] = [
       {
         value: "amical-cloud",
-        label: "Amical Cloud (Amical)",
+        label: t("settings.dictation.formatting.cloudOptionLabel"),
         disabled: !canUseCloudFormatting,
         disabledReason: getCloudDisabledReason(),
       },
@@ -156,6 +158,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     isCloudSpeechSelected,
     isAuthenticated,
     languageModels,
+    t,
   ]);
 
   const optionValues = useMemo(() => {

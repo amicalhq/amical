@@ -1,5 +1,6 @@
 import * as React from "react";
 import { IconBookFilled } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
@@ -14,40 +15,40 @@ import {
 import { CommandSearchButton } from "./command-search-button";
 import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
-// Custom Discord icon component
-const DiscordIcon = ({ className }: { className?: string }) => (
-  <img
-    src="assets/discord-icon.svg"
-    alt="Discord"
-    className={`w-4 h-4 ${className || ""}`}
-  />
-);
+export function SettingsSidebar({
+  ...props
+}: React.ComponentProps<typeof Sidebar>) {
+  const { t } = useTranslation();
 
-const data = {
-  navMain: SETTINGS_NAV_ITEMS.map(({ title, url, icon }) => ({
-    title,
+  const DiscordIcon = () => (
+    <img
+      src="assets/discord-icon.svg"
+      alt={t("settings.sidebar.discordAlt")}
+      className="w-4 h-4"
+    />
+  );
+
+  const navMain = SETTINGS_NAV_ITEMS.map(({ titleKey, url, icon }) => ({
+    title: t(titleKey),
     url,
     icon: typeof icon === "string" ? undefined : icon,
-  })),
-  navSecondary: [
+  }));
+
+  const navSecondary = [
     {
-      title: "Docs",
+      title: t("settings.sidebar.docs"),
       url: "https://amical.ai/docs",
       icon: IconBookFilled,
       external: true,
     },
     {
-      title: "Community",
+      title: t("settings.sidebar.community"),
       url: "https://amical.ai/community",
       icon: DiscordIcon,
       external: true,
     },
-  ],
-};
+  ];
 
-export function SettingsSidebar({
-  ...props
-}: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <div className="h-[var(--header-height)]"></div>
@@ -61,10 +62,12 @@ export function SettingsSidebar({
               <div className="inline-flex items-center gap-2.5 font-semibold w-full">
                 <img
                   src="assets/logo.svg"
-                  alt="Amical Logo"
+                  alt={t("settings.sidebar.logoAlt")}
                   className="!size-7"
                 />
-                <span className="font-semibold">Amical</span>
+                <span className="font-semibold">
+                  {t("settings.sidebar.brand")}
+                </span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -74,8 +77,8 @@ export function SettingsSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        <NavMain items={navMain} />
+        <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
     </Sidebar>
   );

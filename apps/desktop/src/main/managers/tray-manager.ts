@@ -3,6 +3,7 @@ import * as path from "path";
 import { logger } from "../logger";
 import type { WindowManager } from "../core/window-manager";
 import { isMacOS, isWindows } from "../../utils/platform";
+import { initMainI18n } from "../../i18n/main";
 
 export class TrayManager {
   private static instance: TrayManager | null = null;
@@ -18,8 +19,14 @@ export class TrayManager {
     return TrayManager.instance;
   }
 
-  initialize(windowManager: WindowManager): void {
+  async initialize(
+    windowManager: WindowManager,
+    locale?: string | null,
+  ): Promise<void> {
     this.windowManager = windowManager;
+    const i18n = await initMainI18n(locale);
+    const t = i18n.t.bind(i18n);
+
     // Create tray icon
     const iconPath = this.getIconPath();
     logger.main.info(`Loading tray icon from: ${iconPath}`);
@@ -40,12 +47,12 @@ export class TrayManager {
     this.tray = new Tray(icon);
 
     // Set tooltip
-    this.tray.setToolTip("Amical");
+    this.tray.setToolTip(t("tray.tooltip"));
 
     // Create context menu
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: "Open Console",
+        label: t("tray.openConsole"),
         click: async () => {
           logger.main.info("Open console requested from tray");
           if (this.windowManager) {
@@ -58,19 +65,19 @@ export class TrayManager {
         ? [{ role: "about" as const }]
         : [
             {
-              label: "About",
+              label: t("tray.about"),
               click: () => {
                 app.showAboutPanel();
               },
             },
           ]),
       {
-        label: `Version ${app.getVersion()}`,
+        label: t("menu.version", { version: app.getVersion() }),
         enabled: false,
       },
       { type: "separator" as const },
       {
-        label: "Quit",
+        label: t("tray.quit"),
         click: () => {
           logger.main.info("Quit requested from tray");
           app.quit();

@@ -5,6 +5,7 @@ import type {
   OnboardingPreferences,
 } from "../../../types/onboarding";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface UseOnboardingStateReturn {
   state: OnboardingState | null;
@@ -19,6 +20,7 @@ interface UseOnboardingStateReturn {
  * Hook to manage onboarding state and persistence
  */
 export function useOnboardingState(): UseOnboardingStateReturn {
+  const { t } = useTranslation();
   const [state, setState] = useState<OnboardingState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -38,12 +40,12 @@ export function useOnboardingState(): UseOnboardingStateReturn {
     if (getStateQuery.error) {
       setError(
         new Error(
-          getStateQuery.error.message || "Failed to load onboarding state",
+          getStateQuery.error.message || t("onboarding.toast.loadStateFailed"),
         ),
       );
       setIsLoading(false);
     }
-  }, [getStateQuery.data, getStateQuery.error]);
+  }, [getStateQuery.data, getStateQuery.error, t]);
 
   // Save preferences (called after each screen)
   const savePreferences = useCallback(
@@ -77,11 +79,11 @@ export function useOnboardingState(): UseOnboardingStateReturn {
         });
       } catch (err) {
         console.error("Failed to save preferences:", err);
-        toast.error("Failed to save your preferences. Please try again.");
+        toast.error(t("onboarding.toast.savePreferencesFailed"));
         throw err;
       }
     },
-    [savePreferencesMutation],
+    [savePreferencesMutation, t],
   );
 
   // Complete onboarding
@@ -95,14 +97,14 @@ export function useOnboardingState(): UseOnboardingStateReturn {
         }
 
         // Main process handles window closing and app relaunch
-        toast.success("Onboarding complete!");
+        toast.success(t("onboarding.toast.completed"));
       } catch (err) {
         console.error("Failed to complete onboarding:", err);
-        toast.error("Failed to complete onboarding. Please try again.");
+        toast.error(t("onboarding.toast.completeFailed"));
         throw err;
       }
     },
-    [completeMutation],
+    [completeMutation, t],
   );
 
   // Reset onboarding (for testing)
@@ -110,14 +112,14 @@ export function useOnboardingState(): UseOnboardingStateReturn {
     try {
       await resetMutation.mutateAsync();
       setState(null);
-      toast.success("Onboarding reset successfully");
+      toast.success(t("onboarding.toast.resetSuccess"));
       await getStateQuery.refetch();
     } catch (err) {
       console.error("Failed to reset onboarding:", err);
-      toast.error("Failed to reset onboarding");
+      toast.error(t("onboarding.toast.resetFailed"));
       throw err;
     }
-  }, [resetMutation, getStateQuery]);
+  }, [resetMutation, getStateQuery, t]);
 
   return {
     state,

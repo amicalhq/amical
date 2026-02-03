@@ -1,8 +1,10 @@
 import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
+import { I18nextProvider, useTranslation } from "react-i18next";
 import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { initializeRendererI18n } from "@/renderer/lib/initialize-i18n";
 
 // Lazy import the main content
 const Content = React.lazy(() => import("./content"));
@@ -59,6 +61,8 @@ console.original = originalConsole;
 
 // Loading spinner component
 const LoadingSpinner: React.FC = () => {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="flex flex-col items-center gap-4">
@@ -66,7 +70,7 @@ const LoadingSpinner: React.FC = () => {
           <div className="w-12 h-12 border-4 border-muted rounded-full"></div>
           <div className="w-12 h-12 border-4 border-foreground border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
         </div>
-        <p className="text-sm text-muted-foreground">Loading Amical...</p>
+        <p className="text-sm text-muted-foreground">{t("app.loading")}</p>
       </div>
     </div>
   );
@@ -88,5 +92,16 @@ const App: React.FC = () => {
 const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
-  root.render(<App />);
+  const bootstrap = async () => {
+    const i18n = await initializeRendererI18n();
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <App />
+      </I18nextProvider>,
+    );
+  };
+
+  void bootstrap().catch((error) => {
+    console.error("Failed to initialize i18n", error);
+  });
 }

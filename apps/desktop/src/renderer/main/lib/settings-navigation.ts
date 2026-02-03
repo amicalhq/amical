@@ -12,74 +12,74 @@ import {
 } from "@tabler/icons-react";
 
 export interface SettingsNavItem {
-  title: string;
+  titleKey: string;
   url: string;
-  description: string;
+  descriptionKey: string;
   icon: Icon | string;
   type: "settings";
 }
 
 export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
-    title: "Notes",
+    titleKey: "settings.nav.notes.title",
     url: "/settings/notes",
-    description: "Manage your notes",
+    descriptionKey: "settings.nav.notes.description",
     icon: IconNotes,
     type: "settings",
   },
   {
-    title: "Preferences",
+    titleKey: "settings.nav.preferences.title",
     url: "/settings/preferences",
-    description: "Configure general application preferences and behavior",
+    descriptionKey: "settings.nav.preferences.description",
     icon: IconSettings,
     type: "settings",
   },
   {
-    title: "Dictation",
+    titleKey: "settings.nav.dictation.title",
     url: "/settings/dictation",
-    description: "Configure speech recognition and dictation settings",
+    descriptionKey: "settings.nav.dictation.description",
     icon: IconMicrophone,
     type: "settings",
   },
   {
-    title: "Shortcuts",
+    titleKey: "settings.nav.shortcuts.title",
     url: "/settings/shortcuts",
-    description: "Customize keyboard shortcuts and hotkeys",
+    descriptionKey: "settings.nav.shortcuts.description",
     icon: IconKeyboard,
     type: "settings",
   },
   {
-    title: "Vocabulary",
+    titleKey: "settings.nav.vocabulary.title",
     url: "/settings/vocabulary",
-    description: "Manage custom vocabulary and word recognition",
+    descriptionKey: "settings.nav.vocabulary.description",
     icon: IconBook,
     type: "settings",
   },
   {
-    title: "AI Models",
+    titleKey: "settings.nav.aiModels.title",
     url: "/settings/ai-models",
-    description: "Configure AI models and providers",
+    descriptionKey: "settings.nav.aiModels.description",
     icon: IconBrain,
     type: "settings",
   },
   {
-    title: "History",
+    titleKey: "settings.nav.history.title",
     url: "/settings/history",
-    description: "View and manage transcription history",
+    descriptionKey: "settings.nav.history.description",
     icon: IconHistory,
     type: "settings",
   },
   {
-    title: "Advanced",
+    titleKey: "settings.nav.advanced.title",
     url: "/settings/advanced",
-    description: "Advanced configuration options",
+    descriptionKey: "settings.nav.advanced.description",
     icon: IconAdjustments,
     type: "settings",
   },
   {
-    title: "About",
+    titleKey: "settings.nav.about.title",
     url: "/settings/about",
-    description: "About Amical and version information",
+    descriptionKey: "settings.nav.about.description",
     icon: IconInfoCircle,
     type: "settings",
   },

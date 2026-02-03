@@ -3,6 +3,7 @@
 import * as React from "react";
 import { IconSearch } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   CommandDialog,
   CommandEmpty,
@@ -21,21 +22,32 @@ import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 const isMac = window.electronAPI.platform === "darwin";
 
 export function CommandSearchButton() {
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const navigate = useNavigate();
+
+  const localizedSettings = React.useMemo(
+    () =>
+      SETTINGS_NAV_ITEMS.map((page) => ({
+        ...page,
+        title: t(page.titleKey),
+        description: t(page.descriptionKey),
+      })),
+    [t, i18n.language],
+  );
 
   // Client-side filtering for settings
   const settingsResults = React.useMemo(() => {
     const query = search.toLowerCase().trim();
     if (!query) {
-      return SETTINGS_NAV_ITEMS;
+      return localizedSettings;
     }
-    return SETTINGS_NAV_ITEMS.filter((page) => {
+    return localizedSettings.filter((page) => {
       const searchText = [page.title, page.description].join(" ").toLowerCase();
       return searchText.includes(query);
     });
-  }, [search]);
+  }, [search, localizedSettings]);
 
   const { data: noteResults = [] } = api.notes.searchNotes.useQuery(
     { query: search },
@@ -86,7 +98,9 @@ export function CommandSearchButton() {
         onClick={() => setOpen(true)}
       >
         <IconSearch className="h-4 w-4" />
-        <span className="flex-1 text-left">Search...</span>
+        <span className="flex-1 text-left">
+          {t("settings.search.buttonPlaceholder")}
+        </span>
         <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground ml-auto">
           {shortcutDisplay}
         </kbd>
@@ -94,12 +108,12 @@ export function CommandSearchButton() {
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput
-          placeholder="Search settings and notes..."
+          placeholder={t("settings.search.inputPlaceholder")}
           value={search}
           onValueChange={setSearch}
         />
         <CommandList>
-          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandEmpty>{t("settings.search.noResults")}</CommandEmpty>
           {(() => {
             // Separate results by type
             const noteResults = searchResults.filter(
@@ -112,7 +126,7 @@ export function CommandSearchButton() {
             return (
               <>
                 {settingsResults.length > 0 && (
-                  <CommandGroup heading="Settings">
+                  <CommandGroup heading={t("settings.search.settingsHeading")}>
                     {settingsResults.map((page) => (
                       <CommandItem
                         key={page.url}
@@ -136,7 +150,7 @@ export function CommandSearchButton() {
                   </CommandGroup>
                 )}
                 {noteResults.length > 0 && (
-                  <CommandGroup heading="Notes">
+                  <CommandGroup heading={t("settings.search.notesHeading")}>
                     {noteResults.map((note) => (
                       <CommandItem
                         key={note.url}

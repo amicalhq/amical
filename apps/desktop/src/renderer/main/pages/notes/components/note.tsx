@@ -53,6 +53,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useTranslation } from "react-i18next";
 
 type InvitedUser = {
   id: number;
@@ -92,6 +93,7 @@ export default function Note({
   onEmojiChange,
   isDeleting = false,
 }: NotePageUIProps) {
+  const { t, i18n } = useTranslation();
   // Local UI state
   const [shareEmail, setShareEmail] = useState("");
   const [accessLevel, setAccessLevel] = useState("can-read");
@@ -208,7 +210,7 @@ export default function Note({
                         onClick={handleEmojiRemove}
                         className="text-xs"
                       >
-                        Remove emoji
+                        {t("settings.notes.note.removeEmoji")}
                       </Button>
                     </div>
                   )}
@@ -230,7 +232,7 @@ export default function Note({
               onChange={(e) => onTitleChange(e.target.value)}
               className="!text-4xl font-semibold border-none px-4 py-2 focus-visible:ring-0 placeholder:text-muted-foreground flex-1"
               style={{ backgroundColor: "transparent" }}
-              placeholder="Note title..."
+              placeholder={t("settings.notes.note.titlePlaceholder")}
               disabled={isSyncing}
             />
           </div>
@@ -241,14 +243,15 @@ export default function Note({
             <div className="flex items-center ">
               {/* Last edited date */}
               <span className="text-sm text-muted-foreground">
-                Edited{" "}
-                {lastEditDate.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year:
-                    lastEditDate.getFullYear() !== new Date().getFullYear()
-                      ? "numeric"
-                      : undefined,
+                {t("settings.notes.note.edited", {
+                  date: lastEditDate.toLocaleDateString(i18n.language, {
+                    month: "short",
+                    day: "numeric",
+                    year:
+                      lastEditDate.getFullYear() !== new Date().getFullYear()
+                        ? "numeric"
+                        : undefined,
+                  }),
                 })}
               </span>
 
@@ -460,7 +463,7 @@ export default function Note({
                         variant="destructive"
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
-                        Delete
+                        {t("settings.notes.note.actions.delete")}
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
                   </AlertDialog>
@@ -473,7 +476,7 @@ export default function Note({
           <Textarea
             value={noteBody}
             onChange={(e) => onBodyChange(e.target.value)}
-            placeholder="Start writing your note..."
+            placeholder={t("settings.notes.note.bodyPlaceholder")}
             className="min-h-[500px] resize-none border-none bg-transparent px-4 py-2 focus-visible:ring-0 text-base leading-relaxed placeholder:text-muted-foreground"
             style={{
               backgroundColor: "transparent",
@@ -486,14 +489,19 @@ export default function Note({
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Note</AlertDialogTitle>
+              <AlertDialogTitle>
+                {t("settings.notes.note.deleteDialog.title")}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{noteTitle}"? This action
-                cannot be undone and the note will be permanently removed.
+                {t("settings.notes.note.deleteDialog.description", {
+                  title: noteTitle,
+                })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>
+                {t("settings.notes.note.deleteDialog.cancel")}
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDeleteClick}
                 className="bg-destructive text-foreground hover:bg-destructive/90"
@@ -502,10 +510,10 @@ export default function Note({
                 {isDeleting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Deleting...
+                    {t("settings.notes.note.deleteDialog.deleting")}
                   </>
                 ) : (
-                  "Delete Note"
+                  t("settings.notes.note.deleteDialog.confirm")
                 )}
               </AlertDialogAction>
             </AlertDialogFooter>

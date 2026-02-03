@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
+import { useTranslation } from "react-i18next";
 
 interface ShortcutInputProps {
   value?: number[];
@@ -31,7 +32,10 @@ const MAX_KEY_COMBINATION_LENGTH = 4;
 type ValidationResult = {
   valid: boolean;
   shortcut?: number[];
-  error?: string;
+  error?: {
+    key: string;
+    params?: Record<string, string | number>;
+  };
 };
 
 function keycodeToDisplay(keycode: number): string {
@@ -48,13 +52,19 @@ function isModifierKeycode(keycode: number): boolean {
  */
 function validateShortcutFormat(keys: number[]): ValidationResult {
   if (keys.length === 0) {
-    return { valid: false, error: "No keys detected" };
+    return {
+      valid: false,
+      error: { key: "settings.shortcuts.validation.noKeysDetected" },
+    };
   }
 
   if (keys.length > MAX_KEY_COMBINATION_LENGTH) {
     return {
       valid: false,
-      error: `Too many keys - use ${MAX_KEY_COMBINATION_LENGTH} or fewer`,
+      error: {
+        key: "settings.shortcuts.validation.tooManyKeys",
+        params: { max: MAX_KEY_COMBINATION_LENGTH },
+      },
     };
   }
 
@@ -71,9 +81,11 @@ function validateShortcutFormat(keys: number[]): ValidationResult {
 function RecordingDisplay({
   activeKeys,
   onCancel,
+  pressKeysText,
 }: {
   activeKeys: number[];
   onCancel: () => void;
+  pressKeysText: string;
 }) {
   return (
     <div
@@ -92,7 +104,7 @@ function RecordingDisplay({
           ))}
         </div>
       ) : (
-        <span className="text-sm text-muted-foreground">Press keys...</span>
+        <span className="text-sm text-muted-foreground">{pressKeysText}</span>
       )}
       <Button
         variant="ghost"
@@ -146,6 +158,7 @@ export function ShortcutInput({
   isRecordingShortcut = false,
   onRecordingShortcutChange,
 }: ShortcutInputProps) {
+  const { t } = useTranslation();
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
@@ -179,7 +192,11 @@ export function ShortcutInput({
           // Basic format is valid - let parent handle backend validation
           onChange(result.shortcut);
         } else {
-          toast.error(result.error || "Invalid key combination");
+          toast.error(
+            result.error
+              ? t(result.error.key, result.error.params)
+              : t("settings.shortcuts.validation.invalidKeyCombination"),
+          );
         }
 
         onRecordingShortcutChange(false);
@@ -205,6 +222,7 @@ export function ShortcutInput({
           <RecordingDisplay
             activeKeys={activeKeys}
             onCancel={handleCancelRecording}
+            pressKeysText={t("settings.shortcuts.input.pressKeys")}
           />
         ) : (
           <ShortcutDisplay value={value} onEdit={handleStartRecording} />

@@ -65,7 +65,7 @@ export class SettingsService extends EventEmitter {
   /**
    * Get UI settings
    */
-  async getUISettings(): Promise<AppSettingsData["ui"]> {
+  async getUISettings(): Promise<NonNullable<AppSettingsData["ui"]>> {
     return (
       (await getSettingsSection("ui")) ?? {
         theme: "system",
@@ -76,7 +76,9 @@ export class SettingsService extends EventEmitter {
   /**
    * Update UI settings
    */
-  async setUISettings(uiSettings: AppSettingsData["ui"]): Promise<void> {
+  async setUISettings(
+    uiSettings: NonNullable<AppSettingsData["ui"]>,
+  ): Promise<void> {
     await updateSettingsSection("ui", uiSettings);
 
     // Emit event if theme changed (AppManager will handle window updates)

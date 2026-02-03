@@ -6,6 +6,7 @@ import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
 import { DiscoverySource } from "../../../../types/onboarding";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface DiscoverySourceScreenProps {
   onNext: (source: DiscoverySource, details?: string) => void;
@@ -23,50 +24,52 @@ export function DiscoverySourceScreen({
   initialSource,
   initialDetails = "",
 }: DiscoverySourceScreenProps) {
+  const { t } = useTranslation();
   const [selectedSource, setSelectedSource] = useState<DiscoverySource | null>(
     initialSource || null,
   );
   const [otherDetails, setOtherDetails] = useState(initialDetails);
+  const maxOtherDetailsLength = 200;
 
   const sources = [
     {
       id: DiscoverySource.SearchEngine,
-      label: "Search engine (Google, Bing, etc.)",
+      label: t("onboarding.discovery.sources.searchEngine"),
     },
     {
       id: DiscoverySource.SocialMedia,
-      label: "Social media (Twitter, LinkedIn, etc.)",
+      label: t("onboarding.discovery.sources.socialMedia"),
     },
     {
       id: DiscoverySource.WordOfMouth,
-      label: "Friend or colleague recommendation",
+      label: t("onboarding.discovery.sources.wordOfMouth"),
     },
     {
       id: DiscoverySource.BlogArticle,
-      label: "Blog post or article",
+      label: t("onboarding.discovery.sources.blogArticle"),
     },
     {
       id: DiscoverySource.GitHub,
-      label: "GitHub",
+      label: t("onboarding.discovery.sources.github"),
     },
     {
       id: DiscoverySource.AIAssistant,
-      label: "AI assistant (ChatGPT, Claude, etc.)",
+      label: t("onboarding.discovery.sources.aiAssistant"),
     },
     {
       id: DiscoverySource.Other,
-      label: "Other",
+      label: t("onboarding.discovery.sources.other"),
     },
   ];
 
   const handleContinue = () => {
     if (!selectedSource) {
-      toast.error("Please select how you discovered Amical");
+      toast.error(t("onboarding.discovery.toast.selectSource"));
       return;
     }
 
     if (selectedSource === DiscoverySource.Other && !otherDetails.trim()) {
-      toast.error("Please provide details for 'Other'");
+      toast.error(t("onboarding.discovery.toast.otherDetailsRequired"));
       return;
     }
 
@@ -78,8 +81,8 @@ export function DiscoverySourceScreen({
 
   return (
     <OnboardingLayout
-      title="How did you discover Amical?"
-      subtitle="This helps us understand where our users come from"
+      title={t("onboarding.discovery.title")}
+      subtitle={t("onboarding.discovery.subtitle")}
       footer={
         <NavigationButtons
           onBack={onBack}
@@ -114,16 +117,21 @@ export function DiscoverySourceScreen({
         {/* Other Details Input */}
         {selectedSource === DiscoverySource.Other && (
           <div className="space-y-2">
-            <Label htmlFor="other-details">Please specify</Label>
+            <Label htmlFor="other-details">
+              {t("onboarding.discovery.other.label")}
+            </Label>
             <Input
               id="other-details"
-              placeholder="Tell us more..."
+              placeholder={t("onboarding.discovery.other.placeholder")}
               value={otherDetails}
               onChange={(e) => setOtherDetails(e.target.value)}
-              maxLength={200}
+              maxLength={maxOtherDetailsLength}
             />
             <p className="text-xs text-muted-foreground">
-              {otherDetails.length}/100 characters
+              {t("onboarding.discovery.other.charCount", {
+                count: otherDetails.length,
+                max: maxOtherDetailsLength,
+              })}
             </p>
           </div>
         )}

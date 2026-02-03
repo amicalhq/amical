@@ -5,8 +5,10 @@ import { api } from "@/trpc/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export function NotesList() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const utils = api.useUtils();
 
@@ -25,16 +27,18 @@ export function NotesList() {
         to: "/settings/notes/$noteId",
         params: { noteId: String(newNote.id) },
       });
-      toast.success("Note created");
+      toast.success(t("settings.notes.toast.created"));
     },
     onError: (error) => {
-      toast.error("Failed to create note: " + error.message);
+      toast.error(
+        t("settings.notes.toast.createFailed", { message: error.message }),
+      );
     },
   });
 
   const onCreateNote = () => {
     createNoteMutation.mutate({
-      title: "Untitled Note",
+      title: t("settings.notes.untitledTitle"),
       initialContent: "",
     });
   };
@@ -55,7 +59,9 @@ export function NotesList() {
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-muted-foreground">
           <NotebookText className="w-4 h-4" />
-          <h2 className="text-sm font-medium">Notes</h2>
+          <h2 className="text-sm font-medium">
+            {t("settings.nav.notes.title")}
+          </h2>
         </div>
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
@@ -78,7 +84,9 @@ export function NotesList() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-muted-foreground">
           <NotebookText className="w-4 h-4" />
-          <h2 className="text-sm font-medium">Notes</h2>
+          <h2 className="text-sm font-medium">
+            {t("settings.nav.notes.title")}
+          </h2>
         </div>
         <Button
           size="sm"
@@ -87,7 +95,7 @@ export function NotesList() {
           disabled={createNoteMutation.isPending}
         >
           <Plus className="w-4 h-4" />
-          Create note
+          {t("settings.notes.create")}
         </Button>
       </div>
 
@@ -103,9 +111,11 @@ export function NotesList() {
         <div className="border border-dashed rounded-lg p-6 text-center space-y-4">
           <NotebookText className="w-8 h-8 text-muted-foreground mx-auto" />
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">No notes yet</p>
+            <p className="text-sm text-muted-foreground">
+              {t("settings.notes.empty.title")}
+            </p>
             <p className="text-xs text-muted-foreground">
-              Create your first note to get started
+              {t("settings.notes.empty.description")}
             </p>
             <Button
               className="mt-4"
@@ -114,7 +124,7 @@ export function NotesList() {
               onClick={onCreateNote}
             >
               <Plus className="w-4 h-4" />
-              Create note
+              {t("settings.notes.create")}
             </Button>
           </div>
         </div>

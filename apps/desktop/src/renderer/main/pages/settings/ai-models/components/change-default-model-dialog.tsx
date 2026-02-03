@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Model } from "@/db/schema";
+import { useTranslation } from "react-i18next";
 
 interface ChangeDefaultModelDialogProps {
   open: boolean;
@@ -25,6 +26,9 @@ export default function ChangeDefaultModelDialog({
   onConfirm,
   modelType = "language",
 }: ChangeDefaultModelDialogProps) {
+  const { t } = useTranslation();
+  const modelTypeLabel = t(`settings.aiModels.modelTypes.${modelType}`);
+
   const handleConfirm = () => {
     onConfirm();
     onOpenChange(false);
@@ -38,17 +42,23 @@ export default function ChangeDefaultModelDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Change Default Model</DialogTitle>
+          <DialogTitle>
+            {t("settings.aiModels.changeDefaultDialog.title")}
+          </DialogTitle>
           <DialogDescription>
-            Are you sure you want to set "{selectedModel?.name}" as your default{" "}
-            {modelType} model?
+            {t("settings.aiModels.changeDefaultDialog.description", {
+              modelName: selectedModel?.name ?? "",
+              modelType: modelTypeLabel,
+            })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            Cancel
+            {t("settings.aiModels.changeDefaultDialog.cancel")}
           </Button>
-          <Button onClick={handleConfirm}>Change Default</Button>
+          <Button onClick={handleConfirm}>
+            {t("settings.aiModels.changeDefaultDialog.confirm")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

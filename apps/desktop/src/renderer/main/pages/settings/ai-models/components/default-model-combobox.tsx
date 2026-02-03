@@ -5,6 +5,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import ChangeDefaultModelDialog from "./change-default-model-dialog";
+import { useTranslation } from "react-i18next";
 
 interface DefaultModelComboboxProps {
   modelType: "speech" | "language" | "embedding";
@@ -13,8 +14,12 @@ interface DefaultModelComboboxProps {
 
 export default function DefaultModelCombobox({
   modelType,
-  title = "Default Model",
+  title,
 }: DefaultModelComboboxProps) {
+  const { t } = useTranslation();
+  const modelTypeLabel = t(`settings.aiModels.modelTypes.${modelType}`);
+  const resolvedTitle = title ?? t("settings.aiModels.defaultModels.default");
+
   // State for embedding confirmation dialog
   const [changeDefaultDialogOpen, setChangeDefaultDialogOpen] = useState(false);
   const [pendingModelId, setPendingModelId] = useState<string>("");
@@ -68,12 +73,18 @@ export default function DefaultModelCombobox({
   const setDefaultModelMutation = api.models.setDefaultModel.useMutation({
     onSuccess: () => {
       utils.models.getDefaultModel.invalidate({ type: modelType });
-      toast.success(`Default ${modelType} model updated!`);
+      toast.success(
+        t("settings.aiModels.defaultModel.toast.updated", {
+          modelType: modelTypeLabel,
+        }),
+      );
     },
     onError: (error) => {
       console.error(`Failed to set default ${modelType} model:`, error);
       toast.error(
-        `Failed to set default ${modelType} model. Please try again.`,
+        t("settings.aiModels.defaultModel.toast.updateFailed", {
+          modelType: modelTypeLabel,
+        }),
       );
     },
   });
@@ -130,13 +141,13 @@ export default function DefaultModelCombobox({
   if (modelsQuery.isLoading || defaultModelQuery.isLoading) {
     return (
       <div>
-        <Label className="text-lg font-semibold">{title}</Label>
+        <Label className="text-lg font-semibold">{resolvedTitle}</Label>
         <div className="mt-2 max-w-xs">
           <Combobox
             options={[]}
             value=""
             onChange={() => {}}
-            placeholder="Loading..."
+            placeholder={t("settings.aiModels.defaultModel.loading")}
             disabled
           />
         </div>
@@ -147,13 +158,13 @@ export default function DefaultModelCombobox({
   return (
     <>
       <div>
-        <Label className="text-lg font-semibold">{title}</Label>
+        <Label className="text-lg font-semibold">{resolvedTitle}</Label>
         <div className="mt-2 max-w-xs">
           <Combobox
             options={modelOptions}
             value={defaultModelQuery.data || ""}
             onChange={handleModelChange}
-            placeholder="Select a model..."
+            placeholder={t("settings.aiModels.defaultModel.placeholder")}
           />
         </div>
       </div>

@@ -113,10 +113,10 @@ export class AppManager {
       await this.setupWindows();
     }
 
-    await this.setupMenu();
+    const locale = await this.setupMenu();
 
     // Initialize tray
-    this.trayManager.initialize(this.windowManager);
+    await this.trayManager.initialize(this.windowManager, locale);
 
     // Setup IPC handlers
     ipcMain.handle("open-external", async (_event, url: string) => {
@@ -254,8 +254,11 @@ export class AppManager {
     }
   }
 
-  private async setupMenu(): Promise<void> {
-    setupApplicationMenu(
+  private async setupMenu(): Promise<string> {
+    const settingsService = this.serviceManager.getService("settingsService");
+    const uiSettings = await settingsService.getUISettings();
+    const locale = uiSettings?.locale ?? app.getLocale();
+    await setupApplicationMenu(
       () => this.windowManager.createOrShowMainWindow(),
       () => {
         const autoUpdaterService =
@@ -265,7 +268,9 @@ export class AppManager {
         }
       },
       () => this.windowManager.openAllDevTools(),
+      locale,
     );
+    return locale;
   }
 
   async cleanup(): Promise<void> {

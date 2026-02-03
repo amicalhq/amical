@@ -9,6 +9,7 @@ import { useSystemRecommendation } from "../../hooks/useSystemRecommendation";
 import { ModelType } from "../../../../types/onboarding";
 import { Cloud, Laptop, Sparkles, Check, X, Star } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface ModelSelectionScreenProps {
   onNext: (modelType: ModelType, recommendationFollowed: boolean) => void;
@@ -24,6 +25,7 @@ export function ModelSelectionScreen({
   onBack,
   initialSelection,
 }: ModelSelectionScreenProps) {
+  const { t } = useTranslation();
   const { recommendation, isLoading } = useSystemRecommendation();
   const [selectedModel, setSelectedModel] = useState<ModelType | null>(
     initialSelection || null,
@@ -40,24 +42,30 @@ export function ModelSelectionScreen({
   const models = [
     {
       id: ModelType.Cloud,
-      title: "Amical Cloud",
-      subtitle: "Fast, more accurate, and free - no setup needed",
-      description:
-        "Ideal if you want the best accuracy or your device can't run local models.\nSecure processing; audio is never stored.",
-      pros: ["Free", "Fast", "More accurate", "No setup needed"],
-      cons: ["Needs internet & login"],
+      title: t("onboarding.modelSelection.models.cloud.title"),
+      subtitle: t("onboarding.modelSelection.models.cloud.subtitle"),
+      description: t("onboarding.modelSelection.models.cloud.description"),
+      pros: [
+        t("onboarding.modelSelection.models.cloud.pros.free"),
+        t("onboarding.modelSelection.models.cloud.pros.fast"),
+        t("onboarding.modelSelection.models.cloud.pros.accurate"),
+        t("onboarding.modelSelection.models.cloud.pros.noSetup"),
+      ],
+      cons: [t("onboarding.modelSelection.models.cloud.cons.internetLogin")],
       icon: Cloud,
       iconBg: "bg-blue-500/10",
       iconColor: "text-blue-500",
     },
     {
       id: ModelType.Local,
-      title: "Local Models",
-      subtitle: "Private, offline, and free - runs fully on your device.",
-      description:
-        "Great for privacy-focused users with capable hardware. No login required.",
-      pros: ["Full privacy", "Works offline"],
-      cons: ["Uses device resources"],
+      title: t("onboarding.modelSelection.models.local.title"),
+      subtitle: t("onboarding.modelSelection.models.local.subtitle"),
+      description: t("onboarding.modelSelection.models.local.description"),
+      pros: [
+        t("onboarding.modelSelection.models.local.pros.privacy"),
+        t("onboarding.modelSelection.models.local.pros.offline"),
+      ],
+      cons: [t("onboarding.modelSelection.models.local.cons.resources")],
       icon: Laptop,
       iconBg: "bg-slate-500/10",
       iconColor: "text-slate-500",
@@ -80,12 +88,12 @@ export function ModelSelectionScreen({
 
   const handleContinue = () => {
     if (!selectedModel) {
-      toast.error("Please select a model type");
+      toast.error(t("onboarding.modelSelection.toast.selectModel"));
       return;
     }
 
     if (!setupComplete[selectedModel]) {
-      toast.error("Please complete setup to continue");
+      toast.error(t("onboarding.modelSelection.toast.completeSetup"));
       return;
     }
 
@@ -98,14 +106,18 @@ export function ModelSelectionScreen({
 
   return (
     <OnboardingLayout
-      title="Choose Your AI Model"
-      subtitle="Select how you want Amical to process your audio"
+      title={t("onboarding.modelSelection.title")}
+      subtitle={t("onboarding.modelSelection.subtitle")}
       footer={
         <NavigationButtons
           onBack={onBack}
           onNext={handleContinue}
           disableNext={!canContinue}
-          nextLabel={canContinue ? "Continue" : "Complete setup to continue"}
+          nextLabel={
+            canContinue
+              ? t("onboarding.navigation.continue")
+              : t("onboarding.modelSelection.completeSetupToContinue")
+          }
         />
       }
     >
@@ -116,12 +128,14 @@ export function ModelSelectionScreen({
             <Sparkles className="h-4 w-4" />
             <AlertDescription>
               <div>
-                <span className="font-medium">Recommendation:</span> Based on
-                your system specs, we recommend{" "}
+                <span className="font-medium">
+                  {t("onboarding.modelSelection.recommendation.label")}
+                </span>{" "}
+                {t("onboarding.modelSelection.recommendation.text")}{" "}
                 <span className="font-medium whitespace-nowrap">
                   {recommendation.suggested === ModelType.Cloud
-                    ? "Amical Cloud"
-                    : "Local Models"}
+                    ? t("onboarding.modelSelection.models.cloud.title")
+                    : t("onboarding.modelSelection.models.local.title")}
                 </span>
                 .
               </div>
@@ -161,7 +175,7 @@ export function ModelSelectionScreen({
                             <h3 className="font-medium">{model.title}</h3>
                             {isRecommended && (
                               <Badge variant="secondary" className="text-xs">
-                                Recommended
+                                {t("onboarding.modelSelection.recommended")}
                               </Badge>
                             )}
                           </div>
@@ -184,7 +198,7 @@ export function ModelSelectionScreen({
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="mb-1 font-medium text-green-600 dark:text-green-400">
-                          Pros:
+                          {t("onboarding.modelSelection.prosLabel")}
                         </p>
                         <ul className="space-y-0.5 text-muted-foreground">
                           {model.pros.map((pro, i) => (
@@ -197,7 +211,7 @@ export function ModelSelectionScreen({
                       </div>
                       <div>
                         <p className="mb-1 font-medium text-orange-600 dark:text-orange-400">
-                          Cons:
+                          {t("onboarding.modelSelection.consLabel")}
                         </p>
                         <ul className="space-y-0.5 text-muted-foreground">
                           {model.cons.map((con, i) => (
@@ -220,7 +234,7 @@ export function ModelSelectionScreen({
         <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-4">
           <Star className="h-4 w-4 mt-0.5 text-yellow-500 shrink-0 " />
           <p className="text-sm text-muted-foreground">
-            You can change your model later in Settings — nothing is permanent.
+            {t("onboarding.modelSelection.note")}
           </p>
         </div>
       </div>

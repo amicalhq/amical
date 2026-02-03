@@ -10,8 +10,10 @@ import { AVAILABLE_LANGUAGES } from "@/constants/languages";
 import { useState, useEffect } from "react";
 import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/trpc/react";
+import { useTranslation } from "react-i18next";
 
 export function LanguageSettings() {
+  const { t } = useTranslation();
   // Get dictation settings from tRPC
   const { data: dictationSettings, isLoading } =
     api.settings.getDictationSettings.useQuery();
@@ -81,11 +83,10 @@ export function LanguageSettings() {
       <div className="flex items-center justify-between mb-2">
         <div>
           <Label className="text-base font-semibold text-foreground">
-            Auto detect language
+            {t("settings.dictation.language.autoDetect.label")}
           </Label>
           <p className="text-xs text-muted-foreground mb-2">
-            Automatically detect spoken language. Turn off to select specific
-            languages.
+            {t("settings.dictation.language.autoDetect.description")}
           </p>
         </div>
         <Switch
@@ -103,7 +104,7 @@ export function LanguageSettings() {
           )}
         >
           <Label className="text-sm font-medium text-foreground">
-            Languages
+            {t("settings.dictation.language.languagesLabel")}
           </Label>
         </div>
         <Tooltip delayDuration={100}>
@@ -113,7 +114,9 @@ export function LanguageSettings() {
                 options={AVAILABLE_LANGUAGES.filter((l) => l.value !== "auto")}
                 value={selectedLanguage}
                 onChange={handleLanguageChange}
-                placeholder="Select languages..."
+                placeholder={t(
+                  "settings.dictation.language.languagesPlaceholder",
+                )}
                 disabled={
                   autoDetect || isLoading || updateDictationSettings.isPending
                 }
@@ -122,8 +125,7 @@ export function LanguageSettings() {
           </TooltipTrigger>
           {autoDetect && (
             <TooltipContent className="max-w-sm text-center">
-              Disable auto detection to select languages. Selecting specific
-              languages may increase accuracy.
+              {t("settings.dictation.language.autoDetect.tooltip")}
             </TooltipContent>
           )}
         </Tooltip>

@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { getMeetingIcon } from "@/utils/meeting-icons";
+import { useTranslation } from "react-i18next";
 
 interface UpcomingEvent {
   title: string;
@@ -20,6 +21,7 @@ interface UpcomingEventCardProps {
 }
 
 const UpcomingEventCard = ({ event, onTakeNotes }: UpcomingEventCardProps) => {
+  const { t } = useTranslation();
   const handleLinkClick = () => {
     if (event.url) {
       // Open external link - adjust this based on your Electron setup
@@ -78,7 +80,7 @@ const UpcomingEventCard = ({ event, onTakeNotes }: UpcomingEventCardProps) => {
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Take notes</p>
+              <p>{t("settings.notes.upcomingEvents.takeNotes")}</p>
             </TooltipContent>
           </Tooltip>
         </div>

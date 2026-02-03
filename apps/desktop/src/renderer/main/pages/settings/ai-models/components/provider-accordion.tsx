@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import SyncModelsDialog from "./sync-models-dialog";
+import { useTranslation } from "react-i18next";
 
 interface ProviderAccordionProps {
   provider: "OpenRouter" | "Ollama";
@@ -31,6 +32,12 @@ export default function ProviderAccordion({
   provider,
   modelType,
 }: ProviderAccordionProps) {
+  const { t } = useTranslation();
+  const providerLabel =
+    provider === "OpenRouter"
+      ? t("settings.aiModels.providers.openRouter")
+      : t("settings.aiModels.providers.ollama");
+
   // Local state
   const [status, setStatus] = useState<"connected" | "disconnected">(
     "disconnected",
@@ -50,25 +57,39 @@ export default function ProviderAccordion({
   const setOpenRouterConfigMutation =
     api.settings.setOpenRouterConfig.useMutation({
       onSuccess: () => {
-        toast.success("OpenRouter configuration saved successfully!");
+        toast.success(
+          t("settings.aiModels.provider.toast.configSaved", {
+            provider: providerLabel,
+          }),
+        );
         utils.settings.getModelProvidersConfig.invalidate();
       },
       onError: (error) => {
         console.error("Failed to save OpenRouter config:", error);
         toast.error(
-          "Failed to save OpenRouter configuration. Please try again.",
+          t("settings.aiModels.provider.toast.configSaveFailed", {
+            provider: providerLabel,
+          }),
         );
       },
     });
 
   const setOllamaConfigMutation = api.settings.setOllamaConfig.useMutation({
     onSuccess: () => {
-      toast.success("Ollama configuration saved successfully!");
+      toast.success(
+        t("settings.aiModels.provider.toast.configSaved", {
+          provider: providerLabel,
+        }),
+      );
       utils.settings.getModelProvidersConfig.invalidate();
     },
     onError: (error) => {
       console.error("Failed to save Ollama config:", error);
-      toast.error("Failed to save Ollama configuration. Please try again.");
+      toast.error(
+        t("settings.aiModels.provider.toast.configSaveFailed", {
+          provider: providerLabel,
+        }),
+      );
     },
   });
 
@@ -79,16 +100,32 @@ export default function ProviderAccordion({
         if (result.success) {
           setOpenRouterConfigMutation.mutate({ apiKey: inputValue.trim() });
           setValidationError("");
-          toast.success("OpenRouter connection validated successfully!");
+          toast.success(
+            t("settings.aiModels.provider.toast.validated", {
+              provider: providerLabel,
+            }),
+          );
         } else {
-          setValidationError(result.error || "Validation failed");
-          toast.error(`OpenRouter validation failed: ${result.error}`);
+          setValidationError(
+            result.error || t("settings.aiModels.provider.validationFailed"),
+          );
+          toast.error(
+            t("settings.aiModels.provider.toast.validationFailed", {
+              provider: providerLabel,
+              message: result.error || "",
+            }),
+          );
         }
       },
       onError: (error) => {
         setIsValidating(false);
         setValidationError(error.message);
-        toast.error(`OpenRouter validation error: ${error.message}`);
+        toast.error(
+          t("settings.aiModels.provider.toast.validationError", {
+            provider: providerLabel,
+            message: error.message,
+          }),
+        );
       },
     });
 
@@ -99,16 +136,32 @@ export default function ProviderAccordion({
         if (result.success) {
           setOllamaConfigMutation.mutate({ url: inputValue.trim() });
           setValidationError("");
-          toast.success("Ollama connection validated successfully!");
+          toast.success(
+            t("settings.aiModels.provider.toast.validated", {
+              provider: providerLabel,
+            }),
+          );
         } else {
-          setValidationError(result.error || "Validation failed");
-          toast.error(`Ollama validation failed: ${result.error}`);
+          setValidationError(
+            result.error || t("settings.aiModels.provider.validationFailed"),
+          );
+          toast.error(
+            t("settings.aiModels.provider.toast.validationFailed", {
+              provider: providerLabel,
+              message: result.error || "",
+            }),
+          );
         }
       },
       onError: (error) => {
         setIsValidating(false);
         setValidationError(error.message);
-        toast.error(`Ollama validation error: ${error.message}`);
+        toast.error(
+          t("settings.aiModels.provider.toast.validationError", {
+            provider: providerLabel,
+            message: error.message,
+          }),
+        );
       },
     });
 
@@ -121,11 +174,19 @@ export default function ProviderAccordion({
         utils.models.getDefaultEmbeddingModel.invalidate();
         setStatus("disconnected");
         setInputValue("");
-        toast.success("OpenRouter provider removed successfully!");
+        toast.success(
+          t("settings.aiModels.provider.toast.removed", {
+            provider: providerLabel,
+          }),
+        );
       },
       onError: (error) => {
         console.error("Failed to remove OpenRouter provider:", error);
-        toast.error("Failed to remove OpenRouter provider. Please try again.");
+        toast.error(
+          t("settings.aiModels.provider.toast.removeFailed", {
+            provider: providerLabel,
+          }),
+        );
       },
     });
 
@@ -138,11 +199,19 @@ export default function ProviderAccordion({
         utils.models.getDefaultEmbeddingModel.invalidate();
         setStatus("disconnected");
         setInputValue("");
-        toast.success("Ollama provider removed successfully!");
+        toast.success(
+          t("settings.aiModels.provider.toast.removed", {
+            provider: providerLabel,
+          }),
+        );
       },
       onError: (error) => {
         console.error("Failed to remove Ollama provider:", error);
-        toast.error("Failed to remove Ollama provider. Please try again.");
+        toast.error(
+          t("settings.aiModels.provider.toast.removeFailed", {
+            provider: providerLabel,
+          }),
+        );
       },
     });
 
@@ -225,16 +294,18 @@ export default function ProviderAccordion({
             status === "connected" ? "bg-green-500" : "bg-red-500",
           )}
         />
-        {status === "connected" ? "Connected" : "Disconnected"}
+        {status === "connected"
+          ? t("settings.aiModels.provider.status.connected")
+          : t("settings.aiModels.provider.status.disconnected")}
       </Badge>
     );
   }
 
   const getPlaceholder = () => {
     if (provider === "OpenRouter") {
-      return "API Key";
+      return t("settings.aiModels.provider.placeholders.openRouter");
     } else {
-      return "Ollama URL (e.g., http://localhost:11434)";
+      return t("settings.aiModels.provider.placeholders.ollama");
     }
   };
 
@@ -247,7 +318,7 @@ export default function ProviderAccordion({
       <AccordionItem value={provider.toLowerCase()}>
         <AccordionTrigger className="no-underline hover:no-underline group-hover:no-underline">
           <div className="flex w-full items-center justify-between">
-            <span className="hover:underline">{provider}</span>
+            <span className="hover:underline">{providerLabel}</span>
             {statusIndicator(status)}
           </div>
         </AccordionTrigger>
@@ -270,23 +341,23 @@ export default function ProviderAccordion({
                 {isValidating ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Validating...
+                    {t("settings.aiModels.provider.buttons.validating")}
                   </>
                 ) : (
-                  "Connect"
+                  t("settings.aiModels.provider.buttons.connect")
                 )}
               </Button>
             ) : (
               <div className="flex gap-2">
                 <Button variant="outline" onClick={openSyncDialog}>
-                  Sync models
+                  {t("settings.aiModels.provider.buttons.syncModels")}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={openRemoveProviderDialog}
                   className="text-destructive hover:text-destructive"
                 >
-                  Remove Provider
+                  {t("settings.aiModels.provider.buttons.removeProvider")}
                 </Button>
               </div>
             )}
@@ -312,19 +383,21 @@ export default function ProviderAccordion({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove Provider Connection</DialogTitle>
+            <DialogTitle>
+              {t("settings.aiModels.provider.removeDialog.title")}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove your {provider} connection? This
-              will disconnect and remove all synced models from this provider.
-              This action cannot be undone.
+              {t("settings.aiModels.provider.removeDialog.description", {
+                provider: providerLabel,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={cancelRemoveProvider}>
-              Cancel
+              {t("settings.aiModels.provider.removeDialog.cancel")}
             </Button>
             <Button variant="destructive" onClick={confirmRemoveProvider}>
-              Remove Provider
+              {t("settings.aiModels.provider.removeDialog.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

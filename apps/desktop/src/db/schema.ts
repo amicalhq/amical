@@ -116,6 +116,7 @@ export interface AppSettingsData {
   };
   ui?: {
     theme: "light" | "dark" | "system";
+    locale?: string;
   };
   transcription?: {
     language: string;

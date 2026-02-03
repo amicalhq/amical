@@ -1,5 +1,8 @@
 import React from "react";
-import type { WidgetNotificationAction } from "@/types/widget-notification";
+import type {
+  LocalizedText,
+  WidgetNotificationAction,
+} from "@/types/widget-notification";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,10 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
 
 interface WidgetToastProps {
-  title: string;
-  description: string;
+  title: LocalizedText;
+  description: LocalizedText;
   isError?: boolean;
   showRecordingSaved?: boolean;
   traceId?: string;
@@ -30,6 +34,13 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
   secondaryAction,
   onActionClick,
 }) => {
+  const { t } = useTranslation();
+
+  const resolveText = (value: LocalizedText) => {
+    if (typeof value === "string") return value;
+    return t(value.key, value.params);
+  };
+
   const handleCopyTraceId = async () => {
     if (traceId) {
       await navigator.clipboard.writeText(traceId);
@@ -40,12 +51,14 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
     <Card className="min-w-[300px] gap-3 py-4 shadow-lg">
       <CardHeader className="gap-1 px-4 py-0 text-center">
         <CardTitle className={`text-sm ${isError ? "text-destructive" : ""}`}>
-          {title}
+          {resolveText(title)}
         </CardTitle>
-        <CardDescription className="text-xs">{description}</CardDescription>
+        <CardDescription className="text-xs">
+          {resolveText(description)}
+        </CardDescription>
         {showRecordingSaved && (
           <p className="text-muted-foreground text-xs">
-            Your recording is saved. You can access it in History.
+            {t("widget.notifications.recordingSaved")}
           </p>
         )}
       </CardHeader>
@@ -61,11 +74,11 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
               {secondaryAction.icon === "discord" && (
                 <img
                   src="assets/discord-icon.svg"
-                  alt="Discord"
+                  alt={t("widget.notifications.discordAlt")}
                   className="size-3.5"
                 />
               )}
-              {secondaryAction.label}
+              {resolveText(secondaryAction.label)}
             </Button>
           )}
           {primaryAction && (
@@ -78,11 +91,11 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
               {primaryAction.icon === "discord" && (
                 <img
                   src="assets/discord-icon.svg"
-                  alt="Discord"
+                  alt={t("widget.notifications.discordAlt")}
                   className="size-3.5"
                 />
               )}
-              {primaryAction.label}
+              {resolveText(primaryAction.label)}
             </Button>
           )}
         </div>
@@ -91,7 +104,7 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
             onClick={handleCopyTraceId}
             className="text-muted-foreground hover:text-foreground text-xs"
           >
-            Copy Error ID
+            {t("widget.notifications.copyErrorId")}
           </button>
         )}
       </CardFooter>

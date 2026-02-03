@@ -3,6 +3,7 @@ import { api } from "@/trpc/react";
 import { useOnboardingState } from "./hooks/useOnboardingState";
 import { ProgressIndicator } from "./components/shared/ProgressIndicator";
 import { OnboardingErrorBoundary } from "./components/ErrorBoundary";
+import { useTranslation } from "react-i18next";
 
 // Screens
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
@@ -31,6 +32,7 @@ interface PermissionStatus {
  * Implements T026, T027, T028, T029 - Navigation & State Machine
  */
 export function App() {
+  const { t } = useTranslation();
   // State management
   const [currentScreen, setCurrentScreen] = useState<OnboardingScreen>(
     OnboardingScreen.Welcome,
@@ -286,7 +288,9 @@ export function App() {
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="text-center">
           <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading onboarding...</p>
+          <p className="text-sm text-muted-foreground">
+            {t("onboarding.app.loading")}
+          </p>
         </div>
       </div>
     );
@@ -343,7 +347,7 @@ export function App() {
         );
 
       default:
-        return <div>Unknown screen</div>;
+        return <div>{t("onboarding.app.unknownScreen")}</div>;
     }
   };
 

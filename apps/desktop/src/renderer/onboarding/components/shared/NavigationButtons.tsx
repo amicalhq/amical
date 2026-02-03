@@ -2,6 +2,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface NavigationButtonsProps {
   onBack?: () => void;
@@ -30,10 +31,15 @@ export function NavigationButtons({
   showComplete = false,
   disableNext = false,
   disableComplete = false,
-  nextLabel = "Continue",
-  completeLabel = "Complete",
+  nextLabel,
+  completeLabel,
   className,
 }: NavigationButtonsProps) {
+  const { t } = useTranslation();
+  const resolvedNextLabel = nextLabel ?? t("onboarding.navigation.continue");
+  const resolvedCompleteLabel =
+    completeLabel ?? t("onboarding.navigation.complete");
+
   return (
     <div
       className={cn(
@@ -51,7 +57,7 @@ export function NavigationButtons({
           type="button"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back
+          {t("onboarding.navigation.back")}
         </Button>
       )}
 
@@ -64,7 +70,7 @@ export function NavigationButtons({
             className="gap-2"
             type="button"
           >
-            {nextLabel}
+            {resolvedNextLabel}
             <ArrowRight className="h-4 w-4" />
           </Button>
         )}
@@ -77,7 +83,7 @@ export function NavigationButtons({
             type="button"
           >
             <Check className="h-4 w-4" />
-            {completeLabel}
+            {resolvedCompleteLabel}
           </Button>
         )}
       </div>

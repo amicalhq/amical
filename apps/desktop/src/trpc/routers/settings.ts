@@ -5,6 +5,7 @@ import { app } from "electron";
 import path from "node:path";
 import { createRouter, procedure } from "../trpc";
 import { dbPath, closeDatabase } from "../../db";
+import type { AppSettingsData } from "../../db/schema";
 import * as fs from "fs/promises";
 
 // FormatterConfig schema
@@ -49,6 +50,11 @@ const AppPreferencesSchema = z.object({
 
 const UIThemeSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
+});
+
+const UILocaleSchema = z.object({
+  // null means "follow system locale"
+  locale: z.string().nullable(),
 });
 
 const RecordingSettingsSchema = z.object({
@@ -240,13 +246,13 @@ export const settingsRouter = createRouter({
       );
 
       if (!result.valid) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: result.error || "Invalid shortcut",
-        });
+        return {
+          success: false as const,
+          error: result.error ?? { key: "errors.generic" },
+        };
       }
 
-      return { success: true, warning: result.warning };
+      return { success: true as const, warning: result.warning };
     }),
 
   // Set shortcut recording state
@@ -644,6 +650,69 @@ export const settingsRouter = createRouter({
 
       return true;
     }),
+
+  // Get UI settings
+  getUISettings: procedure.query(
+    async ({ ctx }): Promise<NonNullable<AppSettingsData["ui"]>> => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        return await settingsService.getUISettings();
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        logger?.main.error("Error getting UI settings:", error);
+        return { theme: "system" };
+      }
+    },
+  ),
+
+  // Update UI locale (restart required to take effect everywhere)
+  updateUILocale: procedure
+    .input(UILocaleSchema)
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      // Sections are replaced as a whole, so we must merge with existing UI settings.
+      const currentUISettings = await settingsService.getUISettings();
+      const nextUISettings: NonNullable<AppSettingsData["ui"]> = {
+        ...currentUISettings,
+      };
+
+      if (input.locale === null) {
+        delete nextUISettings.locale;
+      } else {
+        nextUISettings.locale = input.locale;
+      }
+
+      await settingsService.setUISettings(nextUISettings);
+
+      const logger = ctx.serviceManager.getLogger();
+      logger?.main.info("UI locale updated", { locale: input.locale });
+
+      return true;
+    }),
+
+  // Restart the app (prod relaunch; dev just quits)
+  restartApp: procedure.mutation(async ({ ctx }) => {
+    const logger = ctx.serviceManager.getLogger();
+    logger?.main.info("Restart requested from settings");
+
+    if (process.env.NODE_ENV === "development" || !app.isPackaged) {
+      // Relaunch is flaky in dev; quit so the dev runner can restart it.
+      app.quit();
+      return true;
+    }
+
+    app.relaunch();
+    app.quit();
+    return true;
+  }),
 
   // Get telemetry settings
   getTelemetrySettings: procedure.query(async ({ ctx }) => {

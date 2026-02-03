@@ -2,12 +2,14 @@ import { Calendar, CalendarX, CalendarPlus } from "lucide-react";
 import UpcomingEventCard from "./upcoming-event-card";
 import { UpcomingEvent } from "../types";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 type CalendarState = "with-events" | "no-events" | "no-calendar";
 
 // TOOD: add calendar connection and sync logic
 
 export function UpcomingEvents() {
+  const { t } = useTranslation();
   // Switch this variable to test different states:
   // "with-events" - shows upcoming events
   // "no-events" - calendar connected but no events
@@ -52,7 +54,9 @@ export function UpcomingEvents() {
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-muted-foreground">
         <Calendar className="w-4 h-4" />
-        <h2 className="text-sm font-medium">Upcoming events</h2>
+        <h2 className="text-sm font-medium">
+          {t("settings.notes.upcomingEvents.title")}
+        </h2>
       </div>
 
       {calendarState === "with-events" ? (
@@ -66,16 +70,18 @@ export function UpcomingEvents() {
       ) : calendarState === "no-events" ? (
         <div className="border border-dashed rounded-lg p-6 text-center">
           <CalendarX className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">No upcoming events</p>
+          <p className="text-sm text-muted-foreground">
+            {t("settings.notes.upcomingEvents.empty")}
+          </p>
         </div>
       ) : (
         <div className="border border-dashed rounded-lg p-6 text-center space-y-4">
           <CalendarPlus className="w-8 h-8 text-muted-foreground mx-auto" />
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Connect your calendar
+              {t("settings.notes.upcomingEvents.connect.title")}
               <br />
-              Connect your calendar to get started
+              {t("settings.notes.upcomingEvents.connect.description")}
             </p>
             <Button
               onClick={handleConnectCalendar}
@@ -84,7 +90,7 @@ export function UpcomingEvents() {
               variant={"outline"}
             >
               <CalendarPlus className="w-4 h-4" />
-              Connect calendar
+              {t("settings.notes.upcomingEvents.connect.button")}
             </Button>
           </div>
         </div>

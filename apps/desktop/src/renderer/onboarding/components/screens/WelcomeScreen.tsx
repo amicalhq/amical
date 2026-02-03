@@ -7,6 +7,7 @@ import { NavigationButtons } from "../shared/NavigationButtons";
 import { Mic, FileText, Users, Command } from "lucide-react";
 import { FeatureInterest } from "../../../../types/onboarding";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface WelcomeScreenProps {
   onNext: (interests: FeatureInterest[]) => void;
@@ -23,6 +24,7 @@ export function WelcomeScreen({
   onSkip,
   initialInterests = [],
 }: WelcomeScreenProps) {
+  const { t } = useTranslation();
   const [selectedInterests, setSelectedInterests] = useState<
     Set<FeatureInterest>
   >(new Set(initialInterests));
@@ -30,30 +32,30 @@ export function WelcomeScreen({
   const features = [
     {
       id: FeatureInterest.ContextualDictation,
-      title: "Contextual Dictation",
-      description:
-        "Quick voice input in any application for seamless speech-to-text",
+      title: t("onboarding.welcome.features.contextualDictation.title"),
+      description: t(
+        "onboarding.welcome.features.contextualDictation.description",
+      ),
       icon: Mic,
     },
     {
       id: FeatureInterest.NoteTaking,
-      title: "Note Taking",
-      description:
-        "Capture thoughts and ideas through speech with smart formatting",
+      title: t("onboarding.welcome.features.noteTaking.title"),
+      description: t("onboarding.welcome.features.noteTaking.description"),
       icon: FileText,
     },
     {
       id: FeatureInterest.MeetingTranscriptions,
-      title: "Meeting Transcriptions",
-      description:
-        "Record and transcribe meetings and conversations with high accuracy",
+      title: t("onboarding.welcome.features.meetingTranscriptions.title"),
+      description: t(
+        "onboarding.welcome.features.meetingTranscriptions.description",
+      ),
       icon: Users,
     },
     {
       id: FeatureInterest.VoiceCommands,
-      title: "Voice Commands",
-      description:
-        "Control your apps hands-free - act on tasks with natural voice commands",
+      title: t("onboarding.welcome.features.voiceCommands.title"),
+      description: t("onboarding.welcome.features.voiceCommands.description"),
       icon: Command,
     },
   ];
@@ -65,7 +67,7 @@ export function WelcomeScreen({
     } else {
       // Maximum 4 interests
       if (newInterests.size >= 4) {
-        toast.error("You can select up to 4 features");
+        toast.error(t("onboarding.welcome.toast.maxFeatures", { max: 4 }));
         return;
       }
       newInterests.add(interest);
@@ -75,9 +77,7 @@ export function WelcomeScreen({
 
   const handleContinue = () => {
     if (selectedInterests.size === 0) {
-      toast.error(
-        "Please select at least one feature to personalize your experience",
-      );
+      toast.error(t("onboarding.welcome.toast.selectAtLeastOne"));
       return;
     }
     onNext(Array.from(selectedInterests));
@@ -85,8 +85,8 @@ export function WelcomeScreen({
 
   return (
     <OnboardingLayout
-      title="Welcome to Amical"
-      subtitle="Select the features you're interested in to personalize your experience"
+      title={t("onboarding.welcome.title")}
+      subtitle={t("onboarding.welcome.subtitle")}
       footer={
         <div className="space-y-4">
           <NavigationButtons
@@ -100,7 +100,7 @@ export function WelcomeScreen({
                 onClick={onSkip}
                 className="text-sm text-muted-foreground hover:text-foreground"
               >
-                Skip onboarding
+                {t("onboarding.welcome.skip")}
               </button>
             </div>
           )}
@@ -130,7 +130,9 @@ export function WelcomeScreen({
                     onCheckedChange={() => handleToggleInterest(feature.id)}
                     onClick={(e) => e.stopPropagation()}
                     className="absolute right-0 top-0"
-                    aria-label={`Select ${feature.title}`}
+                    aria-label={t("onboarding.welcome.selectAria", {
+                      feature: feature.title,
+                    })}
                   />
                   <div className="flex items-center gap-3 pr-8">
                     <div
@@ -154,7 +156,7 @@ export function WelcomeScreen({
                             variant="outline"
                             className="text-[10px] px-1.5 py-0 h-4 shrink-0"
                           >
-                            Coming Soon
+                            {t("onboarding.welcome.comingSoon")}
                           </Badge>
                         )}
                       </div>
@@ -173,16 +175,17 @@ export function WelcomeScreen({
         <div className="text-center">
           <p className="text-sm text-muted-foreground">
             {selectedInterests.size === 0
-              ? "Select at least one feature"
-              : `${selectedInterests.size} selected`}
+              ? t("onboarding.welcome.selection.none")
+              : t("onboarding.welcome.selection.selected", {
+                  count: selectedInterests.size,
+                })}
           </p>
         </div>
 
         {/* Settings Note */}
         <div className="rounded-lg bg-muted/50 p-4">
           <p className="text-sm text-muted-foreground">
-            Your choices help personalize setup — all features remain available
-            anytime.
+            {t("onboarding.welcome.note")}
           </p>
         </div>
       </div>

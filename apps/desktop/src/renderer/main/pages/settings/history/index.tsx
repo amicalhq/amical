@@ -29,17 +29,7 @@ import { toast } from "sonner";
 import { api } from "@/trpc/react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { format } from "date-fns";
-
-// Helper to get formatted title
-function getTitle(text: string, meta?: { status?: string }) {
-  if (!text || text.trim() === "") {
-    if (meta?.status === "failed") {
-      return "transcription failed";
-    }
-    return "no words detected";
-  }
-  return text;
-}
+import { useTranslation } from "react-i18next";
 
 function formatDate(timestamp: Date) {
   return format(timestamp, "MMM d, h:mm a");
@@ -106,12 +96,23 @@ function HistoryTableCard({
   currentPlayingId,
   isPlaying,
 }: HistoryTableCardProps) {
+  const { t } = useTranslation();
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handleReadMore = (text: string) => {
     setSelectedText(text);
     setIsDialogOpen(true);
+  };
+
+  const getTitle = (text: string, meta?: { status?: string }) => {
+    if (!text || text.trim() === "") {
+      if (meta?.status === "failed") {
+        return t("settings.history.item.failed");
+      }
+      return t("settings.history.item.noWords");
+    }
+    return text;
   };
 
   return (
@@ -152,7 +153,7 @@ function HistoryTableCard({
                           className="p-0 h-auto text-xs text-muted-foreground hover:text-foreground mt-1"
                           onClick={() => handleReadMore(item.text)}
                         >
-                          Read more
+                          {t("settings.history.readMore")}
                         </Button>
                       ) : null}
                     </div>
@@ -171,7 +172,7 @@ function HistoryTableCard({
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Copy</p>
+                            <p>{t("settings.history.actions.copy")}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -194,8 +195,8 @@ function HistoryTableCard({
                             <TooltipContent>
                               <p>
                                 {currentPlayingId === item.id && isPlaying
-                                  ? "Pause audio"
-                                  : "Play audio"}
+                                  ? t("settings.history.actions.pauseAudio")
+                                  : t("settings.history.actions.playAudio")}
                               </p>
                             </TooltipContent>
                           </Tooltip>
@@ -214,7 +215,9 @@ function HistoryTableCard({
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Download Audio</p>
+                              <p>
+                                {t("settings.history.actions.downloadAudio")}
+                              </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -231,7 +234,7 @@ function HistoryTableCard({
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Delete</p>
+                            <p>{t("settings.history.actions.delete")}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -247,7 +250,7 @@ function HistoryTableCard({
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-secondary">
           <DialogHeader>
-            <DialogTitle>Transcription Details</DialogTitle>
+            <DialogTitle>{t("settings.history.dialog.title")}</DialogTitle>
           </DialogHeader>
           <div className="whitespace-pre-line text-sm leading-relaxed">
             {selectedText}
@@ -259,6 +262,7 @@ function HistoryTableCard({
 }
 
 export default function HistorySettingsPage() {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
   const [hovered, setHovered] = useState<number | null>(null);
   const audioPlayer = useAudioPlayer();
@@ -284,22 +288,22 @@ export default function HistorySettingsPage() {
       onSuccess: () => {
         // Invalidate and refetch transcriptions data
         utils.transcriptions.getTranscriptions.invalidate();
-        toast.success("Transcription deleted");
+        toast.success(t("settings.history.toast.deleted"));
       },
       onError: (error) => {
         console.error("Error deleting transcription:", error);
-        toast.error("Failed to delete transcription");
+        toast.error(t("settings.history.toast.deleteFailed"));
       },
     });
 
   const downloadAudioMutation =
     api.transcriptions.downloadAudioFile.useMutation({
       onSuccess: () => {
-        toast.success("Audio file downloaded");
+        toast.success(t("settings.history.toast.downloaded"));
       },
       onError: (error) => {
         console.error("Error downloading audio:", error);
-        toast.error("Failed to download audio file");
+        toast.error(t("settings.history.toast.downloadFailed"));
       },
     });
 
@@ -328,7 +332,7 @@ export default function HistorySettingsPage() {
     },
     onError: (error) => {
       console.error("Error fetching audio file:", error);
-      toast.error("Failed to load audio file");
+      toast.error(t("settings.history.toast.loadAudioFailed"));
     },
   });
 
@@ -336,7 +340,7 @@ export default function HistorySettingsPage() {
 
   function handleCopy(text: string) {
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success(t("settings.history.toast.copied"));
   }
 
   const handlePlayAudio = (transcriptionId: number) => {
@@ -364,9 +368,9 @@ export default function HistorySettingsPage() {
     <div className="container mx-auto p-6 max-w-5xl">
       {/* Header Section */}
       <div className="mb-8">
-        <h1 className="text-xl font-bold">History</h1>
+        <h1 className="text-xl font-bold">{t("settings.history.title")}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Your recent transcription history
+          {t("settings.history.description")}
         </p>
       </div>
 
@@ -376,7 +380,7 @@ export default function HistorySettingsPage() {
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              placeholder="Search transcriptions..."
+              placeholder={t("settings.history.search.placeholder")}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -391,13 +395,13 @@ export default function HistorySettingsPage() {
                 <MicOff className="w-10 h-10 mb-2" />
                 <div className="text-base font-semibold">
                   {searchTerm
-                    ? "No transcriptions found"
-                    : "No transcription history yet"}
+                    ? t("settings.history.empty.searchTitle")
+                    : t("settings.history.empty.defaultTitle")}
                 </div>
                 <div className="text-xs">
                   {searchTerm
-                    ? "Try adjusting your search terms."
-                    : "Your recent transcriptions will appear here."}
+                    ? t("settings.history.empty.searchDescription")
+                    : t("settings.history.empty.defaultDescription")}
                 </div>
               </div>
             </CardContent>
@@ -408,7 +412,7 @@ export default function HistorySettingsPage() {
             {groupedHistory.today.length > 0 && (
               <>
                 <div className="text-sm font-medium text-muted-foreground">
-                  Today
+                  {t("settings.history.group.today")}
                 </div>
                 <HistoryTableCard
                   items={groupedHistory.today}
@@ -428,7 +432,7 @@ export default function HistorySettingsPage() {
             {groupedHistory.yesterday.length > 0 && (
               <>
                 <div className="text-sm font-medium text-muted-foreground">
-                  Yesterday
+                  {t("settings.history.group.yesterday")}
                 </div>
                 <HistoryTableCard
                   items={groupedHistory.yesterday}
@@ -448,7 +452,7 @@ export default function HistorySettingsPage() {
             {groupedHistory.earlier.length > 0 && (
               <>
                 <div className="text-sm font-medium text-muted-foreground">
-                  Earlier
+                  {t("settings.history.group.earlier")}
                 </div>
                 <HistoryTableCard
                   items={groupedHistory.earlier}
@@ -473,10 +477,10 @@ export default function HistorySettingsPage() {
                     <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground gap-2">
                       <MicOff className="w-10 h-10 mb-2" />
                       <div className="text-lg font-semibold">
-                        No transcriptions found
+                        {t("settings.history.empty.searchTitle")}
                       </div>
                       <div className="text-sm">
-                        Try adjusting your search terms.
+                        {t("settings.history.empty.searchDescription")}
                       </div>
                     </div>
                   </CardContent>

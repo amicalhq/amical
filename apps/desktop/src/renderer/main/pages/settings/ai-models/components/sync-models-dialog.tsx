@@ -15,6 +15,7 @@ import { Loader2 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import type { Model } from "@/db/schema";
+import { useTranslation } from "react-i18next";
 
 interface SyncModelsDialogProps {
   open: boolean;
@@ -29,6 +30,16 @@ export default function SyncModelsDialog({
   provider,
   modelType = "language",
 }: SyncModelsDialogProps) {
+  const { t } = useTranslation();
+  const providerLabel =
+    provider === "OpenRouter"
+      ? t("settings.aiModels.providers.openRouter")
+      : t("settings.aiModels.providers.ollama");
+  const modelTypePrefix =
+    modelType === "embedding"
+      ? `${t("settings.aiModels.modelTypes.embedding")} `
+      : "";
+
   // Local state
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -68,11 +79,11 @@ export default function SyncModelsDialog({
         utils.models.getSyncedProviderModels.invalidate();
         utils.models.getDefaultLanguageModel.invalidate();
         utils.models.getDefaultEmbeddingModel.invalidate();
-        toast.success("Models synced to database successfully!");
+        toast.success(t("settings.aiModels.syncDialog.toast.synced"));
       },
       onError: (error: any) => {
         console.error("Failed to sync models to database:", error);
-        toast.error("Failed to sync models to database. Please try again.");
+        toast.error(t("settings.aiModels.syncDialog.toast.syncFailed"));
       },
     });
 
@@ -193,12 +204,16 @@ export default function SyncModelsDialog({
       <DialogContent className="min-w-4xl">
         <DialogHeader>
           <DialogTitle>
-            Select {provider} {modelType === "embedding" ? "Embedding " : ""}
-            Models
+            {t("settings.aiModels.syncDialog.title", {
+              provider: providerLabel,
+              modelType: modelTypePrefix,
+            })}
           </DialogTitle>
           <DialogDescription>
-            Choose which {modelType === "embedding" ? "embedding " : ""}models
-            you want to sync from {provider}.
+            {t("settings.aiModels.syncDialog.description", {
+              provider: providerLabel,
+              modelType: modelTypePrefix,
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -213,7 +228,12 @@ export default function SyncModelsDialog({
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
               <span>
-                Fetching {provider === "Ollama" ? "available " : ""}models...
+                {t("settings.aiModels.syncDialog.fetching", {
+                  available:
+                    provider === "Ollama"
+                      ? t("settings.aiModels.syncDialog.available")
+                      : "",
+                })}
               </span>
             </div>
           ) : fetchError ? (
@@ -225,8 +245,11 @@ export default function SyncModelsDialog({
                     : "text-destructive"
                 }
               >
-                Failed to fetch models
-                {provider === "Ollama" ? "" : `: ${fetchError}`}
+                {provider === "Ollama"
+                  ? t("settings.aiModels.syncDialog.fetchFailed")
+                  : t("settings.aiModels.syncDialog.fetchFailedWithMessage", {
+                      message: fetchError,
+                    })}
               </p>
               {provider === "Ollama" && (
                 <p className="text-sm text-muted-foreground">{fetchError}</p>
@@ -236,13 +259,15 @@ export default function SyncModelsDialog({
             <>
               <div className="flex items-center gap-2 mb-4">
                 <Input
-                  placeholder="Search models..."
+                  placeholder={t(
+                    "settings.aiModels.syncDialog.searchPlaceholder",
+                  )}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-xs"
                 />
                 <Button variant="outline" onClick={() => setSearchTerm("")}>
-                  Clear
+                  {t("settings.aiModels.syncDialog.clear")}
                 </Button>
               </div>
 
@@ -272,8 +297,18 @@ export default function SyncModelsDialog({
                         {model.name}
                       </span>
                       <div className="flex gap-2 text-xs text-muted-foreground">
-                        {model.size && <span>Size: {model.size}</span>}
-                        <span>Context: {model.context}</span>
+                        {model.size && (
+                          <span>
+                            {t("settings.aiModels.syncDialog.size", {
+                              size: model.size,
+                            })}
+                          </span>
+                        )}
+                        <span>
+                          {t("settings.aiModels.syncDialog.context", {
+                            context: model.context,
+                          })}
+                        </span>
                       </div>
                       {/* {model.description && (
                         <p className="text-xs text-muted-foreground mt-1">
@@ -290,7 +325,7 @@ export default function SyncModelsDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            Cancel
+            {t("settings.aiModels.syncDialog.cancel")}
           </Button>
           <Button
             onClick={handleSync}
@@ -302,10 +337,12 @@ export default function SyncModelsDialog({
             {syncProviderModelsMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Syncing...
+                {t("settings.aiModels.syncDialog.syncing")}
               </>
             ) : (
-              `Sync ${selectedModels.length} model${selectedModels.length !== 1 ? "s" : ""}`
+              t("settings.aiModels.syncDialog.syncButton", {
+                count: selectedModels.length,
+              })
             )}
           </Button>
         </DialogFooter>
