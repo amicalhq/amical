@@ -1,5 +1,4 @@
 import * as React from "react";
-import { IconBookFilled } from "@tabler/icons-react";
 
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
@@ -11,17 +10,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { CommandSearchButton } from "./command-search-button";
 import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
-
-// Custom Discord icon component
-const DiscordIcon = ({ className }: { className?: string }) => (
-  <img
-    src="assets/discord-icon.svg"
-    alt="Discord"
-    className={`w-4 h-4 ${className || ""}`}
-  />
-);
+import { api } from "@/trpc/react";
 
 const data = {
   navMain: SETTINGS_NAV_ITEMS.map(({ title, url, icon }) => ({
@@ -29,25 +19,14 @@ const data = {
     url,
     icon: typeof icon === "string" ? undefined : icon,
   })),
-  navSecondary: [
-    {
-      title: "Docs",
-      url: "https://amical.ai/docs",
-      icon: IconBookFilled,
-      external: true,
-    },
-    {
-      title: "Community",
-      url: "https://amical.ai/community",
-      icon: DiscordIcon,
-      external: true,
-    },
-  ],
+  navSecondary: [],
 };
 
 export function SettingsSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
+  const { data: version } = api.settings.getAppVersion.useQuery();
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <div className="h-[var(--header-height)]"></div>
@@ -65,11 +44,11 @@ export function SettingsSidebar({
                   className="!size-7"
                 />
                 <span className="font-semibold">Vox</span>
+                <span className="ml-2 text-[11px] text-muted-foreground">
+                  v{version || "..."}
+                </span>
               </div>
             </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <CommandSearchButton />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>

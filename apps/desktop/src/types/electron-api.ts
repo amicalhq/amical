@@ -40,10 +40,4 @@ export interface ElectronAPI {
 
   // External link handling
   openExternal: (url: string) => Promise<void>;
-
-  // Notes API - Yjs synchronization only
-  notes: {
-    saveYjsUpdate: (noteId: number, update: ArrayBuffer) => Promise<void>;
-    loadYjsUpdates: (noteId: number) => Promise<ArrayBuffer[]>;
-  };
 }

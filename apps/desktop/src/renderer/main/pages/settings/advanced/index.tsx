@@ -274,7 +274,6 @@ export default function AdvancedSettingsPage() {
                       delete:
                       <ul className="list-disc list-inside mt-2">
                         <li>All your transcriptions</li>
-                        <li>All your notes</li>
                         <li>Your vocabulary</li>
                         <li>All settings and preferences</li>
                         <li>Downloaded models</li>

@@ -15,15 +15,11 @@ import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsVocabularyRouteImport } from './routes/settings/vocabulary'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
 import { Route as SettingsPreferencesRouteImport } from './routes/settings/preferences'
-import { Route as SettingsNotesRouteImport } from './routes/settings/notes'
 import { Route as SettingsModesRouteImport } from './routes/settings/modes'
 import { Route as SettingsHistoryRouteImport } from './routes/settings/history'
 import { Route as SettingsDictationRouteImport } from './routes/settings/dictation'
 import { Route as SettingsAiModelsRouteImport } from './routes/settings/ai-models'
 import { Route as SettingsAdvancedRouteImport } from './routes/settings/advanced'
-import { Route as SettingsAboutRouteImport } from './routes/settings/about'
-import { Route as SettingsNotesIndexRouteImport } from './routes/settings/notes.index'
-import { Route as SettingsNotesNoteIdRouteImport } from './routes/settings/notes.$noteId'
 
 const SettingsRouteRoute = SettingsRouteRouteImport.update({
   id: '/settings',
@@ -55,11 +51,6 @@ const SettingsPreferencesRoute = SettingsPreferencesRouteImport.update({
   path: '/preferences',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
-const SettingsNotesRoute = SettingsNotesRouteImport.update({
-  id: '/notes',
-  path: '/notes',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
 const SettingsModesRoute = SettingsModesRouteImport.update({
   id: '/modes',
   path: '/modes',
@@ -85,42 +76,22 @@ const SettingsAdvancedRoute = SettingsAdvancedRouteImport.update({
   path: '/advanced',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
-const SettingsAboutRoute = SettingsAboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsNotesIndexRoute = SettingsNotesIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => SettingsNotesRoute,
-} as any)
-const SettingsNotesNoteIdRoute = SettingsNotesNoteIdRouteImport.update({
-  id: '/$noteId',
-  path: '/$noteId',
-  getParentRoute: () => SettingsNotesRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRouteRouteWithChildren
-  '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/ai-models': typeof SettingsAiModelsRoute
   '/settings/dictation': typeof SettingsDictationRoute
   '/settings/history': typeof SettingsHistoryRoute
   '/settings/modes': typeof SettingsModesRoute
-  '/settings/notes': typeof SettingsNotesRouteWithChildren
   '/settings/preferences': typeof SettingsPreferencesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/vocabulary': typeof SettingsVocabularyRoute
   '/settings/': typeof SettingsIndexRoute
-  '/settings/notes/$noteId': typeof SettingsNotesNoteIdRoute
-  '/settings/notes/': typeof SettingsNotesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/ai-models': typeof SettingsAiModelsRoute
   '/settings/dictation': typeof SettingsDictationRoute
@@ -130,49 +101,38 @@ export interface FileRoutesByTo {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/vocabulary': typeof SettingsVocabularyRoute
   '/settings': typeof SettingsIndexRoute
-  '/settings/notes/$noteId': typeof SettingsNotesNoteIdRoute
-  '/settings/notes': typeof SettingsNotesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/settings': typeof SettingsRouteRouteWithChildren
-  '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/ai-models': typeof SettingsAiModelsRoute
   '/settings/dictation': typeof SettingsDictationRoute
   '/settings/history': typeof SettingsHistoryRoute
   '/settings/modes': typeof SettingsModesRoute
-  '/settings/notes': typeof SettingsNotesRouteWithChildren
   '/settings/preferences': typeof SettingsPreferencesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/vocabulary': typeof SettingsVocabularyRoute
   '/settings/': typeof SettingsIndexRoute
-  '/settings/notes/$noteId': typeof SettingsNotesNoteIdRoute
-  '/settings/notes/': typeof SettingsNotesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/settings'
-    | '/settings/about'
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
     | '/settings/history'
     | '/settings/modes'
-    | '/settings/notes'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/vocabulary'
     | '/settings/'
-    | '/settings/notes/$noteId'
-    | '/settings/notes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/settings/about'
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
@@ -182,25 +142,19 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/vocabulary'
     | '/settings'
-    | '/settings/notes/$noteId'
-    | '/settings/notes'
   id:
     | '__root__'
     | '/'
     | '/settings'
-    | '/settings/about'
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
     | '/settings/history'
     | '/settings/modes'
-    | '/settings/notes'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/vocabulary'
     | '/settings/'
-    | '/settings/notes/$noteId'
-    | '/settings/notes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -252,13 +206,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsPreferencesRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
-    '/settings/notes': {
-      id: '/settings/notes'
-      path: '/notes'
-      fullPath: '/settings/notes'
-      preLoaderRoute: typeof SettingsNotesRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
     '/settings/modes': {
       id: '/settings/modes'
       path: '/modes'
@@ -294,52 +241,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAdvancedRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
-    '/settings/about': {
-      id: '/settings/about'
-      path: '/about'
-      fullPath: '/settings/about'
-      preLoaderRoute: typeof SettingsAboutRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/notes/': {
-      id: '/settings/notes/'
-      path: '/'
-      fullPath: '/settings/notes/'
-      preLoaderRoute: typeof SettingsNotesIndexRouteImport
-      parentRoute: typeof SettingsNotesRoute
-    }
-    '/settings/notes/$noteId': {
-      id: '/settings/notes/$noteId'
-      path: '/$noteId'
-      fullPath: '/settings/notes/$noteId'
-      preLoaderRoute: typeof SettingsNotesNoteIdRouteImport
-      parentRoute: typeof SettingsNotesRoute
-    }
   }
 }
 
-interface SettingsNotesRouteChildren {
-  SettingsNotesNoteIdRoute: typeof SettingsNotesNoteIdRoute
-  SettingsNotesIndexRoute: typeof SettingsNotesIndexRoute
-}
-
-const SettingsNotesRouteChildren: SettingsNotesRouteChildren = {
-  SettingsNotesNoteIdRoute: SettingsNotesNoteIdRoute,
-  SettingsNotesIndexRoute: SettingsNotesIndexRoute,
-}
-
-const SettingsNotesRouteWithChildren = SettingsNotesRoute._addFileChildren(
-  SettingsNotesRouteChildren,
-)
-
 interface SettingsRouteRouteChildren {
-  SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsAdvancedRoute: typeof SettingsAdvancedRoute
   SettingsAiModelsRoute: typeof SettingsAiModelsRoute
   SettingsDictationRoute: typeof SettingsDictationRoute
   SettingsHistoryRoute: typeof SettingsHistoryRoute
   SettingsModesRoute: typeof SettingsModesRoute
-  SettingsNotesRoute: typeof SettingsNotesRouteWithChildren
   SettingsPreferencesRoute: typeof SettingsPreferencesRoute
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsVocabularyRoute: typeof SettingsVocabularyRoute
@@ -347,13 +257,11 @@ interface SettingsRouteRouteChildren {
 }
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
-  SettingsAboutRoute: SettingsAboutRoute,
   SettingsAdvancedRoute: SettingsAdvancedRoute,
   SettingsAiModelsRoute: SettingsAiModelsRoute,
   SettingsDictationRoute: SettingsDictationRoute,
   SettingsHistoryRoute: SettingsHistoryRoute,
   SettingsModesRoute: SettingsModesRoute,
-  SettingsNotesRoute: SettingsNotesRouteWithChildren,
   SettingsPreferencesRoute: SettingsPreferencesRoute,
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsVocabularyRoute: SettingsVocabularyRoute,

@@ -112,15 +112,6 @@ const api: ElectronAPI = {
 
   // External link handling
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
-
-  // Notes API - Yjs synchronization only
-  notes: {
-    saveYjsUpdate: (noteId: number, update: ArrayBuffer) =>
-      ipcRenderer.invoke("notes:saveYjsUpdate", noteId, update),
-
-    loadYjsUpdates: (noteId: number) =>
-      ipcRenderer.invoke("notes:loadYjsUpdates", noteId),
-  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

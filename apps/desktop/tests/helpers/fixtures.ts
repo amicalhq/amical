@@ -4,8 +4,6 @@ import type {
   NewTranscription,
   NewVocabulary,
   NewModel,
-  NewAppSettings,
-  NewNote,
   AppSettingsData,
 } from "@db/schema";
 
@@ -148,22 +146,6 @@ export const sampleModels: NewModel[] = [
 ];
 
 /**
- * Sample notes for testing
- */
-export const sampleNotes: NewNote[] = [
-  {
-    title: "Test Note 1",
-    content: "This is the first test note",
-    icon: "📝",
-  },
-  {
-    title: "Test Note 2",
-    content: "This is the second test note with more content",
-    icon: "📄",
-  },
-];
-
-/**
  * Fixture presets
  */
 export const fixtures = {
@@ -206,14 +188,6 @@ export const fixtures = {
   },
 
   /**
-   * Database with notes
-   */
-  withNotes: async (testDb: TestDatabase) => {
-    await fixtures.empty(testDb);
-    await testDb.db.insert(schema.notes).values(sampleNotes);
-  },
-
-  /**
    * Full database with all types of data
    */
   full: async (testDb: TestDatabase) => {
@@ -221,7 +195,6 @@ export const fixtures = {
     await testDb.db.insert(schema.transcriptions).values(sampleTranscriptions);
     await testDb.db.insert(schema.vocabulary).values(sampleVocabulary);
     await testDb.db.insert(schema.models).values(sampleModels);
-    await testDb.db.insert(schema.notes).values(sampleNotes);
   },
 
   /**
