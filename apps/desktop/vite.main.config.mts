@@ -22,6 +22,9 @@ export default defineConfig({
     __BUNDLED_FEEDBACK_SURVEY_ID: JSON.stringify(
       process.env.FEEDBACK_SURVEY_ID || "",
     ),
+    __BUNDLED_AUTH_REDIRECT_URI: JSON.stringify(
+      process.env.AUTH_REDIRECT_URI || "",
+    ),
   },
   build: {
     rollupOptions: {
