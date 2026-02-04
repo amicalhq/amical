@@ -47,7 +47,6 @@ export function CreateNoteButton() {
     });
     createNoteMutation.mutate({
       title: t("settings.notes.defaultTitleWithDate", { date: dateStr }),
-      initialContent: "",
     });
   }, [createNoteMutation, i18n.language, t]);
 

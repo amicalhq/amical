@@ -193,6 +193,9 @@ export interface AppSettingsData {
       followed: boolean; // Whether user followed recommendation
     };
   };
+  dataMigrations?: {
+    notesLexical?: number;
+  };
 }
 
 // Notes table

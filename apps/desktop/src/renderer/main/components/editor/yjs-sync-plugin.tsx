@@ -1,10 +1,7 @@
 import { useEffect, useRef, useMemo, useCallback } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
 import type * as Y from "yjs";
-import { toast } from "sonner";
 import { debounce } from "@/renderer/main/utils/debounce";
-import { useTranslation } from "react-i18next";
 
 interface YjsSyncPluginProps {
   yText: Y.Text;
@@ -15,11 +12,9 @@ export function YjsSyncPlugin({
   yText,
   onSyncStatusChange,
 }: YjsSyncPluginProps): null {
-  const { t } = useTranslation();
   const [editor] = useLexicalComposerContext();
   const isUpdatingFromYjsRef = useRef(false);
   const isUpdatingFromLexicalRef = useRef(false);
-  const isMigratingRef = useRef(false);
   const hasPendingRef = useRef(false);
   const pendingJsonRef = useRef<string | null>(null);
   const onSyncStatusChangeRef = useRef(onSyncStatusChange);
@@ -31,7 +26,7 @@ export function YjsSyncPlugin({
 
   const writeJsonToYjs = useCallback(
     (jsonString: string) => {
-      if (isUpdatingFromYjsRef.current || isMigratingRef.current) {
+      if (isUpdatingFromYjsRef.current) {
         onSyncStatusChangeRef.current?.(false);
         return;
       }
@@ -73,63 +68,20 @@ export function YjsSyncPlugin({
       }
     };
 
-    const migrateLegacyText = (legacyText: string) => {
-      isMigratingRef.current = true;
-      isUpdatingFromYjsRef.current = true;
-
-      editor.update(() => {
-        const root = $getRoot();
-        root.clear();
-
-        const lines = legacyText.split(/\r?\n/);
-        lines.forEach((line) => {
-          const paragraph = $createParagraphNode();
-          if (line.length > 0) {
-            paragraph.append($createTextNode(line));
-          }
-          root.append(paragraph);
-        });
-      });
-
-      isUpdatingFromYjsRef.current = false;
-
-      const migratedJson = JSON.stringify(editor.getEditorState().toJSON());
-      const yDoc = yText.doc;
-
-      if (yDoc) {
-        isUpdatingFromLexicalRef.current = true;
-        yDoc.transact(() => {
-          const oldLength = yText.length;
-          yText.delete(0, oldLength);
-          yText.insert(0, migratedJson);
-        }, "migration");
-        isUpdatingFromLexicalRef.current = false;
-      }
-
-      toast.success(t("settings.notes.toast.upgradedToRichNotes"));
-
-      isMigratingRef.current = false;
-    };
-
     // Set initial content from Yjs (stored as JSON)
     const storedContent = yText.toString();
     if (storedContent) {
       try {
         setEditorStateFromJson(storedContent);
       } catch (error) {
-        // If parsing fails (e.g., old plain text content), migrate to Lexical JSON
-        console.warn(
-          "Failed to parse stored content as JSON, may be legacy format:",
-          error,
-        );
-        migrateLegacyText(storedContent);
+        console.warn("Failed to parse stored content as editor state:", error);
       }
     }
     onSyncStatusChangeRef.current?.(false);
 
     // Observer for Yjs changes -> Lexical
     const yjsObserver = () => {
-      if (isUpdatingFromLexicalRef.current || isMigratingRef.current) return;
+      if (isUpdatingFromLexicalRef.current) return;
 
       const newContent = yText.toString();
 
@@ -153,7 +105,6 @@ export function YjsSyncPlugin({
         // Skip if triggered by Yjs sync or no actual changes
         if (
           isUpdatingFromYjsRef.current ||
-          isMigratingRef.current ||
           (dirtyElements.size === 0 && dirtyLeaves.size === 0)
         ) {
           return;
