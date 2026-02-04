@@ -181,25 +181,6 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none select-none">
           <h1 className="text-base font-medium">{currentView || "Amical"}</h1>
         </div>
-
-        {/* <div className="ml-auto flex items-center gap-2 px-4 lg:px-6">
-          <Button 
-            variant="ghost" 
-            asChild 
-            size="sm" 
-            className="hidden sm:flex"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            <a
-              href="https://github.com/shadcn-ui/ui/tree/main/apps/v4/app/(examples)/dashboard"
-              rel="noopener noreferrer"
-              target="_blank"
-              className="dark:text-foreground"
-            >
-              GitHub
-            </a>
-          </Button>
-        </div> */}
       </div>
     </header>
   );

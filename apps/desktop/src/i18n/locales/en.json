@@ -356,6 +356,7 @@
       "brand": "Amical"
     },
     "search": {
+      "buttonLabel": "Search",
       "buttonPlaceholder": "Search...",
       "inputPlaceholder": "Search settings and notes...",
       "noResults": "No results found.",
@@ -384,6 +385,10 @@
       "muteSystemAudio": {
         "label": "Mute system audio during recording",
         "description": "Silence system output while capturing microphone audio"
+      },
+      "autoDictateOnNewNote": {
+        "label": "Auto-dictate on new note",
+        "description": "Automatically start dictation when creating a new note"
       },
       "language": {
         "label": "Language",
@@ -641,6 +646,7 @@
     },
     "notes": {
       "create": "Create note",
+      "defaultTitleWithDate": "Note - {{date}}",
       "untitledTitle": "Untitled Note",
       "empty": {
         "title": "No notes yet",
@@ -656,6 +662,7 @@
         "deleted": "Note deleted",
         "deleteFailed": "Failed to delete note: {{message}}",
         "saveFailed": "Failed to save changes",
+        "upgradedToRichNotes": "Your notes have been upgraded to rich notes with markdown formatting.",
         "loadFailed": "Failed to load note"
       },
       "note": {

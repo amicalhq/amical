@@ -12,6 +12,7 @@ import type { OnboardingService } from "../../services/onboarding-service";
 import type { RecordingManager } from "../managers/recording-manager";
 import type { RecordingState } from "../../types/recording";
 import type { SettingsService } from "../../services/settings-service";
+import { runDataMigrations } from "../migrations/data-migrations";
 
 export class AppManager {
   private windowManager!: WindowManager;
@@ -131,6 +132,7 @@ export class AppManager {
 
   private async initializeDatabase(): Promise<void> {
     await initializeDatabase();
+    await runDataMigrations();
     logger.db.info(
       "Database initialized and migrations completed successfully",
     );

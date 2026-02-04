@@ -107,12 +107,20 @@ export default function PreferencesSettingsPage() {
     updateUILocaleMutation.mutate({ locale: nextLocale });
   };
 
+  const handleAutoDictateOnNewNoteChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      autoDictateOnNewNote: checked,
+    });
+  };
+
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
   const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
   const showInDock = preferencesQuery.data?.showInDock ?? true;
   const muteSystemAudio = preferencesQuery.data?.muteSystemAudio ?? true;
+  const autoDictateOnNewNote =
+    preferencesQuery.data?.autoDictateOnNewNote ?? false;
   const isMac = window.electronAPI.platform === "darwin";
   const localeDisabled =
     uiSettingsQuery.isLoading || updateUILocaleMutation.isPending;
@@ -228,6 +236,25 @@ export default function PreferencesSettingsPage() {
                   updatePreferencesMutation.isPending ||
                   preferencesQuery.isLoading
                 }
+              />
+            </div>
+
+            <Separator />
+
+            {/* Auto-dictate on new note */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  {t("settings.preferences.autoDictateOnNewNote.label")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.preferences.autoDictateOnNewNote.description")}
+                </p>
+              </div>
+              <Switch
+                checked={autoDictateOnNewNote}
+                onCheckedChange={handleAutoDictateOnNewNoteChange}
+                disabled={updatePreferencesMutation.isPending}
               />
             </div>
 

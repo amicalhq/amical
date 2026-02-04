@@ -110,7 +110,10 @@ const api: ElectronAPI = {
     }),
   },
 
-  // External link handling
+  // External link handling.
+  // Prefer proxying through main (shell.openExternal) instead of `window.open()` from
+  // the renderer, because Chromium can block popups unless the call is made
+  // synchronously in direct response to a user gesture (click/keypress).
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
 
   // Notes API - Yjs synchronization only

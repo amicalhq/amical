@@ -162,6 +162,7 @@ export interface AppSettingsData {
     showWidgetWhileInactive?: boolean;
     showInDock?: boolean;
     muteSystemAudio?: boolean;
+    autoDictateOnNewNote?: boolean;
   };
   telemetry?: {
     enabled?: boolean;
@@ -191,6 +192,9 @@ export interface AppSettingsData {
       reason: string; // Human-readable explanation
       followed: boolean; // Whether user followed recommendation
     };
+  };
+  dataMigrations?: {
+    notesLexical?: number;
   };
 }
 

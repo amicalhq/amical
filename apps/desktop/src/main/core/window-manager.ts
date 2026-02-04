@@ -4,6 +4,7 @@ import {
   systemPreferences,
   app,
   nativeTheme,
+  shell,
 } from "electron";
 import path from "node:path";
 import { logger } from "../logger";
@@ -175,6 +176,31 @@ export class WindowManager {
         nodeIntegration: false,
         contextIsolation: true,
       },
+    });
+
+    const shouldOpenExternally = (url: string) => {
+      try {
+        const parsed = new URL(url);
+        return ["http:", "https:", "mailto:", "tel:"].includes(parsed.protocol);
+      } catch {
+        return false;
+      }
+    };
+
+    // Open external links in the default browser
+    this.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (shouldOpenExternally(url)) {
+        shell.openExternal(url);
+      }
+      return { action: "deny" };
+    });
+
+    // Intercept navigation to external URLs
+    this.mainWindow.webContents.on("will-navigate", (event, url) => {
+      if (shouldOpenExternally(url)) {
+        event.preventDefault();
+        shell.openExternal(url);
+      }
     });
 
     // Load the window URL, appending initial route as hash if provided

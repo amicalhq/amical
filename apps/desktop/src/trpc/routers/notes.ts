@@ -20,7 +20,6 @@ const GetNotesSchema = z.object({
 
 const CreateNoteSchema = z.object({
   title: z.string().min(1),
-  initialContent: z.string().optional(),
   icon: z.string().nullish(),
 });
 
@@ -62,7 +61,6 @@ export const notesRouter = createRouter({
   createNote: procedure.input(CreateNoteSchema).mutation(async ({ input }) => {
     const note = await notesService.createNote({
       title: input.title,
-      initialContent: input.initialContent || "",
       icon: input.icon,
     });
 
@@ -71,7 +69,7 @@ export const notesRouter = createRouter({
       ServiceManager.getInstance().getService("telemetryService");
     telemetryService.trackNoteCreated({
       note_id: note.id,
-      has_initial_content: !!input.initialContent,
+      has_initial_content: false,
       has_icon: !!input.icon,
     });
 

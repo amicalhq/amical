@@ -17,7 +17,6 @@ import { logger } from "../main/logger";
 
 export interface NoteCreateOptions {
   title: string;
-  initialContent?: string;
   icon?: string | null;
 }
 
@@ -82,17 +81,6 @@ class NotesService {
       title: options.title,
       icon: options.icon,
     });
-
-    // Initialize yjs document with initial content if provided
-    if (options.initialContent) {
-      const ydoc = new Y.Doc();
-      const text = ydoc.getText("content");
-      text.insert(0, options.initialContent);
-
-      // Save initial content as a YJS update
-      const initialUpdate = Y.encodeStateAsUpdate(ydoc);
-      await saveYjsUpdateToDB(note.id, initialUpdate);
-    }
 
     return note;
   }
