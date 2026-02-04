@@ -4,8 +4,6 @@ import {
   IconBook,
   IconBrain,
   IconHistory,
-  IconKeyboard,
-  IconAdjustments,
   type Icon,
 } from "@tabler/icons-react";
 
@@ -33,13 +31,6 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     type: "settings",
   },
   {
-    title: "Shortcuts",
-    url: "/settings/shortcuts",
-    description: "Customize keyboard shortcuts and hotkeys",
-    icon: IconKeyboard,
-    type: "settings",
-  },
-  {
     title: "AI Models",
     url: "/settings/ai-models",
     description: "Configure AI models and providers",
@@ -54,17 +45,10 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     type: "settings",
   },
   {
-    title: "Preferences",
+    title: "Settings",
     url: "/settings/preferences",
     description: "Configure general application preferences and behavior",
     icon: IconSettings,
-    type: "settings",
-  },
-  {
-    title: "Advanced",
-    url: "/settings/advanced",
-    description: "Advanced configuration options",
-    icon: IconAdjustments,
     type: "settings",
   },
 ];

@@ -13,10 +13,9 @@ function SettingsLayout() {
 
   const getSettingsPageTitle = (pathname: string): string => {
     const routes: Record<string, string> = {
-      "/settings/preferences": "Preferences",
+      "/settings/preferences": "Settings",
       "/settings/dictation": "Dictation",
       "/settings/vocabulary": "Vocabulary",
-      "/settings/shortcuts": "Shortcuts",
       "/settings/ai-models": "AI Models",
       "/settings/history": "History",
       "/settings/advanced": "Advanced",
