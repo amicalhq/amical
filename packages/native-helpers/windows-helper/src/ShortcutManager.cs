@@ -157,6 +157,28 @@ namespace WindowsHelper
         }
 
         /// <summary>
+        /// Check provided key codes against OS truth and return any stale entries.
+        /// </summary>
+        public List<int> GetStalePressedKeyCodes(IEnumerable<int> keyCodes)
+        {
+            var stale = new List<int>();
+            foreach (var keyCode in keyCodes)
+            {
+                if (!IsKeyActuallyPressed(keyCode))
+                {
+                    stale.Add(keyCode);
+                }
+            }
+
+            if (stale.Count > 0)
+            {
+                LogToStderr($"Recheck: stale keys detected: [{string.Join(", ", stale)}]");
+            }
+
+            return stale;
+        }
+
+        /// <summary>
         /// Validate all tracked key states against actual OS state.
         /// Removes any keys that are not actually pressed (stuck keys).
         /// Returns details about any corrections performed.

@@ -194,6 +194,41 @@ class IOBridge: NSObject {
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
 
+        case .recheckPressedKeys:
+            logToStderr("[IOBridge] Handling recheckPressedKeys for ID: \(request.id)")
+            guard let paramsAnyCodable = request.params else {
+                let errPayload = Error(
+                    code: -32602, data: nil, message: "Missing params for recheckPressedKeys")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                sendRpcResponse(rpcResponse)
+                return
+            }
+
+            do {
+                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                let recheckParams = try jsonDecoder.decode(
+                    RecheckPressedKeysParamsSchema.self, from: paramsData)
+
+                let staleKeyCodes = ShortcutManager.shared.getStalePressedKeyCodes(
+                    recheckParams.pressedKeyCodes
+                )
+
+                let resultPayload = RecheckPressedKeysResultSchema(
+                    staleKeyCodes: staleKeyCodes)
+                let resultData = try jsonEncoder.encode(resultPayload)
+                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
+                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+
+            } catch {
+                logToStderr(
+                    "[IOBridge] Error processing recheckPressedKeys params: \(error.localizedDescription) for ID: \(request.id)"
+                )
+                let errPayload = Error(
+                    code: -32602, data: request.params,
+                    message: "Invalid params: \(error.localizedDescription)")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+            }
+
         default:
             logToStderr("[IOBridge] Method not found: \(request.method) for ID: \(request.id)")
             let errPayload = Error(

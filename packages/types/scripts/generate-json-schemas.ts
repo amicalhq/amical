@@ -30,6 +30,10 @@ import {
   SetShortcutsResultSchema,
 } from "../src/schemas/methods/set-shortcuts.js";
 import {
+  RecheckPressedKeysParamsSchema,
+  RecheckPressedKeysResultSchema,
+} from "../src/schemas/methods/recheck-pressed-keys.js";
+import {
   KeyDownEventSchema,
   KeyUpEventSchema,
   FlagsChangedEventSchema,
@@ -100,6 +104,16 @@ const schemasToGenerate = [
   {
     zod: SetShortcutsResultSchema,
     name: "SetShortcutsResult",
+    category: "methods",
+  },
+  {
+    zod: RecheckPressedKeysParamsSchema,
+    name: "RecheckPressedKeysParams",
+    category: "methods",
+  },
+  {
+    zod: RecheckPressedKeysResultSchema,
+    name: "RecheckPressedKeysResult",
     category: "methods",
   },
 ];

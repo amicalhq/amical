@@ -22,6 +22,8 @@
 //    var restoreSystemAudioResult = RestoreSystemAudioResult.FromJson(jsonString);
 //    var setShortcutsParams = SetShortcutsParams.FromJson(jsonString);
 //    var setShortcutsResult = SetShortcutsResult.FromJson(jsonString);
+//    var recheckPressedKeysParams = RecheckPressedKeysParams.FromJson(jsonString);
+//    var recheckPressedKeysResult = RecheckPressedKeysResult.FromJson(jsonString);
 //    var keyDownEvent = KeyDownEvent.FromJson(jsonString);
 //    var keyUpEvent = KeyUpEvent.FromJson(jsonString);
 //    var flagsChangedEvent = FlagsChangedEvent.FromJson(jsonString);
@@ -311,6 +313,18 @@ namespace WindowsHelper.Models
         public bool Success { get; set; }
     }
 
+    public partial class RecheckPressedKeysParams
+    {
+        [JsonPropertyName("pressedKeyCodes")]
+        public List<long> PressedKeyCodes { get; set; }
+    }
+
+    public partial class RecheckPressedKeysResult
+    {
+        [JsonPropertyName("staleKeyCodes")]
+        public List<long> StaleKeyCodes { get; set; }
+    }
+
     public partial class KeyDownEvent
     {
         [JsonPropertyName("payload")]
@@ -523,7 +537,7 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts };
+    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts, RecheckPressedKeys };
 
     public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
 
@@ -607,6 +621,16 @@ namespace WindowsHelper.Models
         public static SetShortcutsResult FromJson(string json) => JsonSerializer.Deserialize<SetShortcutsResult>(json, WindowsHelper.Models.Converter.Settings);
     }
 
+    public partial class RecheckPressedKeysParams
+    {
+        public static RecheckPressedKeysParams FromJson(string json) => JsonSerializer.Deserialize<RecheckPressedKeysParams>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
+    public partial class RecheckPressedKeysResult
+    {
+        public static RecheckPressedKeysResult FromJson(string json) => JsonSerializer.Deserialize<RecheckPressedKeysResult>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
     public partial class KeyDownEvent
     {
         public static KeyDownEvent FromJson(string json) => JsonSerializer.Deserialize<KeyDownEvent>(json, WindowsHelper.Models.Converter.Settings);
@@ -642,6 +666,8 @@ namespace WindowsHelper.Models
         public static string ToJson(this RestoreSystemAudioResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this SetShortcutsParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this SetShortcutsResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this RecheckPressedKeysParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this RecheckPressedKeysResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this KeyDownEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this KeyUpEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this FlagsChangedEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
@@ -693,6 +719,8 @@ namespace WindowsHelper.Models
                     return Method.RestoreSystemAudio;
                 case "setShortcuts":
                     return Method.SetShortcuts;
+                case "recheckPressedKeys":
+                    return Method.RecheckPressedKeys;
             }
             throw new Exception("Cannot unmarshal type Method");
         }
@@ -724,6 +752,9 @@ namespace WindowsHelper.Models
                     return;
                 case Method.SetShortcuts:
                     JsonSerializer.Serialize(writer, "setShortcuts", options);
+                    return;
+                case Method.RecheckPressedKeys:
+                    JsonSerializer.Serialize(writer, "recheckPressedKeys", options);
                     return;
             }
             throw new Exception("Cannot marshal type Method");

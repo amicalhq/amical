@@ -32,6 +32,8 @@ import {
   RestoreSystemAudioResult,
   SetShortcutsParams,
   SetShortcutsResult,
+  RecheckPressedKeysParams,
+  RecheckPressedKeysResult,
   AppContext,
 } from "@amical/types";
 
@@ -68,6 +70,10 @@ interface RPCMethods {
   setShortcuts: {
     params: SetShortcutsParams;
     result: SetShortcutsResult;
+  };
+  recheckPressedKeys: {
+    params: RecheckPressedKeysParams;
+    result: RecheckPressedKeysResult;
   };
 }
 
@@ -498,6 +504,15 @@ export class NativeBridge extends EventEmitter {
       });
       return false;
     }
+  }
+
+  /**
+   * Recheck pressed keys against OS truth. Returns stale keys.
+   */
+  async recheckPressedKeys(
+    params: RecheckPressedKeysParams,
+  ): Promise<RecheckPressedKeysResult> {
+    return this.call("recheckPressedKeys", params);
   }
 
   /**

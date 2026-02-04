@@ -113,6 +113,32 @@ class ShortcutManager {
         return CGEventSource.keyState(.combinedSessionState, key: keyCode)
     }
 
+    /// Check provided key codes against OS truth and return any stale entries.
+    func getStalePressedKeyCodes(_ keyCodes: [Int]) -> [Int] {
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        var stale: [Int] = []
+        for keyCode in keyCodes {
+            if let modifierFlag = modifierFlag(for: keyCode) {
+                if !flags.contains(modifierFlag) {
+                    stale.append(keyCode)
+                }
+                continue
+            }
+
+            if !isKeyActuallyPressed(CGKeyCode(keyCode)) {
+                stale.append(keyCode)
+            }
+        }
+
+        if !stale.isEmpty {
+            logToStderr("[ShortcutManager] Recheck: stale keys detected: \(stale)")
+        }
+
+        return stale
+    }
+
+    // modifierFlag(for:) is defined in ModifierFlagHelpers.swift
+
     /// Validate all tracked key states against actual OS state.
     /// Removes any keys that are not actually pressed (stuck keys).
     /// Returns details about any corrections performed.

@@ -12,6 +12,7 @@ import {
 } from "@/utils/shortcut-validation";
 
 const log = logger.main;
+const PRESSED_KEYS_RECHECK_INTERVAL_MS = 10000;
 
 interface KeyInfo {
   keyCode: number;
@@ -34,6 +35,8 @@ export class ShortcutManager extends EventEmitter {
   private settingsService: SettingsService;
   private nativeBridge: NativeBridge | null = null;
   private isRecordingShortcut: boolean = false;
+  private recheckInFlight = false;
+  private recheckInterval: NodeJS.Timeout | null = null;
   private exactMatchState = {
     toggleRecording: false,
     pasteLastTranscript: false,
@@ -49,6 +52,7 @@ export class ShortcutManager extends EventEmitter {
     await this.loadShortcuts();
     this.syncShortcutsToNative(); // fire-and-forget
     this.setupEventListeners();
+    this.startPeriodicRecheck();
   }
 
   private async loadShortcuts() {
@@ -87,6 +91,62 @@ export class ShortcutManager extends EventEmitter {
   async reloadShortcuts() {
     await this.loadShortcuts();
     this.syncShortcutsToNative(); // fire-and-forget
+  }
+
+  /**
+   * Recheck currently pressed keys against OS truth.
+   * Clears stale keys locally to avoid stuck states.
+   */
+  async recheckPressedKeys(): Promise<void> {
+    if (this.recheckInFlight) {
+      return;
+    }
+
+    if (!this.nativeBridge) {
+      log.debug("Native bridge not available, skipping pressed keys recheck");
+      return;
+    }
+
+    const pressedKeyCodes = this.getActiveKeys();
+    if (pressedKeyCodes.length === 0) {
+      return;
+    }
+
+    const requestStartedAt = Date.now();
+    this.recheckInFlight = true;
+
+    try {
+      const result = await this.nativeBridge.recheckPressedKeys({
+        pressedKeyCodes,
+      });
+      const staleKeyCodes = result.staleKeyCodes ?? [];
+      if (staleKeyCodes.length === 0) {
+        return;
+      }
+
+      const keysToClear: number[] = [];
+      for (const keyCode of staleKeyCodes) {
+        const keyInfo = this.activeKeys.get(keyCode);
+        if (!keyInfo) continue;
+        if (keyInfo.timestamp > requestStartedAt) {
+          continue;
+        }
+        keysToClear.push(keyCode);
+      }
+
+      if (keysToClear.length === 0) {
+        return;
+      }
+
+      this.removeActiveKeys(keysToClear);
+      log.info("Cleared stale pressed keys after recheck", {
+        staleKeyCodes: keysToClear,
+      });
+    } catch (error) {
+      log.warn("Failed to recheck pressed keys", { error });
+    } finally {
+      this.recheckInFlight = false;
+    }
   }
 
   /**
@@ -153,6 +213,24 @@ export class ShortcutManager extends EventEmitter {
     });
   }
 
+  private startPeriodicRecheck() {
+    if (this.recheckInterval) {
+      return;
+    }
+
+    this.recheckInterval = setInterval(() => {
+      void this.recheckPressedKeys();
+    }, PRESSED_KEYS_RECHECK_INTERVAL_MS);
+  }
+
+  private stopPeriodicRecheck() {
+    if (!this.recheckInterval) {
+      return;
+    }
+    clearInterval(this.recheckInterval);
+    this.recheckInterval = null;
+  }
+
   private handleKeyDown(payload: KeyEventPayload) {
     const keyCode = this.getKeycodeFromPayload(payload);
     if (!this.isKnownKeycode(keyCode)) {
@@ -179,6 +257,19 @@ export class ShortcutManager extends EventEmitter {
   private removeActiveKey(keyCode: number) {
     this.activeKeys.delete(keyCode);
     this.emitActiveKeysChanged();
+  }
+
+  private removeActiveKeys(keyCodes: number[]) {
+    let changed = false;
+    for (const keyCode of keyCodes) {
+      if (this.activeKeys.delete(keyCode)) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.emitActiveKeysChanged();
+      this.checkShortcuts();
+    }
   }
 
   private emitActiveKeysChanged() {
@@ -276,6 +367,7 @@ export class ShortcutManager extends EventEmitter {
 
   cleanup() {
     this.unregisterAllShortcuts();
+    this.stopPeriodicRecheck();
     this.removeAllListeners();
     this.activeKeys.clear();
   }

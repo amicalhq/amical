@@ -115,6 +115,10 @@ namespace WindowsHelper
                         response = HandleSetShortcuts(request);
                         break;
 
+                    case Method.RecheckPressedKeys:
+                        response = HandleRecheckPressedKeys(request);
+                        break;
+
                     default:
                         LogToStderr($"Method not found: {request.Method} for ID: {request.Id}");
                         response = new RpcResponse
@@ -144,6 +148,62 @@ namespace WindowsHelper
             }
 
             SendRpcResponse(response);
+        }
+
+        private RpcResponse HandleRecheckPressedKeys(RpcRequest request)
+        {
+            LogToStderr($"Handling recheckPressedKeys for ID: {request.Id}");
+
+            if (request.Params == null)
+            {
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Error = new Error
+                    {
+                        Code = -32602,
+                        Message = "Missing params for recheckPressedKeys"
+                    }
+                };
+            }
+
+            RecheckPressedKeysParams? parameters = null;
+            if (request.Params != null)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
+                    parameters = JsonSerializer.Deserialize<RecheckPressedKeysParams>(json, jsonOptions);
+                }
+                catch (Exception ex)
+                {
+                    LogToStderr($"Error decoding params: {ex.Message}");
+                    return new RpcResponse
+                    {
+                        Id = request.Id.ToString(),
+                        Error = new Error
+                        {
+                            Code = -32602,
+                            Message = $"Invalid params: {ex.Message}",
+                            Data = request.Params
+                        }
+                    };
+                }
+            }
+
+            var pressedKeyCodes = parameters?.PressedKeyCodes ?? new List<long>();
+            var staleKeyCodes = ShortcutManager.Instance.GetStalePressedKeyCodes(
+                pressedKeyCodes.Select(keyCode => (int)keyCode)
+            );
+
+            return new RpcResponse
+            {
+                Id = request.Id.ToString(),
+                Result = new RecheckPressedKeysResult
+                {
+                    StaleKeyCodes = staleKeyCodes.Select(keyCode => (long)keyCode).ToList()
+                }
+            };
         }
 
         private async Task<RpcResponse> HandleGetAccessibilityTreeDetails(RpcRequest request)
