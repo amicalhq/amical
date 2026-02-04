@@ -139,6 +139,7 @@ jobs:
           AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
           AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
+          AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
         run: |
           echo "Building macOS ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}

@@ -32,6 +32,8 @@
         "AUTH_CLIENT_ID",
         "AUTHORIZATION_ENDPOINT",
         "AUTH_TOKEN_ENDPOINT",
+        "AUTH_REDIRECT_URI",
+        "FEEDBACK_SURVEY_ID",
         "API_ENDPOINT"
       ]
     },

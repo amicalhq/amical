@@ -33,7 +33,7 @@ export class ShortcutManager extends EventEmitter {
     pasteLastTranscript: [],
   };
   private settingsService: SettingsService;
-  private nativeBridge: NativeBridge | null = null;
+  private nativeBridge: NativeBridge;
   private isRecordingShortcut: boolean = false;
   private recheckInFlight = false;
   private recheckInterval: NodeJS.Timeout | null = null;
@@ -42,13 +42,13 @@ export class ShortcutManager extends EventEmitter {
     pasteLastTranscript: false,
   };
 
-  constructor(settingsService: SettingsService) {
+  constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
     super();
     this.settingsService = settingsService;
+    this.nativeBridge = nativeBridge;
   }
 
-  async initialize(nativeBridge: NativeBridge | null) {
-    this.nativeBridge = nativeBridge;
+  async initialize() {
     await this.loadShortcuts();
     this.syncShortcutsToNative(); // fire-and-forget
     this.setupEventListeners();
@@ -71,11 +71,6 @@ export class ShortcutManager extends EventEmitter {
    * (prevent default behavior like cursor movement for arrow keys).
    */
   private async syncShortcutsToNative() {
-    if (!this.nativeBridge) {
-      log.debug("Native bridge not available, skipping shortcut sync");
-      return;
-    }
-
     try {
       await this.nativeBridge.setShortcuts({
         pushToTalk: this.shortcuts.pushToTalk,
@@ -99,11 +94,6 @@ export class ShortcutManager extends EventEmitter {
    */
   async recheckPressedKeys(): Promise<void> {
     if (this.recheckInFlight) {
-      return;
-    }
-
-    if (!this.nativeBridge) {
-      log.debug("Native bridge not available, skipping pressed keys recheck");
       return;
     }
 
@@ -196,11 +186,6 @@ export class ShortcutManager extends EventEmitter {
   }
 
   private setupEventListeners() {
-    if (!this.nativeBridge) {
-      log.warn("Native bridge not available, shortcuts will not work");
-      return;
-    }
-
     this.nativeBridge.on("helperEvent", (event: HelperEvent) => {
       switch (event.type) {
         case "keyDown":

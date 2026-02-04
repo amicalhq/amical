@@ -182,13 +182,16 @@ export class ServiceManager {
   }
 
   private async initializeShortcutManager(): Promise<void> {
-    if (!this.recordingManager || !this.settingsService) {
+    if (!this.settingsService || !this.nativeBridge || !this.recordingManager) {
       throw new Error(
-        "RecordingManager and SettingsService must be initialized first",
+        "SettingsService, NativeBridge and RecordingManager must be initialized first",
       );
     }
-    this.shortcutManager = new ShortcutManager(this.settingsService);
-    await this.shortcutManager.initialize(this.nativeBridge);
+    this.shortcutManager = new ShortcutManager(
+      this.settingsService,
+      this.nativeBridge,
+    );
+    await this.shortcutManager.initialize();
 
     // Connect shortcut events to recording manager
     this.recordingManager.setupShortcutListeners(this.shortcutManager);
