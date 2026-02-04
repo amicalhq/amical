@@ -1,6 +1,6 @@
 {
   "name": "@amical/desktop",
-  "version": "0.1.18-beta.5",
+  "version": "0.1.18-beta.6",
   "description": "Amical Desktop app",
   "main": ".vite/build/main.js",
   "productName": "Amical",
