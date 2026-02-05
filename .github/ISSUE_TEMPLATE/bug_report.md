@@ -12,6 +12,9 @@ A clear and concise description of what the bug is.
 **App Version**
 What version of Amical are you using? (e.g., v0.1.1)
 
+**Model Information**
+Which model are you using? (e.g., cloud, whisper v3 large)
+
 **System Information**
 
 - **Operating System:** [e.g., macOS 14.0, Windows 11, Ubuntu 22.04]
