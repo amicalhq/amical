@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   AccordionContent,
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -16,11 +17,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import SyncModelsDialog from "./sync-models-dialog";
 
 type ProviderName =
   | "OpenRouter"
@@ -31,15 +31,82 @@ type ProviderName =
   | "Groq"
   | "Grok";
 
+const LANGUAGE_PROVIDERS: ProviderName[] = [
+  "OpenRouter",
+  "Ollama",
+  "OpenAI",
+  "Anthropic",
+  "Google",
+];
+
+const SPEECH_PROVIDERS: ProviderName[] = ["OpenAI", "Groq", "Grok"];
+
+const PROVIDER_ICON_MAP: Record<ProviderName, string | null> = {
+  OpenAI: "/icons/models/openai_dark.svg",
+  Google: "/icons/models/gemini.svg",
+  OpenRouter: "/icons/models/open_router.svg",
+  Ollama: "/icons/models/ollama.svg",
+  Anthropic: "/icons/models/anthropic.svg",
+  Groq: "/icons/models/groq.svg",
+  Grok: "/icons/models/grok.svg",
+};
+
+const PROVIDER_ICON_FRAME: Record<ProviderName, string> = {
+  OpenAI: "bg-[#10A37F] border-[#10A37F]",
+  Anthropic: "bg-[#D4B097] border-[#D4B097]",
+  Google: "bg-white border-white",
+  OpenRouter: "bg-[#6066F2] border-[#6066F2]",
+  Ollama: "bg-white border-slate-200",
+  Groq: "bg-[#F55036] border-[#F55036]",
+  Grok: "bg-black border-black",
+};
+
+const PROVIDER_ICON_CLASS: Record<ProviderName, string> = {
+  OpenAI: "",
+  Anthropic: "",
+  Google: "",
+  OpenRouter: "brightness-0 invert",
+  Ollama: "",
+  Groq: "",
+  Grok: "brightness-0 invert",
+};
+
+const PROVIDER_ICON_FALLBACK: Record<ProviderName, string> = {
+  OpenAI: "text-white",
+  Anthropic: "text-slate-900",
+  Google: "text-slate-900",
+  OpenRouter: "text-white",
+  Ollama: "text-white",
+  Groq: "text-white",
+  Grok: "text-white",
+};
+
+const getProviderFallback = (provider: ProviderName) => {
+  const caps = provider.replace(/[^A-Z]/g, "");
+  if (caps.length >= 2) return caps.slice(0, 2);
+  return provider.slice(0, 2).toUpperCase();
+};
+
 interface ProviderAccordionProps {
   provider: ProviderName;
-  modelType: "language" | "embedding" | "transcription";
+  modelType: "language" | "transcription";
+  capabilities?: string[];
 }
 
 export default function ProviderAccordion({
   provider,
   modelType,
+  capabilities,
 }: ProviderAccordionProps) {
+  const displayCapabilities = (capabilities ?? [])
+    .map((capability) =>
+      capability === "SPEECH2TEXT" ? "Speech-to-Text" : capability,
+    )
+    .filter(
+      (capability) => capability === "LLM" || capability === "Speech-to-Text",
+    )
+    .filter((capability, index, list) => list.indexOf(capability) === index);
+
   // Local state
   const [status, setStatus] = useState<"connected" | "disconnected">(
     "disconnected",
@@ -47,22 +114,148 @@ export default function ProviderAccordion({
   const [inputValue, setInputValue] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState("");
-  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [removeProviderDialogOpen, setRemoveProviderDialogOpen] =
     useState(false);
 
   const isTranscriptionMode = modelType === "transcription";
+  const supportsLanguageModels = LANGUAGE_PROVIDERS.includes(provider);
+  const supportsSpeechModels = SPEECH_PROVIDERS.includes(provider);
 
   // tRPC queries and mutations
   const utils = api.useUtils();
   const modelProvidersConfigQuery =
-    api.settings.getModelProvidersConfig.useQuery(undefined, {
-      enabled: !isTranscriptionMode,
-    });
-  const transcriptionProvidersConfigQuery =
-    api.settings.getTranscriptionProvidersConfig.useQuery(undefined, {
-      enabled: isTranscriptionMode,
-    });
+    api.settings.getModelProvidersConfig.useQuery();
+
+  const resolvedCredentials = useMemo(() => {
+    const config = modelProvidersConfigQuery.data;
+    const fallbackKey =
+      status === "connected" ? inputValue.trim() || undefined : undefined;
+
+    return {
+      openRouterApiKey:
+        config?.openRouter?.apiKey ??
+        (provider === "OpenRouter" ? fallbackKey : undefined),
+      ollamaUrl:
+        config?.ollama?.url ?? (provider === "Ollama" ? fallbackKey : undefined),
+      openAIApiKey:
+        config?.openAI?.apiKey ??
+        (provider === "OpenAI" ? fallbackKey : undefined),
+      anthropicApiKey:
+        config?.anthropic?.apiKey ??
+        (provider === "Anthropic" ? fallbackKey : undefined),
+      googleApiKey:
+        config?.google?.apiKey ??
+        (provider === "Google" ? fallbackKey : undefined),
+    };
+  }, [inputValue, modelProvidersConfigQuery.data, provider, status]);
+
+  const fetchOpenRouterModelsQuery = api.models.fetchOpenRouterModels.useQuery(
+    { apiKey: resolvedCredentials.openRouterApiKey ?? "" },
+    {
+      enabled:
+        status === "connected" &&
+        provider === "OpenRouter" &&
+        !!resolvedCredentials.openRouterApiKey,
+    },
+  );
+
+  const fetchOllamaModelsQuery = api.models.fetchOllamaModels.useQuery(
+    { url: resolvedCredentials.ollamaUrl ?? "" },
+    {
+      enabled:
+        status === "connected" &&
+        provider === "Ollama" &&
+        !!resolvedCredentials.ollamaUrl,
+    },
+  );
+
+  const fetchOpenAIModelsQuery = api.models.fetchOpenAIModels.useQuery(
+    { apiKey: resolvedCredentials.openAIApiKey ?? "" },
+    {
+      enabled:
+        status === "connected" &&
+        provider === "OpenAI" &&
+        !!resolvedCredentials.openAIApiKey,
+    },
+  );
+
+  const fetchAnthropicModelsQuery = api.models.fetchAnthropicModels.useQuery(
+    { apiKey: resolvedCredentials.anthropicApiKey ?? "" },
+    {
+      enabled:
+        status === "connected" &&
+        provider === "Anthropic" &&
+        !!resolvedCredentials.anthropicApiKey,
+    },
+  );
+
+  const fetchGoogleModelsQuery = api.models.fetchGoogleModels.useQuery(
+    { apiKey: resolvedCredentials.googleApiKey ?? "" },
+    {
+      enabled:
+        status === "connected" &&
+        provider === "Google" &&
+        !!resolvedCredentials.googleApiKey,
+    },
+  );
+
+  const availableSpeechModelsQuery = api.models.getAvailableModels.useQuery(
+    undefined,
+    { enabled: status === "connected" && supportsSpeechModels },
+  );
+
+  const activeLanguageQuery = useMemo(() => {
+    switch (provider) {
+      case "OpenRouter":
+        return fetchOpenRouterModelsQuery;
+      case "Ollama":
+        return fetchOllamaModelsQuery;
+      case "OpenAI":
+        return fetchOpenAIModelsQuery;
+      case "Anthropic":
+        return fetchAnthropicModelsQuery;
+      case "Google":
+        return fetchGoogleModelsQuery;
+      default:
+        return undefined;
+    }
+  }, [
+    fetchAnthropicModelsQuery,
+    fetchGoogleModelsQuery,
+    fetchOllamaModelsQuery,
+    fetchOpenAIModelsQuery,
+    fetchOpenRouterModelsQuery,
+    provider,
+  ]);
+
+  const languageModels = useMemo(() => {
+    if (!supportsLanguageModels) return [];
+    const models = activeLanguageQuery?.data ?? [];
+
+    if (provider === "Ollama") {
+      return models.filter((model) => {
+        const haystack = `${model.name} ${model.id}`.toLowerCase();
+        return !haystack.includes("embed");
+      });
+    }
+
+    return models;
+  }, [activeLanguageQuery?.data, provider, supportsLanguageModels]);
+
+  const speechModels = useMemo(() => {
+    if (!supportsSpeechModels) return [];
+    const models = availableSpeechModelsQuery.data ?? [];
+    return models.filter(
+      (model) => model.setup === "api" && model.provider === provider,
+    );
+  }, [availableSpeechModelsQuery.data, provider, supportsSpeechModels]);
+
+  const isLanguageFetching =
+    !!activeLanguageQuery?.isLoading || !!activeLanguageQuery?.isFetching;
+  const languageError = activeLanguageQuery?.error?.message;
+  const isSpeechFetching =
+    availableSpeechModelsQuery.isLoading ||
+    availableSpeechModelsQuery.isFetching;
 
   // --- Config save mutations ---
   const setOpenRouterConfigMutation =
@@ -94,6 +287,7 @@ export default function ProviderAccordion({
     onSuccess: () => {
       toast.success("OpenAI configuration saved successfully!");
       utils.settings.getModelProvidersConfig.invalidate();
+      utils.models.getTranscriptionProviderStatus.invalidate();
     },
     onError: (error) => {
       console.error("Failed to save OpenAI config:", error);
@@ -126,66 +320,38 @@ export default function ProviderAccordion({
     },
   });
 
-  // --- Transcription config save mutations ---
-  const setTranscriptionOpenAIConfigMutation =
-    api.settings.setTranscriptionOpenAIConfig.useMutation({
-      onSuccess: () => {
-        toast.success("OpenAI transcription configuration saved!");
-        utils.settings.getTranscriptionProvidersConfig.invalidate();
-        utils.models.getTranscriptionProviderStatus.invalidate();
-        utils.models.getModels.invalidate();
-      },
-      onError: (error) => {
-        console.error("Failed to save transcription OpenAI config:", error);
-        toast.error("Failed to save configuration.");
-      },
-    });
+  const setGroqConfigMutation = api.settings.setGroqConfig.useMutation({
+    onSuccess: () => {
+      toast.success("Groq configuration saved successfully!");
+      utils.settings.getModelProvidersConfig.invalidate();
+      utils.models.getTranscriptionProviderStatus.invalidate();
+      utils.models.getModels.invalidate();
+    },
+    onError: (error) => {
+      console.error("Failed to save Groq config:", error);
+      toast.error("Failed to save Groq configuration. Please try again.");
+    },
+  });
 
-  const setTranscriptionGroqConfigMutation =
-    api.settings.setTranscriptionGroqConfig.useMutation({
-      onSuccess: () => {
-        toast.success("Groq transcription configuration saved!");
-        utils.settings.getTranscriptionProvidersConfig.invalidate();
-        utils.models.getTranscriptionProviderStatus.invalidate();
-        utils.models.getModels.invalidate();
-      },
-      onError: (error) => {
-        console.error("Failed to save transcription Groq config:", error);
-        toast.error("Failed to save configuration.");
-      },
-    });
-
-  const setTranscriptionGrokConfigMutation =
-    api.settings.setTranscriptionGrokConfig.useMutation({
-      onSuccess: () => {
-        toast.success("Grok transcription configuration saved!");
-        utils.settings.getTranscriptionProvidersConfig.invalidate();
-        utils.models.getTranscriptionProviderStatus.invalidate();
-        utils.models.getModels.invalidate();
-      },
-      onError: (error) => {
-        console.error("Failed to save transcription Grok config:", error);
-        toast.error("Failed to save configuration.");
-      },
-    });
+  const setGrokConfigMutation = api.settings.setGrokConfig.useMutation({
+    onSuccess: () => {
+      toast.success("Grok configuration saved successfully!");
+      utils.settings.getModelProvidersConfig.invalidate();
+      utils.models.getTranscriptionProviderStatus.invalidate();
+      utils.models.getModels.invalidate();
+    },
+    onError: (error) => {
+      console.error("Failed to save Grok config:", error);
+      toast.error("Failed to save Grok configuration. Please try again.");
+    },
+  });
 
   // --- Transcription validation mutations ---
-  const validateTranscriptionOpenAIMutation =
-    api.models.validateTranscriptionOpenAIConnection.useMutation({
-      onSuccess: (result) =>
-        onValidationSuccess(result, "OpenAI", () =>
-          setTranscriptionOpenAIConfigMutation.mutate({
-            apiKey: inputValue.trim(),
-          }),
-        ),
-      onError: (error) => onValidationError(error, "OpenAI"),
-    });
-
   const validateTranscriptionGroqMutation =
     api.models.validateTranscriptionGroqConnection.useMutation({
       onSuccess: (result) =>
         onValidationSuccess(result, "Groq", () =>
-          setTranscriptionGroqConfigMutation.mutate({
+          setGroqConfigMutation.mutate({
             apiKey: inputValue.trim(),
           }),
         ),
@@ -196,7 +362,7 @@ export default function ProviderAccordion({
     api.models.validateTranscriptionGrokConnection.useMutation({
       onSuccess: (result) =>
         onValidationSuccess(result, "Grok", () =>
-          setTranscriptionGrokConfigMutation.mutate({
+          setGrokConfigMutation.mutate({
             apiKey: inputValue.trim(),
           }),
         ),
@@ -204,47 +370,31 @@ export default function ProviderAccordion({
     });
 
   // --- Transcription remove provider mutations ---
-  const removeTranscriptionOpenAIProviderMutation =
-    api.models.removeTranscriptionOpenAIProvider.useMutation({
-      onSuccess: () => {
-        utils.settings.getTranscriptionProvidersConfig.invalidate();
-        utils.models.getTranscriptionProviderStatus.invalidate();
-        utils.models.getSelectedModel.invalidate();
-        utils.models.getModels.invalidate();
-        setStatus("disconnected");
-        setInputValue("");
-        toast.success("OpenAI transcription provider removed!");
-      },
-      onError: (error) => onRemoveError(error, "OpenAI"),
-    });
+  const removeGroqProviderMutation = api.models.removeGroqProvider.useMutation({
+    onSuccess: () => {
+      utils.settings.getModelProvidersConfig.invalidate();
+      utils.models.getTranscriptionProviderStatus.invalidate();
+      utils.models.getSelectedModel.invalidate();
+      utils.models.getModels.invalidate();
+      setStatus("disconnected");
+      setInputValue("");
+      toast.success("Groq provider removed!");
+    },
+    onError: (error) => onRemoveError(error, "Groq"),
+  });
 
-  const removeTranscriptionGroqProviderMutation =
-    api.models.removeTranscriptionGroqProvider.useMutation({
-      onSuccess: () => {
-        utils.settings.getTranscriptionProvidersConfig.invalidate();
-        utils.models.getTranscriptionProviderStatus.invalidate();
-        utils.models.getSelectedModel.invalidate();
-        utils.models.getModels.invalidate();
-        setStatus("disconnected");
-        setInputValue("");
-        toast.success("Groq transcription provider removed!");
-      },
-      onError: (error) => onRemoveError(error, "Groq"),
-    });
-
-  const removeTranscriptionGrokProviderMutation =
-    api.models.removeTranscriptionGrokProvider.useMutation({
-      onSuccess: () => {
-        utils.settings.getTranscriptionProvidersConfig.invalidate();
-        utils.models.getTranscriptionProviderStatus.invalidate();
-        utils.models.getSelectedModel.invalidate();
-        utils.models.getModels.invalidate();
-        setStatus("disconnected");
-        setInputValue("");
-        toast.success("Grok transcription provider removed!");
-      },
-      onError: (error) => onRemoveError(error, "Grok"),
-    });
+  const removeGrokProviderMutation = api.models.removeGrokProvider.useMutation({
+    onSuccess: () => {
+      utils.settings.getModelProvidersConfig.invalidate();
+      utils.models.getTranscriptionProviderStatus.invalidate();
+      utils.models.getSelectedModel.invalidate();
+      utils.models.getModels.invalidate();
+      setStatus("disconnected");
+      setInputValue("");
+      toast.success("Grok provider removed!");
+    },
+    onError: (error) => onRemoveError(error, "Grok"),
+  });
 
   // --- Validation mutations ---
   const onValidationSuccess = (
@@ -314,12 +464,24 @@ export default function ProviderAccordion({
       onError: (error) => onValidationError(error, "Google"),
     });
 
+  const syncProviderModelsMutation =
+    api.models.syncProviderModelsToDatabase.useMutation({
+      onSuccess: () => {
+        utils.models.getSyncedProviderModels.invalidate();
+        toast.success("Models synced successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to sync models:", error);
+        toast.error("Failed to sync models. Please try again.");
+      },
+    });
+
   // --- Remove provider mutations ---
   const onRemoveSuccess = (providerName: ProviderName) => {
     utils.settings.getModelProvidersConfig.invalidate();
     utils.models.getSyncedProviderModels.invalidate();
-    utils.models.getDefaultLanguageModel.invalidate();
-    utils.models.getDefaultEmbeddingModel.invalidate();
+    utils.models.getTranscriptionProviderStatus.invalidate();
+    utils.models.getModels.invalidate();
     setStatus("disconnected");
     setInputValue("");
     toast.success(`${providerName} provider removed successfully!`);
@@ -362,60 +524,48 @@ export default function ProviderAccordion({
 
   // Load configuration when query data is available
   useEffect(() => {
-    if (isTranscriptionMode && transcriptionProvidersConfigQuery.data) {
-      const config = transcriptionProvidersConfigQuery.data;
-      let credential: string | undefined;
-
-      switch (provider) {
-        case "OpenAI":
-          credential = config.openAI?.apiKey;
-          break;
-        case "Groq":
-          credential = config.groq?.apiKey;
-          break;
-        case "Grok":
-          credential = config.grok?.apiKey;
-          break;
-      }
-
-      if (credential) {
-        setInputValue(credential);
-        setStatus("connected");
-      } else {
-        setInputValue("");
-        setStatus("disconnected");
-      }
-    } else if (!isTranscriptionMode && modelProvidersConfigQuery.data) {
-      const config = modelProvidersConfigQuery.data;
-      let credential: string | undefined;
-
-      switch (provider) {
-        case "OpenRouter":
-          credential = config.openRouter?.apiKey;
-          break;
-        case "Ollama":
-          credential = config.ollama?.url && config.ollama.url !== "" ? config.ollama.url : undefined;
-          break;
-        case "OpenAI":
-          credential = config.openAI?.apiKey;
-          break;
-        case "Anthropic":
-          credential = config.anthropic?.apiKey;
-          break;
-        case "Google":
-          credential = config.google?.apiKey;
-          break;
-      }
-
-      if (credential) {
-        setInputValue(credential);
-        setStatus("connected");
-      } else {
-        setInputValue("");
-        setStatus("disconnected");
-      }
+    if (!modelProvidersConfigQuery.data) {
+      return;
     }
-  }, [modelProvidersConfigQuery.data, transcriptionProvidersConfigQuery.data, provider, isTranscriptionMode]);
+
+    const config = modelProvidersConfigQuery.data;
+    let credential: string | undefined;
+
+    switch (provider) {
+      case "OpenRouter":
+        credential = config.openRouter?.apiKey;
+        break;
+      case "Ollama":
+        credential =
+          config.ollama?.url && config.ollama.url !== ""
+            ? config.ollama.url
+            : undefined;
+        break;
+      case "OpenAI":
+        credential = config.openAI?.apiKey;
+        break;
+      case "Groq":
+        credential = config.groq?.apiKey;
+        break;
+      case "Grok":
+        credential = config.grok?.apiKey;
+        break;
+      case "Anthropic":
+        credential = config.anthropic?.apiKey;
+        break;
+      case "Google":
+        credential = config.google?.apiKey;
+        break;
+    }
+
+    if (credential) {
+      setInputValue(credential);
+      setStatus("connected");
+    } else {
+      setInputValue("");
+      setStatus("disconnected");
+    }
+  }, [modelProvidersConfigQuery.data, provider]);
 
   // Connect functions with validation
   const handleConnect = () => {
@@ -426,11 +576,6 @@ export default function ProviderAccordion({
 
     if (isTranscriptionMode) {
       switch (provider) {
-        case "OpenAI":
-          validateTranscriptionOpenAIMutation.mutate({
-            apiKey: inputValue.trim(),
-          });
-          break;
         case "Groq":
           validateTranscriptionGroqMutation.mutate({
             apiKey: inputValue.trim(),
@@ -463,9 +608,27 @@ export default function ProviderAccordion({
     }
   };
 
-  // Open sync dialog
-  const openSyncDialog = () => {
-    setSyncDialogOpen(true);
+  const handleSyncAllModels = async () => {
+    if (!supportsLanguageModels) return;
+    try {
+      const refetchResult = await activeLanguageQuery?.refetch?.();
+      const models = (refetchResult?.data ?? languageModels).filter(
+        (model) => model.provider === provider,
+      );
+
+      if (models.length === 0) {
+        toast.info("No models available to sync.");
+        return;
+      }
+
+      await syncProviderModelsMutation.mutateAsync({
+        provider,
+        models,
+      });
+    } catch (error) {
+      console.error("Failed to sync models:", error);
+      toast.error("Failed to sync models. Please try again.");
+    }
   };
 
   // Remove provider functions
@@ -476,14 +639,11 @@ export default function ProviderAccordion({
   const confirmRemoveProvider = () => {
     if (isTranscriptionMode) {
       switch (provider) {
-        case "OpenAI":
-          removeTranscriptionOpenAIProviderMutation.mutate();
-          break;
         case "Groq":
-          removeTranscriptionGroqProviderMutation.mutate();
+          removeGroqProviderMutation.mutate();
           break;
         case "Grok":
-          removeTranscriptionGrokProviderMutation.mutate();
+          removeGrokProviderMutation.mutate();
           break;
       }
     } else {
@@ -547,10 +707,55 @@ export default function ProviderAccordion({
 
   return (
     <>
-      <AccordionItem value={provider.toLowerCase()}>
-        <AccordionTrigger className="no-underline hover:no-underline group-hover:no-underline">
-          <div className="flex w-full items-center justify-between">
-            <span className="hover:underline">{provider}</span>
+      <AccordionItem
+        value={provider.toLowerCase()}
+        className="rounded-lg border border-border bg-muted/30 px-4 py-2 data-[state=open]:bg-muted/40"
+      >
+        <AccordionTrigger className="py-2 no-underline hover:no-underline group-hover:no-underline">
+          <div className="flex w-full items-center justify-between gap-4">
+            <div className="flex flex-col items-start gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Avatar
+                  className={cn(
+                    "h-7 w-7 rounded-md border",
+                    PROVIDER_ICON_FRAME[provider],
+                  )}
+                >
+                  {PROVIDER_ICON_MAP[provider] ? (
+                    <AvatarImage
+                      src={PROVIDER_ICON_MAP[provider] as string}
+                      alt={`${provider} logo`}
+                      className={cn(
+                        "object-contain p-0.5",
+                        PROVIDER_ICON_CLASS[provider],
+                      )}
+                    />
+                  ) : null}
+                  <AvatarFallback
+                    className={cn(
+                      "rounded-md text-[10px] font-semibold",
+                      PROVIDER_ICON_FALLBACK[provider],
+                    )}
+                  >
+                    {getProviderFallback(provider)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-semibold">{provider}</span>
+                {displayCapabilities.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {displayCapabilities.map((capability) => (
+                      <Badge
+                        key={capability}
+                        variant="secondary"
+                        className="text-[10px] px-1.5 py-0 tracking-wide"
+                      >
+                        {capability}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
             {statusIndicator(status)}
           </div>
         </AccordionTrigger>
@@ -582,8 +787,22 @@ export default function ProviderAccordion({
             ) : (
               <div className="flex gap-2">
                 {!isTranscriptionMode && (
-                  <Button variant="outline" onClick={openSyncDialog}>
-                    Sync models
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleSyncAllModels}
+                    aria-label="Sync models"
+                    title="Sync models"
+                    disabled={
+                      syncProviderModelsMutation.isPending || isLanguageFetching
+                    }
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "h-4 w-4",
+                        syncProviderModelsMutation.isPending && "animate-spin",
+                      )}
+                    />
                   </Button>
                 )}
                 <Button
@@ -591,7 +810,7 @@ export default function ProviderAccordion({
                   onClick={openRemoveProviderDialog}
                   className="text-destructive hover:text-destructive"
                 >
-                  Remove Provider
+                  Disconnect
                 </Button>
               </div>
             )}
@@ -599,27 +818,95 @@ export default function ProviderAccordion({
           {validationError && (
             <p className="text-xs text-destructive mt-2">{validationError}</p>
           )}
+
+          {status === "connected" &&
+            (supportsLanguageModels || supportsSpeechModels) && (
+              <div className="mt-4 space-y-3">
+                {supportsLanguageModels && (
+                  <div className="rounded-md border border-border/60 bg-background/50 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        Language models
+                      </span>
+                      {isLanguageFetching && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                    {languageError ? (
+                      <p className="mt-2 text-xs text-destructive">
+                        {languageError}
+                      </p>
+                    ) : languageModels.length === 0 &&
+                      !isLanguageFetching ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        No models available.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-1">
+                        {languageModels.map((model) => (
+                          <div
+                            key={model.id}
+                            className="flex items-center justify-between gap-3 text-xs"
+                          >
+                            <span className="text-foreground">
+                              {model.name || model.id}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {model.id}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {supportsSpeechModels && (
+                  <div className="rounded-md border border-border/60 bg-background/50 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        Speech models
+                      </span>
+                      {isSpeechFetching && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                    {speechModels.length === 0 && !isSpeechFetching ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        No models available.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-1">
+                        {speechModels.map((model) => (
+                          <div
+                            key={model.id}
+                            className="flex items-center justify-between gap-3 text-xs"
+                          >
+                            <span className="text-foreground">
+                              {model.name || model.id}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {"apiModelId" in model ? model.apiModelId : model.id}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
         </AccordionContent>
       </AccordionItem>
 
-      {/* Sync Models Dialog (not used in transcription mode - models are static) */}
-      {!isTranscriptionMode && (
-        <SyncModelsDialog
-          open={syncDialogOpen}
-          onOpenChange={setSyncDialogOpen}
-          provider={provider}
-          modelType={modelType}
-        />
-      )}
-
-      {/* Remove Provider Confirmation Dialog */}
+      {/* Disconnect Provider Confirmation Dialog */}
       <Dialog
         open={removeProviderDialogOpen}
         onOpenChange={setRemoveProviderDialogOpen}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove Provider Connection</DialogTitle>
+            <DialogTitle>Disconnect Provider</DialogTitle>
             <DialogDescription>
               Are you sure you want to remove your {provider} connection? This
               will disconnect and remove all synced models from this provider.
@@ -631,7 +918,7 @@ export default function ProviderAccordion({
               Cancel
             </Button>
             <Button variant="destructive" onClick={confirmRemoveProvider}>
-              Remove Provider
+              Disconnect
             </Button>
           </DialogFooter>
         </DialogContent>

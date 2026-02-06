@@ -39,15 +39,82 @@ import type { ModeConfig } from "@/db/schema";
 import { CustomInstructionsEditor } from "./CustomInstructionsEditor";
 import type { ComboboxOption } from "@/components/ui/combobox";
 
-const GLOBAL_DEFAULT_VALUE = "__global_default__";
-
-
 interface ModeCardProps {
   mode: ModeConfig;
   isActive: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }
+
+const PROVIDER_ICON_MAP: Record<string, string | undefined> = {
+  OpenAI: "/icons/models/openai_dark.svg",
+  "local-whisper": "/icons/models/pc.svg",
+  "Whisper (Offline)": "/icons/models/pc.svg",
+  Google: "/icons/models/gemini.svg",
+  OpenRouter: "/icons/models/open_router.svg",
+  Ollama: "/icons/models/ollama.svg",
+  Anthropic: "/icons/models/anthropic.svg",
+  Groq: "/icons/models/groq.svg",
+  Grok: "/icons/models/grok.svg",
+};
+
+const PROVIDER_ICON_FRAME: Record<string, string> = {
+  OpenAI: "bg-[#10A37F] border-[#10A37F]",
+  "local-whisper": "bg-white border-slate-200",
+  "Whisper (Offline)": "bg-white border-slate-200",
+  Anthropic: "bg-[#D4B097] border-[#D4B097]",
+  Google: "bg-white border-white",
+  OpenRouter: "bg-[#6066F2] border-[#6066F2]",
+  Ollama: "bg-white border-slate-200",
+  Groq: "bg-[#F55036] border-[#F55036]",
+  Grok: "bg-black border-black",
+};
+
+const PROVIDER_ICON_CLASS: Record<string, string> = {
+  OpenAI: "",
+  "local-whisper": "",
+  "Whisper (Offline)": "",
+  Anthropic: "",
+  Google: "",
+  OpenRouter: "brightness-0 invert",
+  Ollama: "",
+  Groq: "",
+  Grok: "brightness-0 invert",
+};
+
+const PROVIDER_ICON_FALLBACK: Record<string, string> = {
+  OpenAI: "text-white",
+  "local-whisper": "text-slate-900",
+  "Whisper (Offline)": "text-slate-900",
+  Anthropic: "text-slate-900",
+  Google: "text-slate-900",
+  OpenRouter: "text-white",
+  Ollama: "text-slate-900",
+  Groq: "text-white",
+  Grok: "text-white",
+};
+
+const getProviderFallback = (provider?: string) => {
+  if (!provider) return "AI";
+  if (provider === "local-whisper" || provider === "Whisper (Offline)") {
+    return "WO";
+  }
+  const caps = provider.replace(/[^A-Z]/g, "");
+  if (caps.length >= 2) return caps.slice(0, 2);
+  return provider.slice(0, 2).toUpperCase();
+};
+
+const getProviderIconMeta = (provider?: string) => {
+  const key = provider ?? "";
+  return {
+    icon: PROVIDER_ICON_MAP[key],
+    iconFrameClass: PROVIDER_ICON_FRAME[key] ?? "border-border bg-background",
+    iconClassName: PROVIDER_ICON_CLASS[key],
+    iconFallback: getProviderFallback(provider),
+    iconFallbackClassName: PROVIDER_ICON_FALLBACK[key],
+  };
+};
+
 
 export function ModeCard({
   mode,
@@ -82,20 +149,21 @@ export function ModeCard({
   });
   const languageModels = languageModelsQuery.data || [];
 
-  const formattingOptions = useMemo<ComboboxOption[]>(() => {
-    const options: ComboboxOption[] = [
-      {
-        value: "amical-cloud",
-        label: "Amical Cloud (Amical)",
-      },
-    ];
+  // Speech models available for mode selection
+  const speechModelsQuery = api.models.getModels.useQuery({
+    type: "speech",
+    selectable: true,
+  });
+  const speechModels = speechModelsQuery.data || [];
 
+  const formattingOptions = useMemo<ComboboxOption[]>(() => {
     const languageOptions = languageModels.map((model) => ({
       value: model.id,
-      label: `${model.name} (${model.provider})`,
+      label: model.name || model.id,
+      ...getProviderIconMeta(model.provider),
     }));
 
-    return [...options, ...languageOptions];
+    return languageOptions;
   }, [languageModels]);
 
   // Installed apps query for app bindings
@@ -118,12 +186,16 @@ export function ModeCard({
     return [...installedOptions, ...existingBindings];
   }, [installedApps, mode.appBindings]);
 
-  // Speech model options: global default, cloud, or local whisper
-  const speechModelOptions: ComboboxOption[] = [
-    { value: GLOBAL_DEFAULT_VALUE, label: "Use global default" },
-    { value: "amical-cloud", label: "Amical Cloud" },
-    { value: "local-whisper", label: "Local Whisper" },
-  ];
+  const speechModelOptions = useMemo<ComboboxOption[]>(() => {
+    return speechModels.map((model) => {
+      const name = model.name || model.id;
+      return {
+        value: model.id,
+        label: name,
+        ...getProviderIconMeta(model.provider),
+      };
+    });
+  }, [speechModels]);
 
   // Mutations
   const updateModeMutation = api.settings.updateMode.useMutation({
@@ -221,10 +293,7 @@ export function ModeCard({
         formatterConfig: {
           enabled: mode.formatterConfig.enabled,
           modelId,
-          fallbackModelId:
-            modelId !== "amical-cloud"
-              ? modelId
-              : mode.formatterConfig.fallbackModelId,
+          fallbackModelId: modelId,
         },
       });
     },
@@ -251,7 +320,7 @@ export function ModeCard({
     (value: string) => {
       updateModeMutation.mutate({
         modeId: mode.id,
-        speechModelId: value === GLOBAL_DEFAULT_VALUE ? null : value,
+        speechModelId: value || null,
       });
     },
     [mode.id, updateModeMutation],
@@ -292,16 +361,48 @@ export function ModeCard({
         (l) => l.value === mode.dictation.selectedLanguage,
       )?.label || mode.dictation.selectedLanguage;
 
-  const formattingLabel = mode.formatterConfig.enabled
-    ? formattingOptions.find(
-        (o) => o.value === mode.formatterConfig.modelId,
-      )?.label || "Enabled"
-    : "Off";
+  const selectedFormattingModel = mode.formatterConfig.enabled
+    ? languageModels.find((model) => model.id === mode.formatterConfig.modelId)
+    : undefined;
 
-  const speechModelLabel = mode.speechModelId
-    ? speechModelOptions.find((o) => o.value === mode.speechModelId)?.label ||
-      mode.speechModelId
+  const selectedSpeechModel = mode.speechModelId
+    ? speechModels.find((model) => model.id === mode.speechModelId)
+    : undefined;
+
+  const formattingMeta = selectedFormattingModel
+    ? getProviderIconMeta(selectedFormattingModel.provider)
     : null;
+  const speechMeta = selectedSpeechModel
+    ? getProviderIconMeta(selectedSpeechModel.provider)
+    : null;
+
+  const renderProviderIcon = (
+    meta: ReturnType<typeof getProviderIconMeta> | null,
+    title?: string,
+  ) => {
+    if (!meta) return null;
+    return (
+      <span
+        className={cn(
+          "inline-flex h-6 w-6 items-center justify-center rounded-md border",
+          meta.iconFrameClass,
+        )}
+        title={title}
+      >
+        {meta.icon ? (
+          <img
+            src={meta.icon}
+            alt={title ?? meta.iconFallback ?? "Model"}
+            className={cn("h-4 w-4 object-contain", meta.iconClassName)}
+          />
+        ) : (
+          <span className={cn("text-[9px] font-semibold", meta.iconFallbackClassName)}>
+            {meta.iconFallback}
+          </span>
+        )}
+      </span>
+    );
+  };
 
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
@@ -313,60 +414,60 @@ export function ModeCard({
                 <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
               )}
               <span className="font-medium text-sm">{mode.name}</span>
-              <div className="flex items-center gap-1.5">
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                  {languageLabel}
-                </Badge>
-                {mode.formatterConfig.enabled && (
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] px-1.5 py-0"
-                  >
-                    {formattingLabel}
-                  </Badge>
-                )}
-                {speechModelLabel && (
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] px-1.5 py-0"
-                  >
-                    {speechModelLabel}
-                  </Badge>
-                )}
-                {mode.appBindings && mode.appBindings.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    {mode.appBindings.slice(0, 5).map((bundleId) => {
-                      const appOption = appBindingOptions.find(
-                        (o) => o.value === bundleId,
-                      );
-                      return appOption?.icon ? (
-                        <img
-                          key={bundleId}
-                          src={appOption.icon}
-                          alt={appOption.label}
-                          title={appOption.label}
-                          className="h-5 w-5 rounded-sm"
-                        />
-                      ) : null;
-                    })}
-                    {mode.appBindings.length > 5 && (
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] px-1 py-0 ml-1"
-                      >
-                        +{mode.appBindings.length - 5}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-              </div>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                {languageLabel}
+              </Badge>
             </div>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform",
-                isExpanded && "rotate-180",
+            <div className="flex items-center gap-3">
+              {(selectedFormattingModel || selectedSpeechModel) && (
+                <div className="flex items-center gap-2">
+                  {selectedFormattingModel &&
+                    renderProviderIcon(
+                      formattingMeta,
+                      selectedFormattingModel.name,
+                    )}
+                  {selectedSpeechModel &&
+                    renderProviderIcon(speechMeta, selectedSpeechModel.name)}
+                </div>
               )}
-            />
+              {(selectedFormattingModel || selectedSpeechModel) &&
+                mode.appBindings &&
+                mode.appBindings.length > 0 && (
+                  <span className="h-6 w-px bg-white/30" aria-hidden="true" />
+                )}
+              {mode.appBindings && mode.appBindings.length > 0 && (
+                <div className="flex items-center gap-2">
+                  {mode.appBindings.slice(0, 5).map((bundleId) => {
+                    const appOption = appBindingOptions.find(
+                      (o) => o.value === bundleId,
+                    );
+                    return appOption?.icon ? (
+                      <img
+                        key={bundleId}
+                        src={appOption.icon}
+                        alt={appOption.label}
+                        title={appOption.label}
+                        className="h-6 w-6 rounded-sm"
+                      />
+                    ) : null;
+                  })}
+                  {mode.appBindings.length > 5 && (
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] px-1 py-0"
+                    >
+                      +{mode.appBindings.length - 5}
+                    </Badge>
+                  )}
+                </div>
+              )}
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-muted-foreground transition-transform",
+                  isExpanded && "rotate-180",
+                )}
+              />
+            </div>
           </button>
         </CollapsibleTrigger>
 
@@ -451,12 +552,11 @@ export function ModeCard({
                 Speech model
               </Label>
               <p className="text-xs text-muted-foreground mb-4">
-                Choose the speech recognition model for this mode. Uses the
-                global default when not set.
+                Choose the speech recognition model for this mode.
               </p>
               <Combobox
                 options={speechModelOptions}
-                value={mode.speechModelId ?? GLOBAL_DEFAULT_VALUE}
+                value={mode.speechModelId ?? ""}
                 onChange={handleSpeechModelChange}
                 placeholder="Select a speech model..."
               />
@@ -487,17 +587,14 @@ export function ModeCard({
                         checked={mode.formatterConfig.enabled}
                         onCheckedChange={handleFormattingEnabledChange}
                         disabled={
-                          formattingOptions.length <= 1 &&
-                          languageModels.length === 0
+                          formattingOptions.length === 0
                         }
                       />
                     </div>
                   </TooltipTrigger>
-                  {formattingOptions.length <= 1 &&
-                    languageModels.length === 0 && (
+                  {formattingOptions.length === 0 && (
                       <TooltipContent className="max-w-sm text-center">
-                        Sync a language model or select Amical Cloud
-                        transcription to enable formatting.
+                        Sync a language model to enable formatting.
                       </TooltipContent>
                     )}
                 </Tooltip>
@@ -505,7 +602,6 @@ export function ModeCard({
 
               <Link
                 to="/settings/ai-models"
-                search={{ tab: "language" }}
                 className="inline-block"
               >
                 <Button variant="link" className="text-xs px-0">

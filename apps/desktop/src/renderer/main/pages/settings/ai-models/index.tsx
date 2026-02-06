@@ -1,51 +1,62 @@
 "use client";
 
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import SpeechTab from "./tabs/SpeechTab";
-import LanguageTab from "./tabs/LanguageTab";
-import EmbeddingTab from "./tabs/EmbeddingTab";
-import { useNavigate, getRouteApi } from "@tanstack/react-router";
+import { Accordion } from "@/components/ui/accordion";
+import ProviderAccordion from "./components/provider-accordion";
+import OfflineWhisperAccordion from "./components/offline-whisper-accordion";
 
-const routeApi = getRouteApi("/settings/ai-models");
+const PROVIDERS = [
+  {
+    kind: "offline",
+    provider: "Whisper (Offline)",
+    capabilities: ["Speech-to-Text"],
+  },
+  {
+    provider: "OpenAI",
+    modelType: "language",
+    capabilities: ["LLM", "Speech-to-Text"],
+  },
+  { provider: "Anthropic", modelType: "language", capabilities: ["LLM"] },
+  { provider: "Google", modelType: "language", capabilities: ["LLM"] },
+  { provider: "OpenRouter", modelType: "language", capabilities: ["LLM"] },
+  { provider: "Ollama", modelType: "language", capabilities: ["LLM"] },
+  {
+    provider: "Groq",
+    modelType: "transcription",
+    capabilities: ["Speech-to-Text"],
+  },
+  {
+    provider: "Grok",
+    modelType: "transcription",
+    capabilities: ["Speech-to-Text"],
+  },
+] as const;
 
 export default function AIModelsSettingsPage() {
-  const navigate = useNavigate();
-  const { tab } = routeApi.useSearch();
-
   return (
     <div className="container mx-auto p-6 max-w-5xl">
-      <h1 className="text-xl font-bold mb-6">AI Models</h1>
-      <Tabs
-        value={tab}
-        onValueChange={(newTab) => {
-          navigate({
-            to: "/settings/ai-models",
-            search: { tab: newTab as "speech" | "language" | "embedding" },
-          });
-        }}
-        className="w-full"
-      >
-        <TabsList className="mb-6">
-          <TabsTrigger value="speech" className="text-base">
-            Speech
-          </TabsTrigger>
-          <TabsTrigger value="language" className="text-base">
-            Language
-          </TabsTrigger>
-          <TabsTrigger value="embedding" className="text-base">
-            Embedding
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="speech">
-          <SpeechTab />
-        </TabsContent>
-        <TabsContent value="language">
-          <LanguageTab />
-        </TabsContent>
-        <TabsContent value="embedding">
-          <EmbeddingTab />
-        </TabsContent>
-      </Tabs>
+      <div className="mb-8">
+        <h1 className="text-xl font-bold">AI Models</h1>
+      </div>
+
+      <div className="space-y-10">
+        <section className="space-y-4">
+          <Accordion type="multiple" className="space-y-3">
+            {PROVIDERS.map((provider) =>
+              provider.kind === "offline" ? (
+                <OfflineWhisperAccordion key={provider.provider} />
+              ) : (
+                <ProviderAccordion
+                  key={provider.provider}
+                  provider={provider.provider}
+                  modelType={provider.modelType}
+                  capabilities={[...provider.capabilities]}
+                />
+              ),
+            )}
+          </Accordion>
+        </section>
+
+      </div>
     </div>
   );
 }

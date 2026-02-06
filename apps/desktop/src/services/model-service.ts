@@ -36,7 +36,6 @@ import {
   GoogleModel,
 } from "../types/providers";
 import { SettingsService } from "./settings-service";
-import { AuthService } from "./auth-service";
 import { logger } from "../main/logger";
 import { getUserAgent } from "../utils/http-client";
 
@@ -58,7 +57,7 @@ interface ModelManagerEvents {
       | "auto-first-download"
       | "auto-after-deletion"
       | "cleared",
-    modelType: "speech" | "language" | "embedding",
+    modelType: "speech" | "language",
   ) => void;
 }
 
@@ -146,60 +145,6 @@ class ModelService extends EventEmitter {
           (m) => m.id === savedSelection,
         );
 
-        // Check if it's a cloud model and user is authenticated
-        if (availableModel?.setup === "amical") {
-          const authService = AuthService.getInstance();
-          const isAuthenticated = await authService.isAuthenticated();
-
-          if (!isAuthenticated) {
-            // Cloud model selected but not authenticated - auto-switch to local model
-            const downloadedModels = await this.getValidDownloadedModels();
-            const downloadedModelIds = Object.keys(downloadedModels);
-
-            if (downloadedModelIds.length > 0) {
-              const preferredOrder = [
-                "whisper-large-v3-turbo",
-                "whisper-large-v3",
-                "whisper-medium",
-                "whisper-small",
-                "whisper-base",
-                "whisper-tiny",
-              ];
-
-              let newModelId = downloadedModelIds[0];
-              for (const candidateId of preferredOrder) {
-                if (downloadedModels[candidateId]) {
-                  newModelId = candidateId;
-                  break;
-                }
-              }
-
-              await this.applySpeechModelSelection(
-                newModelId,
-                "manual",
-                savedSelection,
-              );
-
-              logger.main.info(
-                "Auto-switched from cloud model to local model on startup (not authenticated)",
-                {
-                  from: savedSelection,
-                  to: newModelId,
-                },
-              );
-            } else {
-              // No local models available
-              await this.applySpeechModelSelection(
-                null,
-                "cleared",
-                savedSelection,
-              );
-              logger.main.warn(
-                "Cleared cloud model selection on startup - not authenticated and no local models available",
-              );
-            }
-          }
-        }
       } else {
         // No saved selection, check if we have downloaded models to auto-select
         const downloadedModels = await this.getValidDownloadedModels();
@@ -233,89 +178,13 @@ class ModelService extends EventEmitter {
         }
       }
 
-      // Validate all default models after sync
-      await this.validateAndClearInvalidDefaults();
-
-      // Setup auth event listeners
-      this.setupAuthEventListeners();
+      // Validate speech selection after sync
+      await this.validateAndClearInvalidSpeechSelection();
     } catch (error) {
       logger.main.error("Error initializing model manager", {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  // Setup auth event listeners to handle logout
-  private setupAuthEventListeners(): void {
-    const authService = AuthService.getInstance();
-
-    authService.on("logged-out", async () => {
-      try {
-        const selectedModelId = await this.getSelectedModel();
-
-        if (selectedModelId) {
-          // Check if the selected model is a cloud model
-          const availableModel = AVAILABLE_MODELS.find(
-            (m) => m.id === selectedModelId,
-          );
-
-          if (availableModel?.setup === "amical") {
-            // Cloud model selected but user logged out - auto-switch to first downloaded local model
-            const downloadedModels = await this.getValidDownloadedModels();
-            const downloadedModelIds = Object.keys(downloadedModels);
-
-            if (downloadedModelIds.length > 0) {
-              // Find the best local model from preferred order
-              const preferredOrder = [
-                "whisper-large-v3-turbo",
-                "whisper-large-v3",
-                "whisper-medium",
-                "whisper-small",
-                "whisper-base",
-                "whisper-tiny",
-              ];
-
-              let newModelId = downloadedModelIds[0]; // Fallback to first available
-              for (const candidateId of preferredOrder) {
-                if (downloadedModels[candidateId]) {
-                  newModelId = candidateId;
-                  break;
-                }
-              }
-
-              await this.applySpeechModelSelection(
-                newModelId,
-                "manual",
-                selectedModelId,
-              );
-
-              logger.main.info(
-                "Auto-switched from cloud model to local model after logout",
-                {
-                  from: selectedModelId,
-                  to: newModelId,
-                },
-              );
-            } else {
-              // No local models available, clear selection
-              await this.applySpeechModelSelection(
-                null,
-                "cleared",
-                selectedModelId,
-              );
-
-              logger.main.warn(
-                "Cleared cloud model selection after logout - no local models available",
-              );
-            }
-          }
-        }
-      } catch (error) {
-        logger.main.error("Error handling logout in model manager", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    });
   }
 
   private ensureModelsDirectory(): void {
@@ -643,8 +512,8 @@ class ModelService extends EventEmitter {
 
     this.emit("model-deleted", modelId);
 
-    // Validate all default models after deletion
-    await this.validateAndClearInvalidDefaults();
+    // Validate speech selection after deletion
+    await this.validateAndClearInvalidSpeechSelection();
   }
 
   // Calculate file checksum (SHA-1)
@@ -681,54 +550,6 @@ class ModelService extends EventEmitter {
     return (await this.settingsService.getDefaultSpeechModel()) || null;
   }
 
-  private async syncFormatterConfigForSpeechChange(
-    oldModelId: string | null,
-    newModelId: string | null,
-  ): Promise<void> {
-    if (oldModelId === newModelId) {
-      return;
-    }
-
-    const formatterConfig =
-      (await this.settingsService.getFormatterConfig()) || { enabled: false };
-    const currentModelId = formatterConfig.modelId;
-    const fallbackModelId = formatterConfig.fallbackModelId;
-    const movedToCloud = newModelId === "amical-cloud";
-    const movedFromCloud = oldModelId === "amical-cloud";
-    const usingCloudFormatting = currentModelId === "amical-cloud";
-
-    let nextConfig = { ...formatterConfig };
-    let updated = false;
-
-    if (movedToCloud && !usingCloudFormatting) {
-      if (currentModelId && currentModelId !== "amical-cloud") {
-        nextConfig.fallbackModelId = currentModelId;
-      } else if (!fallbackModelId) {
-        const defaultLanguageModel =
-          await this.settingsService.getDefaultLanguageModel();
-        if (defaultLanguageModel) {
-          nextConfig.fallbackModelId = defaultLanguageModel;
-        }
-      }
-
-      nextConfig.modelId = "amical-cloud";
-      nextConfig.enabled = true;
-      updated = true;
-    } else if (movedFromCloud && usingCloudFormatting) {
-      const fallback =
-        fallbackModelId ||
-        (await this.settingsService.getDefaultLanguageModel());
-
-      nextConfig.modelId =
-        fallback && fallback !== "amical-cloud" ? fallback : undefined;
-      updated = true;
-    }
-
-    if (updated) {
-      await this.settingsService.setFormatterConfig(nextConfig);
-    }
-  }
-
   private async applySpeechModelSelection(
     modelId: string | null,
     reason:
@@ -745,7 +566,6 @@ class ModelService extends EventEmitter {
     }
 
     await this.settingsService.setDefaultSpeechModel(modelId || undefined);
-    await this.syncFormatterConfigForSpeechChange(previousModelId, modelId);
 
     this.emit("selection-changed", previousModelId, modelId, reason, "speech");
     logger.main.info("Model selection changed", {
@@ -761,20 +581,10 @@ class ModelService extends EventEmitter {
 
     // If setting to a specific model, validate it exists
     if (modelId) {
-      // Check if it's a cloud model
+      // Check if it's an API model
       const availableModel = AVAILABLE_MODELS.find((m) => m.id === modelId);
 
-      if (availableModel?.setup === "amical") {
-        // Cloud model - check authentication
-        const authService = AuthService.getInstance();
-        const isAuthenticated = await authService.isAuthenticated();
-
-        if (!isAuthenticated) {
-          throw new Error("Authentication required for cloud models");
-        }
-
-        logger.main.info("Selecting cloud model", { modelId });
-      } else if (availableModel?.setup === "api") {
+      if (availableModel?.setup === "api") {
         // API model - no download needed, just log selection
         logger.main.info("Selecting API model", {
           modelId,
@@ -1136,35 +946,6 @@ class ModelService extends EventEmitter {
 
   // --- Transcription Provider Validation ---
 
-  async validateTranscriptionOpenAIConnection(
-    apiKey: string,
-  ): Promise<ValidationResult> {
-    try {
-      const response = await fetch("https://api.openai.com/v1/models", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "User-Agent": getUserAgent(),
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          (errorData as any)?.error?.message ||
-          `HTTP ${response.status}: ${response.statusText}`;
-        return { success: false, error: errorMessage };
-      }
-
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Connection failed",
-      };
-    }
-  }
-
   async validateTranscriptionGroqConnection(
     apiKey: string,
   ): Promise<ValidationResult> {
@@ -1389,15 +1170,20 @@ class ModelService extends EventEmitter {
     provider: string,
     models: FetchedModel[],
   ): Promise<void> {
+    const filteredModels =
+      provider === "Ollama"
+        ? models.filter((m) => {
+            const haystack = `${m.name ?? ""} ${m.id ?? ""}`.toLowerCase();
+            return !haystack.includes("embed");
+          })
+        : models;
+
     // Convert to NewModel format
-    const newModels: NewModel[] = models.map((m) => ({
+    const newModels: NewModel[] = filteredModels.map((m) => ({
       id: m.id!,
       provider: provider,
       name: m.name!,
-      type:
-        provider === "Ollama" && m.name && m.name.includes("embed")
-          ? "embedding"
-          : "language",
+      type: "language",
       size: m.size || null,
       context: m.context || null,
       description: m.description || null,
@@ -1413,8 +1199,8 @@ class ModelService extends EventEmitter {
 
     await syncModelsForProvider(provider, newModels);
 
-    // Validate default models after sync
-    await this.validateAndClearInvalidDefaults();
+    // Validate speech selection after sync
+    await this.validateAndClearInvalidSpeechSelection();
   }
 
   /**
@@ -1423,8 +1209,8 @@ class ModelService extends EventEmitter {
   async removeProviderModels(provider: string): Promise<void> {
     await removeModelsForProvider(provider);
 
-    // Validate default models after removal
-    await this.validateAndClearInvalidDefaults();
+    // Validate speech selection after removal
+    await this.validateAndClearInvalidSpeechSelection();
   }
 
   // ============================================
@@ -1432,111 +1218,28 @@ class ModelService extends EventEmitter {
   // ============================================
 
   /**
-   * Get default language model
+   * Validate and clear invalid speech selections
+   * Clears selection if the selected model no longer exists.
    */
-  async getDefaultLanguageModel(): Promise<string | null> {
-    const modelId = await this.settingsService.getDefaultLanguageModel();
-    return modelId || null;
-  }
-
-  /**
-   * Set default language model
-   */
-  async setDefaultLanguageModel(modelId: string | null): Promise<void> {
-    await this.settingsService.setDefaultLanguageModel(modelId || undefined);
-  }
-
-  /**
-   * Get default embedding model
-   */
-  async getDefaultEmbeddingModel(): Promise<string | null> {
-    const modelId = await this.settingsService.getDefaultEmbeddingModel();
-    return modelId || null;
-  }
-
-  /**
-   * Set default embedding model
-   */
-  async setDefaultEmbeddingModel(modelId: string | null): Promise<void> {
-    await this.settingsService.setDefaultEmbeddingModel(modelId || undefined);
-  }
-
-  /**
-   * Validate and clear invalid default models
-   * Checks if default models still exist in the database
-   * Clears any that don't exist and emits selection-changed events
-   */
-  async validateAndClearInvalidDefaults(): Promise<void> {
-    // Check default speech model
-    const defaultSpeechModel =
+  async validateAndClearInvalidSpeechSelection(): Promise<void> {
+    const selectedSpeechModel =
       await this.settingsService.getDefaultSpeechModel();
-    if (defaultSpeechModel) {
+    if (selectedSpeechModel) {
       const availableModel = AVAILABLE_MODELS.find(
-        (m) => m.id === defaultSpeechModel,
+        (m) => m.id === selectedSpeechModel,
       );
-      const isNonLocalModel =
-        availableModel?.setup === "amical" || availableModel?.setup === "api";
-      const existsInDb = await modelExists("local-whisper", defaultSpeechModel);
+      const isNonLocalModel = availableModel?.setup === "api";
+      const existsInDb = await modelExists("local-whisper", selectedSpeechModel);
 
-      // Amical cloud / API models are always valid; local models must exist in DB
+      // API models are always valid; local models must exist in DB
       if (!isNonLocalModel && !existsInDb) {
-        logger.main.info("Clearing invalid default speech model", {
-          modelId: defaultSpeechModel,
+        logger.main.info("Clearing invalid selected speech model", {
+          modelId: selectedSpeechModel,
         });
         await this.applySpeechModelSelection(
           null,
           "auto-after-deletion",
-          defaultSpeechModel,
-        );
-      }
-    }
-
-    // Check default language model
-    const defaultLanguageModel =
-      await this.settingsService.getDefaultLanguageModel();
-    if (defaultLanguageModel) {
-      // Check all models to find if this ID exists with any provider
-      const allModels = await getAllModels();
-      const modelExists = allModels.some(
-        (m) => m.id === defaultLanguageModel && m.type === "language",
-      );
-
-      if (!modelExists) {
-        logger.main.info("Clearing invalid default language model", {
-          modelId: defaultLanguageModel,
-        });
-        await this.settingsService.setDefaultLanguageModel(undefined);
-        this.emit(
-          "selection-changed",
-          defaultLanguageModel,
-          null,
-          "auto-after-deletion",
-          "language",
-        );
-      }
-    }
-
-    // Check default embedding model
-    const defaultEmbeddingModel =
-      await this.settingsService.getDefaultEmbeddingModel();
-    if (defaultEmbeddingModel) {
-      // Check all models to find if this ID exists with any provider
-      const allModels = await getAllModels();
-      const modelExists = allModels.some(
-        (m) => m.id === defaultEmbeddingModel && m.type === "embedding",
-      );
-
-      if (!modelExists) {
-        logger.main.info("Clearing invalid default embedding model", {
-          modelId: defaultEmbeddingModel,
-        });
-        await this.settingsService.setDefaultEmbeddingModel(undefined);
-        this.emit(
-          "selection-changed",
-          defaultEmbeddingModel,
-          null,
-          "auto-after-deletion",
-          "embedding",
+          selectedSpeechModel,
         );
       }
     }

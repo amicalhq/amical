@@ -14,7 +14,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import type { Model } from "@/db/schema";
 
 type ProviderName =
   | "OpenRouter"
@@ -29,14 +28,12 @@ interface SyncModelsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   provider: ProviderName;
-  modelType?: "language" | "embedding";
 }
 
 export default function SyncModelsDialog({
   open,
   onOpenChange,
   provider,
-  modelType = "language",
 }: SyncModelsDialogProps) {
   // Local state
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
@@ -54,10 +51,6 @@ export default function SyncModelsDialog({
   const modelProvidersConfigQuery =
     api.settings.getModelProvidersConfig.useQuery();
   const syncedModelsQuery = api.models.getSyncedProviderModels.useQuery();
-  const defaultLanguageModelQuery =
-    api.models.getDefaultLanguageModel.useQuery();
-  const defaultEmbeddingModelQuery =
-    api.models.getDefaultEmbeddingModel.useQuery();
 
   const fetchOpenRouterModelsQuery = api.models.fetchOpenRouterModels.useQuery(
     { apiKey: credentials.openRouterApiKey ?? "" },
@@ -88,27 +81,11 @@ export default function SyncModelsDialog({
     api.models.syncProviderModelsToDatabase.useMutation({
       onSuccess: () => {
         utils.models.getSyncedProviderModels.invalidate();
-        utils.models.getDefaultLanguageModel.invalidate();
-        utils.models.getDefaultEmbeddingModel.invalidate();
         toast.success("Models synced to database successfully!");
       },
       onError: (error: any) => {
         console.error("Failed to sync models to database:", error);
         toast.error("Failed to sync models to database. Please try again.");
-      },
-    });
-
-  const setDefaultLanguageModelMutation =
-    api.models.setDefaultLanguageModel.useMutation({
-      onSuccess: () => {
-        utils.models.getDefaultLanguageModel.invalidate();
-      },
-    });
-
-  const setDefaultEmbeddingModelMutation =
-    api.models.setDefaultEmbeddingModel.useMutation({
-      onSuccess: () => {
-        utils.models.getDefaultEmbeddingModel.invalidate();
       },
     });
 
@@ -131,6 +108,7 @@ export default function SyncModelsDialog({
     if (open && syncedModelsQuery.data) {
       const syncedModelIds = syncedModelsQuery.data
         .filter((m) => m.provider === provider)
+        .filter((m) => m.type === "language")
         .map((m) => m.id);
       setSelectedModels(syncedModelIds);
       setSearchTerm("");
@@ -178,11 +156,18 @@ export default function SyncModelsDialog({
 
   const activeQuery = getActiveQuery();
   const availableModels = activeQuery?.data || [];
+  const visibleModels =
+    provider === "Ollama"
+      ? availableModels.filter((model) => {
+          const haystack = `${model.name} ${model.id}`.toLowerCase();
+          return !haystack.includes("embed");
+        })
+      : availableModels;
   const isFetching = activeQuery?.isLoading || activeQuery?.isFetching || false;
   const fetchError = activeQuery?.error?.message || "";
 
   // Filter models based on search
-  const filteredModels = availableModels.filter(
+  const filteredModels = visibleModels.filter(
     (model) =>
       model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       model.id.toLowerCase().includes(searchTerm.toLowerCase()),
@@ -199,7 +184,7 @@ export default function SyncModelsDialog({
 
   // Handle sync
   const handleSync = async () => {
-    const modelsToSync = availableModels.filter((model) =>
+    const modelsToSync = visibleModels.filter((model) =>
       selectedModels.includes(model.id),
     );
 
@@ -208,19 +193,6 @@ export default function SyncModelsDialog({
       provider,
       models: modelsToSync,
     });
-
-    // Set first model as default if no default is set
-    if (modelType === "language" && modelsToSync.length > 0) {
-      if (!defaultLanguageModelQuery.data) {
-        setDefaultLanguageModelMutation.mutate({ modelId: modelsToSync[0].id });
-      }
-    } else if (modelType === "embedding" && modelsToSync.length > 0) {
-      if (provider === "Ollama" && !defaultEmbeddingModelQuery.data) {
-        setDefaultEmbeddingModelMutation.mutate({
-          modelId: modelsToSync[0].id,
-        });
-      }
-    }
 
     handleCancel();
   };
@@ -244,12 +216,10 @@ export default function SyncModelsDialog({
       <DialogContent className="min-w-4xl max-h-screen flex flex-col">
         <DialogHeader className="shrink-0">
           <DialogTitle>
-            Select {provider} {modelType === "embedding" ? "Embedding " : ""}
-            Models
+            Select {provider} Models
           </DialogTitle>
           <DialogDescription>
-            Choose which {modelType === "embedding" ? "embedding " : ""}models
-            you want to sync from {provider}.
+            Choose which models you want to sync from {provider}.
           </DialogDescription>
         </DialogHeader>
 

@@ -25,11 +25,6 @@ export interface OfflineWhisperModel extends BaseSpeechModel {
   checksum?: string; // Optional checksum for validation
 }
 
-// ─── Amical Cloud model (requires Amical auth) ───
-export interface AmicalSpeechModel extends BaseSpeechModel {
-  setup: "amical";
-}
-
 // ─── API model (OpenAI, Groq, Grok - requires API key) ───
 export interface OpenAISpeechModel extends BaseSpeechModel {
   setup: "api";
@@ -39,7 +34,6 @@ export interface OpenAISpeechModel extends BaseSpeechModel {
 // ─── Union type ───
 export type AvailableSpeechModel =
   | OfflineWhisperModel
-  | AmicalSpeechModel
   | OpenAISpeechModel;
 
 // DownloadedModel type is now imported from the database schema
@@ -59,33 +53,6 @@ export interface ModelManagerState {
 }
 
 export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
-  // ─── Amical Cloud ───
-  {
-    id: "amical-cloud",
-    name: "Amical Cloud",
-    type: "whisper",
-    description: "Fast cloud-based transcription with high accuracy.",
-    features: [
-      {
-        icon: "cloud",
-        tooltip: "Cloud-based processing",
-      },
-      {
-        icon: "bolt",
-        tooltip: "Fast transcription",
-      },
-      {
-        icon: "languages",
-        tooltip: "Multilingual support",
-      },
-    ],
-    speed: 4.5,
-    accuracy: 4.5,
-    setup: "amical",
-    provider: "Amical Cloud",
-    providerIcon: "/assets/logo.svg",
-  },
-
   // ─── Offline Whisper models ───
   {
     id: "whisper-tiny",
@@ -117,7 +84,7 @@ export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
     accuracy: 2.5,
     setup: "offline",
     provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    providerIcon: "/icons/models/pc.svg",
   },
   {
     id: "whisper-base",
@@ -149,7 +116,7 @@ export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
     accuracy: 3.0,
     setup: "offline",
     provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    providerIcon: "/icons/models/pc.svg",
   },
   {
     id: "whisper-small",
@@ -182,7 +149,7 @@ export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
     accuracy: 3.8,
     setup: "offline",
     provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    providerIcon: "/icons/models/pc.svg",
   },
   {
     id: "whisper-medium",
@@ -214,7 +181,7 @@ export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
     accuracy: 4.3,
     setup: "offline",
     provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    providerIcon: "/icons/models/pc.svg",
   },
   {
     id: "whisper-large-v3",
@@ -246,7 +213,7 @@ export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
     accuracy: 4.7,
     setup: "offline",
     provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    providerIcon: "/icons/models/pc.svg",
   },
   {
     id: "whisper-large-v3-turbo",
@@ -278,7 +245,7 @@ export const AVAILABLE_MODELS: AvailableSpeechModel[] = [
     accuracy: 4.2,
     setup: "offline",
     provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    providerIcon: "/icons/models/pc.svg",
   },
 
   // ─── OpenAI API models ───

@@ -11,7 +11,7 @@ import {
   type OnboardingState,
   type OnboardingPreferences,
   type ModelRecommendation,
-  type ModelType,
+  ModelType,
   type OnboardingFeatureFlags,
   type SystemSpecs,
   type DiscoverySource,
@@ -29,12 +29,19 @@ type OnboardingStateDb = {
   skippedScreens?: string[];
   featureInterests?: string[];
   discoverySource?: string;
-  selectedModelType?: "cloud" | "local";
+  selectedModelType?: string;
   modelRecommendation?: {
-    suggested: "cloud" | "local";
+    suggested: string;
     reason: string;
     followed: boolean;
   };
+};
+
+const normalizeModelType = (value?: string): ModelType | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  return ModelType.Local;
 };
 
 export class OnboardingService extends EventEmitter {
@@ -98,6 +105,17 @@ export class OnboardingService extends EventEmitter {
         }
       }
 
+      const selectedModelType =
+        normalizeModelType(settings.onboarding.selectedModelType) ??
+        ModelType.Local;
+
+      const modelRecommendation = settings.onboarding.modelRecommendation
+        ? {
+            ...settings.onboarding.modelRecommendation,
+            suggested: ModelType.Local,
+          }
+        : undefined;
+
       // Convert database types to OnboardingState types
       return {
         ...settings.onboarding,
@@ -111,7 +129,8 @@ export class OnboardingService extends EventEmitter {
         discoverySource: settings.onboarding.discoverySource as
           | DiscoverySource
           | undefined,
-        selectedModelType: settings.onboarding.selectedModelType as ModelType,
+        selectedModelType,
+        modelRecommendation,
       } as OnboardingState;
     } catch (error) {
       logger.main.error("Failed to get onboarding state:", error);
@@ -146,9 +165,7 @@ export class OnboardingService extends EventEmitter {
         stateForDb.discoverySource = state.discoverySource as string;
       }
       if (state.selectedModelType !== undefined) {
-        stateForDb.selectedModelType = state.selectedModelType as
-          | "cloud"
-          | "local";
+        stateForDb.selectedModelType = state.selectedModelType as string;
       }
       if (state.completedVersion !== undefined) {
         stateForDb.completedVersion = state.completedVersion;
@@ -163,7 +180,7 @@ export class OnboardingService extends EventEmitter {
       }
       if (state.modelRecommendation !== undefined) {
         stateForDb.modelRecommendation = {
-          suggested: state.modelRecommendation.suggested as "cloud" | "local",
+          suggested: state.modelRecommendation.suggested as string,
           reason: state.modelRecommendation.reason,
           followed: state.modelRecommendation.followed,
         };
@@ -228,10 +245,7 @@ export class OnboardingService extends EventEmitter {
         });
 
         // Set the actual model in ModelService
-        if (preferences.selectedModelType === "cloud") {
-          await this.modelService.setSelectedModel("amical-cloud");
-          logger.main.info("Set default speech model to amical-cloud");
-        } else if (preferences.selectedModelType === "local") {
+        if (preferences.selectedModelType === "local") {
           // Keep existing selection if any, otherwise use first downloaded model
           const currentModel = await this.modelService.getSelectedModel();
           if (!currentModel) {
@@ -240,9 +254,7 @@ export class OnboardingService extends EventEmitter {
             const downloadedIds = Object.keys(downloadedModels);
             if (downloadedIds.length > 0) {
               await this.modelService.setSelectedModel(downloadedIds[0]);
-              logger.main.info(
-                `Set default speech model to ${downloadedIds[0]}`,
-              );
+              logger.main.info(`Set speech model to ${downloadedIds[0]}`);
             }
           }
         }
@@ -511,30 +523,10 @@ export class OnboardingService extends EventEmitter {
    * Calculate model recommendation based on system specs
    */
   calculateModelRecommendation(systemInfo: SystemSpecs): ModelRecommendation {
-    const gpuModel = systemInfo.gpu_model || "";
-    const cpuModel = systemInfo.cpu_model || "";
-
-    // Check for powerful GPU or Apple Silicon M2+
-    const hasNvidiaGPU = this.hasNvidia30SeriesOrBetter(gpuModel);
-    const hasM2OrBetter = this.hasAppleSiliconM2OrBetter(cpuModel);
-
-    if (hasNvidiaGPU || hasM2OrBetter) {
-      return {
-        suggested: "local" as ModelType,
-        reason:
-          "Your system has sufficient resources for local models, offering better privacy and offline capability.",
-        systemSpecs: {
-          cpu_cores: systemInfo.cpu_cores,
-          memory_total_gb: systemInfo.memory_total_gb,
-        },
-      };
-    }
-
-    // Default to cloud for everything else (including M1 chips)
     return {
-      suggested: "cloud" as ModelType,
+      suggested: "local" as ModelType,
       reason:
-        "Your system may experience slow performance with local models. Cloud processing is recommended for optimal speed.",
+        "Local transcription is available for your device and keeps audio on-device.",
       systemSpecs: {
         cpu_cores: systemInfo.cpu_cores,
         memory_total_gb: systemInfo.memory_total_gb,
@@ -552,9 +544,9 @@ export class OnboardingService extends EventEmitter {
       if (!systemInfo) {
         // Fallback if system info not available
         return {
-          suggested: "cloud" as ModelType,
+          suggested: "local" as ModelType,
           reason:
-            "Unable to detect system specifications. Cloud processing is recommended.",
+            "Unable to detect system specifications. Local transcription is recommended.",
         };
       }
 
@@ -573,9 +565,9 @@ export class OnboardingService extends EventEmitter {
       logger.main.error("Failed to get system recommendation:", error);
       // Fallback recommendation on error
       return {
-        suggested: "cloud" as ModelType,
+        suggested: "local" as ModelType,
         reason:
-          "Unable to analyze system specifications. Cloud processing is recommended.",
+          "Unable to analyze system specifications. Local transcription is recommended.",
       };
     }
   }

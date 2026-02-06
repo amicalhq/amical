@@ -24,6 +24,12 @@ export interface ComboboxOption {
   label: string;
   disabled?: boolean;
   disabledReason?: string;
+  icon?: string;
+  iconAlt?: string;
+  iconClassName?: string;
+  iconFrameClass?: string;
+  iconFallback?: string;
+  iconFallbackClassName?: string;
 }
 
 export function Combobox({
@@ -40,6 +46,39 @@ export function Combobox({
   placeholder?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  const selectedOption = options.find((option) => option.value === value);
+
+  const renderOptionIcon = (option: ComboboxOption) => {
+    if (!option.icon && !option.iconFallback) return null;
+    return (
+      <span
+        className={cn(
+          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border",
+          option.iconFrameClass ?? "border-border bg-background",
+        )}
+      >
+        {option.icon ? (
+          <img
+            src={option.icon}
+            alt={option.iconAlt ?? option.label}
+            className={cn(
+              "h-4 w-4 max-h-4 max-w-4 object-contain",
+              option.iconClassName,
+            )}
+          />
+        ) : (
+          <span
+            className={cn(
+              "text-[9px] font-semibold",
+              option.iconFallbackClassName,
+            )}
+          >
+            {option.iconFallback}
+          </span>
+        )}
+      </span>
+    );
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -50,9 +89,14 @@ export function Combobox({
           aria-expanded={open}
           className="min-w-[200px] justify-between"
         >
-          {value
-            ? options.find((option) => option.value === value)?.label
-            : placeholder}
+          {selectedOption ? (
+            <span className="flex items-center gap-2">
+              {renderOptionIcon(selectedOption)}
+              <span>{selectedOption.label}</span>
+            </span>
+          ) : (
+            placeholder
+          )}
           <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -74,14 +118,17 @@ export function Combobox({
                       setOpen(false);
                       onChange(currentValue === value ? "" : currentValue);
                     }}
-                  >
-                    <CheckIcon
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === option.value ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    {option.label}
+                    >
+                    <span className="flex items-center gap-2 w-full">
+                      {renderOptionIcon(option)}
+                      <span>{option.label}</span>
+                      <CheckIcon
+                        className={cn(
+                          "ml-auto h-4 w-4",
+                          value === option.value ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                    </span>
                   </CommandItem>
                   {option.disabled && option.disabledReason && (
                     <p className="text-[10px] text-muted-foreground px-2 pb-1 -mt-0.5">

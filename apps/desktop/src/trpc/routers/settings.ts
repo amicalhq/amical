@@ -34,6 +34,14 @@ const OpenAIConfigSchema = z.object({
   apiKey: z.string(),
 });
 
+const GroqConfigSchema = z.object({
+  apiKey: z.string(),
+});
+
+const GrokConfigSchema = z.object({
+  apiKey: z.string(),
+});
+
 const AnthropicConfigSchema = z.object({
   apiKey: z.string(),
 });
@@ -46,6 +54,8 @@ const ModelProvidersConfigSchema = z.object({
   openRouter: OpenRouterConfigSchema.optional(),
   ollama: OllamaConfigSchema.optional(),
   openAI: OpenAIConfigSchema.optional(),
+  groq: GroqConfigSchema.optional(),
+  grok: GrokConfigSchema.optional(),
   anthropic: AnthropicConfigSchema.optional(),
   google: GoogleConfigSchema.optional(),
 });
@@ -546,6 +556,9 @@ export const settingsRouter = createRouter({
           throw new Error("SettingsService not available");
         }
         await settingsService.setOpenAIConfig(input);
+        ctx.serviceManager
+          .getService("transcriptionService")
+          ?.clearApiProviderCache();
 
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
@@ -557,6 +570,68 @@ export const settingsRouter = createRouter({
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
           logger.main.error("Error setting OpenAI config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set Groq configuration
+  setGroqConfig: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setGroqConfig(input);
+
+        ctx.serviceManager
+          .getService("transcriptionService")
+          ?.clearApiProviderCache();
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Groq configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting Groq config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set Grok configuration
+  setGrokConfig: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setGrokConfig(input);
+
+        ctx.serviceManager
+          .getService("transcriptionService")
+          ?.clearApiProviderCache();
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Grok configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting Grok config:", error);
         }
         throw error;
       }
@@ -614,70 +689,6 @@ export const settingsRouter = createRouter({
         }
         throw error;
       }
-    }),
-
-  // --- Transcription Providers Config ---
-
-  getTranscriptionProvidersConfig: procedure.query(async ({ ctx }) => {
-    try {
-      const settingsService = ctx.serviceManager.getService("settingsService");
-      if (!settingsService) {
-        throw new Error("SettingsService not available");
-      }
-      return await settingsService.getTranscriptionProvidersConfig();
-    } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
-      if (logger) {
-        logger.main.error(
-          "Error getting transcription providers config:",
-          error,
-        );
-      }
-      return null;
-    }
-  }),
-
-  setTranscriptionOpenAIConfig: procedure
-    .input(z.object({ apiKey: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
-      if (!settingsService) {
-        throw new Error("SettingsService not available");
-      }
-      await settingsService.setTranscriptionOpenAIConfig(input);
-      // Clear cached API providers so new key is used
-      ctx.serviceManager
-        .getService("transcriptionService")
-        ?.clearApiProviderCache();
-      return true;
-    }),
-
-  setTranscriptionGroqConfig: procedure
-    .input(z.object({ apiKey: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
-      if (!settingsService) {
-        throw new Error("SettingsService not available");
-      }
-      await settingsService.setTranscriptionGroqConfig(input);
-      ctx.serviceManager
-        .getService("transcriptionService")
-        ?.clearApiProviderCache();
-      return true;
-    }),
-
-  setTranscriptionGrokConfig: procedure
-    .input(z.object({ apiKey: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
-      if (!settingsService) {
-        throw new Error("SettingsService not available");
-      }
-      await settingsService.setTranscriptionGrokConfig(input);
-      ctx.serviceManager
-        .getService("transcriptionService")
-        ?.clearApiProviderCache();
-      return true;
     }),
 
   // Get data path

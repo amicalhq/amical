@@ -258,15 +258,24 @@ export function App() {
   // Handle completion (T039)
   const handleComplete = async () => {
     try {
+      const validScreens = new Set(Object.values(OnboardingScreen));
+      const skippedScreens = (skippedScreensQuery.data || []).filter((screen) =>
+        validScreens.has(screen),
+      );
+      const modelRecommendation =
+        preferences.modelRecommendation?.reason?.length
+          ? preferences.modelRecommendation
+          : undefined;
+
       // Prepare final state
       const finalState: OnboardingState = {
         completedVersion: 1,
         completedAt: new Date().toISOString(),
-        skippedScreens: skippedScreensQuery.data || [],
+        skippedScreens,
         featureInterests: preferences.featureInterests,
         discoverySource: preferences.discoverySource,
-        selectedModelType: preferences.selectedModelType || ModelType.Cloud,
-        modelRecommendation: preferences.modelRecommendation,
+        selectedModelType: preferences.selectedModelType || ModelType.Local,
+        modelRecommendation,
       };
 
       // Complete onboarding (will also track completion event)

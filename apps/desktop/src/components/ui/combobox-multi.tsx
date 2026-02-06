@@ -71,8 +71,11 @@ export function ComboboxMulti({
                     />
                   )}
                   {opt.label}
-                  <button
-                    type="button"
+                  <span
+                    role="button"
+                    aria-label={`Remove ${opt.label}`}
+                    title="Remove"
+                    tabIndex={-1}
                     className="ml-0.5 rounded-sm hover:bg-muted-foreground/20"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -80,7 +83,7 @@ export function ComboboxMulti({
                     }}
                   >
                     <XIcon className="h-3 w-3" />
-                  </button>
+                  </span>
                 </span>
               ))
             )}

@@ -243,6 +243,44 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
+   * Get Groq configuration
+   */
+  async getGroqConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.groq;
+  }
+
+  /**
+   * Update Groq configuration
+   */
+  async setGroqConfig(config: { apiKey: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      groq: config,
+    });
+  }
+
+  /**
+   * Get Grok configuration
+   */
+  async getGrokConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.grok;
+  }
+
+  /**
+   * Update Grok configuration
+   */
+  async setGrokConfig(config: { apiKey: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      grok: config,
+    });
+  }
+
+  /**
    * Get Anthropic configuration
    */
   async getAnthropicConfig(): Promise<{ apiKey: string } | undefined> {
@@ -281,7 +319,7 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
-   * Get default speech model (Whisper)
+   * Get selected speech model (Whisper)
    */
   async getDefaultSpeechModel(): Promise<string | undefined> {
     const config = await this.getModelProvidersConfig();
@@ -289,112 +327,13 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
-   * Set default speech model (Whisper)
+   * Set selected speech model (Whisper)
    */
   async setDefaultSpeechModel(modelId: string | undefined): Promise<void> {
     const currentConfig = await this.getModelProvidersConfig();
     await this.setModelProvidersConfig({
       ...currentConfig,
       defaultSpeechModel: modelId,
-    });
-  }
-
-  /**
-   * Get default language model
-   */
-  async getDefaultLanguageModel(): Promise<string | undefined> {
-    const config = await this.getModelProvidersConfig();
-    return config?.defaultLanguageModel;
-  }
-
-  /**
-   * Set default language model
-   */
-  async setDefaultLanguageModel(modelId: string | undefined): Promise<void> {
-    const currentConfig = await this.getModelProvidersConfig();
-    await this.setModelProvidersConfig({
-      ...currentConfig,
-      defaultLanguageModel: modelId,
-    });
-  }
-
-  /**
-   * Get default embedding model
-   */
-  async getDefaultEmbeddingModel(): Promise<string | undefined> {
-    const config = await this.getModelProvidersConfig();
-    return config?.defaultEmbeddingModel;
-  }
-
-  /**
-   * Set default embedding model
-   */
-  async setDefaultEmbeddingModel(modelId: string | undefined): Promise<void> {
-    const currentConfig = await this.getModelProvidersConfig();
-    await this.setModelProvidersConfig({
-      ...currentConfig,
-      defaultEmbeddingModel: modelId,
-    });
-  }
-
-  // --- Transcription Providers Config ---
-
-  async getTranscriptionProvidersConfig(): Promise<
-    AppSettingsData["transcriptionProvidersConfig"]
-  > {
-    return await getSettingsSection("transcriptionProvidersConfig");
-  }
-
-  async setTranscriptionProvidersConfig(
-    config: AppSettingsData["transcriptionProvidersConfig"],
-  ): Promise<void> {
-    await updateSettingsSection("transcriptionProvidersConfig", config);
-  }
-
-  async getTranscriptionOpenAIConfig(): Promise<
-    { apiKey: string } | undefined
-  > {
-    const config = await this.getTranscriptionProvidersConfig();
-    return config?.openAI;
-  }
-
-  async setTranscriptionOpenAIConfig(config: {
-    apiKey: string;
-  }): Promise<void> {
-    const currentConfig = await this.getTranscriptionProvidersConfig();
-    await this.setTranscriptionProvidersConfig({
-      ...currentConfig,
-      openAI: config,
-    });
-  }
-
-  async getTranscriptionGroqConfig(): Promise<{ apiKey: string } | undefined> {
-    const config = await this.getTranscriptionProvidersConfig();
-    return config?.groq;
-  }
-
-  async setTranscriptionGroqConfig(config: {
-    apiKey: string;
-  }): Promise<void> {
-    const currentConfig = await this.getTranscriptionProvidersConfig();
-    await this.setTranscriptionProvidersConfig({
-      ...currentConfig,
-      groq: config,
-    });
-  }
-
-  async getTranscriptionGrokConfig(): Promise<{ apiKey: string } | undefined> {
-    const config = await this.getTranscriptionProvidersConfig();
-    return config?.grok;
-  }
-
-  async setTranscriptionGrokConfig(config: {
-    apiKey: string;
-  }): Promise<void> {
-    const currentConfig = await this.getTranscriptionProvidersConfig();
-    await this.setTranscriptionProvidersConfig({
-      ...currentConfig,
-      grok: config,
     });
   }
 

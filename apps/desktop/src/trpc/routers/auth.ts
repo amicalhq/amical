@@ -111,23 +111,4 @@ export const authRouter = createRouter({
       };
     });
   }),
-
-  // Check if cloud model requires auth
-  isCloudModelSelected: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
-    if (!modelService) {
-      return false;
-    }
-
-    const selectedModelId = await modelService.getSelectedModel();
-    if (!selectedModelId) {
-      return false;
-    }
-
-    // Check if it's a cloud model
-    const { AVAILABLE_MODELS } = await import("../../constants/models");
-    const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
-
-    return model?.setup === "amical";
-  }),
 });

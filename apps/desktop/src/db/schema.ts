@@ -61,7 +61,7 @@ export const appSettings = sqliteTable("app_settings", {
     .default(sql`(unixepoch())`),
 });
 
-// Unified models table for all model types (Whisper, Language, Embedding)
+// Unified models table for all model types (Whisper, Language)
 export const models = sqliteTable(
   "models",
   {
@@ -71,7 +71,7 @@ export const models = sqliteTable(
 
     // Common fields
     name: text("name").notNull(),
-    type: text("type").notNull(), // "speech", "language", "embedding"
+    type: text("type").notNull(), // "speech", "language"
     size: text("size"), // Model size string (e.g., "7B", "Large", "~78 MB")
     context: text("context"), // Context window (e.g., "32k", "128k")
     description: text("description"),
@@ -121,7 +121,7 @@ export interface ModeConfig {
     fallbackModelId?: string;
   };
   customInstructions?: string; // Free-text injected into formatter system prompt
-  speechModelId?: string; // Per-mode speech model override; undefined = use global default
+  speechModelId?: string; // Per-mode speech model override; undefined = use current speech selection
   appBindings?: string[]; // Bundle identifiers for auto-switch (e.g. ["com.apple.mail"])
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
@@ -131,8 +131,8 @@ export interface ModeConfig {
 export interface AppSettingsData {
   formatterConfig?: {
     enabled: boolean;
-    modelId?: string; // Formatting model selection (language model ID or "amical-cloud")
-    fallbackModelId?: string; // Last non-cloud formatting model for auto-restore
+    modelId?: string; // Formatting model selection (language model ID)
+    fallbackModelId?: string; // Last formatting model for auto-restore
   };
   ui?: {
     theme: "light" | "dark" | "system";
@@ -168,27 +168,19 @@ export interface AppSettingsData {
     openAI?: {
       apiKey: string;
     };
-    anthropic?: {
-      apiKey: string;
-    };
-    google?: {
-      apiKey: string;
-    };
-    defaultSpeechModel?: string; // Model ID for default speech model (Whisper)
-    defaultLanguageModel?: string; // Model ID for default language model
-    defaultEmbeddingModel?: string; // Model ID for default embedding model
-  };
-
-  transcriptionProvidersConfig?: {
-    openAI?: {
-      apiKey: string;
-    };
     groq?: {
       apiKey: string;
     };
     grok?: {
       apiKey: string;
     };
+    anthropic?: {
+      apiKey: string;
+    };
+    google?: {
+      apiKey: string;
+    };
+    defaultSpeechModel?: string; // Model ID for selected speech model (Whisper)
   };
 
   dictation?: {
@@ -228,9 +220,9 @@ export interface AppSettingsData {
     skippedScreens?: string[]; // Screens skipped via feature flags
     featureInterests?: string[]; // Selected features (max 3)
     discoverySource?: string; // How user found Amical
-    selectedModelType: "cloud" | "local"; // User's model choice
+    selectedModelType: "local"; // User's model choice
     modelRecommendation?: {
-      suggested: "cloud" | "local"; // System recommendation
+      suggested: "local"; // System recommendation
       reason: string; // Human-readable explanation
       followed: boolean; // Whether user followed recommendation
     };

@@ -2,8 +2,6 @@
 import { ComponentProps, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import DefaultModelCombobox from "../components/default-model-combobox";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table,
@@ -20,8 +18,6 @@ import {
   Square,
   Loader2,
   Trash2,
-  LogIn,
-  Cloud,
 } from "lucide-react";
 import { DynamicIcon } from "lucide-react/dynamic";
 import { Button } from "@/components/ui/button";
@@ -43,17 +39,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { DownloadProgress } from "@/constants/models";
-import { Accordion } from "@/components/ui/accordion";
-import ProviderAccordion from "../components/provider-accordion";
 import { Key } from "lucide-react";
 import { api } from "@/trpc/react";
 
@@ -121,13 +107,6 @@ export default function SpeechTab() {
   >({});
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<string | null>(null);
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [pendingCloudModel, setPendingCloudModel] = useState<string | null>(
-    null,
-  );
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | undefined>(
-    undefined,
-  );
 
   // tRPC queries
   const availableModelsQuery = api.models.getAvailableModels.useQuery();
@@ -180,24 +159,10 @@ export default function SpeechTab() {
   const setSelectedModelMutation = api.models.setSelectedModel.useMutation({
     onSuccess: (_data, variables) => {
       utils.models.getSelectedModel.invalidate();
-      if (variables.modelId === "amical-cloud") {
-        toast.success("Amical Cloud selected. Cloud formatting enabled.");
-      }
     },
     onError: (error) => {
       console.error("Failed to select model:", error);
       toast.error("Failed to select model");
-    },
-  });
-
-  // Auth mutations
-  const loginMutation = api.auth.login.useMutation({
-    onSuccess: () => {
-      toast.info("Please complete login in your browser");
-    },
-    onError: (error) => {
-      console.error("Failed to initiate login:", error);
-      toast.error("Failed to start login process");
     },
   });
 
@@ -277,22 +242,6 @@ export default function SpeechTab() {
     },
   });
 
-  // Auth state subscription - update auth state and handle pending cloud model selection
-  api.auth.onAuthStateChange.useSubscription(undefined, {
-    onData: (authState) => {
-      setIsAuthenticated(authState.isAuthenticated);
-
-      if (authState.isAuthenticated && pendingCloudModel) {
-        toast.success("Login successful!");
-        setSelectedModelMutation.mutate({ modelId: pendingCloudModel });
-        setPendingCloudModel(null);
-      }
-    },
-    onError: (error) => {
-      console.error("Auth state subscription error:", error);
-    },
-  });
-
   const handleDownload = async (modelId: string, event?: React.MouseEvent) => {
     if (event) {
       event.preventDefault();
@@ -354,13 +303,6 @@ export default function SpeechTab() {
   const handleSelectModel = async (modelId: string) => {
     const model = availableModels.find((m) => m.id === modelId);
 
-    // If cloud model and not authenticated, show login dialog
-    if (model?.setup === "amical" && !isAuthenticated) {
-      setPendingCloudModel(modelId);
-      setShowLoginDialog(true);
-      return;
-    }
-
     // If API model without configured API key, show guidance
     if (model?.setup === "api") {
       const hasKey =
@@ -369,7 +311,7 @@ export default function SpeechTab() {
         (model.provider === "Grok" && apiKeyStatus.grok);
       if (!hasKey) {
         toast.error(
-          `Please configure your ${model.provider} API key in the Transcription API Providers section above.`,
+          `Please configure your ${model.provider} API key in the Models section.`,
         );
         return;
       }
@@ -380,18 +322,6 @@ export default function SpeechTab() {
     } catch (err) {
       console.error("Failed to select model:", err);
       // Error is already handled by the mutation's onError
-    }
-  };
-
-  const handleLogin = async () => {
-    try {
-      await loginMutation.mutateAsync();
-      setShowLoginDialog(false);
-      toast.info("Complete login in your browser");
-      // Auth state subscription will handle the rest when login completes
-    } catch (err) {
-      console.error("Failed to login:", err);
-      toast.error("Failed to start login");
     }
   };
 
@@ -412,6 +342,14 @@ export default function SpeechTab() {
     groq: false,
     grok: false,
   };
+  const visibleModels = availableModels.filter((model) => {
+    if (model.setup !== "api") return true;
+    return (
+      (model.provider === "OpenAI" && apiKeyStatus.openAI) ||
+      (model.provider === "Groq" && apiKeyStatus.groq) ||
+      (model.provider === "Grok" && apiKeyStatus.grok)
+    );
+  });
 
   if (loading) {
     return (
@@ -425,24 +363,6 @@ export default function SpeechTab() {
     <>
       <Card>
         <CardContent className="space-y-6">
-          {/* Default model picker using unified component */}
-          <DefaultModelCombobox
-            modelType="speech"
-            title="Default Speech Model"
-          />
-
-          {/* Transcription API Providers */}
-          <div>
-            <Label className="text-lg font-semibold mb-2 block">
-              Transcription API Providers
-            </Label>
-            <Accordion type="multiple" className="w-full">
-              <ProviderAccordion provider="OpenAI" modelType="transcription" />
-              <ProviderAccordion provider="Groq" modelType="transcription" />
-              <ProviderAccordion provider="Grok" modelType="transcription" />
-            </Accordion>
-          </div>
-
           <div>
             <Label className="text-lg font-semibold mb-2 block">
               Available Models
@@ -464,12 +384,11 @@ export default function SpeechTab() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {availableModels.map((model) => {
+                      {visibleModels.map((model) => {
                         const isDownloaded = !!downloadedModels[model.id];
                         const progress = downloadProgress[model.id];
                         const isDownloading =
                           progress?.status === "downloading";
-                        const isCloudModel = model.setup === "amical";
                         const isApiModel = model.setup === "api";
                         const isOfflineModel = model.setup === "offline";
 
@@ -481,11 +400,9 @@ export default function SpeechTab() {
                           : false;
 
                         // Selection logic based on model setup type
-                        const canSelect = isCloudModel
-                          ? (isAuthenticated ?? false)
-                          : isApiModel
-                            ? hasApiKey
-                            : isDownloaded && isTranscriptionAvailable;
+                        const canSelect = isApiModel
+                          ? hasApiKey
+                          : isDownloaded && isTranscriptionAvailable;
 
                         return (
                           <TableRow
@@ -521,24 +438,6 @@ export default function SpeechTab() {
                                     </Avatar>
                                     <span>{model.provider}</span>
                                   </div>
-                                  {isCloudModel && (
-                                    <div className="mt-1">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Badge
-                                            variant="secondary"
-                                            className="text-[10px] px-1.5 py-0"
-                                          >
-                                            Formatting available
-                                          </Badge>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          Cloud formatting is available when
-                                          this model is selected.
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             </TableCell>
@@ -575,25 +474,6 @@ export default function SpeechTab() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col items-center space-y-1">
-                                {/* Cloud models show cloud icon or login button */}
-                                {isCloudModel && (
-                                  <>
-                                    {isAuthenticated ? (
-                                      <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
-                                        <Cloud className="w-4 h-4 text-blue-500" />
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={() => setShowLoginDialog(true)}
-                                        className="w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center text-white transition-colors"
-                                        title="Sign in to use cloud model"
-                                      >
-                                        <LogIn className="w-4 h-4" />
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-
                                 {/* API models show key icon with status */}
                                 {isApiModel && (
                                   <div
@@ -698,9 +578,7 @@ export default function SpeechTab() {
                                 <div className="text-xs text-muted-foreground text-center">
                                   {isOfflineModel
                                     ? model.sizeFormatted
-                                    : isApiModel
-                                      ? "API"
-                                      : "Cloud"}
+                                    : "API"}
                                 </div>
                               </div>
                             </TableCell>
@@ -740,46 +618,6 @@ export default function SpeechTab() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Sign In Required</DialogTitle>
-            <DialogDescription>
-              To use Amical Cloud transcription, you need to sign in with your
-              Amical account. This enables secure cloud-based transcription with
-              high accuracy.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              After clicking "Sign In", you'll be redirected to your browser to
-              complete the login process.
-            </p>
-            <div className="flex items-center space-x-2 text-sm">
-              <Cloud className="w-4 h-4 text-blue-500" />
-              <span>Fast, accurate cloud transcription</span>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLoginDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleLogin} disabled={loginMutation.isPending}>
-              {loginMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Opening Browser...
-                </>
-              ) : (
-                <>
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Sign In
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
