@@ -1,23 +1,14 @@
 import React from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
 import { OnboardingMicrophoneSelect } from "../shared/OnboardingMicrophoneSelect";
 import { OnboardingShortcutInput } from "../shared/OnboardingShortcutInput";
 import { CheckCircle, Settings, Info } from "lucide-react";
-import { FeatureInterest, ModelType } from "../../../../types/onboarding";
-
-const DISCORD_URL = "https://amical.ai/community";
-
 interface CompletionScreenProps {
   onComplete: () => void;
   onBack: () => void;
-  preferences: {
-    featureInterests?: FeatureInterest[];
-    modelType?: ModelType;
-  };
 }
 
 /**
@@ -26,7 +17,6 @@ interface CompletionScreenProps {
 export function CompletionScreen({
   onComplete,
   onBack,
-  preferences,
 }: CompletionScreenProps) {
   return (
     <OnboardingLayout
@@ -54,31 +44,6 @@ export function CompletionScreen({
             <OnboardingMicrophoneSelect />
             <Separator />
             <OnboardingShortcutInput />
-          </div>
-        </Card>
-
-        {/* Community */}
-        <Card className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-full bg-[#5865F2]/10 p-3">
-              <img
-                src="icons/integrations/discord.svg"
-                alt="Discord"
-                className="h-6 w-6"
-              />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-medium">Join our Community</h3>
-              <p className="text-sm text-muted-foreground">
-                Get help, share feedback, and connect with other users
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => window.electronAPI.openExternal(DISCORD_URL)}
-            >
-              Join Discord
-            </Button>
           </div>
         </Card>
 
@@ -112,8 +77,6 @@ export function CompletionScreen({
           <Info className="mt-0.5 h-4 w-4 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             All settings can be changed anytime in the application preferences.
-            {preferences.modelType === ModelType.Local &&
-              " Your selected local model is ready to use offline."}
           </p>
         </div>
       </div>

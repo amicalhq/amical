@@ -1,12 +1,7 @@
 import { z } from "zod";
 import { systemPreferences, shell, app } from "electron";
 import { createRouter, procedure } from "../trpc";
-import {
-  OnboardingPreferencesSchema,
-  OnboardingStateSchema,
-  type ModelRecommendation,
-  type OnboardingFeatureFlags,
-} from "../../types/onboarding";
+import { OnboardingPreferencesSchema, OnboardingStateSchema } from "../../types/onboarding";
 import { logger } from "../../main/logger";
 
 export const onboardingRouter = createRouter({
@@ -38,32 +33,6 @@ export const onboardingRouter = createRouter({
       throw error;
     }
   }),
-
-  /**
-   * Get system recommendation for model selection
-   */
-  getSystemRecommendation: procedure.query(
-    async ({ ctx }): Promise<ModelRecommendation> => {
-      try {
-        const { serviceManager } = ctx;
-        if (!serviceManager) {
-          throw new Error("ServiceManager not available");
-        }
-        const onboardingService = serviceManager.getOnboardingService();
-
-        if (!onboardingService) {
-          throw new Error("OnboardingService not available");
-        }
-
-        const recommendation =
-          await onboardingService.getSystemRecommendation();
-        return recommendation;
-      } catch (error) {
-        logger.main.error("Failed to get system recommendation:", error);
-        throw error;
-      }
-    },
-  ),
 
   /**
    * Get recommended local model ID based on hardware
@@ -126,49 +95,6 @@ export const onboardingRouter = createRouter({
       };
     }
   }),
-
-  /**
-   * Get feature flags for screen visibility
-   */
-  getFeatureFlags: procedure.query(
-    async ({ ctx }): Promise<OnboardingFeatureFlags> => {
-      try {
-        const { serviceManager } = ctx;
-        if (!serviceManager) {
-          // Return all screens enabled by default
-          return {
-            skipWelcome: false,
-            skipFeatures: false,
-            skipDiscovery: false,
-            skipModels: false,
-          };
-        }
-        const onboardingService = serviceManager.getOnboardingService();
-
-        if (!onboardingService) {
-          // Return all screens enabled by default
-          return {
-            skipWelcome: false,
-            skipFeatures: false,
-            skipDiscovery: false,
-            skipModels: false,
-          };
-        }
-
-        const flags = onboardingService.getFeatureFlags();
-        return flags;
-      } catch (error) {
-        logger.main.error("Failed to get feature flags:", error);
-        // Return all screens enabled on error
-        return {
-          skipWelcome: false,
-          skipFeatures: false,
-          skipDiscovery: false,
-          skipModels: false,
-        };
-      }
-    },
-  ),
 
   // --------------------------------------------------------------------------
   // Mutations

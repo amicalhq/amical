@@ -3,17 +3,11 @@ import { systemPreferences } from "electron";
 import { logger } from "../main/logger";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
-import type { ModelService } from "./model-service";
 import type { AppSettingsData } from "../db/schema";
 import {
   OnboardingScreen,
-  FeatureInterest,
   type OnboardingState,
   type OnboardingPreferences,
-  type ModelRecommendation,
-  ModelType,
-  type OnboardingFeatureFlags,
-  type SystemSpecs,
   type DiscoverySource,
 } from "../types/onboarding";
 
@@ -24,55 +18,35 @@ import {
 type OnboardingStateDb = {
   completedVersion?: number;
   completedAt?: string;
-  lastUpdated?: string;
   lastVisitedScreen?: string;
   skippedScreens?: string[];
-  featureInterests?: string[];
   discoverySource?: string;
-  selectedModelType?: string;
-  modelRecommendation?: {
-    suggested: string;
-    reason: string;
-    followed: boolean;
-  };
-};
-
-const normalizeModelType = (value?: string): ModelType | undefined => {
-  if (!value) {
-    return undefined;
-  }
-  return ModelType.Local;
 };
 
 export class OnboardingService extends EventEmitter {
   private static instance: OnboardingService | null = null;
   private settingsService: SettingsService;
   private telemetryService: TelemetryService;
-  private modelService: ModelService;
   private currentState: Partial<OnboardingState> = {};
   private isOnboardingInProgress = false;
 
   constructor(
     settingsService: SettingsService,
     telemetryService: TelemetryService,
-    modelService: ModelService,
   ) {
     super();
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
-    this.modelService = modelService;
   }
 
   static getInstance(
     settingsService: SettingsService,
     telemetryService: TelemetryService,
-    modelService: ModelService,
   ): OnboardingService {
     if (!OnboardingService.instance) {
       OnboardingService.instance = new OnboardingService(
         settingsService,
         telemetryService,
-        modelService,
       );
     }
     return OnboardingService.instance;
@@ -105,17 +79,6 @@ export class OnboardingService extends EventEmitter {
         }
       }
 
-      const selectedModelType =
-        normalizeModelType(settings.onboarding.selectedModelType) ??
-        ModelType.Local;
-
-      const modelRecommendation = settings.onboarding.modelRecommendation
-        ? {
-            ...settings.onboarding.modelRecommendation,
-            suggested: ModelType.Local,
-          }
-        : undefined;
-
       // Convert database types to OnboardingState types
       return {
         ...settings.onboarding,
@@ -123,14 +86,9 @@ export class OnboardingService extends EventEmitter {
         skippedScreens: settings.onboarding.skippedScreens as
           | OnboardingScreen[]
           | undefined,
-        featureInterests: settings.onboarding.featureInterests as
-          | FeatureInterest[]
-          | undefined,
         discoverySource: settings.onboarding.discoverySource as
           | DiscoverySource
           | undefined,
-        selectedModelType,
-        modelRecommendation,
       } as OnboardingState;
     } catch (error) {
       logger.main.error("Failed to get onboarding state:", error);
@@ -149,6 +107,8 @@ export class OnboardingService extends EventEmitter {
       const stateForDb: OnboardingStateDb = {
         ...currentSettings.onboarding,
       };
+      delete (stateForDb as Record<string, unknown>).selectedModelType;
+      delete (stateForDb as Record<string, unknown>).modelRecommendation;
 
       // Ensure enums are stored as strings in the database
       if (state.skippedScreens !== undefined) {
@@ -156,16 +116,8 @@ export class OnboardingService extends EventEmitter {
           (s) => s as string,
         );
       }
-      if (state.featureInterests !== undefined) {
-        stateForDb.featureInterests = state.featureInterests.map(
-          (f) => f as string,
-        );
-      }
       if (state.discoverySource !== undefined) {
         stateForDb.discoverySource = state.discoverySource as string;
-      }
-      if (state.selectedModelType !== undefined) {
-        stateForDb.selectedModelType = state.selectedModelType as string;
       }
       if (state.completedVersion !== undefined) {
         stateForDb.completedVersion = state.completedVersion;
@@ -177,13 +129,6 @@ export class OnboardingService extends EventEmitter {
         // Convert enum to string for database storage
         // TypeScript enums have string values at runtime, so this cast is safe
         stateForDb.lastVisitedScreen = state.lastVisitedScreen as string;
-      }
-      if (state.modelRecommendation !== undefined) {
-        stateForDb.modelRecommendation = {
-          suggested: state.modelRecommendation.suggested as string,
-          reason: state.modelRecommendation.reason,
-          followed: state.modelRecommendation.followed,
-        };
       }
 
       await this.settingsService.updateSettings({
@@ -217,15 +162,6 @@ export class OnboardingService extends EventEmitter {
         });
       }
 
-      // Track feature interests selection
-      if (preferences.featureInterests !== undefined) {
-        updates.featureInterests = preferences.featureInterests;
-        this.telemetryService.trackOnboardingFeaturesSelected({
-          features: preferences.featureInterests,
-          count: preferences.featureInterests.length,
-        });
-      }
-
       // Track discovery source selection
       if (preferences.discoverySource !== undefined) {
         updates.discoverySource = preferences.discoverySource;
@@ -233,35 +169,6 @@ export class OnboardingService extends EventEmitter {
           source: preferences.discoverySource,
           details: preferences.discoveryDetails,
         });
-      }
-
-      // Track model selection and set the actual model
-      if (preferences.selectedModelType !== undefined) {
-        updates.selectedModelType = preferences.selectedModelType;
-        this.telemetryService.trackOnboardingModelSelected({
-          model_type: preferences.selectedModelType,
-          recommendation_followed:
-            preferences.modelRecommendation?.followed ?? false,
-        });
-
-        // Set the actual model in ModelService
-        if (preferences.selectedModelType === "local") {
-          // Keep existing selection if any, otherwise use first downloaded model
-          const currentModel = await this.modelService.getSelectedModel();
-          if (!currentModel) {
-            const downloadedModels =
-              await this.modelService.getDownloadedModels();
-            const downloadedIds = Object.keys(downloadedModels);
-            if (downloadedIds.length > 0) {
-              await this.modelService.setSelectedModel(downloadedIds[0]);
-              logger.main.info(`Set speech model to ${downloadedIds[0]}`);
-            }
-          }
-        }
-      }
-
-      if (preferences.modelRecommendation !== undefined) {
-        updates.modelRecommendation = preferences.modelRecommendation;
       }
 
       // T032 - Save partial progress after each screen
@@ -313,14 +220,12 @@ export class OnboardingService extends EventEmitter {
 
       await this.saveOnboardingState(completeState);
 
+      await this.setDefaultModeSpeechModelIfMissing();
+
       // Track completion event
       this.telemetryService.trackOnboardingCompleted({
         version: completeState.completedVersion,
-        features_selected: completeState.featureInterests || [],
         discovery_source: completeState.discoverySource,
-        model_type: completeState.selectedModelType,
-        recommendation_followed:
-          completeState.modelRecommendation?.followed || false,
         skipped_screens: completeState.skippedScreens,
       });
 
@@ -328,6 +233,28 @@ export class OnboardingService extends EventEmitter {
     } catch (error) {
       logger.main.error("Failed to complete onboarding:", error);
       throw error;
+    }
+  }
+
+  private async setDefaultModeSpeechModelIfMissing(): Promise<void> {
+    try {
+      const defaultSpeechModel =
+        await this.settingsService.getDefaultSpeechModel();
+      if (!defaultSpeechModel) return;
+
+      const { items } = await this.settingsService.getModes();
+      const defaultMode = items.find((mode) => mode.id === "default");
+      if (!defaultMode || defaultMode.speechModelId) return;
+
+      await this.settingsService.updateMode(defaultMode.id, {
+        speechModelId: defaultSpeechModel,
+      });
+
+      logger.main.info("Set default mode speech model", {
+        modelId: defaultSpeechModel,
+      });
+    } catch (error) {
+      logger.main.warn("Failed to set default mode speech model", error);
     }
   }
 
@@ -520,81 +447,20 @@ export class OnboardingService extends EventEmitter {
   }
 
   /**
-   * Calculate model recommendation based on system specs
-   */
-  calculateModelRecommendation(systemInfo: SystemSpecs): ModelRecommendation {
-    return {
-      suggested: "local" as ModelType,
-      reason:
-        "Local transcription is available for your device and keeps audio on-device.",
-      systemSpecs: {
-        cpu_cores: systemInfo.cpu_cores,
-        memory_total_gb: systemInfo.memory_total_gb,
-      },
-    };
-  }
-
-  /**
-   * Get system recommendation for model selection
-   */
-  async getSystemRecommendation(): Promise<ModelRecommendation> {
-    try {
-      // Get real system info from telemetry service
-      const systemInfo = this.telemetryService.getSystemInfo();
-      if (!systemInfo) {
-        // Fallback if system info not available
-        return {
-          suggested: "local" as ModelType,
-          reason:
-            "Unable to detect system specifications. Local transcription is recommended.",
-        };
-      }
-
-      const specs: SystemSpecs = {
-        cpu_model: systemInfo.cpu_model,
-        cpu_cores: systemInfo.cpu_cores,
-        cpu_threads: systemInfo.cpu_threads,
-        cpu_speed_ghz: systemInfo.cpu_speed_ghz,
-        memory_total_gb: systemInfo.memory_total_gb,
-        gpu_model: systemInfo.gpu_model,
-        gpu_vendor: systemInfo.gpu_vendor,
-      };
-
-      return this.calculateModelRecommendation(specs);
-    } catch (error) {
-      logger.main.error("Failed to get system recommendation:", error);
-      // Fallback recommendation on error
-      return {
-        suggested: "local" as ModelType,
-        reason:
-          "Unable to analyze system specifications. Local transcription is recommended.",
-      };
-    }
-  }
-
-  /**
-   * Get feature flags for onboarding screens
-   */
-  getFeatureFlags(): OnboardingFeatureFlags {
-    return {
-      skipWelcome: process.env.ONBOARDING_SKIP_WELCOME === "true",
-      skipFeatures: process.env.ONBOARDING_SKIP_FEATURES === "true",
-      skipDiscovery: process.env.ONBOARDING_SKIP_DISCOVERY === "true",
-      skipModels: process.env.ONBOARDING_SKIP_MODELS === "true",
-    };
-  }
-
-  /**
    * Get screens to skip based on feature flags
    */
   getSkippedScreens(): OnboardingScreen[] {
-    const flags = this.getFeatureFlags();
     const skipped: OnboardingScreen[] = [];
 
-    if (flags.skipWelcome) skipped.push("welcome" as OnboardingScreen);
-    if (flags.skipFeatures) skipped.push("features" as OnboardingScreen);
-    if (flags.skipDiscovery) skipped.push("discovery" as OnboardingScreen);
-    if (flags.skipModels) skipped.push("models" as OnboardingScreen);
+    if (process.env.ONBOARDING_SKIP_WELCOME === "true") {
+      skipped.push("welcome" as OnboardingScreen);
+    }
+    if (process.env.ONBOARDING_SKIP_DISCOVERY === "true") {
+      skipped.push("discovery" as OnboardingScreen);
+    }
+    if (process.env.ONBOARDING_SKIP_MODELS === "true") {
+      skipped.push("models" as OnboardingScreen);
+    }
 
     return skipped;
   }

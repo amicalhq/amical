@@ -218,14 +218,7 @@ export interface AppSettingsData {
     completedAt: string; // ISO 8601 timestamp
     lastVisitedScreen?: string; // Last screen user was on (for resume)
     skippedScreens?: string[]; // Screens skipped via feature flags
-    featureInterests?: string[]; // Selected features (max 3)
     discoverySource?: string; // How user found Amical
-    selectedModelType: "local"; // User's model choice
-    modelRecommendation?: {
-      suggested: "local"; // System recommendation
-      reason: string; // Human-readable explanation
-      followed: boolean; // Whether user followed recommendation
-    };
   };
 }
 

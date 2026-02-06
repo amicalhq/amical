@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
@@ -13,9 +12,8 @@ import { api } from "@/trpc/react";
 import type { DownloadProgress } from "@/constants/models";
 
 interface ModelSelectionScreenProps {
-  onNext: (modelType: ModelType, recommendationFollowed: boolean) => void;
+  onNext: () => void;
   onBack: () => void;
-  initialSelection?: ModelType;
 }
 
 /**
@@ -24,16 +22,11 @@ interface ModelSelectionScreenProps {
 export function ModelSelectionScreen({
   onNext,
   onBack,
-  initialSelection,
 }: ModelSelectionScreenProps) {
   const PROVIDER_ICON = "/icons/models/pc.svg";
   const PROVIDER_FRAME_CLASS = "bg-white border-slate-200";
   const PROVIDER_FALLBACK_CLASS = "text-slate-900";
 
-  const [selectedModel, setSelectedModel] = useState<ModelType>(
-    initialSelection ?? ModelType.Local,
-  );
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<
     Record<string, DownloadProgress>
   >({});
@@ -59,6 +52,30 @@ export function ModelSelectionScreen({
       (model) => model.setup === "offline",
     );
   }, [availableModelsQuery.data]);
+
+  const recommendedModelId = "whisper-large-v3-turbo";
+  const preferredOrder = useMemo(
+    () => [
+      recommendedModelId,
+      "whisper-large-v3",
+      "whisper-large-v1",
+      "whisper-medium",
+      "whisper-small",
+      "whisper-base",
+      "whisper-tiny",
+    ],
+    [recommendedModelId],
+  );
+
+  const downloadedModels = downloadedModelsQuery.data || {};
+  const autoSelectedModelId = useMemo(() => {
+    const downloadedIds = Object.keys(downloadedModels);
+    if (downloadedIds.length === 0) return null;
+    for (const candidateId of preferredOrder) {
+      if (downloadedModels[candidateId]) return candidateId;
+    }
+    return downloadedIds[0];
+  }, [downloadedModels, preferredOrder]);
 
   useEffect(() => {
     if (activeDownloadsQuery.data) {
@@ -111,41 +128,17 @@ export function ModelSelectionScreen({
     },
   });
 
-  const handleModelSelect = (modelId: ModelType) => {
-    setSelectedModel(modelId);
-  };
-
-  useEffect(() => {
-    if (selectedModelId || offlineModels.length === 0) return;
-    const recommendedId = "whisper-large-v3-turbo";
-    const defaultId = offlineModels.some((model) => model.id === recommendedId)
-      ? recommendedId
-      : offlineModels[0].id;
-    setSelectedModelId(defaultId);
-  }, [offlineModels, selectedModelId]);
-
   const handleContinue = () => {
-    if (!selectedModel) {
-      toast.error("Please select a model type");
-      return;
-    }
-
-    if (!selectedModelId) {
-      toast.error("Please select a model");
-      return;
-    }
-
-    const downloaded = downloadedModelsQuery.data?.[selectedModelId];
-    if (!downloaded) {
-      toast.error("Please download the selected model");
+    if (!autoSelectedModelId) {
+      toast.error("Please download a model");
       return;
     }
 
     setSelectedModelMutation.mutate(
-      { modelId: selectedModelId },
+      { modelId: autoSelectedModelId },
       {
         onSuccess: () => {
-          onNext(ModelType.Local, true);
+          onNext();
         },
         onError: (err) => {
           const message = err instanceof Error ? err.message : String(err);
@@ -155,9 +148,7 @@ export function ModelSelectionScreen({
     );
   };
 
-  const canContinue =
-    selectedModelId &&
-    Boolean(downloadedModelsQuery.data?.[selectedModelId]);
+  const canContinue = Boolean(autoSelectedModelId);
 
   return (
     <OnboardingLayout
@@ -176,17 +167,10 @@ export function ModelSelectionScreen({
         {/* Model Option */}
         <div className="space-y-4">
           {models.map((model) => {
-            const isSelected = selectedModel === model.id;
-
             return (
               <Card
                 key={model.id}
-                className={`cursor-pointer transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "hover:border-muted-foreground/50"
-                }`}
-                onClick={() => handleModelSelect(model.id)}
+                className="transition-colors border-primary bg-primary/5"
               >
                 <div className="flex items-start gap-4 px-4">
                   <div className="flex-1 space-y-2">
@@ -225,20 +209,15 @@ export function ModelSelectionScreen({
         {/* Offline Model List */}
         <div className="space-y-2">
           {offlineModels.map((model) => {
-            const isRecommended = model.id === "whisper-large-v3-turbo";
-            const isSelected = selectedModelId === model.id;
+            const isRecommended = model.id === recommendedModelId;
             const progress = downloadProgress[model.id];
-            const downloaded = Boolean(downloadedModelsQuery.data?.[model.id]);
+            const downloaded = Boolean(downloadedModels[model.id]);
+            const isDownloading = Boolean(progress);
 
             return (
               <div
                 key={model.id}
-                className={`rounded-lg border p-3 transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/50"
-                }`}
-                onClick={() => setSelectedModelId(model.id)}
+                className="rounded-lg border p-3 transition-colors border-border hover:border-muted-foreground/50"
               >
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -256,17 +235,29 @@ export function ModelSelectionScreen({
                   </div>
 
                   {downloaded ? (
-                    <div className="flex items-center gap-1 text-sm text-green-600">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/10 text-green-600"
+                      title="Downloaded"
+                      aria-label="Downloaded"
+                    >
                       <Check className="h-4 w-4" />
-                      Downloaded
+                    </div>
+                  ) : isDownloading ? (
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-muted"
+                      title="Downloading"
+                      aria-label="Downloading"
+                    >
+                      <Download className="h-4 w-4 animate-pulse text-muted-foreground" />
                     </div>
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
+                    <button
+                      type="button"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-muted hover:bg-muted/80 transition-colors"
+                      title="Download"
+                      aria-label="Download"
                       onClick={(event) => {
                         event.stopPropagation();
-                        setSelectedModelId(model.id);
                         setError(null);
                         downloadModelMutation
                           .mutateAsync({ modelId: model.id })
@@ -276,10 +267,9 @@ export function ModelSelectionScreen({
                             setError(message);
                           });
                       }}
-                      disabled={Boolean(progress)}
                     >
-                      {progress ? "Downloading..." : "Download"}
-                    </Button>
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                    </button>
                   )}
                 </div>
 

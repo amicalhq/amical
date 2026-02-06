@@ -7,9 +7,7 @@ import type { SettingsService } from "./settings-service";
 import type {
   OnboardingStartedEvent,
   OnboardingScreenViewedEvent,
-  OnboardingFeaturesSelectedEvent,
   OnboardingDiscoverySelectedEvent,
-  OnboardingModelSelectedEvent,
   OnboardingCompletedEvent,
   OnboardingAbandonedEvent,
   NativeHelperCrashedEvent,
@@ -332,20 +330,6 @@ export class TelemetryService {
     logger.main.debug("Tracked onboarding screen viewed", props);
   }
 
-  trackOnboardingFeaturesSelected(
-    props: OnboardingFeaturesSelectedEvent,
-  ): void {
-    if (!this.posthog || !this.enabled) return;
-
-    this.posthog.capture({
-      distinctId: this.machineId,
-      event: "onboarding_features_selected",
-      properties: { ...props, ...this.persistedProperties },
-    });
-
-    logger.main.debug("Tracked onboarding features selected", props);
-  }
-
   trackOnboardingDiscoverySelected(
     props: OnboardingDiscoverySelectedEvent,
   ): void {
@@ -358,18 +342,6 @@ export class TelemetryService {
     });
 
     logger.main.debug("Tracked onboarding discovery selected", props);
-  }
-
-  trackOnboardingModelSelected(props: OnboardingModelSelectedEvent): void {
-    if (!this.posthog || !this.enabled) return;
-
-    this.posthog.capture({
-      distinctId: this.machineId,
-      event: "onboarding_model_selected",
-      properties: { ...props, ...this.persistedProperties },
-    });
-
-    logger.main.debug("Tracked onboarding model selected", props);
   }
 
   trackOnboardingCompleted(props: OnboardingCompletedEvent): void {

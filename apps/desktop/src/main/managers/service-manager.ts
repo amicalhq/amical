@@ -108,9 +108,9 @@ export class ServiceManager {
   }
 
   private async initializeOnboardingService(): Promise<void> {
-    if (!this.settingsService || !this.telemetryService || !this.modelService) {
+    if (!this.settingsService || !this.telemetryService) {
       logger.main.warn(
-        "Settings, telemetry, or model service not available for onboarding",
+        "Settings or telemetry service not available for onboarding",
       );
       return;
     }
@@ -118,7 +118,6 @@ export class ServiceManager {
     this.onboardingService = OnboardingService.getInstance(
       this.settingsService,
       this.telemetryService,
-      this.modelService,
     );
     logger.main.info("Onboarding service initialized");
   }
