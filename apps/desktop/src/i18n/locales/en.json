@@ -527,6 +527,7 @@
         "pauseAudio": "Pause audio",
         "playAudio": "Play audio",
         "downloadAudio": "Download Audio",
+        "reTranscribe": "Re-transcribe",
         "delete": "Delete"
       },
       "dialog": {
@@ -538,7 +539,9 @@
         "downloaded": "Audio file downloaded",
         "downloadFailed": "Failed to download audio file",
         "loadAudioFailed": "Failed to load audio file",
-        "copied": "Copied to clipboard"
+        "copied": "Copied to clipboard",
+        "reTranscribed": "Transcription updated",
+        "reTranscribeFailed": "Failed to re-transcribe"
       },
       "search": {
         "placeholder": "Search transcriptions..."

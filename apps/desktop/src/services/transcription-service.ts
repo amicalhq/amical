@@ -25,6 +25,7 @@ import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
+import { readWavToFloat32 } from "../utils/wav-reader";
 
 /**
  * Service for audio transcription and optional formatting
@@ -785,6 +786,196 @@ export class TranscriptionService {
         sessionId,
         error,
       });
+      return null;
+    }
+  }
+
+  /**
+   * Re-transcribe from a saved audio file using the currently selected model
+   * @param options.audioFilePath Path to the WAV audio file
+   * @param options.language Optional language override
+   * @returns Transcription result with text and model info
+   */
+  async reTranscribeFromFile(options: {
+    audioFilePath: string;
+    language?: string;
+  }): Promise<{
+    text: string;
+    speechModel: string;
+    formattingModel?: string;
+  }> {
+    const { audioFilePath, language } = options;
+
+    logger.transcription.info("Starting re-transcription from file", {
+      audioFilePath,
+      language,
+    });
+
+    // Read WAV file to Float32Array
+    const { audioData, duration } = await readWavToFloat32(audioFilePath);
+
+    logger.transcription.info("Loaded audio file for re-transcription", {
+      samples: audioData.length,
+      duration,
+    });
+
+    // Build context for transcription
+    const context = await this.buildContext();
+
+    // Override language if specified
+    if (language) {
+      context.sharedData.userPreferences.language = language;
+    }
+
+    // Select the appropriate provider
+    const provider = await this.selectProvider();
+    const isCloudProvider = provider.name === "amical-cloud";
+
+    // Check formatter config for cloud formatting
+    const formatterConfig = await this.settingsService.getFormatterConfig();
+    const shouldUseCloudFormatting =
+      formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+
+    const sessionId = uuid();
+
+    // Load audio into provider's buffer via transcribe (with high speech probability to ensure it's processed)
+    await provider.transcribe({
+      audioData,
+      speechProbability: 1.0, // Treat all audio as speech
+      context: {
+        sessionId,
+        vocabulary: context.sharedData.vocabulary,
+        accessibilityContext: null,
+        previousChunk: undefined,
+        aggregatedTranscription: undefined,
+        language: context.sharedData.userPreferences?.language,
+      },
+    });
+
+    // Flush the provider to get the transcription
+    let transcription = await provider.flush({
+      sessionId,
+      vocabulary: context.sharedData.vocabulary,
+      accessibilityContext: null,
+      previousChunk: undefined,
+      aggregatedTranscription: undefined,
+      language: context.sharedData.userPreferences?.language,
+      formattingEnabled: shouldUseCloudFormatting && isCloudProvider,
+    });
+
+    // Get speech model name
+    const selectedModelId = await this.modelService.getSelectedModel();
+    const speechModel = selectedModelId || "whisper-local";
+
+    let formattingModel: string | undefined;
+
+    // Apply LLM formatting if configured (for non-cloud providers)
+    if (formatterConfig?.enabled && !isCloudProvider && transcription.trim()) {
+      if (formatterConfig.modelId === "amical-cloud") {
+        // Skip - requires cloud transcription
+        logger.transcription.debug(
+          "Re-transcription: Skipping cloud formatting for local model",
+        );
+      } else {
+        const modelId =
+          formatterConfig.modelId ||
+          (await this.settingsService.getDefaultLanguageModel());
+
+        if (modelId) {
+          const allModels = await this.modelService.getSyncedProviderModels();
+          const model = allModels.find(
+            (m) => m.id === modelId && m.type === "language",
+          );
+
+          if (model?.provider === "OpenRouter") {
+            const config = await this.settingsService.getOpenRouterConfig();
+            if (config?.apiKey) {
+              const formatterProvider = new OpenRouterProvider(
+                config.apiKey,
+                modelId,
+              );
+              const result = await this.formatWithProviderSimple(
+                formatterProvider,
+                transcription,
+                context,
+              );
+              if (result) {
+                transcription = result;
+                formattingModel = modelId;
+              }
+            }
+          } else if (model?.provider === "Ollama") {
+            const config = await this.settingsService.getOllamaConfig();
+            if (config?.url) {
+              const formatterProvider = new OllamaFormatter(config.url, modelId);
+              const result = await this.formatWithProviderSimple(
+                formatterProvider,
+                transcription,
+                context,
+              );
+              if (result) {
+                transcription = result;
+                formattingModel = modelId;
+              }
+            }
+          }
+        }
+      }
+    } else if (shouldUseCloudFormatting && isCloudProvider) {
+      formattingModel = "amical-cloud";
+    }
+
+    // Apply vocabulary replacements
+    const replacements = context.sharedData.replacements;
+    if (replacements.size > 0) {
+      transcription = applyTextReplacements(transcription, replacements);
+    }
+
+    logger.transcription.info("Re-transcription completed", {
+      audioFilePath,
+      textLength: transcription.length,
+      speechModel,
+      formattingModel,
+    });
+
+    return {
+      text: transcription,
+      speechModel,
+      formattingModel,
+    };
+  }
+
+  /**
+   * Simple formatting helper for re-transcription (without session context)
+   */
+  private async formatWithProviderSimple(
+    provider: FormattingProvider,
+    text: string,
+    context: PipelineContext,
+  ): Promise<string | null> {
+    try {
+      const formattedText = await provider.format({
+        text,
+        context: {
+          style: context.sharedData.userPreferences?.formattingStyle,
+          vocabulary: context.sharedData.vocabulary,
+          accessibilityContext: null,
+          previousChunk: undefined,
+          aggregatedTranscription: text,
+        },
+      });
+
+      logger.transcription.info("Re-transcription formatting completed", {
+        originalLength: text.length,
+        formattedLength: formattedText.length,
+      });
+
+      return formattedText;
+    } catch (error) {
+      logger.transcription.error(
+        "Re-transcription formatting failed, using unformatted text",
+        { error },
+      );
       return null;
     }
   }

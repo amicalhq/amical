@@ -177,6 +177,69 @@ export const transcriptionsRouter = createRouter({
       }
     }),
 
+  // Re-transcribe using the currently selected model
+  // Mutation because this modifies the transcription record
+  reTranscribe: procedure
+    .input(z.object({ transcriptionId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const transcription = await getTranscriptionById(input.transcriptionId);
+
+      if (!transcription) {
+        throw new Error("Transcription not found");
+      }
+
+      if (!transcription.audioFile) {
+        throw new Error("No audio file associated with this transcription");
+      }
+
+      // Check if file exists
+      try {
+        await fs.promises.access(transcription.audioFile);
+      } catch {
+        throw new Error("Audio file not found or inaccessible");
+      }
+
+      const logger = ctx.serviceManager.getLogger();
+      const transcriptionService = ctx.serviceManager.getService(
+        "transcriptionService",
+      );
+
+      logger.main.info("Starting re-transcription", {
+        transcriptionId: input.transcriptionId,
+        audioFile: transcription.audioFile,
+      });
+
+      try {
+        const result = await transcriptionService.reTranscribeFromFile({
+          audioFilePath: transcription.audioFile,
+          language: transcription.language || undefined,
+        });
+
+        // Update the transcription in the database
+        await updateTranscription(input.transcriptionId, {
+          text: result.text,
+        });
+
+        logger.main.info("Re-transcription completed", {
+          transcriptionId: input.transcriptionId,
+          textLength: result.text.length,
+          speechModel: result.speechModel,
+          formattingModel: result.formattingModel,
+        });
+
+        // Return the updated transcription
+        return await getTranscriptionById(input.transcriptionId);
+      } catch (error) {
+        logger.main.error("Re-transcription failed", {
+          transcriptionId: input.transcriptionId,
+          error,
+        });
+        throw new Error(
+          `Re-transcription failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }),
+
   // Download audio file with save dialog
   // Mutation because this triggers a system dialog and file write operation
   // Not a query since it has side effects beyond just fetching data

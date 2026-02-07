@@ -23,6 +23,7 @@ import {
   Trash2,
   MicOff,
   Search,
+  RefreshCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -79,11 +80,13 @@ interface HistoryTableCardProps {
   onCopy: (text: string) => void;
   onPlay: (transcriptionId: number) => void;
   onDownload: (transcriptionId: number) => void;
+  onReTranscribe: (transcriptionId: number) => void;
   onDelete: (id: number) => void;
   hovered: number | null;
   setHovered: (id: number | null) => void;
   currentPlayingId: number | null;
   isPlaying: boolean;
+  reTranscribingId: number | null;
 }
 
 function HistoryTableCard({
@@ -91,10 +94,12 @@ function HistoryTableCard({
   onCopy,
   onPlay,
   onDownload,
+  onReTranscribe,
   onDelete,
   setHovered,
   currentPlayingId,
   isPlaying,
+  reTranscribingId,
 }: HistoryTableCardProps) {
   const { t } = useTranslation();
   const [selectedText, setSelectedText] = useState<string | null>(null);
@@ -222,6 +227,29 @@ function HistoryTableCard({
                           </Tooltip>
                         </TooltipProvider>
                       )}
+                      {item.audioFile && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => onReTranscribe(item.id)}
+                                disabled={reTranscribingId === item.id}
+                              >
+                                <RefreshCw
+                                  className={`w-4 h-4 ${reTranscribingId === item.id ? "animate-spin" : ""}`}
+                                />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {t("settings.history.actions.reTranscribe")}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -307,6 +335,25 @@ export default function HistorySettingsPage() {
       },
     });
 
+  const [reTranscribingId, setReTranscribingId] = useState<number | null>(null);
+
+  const reTranscribeMutation = api.transcriptions.reTranscribe.useMutation({
+    onMutate: (variables) => {
+      setReTranscribingId(variables.transcriptionId);
+    },
+    onSuccess: () => {
+      utils.transcriptions.getTranscriptions.invalidate();
+      toast.success(t("settings.history.toast.reTranscribed"));
+    },
+    onError: (error) => {
+      console.error("Error re-transcribing:", error);
+      toast.error(t("settings.history.toast.reTranscribeFailed"));
+    },
+    onSettled: () => {
+      setReTranscribingId(null);
+    },
+  });
+
   // Using mutation for fetching audio data instead of query to:
   // - Prevent caching of large binary audio files in memory
   // - Avoid automatic refetching behaviors (window focus, network reconnect)
@@ -356,6 +403,10 @@ export default function HistorySettingsPage() {
 
   function handleDownload(transcriptionId: number) {
     downloadAudioMutation.mutate({ transcriptionId });
+  }
+
+  function handleReTranscribe(transcriptionId: number) {
+    reTranscribeMutation.mutate({ transcriptionId });
   }
 
   function handleDelete(id: number) {
@@ -419,11 +470,13 @@ export default function HistorySettingsPage() {
                   onCopy={handleCopy}
                   onPlay={handlePlayAudio}
                   onDownload={handleDownload}
+                  onReTranscribe={handleReTranscribe}
                   onDelete={handleDelete}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
+                  reTranscribingId={reTranscribingId}
                 />
               </>
             )}
@@ -439,11 +492,13 @@ export default function HistorySettingsPage() {
                   onCopy={handleCopy}
                   onPlay={handlePlayAudio}
                   onDownload={handleDownload}
+                  onReTranscribe={handleReTranscribe}
                   onDelete={handleDelete}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
+                  reTranscribingId={reTranscribingId}
                 />
               </>
             )}
@@ -459,11 +514,13 @@ export default function HistorySettingsPage() {
                   onCopy={handleCopy}
                   onPlay={handlePlayAudio}
                   onDownload={handleDownload}
+                  onReTranscribe={handleReTranscribe}
                   onDelete={handleDelete}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
+                  reTranscribingId={reTranscribingId}
                 />
               </>
             )}
