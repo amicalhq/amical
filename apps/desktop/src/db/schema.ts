@@ -218,7 +218,7 @@ export interface AppSettingsData {
     completedAt: string; // ISO 8601 timestamp
     lastVisitedScreen?: string; // Last screen user was on (for resume)
     skippedScreens?: string[]; // Screens skipped via feature flags
-    discoverySource?: string; // How user found Amical
+    discoverySource?: string; // How user found Grizzo
   };
 }
 

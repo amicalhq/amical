@@ -5,7 +5,7 @@
 //   node scripts/test-addon.js [--model /path/to/model.bin] [--audio /path/to/audio.wav]
 //
 // If no flags are provided the script will grab the first *.bin model from
-// "~/Library/Application Support/amical/models" and the bundled jfk sample.
+// "~/Library/Application Support/grizzo/models" and the bundled jfk sample.
 
 const fs = require("node:fs");
 const os = require("node:os");
@@ -40,7 +40,7 @@ function defaultModelPath() {
     os.homedir(),
     "Library",
     "Application Support",
-    "amical",
+    "grizzo",
     "models",
   );
 
@@ -58,7 +58,7 @@ function defaultModelPath() {
       const stats = fs.statSync(fullPath);
       return { name, fullPath, size: stats.size };
     })
-    .sort((a, b) =>  - a.size + b.size);
+    .sort((a, b) => -a.size + b.size);
 
   if (candidates.length === 0) {
     throw new Error(
@@ -123,10 +123,14 @@ async function main() {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const binding = require(bindingPath);
 
-  if (typeof binding.init !== "function" ||
-      typeof binding.full !== "function" ||
-      typeof binding.free !== "function") {
-    throw new Error(`Addon at ${bindingPath} does not expose init/full/free APIs.`);
+  if (
+    typeof binding.init !== "function" ||
+    typeof binding.full !== "function" ||
+    typeof binding.free !== "function"
+  ) {
+    throw new Error(
+      `Addon at ${bindingPath} does not expose init/full/free APIs.`,
+    );
   }
 
   const handle = binding.init({ model: modelPath, gpu: true });
@@ -150,8 +154,6 @@ async function main() {
   } finally {
     binding.free(handle);
   }
-
-  
 }
 
 main().catch((err) => {

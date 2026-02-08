@@ -620,7 +620,7 @@ const config: ForgeConfig = {
   publishers: [
     new PublisherGithub({
       repository: {
-        owner: "amicalhq",
+        owner: "kousaku-maron",
         name: "amical",
       },
       prerelease: true,

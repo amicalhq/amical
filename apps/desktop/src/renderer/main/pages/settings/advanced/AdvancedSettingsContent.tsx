@@ -117,7 +117,8 @@ export function AdvancedSettingsContent({
   };
 
   const handleOpenTelemetryDocs = () => {
-    window.electronAPI.openExternal("https://amical.ai/docs/telemetry");
+    // TODO: navigate to telemetry docs
+    // window.electronAPI.openExternal("https://amical.ai/docs/telemetry");
   };
 
   const handleCopyMachineId = async () => {

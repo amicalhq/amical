@@ -13,7 +13,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
   private apiModelId: string;
   private apiEndpoint: string;
 
-  // Frame aggregation state (same pattern as WhisperProvider / AmicalCloudProvider)
+  // Frame aggregation state (same pattern as WhisperProvider)
   private frameBuffer: Float32Array[] = [];
   private frameBufferSpeechProbabilities: number[] = [];
   private currentSilenceFrameCount = 0;
@@ -148,7 +148,15 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
 
       // Build FormData for the OpenAI-compatible API
       const formData = new FormData();
-      const audioBlob = new Blob([wavBuffer.buffer.slice(wavBuffer.byteOffset, wavBuffer.byteOffset + wavBuffer.byteLength) as ArrayBuffer], { type: "audio/wav" });
+      const audioBlob = new Blob(
+        [
+          wavBuffer.buffer.slice(
+            wavBuffer.byteOffset,
+            wavBuffer.byteOffset + wavBuffer.byteLength,
+          ) as ArrayBuffer,
+        ],
+        { type: "audio/wav" },
+      );
       formData.append("file", audioBlob, "audio.wav");
       formData.append("model", this.apiModelId);
 

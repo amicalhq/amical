@@ -6,11 +6,11 @@
   "productName": "Vox",
   "repository": {
     "type": "git",
-    "url": "https://github.com/amicalhq/amical"
+    "url": "https://github.com/kousaku-maron/amical"
   },
   "author": {
-    "name": "Amical",
-    "email": "contact@amical.ai",
+    "name": "maron",
+    "email": "kousaku.maron@gmail.com",
     "url": "https://amical.ai"
   },
   "scripts": {

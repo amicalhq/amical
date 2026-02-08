@@ -69,7 +69,7 @@ export class InstalledAppsService {
       try {
         tempPng = path.join(
           os.tmpdir(),
-          `amical-icon-${crypto.randomUUID()}.png`,
+          `grizzo-icon-${crypto.randomUUID()}.png`,
         );
 
         await execFileAsync("sips", [

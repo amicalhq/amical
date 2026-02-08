@@ -733,7 +733,7 @@ export const settingsRouter = createRouter({
 
     const focusedWindow = BrowserWindow.getFocusedWindow();
     const saveOptions = {
-      defaultPath: `amical-logs-${new Date().toISOString().split("T")[0]}.log`,
+      defaultPath: `grizzo-logs-${new Date().toISOString().split("T")[0]}.log`,
       filters: [{ name: "Log Files", extensions: ["log", "txt"] }],
     };
     const { filePath } = focusedWindow
@@ -896,7 +896,9 @@ export const settingsRouter = createRouter({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
-            error instanceof Error ? error.message : "Failed to set active mode",
+            error instanceof Error
+              ? error.message
+              : "Failed to set active mode",
         });
       }
     }),
@@ -975,7 +977,10 @@ export const settingsRouter = createRouter({
         "speechModelId",
       );
       try {
-        const updatedMode = await settingsService.updateMode(modeId, cleanUpdates);
+        const updatedMode = await settingsService.updateMode(
+          modeId,
+          cleanUpdates,
+        );
 
         if (shouldRefreshPreload) {
           const transcriptionService = ctx.serviceManager.getService(
@@ -1050,7 +1055,7 @@ export const settingsRouter = createRouter({
       const userDataPath = app.getPath("userData");
 
       // Delete database files (main db + WAL/SHM files)
-      const dbFile = path.join(userDataPath, "amical.db");
+      const dbFile = path.join(userDataPath, "grizzo.db");
       await fs.rm(dbFile, { force: true }).catch(() => {});
       await fs.rm(`${dbFile}-wal`, { force: true }).catch(() => {});
       await fs.rm(`${dbFile}-shm`, { force: true }).catch(() => {});
