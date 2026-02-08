@@ -161,6 +161,14 @@ export class WindowManager {
       },
       trafficLightPosition: this.getTrafficLightPosition(),
       useContentSize: true,
+      ...(process.platform === "darwin"
+        ? {
+            transparent: true,
+            vibrancy: "under-window" as const,
+            visualEffectState: "active" as const,
+            backgroundColor: "#00000000",
+          }
+        : {}),
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
         nodeIntegration: false,

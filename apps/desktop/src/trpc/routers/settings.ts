@@ -783,16 +783,19 @@ export const settingsRouter = createRouter({
       // Get current UI settings
       const currentUISettings = await settingsService.getUISettings();
 
-      // Update with new theme
+      // Theme is currently fixed to dark mode.
       await settingsService.setUISettings({
         ...currentUISettings,
-        theme: input.theme,
+        theme: "dark",
       });
       // Window updates are handled via settings events in AppManager
 
       const logger = ctx.serviceManager.getLogger();
       if (logger) {
-        logger.main.info("UI theme updated", { theme: input.theme });
+        logger.main.info("UI theme update requested; forcing dark mode", {
+          requestedTheme: input.theme,
+          appliedTheme: "dark",
+        });
       }
 
       return true;
@@ -887,6 +890,7 @@ export const settingsRouter = createRouter({
       }
       try {
         await settingsService.setActiveMode(input.modeId);
+
         return true;
       } catch (error) {
         throw new TRPCError({
@@ -909,7 +913,22 @@ export const settingsRouter = createRouter({
         });
       }
       try {
-        return await settingsService.createMode(input);
+        const createdMode = await settingsService.createMode(input);
+
+        // Preload only needs refresh when speech model assignment changes.
+        if (input.speechModelId !== undefined) {
+          const transcriptionService = ctx.serviceManager.getService(
+            "transcriptionService",
+          );
+          if (transcriptionService) {
+            transcriptionService.handleModelChange().catch((err) => {
+              const logger = ctx.serviceManager.getLogger();
+              logger?.main.error("Failed to handle mode change:", err);
+            });
+          }
+        }
+
+        return createdMode;
       } catch (error) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -951,8 +970,26 @@ export const settingsRouter = createRouter({
           | "appBindings"
         >
       >;
+      const shouldRefreshPreload = Object.prototype.hasOwnProperty.call(
+        cleanUpdates,
+        "speechModelId",
+      );
       try {
-        return await settingsService.updateMode(modeId, cleanUpdates);
+        const updatedMode = await settingsService.updateMode(modeId, cleanUpdates);
+
+        if (shouldRefreshPreload) {
+          const transcriptionService = ctx.serviceManager.getService(
+            "transcriptionService",
+          );
+          if (transcriptionService) {
+            transcriptionService.handleModelChange().catch((err) => {
+              const logger = ctx.serviceManager.getLogger();
+              logger?.main.error("Failed to handle mode change:", err);
+            });
+          }
+        }
+
+        return updatedMode;
       } catch (error) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -975,6 +1012,17 @@ export const settingsRouter = createRouter({
       }
       try {
         await settingsService.deleteMode(input.modeId);
+
+        const transcriptionService = ctx.serviceManager.getService(
+          "transcriptionService",
+        );
+        if (transcriptionService) {
+          transcriptionService.handleModelChange().catch((err) => {
+            const logger = ctx.serviceManager.getLogger();
+            logger?.main.error("Failed to handle mode change:", err);
+          });
+        }
+
         return true;
       } catch (error) {
         throw new TRPCError({

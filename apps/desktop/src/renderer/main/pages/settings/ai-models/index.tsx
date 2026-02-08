@@ -8,32 +8,40 @@ const PROVIDERS = [
   {
     kind: "offline",
     provider: "Whisper (Offline)",
-    capabilities: ["Speech-to-Text"],
+    capabilities: ["speech model"],
   },
   {
     provider: "OpenAI",
     modelType: "language",
-    capabilities: ["LLM", "Speech-to-Text"],
+    capabilities: ["formatting model", "speech model"],
   },
-  { provider: "Anthropic", modelType: "language", capabilities: ["LLM"] },
-  { provider: "Google", modelType: "language", capabilities: ["LLM"] },
-  { provider: "OpenRouter", modelType: "language", capabilities: ["LLM"] },
-  { provider: "Ollama", modelType: "language", capabilities: ["LLM"] },
+  {
+    provider: "Anthropic",
+    modelType: "language",
+    capabilities: ["formatting model"],
+  },
+  { provider: "Google", modelType: "language", capabilities: ["formatting model"] },
+  {
+    provider: "OpenRouter",
+    modelType: "language",
+    capabilities: ["formatting model"],
+  },
+  { provider: "Ollama", modelType: "language", capabilities: ["formatting model"] },
   {
     provider: "Groq",
     modelType: "transcription",
-    capabilities: ["Speech-to-Text"],
+    capabilities: ["speech model"],
   },
   {
     provider: "Grok",
     modelType: "transcription",
-    capabilities: ["Speech-to-Text"],
+    capabilities: ["speech model"],
   },
 ] as const;
 
 export default function AIModelsSettingsPage() {
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div className="container mx-auto max-w-5xl px-6 pb-6">
       <div className="mb-8">
         <h1 className="text-xl font-bold">AI Models</h1>
       </div>

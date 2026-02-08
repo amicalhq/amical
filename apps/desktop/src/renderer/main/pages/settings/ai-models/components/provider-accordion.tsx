@@ -42,13 +42,13 @@ const LANGUAGE_PROVIDERS: ProviderName[] = [
 const SPEECH_PROVIDERS: ProviderName[] = ["OpenAI", "Groq", "Grok"];
 
 const PROVIDER_ICON_MAP: Record<ProviderName, string | null> = {
-  OpenAI: "/icons/models/openai_dark.svg",
-  Google: "/icons/models/gemini.svg",
-  OpenRouter: "/icons/models/open_router.svg",
-  Ollama: "/icons/models/ollama.svg",
-  Anthropic: "/icons/models/anthropic.svg",
-  Groq: "/icons/models/groq.svg",
-  Grok: "/icons/models/grok.svg",
+  OpenAI: "icons/models/openai_dark.svg",
+  Google: "icons/models/gemini.svg",
+  OpenRouter: "icons/models/open_router.svg",
+  Ollama: "icons/models/ollama.svg",
+  Anthropic: "icons/models/anthropic.svg",
+  Groq: "icons/models/groq.svg",
+  Grok: "icons/models/grok.svg",
 };
 
 const PROVIDER_ICON_FRAME: Record<ProviderName, string> = {
@@ -99,11 +99,16 @@ export default function ProviderAccordion({
   capabilities,
 }: ProviderAccordionProps) {
   const displayCapabilities = (capabilities ?? [])
-    .map((capability) =>
-      capability === "SPEECH2TEXT" ? "Speech-to-Text" : capability,
-    )
+    .map((capability) => {
+      if (capability === "LLM") return "formatting model";
+      if (capability === "SPEECH2TEXT" || capability === "Speech-to-Text") {
+        return "speech model";
+      }
+      return capability;
+    })
     .filter(
-      (capability) => capability === "LLM" || capability === "Speech-to-Text",
+      (capability) =>
+        capability === "formatting model" || capability === "speech model",
     )
     .filter((capability, index, list) => list.indexOf(capability) === index);
 
@@ -257,12 +262,81 @@ export default function ProviderAccordion({
     availableSpeechModelsQuery.isLoading ||
     availableSpeechModelsQuery.isFetching;
 
+  const syncProviderModelsMutation =
+    api.models.syncProviderModelsToDatabase.useMutation({
+      onSuccess: () => {
+        utils.models.getSyncedProviderModels.invalidate();
+        utils.models.getModels.invalidate();
+        toast.success("Models synced successfully!");
+      },
+      onError: (error) => {
+        console.error("Failed to sync models:", error);
+        toast.error("Failed to sync models. Please try again.");
+      },
+    });
+
+  const syncLanguageModelsAfterConnect = async (
+    providerName: ProviderName,
+    credential: string,
+  ) => {
+    const trimmedCredential = credential.trim();
+    if (!trimmedCredential || !LANGUAGE_PROVIDERS.includes(providerName)) {
+      return;
+    }
+
+    try {
+      let fetchedModels: unknown[] = [];
+
+      switch (providerName) {
+        case "OpenRouter":
+          fetchedModels = await utils.models.fetchOpenRouterModels.fetch({
+            apiKey: trimmedCredential,
+          });
+          break;
+        case "Ollama":
+          fetchedModels = await utils.models.fetchOllamaModels.fetch({
+            url: trimmedCredential,
+          });
+          break;
+        case "OpenAI":
+          fetchedModels = await utils.models.fetchOpenAIModels.fetch({
+            apiKey: trimmedCredential,
+          });
+          break;
+        case "Anthropic":
+          fetchedModels = await utils.models.fetchAnthropicModels.fetch({
+            apiKey: trimmedCredential,
+          });
+          break;
+        case "Google":
+          fetchedModels = await utils.models.fetchGoogleModels.fetch({
+            apiKey: trimmedCredential,
+          });
+          break;
+        default:
+          return;
+      }
+
+      await syncProviderModelsMutation.mutateAsync({
+        provider: providerName,
+        models: fetchedModels,
+      });
+    } catch (error) {
+      console.error(`Auto-sync failed for ${providerName}:`, error);
+      toast.error(
+        `${providerName} connected, but model sync failed. Try the Sync button.`,
+      );
+      await utils.models.getModels.invalidate();
+    }
+  };
+
   // --- Config save mutations ---
   const setOpenRouterConfigMutation =
     api.settings.setOpenRouterConfig.useMutation({
-      onSuccess: () => {
+      onSuccess: async (_data, variables) => {
         toast.success("OpenRouter configuration saved successfully!");
-        utils.settings.getModelProvidersConfig.invalidate();
+        await utils.settings.getModelProvidersConfig.invalidate();
+        await syncLanguageModelsAfterConnect("OpenRouter", variables.apiKey);
       },
       onError: (error) => {
         console.error("Failed to save OpenRouter config:", error);
@@ -273,9 +347,10 @@ export default function ProviderAccordion({
     });
 
   const setOllamaConfigMutation = api.settings.setOllamaConfig.useMutation({
-    onSuccess: () => {
+    onSuccess: async (_data, variables) => {
       toast.success("Ollama configuration saved successfully!");
-      utils.settings.getModelProvidersConfig.invalidate();
+      await utils.settings.getModelProvidersConfig.invalidate();
+      await syncLanguageModelsAfterConnect("Ollama", variables.url);
     },
     onError: (error) => {
       console.error("Failed to save Ollama config:", error);
@@ -284,10 +359,11 @@ export default function ProviderAccordion({
   });
 
   const setOpenAIConfigMutation = api.settings.setOpenAIConfig.useMutation({
-    onSuccess: () => {
+    onSuccess: async (_data, variables) => {
       toast.success("OpenAI configuration saved successfully!");
-      utils.settings.getModelProvidersConfig.invalidate();
-      utils.models.getTranscriptionProviderStatus.invalidate();
+      await utils.settings.getModelProvidersConfig.invalidate();
+      await utils.models.getTranscriptionProviderStatus.invalidate();
+      await syncLanguageModelsAfterConnect("OpenAI", variables.apiKey);
     },
     onError: (error) => {
       console.error("Failed to save OpenAI config:", error);
@@ -297,9 +373,10 @@ export default function ProviderAccordion({
 
   const setAnthropicConfigMutation =
     api.settings.setAnthropicConfig.useMutation({
-      onSuccess: () => {
+      onSuccess: async (_data, variables) => {
         toast.success("Anthropic configuration saved successfully!");
-        utils.settings.getModelProvidersConfig.invalidate();
+        await utils.settings.getModelProvidersConfig.invalidate();
+        await syncLanguageModelsAfterConnect("Anthropic", variables.apiKey);
       },
       onError: (error) => {
         console.error("Failed to save Anthropic config:", error);
@@ -310,9 +387,10 @@ export default function ProviderAccordion({
     });
 
   const setGoogleConfigMutation = api.settings.setGoogleConfig.useMutation({
-    onSuccess: () => {
+    onSuccess: async (_data, variables) => {
       toast.success("Google configuration saved successfully!");
-      utils.settings.getModelProvidersConfig.invalidate();
+      await utils.settings.getModelProvidersConfig.invalidate();
+      await syncLanguageModelsAfterConnect("Google", variables.apiKey);
     },
     onError: (error) => {
       console.error("Failed to save Google config:", error);
@@ -462,18 +540,6 @@ export default function ProviderAccordion({
           setGoogleConfigMutation.mutate({ apiKey: inputValue.trim() }),
         ),
       onError: (error) => onValidationError(error, "Google"),
-    });
-
-  const syncProviderModelsMutation =
-    api.models.syncProviderModelsToDatabase.useMutation({
-      onSuccess: () => {
-        utils.models.getSyncedProviderModels.invalidate();
-        toast.success("Models synced successfully!");
-      },
-      onError: (error) => {
-        console.error("Failed to sync models:", error);
-        toast.error("Failed to sync models. Please try again.");
-      },
     });
 
   // --- Remove provider mutations ---
@@ -673,23 +739,19 @@ export default function ProviderAccordion({
   };
 
   function statusIndicator(status: "connected" | "disconnected") {
+    if (status !== "connected") {
+      return null;
+    }
+
     return (
       <Badge
         variant="secondary"
-        className={cn(
-          "text-xs flex items-center gap-1",
-          status === "connected"
-            ? "text-green-500 border-green-500"
-            : "text-red-500 border-red-500",
-        )}
+        className="text-xs flex items-center gap-1 text-green-500"
       >
         <span
-          className={cn(
-            "w-2 h-2 rounded-full inline-block animate-pulse mr-1",
-            status === "connected" ? "bg-green-500" : "bg-red-500",
-          )}
+          className="w-2 h-2 rounded-full inline-block animate-pulse mr-1 bg-green-500"
         />
-        {status === "connected" ? "Connected" : "Disconnected"}
+        Connected
       </Badge>
     );
   }
@@ -709,7 +771,7 @@ export default function ProviderAccordion({
     <>
       <AccordionItem
         value={provider.toLowerCase()}
-        className="rounded-lg border border-border bg-muted/30 px-4 py-2 data-[state=open]:bg-muted/40"
+        className="rounded-lg border border-border bg-muted/30 px-4 py-2 data-[state=open]:bg-muted/40 last:!border-b"
       >
         <AccordionTrigger className="py-2 no-underline hover:no-underline group-hover:no-underline">
           <div className="flex w-full items-center justify-between gap-4">
@@ -747,7 +809,7 @@ export default function ProviderAccordion({
                       <Badge
                         key={capability}
                         variant="secondary"
-                        className="text-[10px] px-1.5 py-0 tracking-wide"
+                        className="bg-white/12 text-foreground text-[10px] px-1.5 py-0 tracking-wide font-semibold"
                       >
                         {capability}
                       </Badge>
@@ -826,7 +888,7 @@ export default function ProviderAccordion({
                   <div className="rounded-md border border-border/60 bg-background/50 p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-muted-foreground">
-                        Language models
+                        formatting model
                       </span>
                       {isLanguageFetching && (
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
@@ -865,7 +927,7 @@ export default function ProviderAccordion({
                   <div className="rounded-md border border-border/60 bg-background/50 p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-muted-foreground">
-                        Speech models
+                        speech model
                       </span>
                       {isSpeechFetching && (
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Pencil, X } from "lucide-react";
+import { KeyboardShortcut } from "@/components/ui/keyboard-shortcut";
+import { X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
@@ -59,16 +60,11 @@ function RecordingDisplay({
       tabIndex={0}
     >
       {activeKeys.length > 0 ? (
-        <div className="flex items-center gap-1">
-          {activeKeys.map((key, index) => (
-            <kbd
-              key={index}
-              className="px-1.5 py-0.5 text-xs bg-background rounded border"
-            >
-              {key}
-            </kbd>
-          ))}
-        </div>
+        <KeyboardShortcut
+          keys={activeKeys}
+          keyClassName="h-6 min-w-6 text-xs px-2"
+          separatorClassName="text-xs"
+        />
       ) : (
         <span className="text-sm text-muted-foreground">Press keys...</span>
       )}
@@ -91,28 +87,33 @@ function ShortcutDisplay({
   value?: string[];
   onEdit: () => void;
 }) {
-  // Format array as display string (e.g., ["Fn", "Space"] -> "Fn+Space")
-  const displayValue = value?.length ? value.join("+") : undefined;
-
-  return (
-    <>
-      {displayValue && (
-        <kbd
-          onClick={onEdit}
-          className="inline-flex items-center px-3 py-1 bg-muted hover:bg-muted/70 rounded-md text-sm font-mono cursor-pointer transition-colors"
-        >
-          {displayValue}
-        </kbd>
-      )}
+  if (!value?.length) {
+    return (
       <Button
-        variant="ghost"
+        type="button"
+        variant="outline"
         size="sm"
-        className="h-6 w-6 p-0"
+        className="h-7 px-2 text-xs"
         onClick={onEdit}
       >
-        <Pencil className="h-3 w-3" />
+        Set shortcut
       </Button>
-    </>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      className="inline-flex items-center rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+    >
+      <KeyboardShortcut
+        keys={value}
+        className="pointer-events-none"
+        keyClassName="h-6 min-w-6 text-xs px-2"
+        separatorClassName="text-xs text-muted-foreground"
+      />
+    </button>
   );
 }
 

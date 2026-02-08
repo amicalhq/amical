@@ -31,6 +31,11 @@ body {
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
+  --kbd-keycap-face-1: oklch(0.895 0 0);
+  --kbd-keycap-face-2: oklch(0.88 0 0);
+  --kbd-keycap-shadow-1: oklch(0.952 0 0);
+  --kbd-keycap-shadow-2: oklch(0.942 0 0);
+  --kbd-keycap-shadow-3: oklch(0.932 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
@@ -58,8 +63,8 @@ body {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.145 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: #2d7fe8;
+  --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -69,6 +74,11 @@ body {
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
   --border: oklch(0.269 0 0);
+  --kbd-keycap-face-1: oklch(0.31 0 0);
+  --kbd-keycap-face-2: oklch(0.295 0 0);
+  --kbd-keycap-shadow-1: oklch(0.39 0 0);
+  --kbd-keycap-shadow-2: oklch(0.375 0 0);
+  --kbd-keycap-shadow-3: oklch(0.36 0 0);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.488 0.243 264.376);
@@ -132,4 +142,60 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+@layer components {
+  @keyframes mode-active-ring-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.82;
+    }
+    50% {
+      transform: scale(1.08);
+      opacity: 1;
+    }
+  }
+
+  @keyframes mode-active-dot-ping {
+    0% {
+      transform: scale(0.72);
+      opacity: 0.45;
+    }
+    100% {
+      transform: scale(1.65);
+      opacity: 0;
+    }
+  }
+
+  .mode-active-ring {
+    animation: mode-active-ring-breathe 2.8s ease-in-out infinite;
+  }
+
+  .mode-active-dot-ping {
+    animation: mode-active-dot-ping 0.75s ease-out 1;
+  }
+
+  .kbd-keycap {
+    border-color: var(--kbd-keycap-shadow-2);
+    box-shadow:
+      0 1px 0 var(--kbd-keycap-shadow-1),
+      0 3px 0 var(--kbd-keycap-shadow-2),
+      0 4px 0 var(--kbd-keycap-shadow-3);
+  }
+}
+
+body.main-window-body {
+  background: transparent;
+  position: relative;
+}
+
+body.main-window-body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
 }

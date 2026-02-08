@@ -81,9 +81,10 @@ export default function SyncModelsDialog({
     api.models.syncProviderModelsToDatabase.useMutation({
       onSuccess: () => {
         utils.models.getSyncedProviderModels.invalidate();
+        utils.models.getModels.invalidate();
         toast.success("Models synced to database successfully!");
       },
-      onError: (error: any) => {
+      onError: (error: unknown) => {
         console.error("Failed to sync models to database:", error);
         toast.error("Failed to sync models to database. Please try again.");
       },

@@ -38,6 +38,7 @@ const TRANSCRIPTION_API_ENDPOINTS: Record<string, string> = {
  */
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
+  private whisperProvidersByModelId = new Map<string, WhisperProvider>();
   private apiProviders = new Map<string, OpenAITranscriptionProvider>();
   private currentProvider: TranscriptionProvider | null = null;
   private streamingSessions = new Map<string, StreamingSession>();
@@ -68,6 +69,17 @@ export class TranscriptionService {
     this.modelService = modelService;
   }
 
+  private getOrCreateWhisperProvider(modelId: string): WhisperProvider {
+    const cached = this.whisperProvidersByModelId.get(modelId);
+    if (cached) {
+      return cached;
+    }
+
+    const provider = new WhisperProvider(this.modelService, modelId);
+    this.whisperProvidersByModelId.set(modelId, provider);
+    return provider;
+  }
+
   /**
    * Select the appropriate transcription provider based on the selected model
    */
@@ -93,7 +105,14 @@ export class TranscriptionService {
       return apiProvider;
     }
 
-    // Default to whisper for offline models
+    // Use model-scoped whisper provider for offline model overrides
+    if (model?.setup === "offline" && effectiveModelId) {
+      const provider = this.getOrCreateWhisperProvider(effectiveModelId);
+      this.currentProvider = provider;
+      return provider;
+    }
+
+    // Fallback to default whisper provider (best available local model)
     this.currentProvider = this.whisperProvider;
     return this.whisperProvider;
   }
@@ -143,34 +162,99 @@ export class TranscriptionService {
     return provider;
   }
 
+  private async resolveOfflinePreloadTargets(): Promise<{
+    modelIds: string[];
+    preloadFallbackProvider: boolean;
+  }> {
+    const { items } = await this.settingsService.getModes();
+    const selectedModelId = await this.modelService.getSelectedModel();
+
+    const modelIds = new Set<string>();
+    let preloadFallbackProvider = false;
+
+    for (const mode of items) {
+      const effectiveModelId = mode.speechModelId ?? selectedModelId;
+
+      if (!effectiveModelId) {
+        preloadFallbackProvider = true;
+        continue;
+      }
+
+      const model = AVAILABLE_MODELS.find((item) => item.id === effectiveModelId);
+      if (!model) {
+        preloadFallbackProvider = true;
+        continue;
+      }
+
+      if (model.setup === "api") {
+        continue;
+      }
+
+      // Preload the same model-scoped provider that will be selected at runtime.
+      // If this preferred model is unavailable, WhisperProvider falls back
+      // internally to the best downloaded local model.
+      modelIds.add(effectiveModelId);
+    }
+
+    return {
+      modelIds: Array.from(modelIds),
+      preloadFallbackProvider,
+    };
+  }
+
+  private async disposeUnusedWhisperProviders(
+    requiredModelIds: Set<string>,
+  ): Promise<void> {
+    for (const [modelId, provider] of this.whisperProvidersByModelId) {
+      if (requiredModelIds.has(modelId)) {
+        continue;
+      }
+
+      try {
+        await provider.dispose();
+      } catch (error) {
+        logger.transcription.warn("Failed to dispose Whisper provider", {
+          modelId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        this.whisperProvidersByModelId.delete(modelId);
+      }
+    }
+  }
+
   async initialize(): Promise<void> {
-    // Check if the selected model is an API model
+    // Check if the selected model is an API model (used for warning behavior only)
     const selectedModelId = await this.modelService.getSelectedModel();
     const model = selectedModelId
       ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
       : null;
-    const isNonLocalModel = model?.setup === "api";
+    const isSelectedModelApi = model?.setup === "api";
 
-    // Only preload for local models
-    if (!isNonLocalModel) {
-      // Check if we should preload Whisper model
-      const transcriptionSettings =
-        await this.settingsService.getTranscriptionSettings();
-      const shouldPreload =
-        transcriptionSettings?.preloadWhisperModel !== false; // Default to true
+    const transcriptionSettings =
+      await this.settingsService.getTranscriptionSettings();
+    const shouldPreload = transcriptionSettings?.preloadWhisperModel !== false; // Default to true
 
-      if (shouldPreload) {
-        // Check if models are available for preloading
-        const hasModels = await this.isModelAvailable();
-        if (hasModels) {
-          logger.transcription.info("Preloading Whisper model...");
-          await this.preloadWhisperModel();
-          this.modelWasPreloaded = true;
-          logger.transcription.info("Whisper model preloaded successfully");
+    if (shouldPreload) {
+      const hasModels = await this.isModelAvailable();
+      if (hasModels) {
+        logger.transcription.info("Preloading Whisper models for modes...");
+        const preloadedCount = await this.preloadWhisperModel();
+        this.modelWasPreloaded = preloadedCount > 0;
+        if (preloadedCount > 0) {
+          logger.transcription.info("Whisper models preloaded successfully", {
+            preloadedCount,
+          });
         } else {
           logger.transcription.info(
-            "Whisper model preloading skipped - no models available",
+            "Whisper preloading skipped - current modes do not use offline models",
           );
+        }
+      } else {
+        logger.transcription.info(
+          "Whisper model preloading skipped - no offline models available",
+        );
+        if (!isSelectedModelApi) {
           setTimeout(async () => {
             const onboardingCheck =
               await this.onboardingService?.checkNeedsOnboarding();
@@ -186,55 +270,66 @@ export class TranscriptionService {
             }
           }, 2000); // Delay to ensure windows are ready
         }
-      } else {
-        logger.transcription.info("Whisper model preloading disabled");
       }
     } else {
-      logger.transcription.info(
-        "Using API model - skipping local model preload",
-      );
+      logger.transcription.info("Whisper model preloading disabled");
     }
 
     logger.transcription.info("Transcription service initialized");
   }
 
   /**
-   * Preload Whisper model into memory
+   * Preload Whisper models used by modes into memory
    */
-  async preloadWhisperModel(): Promise<void> {
-    try {
-      // This will trigger the model initialization in WhisperProvider
-      await this.whisperProvider.preloadModel();
-      logger.transcription.info("Whisper model preloaded successfully");
-    } catch (error) {
-      logger.transcription.error("Failed to preload Whisper model:", error);
-      throw error;
+  async preloadWhisperModel(): Promise<number> {
+    const { modelIds, preloadFallbackProvider } =
+      await this.resolveOfflinePreloadTargets();
+    const requiredModelIds = new Set(modelIds);
+    const preloadAttempts = modelIds.length + (preloadFallbackProvider ? 1 : 0);
+
+    let loadedCount = 0;
+
+    for (const modelId of modelIds) {
+      try {
+        const provider = this.getOrCreateWhisperProvider(modelId);
+        await provider.preloadModel();
+        loadedCount++;
+        logger.transcription.info("Preloaded mode Whisper model", { modelId });
+      } catch (error) {
+        logger.transcription.error("Failed to preload mode Whisper model", {
+          modelId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
+
+    if (preloadFallbackProvider) {
+      try {
+        await this.whisperProvider.preloadModel();
+        loadedCount++;
+        logger.transcription.info("Preloaded fallback Whisper model");
+      } catch (error) {
+        logger.transcription.error("Failed to preload fallback Whisper model", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.disposeUnusedWhisperProviders(requiredModelIds);
+
+    if (preloadAttempts > 0 && loadedCount === 0) {
+      throw new Error("Failed to preload any Whisper models");
+    }
+
+    return loadedCount;
   }
 
   /**
-   * Check if transcription models are available (real-time check)
+   * Check if any local offline transcription model is available
    */
   public async isModelAvailable(): Promise<boolean> {
     try {
-      // Check if selected model is an API model (doesn't need download)
-      const selectedModelId = await this.modelService.getSelectedModel();
-      if (selectedModelId) {
-        const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
-        if (model?.setup === "api") {
-          // API models are available if the corresponding API key is set
-          const config =
-            await this.settingsService.getModelProvidersConfig();
-          if (model.provider === "OpenAI" && config?.openAI?.apiKey) return true;
-          if (model.provider === "Groq" && config?.groq?.apiKey) return true;
-          if (model.provider === "Grok" && config?.grok?.apiKey) return true;
-          return false;
-        }
-      }
-
-      // For local models, check if any are downloaded
-      const modelService = this.whisperProvider["modelService"];
-      const availableModels = await modelService.getValidDownloadedModels();
+      const availableModels = await this.modelService.getValidDownloadedModels();
       return Object.keys(availableModels).length > 0;
     } catch (error) {
       logger.transcription.error("Failed to check model availability:", error);
@@ -257,7 +352,7 @@ export class TranscriptionService {
     // Clear cached API providers since model or API key may have changed
     this.apiProviders.clear();
 
-    this.modelLoadMutex.runExclusive(async () => {
+    await this.modelLoadMutex.runExclusive(async () => {
       try {
         this.modelWasPreloaded = false;
 
@@ -272,13 +367,17 @@ export class TranscriptionService {
             const hasModels = await this.isModelAvailable();
             if (hasModels) {
               logger.transcription.info(
-                "Loading Whisper model after model change...",
+                "Loading Whisper models after model change...",
               );
-              await this.whisperProvider.preloadModel();
-              this.modelWasPreloaded = true;
-              logger.transcription.info("Whisper model loaded successfully");
+              const preloadedCount = await this.preloadWhisperModel();
+              this.modelWasPreloaded = preloadedCount > 0;
+              logger.transcription.info("Whisper model preload finished", {
+                preloadedCount,
+              });
             } else {
-              logger.transcription.info("No models available to preload");
+              logger.transcription.info(
+                "No offline models available to preload",
+              );
             }
           }
         }
@@ -746,8 +845,8 @@ export class TranscriptionService {
 
     // Get native binding info if using local whisper
     let whisperNativeBinding: string | undefined;
-    if (this.whisperProvider && "getBindingInfo" in this.whisperProvider) {
-      const bindingInfo = await this.whisperProvider.getBindingInfo();
+    if (activeProvider instanceof WhisperProvider) {
+      const bindingInfo = await activeProvider.getBindingInfo();
       whisperNativeBinding = bindingInfo?.type;
       logger.transcription.info(
         "whisper native binding used",

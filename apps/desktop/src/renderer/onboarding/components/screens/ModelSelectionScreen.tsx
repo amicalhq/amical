@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
@@ -23,7 +24,7 @@ export function ModelSelectionScreen({
   onNext,
   onBack,
 }: ModelSelectionScreenProps) {
-  const PROVIDER_ICON = "/icons/models/pc.svg";
+  const PROVIDER_ICON = "icons/models/pc.svg";
   const PROVIDER_FRAME_CLASS = "bg-white border-slate-200";
   const PROVIDER_FALLBACK_CLASS = "text-slate-900";
 
@@ -152,7 +153,7 @@ export function ModelSelectionScreen({
 
   return (
     <OnboardingLayout
-      title="Set Up Speech-to-Text"
+      title="Set Up Speech Model"
       subtitle="Download a Whisper model to enable offline transcription"
       footer={
         <NavigationButtons
@@ -217,7 +218,7 @@ export function ModelSelectionScreen({
             return (
               <div
                 key={model.id}
-                className="rounded-lg border p-3 transition-colors border-border hover:border-muted-foreground/50"
+                className="rounded-lg border border-border p-3"
               >
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -235,25 +236,34 @@ export function ModelSelectionScreen({
                   </div>
 
                   {downloaded ? (
-                    <div
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/10 text-green-600"
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      disabled
+                      className="text-green-600 disabled:opacity-100"
                       title="Downloaded"
                       aria-label="Downloaded"
                     >
                       <Check className="h-4 w-4" />
-                    </div>
+                    </Button>
                   ) : isDownloading ? (
-                    <div
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-muted"
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      disabled
+                      className="disabled:opacity-100"
                       title="Downloading"
                       aria-label="Downloading"
                     >
-                      <Download className="h-4 w-4 animate-pulse text-muted-foreground" />
-                    </div>
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-muted hover:bg-muted/80 transition-colors"
+                      size="icon"
+                      variant="ghost"
                       title="Download"
                       aria-label="Download"
                       onClick={(event) => {
@@ -269,7 +279,7 @@ export function ModelSelectionScreen({
                       }}
                     >
                       <Download className="h-4 w-4 text-muted-foreground" />
-                    </button>
+                    </Button>
                   )}
                 </div>
 

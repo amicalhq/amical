@@ -1,28 +1,12 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SettingsSidebar } from "../../components/settings-sidebar";
-import { SiteHeader } from "@/components/site-header";
-import { useLocation } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsLayout,
 });
 
 function SettingsLayout() {
-  const location = useLocation();
-
-  const getSettingsPageTitle = (pathname: string): string => {
-    const routes: Record<string, string> = {
-      "/settings/preferences": "Settings",
-      "/settings/dictation": "Dictation",
-      "/settings/vocabulary": "Vocabulary",
-      "/settings/ai-models": "AI Models",
-      "/settings/history": "History",
-      "/settings/advanced": "Advanced",
-    };
-    return routes[pathname] || "Settings";
-  };
-
   return (
     <SidebarProvider
       style={
@@ -32,31 +16,45 @@ function SettingsLayout() {
         } as React.CSSProperties
       }
     >
-      <div className="flex h-screen w-screen flex-col">
-        <SiteHeader
-          currentView={`${getSettingsPageTitle(location.pathname)}`}
-        />
-
-        <div className="flex flex-1 min-h-0">
-          <SettingsSidebar variant="inset" />
-          <SidebarInset className="!mt-0">
-            <div className="flex flex-1 flex-col min-h-0">
-              <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">
-                <div className="flex-1 overflow-y-auto">
-                  <div
-                    className="mx-auto w-full flex flex-col gap-4 md:gap-6"
-                    style={{
-                      maxWidth: "var(--content-max-width)",
-                      padding: "var(--content-padding)",
-                    }}
-                  >
-                    <Outlet />
-                  </div>
+      <div className="flex h-screen w-screen min-h-0 overflow-hidden">
+        <SettingsSidebar variant="sidebar" />
+        <SidebarInset
+          style={
+            {
+              background:
+                "linear-gradient(160deg, #121518 0%, #0d1012 45%, #07090a 100%)",
+              "--background": "oklch(0.17 0 0)",
+              "--card": "oklch(0.205 0 0)",
+              "--popover": "oklch(0.205 0 0)",
+              "--secondary": "oklch(0.212 0 0)",
+              "--muted": "oklch(0.212 0 0)",
+              "--input": "oklch(0.3 0 0)",
+              "--border": "oklch(0.355 0 0)",
+              "--ring": "oklch(0.52 0 0)",
+            } as React.CSSProperties
+          }
+        >
+          <div
+            className="h-[var(--header-height)] shrink-0"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          />
+          <div className="flex flex-1 flex-col min-h-0">
+            <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
+                <div
+                  className="mx-auto w-full flex flex-col gap-4 md:gap-6"
+                  style={{
+                    maxWidth: "var(--content-max-width)",
+                    padding:
+                      "calc(var(--spacing) * 2) var(--content-padding) var(--content-padding)",
+                  }}
+                >
+                  <Outlet />
                 </div>
               </div>
             </div>
-          </SidebarInset>
-        </div>
+          </div>
+        </SidebarInset>
       </div>
     </SidebarProvider>
   );

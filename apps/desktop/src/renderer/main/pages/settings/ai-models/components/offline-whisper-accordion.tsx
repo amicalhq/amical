@@ -11,7 +11,7 @@ import { api } from "@/trpc/react";
 import type { DownloadProgress } from "@/constants/models";
 
 const PROVIDER_NAME = "Whisper (Offline)";
-const PROVIDER_ICON = "/icons/models/pc.svg";
+const PROVIDER_ICON = "icons/models/pc.svg";
 const PROVIDER_FRAME_CLASS = "bg-white border-slate-200";
 const PROVIDER_FALLBACK_CLASS = "text-slate-900";
 
@@ -173,7 +173,7 @@ export default function OfflineWhisperAccordion() {
   return (
     <AccordionItem
       value="wisper-offline"
-      className="rounded-lg border border-border bg-muted/30 px-4 py-2 data-[state=open]:bg-muted/40"
+      className="rounded-lg border border-border bg-muted/30 px-4 py-2 data-[state=open]:bg-muted/40 last:!border-b"
     >
       <AccordionTrigger className="py-2 no-underline hover:no-underline group-hover:no-underline">
         <div className="flex w-full items-center justify-between gap-4">
@@ -197,18 +197,18 @@ export default function OfflineWhisperAccordion() {
               <div className="flex flex-wrap gap-1">
                 <Badge
                   variant="secondary"
-                  className="text-[10px] px-1.5 py-0 tracking-wide"
+                  className="bg-white/12 text-foreground text-[10px] px-1.5 py-0 tracking-wide font-semibold"
                 >
-                  Speech-to-Text
+                  speech model
                 </Badge>
               </div>
             </div>
           </div>
           <Badge
             variant="secondary"
-            className="text-xs flex items-center gap-1 text-green-500 border-green-500"
+            className="text-xs flex items-center gap-1 text-green-500"
           >
-            <span className="w-2 h-2 rounded-full inline-block bg-green-500 mr-1" />
+            <span className="w-2 h-2 rounded-full inline-block animate-pulse bg-green-500 mr-1" />
             Available
           </Badge>
         </div>
@@ -216,7 +216,7 @@ export default function OfflineWhisperAccordion() {
       <AccordionContent className="p-1">
         <div className="mt-2 flex items-center justify-between">
           <span className="text-xs font-semibold text-muted-foreground">
-            Speech models
+            speech model
           </span>
         </div>
         {isLoading ? (

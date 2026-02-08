@@ -164,7 +164,7 @@ const defaultSettings: AppSettingsData = {
     enabled: false,
   },
   ui: {
-    theme: "system",
+    theme: "dark",
   },
   preferences: {
     launchAtLogin: true,

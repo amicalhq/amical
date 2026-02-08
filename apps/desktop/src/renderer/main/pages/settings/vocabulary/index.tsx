@@ -316,11 +316,11 @@ export default function VocabularySettingsPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div className="container mx-auto max-w-5xl px-6 pb-6">
       {/* Header Section */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-xl font-bold">Vocabulary</h1>
+          <h1 className="text-xl font-bold">Dictionary</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Manage your custom vocabulary and word replacements for dictation.
           </p>

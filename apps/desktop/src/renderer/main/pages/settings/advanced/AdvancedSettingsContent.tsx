@@ -178,23 +178,6 @@ export function AdvancedSettingsContent({
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label
-                htmlFor="auto-update"
-                className="text-base font-medium text-foreground"
-              >
-                Auto Updates
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Automatically check for updates
-              </p>
-            </div>
-            <Switch id="auto-update" defaultChecked />
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label
                 htmlFor="telemetry"
                 className="text-base font-medium text-foreground"
               >

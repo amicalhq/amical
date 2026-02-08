@@ -58,8 +58,8 @@ export default function ModesPage() {
   const activeModeId = modesQuery.data?.activeModeId ?? "default";
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      <div className="mb-8 flex items-start justify-between">
+    <div className="container mx-auto max-w-5xl px-6 pb-6">
+      <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Modes</h1>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -69,9 +69,9 @@ export default function ModesPage() {
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="w-4 h-4 mr-1" />
-              Create mode
+            <Button className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Create Mode
             </Button>
           </DialogTrigger>
           <DialogContent>

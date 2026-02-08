@@ -84,6 +84,8 @@ const App: React.FC = () => {
   );
 };
 
+document.body.classList.add("main-window-body");
+
 // Render the app
 const container = document.getElementById("root");
 if (container) {

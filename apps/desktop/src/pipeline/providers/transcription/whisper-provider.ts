@@ -13,6 +13,7 @@ export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
 
   private modelService: ModelService;
+  private preferredModelId?: string;
   private workerWrapper: SimpleForkWrapper | null = null;
 
   // Frame aggregation state
@@ -49,8 +50,9 @@ export class WhisperProvider implements TranscriptionProvider {
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
   private readonly IGNORE_FULLY_SILENT_CHUNKS = true;
 
-  constructor(modelService: ModelService) {
+  constructor(modelService: ModelService, preferredModelId?: string) {
     this.modelService = modelService;
+    this.preferredModelId = preferredModelId;
   }
 
   /**
@@ -344,7 +346,24 @@ export class WhisperProvider implements TranscriptionProvider {
       await this.workerWrapper.initialize();
     }
 
-    const modelPath = await this.modelService.getBestAvailableModelPath();
+    let modelPath: string | null = null;
+
+    if (this.preferredModelId) {
+      const downloadedModels = await this.modelService.getValidDownloadedModels();
+      modelPath = downloadedModels[this.preferredModelId]?.localPath ?? null;
+
+      if (!modelPath) {
+        logger.transcription.warn(
+          "Preferred Whisper model is unavailable; falling back to best available model",
+          { preferredModelId: this.preferredModelId },
+        );
+      }
+    }
+
+    if (!modelPath) {
+      modelPath = await this.modelService.getBestAvailableModelPath();
+    }
+
     if (!modelPath) {
       throw new Error(
         "No Whisper models available. Please download a model first.",

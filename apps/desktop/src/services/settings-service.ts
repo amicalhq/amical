@@ -64,11 +64,22 @@ export class SettingsService extends EventEmitter {
    * Get UI settings
    */
   async getUISettings(): Promise<AppSettingsData["ui"]> {
-    return (
+    const uiSettings =
       (await getSettingsSection("ui")) ?? {
-        theme: "system",
-      }
-    );
+        theme: "dark",
+      };
+
+    // Theme is currently fixed to dark mode.
+    if (uiSettings.theme !== "dark") {
+      const normalizedSettings: AppSettingsData["ui"] = {
+        ...uiSettings,
+        theme: "dark",
+      };
+      await updateSettingsSection("ui", normalizedSettings);
+      return normalizedSettings;
+    }
+
+    return uiSettings;
   }
 
   /**

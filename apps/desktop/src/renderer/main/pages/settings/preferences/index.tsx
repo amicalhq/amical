@@ -66,13 +66,31 @@ export default function PreferencesSettingsPage() {
   const isMac = window.electronAPI.platform === "darwin";
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div className="container mx-auto max-w-5xl px-6 pb-6">
       {/* Header Section */}
       <div className="mb-8">
         <h1 className="text-xl font-bold">Settings</h1>
       </div>
 
       <div className="space-y-10">
+        <section className="space-y-4">
+          <h2 className="text-base font-semibold text-foreground">
+            Microphone
+          </h2>
+          <Card>
+            <CardContent>
+              <MicrophoneSettings />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-base font-semibold text-foreground">
+            Keyboard Shortcuts
+          </h2>
+          <KeyboardShortcutsCard />
+        </section>
+
         <section className="space-y-4">
           <h2 className="text-base font-semibold text-foreground">
             Application
@@ -160,6 +178,24 @@ export default function PreferencesSettingsPage() {
                   </>
                 )}
 
+                {/* Auto Updates Section */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="auto-update"
+                      className="text-base font-medium text-foreground"
+                    >
+                      Auto Updates
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically check for updates
+                    </p>
+                  </div>
+                  <Switch id="auto-update" defaultChecked />
+                </div>
+
+                <Separator />
+
                 {/* Theme Section */}
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
@@ -167,7 +203,7 @@ export default function PreferencesSettingsPage() {
                       Theme
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Choose your preferred color scheme
+                      Dark mode only for now. More themes coming soon.
                     </p>
                   </div>
                   <ThemeToggle />
@@ -175,24 +211,6 @@ export default function PreferencesSettingsPage() {
               </CardContent>
             </Card>
           </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-base font-semibold text-foreground">
-            Microphone
-          </h2>
-          <Card>
-            <CardContent>
-              <MicrophoneSettings />
-            </CardContent>
-          </Card>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-base font-semibold text-foreground">
-            Keyboard Shortcuts
-          </h2>
-          <KeyboardShortcutsCard />
         </section>
 
         <section className="space-y-4">

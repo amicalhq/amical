@@ -1,51 +1,52 @@
 import * as React from "react";
-import { Moon, Sun, Monitor } from "lucide-react";
-import { useTheme } from "next-themes";
-import { api } from "@/trpc/react";
+import { Moon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function ThemeToggle() {
-  const { setTheme } = useTheme();
-  const updateUIThemeMutation = api.settings.updateUITheme.useMutation();
+  const [open, setOpen] = React.useState(false);
+  const timeoutRef = React.useRef<number | null>(null);
 
-  const handleThemeChange = (newTheme: "light" | "dark" | "system") => {
-    // Update local theme immediately for instant feedback
-    setTheme(newTheme);
+  React.useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
-    // Sync with backend
-    updateUIThemeMutation.mutate({ theme: newTheme });
+  const showComingSoonTooltip = () => {
+    setOpen(true);
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = window.setTimeout(() => {
+      setOpen(false);
+      timeoutRef.current = null;
+    }, 1200);
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" className="relative">
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span className="sr-only">Toggle theme</span>
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={showComingSoonTooltip}
+          aria-label="Theme switching is coming soon"
+        >
+          <Moon className="h-[1.2rem] w-[1.2rem]" />
+          <span className="sr-only">Theme switching coming soon</span>
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => handleThemeChange("light")}>
-          <Sun className="mr-2 h-4 w-4" />
-          <span>Light</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleThemeChange("dark")}>
-          <Moon className="mr-2 h-4 w-4" />
-          <span>Dark</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleThemeChange("system")}>
-          <Monitor className="mr-2 h-4 w-4" />
-          <span>System</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6}>
+        comming soon...
+      </TooltipContent>
+    </Tooltip>
   );
 }

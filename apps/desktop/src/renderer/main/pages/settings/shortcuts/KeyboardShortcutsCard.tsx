@@ -65,16 +65,16 @@ export function KeyboardShortcutsCard() {
     <Card>
       <CardContent className="space-y-8">
         <div>
-          <div className="flex flex-col md:flex-row md:justify-between gap-4">
+          <div className="flex items-center justify-between">
             <div>
               <Label className="text-base font-semibold text-foreground">
                 Push to talk
               </Label>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">
+              <p className="text-xs text-muted-foreground mt-1">
                 Hold to dictate while key is pressed
               </p>
             </div>
-            <div className="flex flex-col gap-2 items-end min-w-[260px]">
+            <div className="min-w-[200px] flex justify-end">
               <ShortcutInput
                 value={pushToTalkShortcut}
                 onChange={handlePushToTalkChange}
@@ -89,17 +89,17 @@ export function KeyboardShortcutsCard() {
         </div>
 
         <div>
-          <div className="flex flex-col md:flex-row md:justify-between gap-4">
+          <div className="flex items-center justify-between">
             <div>
               <Label className="text-base font-semibold text-foreground">
                 Hands-free mode
               </Label>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">
+              <p className="text-xs text-muted-foreground mt-1">
                 Start/stop dictation by pressing once to start and pressing
                 again to stop
               </p>
             </div>
-            <div className="flex flex-col gap-2 items-end min-w-[260px]">
+            <div className="min-w-[200px] flex justify-end">
               <ShortcutInput
                 value={toggleRecordingShortcut}
                 onChange={handleToggleRecordingChange}

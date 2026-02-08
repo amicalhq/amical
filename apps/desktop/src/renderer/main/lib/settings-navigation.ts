@@ -24,7 +24,7 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     type: "settings",
   },
   {
-    title: "Vocabulary",
+    title: "Dictionary",
     url: "/settings/vocabulary",
     description: "Manage custom vocabulary and word recognition",
     icon: IconBook,
