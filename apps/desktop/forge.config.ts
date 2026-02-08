@@ -402,10 +402,10 @@ const config: ForgeConfig = {
       unpack:
         "{*.node,*.dylib,*.so,*.dll,*.metal,**/node_modules/@amical/whisper-wrapper/**,**/whisper.cpp/**,**/.vite/build/whisper-worker-fork.js,**/node_modules/jest-worker/**,**/onnxruntime-node/bin/**}",
     },
-    name: "Vox",
-    executableName: "Vox",
+    name: "Grizzo",
+    executableName: "Grizzo",
     icon: "./assets/logo", // Path to your icon file
-    appBundleId: "com.vox.desktop", // Proper bundle ID
+    appBundleId: "com.grizzo.desktop", // Proper bundle ID
     extraResource: [
       `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
@@ -421,15 +421,15 @@ const config: ForgeConfig = {
         "This app needs access to your microphone to record audio for transcription.",
       CFBundleURLTypes: [
         {
-          CFBundleURLSchemes: ["vox"],
-          CFBundleURLName: "com.vox.desktop",
+          CFBundleURLSchemes: ["grizzo"],
+          CFBundleURLName: "com.grizzo.desktop",
         },
       ],
     },
     protocols: [
       {
-        name: "Vox",
-        schemes: ["vox"],
+        name: "Grizzo",
+        schemes: ["grizzo"],
       },
     ],
     // Code signing configuration for macOS
@@ -546,12 +546,12 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
-      name: "Vox",
+      name: "Grizzo",
       setupIcon: "./assets/logo.ico",
     }),
     new MakerZIP(
       {
-        // macOS ZIP files will be named like: Vox-darwin-arm64-1.0.0.zip
+        // macOS ZIP files will be named like: Grizzo-darwin-arm64-1.0.0.zip
         // The default naming includes platform and arch, which is good for auto-updates
       },
       ["darwin"],
@@ -559,7 +559,7 @@ const config: ForgeConfig = {
     new MakerDMG(
       {
         //! @see https://github.com/electron/forge/issues/3517#issuecomment-2428129194
-        // macOS DMG files will be named like: Vox-0.0.1-arm64.dmg
+        // macOS DMG files will be named like: Grizzo-0.0.1-arm64.dmg
         icon: "./assets/logo.icns",
         background: "./assets/dmg_bg.tiff",
       },

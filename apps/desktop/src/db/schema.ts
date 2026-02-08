@@ -52,7 +52,7 @@ export const vocabulary = sqliteTable("vocabulary", {
 export const appSettings = sqliteTable("app_settings", {
   id: integer("id").primaryKey(),
   data: text("data", { mode: "json" }).$type<AppSettingsData>().notNull(),
-  version: integer("version").notNull().default(1), // For migrations
+  version: integer("version").notNull().default(1), // Settings schema version
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -212,7 +212,6 @@ export interface AppSettingsData {
     items: ModeConfig[];
     activeModeId: string; // Must match an item's id
   };
-  _voxVersion?: number; // Custom migration version (independent from upstream `version` column)
   onboarding?: {
     completedVersion: number;
     completedAt: string; // ISO 8601 timestamp

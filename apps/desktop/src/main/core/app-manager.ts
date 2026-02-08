@@ -33,7 +33,7 @@ export class AppManager {
       const parsedUrl = new URL(url);
 
       // Handle auth callback
-      // For custom scheme URLs like vox://oauth/callback
+      // For custom scheme URLs like grizzo://oauth/callback
       // parsedUrl.host = "oauth" and parsedUrl.pathname = "/callback"
       if (parsedUrl.host === "oauth" && parsedUrl.pathname === "/callback") {
         const code = parsedUrl.searchParams.get("code");

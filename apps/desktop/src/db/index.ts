@@ -7,8 +7,8 @@ import * as schema from "./schema";
 
 // Get the user data directory for storing the database
 export const dbPath = app.isPackaged
-  ? path.join(app.getPath("userData"), "vox.db")
-  : path.join(process.cwd(), "vox.db");
+  ? path.join(app.getPath("userData"), "grizzo.db")
+  : path.join(process.cwd(), "grizzo.db");
 
 export const db = drizzle(`file:${dbPath}`, {
   schema: {

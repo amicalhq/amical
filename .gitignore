@@ -50,8 +50,8 @@ CLAUDE.md
 .local
 .claude
 .specify
-amical.db
-vox.db
+grizzo.db
+apps/desktop/*.db
 AGENTS.md
 
 # Temp files

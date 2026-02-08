@@ -70,11 +70,11 @@ jobs:
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-          FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
-          AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
-          AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
-          AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
-          API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
+          # FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
+          # AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
+          # AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
+          # AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
+          # API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
         run: |
           echo "Building Unsigned macOS arm64 artifacts..."
           pnpm make:arm64

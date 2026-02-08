@@ -15,7 +15,7 @@ export async function cleanupAudioFiles(options?: {
   const maxAgeMs = options?.maxAgeMs ?? 7 * 24 * 60 * 60 * 1000; // 7 days
   const maxSizeBytes = options?.maxSizeBytes ?? 500 * 1024 * 1024; // 500MB
 
-  const audioDir = path.join(app.getPath("temp"), "vox-audio");
+  const audioDir = path.join(app.getPath("temp"), "grizzo-audio");
 
   try {
     // Check if directory exists
@@ -107,7 +107,7 @@ export async function cleanupAudioFiles(options?: {
 export async function deleteAudioFile(filePath: string): Promise<void> {
   try {
     // Ensure the file is in the audio directory
-    const audioDir = path.join(app.getPath("temp"), "vox-audio");
+    const audioDir = path.join(app.getPath("temp"), "grizzo-audio");
     if (!filePath.startsWith(audioDir)) {
       throw new Error("File is not in the audio directory");
     }

@@ -1,7 +1,7 @@
 import type { Config } from "drizzle-kit";
 import * as path from "path";
 
-const dbPath = path.join(process.cwd(), "vox.db");
+const dbPath = path.join(process.cwd(), "grizzo.db");
 
 export default {
   schema: "./src/db/schema.ts",

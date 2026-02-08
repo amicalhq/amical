@@ -6,7 +6,7 @@ class AccessibilityQueue {
 
     /// Serial queue for accessibility operations with high priority
     private let queue = DispatchQueue(
-        label: "com.vox.accessibility",
+        label: "com.grizzo.accessibility",
         qos: .userInitiated,
         attributes: [],
         autoreleaseFrequency: .workItem

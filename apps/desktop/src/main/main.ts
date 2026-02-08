@@ -28,18 +28,18 @@ if (started) {
 
 // Set App User Model ID for Windows (required for Squirrel.Windows)
 if (isWindows()) {
-  app.setAppUserModelId("com.vox.desktop");
+  app.setAppUserModelId("com.grizzo.desktop");
 }
 
-// Register the vox:// protocol
+// Register the grizzo:// protocol
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("vox", process.execPath, [
+    app.setAsDefaultProtocolClient("grizzo", process.execPath, [
       process.argv[1],
     ]);
   }
 } else {
-  app.setAsDefaultProtocolClient("vox");
+  app.setAsDefaultProtocolClient("grizzo");
 }
 
 // Enforce single instance
@@ -93,7 +93,7 @@ app.on("second-instance", (_event, commandLine) => {
   }
 
   // Check if this is a protocol launch on Windows/Linux
-  const url = commandLine.find((arg) => arg.startsWith("vox://"));
+  const url = commandLine.find((arg) => arg.startsWith("grizzo://"));
   if (url) {
     if (isInitialized) {
       appManager.handleDeepLink(url);

@@ -185,7 +185,7 @@ export function AdvancedSettingsContent({
                 Anonymous Telemetry
               </Label>
               <p className="text-xs text-muted-foreground">
-                Help improve Vox by sharing anonymous usage data.{" "}
+                Help improve Grizzo by sharing anonymous usage data.{" "}
                 <button
                   onClick={handleOpenTelemetryDocs}
                   className="text-primary hover:underline"

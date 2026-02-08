@@ -46,7 +46,7 @@ export function SettingsSidebar({
               <div className="flex w-full flex-col items-start gap-1.5">
                 <img
                   src="assets/logo.svg"
-                  alt="Vox Logo"
+                  alt="Grizzo Logo"
                   className="h-9 w-auto max-w-[9rem] shrink-0 object-contain"
                 />
                 <span className="inline-flex items-center rounded-full border border-sidebar-border/70 bg-sidebar-accent/40 px-2 py-0.5 text-[10px] font-medium leading-none tracking-wide text-muted-foreground tabular-nums">

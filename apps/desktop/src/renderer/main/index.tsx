@@ -66,7 +66,7 @@ const LoadingSpinner: React.FC = () => {
           <div className="w-12 h-12 border-4 border-muted rounded-full"></div>
           <div className="w-12 h-12 border-4 border-foreground border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
         </div>
-        <p className="text-sm text-muted-foreground">Loading Vox...</p>
+        <p className="text-sm text-muted-foreground">Loading Grizzo...</p>
       </div>
     </div>
   );

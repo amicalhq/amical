@@ -700,8 +700,8 @@ export const settingsRouter = createRouter({
   getLogFilePath: procedure.query(() => {
     const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
     return isDev
-      ? path.join(app.getPath("userData"), "logs", "vox-dev.log")
-      : path.join(app.getPath("logs"), "vox.log");
+      ? path.join(app.getPath("userData"), "logs", "grizzo-dev.log")
+      : path.join(app.getPath("logs"), "grizzo.log");
   }),
 
   // Get machine ID for display
@@ -728,8 +728,8 @@ export const settingsRouter = createRouter({
     const { dialog, BrowserWindow } = await import("electron");
     const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
     const logPath = isDev
-      ? path.join(app.getPath("userData"), "logs", "vox-dev.log")
-      : path.join(app.getPath("logs"), "vox.log");
+      ? path.join(app.getPath("userData"), "logs", "grizzo-dev.log")
+      : path.join(app.getPath("logs"), "grizzo.log");
 
     const focusedWindow = BrowserWindow.getFocusedWindow();
     const saveOptions = {

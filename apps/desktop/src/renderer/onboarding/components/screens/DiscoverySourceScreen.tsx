@@ -61,7 +61,7 @@ export function DiscoverySourceScreen({
 
   const handleContinue = () => {
     if (!selectedSource) {
-      toast.error("Please select how you discovered Vox");
+      toast.error("Please select how you discovered Grizzo");
       return;
     }
 
@@ -78,7 +78,7 @@ export function DiscoverySourceScreen({
 
   return (
     <OnboardingLayout
-      title="How did you discover Vox?"
+      title="How did you discover Grizzo?"
       subtitle="This helps us understand where our users come from"
       footer={
         <NavigationButtons

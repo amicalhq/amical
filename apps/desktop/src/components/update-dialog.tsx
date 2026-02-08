@@ -117,7 +117,7 @@ export function UpdateDialog({
               Check for Updates
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Click below to check for the latest version of Vox.
+              Click below to check for the latest version of Grizzo.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -3,11 +3,11 @@ import { getPlatformDisplayName } from "./platform";
 
 /**
  * Get the User-Agent string for HTTP requests
- * Format: vox-desktop/{version} ({platform})
- * Example: vox-desktop/0.1.3 (macOS)
+ * Format: grizzo-desktop/{version} ({platform})
+ * Example: grizzo-desktop/0.1.3 (macOS)
  */
 export function getUserAgent(): string {
   const version = app.getVersion();
   const platform = getPlatformDisplayName();
-  return `vox-desktop/${version} (${platform})`;
+  return `grizzo-desktop/${version} (${platform})`;
 }

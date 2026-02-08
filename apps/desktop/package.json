@@ -1,9 +1,9 @@
 {
   "name": "@amical/desktop",
   "version": "0.0.1",
-  "description": "Vox Desktop app",
+  "description": "Grizzo Desktop app",
   "main": ".vite/build/main.js",
-  "productName": "Vox",
+  "productName": "Grizzo",
   "repository": {
     "type": "git",
     "url": "https://github.com/kousaku-maron/amical"

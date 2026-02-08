@@ -183,7 +183,7 @@ class FakeBrowserWindow extends EventEmitter {
 }
 
 // Create test directories
-const testUserDataPath = path.join(os.tmpdir(), "vox-test-" + Date.now());
+const testUserDataPath = path.join(os.tmpdir(), "grizzo-test-" + Date.now());
 const testAppPath = process.cwd();
 
 // Mock app object
@@ -205,7 +205,7 @@ const mockApp = {
     };
     return paths[name] || testUserDataPath;
   }),
-  getName: vi.fn(() => "Vox"),
+  getName: vi.fn(() => "Grizzo"),
   getVersion: vi.fn(() => "0.1.0-test"),
   isPackaged: false,
   isReady: vi.fn(() => true),
