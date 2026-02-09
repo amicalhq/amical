@@ -60,25 +60,20 @@ export class ServiceManager {
       return;
     }
 
-    try {
-      this.initializeSettingsService();
-      this.initializeAuthService();
-      await this.initializeTelemetryService();
-      await this.initializeModelServices();
-      await this.initializeOnboardingService();
-      this.initializePlatformServices();
-      await this.initializeVADService();
-      await this.initializeAIServices();
-      this.initializeRecordingManager();
-      await this.initializeShortcutManager();
-      this.initializeAutoUpdater();
+    this.initializeSettingsService();
+    this.initializeAuthService();
+    await this.initializeTelemetryService();
+    await this.initializeModelServices();
+    await this.initializeOnboardingService();
+    this.initializePlatformServices();
+    await this.initializeVADService();
+    await this.initializeAIServices();
+    this.initializeRecordingManager();
+    await this.initializeShortcutManager();
+    this.initializeAutoUpdater();
 
-      this.isInitialized = true;
-      logger.main.info("Services initialized successfully");
-    } catch (error) {
-      logger.main.error("Failed to initialize services:", error);
-      throw error;
-    }
+    this.isInitialized = true;
+    logger.main.info("Services initialized successfully");
   }
 
   private async initializeTelemetryService(): Promise<void> {
@@ -129,6 +124,10 @@ export class ServiceManager {
       await this.vadService.initialize();
       logger.main.info("VAD service initialized");
     } catch (error) {
+      this.telemetryService?.captureException(error, {
+        source: "service_manager",
+        stage: "initialize_vad_service",
+      });
       logger.main.error("Failed to initialize VAD service:", error);
       // Don't throw - VAD is not critical for basic functionality
     }
@@ -158,6 +157,10 @@ export class ServiceManager {
         client: "Pipeline with Whisper",
       });
     } catch (error) {
+      this.telemetryService?.captureException(error, {
+        source: "service_manager",
+        stage: "initialize_ai_services",
+      });
       logger.transcription.error(
         "Error initializing Transcription Service:",
         error,
@@ -268,6 +271,10 @@ export class ServiceManager {
 
   getSettingsService(): SettingsService | null {
     return this.settingsService;
+  }
+
+  getTelemetryService(): TelemetryService | null {
+    return this.telemetryService;
   }
 
   static getInstance(): ServiceManager {

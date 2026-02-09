@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { app as electronApp } from "electron";
 import split2 from "split2";
 import { v4 as uuid } from "uuid";
+import type { ZodTypeAny } from "zod";
 import { getNativeHelperName, getNativeHelperDir } from "../../utils/platform";
 
 import { EventEmitter } from "events";
@@ -18,22 +19,31 @@ import {
   HelperEvent,
   GetAccessibilityTreeDetailsParams,
   GetAccessibilityTreeDetailsResult,
+  GetAccessibilityTreeDetailsResultSchema,
   GetAccessibilityContextParams,
   GetAccessibilityContextResult,
+  GetAccessibilityContextResultSchema,
   GetAccessibilityStatusParams,
   GetAccessibilityStatusResult,
+  GetAccessibilityStatusResultSchema,
   RequestAccessibilityPermissionParams,
   RequestAccessibilityPermissionResult,
+  RequestAccessibilityPermissionResultSchema,
   PasteTextParams,
   PasteTextResult,
+  PasteTextResultSchema,
   MuteSystemAudioParams,
   MuteSystemAudioResult,
+  MuteSystemAudioResultSchema,
   RestoreSystemAudioParams,
   RestoreSystemAudioResult,
+  RestoreSystemAudioResultSchema,
   SetShortcutsParams,
   SetShortcutsResult,
+  SetShortcutsResultSchema,
   RecheckPressedKeysParams,
   RecheckPressedKeysResult,
+  RecheckPressedKeysResultSchema,
   AppContext,
 } from "@amical/types";
 
@@ -77,6 +87,100 @@ interface RPCMethods {
   };
 }
 
+type PendingRpc = {
+  method: keyof RPCMethods;
+  startTime: number;
+  timeoutMs: number;
+  timeoutHandle: NodeJS.Timeout;
+  // These come from the Promise constructor and are intentionally widened so we can
+  // store them in a non-generic map (method is the real source of typing here).
+  resolve: (result: unknown) => void;
+  reject: (error: Error) => void;
+};
+
+const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
+  getAccessibilityTreeDetails: GetAccessibilityTreeDetailsResultSchema,
+  getAccessibilityContext: GetAccessibilityContextResultSchema,
+  getAccessibilityStatus: GetAccessibilityStatusResultSchema,
+  requestAccessibilityPermission: RequestAccessibilityPermissionResultSchema,
+  pasteText: PasteTextResultSchema,
+  muteSystemAudio: MuteSystemAudioResultSchema,
+  restoreSystemAudio: RestoreSystemAudioResultSchema,
+  setShortcuts: SetShortcutsResultSchema,
+  recheckPressedKeys: RecheckPressedKeysResultSchema,
+};
+
+class NativeBridgeTimeoutError extends Error {
+  constructor(
+    message: string,
+    public readonly method: string,
+    public readonly requestId: string,
+    public readonly timeoutMs: number,
+    public readonly durationMs: number,
+  ) {
+    super(message);
+    this.name = "NativeBridgeTimeoutError";
+  }
+}
+
+class NativeBridgeHelperUnavailableError extends Error {
+  constructor(message: string, public readonly method: string) {
+    super(message);
+    this.name = "NativeBridgeHelperUnavailableError";
+  }
+}
+
+class NativeBridgeWriteError extends Error {
+  constructor(
+    message: string,
+    public readonly method: string,
+    public readonly requestId: string,
+    public readonly originalError: unknown,
+  ) {
+    super(message);
+    this.name = "NativeBridgeWriteError";
+  }
+}
+
+class NativeBridgeRpcResponseError extends Error {
+  constructor(
+    message: string,
+    public readonly method: string,
+    public readonly requestId: string,
+    public readonly rpcCode: number,
+    public readonly rpcData: unknown,
+  ) {
+    super(message);
+    this.name = "NativeBridgeRpcResponseError";
+  }
+}
+
+class NativeBridgeInvalidResponseError extends Error {
+  constructor(
+    message: string,
+    public readonly method: string,
+    public readonly requestId: string,
+    public readonly validationError: string,
+  ) {
+    super(message);
+    this.name = "NativeBridgeInvalidResponseError";
+  }
+}
+
+class NativeBridgeHelperCrashedError extends Error {
+  constructor(
+    message: string,
+    public readonly helperName: string,
+    public readonly method: string,
+    public readonly requestId: string,
+    public readonly exitCode: number | null,
+    public readonly signal: NodeJS.Signals | null,
+  ) {
+    super(message);
+    this.name = "NativeBridgeHelperCrashedError";
+  }
+}
+
 // Define event types for the client
 interface NativeBridgeEvents {
   helperEvent: (event: HelperEvent) => void;
@@ -87,10 +191,7 @@ interface NativeBridgeEvents {
 
 export class NativeBridge extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams | null = null;
-  private pending = new Map<
-    string,
-    { callback: (resp: RpcResponse) => void; startTime: number }
-  >();
+  private pending = new Map<string, PendingRpc>();
   private helperPath: string;
   private logger = createScopedLogger("native-bridge");
   private accessibilityContext: AppContext | null = null;
@@ -99,10 +200,16 @@ export class NativeBridge extends EventEmitter {
   private static readonly MAX_RESTARTS = 3;
   private static readonly RESTART_DELAY_MS = 1000;
   private static readonly RESTART_COUNT_RESET_MS = 30000; // Reset count after 30s of stability
+  // Keep a rolling buffer of stderr lines so crashes can include some native context,
+  // but cap what we send in telemetry to bound payload size and PII exposure.
+  private static readonly HELPER_STDERR_BUFFER_LINES_LIMIT = 80;
+  private static readonly HELPER_STDERR_TAIL_LINES = 20;
+  private static readonly HELPER_STDERR_TAIL_CHAR_LIMIT = 4000;
   private restartCount = 0;
   private lastRestartTime = 0;
   private lastCrashInfo: { code: number | null; signal: string | null } | null =
     null;
+  private helperStderrLines: string[] = [];
   private telemetryService: TelemetryService | null = null;
 
   constructor(telemetryService?: TelemetryService) {
@@ -110,6 +217,42 @@ export class NativeBridge extends EventEmitter {
     this.telemetryService = telemetryService ?? null;
     this.helperPath = this.determineHelperPath();
     this.startHelperProcess();
+  }
+
+  private popPending(id: string): PendingRpc | null {
+    const pending = this.pending.get(id);
+    if (!pending) {
+      return null;
+    }
+
+    clearTimeout(pending.timeoutHandle);
+    this.pending.delete(id);
+    return pending;
+  }
+
+  private rejectAllPendingOnCrash(
+    helperName: string,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (this.pending.size === 0) {
+      return;
+    }
+
+    for (const [id, pending] of this.pending.entries()) {
+      clearTimeout(pending.timeoutHandle);
+      pending.reject(
+        new NativeBridgeHelperCrashedError(
+          `${helperName} process crashed (code: ${code}, signal: ${signal})`,
+          helperName,
+          pending.method,
+          id,
+          code,
+          signal,
+        ),
+      );
+    }
+    this.pending.clear();
   }
 
   private determineHelperPath(): string {
@@ -146,7 +289,15 @@ export class NativeBridge extends EventEmitter {
         ? `${helperName} is not available. Some features may not work correctly.`
         : `Helper executable not found at ${this.helperPath}. Please build it first.`;
 
-      this.emit("error", new Error(errorMessage));
+      const startupError = new Error(errorMessage);
+      this.emit("error", startupError);
+      this.telemetryService?.captureException(startupError, {
+        source: "native_helper",
+        stage: "startup",
+        helper_name: helperName,
+        helper_path: this.helperPath,
+        is_packaged: electronApp.isPackaged,
+      });
 
       // Log detailed error for debugging
       this.logger.error("Helper initialization failed", {
@@ -161,6 +312,7 @@ export class NativeBridge extends EventEmitter {
 
     const helperName = getNativeHelperName();
     this.logger.info(`Spawning ${helperName}`, { helperPath: this.helperPath });
+    this.helperStderrLines = [];
     this.proc = spawn(this.helperPath, [], { stdio: ["pipe", "pipe", "pipe"] });
 
     this.proc.stdout.pipe(split2()).on("data", (line: string) => {
@@ -173,9 +325,74 @@ export class NativeBridge extends EventEmitter {
         const responseValidation = RpcResponseSchema.safeParse(message);
         if (responseValidation.success) {
           const rpcResponse = responseValidation.data;
-          if (this.pending.has(rpcResponse.id)) {
-            const pendingItem = this.pending.get(rpcResponse.id);
-            pendingItem!.callback(rpcResponse); // Non-null assertion as we checked with has()
+          const pendingItem = this.popPending(rpcResponse.id);
+          if (pendingItem) {
+            const completedAt = Date.now();
+            const duration = completedAt - pendingItem.startTime;
+
+            if (rpcResponse.error) {
+              const error = new NativeBridgeRpcResponseError(
+                `NativeBridge: RPC call "${pendingItem.method}" (id: ${rpcResponse.id}) failed with code ${rpcResponse.error.code}: ${rpcResponse.error.message}`,
+                pendingItem.method,
+                rpcResponse.id,
+                rpcResponse.error.code,
+                rpcResponse.error.data,
+              );
+              this.telemetryService?.captureException(error, {
+                source: "native_helper",
+                stage: "rpc_response_error",
+                method: pendingItem.method,
+                request_id: rpcResponse.id,
+                rpc_code: rpcResponse.error.code,
+              });
+              pendingItem.reject(error);
+              return;
+            }
+
+            // Log at INFO level for critical audio operations, DEBUG for others
+            const logLevel =
+              pendingItem.method === "muteSystemAudio" ||
+              pendingItem.method === "restoreSystemAudio"
+                ? "info"
+                : "debug";
+
+            // Log the raw resp.result with timing information
+            const logData = {
+              method: pendingItem.method,
+              id: rpcResponse.id,
+              result: rpcResponse.result,
+              startedAt: new Date(pendingItem.startTime).toISOString(),
+              completedAt: new Date(completedAt).toISOString(),
+              durationMs: duration,
+            };
+
+            if (logLevel === "info") {
+              this.logger.info("RPC response received", logData);
+            } else {
+              this.logger.debug("Raw RPC response result received", logData);
+            }
+
+            const resultSchema = RPC_RESULT_SCHEMAS[pendingItem.method];
+            const resultValidation = resultSchema.safeParse(rpcResponse.result);
+            if (!resultValidation.success) {
+              const error = new NativeBridgeInvalidResponseError(
+                `NativeBridge: Invalid RPC result for "${pendingItem.method}" (id: ${rpcResponse.id})`,
+                pendingItem.method,
+                rpcResponse.id,
+                resultValidation.error.message,
+              );
+              this.telemetryService?.captureException(error, {
+                source: "native_helper",
+                stage: "rpc_invalid_response",
+                method: pendingItem.method,
+                request_id: rpcResponse.id,
+                validation_error: resultValidation.error.message,
+              });
+              pendingItem.reject(error);
+              return;
+            }
+
+            pendingItem.resolve(resultValidation.data);
             return; // Handled as an RPC response
           }
         }
@@ -192,6 +409,12 @@ export class NativeBridge extends EventEmitter {
         this.logger.warn("Received unknown message from helper", { message });
       } catch (e) {
         this.logger.error("Error parsing JSON from helper", { error: e, line });
+        this.telemetryService?.captureException(e, {
+          source: "native_helper",
+          stage: "stdout_parse",
+          helper_name: getNativeHelperName(),
+          raw_line: line.slice(0, 2000),
+        });
         this.emit(
           "error",
           new Error(`Error parsing JSON from helper: ${line}`),
@@ -203,6 +426,24 @@ export class NativeBridge extends EventEmitter {
       const errorMsg = data.toString();
       const helperName = getNativeHelperName();
       this.logger.warn(`${helperName} stderr output`, { message: errorMsg });
+
+      const stderrLines = errorMsg
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (stderrLines.length > 0) {
+        this.helperStderrLines.push(...stderrLines);
+        if (
+          this.helperStderrLines.length >
+          NativeBridge.HELPER_STDERR_BUFFER_LINES_LIMIT
+        ) {
+          this.helperStderrLines.splice(
+            0,
+            this.helperStderrLines.length -
+              NativeBridge.HELPER_STDERR_BUFFER_LINES_LIMIT,
+          );
+        }
+      }
       // Don't emit as error since stderr is often just debug info
       // this.emit('error', new Error(`Helper stderr: ${errorMsg}`));
     });
@@ -211,6 +452,12 @@ export class NativeBridge extends EventEmitter {
       const helperName = getNativeHelperName();
       this.logger.error(`Failed to start ${helperName} process`, {
         error: err,
+      });
+      this.telemetryService?.captureException(err, {
+        source: "native_helper",
+        stage: "spawn",
+        helper_name: helperName,
+        helper_path: this.helperPath,
       });
       this.emit("error", err);
       this.proc = null;
@@ -225,7 +472,25 @@ export class NativeBridge extends EventEmitter {
         this.logger.info(`${helperName} process exited normally`);
       } else {
         this.logger.error(`${helperName} process crashed`, { code, signal });
+        const helperStderrTail = this.helperStderrLines
+          .slice(-NativeBridge.HELPER_STDERR_TAIL_LINES)
+          .join("\n")
+          .slice(-NativeBridge.HELPER_STDERR_TAIL_CHAR_LIMIT);
+        this.telemetryService?.captureException(
+          new Error(
+            `${helperName} process crashed (code: ${code}, signal: ${signal})`,
+          ),
+          {
+            source: "native_helper",
+            stage: "process_close",
+            helper_name: helperName,
+            exit_code: code,
+            signal,
+            helper_stderr_tail: helperStderrTail || undefined,
+          },
+        );
         this.lastCrashInfo = { code, signal };
+        this.rejectAllPendingOnCrash(helperName, code, signal);
       }
 
       this.emit("close", code, signal);
@@ -297,7 +562,8 @@ export class NativeBridge extends EventEmitter {
     params: RPCMethods[M]["params"],
     timeoutMs = 5000,
   ): Promise<RPCMethods[M]["result"]> {
-    if (!this.proc || !this.proc.stdin || !this.proc.stdin.writable) {
+    const proc = this.proc;
+    if (!proc || !proc.stdin || !proc.stdin.writable) {
       const helperName = getNativeHelperName();
       const errorMessage = electronApp.isPackaged
         ? `${helperName} is not available for this operation.`
@@ -309,7 +575,13 @@ export class NativeBridge extends EventEmitter {
         platform: process.platform,
       });
 
-      return Promise.reject(new Error(errorMessage));
+      const error = new NativeBridgeHelperUnavailableError(errorMessage, method);
+      this.telemetryService?.captureException(error, {
+        source: "native_helper",
+        stage: "rpc_helper_unavailable",
+        method: method,
+      });
+      return Promise.reject(error);
     }
 
     const id = uuid();
@@ -323,6 +595,15 @@ export class NativeBridge extends EventEmitter {
         method,
         error: validationResult.error.flatten(),
       });
+      this.telemetryService?.captureException(
+        new Error(`Invalid RPC request payload for method: ${method}`),
+        {
+          source: "native_helper",
+          stage: "rpc_validation",
+          method: method,
+          validation_error: validationResult.error.message,
+        },
+      );
       return Promise.reject(
         new Error(
           `Invalid RPC request payload: ${validationResult.error.message}`,
@@ -351,88 +632,107 @@ export class NativeBridge extends EventEmitter {
       });
     }
 
-    this.proc.stdin.write(JSON.stringify(requestPayload) + "\n", (err) => {
-      if (err) {
-        this.logger.error("Error writing to helper stdin", {
+    return new Promise<RPCMethods[M]["result"]>((resolve, reject) => {
+      const timeoutHandle = setTimeout(() => {
+        const pendingItem = this.popPending(id);
+        if (!pendingItem) {
+          return;
+        }
+
+        const timedOutAt = Date.now();
+        const duration = timedOutAt - pendingItem.startTime;
+        const error = new NativeBridgeTimeoutError(
+          `NativeBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms (duration: ${duration}ms, started: ${new Date(startTime).toISOString()})`,
+          method,
+          id,
+          timeoutMs,
+          duration,
+        );
+        this.telemetryService?.captureException(error, {
+          source: "native_helper",
+          stage: "rpc_timeout",
+          method: method,
+          request_id: id,
+          timeout_ms: timeoutMs,
+          duration_ms: duration,
+        });
+        pendingItem.reject(error);
+      }, timeoutMs);
+
+      this.pending.set(id, {
+        method,
+        startTime,
+        timeoutMs,
+        timeoutHandle,
+        resolve: resolve as unknown as (result: unknown) => void,
+        reject: reject as unknown as (error: Error) => void,
+      });
+
+      try {
+        proc.stdin.write(JSON.stringify(requestPayload) + "\n", (err) => {
+          if (err) {
+            this.logger.error("Error writing to helper stdin", {
+              method,
+              id,
+              error: err,
+            });
+            this.telemetryService?.captureException(err, {
+              source: "native_helper",
+              stage: "rpc_write",
+              method: method,
+              request_id: id,
+            });
+
+            const pendingItem = this.popPending(id);
+            if (!pendingItem) {
+              return;
+            }
+
+            pendingItem.reject(
+              new NativeBridgeWriteError(
+                `NativeBridge: Failed to write RPC call "${method}" (id: ${id}) to helper stdin`,
+                method,
+                id,
+                err,
+              ),
+            );
+            return;
+          }
+
+          if (logLevel === "info") {
+            this.logger.info("Successfully sent RPC request", { method, id });
+          } else {
+            this.logger.debug("Successfully sent RPC request", { method, id });
+          }
+        });
+      } catch (err) {
+        this.logger.error("Error writing to helper stdin (threw)", {
           method,
           id,
           error: err,
         });
-        // Note: The promise might have already been set up, consider how to reject it.
-        // For now, this error will be logged. The timeout will eventually reject.
-      } else {
-        if (logLevel === "info") {
-          this.logger.info("Successfully sent RPC request", { method, id });
-        } else {
-          this.logger.debug("Successfully sent RPC request", { method, id });
+        this.telemetryService?.captureException(err, {
+          source: "native_helper",
+          stage: "rpc_write_throw",
+          method: method,
+          request_id: id,
+        });
+
+        const pendingItem = this.popPending(id);
+        if (!pendingItem) {
+          return;
         }
+
+        pendingItem.reject(
+          new NativeBridgeWriteError(
+            `NativeBridge: Failed to write RPC call "${method}" (id: ${id}) to helper stdin (threw)`,
+            method,
+            id,
+            err,
+          ),
+        );
       }
     });
-
-    const responsePromise = new Promise<RPCMethods[M]["result"]>(
-      (resolve, reject) => {
-        this.pending.set(id, {
-          callback: (resp: RpcResponse) => {
-            this.pending.delete(id); // Clean up immediately
-            const completedAt = Date.now();
-            const duration = completedAt - startTime;
-
-            if (resp.error) {
-              const error = new Error(resp.error.message);
-              (error as any).code = resp.error.code;
-              (error as any).data = resp.error.data;
-              reject(error);
-            } else {
-              // Log at INFO level for critical audio operations, DEBUG for others
-              const logLevel =
-                method === "muteSystemAudio" || method === "restoreSystemAudio"
-                  ? "info"
-                  : "debug";
-
-              // Log the raw resp.result with timing information
-              const logData = {
-                method,
-                id,
-                result: resp.result,
-                startedAt: new Date(startTime).toISOString(),
-                completedAt: new Date(completedAt).toISOString(),
-                durationMs: duration,
-              };
-
-              if (logLevel === "info") {
-                this.logger.info("RPC response received", logData);
-              } else {
-                this.logger.debug("Raw RPC response result received", logData);
-              }
-
-              // Here, we might need to validate resp.result against the specific method's result schema
-              // For now, casting as any, but for type safety, validation is better.
-              // Example: const resultValidation = RPCMethods[method].resultSchema.safeParse(resp.result);
-              resolve(resp.result as any);
-            }
-          },
-          startTime,
-        });
-      },
-    );
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          // Check if still pending before rejecting
-          this.pending.delete(id);
-          const timedOutAt = Date.now();
-          const duration = timedOutAt - startTime;
-          reject(
-            new Error(
-              `NativeBridge: RPC call "${method}" (id: ${id}) timed out after ${timeoutMs}ms (duration: ${duration}ms, started: ${new Date(startTime).toISOString()})`,
-            ),
-          );
-        }
-      }, timeoutMs);
-    });
-
-    return Promise.race([responsePromise, timeoutPromise]);
   }
 
   public isHelperRunning(): boolean {

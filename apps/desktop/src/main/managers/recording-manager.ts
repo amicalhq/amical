@@ -774,9 +774,15 @@ export class RecordingManager extends EventEmitter {
       });
 
       if (nativeBridge) {
-        nativeBridge.call("pasteText", {
-          transcript: transcription,
-        });
+        void nativeBridge
+          .call("pasteText", {
+            transcript: transcription,
+          })
+          .catch((error) => {
+            logger.main.warn("Failed to paste transcription via native helper", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
       }
     } catch (error) {
       logger.main.warn(
