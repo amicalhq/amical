@@ -33,7 +33,7 @@ class FoundationModelService {
                 options.temperature = temperature
             }
             if let maxTokens = params.maxTokens {
-                options.maximumResponseTokens = maxTokens
+                options.maximumResponseTokens = Int(maxTokens)
             }
             let response = try await session.respond(to: params.userPrompt, options: options)
             return GenerateWithFoundationModelResultSchema(content: response.content)
