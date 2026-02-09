@@ -11,7 +11,11 @@ export class AppleIntelligenceFormatter implements FormattingProvider {
   async format(params: FormatParams): Promise<string> {
     try {
       const { text, context } = params;
-      const { systemPrompt } = constructFormatterPrompt(context);
+      // Use amical-notes formatting for on-device models to ensure
+      // consistent Markdown output with smart structure detection.
+      const { systemPrompt } = constructFormatterPrompt(context, {
+        overrideAppType: "amical-notes",
+      });
 
       logger.pipeline.debug("Apple Intelligence formatting request", {
         systemPrompt,

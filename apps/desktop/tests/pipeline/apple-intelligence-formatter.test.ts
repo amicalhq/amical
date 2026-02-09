@@ -107,7 +107,7 @@ describe("AppleIntelligenceFormatter", () => {
       expect(mockNativeBridge.call).toHaveBeenCalledWith(
         "generateWithFoundationModel",
         expect.objectContaining({
-          systemPrompt: expect.stringContaining("text formatter"),
+          systemPrompt: expect.stringContaining("Markdown"),
         }),
         expect.any(Number),
       );

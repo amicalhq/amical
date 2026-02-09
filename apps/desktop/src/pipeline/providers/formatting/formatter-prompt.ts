@@ -130,13 +130,17 @@ const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
   ],
 };
 
-export function constructFormatterPrompt(context: FormatParams["context"]): {
+export function constructFormatterPrompt(
+  context: FormatParams["context"],
+  options?: { overrideAppType?: AppType },
+): {
   systemPrompt: string;
 } {
   const { accessibilityContext, vocabulary } = context;
 
-  // Detect application type
-  const applicationType = detectApplicationType(accessibilityContext);
+  // Use override if provided, otherwise detect from accessibility context
+  const applicationType =
+    options?.overrideAppType ?? detectApplicationType(accessibilityContext);
 
   // Build instructions array
   const instructions = [
