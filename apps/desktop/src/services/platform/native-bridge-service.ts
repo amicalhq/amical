@@ -124,7 +124,10 @@ class NativeBridgeTimeoutError extends Error {
 }
 
 class NativeBridgeHelperUnavailableError extends Error {
-  constructor(message: string, public readonly method: string) {
+  constructor(
+    message: string,
+    public readonly method: string,
+  ) {
     super(message);
     this.name = "NativeBridgeHelperUnavailableError";
   }
@@ -575,7 +578,10 @@ export class NativeBridge extends EventEmitter {
         platform: process.platform,
       });
 
-      const error = new NativeBridgeHelperUnavailableError(errorMessage, method);
+      const error = new NativeBridgeHelperUnavailableError(
+        errorMessage,
+        method,
+      );
       this.telemetryService?.captureException(error, {
         source: "native_helper",
         stage: "rpc_helper_unavailable",

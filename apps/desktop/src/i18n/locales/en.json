@@ -527,7 +527,8 @@
         "pauseAudio": "Pause audio",
         "playAudio": "Play audio",
         "downloadAudio": "Download Audio",
-        "delete": "Delete"
+        "delete": "Delete",
+        "retry": "Retry transcription"
       },
       "dialog": {
         "title": "Transcription Details"
@@ -538,7 +539,9 @@
         "downloaded": "Audio file downloaded",
         "downloadFailed": "Failed to download audio file",
         "loadAudioFailed": "Failed to load audio file",
-        "copied": "Copied to clipboard"
+        "copied": "Copied to clipboard",
+        "retrySuccess": "Transcription retried successfully",
+        "retryFailed": "Failed to retry transcription"
       },
       "search": {
         "placeholder": "Search transcriptions..."
