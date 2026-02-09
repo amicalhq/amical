@@ -124,6 +124,7 @@ export class SettingsService extends EventEmitter {
     recordingSettings: AppSettingsData["recording"],
   ): Promise<void> {
     await updateSettingsSection("recording", recordingSettings);
+    this.emit("recording-settings-changed", { recordingSettings });
   }
 
   /**

@@ -13,6 +13,8 @@ import type { RecordingManager } from "../managers/recording-manager";
 import type { RecordingState } from "../../types/recording";
 import type { SettingsService } from "../../services/settings-service";
 
+type SettingsChangeKey = "activeModeId" | "preferredMicrophoneName";
+
 export class AppManager {
   private windowManager!: WindowManager;
   private serviceManager: ServiceManager;
@@ -116,7 +118,7 @@ export class AppManager {
     await this.setupMenu();
 
     // Initialize tray
-    this.trayManager.initialize(this.windowManager);
+    this.trayManager.initialize(this.windowManager, settingsService);
 
     // Setup IPC handlers
     ipcMain.handle("open-external", async (_event, url: string) => {
@@ -210,7 +212,27 @@ export class AppManager {
       await this.windowManager.updateAllWindowThemes();
     });
 
+    // Broadcast mode/microphone changes so renderer queries can re-fetch
+    settingsService.on("active-mode-changed", () => {
+      this.emitSettingsChangedToRenderers(["activeModeId"]);
+    });
+    settingsService.on("recording-settings-changed", () => {
+      this.emitSettingsChangedToRenderers(["preferredMicrophoneName"]);
+    });
+
     logger.main.info("Settings event listeners set up");
+  }
+
+  private emitSettingsChangedToRenderers(changes: SettingsChangeKey[]): void {
+    for (const window of this.windowManager.getAllWindows()) {
+      if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
+        continue;
+      }
+      window.webContents.send("settings-changed", {
+        source: "settings-service",
+        changes,
+      });
+    }
   }
 
   private async updateWidgetVisibility(isIdle: boolean): Promise<void> {
