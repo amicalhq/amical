@@ -13,10 +13,11 @@ export default function AppleIntelligenceProvider() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const isMac = window.electronAPI?.platform === "darwin";
-  if (!isMac) return null;
 
   const availabilityQuery =
-    api.models.checkAppleIntelligenceAvailability.useQuery();
+    api.models.checkAppleIntelligenceAvailability.useQuery(undefined, {
+      enabled: isMac,
+    });
 
   const utils = api.useUtils();
   const syncMutation = api.models.syncAppleIntelligenceModel.useMutation({
@@ -39,6 +40,8 @@ export default function AppleIntelligenceProvider() {
       toast.error(t("settings.aiModels.appleIntelligence.toast.syncFailed"));
     },
   });
+
+  if (!isMac) return null;
 
   const available = availabilityQuery.data?.available ?? false;
   const reason = availabilityQuery.data?.reason;

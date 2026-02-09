@@ -28,7 +28,14 @@ class FoundationModelService {
         if #available(macOS 26, *) {
             let instructions = params.systemPrompt
             let session = LanguageModelSession(instructions: instructions)
-            let response = try await session.respond(to: params.userPrompt)
+            var options = GenerationOptions()
+            if let temperature = params.temperature {
+                options.temperature = temperature
+            }
+            if let maxTokens = params.maxTokens {
+                options.maximumResponseTokens = maxTokens
+            }
+            let response = try await session.respond(to: params.userPrompt, options: options)
             return GenerateWithFoundationModelResultSchema(content: response.content)
         }
         #endif
