@@ -537,7 +537,7 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts };
+    public enum Method { CheckFoundationModelAvailability, GenerateWithFoundationModel, GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts };
 
     public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
 
@@ -703,6 +703,10 @@ namespace WindowsHelper.Models
             var value = reader.GetString();
             switch (value)
             {
+                case "checkFoundationModelAvailability":
+                    return Method.CheckFoundationModelAvailability;
+                case "generateWithFoundationModel":
+                    return Method.GenerateWithFoundationModel;
                 case "getAccessibilityContext":
                     return Method.GetAccessibilityContext;
                 case "getAccessibilityStatus":
@@ -729,6 +733,12 @@ namespace WindowsHelper.Models
         {
             switch (value)
             {
+                case Method.CheckFoundationModelAvailability:
+                    JsonSerializer.Serialize(writer, "checkFoundationModelAvailability", options);
+                    return;
+                case Method.GenerateWithFoundationModel:
+                    JsonSerializer.Serialize(writer, "generateWithFoundationModel", options);
+                    return;
                 case Method.GetAccessibilityContext:
                     JsonSerializer.Serialize(writer, "getAccessibilityContext", options);
                     return;

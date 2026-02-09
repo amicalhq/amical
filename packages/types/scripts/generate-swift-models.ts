@@ -36,7 +36,11 @@ try {
       "generated/json-schemas/events/key-down-event.schema.json " +
       "generated/json-schemas/events/key-up-event.schema.json " +
       "generated/json-schemas/events/flags-changed-event.schema.json " +
-      "generated/json-schemas/events/helper-event.schema.json",
+      "generated/json-schemas/events/helper-event.schema.json " +
+      "generated/json-schemas/methods/check-foundation-model-availability-params.schema.json " +
+      "generated/json-schemas/methods/check-foundation-model-availability-result.schema.json " +
+      "generated/json-schemas/methods/generate-with-foundation-model-params.schema.json " +
+      "generated/json-schemas/methods/generate-with-foundation-model-result.schema.json",
   ];
 
   commands.forEach((command) => {

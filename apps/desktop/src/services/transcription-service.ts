@@ -10,6 +10,7 @@ import { WhisperProvider } from "../pipeline/providers/transcription/whisper-pro
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
+import { AppleIntelligenceFormatter } from "../pipeline/providers/formatting/apple-intelligence-formatter";
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
@@ -772,6 +773,29 @@ export class TranscriptionService {
               model: modelId,
             });
             const provider = new OllamaFormatter(config.url, modelId);
+            const result = await this.formatWithProvider(provider, text, {
+              style: options.formattingStyle,
+              vocabulary: options.vocabulary,
+              accessibilityContext: options.accessibilityContext,
+            });
+            if (result) {
+              text = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "AppleIntelligence") {
+          if (!this.nativeBridge) {
+            logger.transcription.warn(
+              "Formatting skipped: NativeBridge not available for Apple Intelligence",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new AppleIntelligenceFormatter(this.nativeBridge);
             const result = await this.formatWithProvider(provider, text, {
               style: options.formattingStyle,
               vocabulary: options.vocabulary,

@@ -44,6 +44,12 @@ import {
   RecheckPressedKeysParams,
   RecheckPressedKeysResult,
   RecheckPressedKeysResultSchema,
+  CheckFoundationModelAvailabilityParams,
+  CheckFoundationModelAvailabilityResult,
+  CheckFoundationModelAvailabilityResultSchema,
+  GenerateWithFoundationModelParams,
+  GenerateWithFoundationModelResult,
+  GenerateWithFoundationModelResultSchema,
   AppContext,
 } from "@amical/types";
 
@@ -85,6 +91,14 @@ interface RPCMethods {
     params: RecheckPressedKeysParams;
     result: RecheckPressedKeysResult;
   };
+  checkFoundationModelAvailability: {
+    params: CheckFoundationModelAvailabilityParams;
+    result: CheckFoundationModelAvailabilityResult;
+  };
+  generateWithFoundationModel: {
+    params: GenerateWithFoundationModelParams;
+    result: GenerateWithFoundationModelResult;
+  };
 }
 
 type PendingRpc = {
@@ -108,6 +122,8 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
   restoreSystemAudio: RestoreSystemAudioResultSchema,
   setShortcuts: SetShortcutsResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
+  checkFoundationModelAvailability: CheckFoundationModelAvailabilityResultSchema,
+  generateWithFoundationModel: GenerateWithFoundationModelResultSchema,
 };
 
 class NativeBridgeTimeoutError extends Error {

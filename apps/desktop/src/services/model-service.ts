@@ -31,6 +31,7 @@ import {
 } from "../types/providers";
 import { SettingsService } from "./settings-service";
 import { AuthService } from "./auth-service";
+import type { NativeBridge } from "./platform/native-bridge-service";
 import { logger } from "../main/logger";
 import { getUserAgent } from "../utils/http-client";
 
@@ -819,6 +820,67 @@ class ModelService extends EventEmitter {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+  }
+
+  // ============================================
+  // Apple Intelligence Model Sync
+  // ============================================
+
+  /**
+   * Sync Apple Intelligence model based on Foundation Model availability.
+   * Registers the model if available, removes it if not.
+   */
+  async syncAppleIntelligenceModel(
+    nativeBridge: NativeBridge,
+  ): Promise<{ available: boolean; reason?: string }> {
+    if (process.platform !== "darwin") {
+      return { available: false, reason: "notMacOS" };
+    }
+
+    try {
+      const result = await nativeBridge.call(
+        "checkFoundationModelAvailability",
+        {},
+      );
+
+      if (result.available) {
+        await upsertModel({
+          id: "apple-intelligence",
+          provider: "AppleIntelligence",
+          name: "Apple Intelligence",
+          type: "language",
+          description: "On-device Apple Intelligence model",
+          size: null,
+          context: null,
+          checksum: null,
+          speed: null,
+          accuracy: null,
+          localPath: null,
+          sizeBytes: null,
+          downloadedAt: null,
+          originalModel: null,
+        });
+        logger.main.info(
+          "Apple Intelligence model registered (Foundation Model available)",
+        );
+      } else {
+        // Remove from DB if previously registered
+        await removeModel("AppleIntelligence", "apple-intelligence").catch(
+          () => {},
+        );
+        logger.main.info(
+          "Apple Intelligence model not available, removed from DB",
+          { reason: result.reason },
+        );
+      }
+
+      return { available: result.available, reason: result.reason };
+    } catch (error) {
+      logger.main.warn("Failed to check Apple Intelligence availability", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { available: false, reason: "checkFailed" };
     }
   }
 

@@ -459,6 +459,34 @@ export const modelsRouter = createRouter({
     return true;
   }),
 
+  // Apple Intelligence
+  checkAppleIntelligenceAvailability: procedure.query(async ({ ctx }) => {
+    const nativeBridge = ctx.serviceManager.getService("nativeBridge");
+    if (!nativeBridge) {
+      return { available: false, reason: "nativeBridgeUnavailable" };
+    }
+    try {
+      return await nativeBridge.call(
+        "checkFoundationModelAvailability",
+        {},
+      );
+    } catch {
+      return { available: false, reason: "checkFailed" };
+    }
+  }),
+
+  syncAppleIntelligenceModel: procedure.mutation(async ({ ctx }) => {
+    const modelService = ctx.serviceManager.getService("modelService");
+    if (!modelService) {
+      throw new Error("Model manager service not initialized");
+    }
+    const nativeBridge = ctx.serviceManager.getService("nativeBridge");
+    if (!nativeBridge) {
+      return { available: false, reason: "nativeBridgeUnavailable" };
+    }
+    return await modelService.syncAppleIntelligenceModel(nativeBridge);
+  }),
+
   removeOllamaProvider: procedure.mutation(async ({ ctx }) => {
     const modelService = ctx.serviceManager.getService("modelService");
     if (!modelService) {

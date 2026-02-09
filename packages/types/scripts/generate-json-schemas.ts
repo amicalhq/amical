@@ -34,6 +34,14 @@ import {
   RecheckPressedKeysResultSchema,
 } from "../src/schemas/methods/recheck-pressed-keys.js";
 import {
+  CheckFoundationModelAvailabilityParamsSchema,
+  CheckFoundationModelAvailabilityResultSchema,
+} from "../src/schemas/methods/check-foundation-model-availability.js";
+import {
+  GenerateWithFoundationModelParamsSchema,
+  GenerateWithFoundationModelResultSchema,
+} from "../src/schemas/methods/generate-with-foundation-model.js";
+import {
   KeyDownEventSchema,
   KeyUpEventSchema,
   FlagsChangedEventSchema,
@@ -114,6 +122,26 @@ const schemasToGenerate = [
   {
     zod: RecheckPressedKeysResultSchema,
     name: "RecheckPressedKeysResult",
+    category: "methods",
+  },
+  {
+    zod: CheckFoundationModelAvailabilityParamsSchema,
+    name: "CheckFoundationModelAvailabilityParams",
+    category: "methods",
+  },
+  {
+    zod: CheckFoundationModelAvailabilityResultSchema,
+    name: "CheckFoundationModelAvailabilityResult",
+    category: "methods",
+  },
+  {
+    zod: GenerateWithFoundationModelParamsSchema,
+    name: "GenerateWithFoundationModelParams",
+    category: "methods",
+  },
+  {
+    zod: GenerateWithFoundationModelResultSchema,
+    name: "GenerateWithFoundationModelResult",
     category: "methods",
   },
 ];

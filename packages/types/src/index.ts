@@ -10,6 +10,8 @@ export * from "./schemas/methods/mute-system-audio.js";
 export * from "./schemas/methods/restore-system-audio.js";
 export * from "./schemas/methods/set-shortcuts.js";
 export * from "./schemas/methods/recheck-pressed-keys.js";
+export * from "./schemas/methods/check-foundation-model-availability.js";
+export * from "./schemas/methods/generate-with-foundation-model.js";
 
 // Event Schemas
 export * from "./schemas/events/key-events.js";

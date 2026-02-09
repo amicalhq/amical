@@ -763,7 +763,23 @@
       },
       "providers": {
         "openRouter": "OpenRouter",
-        "ollama": "Ollama"
+        "ollama": "Ollama",
+        "appleIntelligence": "Apple Intelligence"
+      },
+      "appleIntelligence": {
+        "checking": "Checking...",
+        "available": "Available",
+        "unavailable": "Not Available",
+        "sync": "Sync Model",
+        "syncing": "Syncing...",
+        "descriptionAvailable": "On-device language model powered by Apple Intelligence. No API key required.",
+        "descriptionUnavailable": "Apple Intelligence is not available: {{reason}}",
+        "descriptionUnavailableGeneric": "Apple Intelligence is not available on this device. Requires macOS 26 or later with Apple Silicon.",
+        "toast": {
+          "synced": "Apple Intelligence model synced successfully!",
+          "notAvailable": "Apple Intelligence is not available on this device.",
+          "syncFailed": "Failed to sync Apple Intelligence model."
+        }
       },
       "provider": {
         "status": {

@@ -12,7 +12,6 @@ const BASE_INSTRUCTIONS = [
   "Maintain the original meaning and tone",
   "Use the custom vocabulary to correct domain-specific terms",
   "Remove unnecessary filler words (um, uh, etc.) but keep natural speech patterns",
-  "If the text is empty, return <formatted_text></formatted_text>",
   "Return ONLY the formatted text enclosed in <formatted_text></formatted_text> tags",
   "Do not include any commentary, explanations, or text outside the XML tags",
 ];
