@@ -4,6 +4,7 @@ import { Accordion } from "@/components/ui/accordion";
 import SyncedModelsList from "../components/synced-models-list";
 import DefaultModelCombobox from "../components/default-model-combobox";
 import ProviderAccordion from "../components/provider-accordion";
+import AppleIntelligenceProvider from "../components/apple-intelligence-provider";
 import { useTranslation } from "react-i18next";
 
 export default function LanguageTab() {
@@ -16,6 +17,9 @@ export default function LanguageTab() {
           modelType="language"
           title={t("settings.aiModels.defaultModels.language")}
         />
+
+        {/* Apple Intelligence (macOS only, auto-detected) */}
+        <AppleIntelligenceProvider />
 
         {/* Providers Accordions */}
         <Accordion type="multiple" className="w-full">

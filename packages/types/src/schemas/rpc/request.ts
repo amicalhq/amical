@@ -15,6 +15,8 @@ const RPCMethodNameSchema = z.union([
   z.literal("restoreSystemAudio"),
   z.literal("setShortcuts"),
   z.literal("recheckPressedKeys"),
+  z.literal("checkFoundationModelAvailability"),
+  z.literal("generateWithFoundationModel"),
 ]);
 
 export const RpcRequestSchema = z.object({

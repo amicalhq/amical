@@ -12,7 +12,6 @@ const BASE_INSTRUCTIONS = [
   "Maintain the original meaning and tone",
   "Use the custom vocabulary to correct domain-specific terms",
   "Remove unnecessary filler words (um, uh, etc.) but keep natural speech patterns",
-  "If the text is empty, return <formatted_text></formatted_text>",
   "Return ONLY the formatted text enclosed in <formatted_text></formatted_text> tags",
   "Do not include any commentary, explanations, or text outside the XML tags",
 ];
@@ -54,10 +53,28 @@ const APPLICATION_TYPE_RULES: Record<AppType, string[]> = {
     "Use bullet points (-) for unordered lists of items, ideas, or notes",
     "Use numbered lists (1. 2. 3.) for sequential steps, priorities, or ranked items",
     "Use headers for distinct topics or sections (## for main sections, ### for subsections)",
-    "Use bold (**text**) for emphasis on key terms or action items",
-    "Use code blocks (```) for technical content, commands, or code snippets",
+    "Do NOT use bold (**text**) or italic (*text*) markup - output plain text with list and header formatting only",
     "Keep formatting minimal and purposeful - don't over-format simple content",
     "Preserve natural speech flow while adding structure where it improves clarity",
+    "Detect implicit structure in speech: when someone lists items (e.g. 'A, B, and C'), format them as a bullet list",
+    "",
+    "Examples:",
+    'Input: "My favorite foods are ramen, curry, and oyakodon."',
+    "Output:",
+    "<formatted_text>My favorite foods are:",
+    "- Ramen",
+    "- Curry",
+    "- Oyakodon</formatted_text>",
+    "",
+    'Input: "First you need to install Node then run npm install and finally start the server"',
+    "Output:",
+    "<formatted_text>1. Install Node",
+    "2. Run `npm install`",
+    "3. Start the server</formatted_text>",
+    "",
+    'Input: "The meeting went well we discussed the budget and the timeline"',
+    "Output:",
+    '<formatted_text>The meeting went well. We discussed the budget and the timeline.</formatted_text>',
   ],
   default: [
     "Apply standard formatting for general text",
@@ -131,13 +148,17 @@ const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
   ],
 };
 
-export function constructFormatterPrompt(context: FormatParams["context"]): {
+export function constructFormatterPrompt(
+  context: FormatParams["context"],
+  options?: { overrideAppType?: AppType },
+): {
   systemPrompt: string;
 } {
   const { accessibilityContext, vocabulary } = context;
 
-  // Detect application type
-  const applicationType = detectApplicationType(accessibilityContext);
+  // Use override if provided, otherwise detect from accessibility context
+  const applicationType =
+    options?.overrideAppType ?? detectApplicationType(accessibilityContext);
 
   // Build instructions array
   const instructions = [

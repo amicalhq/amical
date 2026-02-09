@@ -13,12 +13,14 @@ class IOBridge: NSObject {
     let jsonDecoder: JSONDecoder
     private let accessibilityService: AccessibilityService
     private let audioService: AudioService
+    private let foundationModelService: FoundationModelService
 
     init(jsonEncoder: JSONEncoder, jsonDecoder: JSONDecoder) {
         self.jsonEncoder = jsonEncoder
         self.jsonDecoder = jsonDecoder
         self.accessibilityService = AccessibilityService()
         self.audioService = AudioService()  // Audio preloaded here at startup
+        self.foundationModelService = FoundationModelService()
         super.init()
     }
 
@@ -227,6 +229,51 @@ class IOBridge: NSObject {
                     code: -32602, data: request.params,
                     message: "Invalid params: \(error.localizedDescription)")
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+            }
+
+        case .checkFoundationModelAvailability:
+            logToStderr("[IOBridge] Handling checkFoundationModelAvailability for ID: \(request.id)")
+            let result = foundationModelService.checkAvailability()
+            sendResult(id: request.id, result: result)
+            return
+
+        case .generateWithFoundationModel:
+            logToStderr("[IOBridge] Handling generateWithFoundationModel for ID: \(request.id)")
+            guard let paramsAnyCodable = request.params else {
+                let errPayload = Error(
+                    code: -32602, data: nil, message: "Missing params for generateWithFoundationModel")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                sendRpcResponse(rpcResponse)
+                return
+            }
+
+            do {
+                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                let generateParams = try jsonDecoder.decode(
+                    GenerateWithFoundationModelParamsSchema.self, from: paramsData)
+
+                // Run async Foundation Model call on a background queue
+                let requestId = request.id
+                Task {
+                    do {
+                        let result = try await self.foundationModelService.generate(params: generateParams)
+                        self.sendResult(id: requestId, result: result)
+                    } catch {
+                        self.logToStderr(
+                            "[IOBridge] Error in generateWithFoundationModel: \(error.localizedDescription) for ID: \(requestId)"
+                        )
+                        self.sendError(id: requestId, code: -32603,
+                                       message: "Foundation Model error: \(error.localizedDescription)")
+                    }
+                }
+                return
+            } catch {
+                logToStderr(
+                    "[IOBridge] Error decoding generateWithFoundationModel params: \(error.localizedDescription) for ID: \(request.id)"
+                )
+                sendError(id: request.id, code: -32602,
+                          message: "Invalid params: \(error.localizedDescription)")
+                return
             }
 
         default:
