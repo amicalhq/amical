@@ -18,11 +18,15 @@ export class AppleIntelligenceFormatter implements FormattingProvider {
         userPrompt: text,
       });
 
+      // Wrap user text explicitly so the on-device model treats it as
+      // text to format rather than a conversational query to respond to.
+      const userPrompt = `Format the following transcribed text:\n\n${text}`;
+
       const result = await this.nativeBridge.call(
         "generateWithFoundationModel",
         {
           systemPrompt,
-          userPrompt: text,
+          userPrompt,
           temperature: 0.1,
         },
         30000,

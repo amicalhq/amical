@@ -50,7 +50,9 @@ describe("AppleIntelligenceFormatter", () => {
       expect(result).toBe("Hello world");
       expect(mockNativeBridge.call).toHaveBeenCalledWith(
         "generateWithFoundationModel",
-        expect.objectContaining({ userPrompt: "hello world" }),
+        expect.objectContaining({
+          userPrompt: expect.stringContaining("hello world"),
+        }),
         expect.any(Number),
       );
     });
