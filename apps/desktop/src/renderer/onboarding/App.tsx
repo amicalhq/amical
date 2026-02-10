@@ -56,7 +56,12 @@ export function App() {
 
   // tRPC queries
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
+  const userNameQuery = api.onboarding.getComputerUserName.useQuery();
   const utils = api.useUtils();
+  const cardHolderName =
+    userNameQuery.data && userNameQuery.data.trim()
+      ? userNameQuery.data.trim()
+      : "You";
 
   // Screen order - can be modified based on feature flags
   const screenOrder: OnboardingScreen[] = [
@@ -246,10 +251,7 @@ export function App() {
   };
 
   // Show loading state
-  if (
-    isLoading ||
-    skippedScreensQuery.isLoading
-  ) {
+  if (isLoading || skippedScreensQuery.isLoading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="text-center">
@@ -260,16 +262,19 @@ export function App() {
     );
   }
 
-  // Render current screen
-  const renderScreen = () => {
-    switch (currentScreen) {
-      case OnboardingScreen.Welcome:
-        return (
-          <WelcomeScreen
-            onNext={navigateNext}
-          />
-        );
+  // Render welcome screen
+  const renderWelcomeScreen = () => {
+    return (
+      <WelcomeScreen
+        onStart={navigateNext}
+        cardHolderName={cardHolderName}
+      />
+    );
+  };
 
+  // Render non-welcome screens
+  const renderStepScreen = () => {
+    switch (currentScreen) {
       case OnboardingScreen.Permissions:
         return (
           <PermissionsScreen
@@ -293,40 +298,41 @@ export function App() {
 
       case OnboardingScreen.ModelSelection:
         return (
-          <ModelSelectionScreen
-            onNext={navigateNext}
-            onBack={navigateBack}
-          />
+          <ModelSelectionScreen onNext={navigateNext} onBack={navigateBack} />
         );
 
       case OnboardingScreen.Completion:
         return (
-          <CompletionScreen
-            onComplete={handleComplete}
-            onBack={navigateBack}
-          />
+          <CompletionScreen onComplete={handleComplete} onBack={navigateBack} />
         );
 
       default:
-        return <div>Unknown screen</div>;
+        return null;
     }
   };
+
+  const showProgressIndicator = currentScreen !== OnboardingScreen.Welcome;
+  const isWelcomeScreen = currentScreen === OnboardingScreen.Welcome;
 
   return (
     <OnboardingErrorBoundary>
       <div className="h-screen w-screen bg-background text-foreground">
         {/* Progress Indicator (T029) */}
-        <div className="fixed left-0 right-0 top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="mx-auto max-w-2xl px-8 pb-4 pt-6">
-            <ProgressIndicator
-              current={getCurrentScreenIndex() + 1}
-              total={getTotalScreens()}
-            />
+        {showProgressIndicator && (
+          <div className="fixed left-0 right-0 top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="mx-auto max-w-2xl px-8 pb-4 pt-6">
+              <ProgressIndicator
+                current={getCurrentScreenIndex() + 1}
+                total={getTotalScreens()}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Screen Content */}
-        <div className="h-full overflow-auto pt-20">{renderScreen()}</div>
+        <div className="h-full overflow-auto pt-20">
+          {isWelcomeScreen ? renderWelcomeScreen() : renderStepScreen()}
+        </div>
       </div>
     </OnboardingErrorBoundary>
   );

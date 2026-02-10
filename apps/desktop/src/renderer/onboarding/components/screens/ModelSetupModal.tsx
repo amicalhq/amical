@@ -293,7 +293,7 @@ export function ModelSetupModal({
             onClick={handleContinue}
             disabled={!modelAlreadyInstalled && !downloadComplete}
           >
-            Continue
+            Next
           </Button>
         </DialogFooter>
       </>

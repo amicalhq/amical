@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { systemPreferences, shell, app } from "electron";
+import os from "node:os";
+import path from "node:path";
 import { createRouter, procedure } from "../trpc";
-import { OnboardingPreferencesSchema, OnboardingStateSchema } from "../../types/onboarding";
+import {
+  OnboardingPreferencesSchema,
+  OnboardingStateSchema,
+} from "../../types/onboarding";
 import { logger } from "../../main/logger";
 
 export const onboardingRouter = createRouter({
@@ -278,6 +283,24 @@ export const onboardingRouter = createRouter({
    */
   getPlatform: procedure.query(async (): Promise<string> => {
     return process.platform;
+  }),
+
+  /**
+   * Get current computer user name for personalization
+   */
+  getComputerUserName: procedure.query(async (): Promise<string> => {
+    try {
+      const homeDirUser = path.basename(os.homedir()).trim();
+      const systemUserName = os.userInfo().username || "";
+      const normalizedUserName =
+        systemUserName.split("\\").pop()?.split("/").pop()?.trim() ||
+        systemUserName.trim();
+
+      return normalizedUserName || homeDirUser || "You";
+    } catch (error) {
+      logger.main.error("Failed to get computer user name:", error);
+      return path.basename(os.homedir()).trim() || "You";
+    }
   }),
 
   /**

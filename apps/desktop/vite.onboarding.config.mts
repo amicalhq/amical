@@ -9,6 +9,7 @@ export default defineConfig(async () => {
 
   return {
     plugins: [react(), tailwindcss()],
+    publicDir: "public",
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),

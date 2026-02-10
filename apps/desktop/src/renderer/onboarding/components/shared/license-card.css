@@ -1,0 +1,409 @@
+@layer components {
+  /* --------------------------------------------------------------------------
+   * 1) Motion
+   * keyframes and animation utility classes used by the card.
+   * ------------------------------------------------------------------------ */
+  @keyframes onboarding-card-float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+
+  @keyframes onboarding-metal-sheen {
+    0% {
+      transform: translateX(-78%) skewX(14deg);
+      opacity: 0;
+    }
+    38% {
+      opacity: 0.42;
+    }
+    62% {
+      opacity: 0.34;
+    }
+    100% {
+      transform: translateX(252%) skewX(14deg);
+      opacity: 0.02;
+    }
+  }
+
+  @keyframes onboarding-stamp-pop {
+    0% {
+      transform: scale(0.78) rotate(-12deg);
+      opacity: 0;
+    }
+    68% {
+      transform: scale(1.06) rotate(2deg);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1) rotate(0deg);
+      opacity: 0.92;
+    }
+  }
+
+  .welcome-card-float {
+    animation: onboarding-card-float 7.4s ease-in-out infinite;
+  }
+
+  .welcome-metal-sheen {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.02) 14%,
+      rgba(255, 255, 255, 0.08) 28%,
+      rgba(215, 233, 255, 0.22) 42%,
+      rgba(255, 255, 255, 0.42) 50%,
+      rgba(196, 223, 255, 0.2) 58%,
+      rgba(255, 255, 255, 0.07) 74%,
+      transparent 100%
+    );
+    mix-blend-mode: screen;
+    filter: saturate(1.05) blur(0.4px);
+    will-change: transform, opacity;
+    animation: onboarding-metal-sheen var(--card-metal-sheen-duration, 8.8s)
+      ease-in-out infinite;
+  }
+
+  .welcome-stamp-pop {
+    animation: onboarding-stamp-pop 650ms cubic-bezier(0.2, 0.9, 0.25, 1) 120ms
+      both;
+  }
+
+  /* --------------------------------------------------------------------------
+   * 2) Card Frame
+   * base tokens and structural transforms that define geometry and depth.
+   * ------------------------------------------------------------------------ */
+  .license-card-interactive {
+    /* Pointer + tilt state */
+    --card-pointer-x: 50%;
+    --card-pointer-y: 50%;
+    --card-rotate-x: 0deg;
+    --card-rotate-y: 0deg;
+    --card-shadow-x: 0px;
+    --card-shadow-y: 0px;
+    --card-glare-opacity: 0;
+
+    /* Anisotropic highlight state */
+    --card-aniso-angle: 104deg;
+    --card-aniso-shift-x: 0px;
+    --card-aniso-shift-y: 0px;
+    --card-aniso-opacity: 0.14;
+    --card-aniso-hot-alpha: 0.055;
+    --card-aniso-dark-alpha: 0.045;
+    --card-aniso-fine-opacity: 0.065;
+    --card-aniso-fine-line-alpha: 0.021;
+    --card-aniso-fine-shift-x: 0px;
+    --card-aniso-fine-shift-y: 0px;
+
+    /* Timing + 3D */
+    --card-metal-sheen-duration: 8.8s;
+    --card-perspective: 1800px;
+
+    /* Ground shadow */
+    --card-ground-shadow-opacity: 0.3;
+    --card-ground-shadow-active-opacity: 0.52;
+    --card-ground-shadow-blur: 16px;
+    --card-ground-shadow-active-blur: 18px;
+
+    /* Surface texture */
+    --card-brush-line-alpha: 0.09;
+    --card-brush-gap: 2.9px;
+    --card-brush-opacity: 0.24;
+    --card-noise-low-opacity: 0.16;
+    --card-noise-high-opacity: 0.21;
+    --card-roughness-map-opacity: 0.2;
+    --card-roughness-center-alpha: 0.03;
+    --card-roughness-edge-alpha: 0.14;
+
+    /* Clearcoat / lighting */
+    --card-clearcoat-opacity: 0.18;
+    --card-clearcoat-active-opacity: 0.24;
+    --card-clearcoat-saturation: 1;
+    --card-clearcoat-active-saturation: 1.03;
+
+    /* Bevel + edge fresnel */
+    --card-bevel-top-alpha: 0.44;
+    --card-bevel-bottom-alpha: 0.38;
+    --card-bevel-side-light-alpha: 0.16;
+    --card-bevel-side-dark-alpha: 0.29;
+    --card-bevel-top-wash-alpha: 0.045;
+    --card-bevel-bottom-wash-alpha: 0.21;
+    --card-fresnel-width: 1.3px;
+    --card-fresnel-left-alpha: 0.04;
+    --card-fresnel-right-alpha: 0.04;
+    --card-fresnel-top-alpha: 0.04;
+    --card-fresnel-bottom-alpha: 0.052;
+    --card-fresnel-soft-alpha: 0.038;
+    --card-glare-size: 300px;
+    perspective: var(--card-perspective);
+    transform-style: preserve-3d;
+  }
+
+  .license-card-ground-shadow {
+    background: radial-gradient(
+      72% 96% at 50% 50%,
+      rgba(4, 10, 20, 0.44) 0%,
+      rgba(4, 10, 20, 0.28) 46%,
+      rgba(4, 10, 20, 0.1) 74%,
+      transparent 100%
+    );
+    border-radius: 9999px;
+    transform: translate3d(var(--card-shadow-x), var(--card-shadow-y), 0);
+    opacity: var(--card-ground-shadow-opacity);
+    filter: blur(var(--card-ground-shadow-blur));
+    transition:
+      opacity 260ms ease-out,
+      filter 260ms ease-out;
+  }
+
+  .license-card-interactive[data-active="true"] .license-card-ground-shadow {
+    opacity: var(--card-ground-shadow-active-opacity);
+    filter: blur(var(--card-ground-shadow-active-blur));
+  }
+
+  .license-card-tilt {
+    transform-style: preserve-3d;
+    transform: rotateX(var(--card-rotate-x)) rotateY(var(--card-rotate-y));
+    transition: none;
+    will-change: transform;
+  }
+
+  .license-card-surface {
+    transition:
+      box-shadow 300ms cubic-bezier(0.16, 0.84, 0.24, 1),
+      filter 300ms cubic-bezier(0.16, 0.84, 0.24, 1);
+  }
+
+  /* --------------------------------------------------------------------------
+   * 3) Material Layers
+   * texture, coatings, glare and reduced-motion behavior.
+   * ------------------------------------------------------------------------ */
+  /* Noise stack */
+  .license-card-noise-low {
+    opacity: var(--card-noise-low-opacity);
+    mix-blend-mode: soft-light;
+    transform: scale(1.58);
+    filter: blur(0.64px) contrast(1.1);
+    transform-origin: 50% 50%;
+  }
+
+  .license-card-noise-high {
+    opacity: var(--card-noise-high-opacity);
+    mix-blend-mode: soft-light;
+    filter: contrast(1.14);
+  }
+
+  .license-card-roughness-map {
+    background:
+      radial-gradient(
+        132% 108% at 50% 52%,
+        rgba(255, 255, 255, var(--card-roughness-center-alpha)) 0%,
+        rgba(255, 255, 255, 0.016) 34%,
+        rgba(8, 14, 24, 0.07) 64%,
+        rgba(5, 10, 18, var(--card-roughness-edge-alpha)) 100%
+      ),
+      linear-gradient(
+        112deg,
+        rgba(255, 255, 255, 0.022) 0%,
+        rgba(255, 255, 255, 0.01) 30%,
+        rgba(5, 10, 18, 0.07) 61%,
+        rgba(255, 255, 255, 0.018) 100%
+      );
+    mix-blend-mode: overlay;
+    opacity: var(--card-roughness-map-opacity);
+    transform: translate3d(
+      calc(var(--card-aniso-shift-x) * 0.14),
+      calc(var(--card-aniso-shift-y) * 0.14),
+      0
+    );
+    transition:
+      opacity 220ms ease-out,
+      transform 220ms ease-out;
+    will-change: transform, opacity;
+  }
+
+  .license-card-interactive[data-active="true"] .license-card-roughness-map {
+    opacity: calc(var(--card-roughness-map-opacity) + 0.04);
+  }
+
+  /* Brushed metal + anisotropic highlights */
+  .license-card-brush {
+    background:
+      repeating-linear-gradient(
+        104deg,
+        rgba(255, 255, 255, var(--card-brush-line-alpha)) 0px,
+        rgba(255, 255, 255, var(--card-brush-line-alpha)) 1px,
+        rgba(255, 255, 255, 0) 1px,
+        rgba(255, 255, 255, 0) var(--card-brush-gap)
+      ),
+      linear-gradient(
+        124deg,
+        rgba(255, 255, 255, 0.055) 0%,
+        rgba(255, 255, 255, 0.015) 34%,
+        rgba(6, 12, 24, 0.12) 52%,
+        rgba(255, 255, 255, 0.045) 100%
+      );
+    opacity: var(--card-brush-opacity);
+    mix-blend-mode: soft-light;
+  }
+
+  .license-card-aniso {
+    background: linear-gradient(
+      var(--card-aniso-angle),
+      transparent 8%,
+      rgba(255, 255, 255, var(--card-aniso-hot-alpha)) 34%,
+      rgba(255, 255, 255, 0.015) 50%,
+      rgba(6, 12, 24, var(--card-aniso-dark-alpha)) 68%,
+      transparent 94%
+    );
+    mix-blend-mode: overlay;
+    opacity: var(--card-aniso-opacity);
+    transform: translate3d(var(--card-aniso-shift-x), var(--card-aniso-shift-y), 0);
+    transition:
+      opacity 220ms ease-out,
+      transform 220ms ease-out;
+    will-change: transform, opacity;
+  }
+
+  .license-card-aniso-fine {
+    background:
+      repeating-linear-gradient(
+        var(--card-aniso-angle),
+        rgba(255, 255, 255, var(--card-aniso-fine-line-alpha)) 0px,
+        rgba(255, 255, 255, var(--card-aniso-fine-line-alpha)) 0.95px,
+        rgba(255, 255, 255, 0) 1.55px,
+        rgba(255, 255, 255, 0) 4.35px
+      ),
+      linear-gradient(
+        calc(var(--card-aniso-angle) + 4deg),
+        rgba(255, 255, 255, 0.024) 0%,
+        rgba(255, 255, 255, 0.01) 38%,
+        rgba(5, 12, 24, 0.06) 66%,
+        transparent 100%
+      );
+    mix-blend-mode: soft-light;
+    opacity: var(--card-aniso-fine-opacity);
+    transform: translate3d(
+      var(--card-aniso-fine-shift-x),
+      var(--card-aniso-fine-shift-y),
+      0
+    );
+    filter: saturate(1.04) blur(0.22px);
+    transition:
+      opacity 220ms ease-out,
+      transform 220ms ease-out;
+    will-change: transform, opacity;
+  }
+
+  /* Clearcoat, bevel and final glare */
+  .license-card-clearcoat {
+    background:
+      radial-gradient(
+        260px circle at var(--card-pointer-x) var(--card-pointer-y),
+        rgba(255, 255, 255, 0.15) 0%,
+        rgba(255, 255, 255, 0.07) 24%,
+        rgba(255, 255, 255, 0.02) 42%,
+        transparent 68%
+      ),
+      linear-gradient(
+        118deg,
+        rgba(255, 255, 255, 0.12) 0%,
+        rgba(255, 255, 255, 0.035) 18%,
+        rgba(255, 255, 255, 0) 42%,
+        rgba(255, 255, 255, 0.035) 68%,
+        rgba(255, 255, 255, 0.09) 100%
+      );
+    mix-blend-mode: screen;
+    opacity: var(--card-clearcoat-opacity);
+    filter: saturate(var(--card-clearcoat-saturation));
+    transition:
+      opacity 320ms ease,
+      filter 320ms ease;
+  }
+
+  .license-card-interactive[data-active="true"] .license-card-clearcoat {
+    opacity: var(--card-clearcoat-active-opacity);
+    filter: saturate(var(--card-clearcoat-active-saturation));
+  }
+
+  .license-card-bevel {
+    box-shadow:
+      inset 0 1.3px 0 rgba(255, 255, 255, var(--card-bevel-top-alpha)),
+      inset 0 -1.5px 0 rgba(3, 7, 15, var(--card-bevel-bottom-alpha)),
+      inset 1.2px 0 0 rgba(255, 255, 255, var(--card-bevel-side-light-alpha)),
+      inset -1.2px 0 0 rgba(3, 7, 15, var(--card-bevel-side-dark-alpha)),
+      inset 0 12px 20px rgba(255, 255, 255, var(--card-bevel-top-wash-alpha)),
+      inset 0 -18px 24px rgba(3, 7, 15, var(--card-bevel-bottom-wash-alpha));
+  }
+
+  .license-card-fresnel {
+    box-shadow:
+      inset var(--card-fresnel-width) 0 0
+        rgba(255, 255, 255, var(--card-fresnel-left-alpha)),
+      inset calc(-1 * var(--card-fresnel-width)) 0 0
+        rgba(255, 255, 255, var(--card-fresnel-right-alpha)),
+      inset 0 var(--card-fresnel-width) 0
+        rgba(255, 255, 255, var(--card-fresnel-top-alpha)),
+      inset 0 calc(-1 * var(--card-fresnel-width)) 0
+        rgba(4, 10, 20, var(--card-fresnel-bottom-alpha)),
+      inset 0 0 22px rgba(255, 255, 255, var(--card-fresnel-soft-alpha));
+    mix-blend-mode: screen;
+    transition: box-shadow 220ms ease-out;
+  }
+
+  .license-card-glare {
+    background: radial-gradient(
+      var(--card-glare-size) circle at var(--card-pointer-x) var(--card-pointer-y),
+      rgba(255, 255, 255, 0.42) 0%,
+      rgba(255, 255, 255, 0.18) 20%,
+      rgba(255, 255, 255, 0.05) 38%,
+      transparent 62%
+    );
+    mix-blend-mode: screen;
+    opacity: var(--card-glare-opacity);
+    transition: opacity 260ms ease-out;
+  }
+
+  /* Reduced-motion fallback */
+  @media (prefers-reduced-motion: reduce) {
+    .welcome-card-float,
+    .welcome-metal-sheen,
+    .welcome-stamp-pop,
+    .license-card-tilt {
+      animation: none;
+    }
+
+    .license-card-tilt {
+      transform: none;
+      transition: none;
+    }
+
+    .license-card-ground-shadow {
+      transform: none;
+      transition: none;
+    }
+
+    .license-card-aniso {
+      transform: none;
+      transition: none;
+    }
+
+    .license-card-aniso-fine {
+      transform: none;
+      transition: none;
+    }
+
+    .license-card-roughness-map {
+      transform: none;
+      transition: none;
+    }
+
+    .license-card-glare {
+      display: none;
+    }
+  }
+}

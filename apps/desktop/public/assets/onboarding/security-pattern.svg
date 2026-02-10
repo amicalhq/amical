@@ -1,0 +1,46 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="32" y1="64" x2="480" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7EA0BE" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#D2DEE8" stop-opacity="0.2"/>
+    </linearGradient>
+    <radialGradient id="g2" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 256) rotate(90) scale(240)">
+      <stop stop-color="#BBD4EA" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#BBD4EA" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="tinyLine" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M0 8L8 0" stroke="#C9D8E6" stroke-opacity="0.12"/>
+    </pattern>
+    <clipPath id="clip">
+      <rect x="0" y="0" width="512" height="512" rx="34"/>
+    </clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="34" fill="#0F151D"/>
+  <rect x="0" y="0" width="512" height="512" rx="34" fill="url(#tinyLine)"/>
+  <g clip-path="url(#clip)">
+    <g opacity="0.72">
+      <path d="M-60 246C22 136 146 74 256 74C366 74 492 136 574 246" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 266C22 156 146 94 256 94C366 94 492 156 574 266" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 286C22 176 146 114 256 114C366 114 492 176 574 286" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 306C22 196 146 134 256 134C366 134 492 196 574 306" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 326C22 216 146 154 256 154C366 154 492 216 574 326" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 346C22 236 146 174 256 174C366 174 492 236 574 346" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 366C22 256 146 194 256 194C366 194 492 256 574 366" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 386C22 276 146 214 256 214C366 214 492 276 574 386" stroke="url(#g1)" stroke-width="1.5"/>
+      <path d="M-60 406C22 296 146 234 256 234C366 234 492 296 574 406" stroke="url(#g1)" stroke-width="1.5"/>
+    </g>
+
+    <g opacity="0.6">
+      <path d="M138 -24C216 70 256 160 256 256C256 352 216 442 138 536" stroke="#A4BED5" stroke-opacity="0.34" stroke-width="1.4"/>
+      <path d="M168 -24C236 72 270 162 270 256C270 350 236 440 168 536" stroke="#A4BED5" stroke-opacity="0.28" stroke-width="1.4"/>
+      <path d="M198 -24C255 74 284 164 284 256C284 348 255 438 198 536" stroke="#A4BED5" stroke-opacity="0.24" stroke-width="1.4"/>
+      <path d="M228 -24C274 76 298 166 298 256C298 346 274 436 228 536" stroke="#A4BED5" stroke-opacity="0.2" stroke-width="1.4"/>
+      <path d="M258 -24C293 78 312 168 312 256C312 344 293 434 258 536" stroke="#A4BED5" stroke-opacity="0.16" stroke-width="1.4"/>
+      <path d="M288 -24C312 80 326 170 326 256C326 342 312 432 288 536" stroke="#A4BED5" stroke-opacity="0.12" stroke-width="1.4"/>
+    </g>
+  </g>
+
+  <rect x="0" y="0" width="512" height="512" rx="34" fill="url(#g2)"/>
+  <rect x="0.75" y="0.75" width="510.5" height="510.5" rx="33.25" stroke="#BFD3E4" stroke-opacity="0.26" stroke-width="1.5"/>
+</svg>

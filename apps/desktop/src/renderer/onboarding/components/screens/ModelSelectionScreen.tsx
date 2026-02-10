@@ -160,7 +160,7 @@ export function ModelSelectionScreen({
           onBack={onBack}
           onNext={handleContinue}
           disableNext={!canContinue}
-          nextLabel={canContinue ? "Continue" : "Download a model to continue"}
+          nextLabel={canContinue ? "Next" : "Download a model first"}
         />
       }
     >

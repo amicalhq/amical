@@ -30,7 +30,7 @@ export function NavigationButtons({
   showComplete = false,
   disableNext = false,
   disableComplete = false,
-  nextLabel = "Continue",
+  nextLabel = "Next",
   completeLabel = "Complete",
   className,
 }: NavigationButtonsProps) {

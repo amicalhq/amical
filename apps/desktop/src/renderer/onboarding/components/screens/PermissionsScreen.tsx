@@ -141,9 +141,7 @@ export function PermissionsScreen({
           onBack={onBack}
           onNext={onNext}
           disableNext={!allPermissionsGranted}
-          nextLabel={
-            allPermissionsGranted ? "Continue" : "Waiting for permissions..."
-          }
+          nextLabel={allPermissionsGranted ? "Next" : "Waiting for permissions..."}
         />
       }
     >

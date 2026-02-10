@@ -1,0 +1,41 @@
+<svg width="420" height="420" viewBox="0 0 420 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="outerMetal" x1="60" y1="58" x2="360" y2="362" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#DCE2E9"/>
+      <stop offset="0.5" stop-color="#AEB6C0"/>
+      <stop offset="1" stop-color="#D5DCE4"/>
+    </linearGradient>
+    <radialGradient id="innerGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(210 210) rotate(90) scale(188)">
+      <stop offset="0" stop-color="#C7CFD8" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#B0B8C1" stop-opacity="0.58"/>
+    </radialGradient>
+    <linearGradient id="checkGrad" x1="142" y1="164" x2="282" y2="262" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EFF3F7"/>
+      <stop offset="1" stop-color="#CBD2DB"/>
+    </linearGradient>
+    <filter id="softGlow" x="22" y="22" width="376" height="376" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#softGlow)" opacity="0.34">
+    <circle cx="210" cy="210" r="164" fill="#D8DEE5"/>
+  </g>
+
+  <circle cx="210" cy="210" r="154" fill="#2E363E" stroke="url(#outerMetal)" stroke-opacity="0.76" stroke-width="3"/>
+  <circle cx="210" cy="210" r="130" fill="url(#innerGlow)" stroke="#D4DBE3" stroke-opacity="0.54" stroke-width="2"/>
+  <circle cx="210" cy="210" r="96" fill="#232B32" stroke="#C6CED7" stroke-opacity="0.58" stroke-width="1.5"/>
+
+  <g opacity="0.68">
+    <path d="M210 82L216 94H229L219 102L223 114L210 106L197 114L201 102L191 94H204L210 82Z" fill="#E8EDF2"/>
+    <path d="M338 210L326 216V229L318 219L306 223L314 210L306 197L318 201L326 191V204L338 210Z" fill="#E8EDF2"/>
+    <path d="M210 338L204 326H191L201 318L197 306L210 314L223 306L219 318L229 326H216L210 338Z" fill="#E8EDF2"/>
+    <path d="M82 210L94 204V191L102 201L114 197L106 210L114 223L102 219L94 229V216L82 210Z" fill="#E8EDF2"/>
+  </g>
+
+  <path d="M140 210L186 256L280 164" stroke="url(#checkGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="210" cy="210" r="154" stroke="#BAC2CC" stroke-opacity="0.36" stroke-width="12" stroke-dasharray="2 14"/>
+
+  <text x="210" y="60" fill="#E1E7EE" fill-opacity="0.78" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="20" letter-spacing="4">VERIFIED</text>
+  <text x="210" y="372" fill="#E1E7EE" fill-opacity="0.78" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="20" letter-spacing="4">GRIZZO LICENSE</text>
+</svg>
