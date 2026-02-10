@@ -15,7 +15,7 @@ interface DiscoverySourceScreenProps {
 }
 
 /**
- * Discovery source screen - asks how users found Amical
+ * Discovery source screen - asks how users found Grizzo
  */
 export function DiscoverySourceScreen({
   onNext,
@@ -61,7 +61,7 @@ export function DiscoverySourceScreen({
 
   const handleContinue = () => {
     if (!selectedSource) {
-      toast.error("Please select how you discovered Amical");
+      toast.error("Please select how you discovered Grizzo");
       return;
     }
 
@@ -78,7 +78,7 @@ export function DiscoverySourceScreen({
 
   return (
     <OnboardingLayout
-      title="How did you discover Amical?"
+      title="How did you discover Grizzo?"
       subtitle="This helps us understand where our users come from"
       footer={
         <NavigationButtons

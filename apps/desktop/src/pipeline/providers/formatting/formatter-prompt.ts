@@ -119,7 +119,7 @@ const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
 export function constructFormatterPrompt(context: FormatParams["context"]): {
   systemPrompt: string;
 } {
-  const { accessibilityContext, vocabulary } = context;
+  const { accessibilityContext, vocabulary, customInstructions } = context;
 
   // Detect application type
   const applicationType = detectApplicationType(accessibilityContext);
@@ -137,6 +137,13 @@ export function constructFormatterPrompt(context: FormatParams["context"]): {
   if (vocabulary && vocabulary.length > 0) {
     const vocabTerms = vocabulary.join(", ");
     parts.push(`\nCustom vocabulary to use for corrections: ${vocabTerms}`);
+  }
+
+  // Add custom instructions if available
+  if (customInstructions && customInstructions.trim().length > 0) {
+    parts.push(
+      `\nCustom formatting instructions from user:\n<user_instructions>\n${customInstructions.trim()}\n</user_instructions>`,
+    );
   }
 
   // Add numbered instructions

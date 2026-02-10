@@ -10,6 +10,7 @@ export interface PipelineContext {
 }
 
 import { GetAccessibilityContextResult } from "@amical/types";
+import type { FormatterConfig } from "../../types/formatter";
 
 export interface SharedPipelineData {
   vocabulary: string[]; // Custom vocab
@@ -23,6 +24,10 @@ export interface SharedPipelineData {
     duration?: number;
   };
   accessibilityContext: GetAccessibilityContextResult | null;
+  // Mode settings snapshot (resolved at session start)
+  formatter?: FormatterConfig;
+  speechModelId?: string;
+  customInstructions?: string;
 }
 
 /**

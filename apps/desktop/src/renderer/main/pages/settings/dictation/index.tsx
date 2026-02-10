@@ -9,7 +9,7 @@ import {
 
 export default function DictationSettingsPage() {
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div className="container mx-auto max-w-5xl px-6 pb-6">
       <div className="mb-8">
         <h1 className="text-xl font-bold">Dictation</h1>
         <p className="text-muted-foreground mt-1 text-sm">

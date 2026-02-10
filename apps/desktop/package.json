@@ -1,16 +1,16 @@
 {
   "name": "@amical/desktop",
-  "version": "0.1.17",
-  "description": "Amical Desktop app",
+  "version": "0.0.1",
+  "description": "Grizzo Desktop app",
   "main": ".vite/build/main.js",
-  "productName": "Amical",
+  "productName": "Grizzo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/amicalhq/amical"
+    "url": "https://github.com/kousaku-maron/amical"
   },
   "author": {
-    "name": "Amical",
-    "email": "contact@amical.ai",
+    "name": "maron",
+    "email": "kousaku.maron@gmail.com",
     "url": "https://amical.ai"
   },
   "scripts": {
@@ -70,6 +70,7 @@
     "@types/node": "^24.10.1",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.1.2",
     "@vitest/ui": "^4.0.8",
     "bumpp": "^10.2.3",
     "electron": "38.1.0",
@@ -87,6 +88,8 @@
     "vitest": "^4.0.8"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.12",
+    "@ai-sdk/google": "^1.2.22",
     "@ai-sdk/openai": "^1.3.22",
     "@amical/eslint-config": "workspace:*",
     "@amical/types": "workspace:*",

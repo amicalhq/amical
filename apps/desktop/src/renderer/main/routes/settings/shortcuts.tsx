@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ShortcutsSettingsPage } from "../../pages/settings/shortcuts";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/settings/shortcuts")({
-  component: ShortcutsSettingsPage,
+  beforeLoad: () => {
+    throw redirect({
+      to: "/settings/preferences",
+    });
+  },
 });

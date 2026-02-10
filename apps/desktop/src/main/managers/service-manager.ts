@@ -12,6 +12,7 @@ import { isMacOS, isWindows } from "../../utils/platform";
 import { TelemetryService } from "../../services/telemetry-service";
 import { AuthService } from "../../services/auth-service";
 import { OnboardingService } from "../../services/onboarding-service";
+import { InstalledAppsService } from "../../services/installed-apps-service";
 
 /**
  * Service map for type-safe service access
@@ -29,6 +30,7 @@ export interface ServiceMap {
   shortcutManager: ShortcutManager;
   windowManager: WindowManager;
   onboardingService: OnboardingService;
+  installedAppsService: InstalledAppsService;
 }
 
 /**
@@ -45,6 +47,7 @@ export class ServiceManager {
   private authService: AuthService | null = null;
   private vadService: VADService | null = null;
   private onboardingService: OnboardingService | null = null;
+  private installedAppsService: InstalledAppsService | null = null;
 
   private nativeBridge: NativeBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
@@ -62,6 +65,7 @@ export class ServiceManager {
 
     try {
       this.initializeSettingsService();
+      this.initializeInstalledAppsService();
       this.initializeAuthService();
       await this.initializeTelemetryService();
       await this.initializeModelServices();
@@ -93,15 +97,20 @@ export class ServiceManager {
     logger.main.info("Settings service initialized");
   }
 
+  private initializeInstalledAppsService(): void {
+    this.installedAppsService = new InstalledAppsService();
+    logger.main.info("Installed apps service initialized");
+  }
+
   private initializeAuthService(): void {
     this.authService = AuthService.getInstance();
     logger.main.info("Auth service initialized");
   }
 
   private async initializeOnboardingService(): Promise<void> {
-    if (!this.settingsService || !this.telemetryService || !this.modelService) {
+    if (!this.settingsService || !this.telemetryService) {
       logger.main.warn(
-        "Settings, telemetry, or model service not available for onboarding",
+        "Settings or telemetry service not available for onboarding",
       );
       return;
     }
@@ -109,7 +118,6 @@ export class ServiceManager {
     this.onboardingService = OnboardingService.getInstance(
       this.settingsService,
       this.telemetryService,
-      this.modelService,
     );
     logger.main.info("Onboarding service initialized");
   }
@@ -224,6 +232,7 @@ export class ServiceManager {
       shortcutManager: this.shortcutManager!,
       windowManager: this.windowManager!,
       onboardingService: this.onboardingService!,
+      installedAppsService: this.installedAppsService!,
     };
 
     return services[serviceName];

@@ -1,13 +1,9 @@
 import {
   IconSettings,
-  IconMicrophone,
+  IconSparkles,
   IconBook,
   IconBrain,
   IconHistory,
-  IconInfoCircle,
-  IconKeyboard,
-  IconAdjustments,
-  IconNotes,
   type Icon,
 } from "@tabler/icons-react";
 
@@ -21,35 +17,14 @@ export interface SettingsNavItem {
 
 export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
-    title: "Notes",
-    url: "/settings/notes",
-    description: "Manage your notes",
-    icon: IconNotes,
+    title: "Modes",
+    url: "/settings/modes",
+    description: "Create and manage transcription modes",
+    icon: IconSparkles,
     type: "settings",
   },
   {
-    title: "Preferences",
-    url: "/settings/preferences",
-    description: "Configure general application preferences and behavior",
-    icon: IconSettings,
-    type: "settings",
-  },
-  {
-    title: "Dictation",
-    url: "/settings/dictation",
-    description: "Configure speech recognition and dictation settings",
-    icon: IconMicrophone,
-    type: "settings",
-  },
-  {
-    title: "Shortcuts",
-    url: "/settings/shortcuts",
-    description: "Customize keyboard shortcuts and hotkeys",
-    icon: IconKeyboard,
-    type: "settings",
-  },
-  {
-    title: "Vocabulary",
+    title: "Dictionary",
     url: "/settings/vocabulary",
     description: "Manage custom vocabulary and word recognition",
     icon: IconBook,
@@ -70,17 +45,10 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     type: "settings",
   },
   {
-    title: "Advanced",
-    url: "/settings/advanced",
-    description: "Advanced configuration options",
-    icon: IconAdjustments,
-    type: "settings",
-  },
-  {
-    title: "About",
-    url: "/settings/about",
-    description: "About Amical and version information",
-    icon: IconInfoCircle,
+    title: "Settings",
+    url: "/settings/preferences",
+    description: "Configure general application preferences and behavior",
+    icon: IconSettings,
     type: "settings",
   },
 ];

@@ -6,7 +6,6 @@ import {
   real,
   index,
   primaryKey,
-  blob,
 } from "drizzle-orm/sqlite-core";
 
 // Transcriptions table
@@ -53,7 +52,7 @@ export const vocabulary = sqliteTable("vocabulary", {
 export const appSettings = sqliteTable("app_settings", {
   id: integer("id").primaryKey(),
   data: text("data", { mode: "json" }).$type<AppSettingsData>().notNull(),
-  version: integer("version").notNull().default(1), // For migrations
+  version: integer("version").notNull().default(1), // Settings schema version
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -62,7 +61,7 @@ export const appSettings = sqliteTable("app_settings", {
     .default(sql`(unixepoch())`),
 });
 
-// Unified models table for all model types (Whisper, Language, Embedding)
+// Unified models table for all model types (Whisper, Language)
 export const models = sqliteTable(
   "models",
   {
@@ -72,7 +71,7 @@ export const models = sqliteTable(
 
     // Common fields
     name: text("name").notNull(),
-    type: text("type").notNull(), // "speech", "language", "embedding"
+    type: text("type").notNull(), // "speech", "language"
     size: text("size"), // Model size string (e.g., "7B", "Large", "~78 MB")
     context: text("context"), // Context window (e.g., "32k", "128k")
     description: text("description"),
@@ -107,12 +106,33 @@ export const models = sqliteTable(
   ],
 );
 
+// Mode configuration - each mode is a complete dictation/formatting profile
+export interface ModeConfig {
+  id: string; // "default" for built-in, crypto.randomUUID() for user-created
+  name: string;
+  isDefault: boolean; // true only for the built-in mode; cannot be deleted
+  dictation: {
+    autoDetectEnabled: boolean;
+    selectedLanguage: string;
+  };
+  formatterConfig: {
+    enabled: boolean;
+    modelId?: string;
+    fallbackModelId?: string;
+  };
+  customInstructions?: string; // Free-text injected into formatter system prompt
+  speechModelId?: string; // Per-mode speech model override; undefined = use current speech selection
+  appBindings?: string[]; // Bundle identifiers for auto-switch (e.g. ["com.apple.mail"])
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
+}
+
 // Define the shape of our settings JSON
 export interface AppSettingsData {
   formatterConfig?: {
     enabled: boolean;
-    modelId?: string; // Formatting model selection (language model ID or "amical-cloud")
-    fallbackModelId?: string; // Last non-cloud formatting model for auto-restore
+    modelId?: string; // Formatting model selection (language model ID)
+    fallbackModelId?: string; // Last formatting model for auto-restore
   };
   ui?: {
     theme: "light" | "dark" | "system";
@@ -145,9 +165,22 @@ export interface AppSettingsData {
     ollama?: {
       url: string;
     };
-    defaultSpeechModel?: string; // Model ID for default speech model (Whisper)
-    defaultLanguageModel?: string; // Model ID for default language model
-    defaultEmbeddingModel?: string; // Model ID for default embedding model
+    openAI?: {
+      apiKey: string;
+    };
+    groq?: {
+      apiKey: string;
+    };
+    grok?: {
+      apiKey: string;
+    };
+    anthropic?: {
+      apiKey: string;
+    };
+    google?: {
+      apiKey: string;
+    };
+    defaultSpeechModel?: string; // Model ID for selected speech model (Whisper)
   };
 
   dictation?: {
@@ -175,54 +208,18 @@ export interface AppSettingsData {
       name?: string;
     };
   };
+  modes?: {
+    items: ModeConfig[];
+    activeModeId: string; // Must match an item's id
+  };
   onboarding?: {
     completedVersion: number;
     completedAt: string; // ISO 8601 timestamp
     lastVisitedScreen?: string; // Last screen user was on (for resume)
     skippedScreens?: string[]; // Screens skipped via feature flags
-    featureInterests?: string[]; // Selected features (max 3)
-    discoverySource?: string; // How user found Amical
-    selectedModelType: "cloud" | "local"; // User's model choice
-    modelRecommendation?: {
-      suggested: "cloud" | "local"; // System recommendation
-      reason: string; // Human-readable explanation
-      followed: boolean; // Whether user followed recommendation
-    };
+    discoverySource?: string; // How user found Grizzo
   };
 }
-
-// Notes table
-export const notes = sqliteTable("notes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  title: text("title").notNull(),
-  content: text("content").default(""), // Store the actual text content
-  icon: text("icon"), // Store the icon (emoji) associated with the note
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
-
-// Yjs updates table for persistence
-export const yjsUpdates = sqliteTable(
-  "yjs_updates",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    noteId: integer("note_id")
-      .notNull()
-      .references(() => notes.id, { onDelete: "cascade" }),
-    updateData: blob("update_data", { mode: "buffer" }).notNull(), // Binary data stored as Buffer
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [
-    // Index for efficient foreign key lookups
-    index("yjs_updates_note_id_idx").on(table.noteId),
-  ],
-);
 
 // Export types for TypeScript
 export type Transcription = typeof transcriptions.$inferSelect;
@@ -233,7 +230,3 @@ export type Model = typeof models.$inferSelect;
 export type NewModel = typeof models.$inferInsert;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type NewAppSettings = typeof appSettings.$inferInsert;
-export type Note = typeof notes.$inferSelect;
-export type NewNote = typeof notes.$inferInsert;
-export type YjsUpdate = typeof yjsUpdates.$inferSelect;
-export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;

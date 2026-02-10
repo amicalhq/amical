@@ -135,7 +135,7 @@ export function PermissionsScreen({
   return (
     <OnboardingLayout
       title="Setup Permissions"
-      subtitle="Amical needs a few permissions to work properly"
+      subtitle="Grizzo needs a few permissions to work properly"
       footer={
         <NavigationButtons
           onBack={onBack}
@@ -282,7 +282,7 @@ export function PermissionsScreen({
                           </span>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Add Amical to Accessibility in System Preferences
+                          Add Grizzo to Accessibility in System Preferences
                         </p>
                       </div>
                     )}

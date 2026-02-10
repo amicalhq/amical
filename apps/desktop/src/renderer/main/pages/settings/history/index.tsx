@@ -115,7 +115,7 @@ function HistoryTableCard({
     <>
       <Card className="p-0">
         <CardContent className="p-0">
-          <Table>
+          <Table className="table-fixed">
             <TableBody>
               {items.map((item) => (
                 <TableRow
@@ -124,7 +124,7 @@ function HistoryTableCard({
                   onMouseLeave={() => setHovered(null)}
                   className="group hover:bg-muted/40 transition px-4"
                 >
-                  <TableCell className="align-top text-xs text-muted-foreground pt-4.5 px-4">
+                  <TableCell className="w-[170px] align-top text-xs text-muted-foreground pt-4.5 px-4">
                     {formatDate(item.timestamp)}
                   </TableCell>
                   <TableCell className="align-top py-4 px-4">
@@ -351,7 +351,7 @@ export default function HistorySettingsPage() {
   const groupedHistory = groupHistoryByDate(transcriptions);
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div className="container mx-auto max-w-5xl px-6 pb-6">
       {/* Header Section */}
       <div className="mb-8">
         <h1 className="text-xl font-bold">History</h1>

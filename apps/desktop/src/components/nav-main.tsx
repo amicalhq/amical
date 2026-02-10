@@ -29,6 +29,7 @@ export function NavMain({
                 asChild
                 tooltip={item.title}
                 isActive={location.pathname.startsWith(item.url)}
+                className="hover:bg-foreground/6 data-[active=true]:bg-foreground/14 data-[active=true]:text-foreground data-[active=true]:font-semibold"
               >
                 <Link
                   to={item.url}

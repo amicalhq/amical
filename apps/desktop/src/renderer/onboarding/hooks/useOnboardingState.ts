@@ -60,19 +60,9 @@ export function useOnboardingState(): UseOnboardingStateReturn {
           if (!prev) return prev;
           const updated = { ...prev };
 
-          if (preferences.featureInterests !== undefined) {
-            updated.featureInterests = preferences.featureInterests;
-          }
           if (preferences.discoverySource !== undefined) {
             updated.discoverySource = preferences.discoverySource;
           }
-          if (preferences.selectedModelType !== undefined) {
-            updated.selectedModelType = preferences.selectedModelType;
-          }
-          if (preferences.modelRecommendation !== undefined) {
-            updated.modelRecommendation = preferences.modelRecommendation;
-          }
-
           return updated;
         });
       } catch (err) {

@@ -1,212 +1,203 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
-import { ModelSetupModal } from "./ModelSetupModal";
-import { useSystemRecommendation } from "../../hooks/useSystemRecommendation";
 import { ModelType } from "../../../../types/onboarding";
-import { Cloud, Laptop, Sparkles, Check, X, Star } from "lucide-react";
+import { Check, Star, Download, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "@/trpc/react";
+import type { DownloadProgress } from "@/constants/models";
 
 interface ModelSelectionScreenProps {
-  onNext: (modelType: ModelType, recommendationFollowed: boolean) => void;
+  onNext: () => void;
   onBack: () => void;
-  initialSelection?: ModelType;
 }
 
 /**
- * Model selection screen - allows users to choose between cloud and local models
+ * Model selection screen - local model setup
  */
 export function ModelSelectionScreen({
   onNext,
   onBack,
-  initialSelection,
 }: ModelSelectionScreenProps) {
-  const { recommendation, isLoading } = useSystemRecommendation();
-  const [selectedModel, setSelectedModel] = useState<ModelType | null>(
-    initialSelection || null,
-  );
-  const [showSetupModal, setShowSetupModal] = useState(false);
-  const [setupComplete, setSetupComplete] = useState<{
-    [ModelType.Cloud]: boolean;
-    [ModelType.Local]: boolean;
-  }>({
-    [ModelType.Cloud]: false,
-    [ModelType.Local]: false,
-  });
+  const PROVIDER_ICON = "icons/models/pc.svg";
+  const PROVIDER_FRAME_CLASS = "bg-white border-slate-200";
+  const PROVIDER_FALLBACK_CLASS = "text-slate-900";
+
+  const [downloadProgress, setDownloadProgress] = useState<
+    Record<string, DownloadProgress>
+  >({});
+  const [error, setError] = useState<string | null>(null);
 
   const models = [
     {
-      id: ModelType.Cloud,
-      title: "Amical Cloud",
-      subtitle: "Fast, more accurate, and free - no setup needed",
-      description:
-        "Ideal if you want the best accuracy or your device can't run local models.\nSecure processing; audio is never stored.",
-      pros: ["Free", "Fast", "More accurate", "No setup needed"],
-      cons: ["Needs internet & login"],
-      icon: Cloud,
-      iconBg: "bg-blue-500/10",
-      iconColor: "text-blue-500",
-    },
-    {
       id: ModelType.Local,
-      title: "Local Models",
-      subtitle: "Private, offline, and free - runs fully on your device.",
-      description:
-        "Great for privacy-focused users with capable hardware. No login required.",
-      pros: ["Full privacy", "Works offline"],
-      cons: ["Uses device resources"],
-      icon: Laptop,
-      iconBg: "bg-slate-500/10",
-      iconColor: "text-slate-500",
+      title: "Whisper (Offline)",
+      subtitle: "Private, offline transcription running on your device.",
     },
   ];
 
-  const handleModelSelect = (modelType: ModelType) => {
-    setSelectedModel(modelType);
-    setShowSetupModal(true);
-  };
+  const availableModelsQuery = api.models.getAvailableModels.useQuery();
+  const downloadedModelsQuery = api.models.getDownloadedModels.useQuery();
+  const activeDownloadsQuery = api.models.getActiveDownloads.useQuery();
+  const downloadModelMutation = api.models.downloadModel.useMutation();
+  const setSelectedModelMutation = api.models.setSelectedModel.useMutation();
+  const utils = api.useUtils();
 
-  const handleSetupComplete = () => {
-    if (selectedModel) {
-      setSetupComplete((prev) => ({
-        ...prev,
-        [selectedModel]: true,
-      }));
+  const offlineModels = useMemo(() => {
+    return (availableModelsQuery.data || []).filter(
+      (model) => model.setup === "offline",
+    );
+  }, [availableModelsQuery.data]);
+
+  const recommendedModelId = "whisper-large-v3-turbo";
+  const preferredOrder = useMemo(
+    () => [
+      recommendedModelId,
+      "whisper-large-v3",
+      "whisper-large-v1",
+      "whisper-medium",
+      "whisper-small",
+      "whisper-base",
+      "whisper-tiny",
+    ],
+    [recommendedModelId],
+  );
+
+  const downloadedModels = downloadedModelsQuery.data || {};
+  const autoSelectedModelId = useMemo(() => {
+    const downloadedIds = Object.keys(downloadedModels);
+    if (downloadedIds.length === 0) return null;
+    for (const candidateId of preferredOrder) {
+      if (downloadedModels[candidateId]) return candidateId;
     }
-  };
+    return downloadedIds[0];
+  }, [downloadedModels, preferredOrder]);
+
+  useEffect(() => {
+    if (activeDownloadsQuery.data) {
+      const progressMap: Record<string, DownloadProgress> = {};
+      activeDownloadsQuery.data.forEach((download) => {
+        progressMap[download.modelId] = download;
+      });
+      setDownloadProgress(progressMap);
+    }
+  }, [activeDownloadsQuery.data]);
+
+  api.models.onDownloadProgress.useSubscription(undefined, {
+    onData: ({ modelId, progress }) => {
+      setDownloadProgress((prev) => ({ ...prev, [modelId]: progress }));
+    },
+  });
+
+  api.models.onDownloadComplete.useSubscription(undefined, {
+    onData: ({ modelId }) => {
+      setDownloadProgress((prev) => {
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      });
+      utils.models.getDownloadedModels.invalidate();
+      utils.models.getActiveDownloads.invalidate();
+    },
+  });
+
+  api.models.onDownloadError.useSubscription(undefined, {
+    onData: ({ modelId, error: message }) => {
+      setDownloadProgress((prev) => {
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      });
+      setError(message || "Download failed");
+      utils.models.getActiveDownloads.invalidate();
+    },
+  });
+
+  api.models.onDownloadCancelled.useSubscription(undefined, {
+    onData: ({ modelId }) => {
+      setDownloadProgress((prev) => {
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      });
+      utils.models.getActiveDownloads.invalidate();
+    },
+  });
 
   const handleContinue = () => {
-    if (!selectedModel) {
-      toast.error("Please select a model type");
+    if (!autoSelectedModelId) {
+      toast.error("Please download a model");
       return;
     }
 
-    if (!setupComplete[selectedModel]) {
-      toast.error("Please complete setup to continue");
-      return;
-    }
-
-    const followedRecommendation = recommendation?.suggested === selectedModel;
-    onNext(selectedModel, followedRecommendation);
+    setSelectedModelMutation.mutate(
+      { modelId: autoSelectedModelId },
+      {
+        onSuccess: () => {
+          onNext();
+        },
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          toast.error(`Failed to select model: ${message}`);
+        },
+      },
+    );
   };
 
-  // Check if any setup is complete
-  const canContinue = selectedModel && setupComplete[selectedModel];
+  const canContinue = Boolean(autoSelectedModelId);
 
   return (
     <OnboardingLayout
-      title="Choose Your AI Model"
-      subtitle="Select how you want Amical to process your audio"
+      title="Set Up Speech Model"
+      subtitle="Download a Whisper model to enable offline transcription"
       footer={
         <NavigationButtons
           onBack={onBack}
           onNext={handleContinue}
           disableNext={!canContinue}
-          nextLabel={canContinue ? "Continue" : "Complete setup to continue"}
+          nextLabel={canContinue ? "Continue" : "Download a model to continue"}
         />
       }
     >
       <div className="space-y-4">
-        {/* System Recommendation */}
-        {recommendation && !isLoading && (
-          <Alert className="border-primary/50 bg-primary/5">
-            <Sparkles className="h-4 w-4" />
-            <AlertDescription>
-              <div>
-                <span className="font-medium">Recommendation:</span> Based on
-                your system specs, we recommend{" "}
-                <span className="font-medium whitespace-nowrap">
-                  {recommendation.suggested === ModelType.Cloud
-                    ? "Amical Cloud"
-                    : "Local Models"}
-                </span>
-                .
-              </div>
-              <div className="mt-1">{recommendation.reason}</div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Model Options */}
+        {/* Model Option */}
         <div className="space-y-4">
           {models.map((model) => {
-            const Icon = model.icon;
-            const isSelected = selectedModel === model.id;
-            const isRecommended = recommendation?.suggested === model.id;
-            const isComplete = setupComplete[model.id];
-
             return (
               <Card
                 key={model.id}
-                className={`cursor-pointer transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "hover:border-muted-foreground/50"
-                }`}
-                onClick={() => handleModelSelect(model.id)}
+                className="transition-colors border-primary bg-primary/5"
               >
                 <div className="flex items-start gap-4 px-4">
                   <div className="flex-1 space-y-2">
                     {/* Header */}
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`rounded-lg p-2 ${model.iconBg}`}>
-                          <Icon className={`h-6 w-6 ${model.iconColor}`} />
-                        </div>
+                        <Avatar
+                          className={`h-9 w-9 rounded-md border ${PROVIDER_FRAME_CLASS}`}
+                        >
+                          <AvatarImage
+                            src={PROVIDER_ICON}
+                            alt={`${model.title} logo`}
+                            className="object-contain p-0.5"
+                          />
+                          <AvatarFallback
+                            className={`rounded-md text-[10px] font-semibold ${PROVIDER_FALLBACK_CLASS}`}
+                          >
+                            WO
+                          </AvatarFallback>
+                        </Avatar>
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-2">
                             <h3 className="font-medium">{model.title}</h3>
-                            {isRecommended && (
-                              <Badge variant="secondary" className="text-xs">
-                                Recommended
-                              </Badge>
-                            )}
                           </div>
                           <p className="text-sm">{model.subtitle}</p>
                         </div>
-                      </div>
-                      {isComplete && (
-                        <div className="rounded-full bg-green-500/10 p-1">
-                          <Check className="h-4 w-4 text-green-500" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Description */}
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">
-                      {model.description}
-                    </p>
-
-                    {/* Pros and Cons */}
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="mb-1 font-medium text-green-600 dark:text-green-400">
-                          Pros:
-                        </p>
-                        <ul className="space-y-0.5 text-muted-foreground">
-                          {model.pros.map((pro, i) => (
-                            <li key={i} className="flex items-center gap-1.5">
-                              <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                              {pro}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="mb-1 font-medium text-orange-600 dark:text-orange-400">
-                          Cons:
-                        </p>
-                        <ul className="space-y-0.5 text-muted-foreground">
-                          {model.cons.map((con, i) => (
-                            <li key={i} className="flex items-center gap-1.5">
-                              <X className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                              {con}
-                            </li>
-                          ))}
-                        </ul>
                       </div>
                     </div>
                   </div>
@@ -216,6 +207,111 @@ export function ModelSelectionScreen({
           })}
         </div>
 
+        {/* Offline Model List */}
+        <div className="space-y-2">
+          {offlineModels.map((model) => {
+            const isRecommended = model.id === recommendedModelId;
+            const progress = downloadProgress[model.id];
+            const downloaded = Boolean(downloadedModels[model.id]);
+            const isDownloading = Boolean(progress);
+
+            return (
+              <div
+                key={model.id}
+                className="rounded-lg border border-border p-3"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{model.name}</p>
+                      {isRecommended && (
+                        <Badge variant="secondary" className="text-xs">
+                          Recommended
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {model.sizeFormatted || model.modelSize || ""}
+                    </p>
+                  </div>
+
+                  {downloaded ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      disabled
+                      className="text-green-600 disabled:opacity-100"
+                      title="Downloaded"
+                      aria-label="Downloaded"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  ) : isDownloading ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      disabled
+                      className="disabled:opacity-100"
+                      title="Downloading"
+                      aria-label="Downloading"
+                    >
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      title="Download"
+                      aria-label="Download"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setError(null);
+                        downloadModelMutation
+                          .mutateAsync({ modelId: model.id })
+                          .catch((err) => {
+                            const message =
+                              err instanceof Error ? err.message : String(err);
+                            setError(message);
+                          });
+                      }}
+                    >
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  )}
+                </div>
+
+                {progress && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex-1">
+                        <Progress value={progress.progress} className="h-2" />
+                      </div>
+                      <span className="text-xs font-medium">
+                        {progress.progress}%
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {(progress.bytesDownloaded / (1024 * 1024)).toFixed(1)} /
+                      {(progress.totalBytes / (1024 * 1024)).toFixed(1)} MB
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4" />
+            {error}
+          </div>
+        )}
+
         {/* Settings Note */}
         <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-4">
           <Star className="h-4 w-4 mt-0.5 text-yellow-500 shrink-0 " />
@@ -224,27 +320,6 @@ export function ModelSelectionScreen({
           </p>
         </div>
       </div>
-
-      {/* Setup Modal */}
-      {selectedModel && (
-        <ModelSetupModal
-          isOpen={showSetupModal}
-          onClose={(wasCompleted) => {
-            setShowSetupModal(false);
-            // Deselect if setup wasn't completed
-            if (!wasCompleted && !setupComplete[selectedModel]) {
-              setSelectedModel(null);
-            }
-          }}
-          modelType={selectedModel}
-          onContinue={() => {
-            handleSetupComplete();
-            const followedRecommendation =
-              recommendation?.suggested === selectedModel;
-            onNext(selectedModel, followedRecommendation);
-          }}
-        />
-      )}
     </OnboardingLayout>
   );
 }

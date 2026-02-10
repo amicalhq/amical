@@ -58,13 +58,61 @@ export interface OllamaResponse {
   models: OllamaModel[];
 }
 
+// OpenAI API response types
+export interface OpenAIModel {
+  id: string;
+  object: string;
+  created: number;
+  owned_by: string;
+}
+
+export interface OpenAIModelsResponse {
+  object: string;
+  data: OpenAIModel[];
+}
+
+// Anthropic API response types
+export interface AnthropicModel {
+  id: string;
+  display_name: string;
+  type: string;
+  created_at?: string;
+}
+
+export interface AnthropicModelsResponse {
+  data: AnthropicModel[];
+  has_more: boolean;
+  first_id?: string;
+  last_id?: string;
+}
+
+// Google Generative AI API response types
+export interface GoogleModel {
+  name: string; // e.g., "models/gemini-2.0-flash"
+  displayName: string;
+  description?: string;
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+  supportedGenerationMethods?: string[];
+}
+
+export interface GoogleModelsResponse {
+  models: GoogleModel[];
+  nextPageToken?: string;
+}
+
 // Unified model interface for UI
 export interface ProviderModel {
   id: string; // Unique identifier (model ID)
   name: string; // Display name
-  provider: string; // "OpenRouter" | "Ollama"
+  provider: string; // "OpenRouter" | "Ollama" | "OpenAI" | "Anthropic" | "Google"
   size?: string; // Model size (e.g., "7B", "Large")
   context: string; // Context length (e.g., "32k", "128k")
   description?: string; // Optional description
-  originalModel?: OpenRouterModel | OllamaModel; // Keep original for reference
+  originalModel?:
+    | OpenRouterModel
+    | OllamaModel
+    | OpenAIModel
+    | AnthropicModel
+    | GoogleModel; // Keep original for reference
 }

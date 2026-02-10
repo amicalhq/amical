@@ -14,10 +14,8 @@ import { CompletionScreen } from "./components/screens/CompletionScreen";
 // Types
 import {
   OnboardingScreen,
-  ModelType,
   type OnboardingState,
   type OnboardingPreferences,
-  type FeatureInterest,
   type DiscoverySource,
 } from "../../types/onboarding";
 
@@ -57,7 +55,6 @@ export function App() {
   const hasInitialized = useRef(false);
 
   // tRPC queries
-  const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
   const utils = api.useUtils();
 
@@ -73,25 +70,14 @@ export function App() {
   // Get active screens (excluding skipped ones)
   const getActiveScreens = useCallback(() => {
     const skipped = new Set(skippedScreensQuery.data || []);
-    const flags = featureFlagsQuery.data;
 
     // Filter out skipped screens based on feature flags
     return screenOrder.filter((screen) => {
       if (skipped.has(screen)) return false;
 
-      // Check feature flags
-      if (flags) {
-        if (screen === OnboardingScreen.Welcome && flags.skipWelcome)
-          return false;
-        if (screen === OnboardingScreen.DiscoverySource && flags.skipDiscovery)
-          return false;
-        if (screen === OnboardingScreen.ModelSelection && flags.skipModels)
-          return false;
-      }
-
       return true;
     });
-  }, [skippedScreensQuery.data, featureFlagsQuery.data]);
+  }, [skippedScreensQuery.data]);
 
   // Get current screen index
   const getCurrentScreenIndex = useCallback(() => {
@@ -228,11 +214,6 @@ export function App() {
     });
   };
 
-  // Handle feature interests selection (telemetry tracked in backend)
-  const handleFeatureInterests = (interests: FeatureInterest[]) => {
-    handleSaveAndContinue({ featureInterests: interests });
-  };
-
   // Handle discovery source selection (telemetry tracked in backend)
   const handleDiscoverySource = (source: DiscoverySource, details?: string) => {
     setDiscoveryDetails(details || "");
@@ -242,31 +223,19 @@ export function App() {
     });
   };
 
-  // Handle model selection (telemetry tracked in backend)
-  const handleModelSelection = (
-    modelType: ModelType,
-    recommendationFollowed: boolean,
-  ) => {
-    handleSaveAndContinue({
-      selectedModelType: modelType,
-      modelRecommendation: state?.modelRecommendation
-        ? { ...state.modelRecommendation, followed: recommendationFollowed }
-        : undefined,
-    });
-  };
-
   // Handle completion (T039)
   const handleComplete = async () => {
     try {
+      const validScreens = new Set(Object.values(OnboardingScreen));
+      const skippedScreens = (skippedScreensQuery.data || []).filter((screen) =>
+        validScreens.has(screen),
+      );
       // Prepare final state
       const finalState: OnboardingState = {
         completedVersion: 1,
         completedAt: new Date().toISOString(),
-        skippedScreens: skippedScreensQuery.data || [],
-        featureInterests: preferences.featureInterests,
+        skippedScreens,
         discoverySource: preferences.discoverySource,
-        selectedModelType: preferences.selectedModelType || ModelType.Cloud,
-        modelRecommendation: preferences.modelRecommendation,
       };
 
       // Complete onboarding (will also track completion event)
@@ -279,7 +248,6 @@ export function App() {
   // Show loading state
   if (
     isLoading ||
-    featureFlagsQuery.isLoading ||
     skippedScreensQuery.isLoading
   ) {
     return (
@@ -298,8 +266,7 @@ export function App() {
       case OnboardingScreen.Welcome:
         return (
           <WelcomeScreen
-            onNext={handleFeatureInterests}
-            initialInterests={preferences.featureInterests}
+            onNext={navigateNext}
           />
         );
 
@@ -327,9 +294,8 @@ export function App() {
       case OnboardingScreen.ModelSelection:
         return (
           <ModelSelectionScreen
-            onNext={handleModelSelection}
+            onNext={navigateNext}
             onBack={navigateBack}
-            initialSelection={preferences.selectedModelType}
           />
         );
 
@@ -338,7 +304,6 @@ export function App() {
           <CompletionScreen
             onComplete={handleComplete}
             onBack={navigateBack}
-            preferences={preferences}
           />
         );
 

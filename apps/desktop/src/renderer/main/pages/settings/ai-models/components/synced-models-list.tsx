@@ -18,8 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Check, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Trash2 } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -28,37 +27,27 @@ import {
 } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import ChangeDefaultModelDialog from "./change-default-model-dialog";
 import type { Model } from "@/db/schema";
 
 interface SyncedModelsListProps {
-  modelType: "language" | "embedding";
   title?: string;
 }
 
 export default function SyncedModelsList({
-  modelType,
-  title = "Synced Models",
+  title = "Available Models",
 }: SyncedModelsListProps) {
   // Local state
   const [syncedModels, setSyncedModels] = useState<Model[]>([]);
-  const [defaultModel, setDefaultModel] = useState("");
 
   // Dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<string>("");
-  const [changeDefaultDialogOpen, setChangeDefaultDialogOpen] = useState(false);
-  const [newDefaultModel, setNewDefaultModel] = useState<string>("");
-  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string>("");
 
   // tRPC queries and mutations
   const utils = api.useUtils();
   const syncedModelsQuery = api.models.getSyncedProviderModels.useQuery();
-  const defaultLanguageModelQuery =
-    api.models.getDefaultLanguageModel.useQuery();
-  const defaultEmbeddingModelQuery =
-    api.models.getDefaultEmbeddingModel.useQuery();
+  const modelProvidersConfigQuery =
+    api.settings.getModelProvidersConfig.useQuery();
 
   const removeProviderModelMutation =
     api.models.removeProviderModel.useMutation({
@@ -72,75 +61,40 @@ export default function SyncedModelsList({
       },
     });
 
-  const setDefaultLanguageModelMutation =
-    api.models.setDefaultLanguageModel.useMutation({
-      onSuccess: () => {
-        utils.models.getDefaultLanguageModel.invalidate();
-        toast.success("Default language model updated!");
-      },
-      onError: (error) => {
-        console.error("Failed to set default language model:", error);
-        toast.error("Failed to set default language model. Please try again.");
-      },
-    });
-
-  const setDefaultEmbeddingModelMutation =
-    api.models.setDefaultEmbeddingModel.useMutation({
-      onSuccess: () => {
-        utils.models.getDefaultEmbeddingModel.invalidate();
-        toast.success("Default embedding model updated!");
-      },
-      onError: (error) => {
-        console.error("Failed to set default embedding model:", error);
-        toast.error("Failed to set default embedding model. Please try again.");
-      },
-    });
-
   // Load synced models
   useEffect(() => {
     if (syncedModelsQuery.data) {
-      let filteredModels = syncedModelsQuery.data;
+      const config = modelProvidersConfigQuery.data;
+      const registeredProviders = new Set<string>();
 
-      // For embedding models, only show Ollama models
-      if (modelType === "embedding") {
-        filteredModels = syncedModelsQuery.data.filter(
-          (model) => model.provider.toLowerCase() === "ollama",
-        );
+      if (config?.openRouter?.apiKey) registeredProviders.add("OpenRouter");
+      if (config?.ollama?.url) registeredProviders.add("Ollama");
+      if (config?.openAI?.apiKey) registeredProviders.add("OpenAI");
+      if (config?.anthropic?.apiKey) registeredProviders.add("Anthropic");
+      if (config?.google?.apiKey) registeredProviders.add("Google");
+
+      const languageModels = syncedModelsQuery.data.filter(
+        (model) => model.type === "language",
+      );
+
+      if (registeredProviders.size === 0) {
+        setSyncedModels([]);
+        return;
       }
+
+      const filteredModels = languageModels.filter((model) =>
+        registeredProviders.has(model.provider),
+      );
 
       setSyncedModels(filteredModels);
     }
-  }, [syncedModelsQuery.data, modelType]);
-
-  // Load default model based on type
-  useEffect(() => {
-    if (
-      modelType === "language" &&
-      defaultLanguageModelQuery.data !== undefined
-    ) {
-      setDefaultModel(defaultLanguageModelQuery.data || "");
-    } else if (
-      modelType === "embedding" &&
-      defaultEmbeddingModelQuery.data !== undefined
-    ) {
-      setDefaultModel(defaultEmbeddingModelQuery.data || "");
-    }
   }, [
-    modelType,
-    defaultLanguageModelQuery.data,
-    defaultEmbeddingModelQuery.data,
+    syncedModelsQuery.data,
+    modelProvidersConfigQuery.data,
   ]);
 
   // Delete confirmation functions
   const openDeleteDialog = (modelId: string) => {
-    // Check if trying to remove the default model
-    if (modelId === defaultModel) {
-      setErrorMessage(
-        "Please select another model as default before removing this model.",
-      );
-      setErrorDialogOpen(true);
-      return;
-    }
     setModelToDelete(modelId);
     setDeleteDialogOpen(true);
   };
@@ -158,32 +112,8 @@ export default function SyncedModelsList({
     setModelToDelete("");
   };
 
-  // Change default model functions
-  const openChangeDefaultDialog = (modelId: string) => {
-    setNewDefaultModel(modelId);
-    setChangeDefaultDialogOpen(true);
-  };
-
-  const confirmChangeDefault = () => {
-    if (modelType === "language") {
-      setDefaultLanguageModelMutation.mutate({ modelId: newDefaultModel });
-    } else {
-      setDefaultEmbeddingModelMutation.mutate({ modelId: newDefaultModel });
-    }
-    setNewDefaultModel("");
-  };
-
   const handleRemoveModel = (modelId: string) => {
     removeProviderModelMutation.mutate({ modelId });
-
-    // Clear default if removing the default model
-    if (defaultModel === modelId) {
-      if (modelType === "language") {
-        setDefaultLanguageModelMutation.mutate({ modelId: null });
-      } else {
-        setDefaultEmbeddingModelMutation.mutate({ modelId: null });
-      }
-    }
   };
 
   return (
@@ -193,9 +123,10 @@ export default function SyncedModelsList({
         <Label className="text-lg font-semibold mb-2 block">{title}</Label>
         {syncedModels.length === 0 ? (
           <div className="border rounded-md p-8 text-center text-muted-foreground">
-            <p>No models synced yet.</p>
+            <p>No models available yet.</p>
             <p className="text-sm mt-1">
-              Connect to a provider and sync models to see them here.
+              Connect providers in the Models section and sync to see available
+              models here.
             </p>
           </div>
         ) : (
@@ -218,53 +149,22 @@ export default function SyncedModelsList({
                     <TableCell>{model.size || "Unknown"}</TableCell>
                     <TableCell>{model.context}</TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() =>
-                                  openChangeDefaultDialog(model.id)
-                                }
-                              >
-                                <Check
-                                  className={cn(
-                                    "w-4 h-4",
-                                    defaultModel === model.id
-                                      ? "text-green-500"
-                                      : "text-muted-foreground",
-                                  )}
-                                />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                {defaultModel === model.id
-                                  ? "Current default model"
-                                  : "Set as default model"}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => openDeleteDialog(model.id)}
-                              >
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Remove model</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => openDeleteDialog(model.id)}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Remove model</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -296,26 +196,6 @@ export default function SyncedModelsList({
         </DialogContent>
       </Dialog>
 
-      <ChangeDefaultModelDialog
-        open={changeDefaultDialogOpen}
-        onOpenChange={setChangeDefaultDialogOpen}
-        selectedModel={syncedModels.find((m) => m.id === newDefaultModel)}
-        onConfirm={confirmChangeDefault}
-        modelType={modelType}
-      />
-
-      {/* Error Dialog */}
-      <Dialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cannot Remove Model</DialogTitle>
-            <DialogDescription>{errorMessage}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button onClick={() => setErrorDialogOpen(false)}>OK</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

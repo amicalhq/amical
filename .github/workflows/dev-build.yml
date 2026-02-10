@@ -1,0 +1,89 @@
+name: Dev Build (Unsigned)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - vox-alpha
+
+jobs:
+  build-macos-arm64:
+    name: Build macOS (arm64, Unsigned)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify architecture
+        run: |
+          CURRENT_ARCH=$(uname -m)
+          echo "Current shell architecture: $CURRENT_ARCH"
+          if [[ "$CURRENT_ARCH" != "arm64" ]]; then
+            echo "ERROR: Expected arm64 architecture but got $CURRENT_ARCH"
+            exit 1
+          fi
+          echo "✓ Architecture verified: Running as native arm64"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.1.0"
+          cache: "pnpm"
+
+      - name: Log Node.js architecture and platform
+        run: |
+          echo "=== Node.js Process Information ==="
+          node -e "console.log('process.arch:', process.arch)"
+          node -e "console.log('process.platform:', process.platform)"
+          echo ""
+
+      - name: Install dependencies
+        env:
+          GGML_NATIVE: OFF
+        run: pnpm install --frozen-lockfile
+
+      - name: Build whisper wrapper JS
+        run: pnpm --filter @amical/whisper-wrapper build
+
+      - name: Build whisper native binaries
+        env:
+          GGML_NATIVE: OFF
+        run: pnpm --filter @amical/whisper-wrapper build:native
+
+      - name: Download Node.js binaries
+        working-directory: apps/desktop
+        run: pnpm download-node
+
+      - name: Build artifacts (Unsigned)
+        working-directory: apps/desktop
+        env:
+          SKIP_CODESIGNING: "true"
+          SKIP_NOTARIZATION: "true"
+          POSTHOG_HOST: https://app.posthog.com
+          TELEMETRY_ENABLED: true
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          # FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
+          # AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
+          # AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
+          # AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
+          # API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
+        run: |
+          echo "Building Unsigned macOS arm64 artifacts..."
+          pnpm make:arm64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vox-dev-macos-arm64
+          path: |
+            apps/desktop/out/make/*.dmg
+            apps/desktop/out/make/zip/darwin/arm64/*.zip
+          retention-days: 3

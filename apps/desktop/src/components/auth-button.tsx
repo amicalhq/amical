@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Helper function to generate initials from email or name
 function getInitials(email?: string | null, name?: string | null): string {
@@ -184,14 +185,23 @@ export function AuthButton() {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton onClick={handleLogin} disabled={isLoading}>
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <LogIn className="h-4 w-4" />
-        )}
-        <span>Sign In</span>
-      </SidebarMenuButton>
+      <Tooltip delayDuration={100}>
+        <TooltipTrigger asChild>
+          <span className="block w-full">
+            <SidebarMenuButton onClick={handleLogin} disabled>
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogIn className="h-4 w-4" />
+              )}
+              <span>Sign In</span>
+            </SidebarMenuButton>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>coming soon...</p>
+        </TooltipContent>
+      </Tooltip>
     </SidebarMenuItem>
   );
 }

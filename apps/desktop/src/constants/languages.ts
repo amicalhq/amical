@@ -1,5 +1,5 @@
 export const AVAILABLE_LANGUAGES = [
-  { value: "auto", label: "Auto detect" },
+  { value: "auto", label: "Auto-Detect" },
   { value: "en", label: "🇺🇸 English" },
   { value: "zh", label: "🇨🇳 Chinese" },
   { value: "es", label: "🇪🇸 Spanish" },

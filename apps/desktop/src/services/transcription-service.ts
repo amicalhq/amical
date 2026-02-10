@@ -7,9 +7,12 @@ import {
 } from "../pipeline/core/pipeline-types";
 import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
-import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
+import { OpenAITranscriptionProvider } from "../pipeline/providers/transcription/openai-transcription-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
+import { OpenAIFormatter } from "../pipeline/providers/formatting/openai-formatter";
+import { AnthropicFormatter } from "../pipeline/providers/formatting/anthropic-formatter";
+import { GoogleFormatter } from "../pipeline/providers/formatting/google-formatter";
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
@@ -22,14 +25,21 @@ import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { dialog } from "electron";
-import { AVAILABLE_MODELS } from "../constants/models";
+import { AVAILABLE_MODELS, type OpenAISpeechModel } from "../constants/models";
+
+const TRANSCRIPTION_API_ENDPOINTS: Record<string, string> = {
+  OpenAI: "https://api.openai.com/v1/audio/transcriptions",
+  Groq: "https://api.groq.com/openai/v1/audio/transcriptions",
+  Grok: "https://api.x.ai/v1/audio/transcriptions",
+};
 
 /**
  * Service for audio transcription and optional formatting
  */
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
-  private cloudProvider: AmicalCloudProvider;
+  private whisperProvidersByModelId = new Map<string, WhisperProvider>();
+  private apiProviders = new Map<string, OpenAITranscriptionProvider>();
   private currentProvider: TranscriptionProvider | null = null;
   private streamingSessions = new Map<string, StreamingSession>();
   private vadService: VADService | null;
@@ -50,7 +60,6 @@ export class TranscriptionService {
     private onboardingService: OnboardingService | null,
   ) {
     this.whisperProvider = new WhisperProvider(modelService);
-    this.cloudProvider = new AmicalCloudProvider();
     this.vadService = vadService;
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
@@ -60,60 +69,192 @@ export class TranscriptionService {
     this.modelService = modelService;
   }
 
+  private getOrCreateWhisperProvider(modelId: string): WhisperProvider {
+    const cached = this.whisperProvidersByModelId.get(modelId);
+    if (cached) {
+      return cached;
+    }
+
+    const provider = new WhisperProvider(this.modelService, modelId);
+    this.whisperProvidersByModelId.set(modelId, provider);
+    return provider;
+  }
+
   /**
    * Select the appropriate transcription provider based on the selected model
    */
-  private async selectProvider(): Promise<TranscriptionProvider> {
-    const selectedModelId = await this.modelService.getSelectedModel();
+  private async selectProvider(
+    speechModelId?: string,
+  ): Promise<TranscriptionProvider> {
+    const effectiveModelId =
+      speechModelId ?? (await this.modelService.getSelectedModel());
 
-    if (!selectedModelId) {
+    if (!effectiveModelId) {
       // Default to whisper if no model selected
       this.currentProvider = this.whisperProvider;
       return this.whisperProvider;
     }
 
     // Find the model in AVAILABLE_MODELS
-    const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+    const model = AVAILABLE_MODELS.find((m) => m.id === effectiveModelId);
 
-    // Use cloud provider for Amical Cloud models
-    if (model?.provider === "Amical Cloud") {
-      this.currentProvider = this.cloudProvider;
-      return this.cloudProvider;
+    // Use API provider for external API models (OpenAI, Groq, Grok)
+    if (model?.setup === "api") {
+      const apiProvider = await this.getOrCreateApiProvider(model);
+      this.currentProvider = apiProvider;
+      return apiProvider;
     }
 
-    // Default to whisper for all other models
+    // Use model-scoped whisper provider for offline model overrides
+    if (model?.setup === "offline" && effectiveModelId) {
+      const provider = this.getOrCreateWhisperProvider(effectiveModelId);
+      this.currentProvider = provider;
+      return provider;
+    }
+
+    // Fallback to default whisper provider (best available local model)
     this.currentProvider = this.whisperProvider;
     return this.whisperProvider;
   }
 
+  private async getOrCreateApiProvider(
+    model: OpenAISpeechModel,
+  ): Promise<OpenAITranscriptionProvider> {
+    // Return cached provider if it exists
+    const cached = this.apiProviders.get(model.id);
+    if (cached) {
+      return cached;
+    }
+
+    // Get API key from provider configs based on provider
+    const config = await this.settingsService.getModelProvidersConfig();
+    let apiKey: string | undefined;
+
+    if (model.provider === "OpenAI") {
+      apiKey = config?.openAI?.apiKey;
+    } else if (model.provider === "Groq") {
+      apiKey = config?.groq?.apiKey;
+    } else if (model.provider === "Grok") {
+      apiKey = config?.grok?.apiKey;
+    }
+
+    if (!apiKey) {
+      throw new Error(
+        `API key not configured for ${model.provider}. Please set it in Models settings.`,
+      );
+    }
+
+    const endpoint = TRANSCRIPTION_API_ENDPOINTS[model.provider];
+    if (!endpoint) {
+      throw new Error(
+        `No transcription endpoint configured for provider: ${model.provider}`,
+      );
+    }
+
+    const provider = new OpenAITranscriptionProvider(
+      apiKey,
+      model.apiModelId,
+      endpoint,
+      `${model.provider.toLowerCase()}-transcription`,
+    );
+
+    this.apiProviders.set(model.id, provider);
+    return provider;
+  }
+
+  private async resolveOfflinePreloadTargets(): Promise<{
+    modelIds: string[];
+    preloadFallbackProvider: boolean;
+  }> {
+    const { items } = await this.settingsService.getModes();
+    const selectedModelId = await this.modelService.getSelectedModel();
+
+    const modelIds = new Set<string>();
+    let preloadFallbackProvider = false;
+
+    for (const mode of items) {
+      const effectiveModelId = mode.speechModelId ?? selectedModelId;
+
+      if (!effectiveModelId) {
+        preloadFallbackProvider = true;
+        continue;
+      }
+
+      const model = AVAILABLE_MODELS.find((item) => item.id === effectiveModelId);
+      if (!model) {
+        preloadFallbackProvider = true;
+        continue;
+      }
+
+      if (model.setup === "api") {
+        continue;
+      }
+
+      // Preload the same model-scoped provider that will be selected at runtime.
+      // If this preferred model is unavailable, WhisperProvider falls back
+      // internally to the best downloaded local model.
+      modelIds.add(effectiveModelId);
+    }
+
+    return {
+      modelIds: Array.from(modelIds),
+      preloadFallbackProvider,
+    };
+  }
+
+  private async disposeUnusedWhisperProviders(
+    requiredModelIds: Set<string>,
+  ): Promise<void> {
+    for (const [modelId, provider] of this.whisperProvidersByModelId) {
+      if (requiredModelIds.has(modelId)) {
+        continue;
+      }
+
+      try {
+        await provider.dispose();
+      } catch (error) {
+        logger.transcription.warn("Failed to dispose Whisper provider", {
+          modelId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        this.whisperProvidersByModelId.delete(modelId);
+      }
+    }
+  }
+
   async initialize(): Promise<void> {
-    // Check if the selected model is a cloud model
+    // Check if the selected model is an API model (used for warning behavior only)
     const selectedModelId = await this.modelService.getSelectedModel();
     const model = selectedModelId
       ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
       : null;
-    const isCloudModel = model?.provider === "Amical Cloud";
+    const isSelectedModelApi = model?.setup === "api";
 
-    // Only preload for local models
-    if (!isCloudModel) {
-      // Check if we should preload Whisper model
-      const transcriptionSettings =
-        await this.settingsService.getTranscriptionSettings();
-      const shouldPreload =
-        transcriptionSettings?.preloadWhisperModel !== false; // Default to true
+    const transcriptionSettings =
+      await this.settingsService.getTranscriptionSettings();
+    const shouldPreload = transcriptionSettings?.preloadWhisperModel !== false; // Default to true
 
-      if (shouldPreload) {
-        // Check if models are available for preloading
-        const hasModels = await this.isModelAvailable();
-        if (hasModels) {
-          logger.transcription.info("Preloading Whisper model...");
-          await this.preloadWhisperModel();
-          this.modelWasPreloaded = true;
-          logger.transcription.info("Whisper model preloaded successfully");
+    if (shouldPreload) {
+      const hasModels = await this.isModelAvailable();
+      if (hasModels) {
+        logger.transcription.info("Preloading Whisper models for modes...");
+        const preloadedCount = await this.preloadWhisperModel();
+        this.modelWasPreloaded = preloadedCount > 0;
+        if (preloadedCount > 0) {
+          logger.transcription.info("Whisper models preloaded successfully", {
+            preloadedCount,
+          });
         } else {
           logger.transcription.info(
-            "Whisper model preloading skipped - no models available",
+            "Whisper preloading skipped - current modes do not use offline models",
           );
+        }
+      } else {
+        logger.transcription.info(
+          "Whisper model preloading skipped - no offline models available",
+        );
+        if (!isSelectedModelApi) {
           setTimeout(async () => {
             const onboardingCheck =
               await this.onboardingService?.checkNeedsOnboarding();
@@ -123,55 +264,72 @@ export class TranscriptionService {
                 title: "No Transcription Models",
                 message: "No transcription models are available.",
                 detail:
-                  "To use voice transcription, please download a model from Speech Models or use a cloud model.",
+                  "To use voice transcription, please download a model from Speech Models or configure an API model.",
                 buttons: ["OK"],
               });
             }
           }, 2000); // Delay to ensure windows are ready
         }
-      } else {
-        logger.transcription.info("Whisper model preloading disabled");
       }
     } else {
-      logger.transcription.info(
-        "Using cloud model - skipping local model preload",
-      );
+      logger.transcription.info("Whisper model preloading disabled");
     }
 
     logger.transcription.info("Transcription service initialized");
   }
 
   /**
-   * Preload Whisper model into memory
+   * Preload Whisper models used by modes into memory
    */
-  async preloadWhisperModel(): Promise<void> {
-    try {
-      // This will trigger the model initialization in WhisperProvider
-      await this.whisperProvider.preloadModel();
-      logger.transcription.info("Whisper model preloaded successfully");
-    } catch (error) {
-      logger.transcription.error("Failed to preload Whisper model:", error);
-      throw error;
+  async preloadWhisperModel(): Promise<number> {
+    const { modelIds, preloadFallbackProvider } =
+      await this.resolveOfflinePreloadTargets();
+    const requiredModelIds = new Set(modelIds);
+    const preloadAttempts = modelIds.length + (preloadFallbackProvider ? 1 : 0);
+
+    let loadedCount = 0;
+
+    for (const modelId of modelIds) {
+      try {
+        const provider = this.getOrCreateWhisperProvider(modelId);
+        await provider.preloadModel();
+        loadedCount++;
+        logger.transcription.info("Preloaded mode Whisper model", { modelId });
+      } catch (error) {
+        logger.transcription.error("Failed to preload mode Whisper model", {
+          modelId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
+
+    if (preloadFallbackProvider) {
+      try {
+        await this.whisperProvider.preloadModel();
+        loadedCount++;
+        logger.transcription.info("Preloaded fallback Whisper model");
+      } catch (error) {
+        logger.transcription.error("Failed to preload fallback Whisper model", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.disposeUnusedWhisperProviders(requiredModelIds);
+
+    if (preloadAttempts > 0 && loadedCount === 0) {
+      throw new Error("Failed to preload any Whisper models");
+    }
+
+    return loadedCount;
   }
 
   /**
-   * Check if transcription models are available (real-time check)
+   * Check if any local offline transcription model is available
    */
   public async isModelAvailable(): Promise<boolean> {
     try {
-      // Check if selected model is a cloud model (doesn't need download)
-      const selectedModelId = await this.modelService.getSelectedModel();
-      if (selectedModelId) {
-        const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
-        if (model?.provider === "Amical Cloud") {
-          return true;
-        }
-      }
-
-      // For local models, check if any are downloaded
-      const modelService = this.whisperProvider["modelService"];
-      const availableModels = await modelService.getValidDownloadedModels();
+      const availableModels = await this.modelService.getValidDownloadedModels();
       return Object.keys(availableModels).length > 0;
     } catch (error) {
       logger.transcription.error("Failed to check model availability:", error);
@@ -180,11 +338,21 @@ export class TranscriptionService {
   }
 
   /**
+   * Clear cached API providers (e.g., when API keys are updated)
+   */
+  clearApiProviderCache(): void {
+    this.apiProviders.clear();
+  }
+
+  /**
    * Handle model change - load new model if preloading is enabled
    * Uses mutex to serialize concurrent model loads
    */
   async handleModelChange(): Promise<void> {
-    this.modelLoadMutex.runExclusive(async () => {
+    // Clear cached API providers since model or API key may have changed
+    this.apiProviders.clear();
+
+    await this.modelLoadMutex.runExclusive(async () => {
       try {
         this.modelWasPreloaded = false;
 
@@ -199,13 +367,17 @@ export class TranscriptionService {
             const hasModels = await this.isModelAvailable();
             if (hasModels) {
               logger.transcription.info(
-                "Loading Whisper model after model change...",
+                "Loading Whisper models after model change...",
               );
-              await this.whisperProvider.preloadModel();
-              this.modelWasPreloaded = true;
-              logger.transcription.info("Whisper model loaded successfully");
+              const preloadedCount = await this.preloadWhisperModel();
+              this.modelWasPreloaded = preloadedCount > 0;
+              logger.transcription.info("Whisper model preload finished", {
+                preloadedCount,
+              });
             } else {
-              logger.transcription.info("No models available to preload");
+              logger.transcription.info(
+                "No offline models available to preload",
+              );
             }
           }
         }
@@ -295,8 +467,9 @@ export class TranscriptionService {
           : undefined;
       const aggregatedTranscription = session.transcriptionResults.join("");
 
-      // Select the appropriate provider
-      const provider = await this.selectProvider();
+      // Select the appropriate provider (use per-mode override if snapshotted)
+      const speechModelId = session.context.sharedData.speechModelId;
+      const provider = await this.selectProvider(speechModelId);
 
       // Transcribe chunk (flush is done separately in finalizeSession)
       const chunkTranscription = await provider.transcribe({
@@ -317,11 +490,7 @@ export class TranscriptionService {
       if (chunkTranscription.trim()) {
         // Cloud provider concatenates previousTranscription with new transcription,
         // so we need to replace the array instead of appending to avoid duplication
-        if (provider.name === "amical-cloud" && aggregatedTranscription) {
-          session.transcriptionResults = [chunkTranscription];
-        } else {
-          session.transcriptionResults.push(chunkTranscription);
-        }
+      session.transcriptionResults.push(chunkTranscription);
         logger.transcription.info("Whisper returned transcription", {
           sessionId,
           transcriptionLength: chunkTranscription.length,
@@ -388,10 +557,8 @@ export class TranscriptionService {
       session.recordingStartedAt = recordingStartedAt;
     }
 
-    const formatterConfig = await this.settingsService.getFormatterConfig();
-    const shouldUseCloudFormatting =
-      formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
-    let usedCloudProvider = false;
+    const formatterConfig = session.context.sharedData.formatter;
+    let activeProvider: TranscriptionProvider | null = null;
 
     // Flush provider to get any remaining buffered audio
     await this.transcriptionMutex.acquire();
@@ -404,26 +571,20 @@ export class TranscriptionService {
           : undefined;
       const aggregatedTranscription = session.transcriptionResults.join("");
 
-      const provider = await this.selectProvider();
-      usedCloudProvider = provider.name === "amical-cloud";
-      const finalTranscription = await provider.flush({
+      const speechModelId = session.context.sharedData.speechModelId;
+      activeProvider = await this.selectProvider(speechModelId);
+      const finalTranscription = await activeProvider.flush({
         sessionId,
         vocabulary: session.context.sharedData.vocabulary,
         accessibilityContext: session.context.sharedData.accessibilityContext,
         previousChunk,
         aggregatedTranscription: aggregatedTranscription || undefined,
         language: session.context.sharedData.userPreferences?.language,
-        formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+        formattingEnabled: false,
       });
 
       if (finalTranscription.trim()) {
-        // Cloud provider concatenates previousTranscription with new transcription,
-        // so we need to replace the array instead of appending to avoid duplication
-        if (usedCloudProvider && aggregatedTranscription) {
-          session.transcriptionResults = [finalTranscription];
-        } else {
-          session.transcriptionResults.push(finalTranscription);
-        }
+        session.transcriptionResults.push(finalTranscription);
         logger.transcription.info("Whisper returned final transcription", {
           sessionId,
           transcriptionLength: finalTranscription.length,
@@ -437,7 +598,7 @@ export class TranscriptionService {
     let completeTranscription = session.transcriptionResults.join("");
 
     // Apply simple pre-formatting for local models (handles Whisper leading space artifact)
-    if (!usedCloudProvider) {
+    if (activeProvider?.name === "whisper") {
       const preSelectionText =
         session.context.sharedData.accessibilityContext?.context?.textSelection
           ?.preSelectionText;
@@ -463,23 +624,12 @@ export class TranscriptionService {
       logger.transcription.debug("Formatting skipped: disabled in config");
     } else if (!completeTranscription.trim().length) {
       logger.transcription.debug("Formatting skipped: empty transcription");
-    } else if (formatterConfig.modelId === "amical-cloud") {
-      if (!usedCloudProvider) {
-        logger.transcription.warn(
-          "Formatting skipped: Amical Cloud formatting requires cloud transcription",
-        );
-      } else {
-        formattingUsed = true;
-        formattingModel = "amical-cloud";
-      }
     } else {
-      // Get default language model and look up provider
-      const modelId =
-        formatterConfig.modelId ||
-        (await this.settingsService.getDefaultLanguageModel());
+      // Get formatting model and look up provider
+      const modelId = formatterConfig.modelId;
       if (!modelId) {
         logger.transcription.debug(
-          "Formatting skipped: no default language model",
+          "Formatting skipped: no formatting model selected",
         );
       } else {
         const allModels = await this.modelService.getSyncedProviderModels();
@@ -528,6 +678,84 @@ export class TranscriptionService {
               model: modelId,
             });
             const provider = new OllamaFormatter(config.url, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "OpenAI") {
+          const config = await this.settingsService.getOpenAIConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: OpenAI API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new OpenAIFormatter(config.apiKey, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "Anthropic") {
+          const config = await this.settingsService.getAnthropicConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: Anthropic API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new AnthropicFormatter(config.apiKey, modelId);
+            const result = await this.formatWithProvider(
+              provider,
+              sessionId,
+              completeTranscription,
+              session,
+            );
+            if (result) {
+              completeTranscription = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "Google") {
+          const config = await this.settingsService.getGoogleConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: Google API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              sessionId,
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new GoogleFormatter(config.apiKey, modelId);
             const result = await this.formatWithProvider(
               provider,
               sessionId,
@@ -617,8 +845,8 @@ export class TranscriptionService {
 
     // Get native binding info if using local whisper
     let whisperNativeBinding: string | undefined;
-    if (this.whisperProvider && "getBindingInfo" in this.whisperProvider) {
-      const bindingInfo = await this.whisperProvider.getBindingInfo();
+    if (activeProvider instanceof WhisperProvider) {
+      const bindingInfo = await activeProvider.getBindingInfo();
       whisperNativeBinding = bindingInfo?.type;
       logger.transcription.info(
         "whisper native binding used",
@@ -660,14 +888,29 @@ export class TranscriptionService {
     // Create default context
     const context = createDefaultContext(uuid());
 
-    // Load dictation settings to get language preference
-    const dictationSettings = await this.settingsService.getDictationSettings();
-    if (dictationSettings) {
-      context.sharedData.userPreferences.language =
-        dictationSettings.autoDetectEnabled
-          ? undefined
-          : dictationSettings.selectedLanguage || "en";
+    // Resolve effective mode at session start:
+    const activeMode = await this.settingsService.getActiveMode();
+    let effectiveMode = activeMode;
+
+    const appContext = this.nativeBridge?.getAccessibilityContext();
+    const bundleId = appContext?.context?.application?.bundleIdentifier;
+    if (bundleId) {
+      const appBoundMode =
+        await this.settingsService.findModeByBundleId(bundleId);
+      if (appBoundMode) {
+        effectiveMode = appBoundMode;
+      }
     }
+
+    context.sharedData.userPreferences.language = effectiveMode.dictation
+      .autoDetectEnabled
+      ? undefined
+      : effectiveMode.dictation.selectedLanguage || "en";
+    context.sharedData.customInstructions = effectiveMode.customInstructions;
+    context.sharedData.formatter =
+      effectiveMode.formatterConfig ??
+      (await this.settingsService.getFormatterConfig());
+    context.sharedData.speechModelId = effectiveMode.speechModelId;
 
     // Load vocabulary and replacements
     const vocabEntries = await getVocabulary({ limit: 50 });
@@ -681,8 +924,6 @@ export class TranscriptionService {
         context.sharedData.vocabulary.push(entry.word);
       }
     }
-
-    // TODO: Load formatter config from settings
 
     return context;
   }
@@ -766,6 +1007,7 @@ export class TranscriptionService {
                 ]
               : undefined,
           aggregatedTranscription: text,
+          customInstructions: session.context.sharedData.customInstructions,
         },
       });
 
@@ -793,6 +1035,7 @@ export class TranscriptionService {
    */
   async dispose(): Promise<void> {
     await this.whisperProvider.dispose();
+    this.apiProviders.clear();
     // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }

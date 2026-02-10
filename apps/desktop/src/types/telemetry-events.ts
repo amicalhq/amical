@@ -32,14 +32,6 @@ export interface OnboardingScreenViewedEvent {
 }
 
 /**
- * Fired when user selects feature interests
- */
-export interface OnboardingFeaturesSelectedEvent {
-  features: string[];
-  count: number;
-}
-
-/**
  * Fired when user selects how they discovered the app
  */
 export interface OnboardingDiscoverySelectedEvent {
@@ -48,22 +40,11 @@ export interface OnboardingDiscoverySelectedEvent {
 }
 
 /**
- * Fired when user selects their preferred model type
- */
-export interface OnboardingModelSelectedEvent {
-  model_type: string;
-  recommendation_followed: boolean;
-}
-
-/**
  * Fired when user completes the onboarding flow
  */
 export interface OnboardingCompletedEvent {
   version: number;
-  features_selected: string[];
   discovery_source?: string;
-  model_type: string;
-  recommendation_followed: boolean;
   skipped_screens?: string[];
 }
 

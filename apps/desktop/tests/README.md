@@ -83,7 +83,6 @@ describe("My Service", () => {
 - `withTranscriptions` - Database with sample transcriptions
 - `withVocabulary` - Database with vocabulary items
 - `withModels` - Database with downloaded models
-- `withNotes` - Database with notes
 - `withAuth` - Database with authenticated user
 - `full` - Database with all types of data
 

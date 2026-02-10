@@ -81,7 +81,7 @@ export function LanguageSettings() {
       <div className="flex items-center justify-between mb-2">
         <div>
           <Label className="text-base font-semibold text-foreground">
-            Auto detect language
+            Auto-Detect language
           </Label>
           <p className="text-xs text-muted-foreground mb-2">
             Automatically detect spoken language. Turn off to select specific
@@ -122,7 +122,7 @@ export function LanguageSettings() {
           </TooltipTrigger>
           {autoDetect && (
             <TooltipContent className="max-w-sm text-center">
-              Disable auto detection to select languages. Selecting specific
+              Disable Auto-Detect to select languages. Selecting specific
               languages may increase accuracy.
             </TooltipContent>
           )}

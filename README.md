@@ -1,119 +1,82 @@
-<!-- Markdown with HTML -->
-<div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://amical.ai/github-readme-header-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://amical.ai/github-readme-header-light.png">
-  <img alt="Amical" src="https://amical.ai/github-readme-header-light.png">
-</picture>
-</div>
+## Get Started
 
-<p align="center">
-  <a href='http://makeapullrequest.com'>
-    <img alt='PRs Welcome' src='https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=shields'/>
-  </a>
-  <a href="https://opensource.org/license/MIT/">
-    <img src="https://img.shields.io/github/license/amicalhq/amical?logo=opensourceinitiative&logoColor=white&label=License&color=8A2BE2" alt="license">
-  </a>
-  <br>
-  <a href="https://amical.ai/community">
-    <img src="https://img.shields.io/badge/discord-7289da.svg?style=flat-square&logo=discord" alt="discord" style="height: 20px;">
-  </a>
-</p>
+### Prerequisites
 
-<p align="center">
-  <a href="https://amical.ai">Website</a> - <a href="https://amical.ai/docs">Docs</a> - <a href="https://amical.ai/community">Community</a> - <a href="https://github.com/amicalhq/amical/issues/new?assignees=&labels=bug&template=bug_report.md">Bug reports</a>
-</p>
+- Node.js >= 24
+- pnpm 10.15.0
+- CMake (`brew install cmake`)
 
-## Table of Contents
-
-- [⬇️ Download](#️-download)
-- [🔮 Overview](#-overview)
-- [✨ Features](#-features)
-- [🔰 Tech Stack](#-tech-stack)
-- [🤗 Contributing](#-contributing)
-- [🎗 License](#-license)
-
-## ⬇️ Download
-
-<p>
-  <a href="https://github.com/amicalhq/amical/releases/latest">
-    <img src="https://amical.ai/download_button_macos.png" alt="Download for macOS" height="60">
-  </a>
-  <a href="https://github.com/amicalhq/amical/releases/latest">
-    <img src="https://amical.ai/download_button_windows.png" alt="Download for Windows" height="60">
-  </a>
-</p>
-
-### Homebrew (macOS)
+### Setup
 
 ```bash
-brew install --cask amical
+git clone --recursive https://github.com/kousaku-maron/amical.git
+cd amical
+pnpm install
 ```
 
-## 🔮 Overview
+`--recursive` により whisper.cpp のサブモジュールも取得される。既にクローン済みの場合は `git submodule update --init --recursive` を実行する。
 
-Local-first AI Dictation app.
+### Build native modules (macOS)
 
-Amical is an open source AI-powered dictation and note-taking app that runs entirely on your machine.
-Powered by [Whisper](https://github.com/openai/whisper) for speech-to-text and open source LLMs for intelligent processing, Amical gives you the power of AI dictation with complete privacy.
+```bash
+pnpm turbo run build:native --filter=@amical/swift-helper --filter=@amical/whisper-wrapper
+```
 
-Context-aware dictation that adapts to what you're doing: drafting an email, chatting on Discord, writing prompts in your IDE, or messaging friends. Amical detects the active app and formats your speech accordingly.
+Swift ヘルパー（macOS アクセシビリティ）と whisper.cpp（音声認識）をビルドする。
 
-<p align="center">
-  <img src="https://amical.ai/demo/dictation-demo-component.gif" alt="Amical dictation demo" width="600">
-</p>
+### Download Node.js binary
 
-## ✨ Features
+```bash
+cd apps/desktop && pnpm download-node
+```
 
-> ✔︎ - Done, ◑ - In Progress, ◯ - Planned
+Whisper の文字起こしは Electron とは別の Node.js プロセスで実行される。このバイナリがないと文字起こしが動作しない。
 
-🚀 Super-fast dictation with AI-enhanced accuracy ✔︎
+### Run in development mode
 
-🧠 Context-aware speech-to-text based on the active app ✔︎
+```bash
+pnpm dev
+```
 
-📒 Smart voice notes → summaries, tasks, structured notes ◑
+### Build DMG locally (unsigned)
 
-🔌 MCP integration → voice commands that control your apps ◯
+```bash
+cd apps/desktop
+SKIP_CODESIGNING=true SKIP_NOTARIZATION=true pnpm make:dmg:arm64
+```
 
-🎙️ Real-time meeting transcription (mic + system audio) ◯
+インストール後、マイク権限を得るためにアドホック署名を行う:
 
-🔧 Extensible via hotkeys, voice macros, custom workflows ✔︎
+```bash
+codesign --force --deep --sign - "/Applications/Vox.app"
+```
 
-🔐 Privacy-first: works offline, one click setup of local models in-app ✔︎
+> **Note:** macOS Sequoia 以降では、未署名のアプリに対して マイク許可ダイアログが表示されない。マイクやカメラなどのプライバシー権限をテストする場合は、署名ありでビルドすること。
 
-🪟 Floating widget for frictionless start/stop with custom hotkeys ✔︎
+## Dev Build (GitHub Actions)
 
-## 🔰 Tech Stack
+`vox-alpha` ブランチへの push、または手動実行（workflow_dispatch）で未署名の macOS arm64 DMG をビルドする。
 
-- 🎤 [Whisper](https://github.com/openai/whisper)
-- 🦙 [Ollama](https://ollama.ai)
-- 🧑‍💻 [Typescript](https://www.typescriptlang.org/)
-- 🖥️ [Electron](https://electronjs.org/)
-- ☘️ [Next.js](https://nextjs.org/)
-- 🎨 [TailwindCSS](https://tailwindcss.com/)
-- 🧑🏼‍🎨 [Shadcn](https://ui.shadcn.com/)
-- 🔒 [Better-Auth](https://better-auth.com/)
-- 🧘‍♂️ [Zod](https://zod.dev/)
-- 🐞 [Jest](https://jestjs.io/)
-- 📚 [Fumadocs](https://github.com/fuma-nama/fumadocs)
-- 🌀 [Turborepo](https://turbo.build/)
+1. GitHub リポジトリの **Actions** タブを開く
+2. **Dev Build (Unsigned)** を選択して実行（または `vox-alpha` への push で自動実行）
+3. 完了後、ワークフロー実行ページ下部の **Artifacts** から `vox-dev-macos-arm64` をダウンロード
 
-## 🤗 Contributing
+### Install the downloaded DMG
 
-Contributions are welcome! Please read the [Contributing Guide][contributing] to get started.
+ダウンロードした DMG を開いてアプリを `/Applications` にコピーした後、以下の 2 つのコマンドを実行する:
 
-- **💡 [Contributing Guide][contributing]**: Learn about our contribution process and coding standards.
-- **🐛 [Report an Issue][issues]**: Found a bug? Let us know!
-- **💬 [Start a Discussion][discussions]**: Have ideas or suggestions? We'd love to hear from you.
+```bash
+xattr -cr /Applications/Vox.app
+codesign --force --deep --sign - "/Applications/Vox.app"
+```
 
-## 🎗 License
+- `xattr -cr` — ダウンロード時に付与される macOS の検疫属性を除去する
+- `codesign --force --deep --sign -` — アドホック署名を行い、マイク等のシステム権限を取得できるようにする
+
+## License
 
 Released under [MIT][license].
 
 <!-- REFERENCE LINKS -->
 
-[contributing]: https://github.com/amicalhq/amical/blob/main/CONTRIBUTING.md
-[license]: https://github.com/amicalhq/amical/blob/main/LICENSE
-[discussions]: https://discuss.amical.ai
-[issues]: https://github.com/amicalhq/amical/issues
-[pulls]: https://github.com/amicalhq/amical/pulls "submit a pull request"
+[fork]: https://github.com/amicalhq/amical
