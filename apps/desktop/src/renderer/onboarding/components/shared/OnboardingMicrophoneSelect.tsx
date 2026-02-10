@@ -14,7 +14,8 @@ import { useAudioDevices } from "@/hooks/useAudioDevices";
  * Simplified microphone selection component for onboarding
  */
 export function OnboardingMicrophoneSelect() {
-  const { data: settings } = api.settings.getSettings.useQuery();
+  const { data: settings, refetch: refetchSettings } =
+    api.settings.getSettings.useQuery();
   const setPreferredMicrophone =
     api.settings.setPreferredMicrophone.useMutation();
   const { devices: audioDevices } = useAudioDevices();
@@ -31,6 +32,9 @@ export function OnboardingMicrophoneSelect() {
       await setPreferredMicrophone.mutateAsync({
         deviceName: actualDeviceName,
       });
+
+      // Refetch settings so the controlled Select value updates immediately
+      await refetchSettings();
     } catch (error) {
       console.error("Failed to set preferred microphone:", error);
     }
