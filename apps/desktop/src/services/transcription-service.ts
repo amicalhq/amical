@@ -15,7 +15,11 @@ import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
 import type { NativeBridge } from "./platform/native-bridge-service";
 import type { OnboardingService } from "./onboarding-service";
-import { createTranscription } from "../db/transcriptions";
+import {
+  createTranscription,
+  getTranscriptionById,
+  updateTranscription,
+} from "../db/transcriptions";
 import { getVocabulary } from "../db/vocabulary";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
@@ -26,6 +30,7 @@ import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
 import { readWavToFloat32 } from "../utils/wav-reader";
+import * as fs from "node:fs";
 
 /**
  * Service for audio transcription and optional formatting
@@ -451,130 +456,25 @@ export class TranscriptionService {
         );
       }
 
-      let formattingDuration: number | undefined;
-
       logger.transcription.info("Finalizing streaming session", {
         sessionId,
         rawTranscriptionLength: completeTranscription.length,
         chunkCount: session.transcriptionResults.length,
       });
 
-      // Fetch formatter config on-demand
-      let formattingUsed = false;
-      let formattingModel: string | undefined;
-
-      if (!formatterConfig || !formatterConfig.enabled) {
-        logger.transcription.debug("Formatting skipped: disabled in config");
-      } else if (!completeTranscription.trim().length) {
-        logger.transcription.debug("Formatting skipped: empty transcription");
-      } else if (formatterConfig.modelId === "amical-cloud") {
-        if (!usedCloudProvider) {
-          logger.transcription.warn(
-            "Formatting skipped: Amical Cloud formatting requires cloud transcription",
-          );
-        } else {
-          formattingUsed = true;
-          formattingModel = "amical-cloud";
-        }
-      } else {
-        // Get default language model and look up provider
-        const modelId =
-          formatterConfig.modelId ||
-          (await this.settingsService.getDefaultLanguageModel());
-        if (!modelId) {
-          logger.transcription.debug(
-            "Formatting skipped: no default language model",
-          );
-        } else {
-          const allModels = await this.modelService.getSyncedProviderModels();
-          const model = allModels.find(
-            (m) => m.id === modelId && m.type === "language",
-          );
-
-          if (!model) {
-            logger.transcription.warn("Formatting skipped: model not found", {
-              modelId,
-            });
-          } else if (model.provider === "OpenRouter") {
-            const config = await this.settingsService.getOpenRouterConfig();
-            if (!config?.apiKey) {
-              logger.transcription.warn(
-                "Formatting skipped: OpenRouter API key missing",
-              );
-            } else {
-              logger.transcription.info("Starting formatting", {
-                sessionId,
-                provider: model.provider,
-                model: modelId,
-              });
-              const provider = new OpenRouterProvider(config.apiKey, modelId);
-              const result = await this.formatWithProvider(
-                provider,
-                sessionId,
-                completeTranscription,
-                session,
-              );
-              if (result) {
-                completeTranscription = result.text;
-                formattingDuration = result.duration;
-                formattingUsed = true;
-                formattingModel = modelId;
-              }
-            }
-          } else if (model.provider === "Ollama") {
-            const config = await this.settingsService.getOllamaConfig();
-            if (!config?.url) {
-              logger.transcription.warn(
-                "Formatting skipped: Ollama URL missing",
-              );
-            } else {
-              logger.transcription.info("Starting formatting", {
-                sessionId,
-                provider: model.provider,
-                model: modelId,
-              });
-              const provider = new OllamaFormatter(config.url, modelId);
-              const result = await this.formatWithProvider(
-                provider,
-                sessionId,
-                completeTranscription,
-                session,
-              );
-              if (result) {
-                completeTranscription = result.text;
-                formattingDuration = result.duration;
-                formattingUsed = true;
-                formattingModel = modelId;
-              }
-            }
-          } else {
-            logger.transcription.warn(
-              "Formatting skipped: unsupported provider",
-              {
-                provider: model.provider,
-              },
-            );
-          }
-        }
-      }
-
-      // Apply vocabulary replacements (final post-processing step)
-      const replacements = session.context.sharedData.replacements;
-      if (replacements.size > 0) {
-        const beforeReplacements = completeTranscription;
-        completeTranscription = applyTextReplacements(
-          completeTranscription,
-          replacements,
-        );
-        if (beforeReplacements !== completeTranscription) {
-          logger.transcription.info("Applied vocabulary replacements", {
-            sessionId,
-            replacementCount: replacements.size,
-            originalLength: beforeReplacements.length,
-            newLength: completeTranscription.length,
-          });
-        }
-      }
+      const formatResult = await this.applyFormattingAndReplacements({
+        text: completeTranscription,
+        usedCloudProvider,
+        vocabulary: session.context.sharedData.vocabulary,
+        accessibilityContext: session.context.sharedData.accessibilityContext,
+        replacements: session.context.sharedData.replacements,
+        formattingStyle:
+          session.context.sharedData.userPreferences?.formattingStyle,
+      });
+      completeTranscription = formatResult.text;
+      const formattingUsed = formatResult.formattingUsed;
+      const formattingModel = formatResult.formattingModel;
+      const formattingDuration = formatResult.formattingDuration;
 
       // Save directly to database
       logger.transcription.info("Saving transcription with audio file", {
@@ -747,26 +647,22 @@ export class TranscriptionService {
 
   private async formatWithProvider(
     provider: FormattingProvider,
-    sessionId: string,
     text: string,
-    session: StreamingSession,
+    context: {
+      style?: string;
+      vocabulary?: string[];
+      accessibilityContext?: StreamingSession["context"]["sharedData"]["accessibilityContext"];
+    },
   ): Promise<{ text: string; duration: number } | null> {
     const startTime = performance.now();
-    const style = session.context.sharedData.userPreferences?.formattingStyle;
 
     try {
       const formattedText = await provider.format({
         text,
         context: {
-          style,
-          vocabulary: session.context.sharedData.vocabulary,
-          accessibilityContext: session.context.sharedData.accessibilityContext,
-          previousChunk:
-            session.transcriptionResults.length > 1
-              ? session.transcriptionResults[
-                  session.transcriptionResults.length - 2
-                ]
-              : undefined,
+          style: context.style,
+          vocabulary: context.vocabulary,
+          accessibilityContext: context.accessibilityContext,
           aggregatedTranscription: text,
         },
       });
@@ -774,7 +670,6 @@ export class TranscriptionService {
       const duration = performance.now() - startTime;
 
       logger.transcription.info("Text formatted successfully", {
-        sessionId,
         originalLength: text.length,
         formattedLength: formattedText.length,
         formattingDuration: duration,
@@ -783,11 +678,156 @@ export class TranscriptionService {
       return { text: formattedText, duration };
     } catch (error) {
       logger.transcription.error("Formatting failed, using unformatted text", {
-        sessionId,
         error,
       });
       return null;
     }
+  }
+
+  /**
+   * Shared formatting and vocabulary replacement logic used by both
+   * finalizeSession and retryTranscription.
+   */
+  private async applyFormattingAndReplacements(options: {
+    text: string;
+    usedCloudProvider: boolean;
+    vocabulary?: string[];
+    accessibilityContext?: StreamingSession["context"]["sharedData"]["accessibilityContext"];
+    replacements: Map<string, string>;
+    formattingStyle?: string;
+  }): Promise<{
+    text: string;
+    formattingUsed: boolean;
+    formattingModel?: string;
+    formattingDuration?: number;
+  }> {
+    let text = options.text;
+    let formattingUsed = false;
+    let formattingModel: string | undefined;
+    let formattingDuration: number | undefined;
+
+    const formatterConfig = await this.settingsService.getFormatterConfig();
+
+    if (!formatterConfig || !formatterConfig.enabled) {
+      logger.transcription.debug("Formatting skipped: disabled in config");
+    } else if (!text.trim().length) {
+      logger.transcription.debug("Formatting skipped: empty transcription");
+    } else if (formatterConfig.modelId === "amical-cloud") {
+      if (!options.usedCloudProvider) {
+        logger.transcription.warn(
+          "Formatting skipped: Amical Cloud formatting requires cloud transcription",
+        );
+      } else {
+        formattingUsed = true;
+        formattingModel = "amical-cloud";
+      }
+    } else {
+      const modelId =
+        formatterConfig.modelId ||
+        (await this.settingsService.getDefaultLanguageModel());
+      if (!modelId) {
+        logger.transcription.debug(
+          "Formatting skipped: no default language model",
+        );
+      } else {
+        const allModels = await this.modelService.getSyncedProviderModels();
+        const model = allModels.find(
+          (m) => m.id === modelId && m.type === "language",
+        );
+
+        if (!model) {
+          logger.transcription.warn("Formatting skipped: model not found", {
+            modelId,
+          });
+        } else if (model.provider === "OpenRouter") {
+          const config = await this.settingsService.getOpenRouterConfig();
+          if (!config?.apiKey) {
+            logger.transcription.warn(
+              "Formatting skipped: OpenRouter API key missing",
+            );
+          } else {
+            logger.transcription.info("Starting formatting", {
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new OpenRouterProvider(config.apiKey, modelId);
+            const result = await this.formatWithProvider(provider, text, {
+              style: options.formattingStyle,
+              vocabulary: options.vocabulary,
+              accessibilityContext: options.accessibilityContext,
+            });
+            if (result) {
+              text = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else if (model.provider === "Ollama") {
+          const config = await this.settingsService.getOllamaConfig();
+          if (!config?.url) {
+            logger.transcription.warn("Formatting skipped: Ollama URL missing");
+          } else {
+            logger.transcription.info("Starting formatting", {
+              provider: model.provider,
+              model: modelId,
+            });
+            const provider = new OllamaFormatter(config.url, modelId);
+            const result = await this.formatWithProvider(provider, text, {
+              style: options.formattingStyle,
+              vocabulary: options.vocabulary,
+              accessibilityContext: options.accessibilityContext,
+            });
+            if (result) {
+              text = result.text;
+              formattingDuration = result.duration;
+              formattingUsed = true;
+              formattingModel = modelId;
+            }
+          }
+        } else {
+          logger.transcription.warn(
+            "Formatting skipped: unsupported provider",
+            { provider: model.provider },
+          );
+        }
+      }
+    }
+
+    // Apply vocabulary replacements (final post-processing step)
+    if (options.replacements.size > 0) {
+      const beforeReplacements = text;
+      text = applyTextReplacements(text, options.replacements);
+      if (beforeReplacements !== text) {
+        logger.transcription.info("Applied vocabulary replacements", {
+          replacementCount: options.replacements.size,
+          originalLength: beforeReplacements.length,
+          newLength: text.length,
+        });
+      }
+    }
+
+    return { text, formattingUsed, formattingModel, formattingDuration };
+  }
+
+  /**
+   * Read a WAV file from disk and return Float32Array of PCM samples.
+   * Assumes standard 44-byte WAV header with Int16 PCM data (our app's format).
+   */
+  private async readWavAsFloat32(filePath: string): Promise<Float32Array> {
+    const fileBuffer = await fs.promises.readFile(filePath);
+    const WAV_HEADER_SIZE = 44;
+    const pcmData = fileBuffer.subarray(WAV_HEADER_SIZE);
+    const int16Array = new Int16Array(
+      pcmData.buffer,
+      pcmData.byteOffset,
+      pcmData.byteLength / 2,
+    );
+    const float32Array = new Float32Array(int16Array.length);
+    for (let i = 0; i < int16Array.length; i++) {
+      float32Array[i] = int16Array[i] / 32768;
+    }
+    return float32Array;
   }
 
   /**
@@ -978,6 +1018,119 @@ export class TranscriptionService {
       );
       return null;
     }
+  }
+
+  /**
+   * Retry transcription for an existing record using current model and settings.
+   * Bypasses RecordingManager entirely -- works directly with providers.
+   */
+  async retryTranscription(transcriptionId: number): Promise<string> {
+    // Guard: reject if a recording session is active
+    if (this.streamingSessions.size > 0) {
+      throw new Error("Cannot retry while recording is in progress");
+    }
+
+    // Fetch the existing transcription record
+    const record = await getTranscriptionById(transcriptionId);
+    if (!record) {
+      throw new Error("Transcription not found");
+    }
+
+    if (!record.audioFile) {
+      throw new Error("No audio file associated with this transcription");
+    }
+
+    // Verify the audio file exists on disk
+    await fs.promises.access(record.audioFile);
+
+    // Read WAV file into Float32Array
+    const audioData = await this.readWavAsFloat32(record.audioFile);
+
+    // Build fresh context for vocabulary, language, and replacements
+    const context = await this.buildContext();
+    const vocabulary = context.sharedData.vocabulary;
+    const language = context.sharedData.userPreferences?.language;
+
+    // Determine formatting config before acquiring mutex
+    const selectedModelId = await this.modelService.getSelectedModel();
+    const formatterConfig = await this.settingsService.getFormatterConfig();
+    const shouldUseCloudFormatting =
+      formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+
+    logger.transcription.info("Starting transcription retry", {
+      transcriptionId,
+      audioFile: record.audioFile,
+      audioSamples: audioData.length,
+    });
+
+    // Transcribe using current provider settings
+    let rawTranscription: string;
+    let usedCloudProvider = false;
+
+    await this.transcriptionMutex.acquire();
+    try {
+      const provider = await this.selectProvider();
+      usedCloudProvider = provider.name === "amical-cloud";
+      provider.reset();
+
+      // Feed all audio as a single chunk with high speech probability
+      // No accessibility context -- retry is not tied to original insertion point
+      await provider.transcribe({
+        audioData,
+        speechProbability: 1,
+        context: {
+          vocabulary,
+          language,
+        },
+      });
+
+      // Flush to get final transcription
+      rawTranscription = await provider.flush({
+        vocabulary,
+        language,
+        formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+      });
+    } finally {
+      this.transcriptionMutex.release();
+    }
+
+    if (!usedCloudProvider) {
+      rawTranscription = this.preFormatLocalTranscription(
+        rawTranscription,
+        null,
+      );
+    }
+
+    // Apply formatting and vocabulary replacements
+    const formatResult = await this.applyFormattingAndReplacements({
+      text: rawTranscription,
+      usedCloudProvider,
+      vocabulary,
+      replacements: context.sharedData.replacements,
+      formattingStyle: context.sharedData.userPreferences?.formattingStyle,
+    });
+
+    // Update the existing record in-place
+    await updateTranscription(transcriptionId, {
+      text: formatResult.text,
+      speechModel: selectedModelId || "whisper-local",
+      formattingModel: formatResult.formattingModel,
+      meta: {
+        ...(typeof record.meta === "object" && record.meta !== null
+          ? record.meta
+          : {}),
+        retried: true,
+        retriedAt: new Date().toISOString(),
+      },
+    });
+
+    logger.transcription.info("Transcription retry completed", {
+      transcriptionId,
+      textLength: formatResult.text.length,
+      formattingUsed: formatResult.formattingUsed,
+    });
+
+    return formatResult.text;
   }
 
   /**

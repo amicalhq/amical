@@ -528,7 +528,8 @@
         "playAudio": "Play audio",
         "downloadAudio": "Download Audio",
         "reTranscribe": "Re-transcribe",
-        "delete": "Delete"
+        "delete": "Delete",
+        "retry": "Retry transcription"
       },
       "dialog": {
         "title": "Transcription Details"
@@ -541,7 +542,9 @@
         "loadAudioFailed": "Failed to load audio file",
         "copied": "Copied to clipboard",
         "reTranscribed": "Transcription updated",
-        "reTranscribeFailed": "Failed to re-transcribe"
+        "reTranscribeFailed": "Failed to re-transcribe",
+        "retrySuccess": "Transcription retried successfully",
+        "retryFailed": "Failed to retry transcription"
       },
       "search": {
         "placeholder": "Search transcriptions..."

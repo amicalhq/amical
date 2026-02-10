@@ -8,6 +8,7 @@ import started from "electron-squirrel-startup";
 import { AppManager } from "./core/app-manager";
 import { updateElectronApp } from "update-electron-app";
 import { isWindows } from "../utils/platform";
+import { ServiceManager } from "./managers/service-manager";
 
 // Setup renderer logging relay (allows renderer to send logs to main process)
 ipcMain.handle(
@@ -104,13 +105,23 @@ app.on("second-instance", (_event, commandLine) => {
 });
 
 app.whenReady().then(async () => {
-  await appManager.initialize();
-  isInitialized = true;
+  try {
+    await appManager.initialize();
+    isInitialized = true;
 
-  // Process any deep link that was received before initialization completed
-  if (pendingDeepLink) {
-    appManager.handleDeepLink(pendingDeepLink);
-    pendingDeepLink = null;
+    // Process any deep link that was received before initialization completed
+    if (pendingDeepLink) {
+      appManager.handleDeepLink(pendingDeepLink);
+      pendingDeepLink = null;
+    }
+  } catch (error) {
+    logger.main.error("Application failed to initialize", { error });
+    const telemetryService = ServiceManager.getInstance().getTelemetryService();
+    await telemetryService?.captureExceptionImmediateAndShutdown(error, {
+      source: "main_process",
+      stage: "app_initialize",
+    });
+    app.quit();
   }
 });
 app.on("will-quit", () => appManager.cleanup());

@@ -7,6 +7,7 @@ import { api, trpcClient } from "@/trpc/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToasterWrapper } from "./components/ToasterWrapper";
 import { initializeRendererI18n } from "@/renderer/lib/initialize-i18n";
+import { usePostHog } from "@/renderer/main/lib/posthog";
 import "@/styles/globals.css";
 
 // Extend Console interface to include original methods
@@ -69,6 +70,17 @@ const queryClient = new QueryClient({
   },
 });
 
+const WidgetShell: React.FC = () => {
+  usePostHog();
+
+  return (
+    <>
+      <WidgetPage />
+      <ToasterWrapper />
+    </>
+  );
+};
+
 const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
@@ -80,8 +92,7 @@ if (container) {
         <ThemeProvider>
           <api.Provider client={trpcClient} queryClient={queryClient}>
             <QueryClientProvider client={queryClient}>
-              <WidgetPage />
-              <ToasterWrapper />
+              <WidgetShell />
             </QueryClientProvider>
           </api.Provider>
         </ThemeProvider>

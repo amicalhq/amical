@@ -537,7 +537,7 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts, RecheckPressedKeys };
+    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts };
 
     public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
 
@@ -713,14 +713,14 @@ namespace WindowsHelper.Models
                     return Method.MuteSystemAudio;
                 case "pasteText":
                     return Method.PasteText;
+                case "recheckPressedKeys":
+                    return Method.RecheckPressedKeys;
                 case "requestAccessibilityPermission":
                     return Method.RequestAccessibilityPermission;
                 case "restoreSystemAudio":
                     return Method.RestoreSystemAudio;
                 case "setShortcuts":
                     return Method.SetShortcuts;
-                case "recheckPressedKeys":
-                    return Method.RecheckPressedKeys;
             }
             throw new Exception("Cannot unmarshal type Method");
         }
@@ -744,6 +744,9 @@ namespace WindowsHelper.Models
                 case Method.PasteText:
                     JsonSerializer.Serialize(writer, "pasteText", options);
                     return;
+                case Method.RecheckPressedKeys:
+                    JsonSerializer.Serialize(writer, "recheckPressedKeys", options);
+                    return;
                 case Method.RequestAccessibilityPermission:
                     JsonSerializer.Serialize(writer, "requestAccessibilityPermission", options);
                     return;
@@ -752,9 +755,6 @@ namespace WindowsHelper.Models
                     return;
                 case Method.SetShortcuts:
                     JsonSerializer.Serialize(writer, "setShortcuts", options);
-                    return;
-                case Method.RecheckPressedKeys:
-                    JsonSerializer.Serialize(writer, "recheckPressedKeys", options);
                     return;
             }
             throw new Exception("Cannot marshal type Method");

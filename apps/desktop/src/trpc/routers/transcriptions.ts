@@ -247,6 +247,16 @@ export const transcriptionsRouter = createRouter({
       }
     }),
 
+  // Retry transcription using current model and settings
+  retryTranscription: procedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const transcriptionService = ctx.serviceManager.getService(
+        "transcriptionService",
+      );
+      return await transcriptionService.retryTranscription(input.id);
+    }),
+
   // Download audio file with save dialog
   // Mutation because this triggers a system dialog and file write operation
   // Not a query since it has side effects beyond just fetching data

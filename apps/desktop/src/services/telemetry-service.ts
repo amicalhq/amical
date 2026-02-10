@@ -91,6 +91,8 @@ export class TelemetryService {
       host,
       flushAt: 1,
       flushInterval: 10000,
+      enableExceptionAutocapture: true,
+      defaultOptIn: false,
     });
   }
 
@@ -101,6 +103,8 @@ export class TelemetryService {
 
     // Sync opt-out state with database settings
     const telemetrySettings = await this.settingsService.getTelemetrySettings();
+    const userTelemetryEnabled = telemetrySettings?.enabled !== false;
+
     if (telemetrySettings?.enabled === false) {
       await this.posthog.optOut();
       logger.main.debug("Opted out of telemetry");
@@ -132,7 +136,7 @@ export class TelemetryService {
       },
     };
 
-    this.enabled = telemetrySettings?.enabled !== false;
+    this.enabled = userTelemetryEnabled;
     this.initialized = true;
     logger.main.info("Telemetry service initialized successfully", {
       enabled: this.enabled,
@@ -193,7 +197,7 @@ export class TelemetryService {
   }
 
   trackTranscriptionCompleted(metrics: TranscriptionMetrics): void {
-    if (!this.posthog) {
+    if (!this.posthog || !this.enabled) {
       return;
     }
 
@@ -213,6 +217,38 @@ export class TelemetryService {
       recording_duration: metrics.recording_duration_ms,
       processing_duration: metrics.processing_duration_ms,
     });
+  }
+
+  captureException(
+    error: unknown,
+    additionalProperties: Record<string, unknown> = {},
+  ): void {
+    if (!this.posthog || !this.enabled) {
+      return;
+    }
+
+    this.posthog.captureException(error, this.machineId || undefined, {
+      ...this.persistedProperties,
+      ...additionalProperties,
+    });
+  }
+
+  async captureExceptionImmediateAndShutdown(
+    error: unknown,
+    additionalProperties: Record<string, unknown> = {},
+  ): Promise<void> {
+    if (!this.posthog || !this.enabled) {
+      return;
+    }
+
+    // posthog-node's captureExceptionImmediate schedules async work but doesn't await network flush.
+    // For fatal flows where we call this method, ensure events are sent before continuing by shutting down.
+    this.posthog.captureExceptionImmediate(error, this.machineId || undefined, {
+      ...this.persistedProperties,
+      ...additionalProperties,
+    });
+
+    await this.posthog.shutdown(5000);
   }
 
   async shutdown(): Promise<void> {

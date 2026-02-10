@@ -24,6 +24,8 @@ import {
   MicOff,
   Search,
   RefreshCw,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -82,11 +84,13 @@ interface HistoryTableCardProps {
   onDownload: (transcriptionId: number) => void;
   onReTranscribe: (transcriptionId: number) => void;
   onDelete: (id: number) => void;
+  onRetry: (id: number) => void;
   hovered: number | null;
   setHovered: (id: number | null) => void;
   currentPlayingId: number | null;
   isPlaying: boolean;
   reTranscribingId: number | null;
+  retryingId: number | null;
 }
 
 function HistoryTableCard({
@@ -96,10 +100,12 @@ function HistoryTableCard({
   onDownload,
   onReTranscribe,
   onDelete,
+  onRetry,
   setHovered,
   currentPlayingId,
   isPlaying,
   reTranscribingId,
+  retryingId,
 }: HistoryTableCardProps) {
   const { t } = useTranslation();
   const [selectedText, setSelectedText] = useState<string | null>(null);
@@ -250,6 +256,29 @@ function HistoryTableCard({
                           </Tooltip>
                         </TooltipProvider>
                       )}
+                      {item.audioFile && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                disabled={retryingId === item.id}
+                                onClick={() => onRetry(item.id)}
+                              >
+                                {retryingId === item.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <RotateCcw className="w-4 h-4" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{t("settings.history.actions.retry")}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -321,6 +350,22 @@ export default function HistorySettingsPage() {
       onError: (error) => {
         console.error("Error deleting transcription:", error);
         toast.error(t("settings.history.toast.deleteFailed"));
+      },
+    });
+
+  const [retryingId, setRetryingId] = useState<number | null>(null);
+
+  const retryTranscriptionMutation =
+    api.transcriptions.retryTranscription.useMutation({
+      onSuccess: () => {
+        utils.transcriptions.getTranscriptions.invalidate();
+        toast.success(t("settings.history.toast.retrySuccess"));
+        setRetryingId(null);
+      },
+      onError: (error) => {
+        console.error("Error retrying transcription:", error);
+        toast.error(t("settings.history.toast.retryFailed"));
+        setRetryingId(null);
       },
     });
 
@@ -409,6 +454,11 @@ export default function HistorySettingsPage() {
     reTranscribeMutation.mutate({ transcriptionId });
   }
 
+  function handleRetry(id: number) {
+    setRetryingId(id);
+    retryTranscriptionMutation.mutate({ id });
+  }
+
   function handleDelete(id: number) {
     deleteTranscriptionMutation.mutate({ id });
   }
@@ -472,11 +522,13 @@ export default function HistorySettingsPage() {
                   onDownload={handleDownload}
                   onReTranscribe={handleReTranscribe}
                   onDelete={handleDelete}
+                  onRetry={handleRetry}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   reTranscribingId={reTranscribingId}
+                  retryingId={retryingId}
                 />
               </>
             )}
@@ -494,11 +546,13 @@ export default function HistorySettingsPage() {
                   onDownload={handleDownload}
                   onReTranscribe={handleReTranscribe}
                   onDelete={handleDelete}
+                  onRetry={handleRetry}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   reTranscribingId={reTranscribingId}
+                  retryingId={retryingId}
                 />
               </>
             )}
@@ -516,11 +570,13 @@ export default function HistorySettingsPage() {
                   onDownload={handleDownload}
                   onReTranscribe={handleReTranscribe}
                   onDelete={handleDelete}
+                  onRetry={handleRetry}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   reTranscribingId={reTranscribingId}
+                  retryingId={retryingId}
                 />
               </>
             )}
