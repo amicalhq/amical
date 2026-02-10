@@ -77,15 +77,15 @@ export type SelectionRange = z.infer<typeof SelectionRangeSchema>;
 export const TextSelectionSchema = z.object({
   // Core data
   /** Selected text ("" for cursor-only, null if unavailable/suppressed) */
-  selectedText: z.string().nullable(),
+  selectedText: z.string().nullable().default(null),
   /** Full textbox content (window around selection if large, null if unavailable) */
-  fullContent: z.string().nullable(),
+  fullContent: z.string().nullable().default(null),
   /** Up to 500 UTF-16 units before selection (null if unavailable) */
-  preSelectionText: z.string().nullable(),
+  preSelectionText: z.string().nullable().default(null),
   /** Up to 500 UTF-16 units after selection (null if unavailable) */
-  postSelectionText: z.string().nullable(),
+  postSelectionText: z.string().nullable().default(null),
   /** UTF-16 code unit range (null for secure fields or if unavailable) */
-  selectionRange: SelectionRangeSchema.nullable(),
+  selectionRange: SelectionRangeSchema.nullable().default(null),
 
   // Metadata
   /** Can user type in this element? */
@@ -112,15 +112,15 @@ export type TextSelection = z.infer<typeof TextSelectionSchema>;
  */
 export const AXElementInfoSchema = z.object({
   /** AXRole (AXTextField, AXWebArea, etc.) */
-  role: z.string().nullable(),
+  role: z.string().nullable().default(null),
   /** AXSubrole if present */
-  subrole: z.string().nullable(),
+  subrole: z.string().nullable().default(null),
   /** AXTitle */
-  title: z.string().nullable(),
+  title: z.string().nullable().default(null),
   /** AXDescription */
-  description: z.string().nullable(),
+  description: z.string().nullable().default(null),
   /** AXValue (null for secure fields - suppressed for security) */
-  value: z.string().nullable(),
+  value: z.string().nullable().default(null),
   /** Can user type in this element? */
   isEditable: z.boolean(),
   /** Is this element focused? */
@@ -137,11 +137,11 @@ export type AXElementInfo = z.infer<typeof AXElementInfoSchema>;
  */
 export const ApplicationInfoSchema = z.object({
   /** Application name */
-  name: z.string().nullable(),
+  name: z.string().nullable().default(null),
   /** Bundle identifier (e.g., com.apple.Safari) */
-  bundleIdentifier: z.string().nullable(),
+  bundleIdentifier: z.string().nullable().default(null),
   /** Application version */
-  version: z.string().nullable(),
+  version: z.string().nullable().default(null),
   /** Process ID */
   pid: z.number().int(),
 });
@@ -152,9 +152,9 @@ export type ApplicationInfo = z.infer<typeof ApplicationInfoSchema>;
  */
 export const WindowInfoSchema = z.object({
   /** Window title */
-  title: z.string().nullable(),
+  title: z.string().nullable().default(null),
   /** Browser URL if detected */
-  url: z.string().nullable(),
+  url: z.string().nullable().default(null),
 });
 export type WindowInfo = z.infer<typeof WindowInfoSchema>;
 
@@ -204,13 +204,13 @@ export const AppContextSchema = z.object({
   /** Information about the frontmost application */
   application: ApplicationInfoSchema,
   /** Window information (may be null) */
-  windowInfo: WindowInfoSchema.nullable(),
+  windowInfo: WindowInfoSchema.nullable().default(null),
 
   // Focus and selection
   /** Currently focused element (may be null if no focus) */
-  focusedElement: AXElementInfoSchema.nullable(),
+  focusedElement: AXElementInfoSchema.nullable().default(null),
   /** Text selection information (may be null if no text field focused) */
-  textSelection: TextSelectionSchema.nullable(),
+  textSelection: TextSelectionSchema.nullable().default(null),
 
   // Timing
   /** Unix timestamp in seconds when context was captured */
@@ -246,7 +246,7 @@ export type GetAccessibilityContextParams = z.infer<
  * Response result for getAccessibilityContext
  */
 export const GetAccessibilityContextResultSchema = z.object({
-  context: AppContextSchema.nullable(),
+  context: AppContextSchema.nullable().default(null),
 });
 export type GetAccessibilityContextResult = z.infer<
   typeof GetAccessibilityContextResultSchema
