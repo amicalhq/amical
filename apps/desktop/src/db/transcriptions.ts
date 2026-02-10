@@ -92,20 +92,20 @@ export async function getTranscriptionById(id: number) {
 // Update transcription
 export async function updateTranscription(
   id: number,
-  data: Partial<Omit<Transcription, "id" | "createdAt">>,
+  data: Partial<Omit<Transcription, "id" | "createdAt" | "updatedAt">>,
 ) {
-  const updateData = {
-    ...data,
-    updatedAt: new Date(),
-  };
-
-  const result = await db
+  // Use sql`(unixepoch())` instead of new Date() to let SQLite handle
+  // the timestamp directly, avoiding potential Drizzle Date→integer
+  // conversion issues with mode: "timestamp"
+  await db
     .update(transcriptions)
-    .set(updateData)
-    .where(eq(transcriptions.id, id))
-    .returning();
+    .set({
+      ...data,
+      updatedAt: sql`(unixepoch())`,
+    })
+    .where(eq(transcriptions.id, id));
 
-  return result[0] || null;
+  return await getTranscriptionById(id);
 }
 
 // Delete transcription

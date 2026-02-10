@@ -216,9 +216,17 @@ export const transcriptionsRouter = createRouter({
         });
 
         // Update the transcription in the database
-        await updateTranscription(input.transcriptionId, {
+        const updated = await updateTranscription(input.transcriptionId, {
           text: result.text,
+          speechModel: result.speechModel,
+          formattingModel: result.formattingModel ?? null,
         });
+
+        if (!updated) {
+          throw new Error(
+            `Failed to update transcription ${input.transcriptionId} in database`,
+          );
+        }
 
         logger.main.info("Re-transcription completed", {
           transcriptionId: input.transcriptionId,
@@ -227,8 +235,7 @@ export const transcriptionsRouter = createRouter({
           formattingModel: result.formattingModel,
         });
 
-        // Return the updated transcription
-        return await getTranscriptionById(input.transcriptionId);
+        return updated;
       } catch (error) {
         logger.main.error("Re-transcription failed", {
           transcriptionId: input.transcriptionId,
