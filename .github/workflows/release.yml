@@ -2,16 +2,12 @@ name: Release
 
 on:
   push:
-    branches:
-      - feat.windows.support
-      - feat/whisper.migration
-      - feat/vulkan-support
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g., v0.0.6)'
+        description: "Release tag (e.g., v0.0.6)"
         required: true
         type: string
 
@@ -28,10 +24,10 @@ jobs:
           - os: macos
             arch: x64
             runner: macos-15-intel
-          - os: windows
-            arch: x64
-            runner: windows-2025
-    
+          # - os: windows
+          #   arch: x64
+          #   runner: windows-2025
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -45,7 +41,7 @@ jobs:
           echo "Current shell architecture: $CURRENT_ARCH"
           echo "Target architecture: ${{ matrix.arch }}"
           echo "Arch command output: $(arch)"
-          
+
           if [[ "${{ matrix.arch }}" == "x64" ]]; then
             if [[ "$CURRENT_ARCH" != "x86_64" ]]; then
               echo "ERROR: Expected x86_64 architecture but got $CURRENT_ARCH"
@@ -69,8 +65,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           # 24.2 to at least 24.6 (atm of writing this) has issues with symlink deref in nested directories
-          node-version: '24.1.0'
-          cache: 'pnpm'
+          node-version: "24.1.0"
+          cache: "pnpm"
 
       - name: Install Vulkan SDK
         if: matrix.os == 'windows'
@@ -114,7 +110,7 @@ jobs:
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.DEVELOPER_CERT_BASE64 }}
-          p12-password:    ${{ secrets.DEVELOPER_CERT_PASSPHRASE }}
+          p12-password: ${{ secrets.DEVELOPER_CERT_PASSPHRASE }}
 
       - name: List signing identities (debug)
         if: matrix.os == 'macos'
@@ -133,11 +129,11 @@ jobs:
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-          FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
-          AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
-          AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
-          AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
-          API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
+          # FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
+          # AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
+          # AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
+          # AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
+          # API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
         run: |
           echo "Building macOS ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}
@@ -149,11 +145,11 @@ jobs:
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-          FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
-          AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
-          AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
-          AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
-          API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
+          # FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
+          # AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
+          # AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
+          # AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
+          # API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
         run: |
           echo "Building Windows x64 artifacts"
           pnpm make:windows
@@ -189,7 +185,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -207,10 +203,10 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== Full artifacts directory structure ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) | sort
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) | sort
           echo ""
           echo "=== Detailed file listing ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) -exec ls -la {} \;
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) -exec ls -la {} \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -218,41 +214,68 @@ jobs:
           draft: true
           prerelease: true
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: Amical Desktop v${{ steps.package_version.outputs.version }}
+          name: Grizzo Desktop v${{ steps.package_version.outputs.version }}
+          # body: |
+          #   ## Grizzo Desktop v${{ steps.package_version.outputs.version }}
+
+          #   ### What's New
+          #   - Please update this section with actual changes
+
+          #   ### Downloads
+
+          #   #### macOS
+          #   - **Apple Silicon (M1/M2/M3)**: Download the DMG or ZIP file for arm64
+          #   - **Intel**: Download the DMG or ZIP file for x64
+
+          #   #### Windows
+          #   - **Windows (x64)**: Download the .exe installer for 64-bit Windows
+
+          #   ### Installation
+
+          #   **macOS**:
+          #   - **DMG**: Download and open the DMG file, then drag Grizzo to your Applications folder
+          #   - **ZIP**: Download and extract the ZIP file, then drag Grizzo to your Applications folder
+
+          #   **Windows**:
+          #   - Download and run the .exe installer
+          #   - Follow the installation wizard
+          #   - The app will be installed to your user AppData folder and a shortcut will be created
+
+          #   The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation on macOS.
+          # files: |
+          #   artifacts/macos-arm64/*.dmg
+          #   artifacts/macos-arm64/zip/darwin/arm64/*.zip
+          #   artifacts/macos-x64/*.dmg
+          #   artifacts/macos-x64/zip/darwin/x64/*.zip
+          #   artifacts/windows-x64/*.exe
+          #   artifacts/windows-x64/*.nupkg
+          #   artifacts/windows-x64/RELEASES
           body: |
-            ## Amical Desktop v${{ steps.package_version.outputs.version }}
-            
+            ## Grizzo Desktop v${{ steps.package_version.outputs.version }}
+
             ### What's New
             - Please update this section with actual changes
-            
+
             ### Downloads
-            
+
             #### macOS
             - **Apple Silicon (M1/M2/M3)**: Download the DMG or ZIP file for arm64
             - **Intel**: Download the DMG or ZIP file for x64
-            
+
             #### Windows
-            - **Windows (x64)**: Download the .exe installer for 64-bit Windows
-            
+            not supported yet...🙏
+
             ### Installation
-            
+
             **macOS**: 
-            - **DMG**: Download and open the DMG file, then drag Amical to your Applications folder
-            - **ZIP**: Download and extract the ZIP file, then drag Amical to your Applications folder
-            
-            **Windows**:
-            - Download and run the .exe installer
-            - Follow the installation wizard
-            - The app will be installed to your user AppData folder and a shortcut will be created
-            
+            - **DMG**: Download and open the DMG file, then drag Grizzo to your Applications folder
+            - **ZIP**: Download and extract the ZIP file, then drag Grizzo to your Applications folder
+
             The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation on macOS.
           files: |
             artifacts/macos-arm64/*.dmg
             artifacts/macos-arm64/zip/darwin/arm64/*.zip
             artifacts/macos-x64/*.dmg
             artifacts/macos-x64/zip/darwin/x64/*.zip
-            artifacts/windows-x64/*.exe
-            artifacts/windows-x64/*.nupkg
-            artifacts/windows-x64/RELEASES
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
