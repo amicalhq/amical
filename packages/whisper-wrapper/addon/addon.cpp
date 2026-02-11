@@ -33,6 +33,7 @@ struct SegmentData {
   int from_ms = 0;
   int to_ms = 0;
   std::string text;
+  float no_speech_prob = 0.0f;
   float confidence = 0.0f;
   std::string language;
   std::vector<TokenData> tokens;
@@ -309,6 +310,7 @@ Napi::Array build_segments(const Napi::Env env,
     segment.from_ms = whisper_full_get_segment_t0(ctx, i) * 10;
     segment.to_ms = whisper_full_get_segment_t1(ctx, i) * 10;
     segment.text = whisper_full_get_segment_text(ctx, i);
+    segment.no_speech_prob = whisper_full_get_segment_no_speech_prob(ctx, i);
 
     if (cfg.detailed) {
       const int n_tokens = whisper_full_n_tokens(ctx, i);
@@ -359,6 +361,7 @@ Napi::Array build_segments(const Napi::Env env,
     jsSegment.Set("from", Napi::Number::New(env, segment.from_ms));
     jsSegment.Set("to", Napi::Number::New(env, segment.to_ms));
     jsSegment.Set("text", Napi::String::New(env, segment.text));
+    jsSegment.Set("noSpeechProb", Napi::Number::New(env, segment.no_speech_prob));
 
     if (cfg.detailed) {
       jsSegment.Set("lang", Napi::String::New(env, segment.language));

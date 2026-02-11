@@ -16,6 +16,13 @@ interface WorkerResponse {
   error?: string;
 }
 
+interface WorkerLogMessage {
+  type: "log";
+  level: string;
+  message: string;
+  args?: unknown[];
+}
+
 export class SimpleForkWrapper {
   private worker: ChildProcess | null = null;
   private messageId = 0;
@@ -65,7 +72,18 @@ export class SimpleForkWrapper {
       cwd: app.isPackaged ? process.resourcesPath : process.cwd(),
     });
 
-    this.worker.on("message", (message: WorkerResponse) => {
+    this.worker.on("message", (msg: WorkerResponse | WorkerLogMessage) => {
+      // Handle IPC log messages from worker
+      if ("type" in msg && msg.type === "log") {
+        const logFn =
+          logger.transcription[msg.level as keyof typeof logger.transcription];
+        if (typeof logFn === "function") {
+          logFn(`[worker] ${msg.message}`, ...(msg.args ?? []));
+        }
+        return;
+      }
+
+      const message = msg as WorkerResponse;
       if (message.id !== undefined && this.pendingCalls.has(message.id)) {
         const { resolve, reject } = this.pendingCalls.get(message.id)!;
         this.pendingCalls.delete(message.id);

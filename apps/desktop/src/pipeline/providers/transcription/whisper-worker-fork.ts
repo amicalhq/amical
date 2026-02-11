@@ -1,5 +1,6 @@
 // Worker process entry point for fork
 import { Whisper, getLoadedBindingInfo } from "@amical/whisper-wrapper";
+import { shouldDropSegment } from "../../utils/segment-filter";
 
 // Type definitions for IPC communication
 interface WorkerMessage {
@@ -15,15 +16,36 @@ interface SerializedFloat32Array {
 
 type MethodArg = SerializedFloat32Array | unknown;
 
-// Simple console-based logging for worker process
+// IPC-based logging — sends structured log messages to the main process
+function log(level: string, message: string, ...args: unknown[]) {
+  process.send?.({
+    type: "log",
+    level,
+    message,
+    args: args.map((a) => {
+      if (a instanceof Error) return a.message;
+      if (typeof a === "object") {
+        try {
+          return JSON.stringify(a);
+        } catch {
+          return String(a);
+        }
+      }
+      return a;
+    }),
+  });
+}
+
 const logger = {
   transcription: {
     info: (message: string, ...args: unknown[]) =>
-      console.log(`[whisper-worker] INFO: ${message}`, ...args),
+      log("info", message, ...args),
     error: (message: string, ...args: unknown[]) =>
-      console.error(`[whisper-worker] ERROR: ${message}`, ...args),
+      log("error", message, ...args),
     debug: (message: string, ...args: unknown[]) =>
-      console.log(`[whisper-worker] DEBUG: ${message}`, ...args),
+      log("debug", message, ...args),
+    warn: (message: string, ...args: unknown[]) =>
+      log("warn", message, ...args),
   },
 };
 
@@ -84,18 +106,26 @@ const methods = {
     );
     const transcription = await result;
 
-    logger.transcription.debug(
-      `Transcription segments: ${Array.isArray(transcription) ? transcription.length : "?"}`,
-    );
-    if (Array.isArray(transcription)) {
+    // Filter out hallucination/no-speech segments
+    const segments = transcription as Array<{
+      text: string;
+      noSpeechProb?: number;
+    }>;
+
+    for (const seg of segments) {
       logger.transcription.debug(
-        `First segment preview: ${transcription[0]?.text ?? "<none>"}`,
+        `Segment [noSpeechProb=${seg.noSpeechProb?.toFixed(3) ?? "N/A"}]: "${seg.text.trim().slice(0, 80)}"`,
       );
     }
 
-    return transcription
-      .map((segment: { text: string }) => segment.text)
-      .join("");
+    const kept = segments.filter((segment) => !shouldDropSegment(segment));
+    const droppedCount = segments.length - kept.length;
+
+    logger.transcription.debug(
+      `Segments: ${segments.length} total, ${kept.length} kept, ${droppedCount} dropped`,
+    );
+
+    return kept.map((segment) => segment.text).join("");
   },
 
   async dispose(): Promise<void> {

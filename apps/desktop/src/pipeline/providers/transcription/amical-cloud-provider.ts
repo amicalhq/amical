@@ -57,7 +57,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
-  private readonly MIN_SPEECH_DURATION_MS = 500; // Minimum speech duration to transcribe
+  private readonly MIN_AUDIO_DURATION_MS = 500; // Minimum buffered audio duration before silence-based transcription
   private readonly MAX_SILENCE_DURATION_MS = 3000; // Max silence before cutting
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
@@ -210,11 +210,11 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     const silenceDuration =
       ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
       1000;
-    const speechDuration =
+    const audioDuration =
       ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
 
     return (
-      speechDuration >= this.MIN_SPEECH_DURATION_MS &&
+      audioDuration >= this.MIN_AUDIO_DURATION_MS &&
       silenceDuration >= this.MAX_SILENCE_DURATION_MS
     );
   }

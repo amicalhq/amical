@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "preinstall": "node ./scripts/apply-patches.js",
     "postinstall": "node ./bin/build-addon.js",
     "build:native": "node ./scripts/build-native.js",
     "build:native:cuda": "node ./scripts/build-native.js --cuda",

@@ -1,0 +1,38 @@
+diff --git a/src/whisper.cpp b/src/whisper.cpp
+index 33e556c4..9cafc776 100644
+--- a/src/whisper.cpp
++++ b/src/whisper.cpp
+@@ -7139,20 +7139,30 @@ int whisper_full_with_state(
+ 
+                 whisper_batch_prep_legacy(state->batch, prompt.data(), prompt.size(), 0, 0);
+ 
++                // Also request logits at the SOT position for no_speech_prob computation.
++                // Python whisper reads no_speech_prob from logits at sot_index, not the last position.
++                // ref: https://github.com/openai/whisper/blob/main/whisper/decoding.py
++                const int sot_index = prompt.size() - prompt_init.size();
++                state->batch.logits[sot_index] = 1;
++
+                 if (!whisper_decode_internal(*ctx, *state, state->batch, params.n_threads, false, params.abort_callback, params.abort_callback_user_data)) {
+                     WHISPER_LOG_ERROR("%s: failed to decode\n", __func__);
+                     return -8;
+                 }
+ 
+                 // Calculate no_speech probability after first decode.
+-                // This has to be done before any logit filtering. Hence we cannot use the probs from the whisper_process_logits.
++                // Read from sot_index position to match Python whisper behavior.
++                // ref: https://github.com/openai/whisper/blob/main/whisper/decoding.py#L480-L493
+                 {
+                     const int n_logits = ctx->vocab.id_to_token.size();
++                    std::vector<float> sot_logits(n_logits);
++                    memcpy(sot_logits.data(), state->logits.data() + sot_index * n_logits, n_logits * sizeof(float));
++
+                     std::vector<float> logprobs(n_logits);
+                     std::vector<float> probs(n_logits);
+ 
+-                    whisper_compute_logprobs(state->logits, n_logits, logprobs);
+-                    whisper_compute_probs(state->logits, n_logits, logprobs, probs);
++                    whisper_compute_logprobs(sot_logits, n_logits, logprobs);
++                    whisper_compute_probs(sot_logits, n_logits, logprobs, probs);
+                     state->no_speech_prob = probs[whisper_token_nosp(ctx)];
+                 }
+ 

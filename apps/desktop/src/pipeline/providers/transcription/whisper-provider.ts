@@ -9,6 +9,7 @@ import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
 import { AppError, ErrorCodes } from "../../../types/error";
+import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
@@ -18,9 +19,8 @@ export class WhisperProvider implements TranscriptionProvider {
 
   // Frame aggregation state
   private frameBuffer: Float32Array[] = [];
-  private frameBufferSpeechProbabilities: number[] = []; // Track speech probabilities for each frame
+  private frameBufferSpeechProbabilities: number[] = [];
   private currentSilenceFrameCount = 0;
-  private lastSpeechTimestamp = 0;
 
   private getNodeBinaryPath(): string {
     const platform = process.platform;
@@ -42,13 +42,11 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   // Configuration
-  private readonly TRIM_TRAILING_AND_LEADING_SILENCE = false;
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
-  private readonly MIN_SPEECH_DURATION_MS = 500; // Minimum speech duration to transcribe
+  private readonly MIN_AUDIO_DURATION_MS = 500; // Minimum buffered audio duration before silence-based transcription
   private readonly MAX_SILENCE_DURATION_MS = 3000; // Max silence before cutting
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
-  private readonly IGNORE_FULLY_SILENT_CHUNKS = true;
 
   constructor(modelService: ModelService) {
     this.modelService = modelService;
@@ -98,7 +96,6 @@ export class WhisperProvider implements TranscriptionProvider {
     // Handle speech/silence logic
     if (isSpeech) {
       this.currentSilenceFrameCount = 0;
-      this.lastSpeechTimestamp = Date.now();
     } else {
       this.currentSilenceFrameCount++;
     }
@@ -132,18 +129,29 @@ export class WhisperProvider implements TranscriptionProvider {
     try {
       const { vocabulary, aggregatedTranscription, language } = context;
 
-      const isAllSilent = this.isAllSilent();
+      // Capture speech probabilities before reset
+      const vadProbs = [...this.frameBufferSpeechProbabilities];
 
       // Aggregate buffered frames
-      const aggregatedAudio = this.aggregateFrames();
+      const rawAudio = this.aggregateFrames();
 
       // Clear buffers immediately after aggregation
       this.reset();
 
-      if (isAllSilent && this.IGNORE_FULLY_SILENT_CHUNKS) {
-        logger.transcription.debug("Skipping transcription - all silent");
+      // Apply VAD filtering to extract speech-only portions
+      const { audio: aggregatedAudio, segments: speechSegments } =
+        extractSpeechFromVad(rawAudio, vadProbs);
+
+      if (aggregatedAudio.length === 0) {
+        logger.transcription.debug(
+          "Skipping transcription - no speech detected by VAD filter",
+        );
         return "";
       }
+
+      logger.transcription.debug(
+        `VAD filtered: ${rawAudio.length} → ${aggregatedAudio.length} samples (${speechSegments.length} speech segments, ${((aggregatedAudio.length / rawAudio.length) * 100).toFixed(0)}% kept)`,
+      );
 
       logger.transcription.debug(
         `Starting transcription of ${aggregatedAudio.length} samples (${((aggregatedAudio.length / this.SAMPLE_RATE) * 1000).toFixed(0)}ms)`,
@@ -204,18 +212,18 @@ export class WhisperProvider implements TranscriptionProvider {
 
   private shouldTranscribe(): boolean {
     // Transcribe if:
-    // 1. We have significant silence after speech
+    // 1. We have enough buffered audio and significant silence after speech
     // 2. Buffer is getting too large
 
-    const bufferDurationMs =
+    const audioDurationMs =
       ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
     const silenceDurationMs =
       ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
       1000;
 
-    // If we have speech and then significant silence, transcribe
+    // If we have enough buffered audio and then significant silence, transcribe
     if (
-      this.frameBuffer.length > 0 &&
+      audioDurationMs >= this.MIN_AUDIO_DURATION_MS &&
       silenceDurationMs > this.MAX_SILENCE_DURATION_MS
     ) {
       logger.transcription.debug(
@@ -225,15 +233,15 @@ export class WhisperProvider implements TranscriptionProvider {
     }
 
     // If buffer is too large (e.g., 30 seconds), transcribe anyway
-    if (bufferDurationMs > 30000) {
+    if (audioDurationMs > 30000) {
       logger.transcription.debug(
-        `Transcribing due to buffer size: ${bufferDurationMs}ms`,
+        `Transcribing due to buffer size: ${audioDurationMs}ms`,
       );
       return true;
     }
 
     logger.transcription.debug("Not transcribing", {
-      bufferDurationMs,
+      audioDurationMs,
       silenceDurationMs,
       frameBufferLength: this.frameBuffer.length,
       silenceFrameCount: this.currentSilenceFrameCount,
@@ -243,66 +251,19 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   private aggregateFrames(): Float32Array {
-    // Calculate total size
     const totalLength = this.frameBuffer.reduce(
       (sum, frame) => sum + frame.length,
       0,
     );
-    let aggregated = new Float32Array(totalLength);
+    const aggregated = new Float32Array(totalLength);
 
-    // Copy all frames into single array
     let offset = 0;
     for (const frame of this.frameBuffer) {
       aggregated.set(frame, offset);
       offset += frame.length;
     }
 
-    // Trim silence from beginning and end
-    aggregated = this.TRIM_TRAILING_AND_LEADING_SILENCE
-      ? this.trimSilence(aggregated)
-      : aggregated;
-
     return aggregated;
-  }
-
-  private isAllSilent = () => {
-    const bufferDurationMs =
-      ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
-    const silenceDurationMs =
-      ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
-      1000;
-
-    return bufferDurationMs === silenceDurationMs;
-  };
-
-  private trimSilence(
-    audio: Float32Array<ArrayBuffer>,
-  ): Float32Array<ArrayBuffer> {
-    // Find first speech frame (probability > threshold)
-    let startIdx = 0;
-    for (let i = 0; i < this.frameBufferSpeechProbabilities.length; i++) {
-      if (
-        this.frameBufferSpeechProbabilities[i] >
-        this.SPEECH_PROBABILITY_THRESHOLD
-      ) {
-        startIdx = i * this.FRAME_SIZE;
-        break;
-      }
-    }
-
-    // Find last speech frame (probability > threshold)
-    let endIdx = audio.length;
-    for (let i = this.frameBufferSpeechProbabilities.length - 1; i >= 0; i--) {
-      if (
-        this.frameBufferSpeechProbabilities[i] >
-        this.SPEECH_PROBABILITY_THRESHOLD
-      ) {
-        endIdx = (i + 1) * this.FRAME_SIZE;
-        break;
-      }
-    }
-
-    return audio.slice(startIdx, Math.min(endIdx, audio.length));
   }
 
   private generateInitialPrompt(
