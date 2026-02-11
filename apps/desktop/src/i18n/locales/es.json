@@ -371,7 +371,7 @@
         "updateFailed": "No se pudieron actualizar las preferencias. Por favor, inténtalo de nuevo."
       },
       "launchAtLogin": {
-        "label": "Iniciar al encender",
+        "label": "Iniciar al iniciar sesión",
         "description": "Iniciar la aplicación automáticamente al iniciar sesión"
       },
       "showWidgetWhileInactive": {
@@ -773,7 +773,7 @@
           "disconnected": "Desconectado"
         },
         "placeholders": {
-          "openRouter": "API Key",
+          "openRouter": "Clave API",
           "ollama": "URL de Ollama (ej., http://localhost:11434)"
         },
         "buttons": {
@@ -837,10 +837,10 @@
         }
       },
       "syncDialog": {
-        "title": "Seleccionar modelos de {{modelType}} de {{provider}}",
-        "description": "Elige qué modelos de {{modelType}} quieres sincronizar de {{provider}}.",
-        "fetching": "Obteniendo modelos {{available}}...",
-        "available": "disponibles ",
+        "title": "Seleccionar modelos {{modelType}}de {{provider}}",
+        "description": "Elige qué modelos {{modelType}}quieres sincronizar de {{provider}}.",
+        "fetching": "Obteniendo modelos{{available}}...",
+        "available": " disponibles",
         "fetchFailed": "No se pudieron obtener los modelos",
         "fetchFailedWithMessage": "No se pudieron obtener los modelos: {{message}}",
         "searchPlaceholder": "Buscar modelos...",
