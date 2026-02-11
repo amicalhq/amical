@@ -47,6 +47,7 @@ export class TranscriptionService {
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private modelWasPreloaded: boolean = false;
+  private loggedVadFallback = false;
 
   constructor(
     modelService: ModelService,
@@ -235,8 +236,15 @@ export class TranscriptionService {
     const { sessionId, audioChunk, recordingStartedAt } = options;
 
     // Run VAD on the audio chunk
-    let speechProbability = 0;
-    let isSpeaking = false;
+    let speechProbability = this.vadService ? 0 : 1;
+    let isSpeaking = !this.vadService && audioChunk.length > 0;
+
+    if (audioChunk.length > 0 && !this.vadService && !this.loggedVadFallback) {
+      logger.transcription.warn(
+        "VAD unavailable; defaulting speechProbability to 1.0 for streaming chunks",
+      );
+      this.loggedVadFallback = true;
+    }
 
     if (audioChunk.length > 0 && this.vadService) {
       // Acquire VAD mutex

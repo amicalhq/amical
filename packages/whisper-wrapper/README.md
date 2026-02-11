@@ -97,6 +97,7 @@ The result: `no_speech_prob` is always near zero regardless of audio content, ma
 whisper.cpp's built-in no-speech filtering (`no_speech_thold`, default 0.6) dead code.
 
 The patch adds two lines:
+
 1. Mark the SOT position for logit extraction (`batch.logits[sot_index] = 1`)
 2. Read `no_speech_prob` from the SOT offset instead of the last position
 

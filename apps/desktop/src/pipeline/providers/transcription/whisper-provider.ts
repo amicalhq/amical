@@ -127,7 +127,7 @@ export class WhisperProvider implements TranscriptionProvider {
    */
   private async doTranscription(context: TranscribeContext): Promise<string> {
     try {
-      const { vocabulary, aggregatedTranscription, language } = context;
+      const { aggregatedTranscription, language } = context;
 
       // Capture speech probabilities before reset
       const vadProbs = [...this.frameBufferSpeechProbabilities];
@@ -164,9 +164,8 @@ export class WhisperProvider implements TranscriptionProvider {
         );
       }
 
-      // Generate initial prompt from vocabulary and recent context
+      // Generate initial prompt from recent context only (align with cloud)
       const initialPrompt = this.generateInitialPrompt(
-        vocabulary,
         aggregatedTranscription,
         context.accessibilityContext,
       );
@@ -267,34 +266,28 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   private generateInitialPrompt(
-    vocabulary?: string[],
     aggregatedTranscription?: string,
     accessibilityContext?: TranscribeContext["accessibilityContext"],
   ): string {
-    const promptParts: string[] = [];
-
-    // Add vocabulary terms if available
-    if (vocabulary && vocabulary.length > 0) {
-      promptParts.push(vocabulary.join(", "));
-    }
-
     if (aggregatedTranscription) {
       // Pass full transcription - whisper.cpp auto-truncates to last ~224 tokens
-      promptParts.push(aggregatedTranscription);
-    } else {
-      const beforeText =
-        accessibilityContext?.context?.textSelection?.preSelectionText;
-      if (beforeText && beforeText.trim().length > 0) {
-        promptParts.push(beforeText);
-      }
+      logger.transcription.debug(
+        `Generated initial prompt from aggregated transcription: "${aggregatedTranscription}"`,
+      );
+      return aggregatedTranscription;
     }
 
-    // Combine parts with a separator, or return empty string if no context
-    const prompt = promptParts.join(" ");
+    const beforeText =
+      accessibilityContext?.context?.textSelection?.preSelectionText;
+    if (beforeText && beforeText.trim().length > 0) {
+      logger.transcription.debug(
+        `Generated initial prompt from before text: "${beforeText}"`,
+      );
+      return beforeText;
+    }
 
-    logger.transcription.debug(`Generated initial prompt: "${prompt}"`);
-
-    return prompt;
+    logger.transcription.debug("Generated initial prompt: empty");
+    return "";
   }
 
   async initializeWhisper(): Promise<void> {
