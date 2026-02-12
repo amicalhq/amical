@@ -1,13 +1,21 @@
 import type { InitOptions } from "i18next";
 import en from "./locales/en.json";
+import es from "./locales/es.json";
+import ja from "./locales/ja.json";
 
 export const resources = {
   en: {
     translation: en,
   },
+  es: {
+    translation: es,
+  },
+  ja: {
+    translation: ja,
+  },
 } as const;
 
-export const supportedLocales = ["en"] as const;
+export const supportedLocales = ["en", "es", "ja"] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
 export const defaultLocale: SupportedLocale = "en";
 

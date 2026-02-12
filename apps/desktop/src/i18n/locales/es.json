@@ -1,0 +1,910 @@
+{
+  "app": {
+    "loading": "Cargando Amical..."
+  },
+  "errors": {
+    "generic": "Algo salió mal. Por favor, inténtalo de nuevo."
+  },
+  "menu": {
+    "file": "Archivo",
+    "edit": "Editar",
+    "view": "Vista",
+    "window": "Ventana",
+    "help": "Ayuda",
+    "settings": "Configuración",
+    "checkForUpdates": "Buscar actualizaciones...",
+    "openAllDevTools": "Abrir todas las herramientas de desarrollo",
+    "learnMore": "Más información",
+    "speech": "Voz",
+    "version": "Versión {{version}}"
+  },
+  "tray": {
+    "tooltip": "Amical",
+    "openConsole": "Abrir consola",
+    "about": "Acerca de",
+    "quit": "Salir"
+  },
+  "onboarding": {
+    "app": {
+      "loading": "Cargando configuración inicial...",
+      "unknownScreen": "Pantalla desconocida"
+    },
+    "navigation": {
+      "back": "Atrás",
+      "continue": "Continuar",
+      "complete": "Completar"
+    },
+    "progress": {
+      "step": "Paso {{current}} de {{total}}",
+      "percent": "{{percent}}%"
+    },
+    "toast": {
+      "loadStateFailed": "No se pudo cargar el estado de configuración inicial",
+      "savePreferencesFailed": "No se pudieron guardar tus preferencias. Por favor, inténtalo de nuevo.",
+      "completed": "¡Configuración inicial completada!",
+      "completeFailed": "No se pudo completar la configuración inicial. Por favor, inténtalo de nuevo.",
+      "resetSuccess": "Configuración inicial restablecida correctamente",
+      "resetFailed": "No se pudo restablecer la configuración inicial"
+    },
+    "errorBoundary": {
+      "title": "Algo salió mal",
+      "description": "Ocurrió un error durante el proceso de configuración inicial. Por favor, inténtalo de nuevo.",
+      "tryAgain": "Intentar de nuevo",
+      "restart": "Reiniciar configuración inicial",
+      "supportNote": "Si el problema persiste, por favor contacta a soporte o consulta la documentación para obtener ayuda."
+    },
+    "welcome": {
+      "title": "Bienvenido a Amical",
+      "subtitle": "Selecciona las funciones que te interesan para personalizar tu experiencia",
+      "skip": "Omitir configuración inicial",
+      "comingSoon": "Próximamente",
+      "selectAria": "Seleccionar {{feature}}",
+      "features": {
+        "contextualDictation": {
+          "title": "Dictado contextual",
+          "description": "Entrada de voz rápida en cualquier aplicación para una conversión de voz a texto fluida"
+        },
+        "noteTaking": {
+          "title": "Toma de notas",
+          "description": "Captura ideas y pensamientos por voz con formato inteligente"
+        },
+        "meetingTranscriptions": {
+          "title": "Transcripciones de reuniones",
+          "description": "Graba y transcribe reuniones y conversaciones con alta precisión"
+        },
+        "voiceCommands": {
+          "title": "Comandos de voz",
+          "description": "Controla tus apps sin usar las manos: ejecuta tareas con comandos de voz naturales"
+        }
+      },
+      "toast": {
+        "maxFeatures": "Puedes seleccionar hasta {{max}} funciones",
+        "selectAtLeastOne": "Por favor selecciona al menos una función para personalizar tu experiencia"
+      },
+      "selection": {
+        "none": "Selecciona al menos una función",
+        "selected": "{{count}} seleccionadas"
+      },
+      "note": "Tus elecciones ayudan a personalizar la configuración; todas las funciones estarán disponibles en cualquier momento."
+    },
+    "permissions": {
+      "title": "Configurar permisos",
+      "subtitle": "Amical necesita algunos permisos para funcionar correctamente",
+      "waiting": "Esperando permisos...",
+      "polling": "Verificando cambios de permisos...",
+      "allGranted": {
+        "title": "Todos los permisos concedidos",
+        "description": "¡Todo listo! Puedes continuar al siguiente paso."
+      },
+      "status": {
+        "granted": "Permiso concedido",
+        "denied": "Permiso denegado",
+        "notRequested": "Permiso aún no solicitado",
+        "required": "Permiso requerido"
+      },
+      "actions": {
+        "request": "Solicitar permiso",
+        "requesting": "Solicitando...",
+        "openSettings": "Abrir configuración"
+      },
+      "microphone": {
+        "title": "Acceso al micrófono",
+        "description": "Requerido para grabar y transcribir audio",
+        "deniedHelp": "Por favor concede acceso al micrófono en Configuración del Sistema"
+      },
+      "accessibility": {
+        "title": "Acceso de accesibilidad",
+        "description": "Requerido para pegar transcripciones y atajos de teclado globales (solo macOS)",
+        "deniedHelp": "Agrega Amical a Accesibilidad en Configuración del Sistema"
+      }
+    },
+    "discovery": {
+      "title": "¿Cómo descubriste Amical?",
+      "subtitle": "Esto nos ayuda a entender de dónde vienen nuestros usuarios",
+      "sources": {
+        "searchEngine": "Motor de búsqueda (Google, Bing, etc.)",
+        "socialMedia": "Redes sociales (Twitter, LinkedIn, etc.)",
+        "wordOfMouth": "Recomendación de un amigo o colega",
+        "blogArticle": "Publicación de blog o artículo",
+        "github": "GitHub",
+        "aiAssistant": "Asistente de IA (ChatGPT, Claude, etc.)",
+        "other": "Otro"
+      },
+      "toast": {
+        "selectSource": "Por favor selecciona cómo descubriste Amical",
+        "otherDetailsRequired": "Por favor proporciona detalles para \"Otro\""
+      },
+      "other": {
+        "label": "Por favor especifica",
+        "placeholder": "Cuéntanos más...",
+        "charCount": "{{count}}/{{max}} caracteres"
+      }
+    },
+    "modelSelection": {
+      "title": "Elige tu modelo de IA",
+      "subtitle": "Selecciona cómo quieres que Amical procese tu audio",
+      "completeSetupToContinue": "Completa la configuración para continuar",
+      "recommended": "Recomendado",
+      "prosLabel": "Ventajas:",
+      "consLabel": "Desventajas:",
+      "note": "Puedes cambiar tu modelo más tarde en Configuración; nada es permanente.",
+      "recommendation": {
+        "label": "Recomendación:",
+        "text": "Según las especificaciones de tu sistema, recomendamos"
+      },
+      "toast": {
+        "selectModel": "Por favor selecciona un tipo de modelo",
+        "completeSetup": "Por favor completa la configuración para continuar"
+      },
+      "models": {
+        "cloud": {
+          "title": "Amical Cloud",
+          "subtitle": "Rápido, más preciso y gratuito, sin configuración necesaria",
+          "description": "Ideal si quieres la mejor precisión o tu dispositivo no puede ejecutar modelos locales.\\nProcesamiento seguro; el audio nunca se almacena.",
+          "pros": {
+            "free": "Gratuito",
+            "fast": "Rápido",
+            "accurate": "Más preciso",
+            "noSetup": "Sin configuración necesaria"
+          },
+          "cons": {
+            "internetLogin": "Necesita internet e inicio de sesión"
+          }
+        },
+        "local": {
+          "title": "Modelos locales",
+          "subtitle": "Privado, sin conexión y gratuito; se ejecuta completamente en tu dispositivo.",
+          "description": "Ideal para usuarios enfocados en la privacidad con hardware capaz. No requiere inicio de sesión.",
+          "pros": {
+            "privacy": "Privacidad total",
+            "offline": "Funciona sin conexión"
+          },
+          "cons": {
+            "resources": "Usa recursos del dispositivo"
+          }
+        }
+      }
+    },
+    "modelSetup": {
+      "toast": {
+        "loginInBrowser": "Completa el inicio de sesión en tu navegador",
+        "authenticated": "¡Autenticación exitosa!"
+      },
+      "actions": {
+        "cancel": "Cancelar",
+        "signIn": "Iniciar sesión",
+        "retry": "Reintentar"
+      },
+      "cloud": {
+        "title": "Se requiere iniciar sesión",
+        "description": "La transcripción en la nube necesita autenticación para continuar.",
+        "error": {
+          "loginStartFailed": "No se pudo abrir el inicio de sesión. Por favor, inténtalo de nuevo."
+        }
+      },
+      "local": {
+        "downloadingTitle": "Descargando modelo local",
+        "downloadingDescription": "Configurando modelo local para transcripción privada y sin conexión",
+        "readyTitle": "Modelo local listo",
+        "readyDescription": "Listo para transcripción privada y sin conexión.",
+        "alreadyInstalled": "Modelo ya instalado",
+        "downloadComplete": "Descarga completada",
+        "using": "Usando: {{model}}",
+        "error": {
+          "downloadFailed": "No se pudo descargar el modelo: {{message}}"
+        }
+      }
+    },
+    "completion": {
+      "title": "¡Configuración completada!",
+      "start": "Comenzar a usar Amical",
+      "quickConfig": {
+        "title": "Configuración rápida"
+      },
+      "community": {
+        "discordAlt": "Discord",
+        "title": "Únete a nuestra comunidad",
+        "description": "Obtén ayuda, comparte comentarios y conéctate con otros usuarios",
+        "joinDiscord": "Unirse a Discord"
+      },
+      "next": {
+        "title": "¡Todo listo!",
+        "items": {
+          "pushToTalk": "Usa tu atajo de pulsar para hablar para comenzar a transcribir",
+          "widget": "Haz clic en el widget flotante para acceso rápido",
+          "settings": "Explora Configuración para más opciones de personalización"
+        }
+      },
+      "info": "Toda la configuración se puede cambiar en cualquier momento en las preferencias de la aplicación.",
+      "infoLocalModel": "Tu modelo local seleccionado está listo para usar sin conexión."
+    }
+  },
+  "widget": {
+    "notifications": {
+      "micFallback": "tu micrófono",
+      "discordAlt": "Discord",
+      "copyErrorId": "Copiar ID de error",
+      "recordingSaved": "Tu grabación fue guardada. Puedes acceder a ella en el Historial.",
+      "description": {
+        "noAudio": "Sin audio de \"{{microphone}}\"",
+        "emptyTranscript": "No se detectó voz de \"{{microphone}}\"",
+        "transcriptionFailed": "Ocurrió un error durante la transcripción"
+      },
+      "action": {
+        "logIn": "Iniciar sesión",
+        "support": "Soporte",
+        "viewUsage": "Ver uso",
+        "viewHistory": "Ver historial",
+        "settings": "Configuración",
+        "aiModels": "Modelos de IA",
+        "configureMicrophone": "Configurar micrófono"
+      },
+      "type": {
+        "noAudio": {
+          "title": "No se detectó audio",
+          "description": "Revisa la configuración de tu micrófono"
+        },
+        "emptyTranscript": {
+          "title": "No se detectó voz",
+          "description": "Intenta hablar más fuerte o más cerca del micrófono"
+        }
+      },
+      "errorCode": {
+        "authRequired": {
+          "title": "Se requiere iniciar sesión",
+          "description": "Por favor inicia sesión para usar la transcripción en la nube"
+        },
+        "rateLimitExceeded": {
+          "title": "Límite de uso excedido",
+          "description": "Has alcanzado tu límite de transcripciones"
+        },
+        "internalServerError": {
+          "title": "Error del servidor",
+          "description": "Por favor inténtalo más tarde"
+        },
+        "unknown": {
+          "title": "La transcripción falló",
+          "description": "Algo salió mal"
+        },
+        "networkError": {
+          "title": "Error de conexión",
+          "description": "Verifica tu conexión a internet"
+        },
+        "modelMissing": {
+          "title": "No hay modelo disponible",
+          "description": "Descarga un modelo local o cambia a la nube"
+        },
+        "workerInitializationFailed": {
+          "title": "Error de inicialización",
+          "description": "No se pudo iniciar el motor de transcripción"
+        },
+        "workerCrashed": {
+          "title": "El motor de transcripción falló",
+          "description": "Por favor inténtalo de nuevo"
+        },
+        "localTranscriptionFailed": {
+          "title": "La transcripción local falló",
+          "description": "El procesamiento de audio de Whisper falló"
+        }
+      }
+    }
+  },
+  "settings": {
+    "nav": {
+      "notes": {
+        "title": "Notas",
+        "description": "Administra tus notas"
+      },
+      "preferences": {
+        "title": "Preferencias",
+        "description": "Configura las preferencias generales y el comportamiento de la aplicación"
+      },
+      "dictation": {
+        "title": "Dictado",
+        "description": "Configura el reconocimiento de voz y los ajustes de dictado"
+      },
+      "shortcuts": {
+        "title": "Atajos",
+        "description": "Personaliza los atajos de teclado y las teclas rápidas"
+      },
+      "vocabulary": {
+        "title": "Vocabulario",
+        "description": "Administra el vocabulario personalizado y el reconocimiento de palabras"
+      },
+      "aiModels": {
+        "title": "Modelos de IA",
+        "description": "Configura modelos y proveedores de IA"
+      },
+      "history": {
+        "title": "Historial",
+        "description": "Consulta y administra el historial de transcripciones"
+      },
+      "advanced": {
+        "title": "Avanzado",
+        "description": "Opciones de configuración avanzada"
+      },
+      "about": {
+        "title": "Acerca de",
+        "description": "Acerca de Amical e información de versión"
+      }
+    },
+    "sidebar": {
+      "docs": "Documentación",
+      "community": "Comunidad",
+      "discordAlt": "Discord",
+      "logoAlt": "Logo de Amical",
+      "brand": "Amical"
+    },
+    "search": {
+      "buttonLabel": "Buscar",
+      "buttonPlaceholder": "Buscar...",
+      "inputPlaceholder": "Buscar en configuración y notas...",
+      "noResults": "No se encontraron resultados.",
+      "settingsHeading": "Configuración",
+      "notesHeading": "Notas"
+    },
+    "preferences": {
+      "title": "Preferencias",
+      "description": "Personaliza el comportamiento y la apariencia de la aplicación",
+      "toast": {
+        "updated": "Preferencias actualizadas",
+        "updateFailed": "No se pudieron actualizar las preferencias. Por favor, inténtalo de nuevo."
+      },
+      "launchAtLogin": {
+        "label": "Iniciar al iniciar sesión",
+        "description": "Iniciar la aplicación automáticamente al iniciar sesión"
+      },
+      "showWidgetWhileInactive": {
+        "label": "Mostrar widget mientras está inactivo",
+        "description": "Mantener el widget visible en pantalla cuando no se está grabando"
+      },
+      "showInDock": {
+        "label": "Mostrar app en el dock",
+        "description": "Mostrar el ícono de la aplicación en el dock de macOS"
+      },
+      "muteSystemAudio": {
+        "label": "Silenciar audio del sistema durante la grabación",
+        "description": "Silenciar la salida del sistema mientras se captura audio del micrófono"
+      },
+      "autoDictateOnNewNote": {
+        "label": "Dictar automáticamente en nota nueva",
+        "description": "Iniciar el dictado automáticamente al crear una nueva nota"
+      },
+      "language": {
+        "label": "Idioma",
+        "description": "Elige el idioma que se usa en toda la aplicación",
+        "options": {
+          "system": "Sistema",
+          "en": "English",
+          "ja": "日本語",
+          "es": "Español"
+        },
+        "restartDialog": {
+          "title": "Se requiere reiniciar",
+          "description": "Reinicia Amical para aplicar los cambios de idioma. También puedes aplicarlos en el próximo inicio.",
+          "restartNow": "Reiniciar ahora",
+          "later": "Aplicar en el próximo inicio"
+        },
+        "toast": {
+          "applyNextStart": "El idioma se aplicará en el próximo inicio.",
+          "restarting": "Reiniciando..."
+        }
+      },
+      "theme": {
+        "label": "Tema",
+        "description": "Elige tu esquema de colores preferido"
+      }
+    },
+    "advanced": {
+      "title": "Avanzado",
+      "description": "Opciones de configuración avanzada y funciones experimentales",
+      "cardTitle": "Configuración avanzada",
+      "cardDescription": "Opciones de configuración avanzada",
+      "preloadModel": {
+        "label": "Precargar modelo Whisper",
+        "description": "Cargar el modelo de IA al iniciar para una transcripción más rápida"
+      },
+      "debugMode": {
+        "label": "Modo de depuración",
+        "description": "Habilitar registro detallado"
+      },
+      "autoUpdates": {
+        "label": "Actualizaciones automáticas",
+        "description": "Buscar actualizaciones automáticamente"
+      },
+      "telemetry": {
+        "label": "Telemetría anónima",
+        "description": "Ayuda a mejorar Amical compartiendo datos de uso anónimos.",
+        "learnMore": "Más información"
+      },
+      "dataLocation": {
+        "label": "Ubicación de datos"
+      },
+      "logLocation": {
+        "label": "Ubicación del archivo de registro",
+        "download": "Descargar"
+      },
+      "machineId": {
+        "label": "ID de máquina",
+        "copy": "Copiar"
+      },
+      "loadingValue": "Cargando...",
+      "dangerZone": {
+        "title": "Zona de peligro",
+        "description": "Las acciones aquí son irreversibles y eliminarán todos tus datos"
+      },
+      "reset": {
+        "label": "Restablecer app",
+        "description": "Eliminar todos los datos y empezar de nuevo",
+        "button": "Restablecer app",
+        "dialog": {
+          "title": "¿Estás completamente seguro?",
+          "description": "Esta acción no se puede deshacer. Esto eliminará permanentemente:",
+          "items": {
+            "transcriptions": "Todas tus transcripciones",
+            "notes": "Todas tus notas",
+            "vocabulary": "Tu vocabulario",
+            "settings": "Toda la configuración y preferencias",
+            "models": "Modelos descargados"
+          },
+          "footer": "La app se reiniciará con una instalación nueva.",
+          "cancel": "Cancelar",
+          "confirm": "Sí, eliminar todo"
+        }
+      },
+      "toast": {
+        "settingsUpdated": "Configuración actualizada",
+        "settingsUpdateFailed": "No se pudo actualizar la configuración. Por favor, inténtalo de nuevo.",
+        "telemetryUpdated": "Configuración de telemetría actualizada",
+        "telemetryUpdateFailed": "No se pudo actualizar la configuración de telemetría. Por favor, inténtalo de nuevo.",
+        "resetting": "Restableciendo app...",
+        "resetSuccess": "App restablecida correctamente. Reiniciando...",
+        "resetFailed": "No se pudo restablecer la app. Por favor, inténtalo de nuevo.",
+        "logSaved": "Archivo de registro guardado correctamente",
+        "logSaveFailed": "No se pudo guardar el archivo de registro",
+        "machineIdCopied": "ID de máquina copiado al portapapeles"
+      }
+    },
+    "about": {
+      "title": "Acerca de",
+      "description": "Información de versión, recursos y enlaces de soporte",
+      "toast": {
+        "upToDate": "La versión está actualizada"
+      },
+      "currentVersion": "Versión actual",
+      "resources": {
+        "title": "Recursos",
+        "description": "Obtén ayuda, reporta problemas y mantente al día con los últimos cambios",
+        "changeLog": {
+          "title": "Registro de cambios",
+          "description": "Ver notas de versión y actualizaciones"
+        },
+        "github": {
+          "title": "Repositorio de GitHub",
+          "description": "Código fuente y seguimiento de problemas",
+          "alt": "GitHub"
+        },
+        "discord": {
+          "title": "Comunidad de Discord",
+          "description": "Únete a nuestra comunidad para soporte y discusiones",
+          "alt": "Discord"
+        }
+      },
+      "contact": {
+        "title": "Contacto",
+        "description": "Ponte en contacto con nuestro equipo para soporte y consultas",
+        "emailCta": "Envíanos un correo electrónico"
+      }
+    },
+    "history": {
+      "title": "Historial",
+      "description": "Tu historial de transcripciones recientes",
+      "item": {
+        "failed": "la transcripción falló",
+        "noWords": "no se detectaron palabras"
+      },
+      "readMore": "Leer más",
+      "actions": {
+        "copy": "Copiar",
+        "pauseAudio": "Pausar audio",
+        "playAudio": "Reproducir audio",
+        "downloadAudio": "Descargar audio",
+        "delete": "Eliminar",
+        "retry": "Reintentar transcripción"
+      },
+      "dialog": {
+        "title": "Detalles de la transcripción"
+      },
+      "toast": {
+        "deleted": "Transcripción eliminada",
+        "deleteFailed": "No se pudo eliminar la transcripción",
+        "downloaded": "Archivo de audio descargado",
+        "downloadFailed": "No se pudo descargar el archivo de audio",
+        "loadAudioFailed": "No se pudo cargar el archivo de audio",
+        "copied": "Copiado al portapapeles",
+        "retrySuccess": "Transcripción reintentada correctamente",
+        "retryFailed": "No se pudo reintentar la transcripción"
+      },
+      "search": {
+        "placeholder": "Buscar transcripciones..."
+      },
+      "empty": {
+        "searchTitle": "No se encontraron transcripciones",
+        "searchDescription": "Intenta ajustar los términos de búsqueda.",
+        "defaultTitle": "Aún no hay historial de transcripciones",
+        "defaultDescription": "Tus transcripciones recientes aparecerán aquí."
+      },
+      "group": {
+        "today": "Hoy",
+        "yesterday": "Ayer",
+        "earlier": "Anteriores"
+      }
+    },
+    "dictation": {
+      "title": "Dictado",
+      "description": "Configura el dictado, el idioma, el micrófono y los ajustes de modelo de IA",
+      "language": {
+        "autoDetect": {
+          "label": "Detectar idioma automáticamente",
+          "description": "Detectar automáticamente el idioma hablado. Desactiva esta opción para seleccionar idiomas específicos.",
+          "tooltip": "Desactiva la detección automática para seleccionar idiomas. Seleccionar idiomas específicos puede mejorar la precisión."
+        },
+        "languagesLabel": "Idiomas",
+        "languagesPlaceholder": "Seleccionar idiomas..."
+      },
+      "microphone": {
+        "label": "Micrófono",
+        "description": "Elige tu micrófono preferido.",
+        "placeholder": "Seleccionar un micrófono",
+        "systemDefault": "Predeterminado del sistema",
+        "systemDefaultWithName": "Predeterminado del sistema ({{deviceName}})",
+        "noDevices": "No hay micrófonos disponibles",
+        "noDevicesHelp": "No se detectaron micrófonos. Por favor verifica tus dispositivos de audio.",
+        "toast": {
+          "changed": "Micrófono cambiado a {{deviceName}}",
+          "systemDefault": "Usando micrófono predeterminado del sistema",
+          "changeFailed": "No se pudo cambiar el micrófono"
+        }
+      },
+      "formatting": {
+        "label": "Formato",
+        "badge": "Alfa",
+        "description": "Aplica puntuación y estructura a tus transcripciones.",
+        "cloudOptionLabel": "Amical Cloud (Amical)",
+        "disabledTooltip": "Sincroniza un modelo de lenguaje o selecciona la transcripción de Amical Cloud para habilitar el formato.",
+        "disabledReason": {
+          "cloudAndSignIn": "Requiere transcripción de Amical Cloud e inicio de sesión",
+          "cloud": "Requiere transcripción de Amical Cloud",
+          "signIn": "Requiere iniciar sesión"
+        },
+        "manageLanguageModels": "Administrar modelos de lenguaje",
+        "modelLabel": "Modelo de formato",
+        "modelDescription": "Elige el modelo usado para dar formato a tu transcripción.",
+        "modelPlaceholder": "Seleccionar un modelo...",
+        "requiresCloudSpeech": "Requiere transcripción de Amical Cloud.",
+        "switchSpeechModel": "Cambiar modelo de voz",
+        "signInCloud": "Inicia sesión para usar el formato de Amical Cloud.",
+        "signIn": "Iniciar sesión",
+        "cloudReady": "Usando formato de Amical Cloud.",
+        "noLanguageModels": "El formato no se ejecutará: no hay modelo de lenguaje disponible.",
+        "syncLanguageModels": "Sincronizar modelos de lenguaje",
+        "toast": {
+          "saveFailed": "No se pudo guardar la configuración de formato. Por favor, inténtalo de nuevo.",
+          "loginInBrowser": "Completa el inicio de sesión en tu navegador",
+          "loginStartFailed": "No se pudo iniciar el proceso de inicio de sesión"
+        }
+      }
+    },
+    "shortcuts": {
+      "title": "Atajos",
+      "description": "Configura atajos de teclado para dictado y modos manos libres",
+      "toast": {
+        "pushToTalkUpdated": "Atajo de pulsar para hablar actualizado",
+        "handsFreeUpdated": "Atajo de modo manos libres actualizado",
+        "pasteLastTranscriptUpdated": "Atajo de pegar última transcripción actualizado"
+      },
+      "pushToTalk": {
+        "label": "Pulsar para hablar",
+        "description": "Mantén presionado para dictar mientras la tecla está presionada"
+      },
+      "handsFree": {
+        "label": "Modo manos libres",
+        "description": "Inicia/detén el dictado presionando una vez para iniciar y otra vez para detener"
+      },
+      "pasteLastTranscript": {
+        "label": "Pegar última transcripción",
+        "description": "Pega tu transcripción más reciente en la aplicación activa"
+      },
+      "validation": {
+        "noKeysDetected": "No se detectaron teclas",
+        "tooManyKeys": "Demasiadas teclas: usa {{max}} o menos",
+        "invalidKeyCombination": "Combinación de teclas no válida",
+        "alreadyAssigned": "El atajo ya está asignado a otra acción",
+        "conflictsWithSystem": "{{shortcut}} entra en conflicto con un atajo del sistema",
+        "addModifier": "Agrega una tecla modificadora como Cmd, Ctrl o Fn",
+        "duplicateModifierPairs": "No se pueden usar las teclas {{modifier}} izquierda y derecha juntas",
+        "overlapsWithPushToTalk": "Esto se superpone con tu atajo de Pulsar para hablar y puede causar problemas"
+      },
+      "input": {
+        "pressKeys": "Presiona las teclas..."
+      }
+    },
+    "notes": {
+      "create": "Crear nota",
+      "defaultTitleWithDate": "Nota - {{date}}",
+      "untitledTitle": "Nota sin título",
+      "empty": {
+        "title": "Aún no hay notas",
+        "description": "Crea tu primera nota para comenzar"
+      },
+      "notFound": "Nota no encontrada",
+      "backToNotes": "Volver a notas",
+      "toast": {
+        "created": "Nota creada",
+        "createFailed": "No se pudo crear la nota: {{message}}",
+        "emojiUpdated": "Emoji actualizado",
+        "emojiUpdateFailed": "No se pudo actualizar el emoji: {{message}}",
+        "deleted": "Nota eliminada",
+        "deleteFailed": "No se pudo eliminar la nota: {{message}}",
+        "saveFailed": "No se pudieron guardar los cambios",
+        "upgradedToRichNotes": "Tus notas han sido actualizadas a notas enriquecidas con formato markdown.",
+        "loadFailed": "No se pudo cargar la nota"
+      },
+      "note": {
+        "removeEmoji": "Quitar emoji",
+        "titlePlaceholder": "Título de la nota...",
+        "bodyPlaceholder": "Comienza a escribir tu nota...",
+        "edited": "Editado {{date}}",
+        "actions": {
+          "delete": "Eliminar"
+        },
+        "deleteDialog": {
+          "title": "Eliminar nota",
+          "description": "¿Estás seguro de que quieres eliminar \"{{title}}\"? Esta acción no se puede deshacer y la nota se eliminará permanentemente.",
+          "cancel": "Cancelar",
+          "deleting": "Eliminando...",
+          "confirm": "Eliminar nota"
+        }
+      },
+      "upcomingEvents": {
+        "title": "Próximos eventos",
+        "takeNotes": "Tomar notas",
+        "empty": "No hay próximos eventos",
+        "connect": {
+          "title": "Conecta tu calendario",
+          "description": "Conecta tu calendario para comenzar",
+          "button": "Conectar calendario"
+        }
+      }
+    },
+    "vocabulary": {
+      "title": "Vocabulario",
+      "description": "Administra tu vocabulario personalizado y los reemplazos de palabras para el dictado.",
+      "addButton": "Agregar palabra",
+      "loading": "Cargando vocabulario...",
+      "empty": "No se encontraron palabras en el vocabulario. Agrega tu primera palabra para comenzar.",
+      "toast": {
+        "added": "Palabra agregada al vocabulario",
+        "addFailed": "No se pudo agregar la palabra: {{message}}",
+        "updated": "Vocabulario actualizado",
+        "updateFailed": "No se pudo actualizar la palabra: {{message}}",
+        "deleted": "Palabra eliminada del vocabulario",
+        "deleteFailed": "No se pudo eliminar la palabra: {{message}}"
+      },
+      "dialog": {
+        "addTitle": "Agregar al vocabulario",
+        "editTitle": "Editar vocabulario",
+        "replacementLabel": "Convertir en reemplazo",
+        "misspellingPlaceholder": "Error ortográfico",
+        "correctSpellingPlaceholder": "Ortografía correcta",
+        "newWordPlaceholder": "Agregar una nueva palabra",
+        "cancel": "Cancelar",
+        "saving": "Guardando...",
+        "addWord": "Agregar palabra",
+        "saveChanges": "Guardar cambios"
+      },
+      "delete": {
+        "title": "Eliminar elemento del vocabulario",
+        "description": "¿Estás seguro de que quieres eliminar \"{{item}}\"? Esta acción no se puede deshacer.",
+        "cancel": "Cancelar",
+        "deleting": "Eliminando...",
+        "confirm": "Eliminar"
+      }
+    },
+    "aiModels": {
+      "title": "Modelos de IA",
+      "tabs": {
+        "speech": "Voz",
+        "language": "Lenguaje",
+        "embedding": "Embedding"
+      },
+      "modelTypes": {
+        "speech": "voz",
+        "language": "lenguaje",
+        "embedding": "embedding"
+      },
+      "defaultModels": {
+        "default": "Modelo predeterminado",
+        "speech": "Modelo de voz predeterminado",
+        "language": "Modelo de lenguaje predeterminado",
+        "embedding": "Modelo de embedding predeterminado"
+      },
+      "defaultModel": {
+        "toast": {
+          "updated": "¡Modelo de {{modelType}} predeterminado actualizado!",
+          "updateFailed": "No se pudo establecer el modelo de {{modelType}} predeterminado. Por favor, inténtalo de nuevo."
+        },
+        "loading": "Cargando...",
+        "placeholder": "Seleccionar un modelo..."
+      },
+      "changeDefaultDialog": {
+        "title": "Cambiar modelo predeterminado",
+        "description": "¿Estás seguro de que quieres establecer \"{{modelName}}\" como tu modelo de {{modelType}} predeterminado?",
+        "cancel": "Cancelar",
+        "confirm": "Cambiar predeterminado"
+      },
+      "providers": {
+        "openRouter": "OpenRouter",
+        "ollama": "Ollama"
+      },
+      "provider": {
+        "status": {
+          "connected": "Conectado",
+          "disconnected": "Desconectado"
+        },
+        "placeholders": {
+          "openRouter": "Clave API",
+          "ollama": "URL de Ollama (ej., http://localhost:11434)"
+        },
+        "buttons": {
+          "connect": "Conectar",
+          "validating": "Validando...",
+          "syncModels": "Sincronizar modelos",
+          "removeProvider": "Eliminar proveedor"
+        },
+        "removeDialog": {
+          "title": "Eliminar conexión del proveedor",
+          "description": "¿Estás seguro de que quieres eliminar tu conexión de {{provider}}? Esto desconectará y eliminará todos los modelos sincronizados de este proveedor. Esta acción no se puede deshacer.",
+          "cancel": "Cancelar",
+          "confirm": "Eliminar proveedor"
+        },
+        "toast": {
+          "configSaved": "¡Configuración de {{provider}} guardada correctamente!",
+          "configSaveFailed": "No se pudo guardar la configuración de {{provider}}. Por favor, inténtalo de nuevo.",
+          "validated": "¡Conexión de {{provider}} validada correctamente!",
+          "validationFailed": "La validación de {{provider}} falló: {{message}}",
+          "validationError": "Error de validación de {{provider}}: {{message}}",
+          "removed": "¡Proveedor {{provider}} eliminado correctamente!",
+          "removeFailed": "No se pudo eliminar el proveedor {{provider}}. Por favor, inténtalo de nuevo."
+        },
+        "validationFailed": "La validación falló"
+      },
+      "syncedModels": {
+        "title": "Modelos sincronizados",
+        "toast": {
+          "removed": "¡Modelo eliminado correctamente!",
+          "removeFailed": "No se pudo eliminar el modelo. Por favor, inténtalo de nuevo.",
+          "defaultLanguageUpdated": "¡Modelo de lenguaje predeterminado actualizado!",
+          "defaultLanguageFailed": "No se pudo establecer el modelo de lenguaje predeterminado. Por favor, inténtalo de nuevo.",
+          "defaultEmbeddingUpdated": "¡Modelo de embedding predeterminado actualizado!",
+          "defaultEmbeddingFailed": "No se pudo establecer el modelo de embedding predeterminado. Por favor, inténtalo de nuevo."
+        },
+        "errorDefaultRemove": "Por favor selecciona otro modelo como predeterminado antes de eliminar este modelo.",
+        "empty": {
+          "title": "Aún no hay modelos sincronizados.",
+          "description": "Conéctate a un proveedor y sincroniza modelos para verlos aquí."
+        },
+        "table": {
+          "name": "Nombre",
+          "provider": "Proveedor",
+          "size": "Tamaño",
+          "context": "Contexto",
+          "actions": "Acciones",
+          "unknown": "Desconocido",
+          "currentDefault": "Modelo predeterminado actual",
+          "setDefault": "Establecer como modelo predeterminado",
+          "remove": "Eliminar modelo"
+        },
+        "deleteDialog": {
+          "title": "Confirmar eliminación",
+          "description": "¿Estás seguro de que quieres eliminar \"{{modelName}}\" de tus modelos sincronizados? Esta acción no se puede deshacer.",
+          "cancel": "Cancelar",
+          "confirm": "Eliminar modelo"
+        },
+        "errorDialog": {
+          "title": "No se puede eliminar el modelo",
+          "confirm": "Aceptar"
+        }
+      },
+      "syncDialog": {
+        "title": "Seleccionar modelos {{modelType}}de {{provider}}",
+        "description": "Elige qué modelos {{modelType}}quieres sincronizar de {{provider}}.",
+        "fetching": "Obteniendo modelos{{available}}...",
+        "available": " disponibles",
+        "fetchFailed": "No se pudieron obtener los modelos",
+        "fetchFailedWithMessage": "No se pudieron obtener los modelos: {{message}}",
+        "searchPlaceholder": "Buscar modelos...",
+        "clear": "Limpiar",
+        "size": "Tamaño: {{size}}",
+        "context": "Contexto: {{context}}",
+        "cancel": "Cancelar",
+        "syncing": "Sincronizando...",
+        "syncButton": "Sincronizar {{count}} modelo",
+        "syncButton_other": "Sincronizar {{count}} modelos",
+        "toast": {
+          "synced": "¡Modelos sincronizados con la base de datos correctamente!",
+          "syncFailed": "No se pudieron sincronizar los modelos con la base de datos. Por favor, inténtalo de nuevo."
+        }
+      },
+      "speech": {
+        "loading": "Cargando modelos...",
+        "availableModels": "Modelos disponibles",
+        "table": {
+          "model": "Modelo",
+          "features": "Características",
+          "speed": "Velocidad",
+          "accuracy": "Precisión"
+        },
+        "providerIconAlt": "Ícono de {{provider}}",
+        "cloudFormatting": {
+          "badge": "Formato disponible",
+          "tooltip": "El formato en la nube está disponible cuando este modelo está seleccionado.",
+          "signInTitle": "Inicia sesión para usar el modelo en la nube"
+        },
+        "actions": {
+          "downloadTitle": "Haz clic para descargar",
+          "cancelDownloadTitle": "Haz clic para cancelar la descarga",
+          "cancelDownloadAria": "Cancelar descarga de {{modelName}}",
+          "deleteTitle": "Haz clic para eliminar el modelo",
+          "deleteAria": "Eliminar {{modelName}}"
+        },
+        "deleteDialog": {
+          "title": "Eliminar modelo",
+          "description": "¿Estás seguro de que quieres eliminar este modelo? Esta acción no se puede deshacer y necesitarás descargar el modelo de nuevo si quieres usarlo.",
+          "cancel": "Cancelar",
+          "confirm": "Eliminar"
+        },
+        "loginDialog": {
+          "title": "Se requiere iniciar sesión",
+          "description": "Para usar la transcripción de Amical Cloud, necesitas iniciar sesión con tu cuenta de Amical. Esto permite la transcripción segura en la nube con alta precisión.",
+          "browserNotice": "Después de hacer clic en \"Iniciar sesión\", serás redirigido a tu navegador para completar el proceso de inicio de sesión.",
+          "cloudBenefit": "Transcripción en la nube rápida y precisa",
+          "cancel": "Cancelar",
+          "openingBrowser": "Abriendo navegador...",
+          "signIn": "Iniciar sesión"
+        },
+        "toast": {
+          "downloadStartFailed": "No se pudo iniciar la descarga",
+          "downloadCancelFailed": "No se pudo cancelar la descarga",
+          "deleteFailed": "No se pudo eliminar el modelo",
+          "cloudSelected": "Amical Cloud seleccionado. Formato en la nube habilitado.",
+          "selectFailed": "No se pudo seleccionar el modelo",
+          "loginInBrowser": "Por favor completa el inicio de sesión en tu navegador",
+          "loginStartFailed": "No se pudo iniciar el proceso de inicio de sesión",
+          "downloadFailed": "La descarga falló: {{message}}",
+          "loginSuccess": "¡Inicio de sesión exitoso!"
+        }
+      }
+    }
+  }
+}

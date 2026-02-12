@@ -395,7 +395,9 @@
         "description": "Choose the language used throughout the app",
         "options": {
           "system": "System",
-          "en": "English"
+          "en": "English",
+          "es": "Español",
+          "ja": "日本語"
         },
         "restartDialog": {
           "title": "Restart required",
