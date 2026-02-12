@@ -329,14 +329,12 @@ export class TranscriptionService {
 
       // Accumulate the result only if Whisper returned something
       // (it returns empty string while buffering)
+      this.accumulateTranscriptionResult(
+        session.transcriptionResults,
+        chunkTranscription,
+        provider.name === "amical-cloud",
+      );
       if (chunkTranscription.trim()) {
-        // Cloud provider concatenates previousTranscription with new transcription,
-        // so we need to replace the array instead of appending to avoid duplication
-        if (provider.name === "amical-cloud" && aggregatedTranscription) {
-          session.transcriptionResults = [chunkTranscription];
-        } else {
-          session.transcriptionResults.push(chunkTranscription);
-        }
         logger.transcription.info("Whisper returned transcription", {
           sessionId,
           transcriptionLength: chunkTranscription.length,
@@ -432,14 +430,12 @@ export class TranscriptionService {
           formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
         });
 
+        this.accumulateTranscriptionResult(
+          session.transcriptionResults,
+          finalTranscription,
+          usedCloudProvider,
+        );
         if (finalTranscription.trim()) {
-          // Cloud provider concatenates previousTranscription with new transcription,
-          // so we need to replace the array instead of appending to avoid duplication
-          if (usedCloudProvider && aggregatedTranscription) {
-            session.transcriptionResults = [finalTranscription];
-          } else {
-            session.transcriptionResults.push(finalTranscription);
-          }
           logger.transcription.info("Whisper returned final transcription", {
             sessionId,
             transcriptionLength: finalTranscription.length,
@@ -874,14 +870,41 @@ export class TranscriptionService {
     const shouldUseCloudFormatting =
       formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
 
+    // Split audio into 512-sample frames for per-frame VAD
+    const FRAME_SIZE = 512;
+    const frames: Float32Array[] = [];
+    for (let offset = 0; offset < audioData.length; offset += FRAME_SIZE) {
+      frames.push(
+        audioData.subarray(
+          offset,
+          Math.min(offset + FRAME_SIZE, audioData.length),
+        ),
+      );
+    }
+
+    // Compute per-frame VAD probabilities (batch under one vadMutex acquisition)
+    const vadProbs: number[] = [];
+    if (this.vadService) {
+      await this.vadMutex.runExclusive(async () => {
+        this.vadService!.reset();
+        for (const frame of frames) {
+          const result = await this.vadService!.processAudioFrame(frame);
+          vadProbs.push(result.probability);
+        }
+      });
+    } else {
+      vadProbs.push(...new Array(frames.length).fill(1));
+    }
+
     logger.transcription.info("Starting transcription retry", {
       transcriptionId,
       audioFile: record.audioFile,
       audioSamples: audioData.length,
+      totalFrames: frames.length,
     });
 
     // Transcribe using current provider settings
-    let rawTranscription: string;
+    const transcriptionResults: string[] = [];
     let usedCloudProvider = false;
 
     await this.transcriptionMutex.acquire();
@@ -890,26 +913,51 @@ export class TranscriptionService {
       usedCloudProvider = provider.name === "amical-cloud";
       provider.reset();
 
-      // Feed all audio as a single chunk with high speech probability
-      // No accessibility context — retry is not tied to original insertion point
-      await provider.transcribe({
-        audioData,
-        speechProbability: 1,
-        context: {
-          vocabulary,
-          language,
-        },
-      });
+      // Feed each frame with its computed VAD probability
+      for (let i = 0; i < frames.length; i++) {
+        const previousChunk =
+          transcriptionResults.length > 0
+            ? transcriptionResults[transcriptionResults.length - 1]
+            : undefined;
+        const aggregatedTranscription = transcriptionResults.join("");
 
-      // Flush to get final transcription
-      rawTranscription = await provider.flush({
+        const chunkTranscription = await provider.transcribe({
+          audioData: frames[i],
+          speechProbability: vadProbs[i],
+          context: {
+            vocabulary,
+            language,
+            previousChunk,
+            aggregatedTranscription: aggregatedTranscription || undefined,
+          },
+        });
+
+        this.accumulateTranscriptionResult(
+          transcriptionResults,
+          chunkTranscription,
+          usedCloudProvider,
+        );
+      }
+
+      // Flush to get remaining buffered audio
+      const aggregatedTranscription = transcriptionResults.join("");
+      const finalTranscription = await provider.flush({
         vocabulary,
         language,
+        aggregatedTranscription: aggregatedTranscription || undefined,
         formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
       });
+
+      this.accumulateTranscriptionResult(
+        transcriptionResults,
+        finalTranscription,
+        usedCloudProvider,
+      );
     } finally {
       this.transcriptionMutex.release();
     }
+
+    let rawTranscription = transcriptionResults.join("");
 
     if (!usedCloudProvider) {
       rawTranscription = this.preFormatLocalTranscription(
@@ -948,6 +996,31 @@ export class TranscriptionService {
     });
 
     return formatResult.text;
+  }
+
+  /**
+   * Accumulate a transcription result into the results array.
+   * Cloud provider returns cumulative text, so we replace; local provider appends.
+   */
+  private accumulateTranscriptionResult(
+    results: string[],
+    newText: string,
+    isCloudProvider: boolean,
+  ): void {
+    if (!newText.trim()) return;
+    if (isCloudProvider && results.length > 0) {
+      results.length = 0;
+    }
+    results.push(newText);
+  }
+
+  /**
+   * Reset VAD state behind vadMutex so it cannot interleave with retry VAD computation.
+   */
+  async resetVadForNewSession(): Promise<void> {
+    await this.vadMutex.runExclusive(() => {
+      this.vadService?.reset();
+    });
   }
 
   /**

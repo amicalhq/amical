@@ -284,9 +284,12 @@ export class RecordingManager extends EventEmitter {
    */
   private async initializeSession(): Promise<void> {
     try {
-      // Reset VAD state for fresh speech detection
-      const vadService = this.serviceManager.getService("vadService");
-      vadService.reset();
+      // Reset VAD state for fresh speech detection (mutex-protected to avoid
+      // interleaving with retry VAD computation)
+      const transcriptionService = this.serviceManager.getService(
+        "transcriptionService",
+      );
+      await transcriptionService.resetVadForNewSession();
 
       // Refresh accessibility context (TextMarker API for Electron support)
       // Fire and forget - context will be ready by the time first audio chunk arrives
