@@ -9,6 +9,7 @@ import { widgetRouter } from "./routers/widget";
 import { notesRouter } from "./routers/notes";
 import { authRouter } from "./routers/auth";
 import { onboardingRouter } from "./routers/onboarding";
+import { featureFlagsRouter } from "./routers/feature-flags";
 import { createRouter, procedure } from "./trpc";
 
 export const router = createRouter({
@@ -65,6 +66,9 @@ export const router = createRouter({
 
   // Onboarding router
   onboarding: onboardingRouter,
+
+  // Feature flags router
+  featureFlags: featureFlagsRouter,
 });
 
 export type AppRouter = typeof router;

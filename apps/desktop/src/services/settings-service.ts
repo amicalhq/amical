@@ -398,4 +398,20 @@ export class SettingsService extends EventEmitter {
   ): Promise<void> {
     await updateSettingsSection("telemetry", telemetrySettings);
   }
+
+  /**
+   * Get feature flags cache
+   */
+  async getFeatureFlags(): Promise<AppSettingsData["featureFlags"]> {
+    return await getSettingsSection("featureFlags");
+  }
+
+  /**
+   * Update feature flags cache
+   */
+  async setFeatureFlags(
+    featureFlags: AppSettingsData["featureFlags"],
+  ): Promise<void> {
+    await updateSettingsSection("featureFlags", featureFlags);
+  }
 }

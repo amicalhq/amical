@@ -9,15 +9,19 @@ import { VADService } from "../../services/vad-service";
 import { ShortcutManager } from "./shortcut-manager";
 import { WindowManager } from "../core/window-manager";
 import { isMacOS, isWindows } from "../../utils/platform";
+import { PostHogClient } from "../../services/posthog-client";
 import { TelemetryService } from "../../services/telemetry-service";
 import { AuthService } from "../../services/auth-service";
 import { OnboardingService } from "../../services/onboarding-service";
+import { FeatureFlagService } from "../../services/feature-flag-service";
 
 /**
  * Service map for type-safe service access
  */
 export interface ServiceMap {
+  posthogClient: PostHogClient;
   telemetryService: TelemetryService;
+  featureFlagService: FeatureFlagService;
   modelService: ModelService;
   transcriptionService: TranscriptionService;
   settingsService: SettingsService;
@@ -38,7 +42,9 @@ export class ServiceManager {
   private static instance: ServiceManager | null = null;
   private isInitialized = false;
 
+  private posthogClient: PostHogClient | null = null;
   private telemetryService: TelemetryService | null = null;
+  private featureFlagService: FeatureFlagService | null = null;
   private modelService: ModelService | null = null;
   private transcriptionService: TranscriptionService | null = null;
   private settingsService: SettingsService | null = null;
@@ -62,7 +68,9 @@ export class ServiceManager {
 
     this.initializeSettingsService();
     this.initializeAuthService();
+    await this.initializePostHogClient();
     await this.initializeTelemetryService();
+    await this.initializeFeatureFlagService();
     await this.initializeModelServices();
     await this.initializeOnboardingService();
     this.initializePlatformServices();
@@ -76,11 +84,28 @@ export class ServiceManager {
     logger.main.info("Services initialized successfully");
   }
 
+  private async initializePostHogClient(): Promise<void> {
+    this.posthogClient = new PostHogClient();
+    await this.posthogClient.initialize();
+    logger.main.info("PostHog client initialized");
+  }
+
   private async initializeTelemetryService(): Promise<void> {
-    this.telemetryService = new TelemetryService(this.settingsService!);
-    // Pass settings service if available for checking user preferences
+    this.telemetryService = new TelemetryService(
+      this.posthogClient!,
+      this.settingsService!,
+    );
     await this.telemetryService.initialize();
     logger.main.info("Telemetry service initialized");
+  }
+
+  private async initializeFeatureFlagService(): Promise<void> {
+    this.featureFlagService = new FeatureFlagService(
+      this.posthogClient!,
+      this.settingsService!,
+    );
+    await this.featureFlagService.initialize();
+    logger.main.info("Feature flag service initialized");
   }
 
   private initializeSettingsService(): void {
@@ -219,7 +244,9 @@ export class ServiceManager {
     }
 
     const services: ServiceMap = {
+      posthogClient: this.posthogClient!,
       telemetryService: this.telemetryService!,
+      featureFlagService: this.featureFlagService!,
       modelService: this.modelService!,
       transcriptionService: this.transcriptionService!,
       settingsService: this.settingsService!,
@@ -265,9 +292,15 @@ export class ServiceManager {
       this.nativeBridge.stopHelper();
     }
 
-    if (this.telemetryService) {
-      logger.main.info("Shutting down telemetry service...");
-      await this.telemetryService.shutdown();
+    if (this.featureFlagService) {
+      logger.main.info("Shutting down feature flag service...");
+      await this.featureFlagService.shutdown();
+    }
+
+    // PostHogClient shuts down last so all events are flushed after services stop capturing
+    if (this.posthogClient) {
+      logger.main.info("Shutting down PostHog client...");
+      await this.posthogClient.shutdown();
     }
   }
 
