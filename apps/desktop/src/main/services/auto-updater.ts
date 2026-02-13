@@ -2,6 +2,7 @@ import { app, autoUpdater } from "electron";
 import { EventEmitter } from "events";
 import { logger } from "../logger";
 import type { SettingsService } from "../../services/settings-service";
+import type { TelemetryService } from "../../services/telemetry-service";
 
 const UPDATE_SERVER = "https://update.amical.ai";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
@@ -9,6 +10,7 @@ const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 export class AutoUpdaterService extends EventEmitter {
   private checkInterval: ReturnType<typeof setInterval> | null = null;
   private settingsService: SettingsService | null = null;
+  private telemetryService: TelemetryService | null = null;
   private currentChannel: "stable" | "beta" = "stable";
   // Track the latest version we know about (downloaded or running) so the
   // feed URL always reflects the newest version we have, preventing
@@ -20,7 +22,10 @@ export class AutoUpdaterService extends EventEmitter {
     super();
   }
 
-  async initialize(settingsService: SettingsService): Promise<void> {
+  async initialize(
+    settingsService: SettingsService,
+    telemetryService: TelemetryService,
+  ): Promise<void> {
     if (!app.isPackaged) {
       logger.updater.info("Skipping auto-updater: app is not packaged");
       return;
@@ -34,6 +39,7 @@ export class AutoUpdaterService extends EventEmitter {
     }
 
     this.settingsService = settingsService;
+    this.telemetryService = telemetryService;
     this.currentChannel = await settingsService.getUpdateChannel();
 
     this.setFeedURL(this.currentChannel);
@@ -86,7 +92,10 @@ export class AutoUpdaterService extends EventEmitter {
     autoUpdater.on("error", (error) => {
       this.isChecking = false;
       logger.updater.error("Auto-updater error", { error: error.message });
-      this.emit("error", error);
+      this.telemetryService?.captureException(error, {
+        source: "auto_updater",
+        channel: this.currentChannel,
+      });
     });
 
     autoUpdater.on("checking-for-update", () => {

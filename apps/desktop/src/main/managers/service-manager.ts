@@ -229,7 +229,10 @@ export class ServiceManager {
 
   private async initializeAutoUpdater(): Promise<void> {
     this.autoUpdaterService = new AutoUpdaterService();
-    await this.autoUpdaterService.initialize(this.settingsService!);
+    await this.autoUpdaterService.initialize(
+      this.settingsService!,
+      this.telemetryService!,
+    );
   }
 
   getLogger() {
