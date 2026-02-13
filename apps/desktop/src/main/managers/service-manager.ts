@@ -70,7 +70,7 @@ export class ServiceManager {
     await this.initializeAIServices();
     this.initializeRecordingManager();
     await this.initializeShortcutManager();
-    this.initializeAutoUpdater();
+    await this.initializeAutoUpdater();
 
     this.isInitialized = true;
     logger.main.info("Services initialized successfully");
@@ -202,8 +202,14 @@ export class ServiceManager {
     logger.main.info("Shortcut manager initialized");
   }
 
-  private initializeAutoUpdater(): void {
-    this.autoUpdaterService = new AutoUpdaterService();
+  private async initializeAutoUpdater(): Promise<void> {
+    if (!this.settingsService) {
+      throw new Error("Settings service not initialized");
+    }
+
+    this.autoUpdaterService = new AutoUpdaterService(this.settingsService);
+    await this.autoUpdaterService.initialize();
+    logger.main.info("Auto updater service initialized");
   }
 
   getLogger() {
@@ -239,6 +245,10 @@ export class ServiceManager {
     if (this.shortcutManager) {
       logger.main.info("Cleaning up shortcut manager...");
       this.shortcutManager.cleanup();
+    }
+    if (this.autoUpdaterService) {
+      logger.main.info("Cleaning up auto updater service...");
+      this.autoUpdaterService.cleanup();
     }
     if (this.recordingManager) {
       logger.main.info("Cleaning up recording manager...");
@@ -281,6 +291,18 @@ export class ServiceManager {
     if (!ServiceManager.instance) {
       ServiceManager.instance = new ServiceManager();
     }
+    return ServiceManager.instance;
+  }
+
+  /**
+   * Create and set a new singleton instance.
+   * Primarily used by tests to ensure a clean service graph per run.
+   */
+  static async createInstance(): Promise<ServiceManager> {
+    if (ServiceManager.instance) {
+      await ServiceManager.instance.cleanup();
+    }
+    ServiceManager.instance = new ServiceManager();
     return ServiceManager.instance;
   }
 

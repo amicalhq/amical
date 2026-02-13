@@ -125,7 +125,7 @@ export class AppManager {
       logger.main.debug("Opening external URL", { url });
     });
 
-    // Auto-update is now handled by update-electron-app in main.ts
+    // Auto-update is initialized by AutoUpdaterService in ServiceManager
 
     logger.main.info("Application initialized successfully");
   }
@@ -191,9 +191,13 @@ export class AppManager {
       async ({
         showWidgetWhileInactiveChanged,
         showInDockChanged,
+        autoUpdatesChanged,
+        updateChannelChanged,
       }: {
         showWidgetWhileInactiveChanged: boolean;
         showInDockChanged: boolean;
+        autoUpdatesChanged: boolean;
+        updateChannelChanged: boolean;
       }) => {
         if (showWidgetWhileInactiveChanged) {
           const recordingManager =
@@ -203,6 +207,15 @@ export class AppManager {
         }
         if (showInDockChanged) {
           settingsService.syncDockVisibility();
+        }
+        if (autoUpdatesChanged || updateChannelChanged) {
+          const autoUpdaterService =
+            this.serviceManager.getService("autoUpdaterService");
+          try {
+            await autoUpdaterService.refreshConfiguration();
+          } catch (error) {
+            logger.main.error("Failed to refresh updater configuration", error);
+          }
         }
       },
     );

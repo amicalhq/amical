@@ -11,8 +11,14 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -32,6 +38,7 @@ export default function AdvancedSettingsPage() {
 
   // tRPC queries and mutations
   const settingsQuery = api.settings.getSettings.useQuery();
+  const preferencesQuery = api.settings.getPreferences.useQuery();
   const telemetryQuery = api.settings.getTelemetrySettings.useQuery();
   const dataPathQuery = api.settings.getDataPath.useQuery();
   const logFilePathQuery = api.settings.getLogFilePath.useQuery();
@@ -62,6 +69,17 @@ export default function AdvancedSettingsPage() {
         toast.error(t("settings.advanced.toast.telemetryUpdateFailed"));
       },
     });
+
+  const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
+    onSuccess: () => {
+      utils.settings.getPreferences.invalidate();
+      toast.success(t("settings.advanced.toast.settingsUpdated"));
+    },
+    onError: (error) => {
+      console.error("Failed to update preferences:", error);
+      toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
+    },
+  });
 
   const resetAppMutation = api.settings.resetApp.useMutation({
     onMutate: () => {
@@ -111,6 +129,18 @@ export default function AdvancedSettingsPage() {
     });
   };
 
+  const handleAutoUpdateChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      autoUpdatesEnabled: checked,
+    });
+  };
+
+  const handleUpdateChannelChange = (value: "stable" | "beta" | "alpha") => {
+    updatePreferencesMutation.mutate({
+      updateChannel: value,
+    });
+  };
+
   const handleOpenTelemetryDocs = () => {
     window.electronAPI.openExternal("https://amical.ai/docs/telemetry");
   };
@@ -121,6 +151,9 @@ export default function AdvancedSettingsPage() {
       toast.success(t("settings.advanced.toast.machineIdCopied"));
     }
   };
+
+  const autoUpdatesEnabled = preferencesQuery.data?.autoUpdatesEnabled ?? true;
+  const updateChannel = preferencesQuery.data?.updateChannel ?? "stable";
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
@@ -175,7 +208,50 @@ export default function AdvancedSettingsPage() {
                 {t("settings.advanced.autoUpdates.description")}
               </p>
             </div>
-            <Switch id="auto-update" defaultChecked />
+            <Switch
+              id="auto-update"
+              checked={autoUpdatesEnabled}
+              onCheckedChange={handleAutoUpdateChange}
+              disabled={
+                preferencesQuery.isLoading ||
+                updatePreferencesMutation.isPending
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="update-channel">
+              {t("settings.advanced.autoUpdates.channel.label")}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {t("settings.advanced.autoUpdates.channel.description")}
+            </p>
+            <Select
+              value={updateChannel}
+              onValueChange={(value) =>
+                handleUpdateChannelChange(value as "stable" | "beta" | "alpha")
+              }
+              disabled={
+                !autoUpdatesEnabled ||
+                preferencesQuery.isLoading ||
+                updatePreferencesMutation.isPending
+              }
+            >
+              <SelectTrigger id="update-channel" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="stable">
+                  {t("settings.advanced.autoUpdates.channel.options.stable")}
+                </SelectItem>
+                <SelectItem value="beta">
+                  {t("settings.advanced.autoUpdates.channel.options.beta")}
+                </SelectItem>
+                <SelectItem value="alpha">
+                  {t("settings.advanced.autoUpdates.channel.options.alpha")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between">

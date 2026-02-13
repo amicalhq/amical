@@ -141,8 +141,20 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
         run: |
-          echo "Building macOS ${{ matrix.arch }} artifacts"
-          pnpm make:${{ matrix.arch }}
+          echo "Prepackaging macOS ${{ matrix.arch }} app with Forge"
+          pnpm prep:mac:${{ matrix.arch }}
+          echo "Building macOS ${{ matrix.arch }} installer artifacts with electron-builder"
+          pnpm build:installer:mac:${{ matrix.arch }}
+
+      - name: Normalize macOS updater metadata filename
+        if: matrix.os == 'macos'
+        working-directory: apps/desktop
+        run: |
+          if [ ! -f "out/builder/latest-mac.yml" ]; then
+            echo "Expected out/builder/latest-mac.yml to exist for macOS ${{ matrix.arch }} build"
+            exit 1
+          fi
+          mv out/builder/latest-mac.yml out/builder/latest-mac-${{ matrix.arch }}.yml
 
       - name: Build artifacts (Windows)
         if: matrix.os == 'windows'
@@ -158,8 +170,10 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
         run: |
-          echo "Building Windows x64 artifacts"
-          pnpm make:windows
+          echo "Prepackaging Windows x64 app with Forge"
+          pnpm prep:win:x64
+          echo "Building Windows x64 installer artifacts with electron-builder"
+          pnpm build:installer:win:x64
 
       - name: Get version from package.json
         id: package_version
@@ -173,8 +187,10 @@ jobs:
         with:
           name: macos-${{ matrix.arch }}
           path: |
-            apps/desktop/out/make/*-${{ matrix.arch }}.dmg
-            apps/desktop/out/make/zip/darwin/${{ matrix.arch }}/*.zip
+            apps/desktop/out/builder/*.dmg
+            apps/desktop/out/builder/*-mac.zip
+            apps/desktop/out/builder/*.yml
+            apps/desktop/out/builder/*.blockmap
 
       - name: Upload artifacts (Windows)
         if: matrix.os == 'windows'
@@ -182,9 +198,9 @@ jobs:
         with:
           name: windows-${{ matrix.arch }}
           path: |
-            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.exe
-            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.nupkg
-            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/RELEASES
+            apps/desktop/out/builder/*.exe
+            apps/desktop/out/builder/*.yml
+            apps/desktop/out/builder/*.blockmap
 
   release:
     name: Create Release
@@ -210,16 +226,103 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== Full artifacts directory structure ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) | sort
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.yml" -o -name "*.blockmap" \) | sort
           echo ""
           echo "=== Detailed file listing ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) -exec ls -la {} \;
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.yml" -o -name "*.blockmap" \) -exec ls -la {} \;
+
+      - name: Install yq
+        run: |
+          YQ_VERSION="v4.45.4"
+          sudo curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Prepare updater metadata
+        id: updater_metadata
+        shell: bash
+        run: |
+          VERSION="${{ steps.package_version.outputs.version }}"
+          CHANNEL="latest"
+          if [[ "$VERSION" == *"-alpha"* ]]; then
+            CHANNEL="alpha"
+          elif [[ "$VERSION" == *"-beta"* ]]; then
+            CHANNEL="beta"
+          fi
+          echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+
+          mkdir -p release-assets
+
+          # Copy signed installer artifacts and blockmaps.
+          find artifacts -type f \( -name "*.dmg" -o -name "*-mac.zip" -o -name "*.exe" -o -name "*.blockmap" \) -exec cp {} release-assets/ \;
+
+          MAC_X64_METADATA="$(find artifacts -type f -name 'latest-mac-x64.yml' | head -n 1)"
+          MAC_ARM_METADATA="$(find artifacts -type f -name 'latest-mac-arm64.yml' | head -n 1)"
+
+          if [[ -n "$MAC_X64_METADATA" && -n "$MAC_ARM_METADATA" ]]; then
+            yq eval-all '
+              select(fileIndex == 0) as $x64 |
+              select(fileIndex == 1) as $arm |
+              if (($x64.version != null and $arm.version != null) and ($x64.version != $arm.version))
+              then error("Version mismatch between mac metadata files")
+              else ($x64 | .files = (($x64.files // []) + ($arm.files // [])))
+              end
+            ' "$MAC_X64_METADATA" "$MAC_ARM_METADATA" > release-assets/latest-mac.yml
+          elif [[ -n "$MAC_X64_METADATA" ]]; then
+            cp "$MAC_X64_METADATA" release-assets/latest-mac.yml
+          elif [[ -n "$MAC_ARM_METADATA" ]]; then
+            cp "$MAC_ARM_METADATA" release-assets/latest-mac.yml
+          fi
+
+          WIN_METADATA="$(find artifacts -type f -name 'latest.yml' | head -n 1)"
+          if [[ -n "$WIN_METADATA" ]]; then
+            cp "$WIN_METADATA" release-assets/latest.yml
+          fi
+
+          validate_metadata() {
+            local file_path="$1"
+            local label="$2"
+
+            local has_valid_files_array
+            has_valid_files_array="$(yq e '(.files | type) == "!!seq" and (.files | length) > 0' "$file_path")"
+            if [[ "$has_valid_files_array" != "true" ]]; then
+              echo "${label}: missing or invalid files array"
+              exit 1
+            fi
+
+            local invalid_entries
+            invalid_entries="$(yq e '[.files[] | select((.url == null or .url == "") or (.sha512 == null or .sha512 == ""))] | length' "$file_path")"
+            if [[ "$invalid_entries" != "0" ]]; then
+              echo "${label}: files entries must include non-empty url and sha512"
+              exit 1
+            fi
+          }
+
+          if [[ -f release-assets/latest-mac.yml ]]; then
+            validate_metadata "release-assets/latest-mac.yml" "latest-mac.yml"
+          fi
+          if [[ -f release-assets/latest.yml ]]; then
+            validate_metadata "release-assets/latest.yml" "latest.yml"
+          fi
+
+          if [[ "$CHANNEL" != "latest" ]]; then
+            if [[ -f release-assets/latest-mac.yml ]]; then
+              cp release-assets/latest-mac.yml "release-assets/${CHANNEL}-mac.yml"
+            fi
+            if [[ -f release-assets/latest.yml ]]; then
+              cp release-assets/latest.yml "release-assets/${CHANNEL}.yml"
+            fi
+          fi
+
+      - name: List prepared release assets
+        run: |
+          echo "=== Release assets ==="
+          find release-assets -type f | sort
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          prerelease: true
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           name: Amical Desktop v${{ steps.package_version.outputs.version }}
           body: |
@@ -235,7 +338,7 @@ jobs:
             - **Intel**: Download the DMG or ZIP file for x64
 
             #### Windows
-            - **Windows (x64)**: Download the .exe installer for 64-bit Windows
+            - **Windows (x64)**: Download and run the NSIS .exe installer
 
             ### Installation
 
@@ -246,16 +349,10 @@ jobs:
             **Windows**:
             - Download and run the .exe installer
             - Follow the installation wizard
-            - The app will be installed to your user AppData folder and a shortcut will be created
+            - The app will be installed under your user profile with uninstall support
 
             The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation on macOS.
           files: |
-            artifacts/macos-arm64/*.dmg
-            artifacts/macos-arm64/zip/darwin/arm64/*.zip
-            artifacts/macos-x64/*.dmg
-            artifacts/macos-x64/zip/darwin/x64/*.zip
-            artifacts/windows-x64/*.exe
-            artifacts/windows-x64/*.nupkg
-            artifacts/windows-x64/RELEASES
+            release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

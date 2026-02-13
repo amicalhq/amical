@@ -430,7 +430,16 @@
       },
       "autoUpdates": {
         "label": "自動アップデート",
-        "description": "自動的にアップデートを確認"
+        "description": "自動的にアップデートを確認",
+        "channel": {
+          "label": "アップデートチャンネル",
+          "description": "この端末で受け取るリリース系列を選択します。",
+          "options": {
+            "stable": "安定版",
+            "beta": "ベータ版",
+            "alpha": "アルファ版"
+          }
+        }
       },
       "telemetry": {
         "label": "匿名テレメトリー",

@@ -1,5 +1,6 @@
 import { vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { TEST_USER_DATA_PATH } from "./helpers/electron-mocks";
+import { createMockElectronUpdater } from "./helpers/native-mocks";
 import fs from "fs-extra";
 import path from "path";
 
@@ -174,9 +175,7 @@ vi.mock("posthog-node", () => ({
   }),
 }));
 
-vi.mock("update-electron-app", () => ({
-  default: vi.fn(),
-}));
+vi.mock("electron-updater", () => createMockElectronUpdater());
 
 // Mock electron-log
 vi.mock("electron-log", () => ({
@@ -204,11 +203,6 @@ vi.mock("electron-log", () => ({
   debug: vi.fn(),
   verbose: vi.fn(),
   silly: vi.fn(),
-}));
-
-// Mock electron-squirrel-startup
-vi.mock("electron-squirrel-startup", () => ({
-  default: false,
 }));
 
 // Mock electron-trpc-experimental

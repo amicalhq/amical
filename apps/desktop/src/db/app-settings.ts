@@ -77,6 +77,8 @@ const defaultSettings: AppSettingsData = {
     showInDock: true,
     muteSystemAudio: true,
     autoDictateOnNewNote: false,
+    autoUpdatesEnabled: true,
+    updateChannel: "stable",
   },
   transcription: {
     language: "en",

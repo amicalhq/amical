@@ -31,7 +31,6 @@ import { Walker, DepType, type Module } from "flora-colossus";
 let nativeModuleDependenciesToPackage: string[] = [];
 
 export const EXTERNAL_DEPENDENCIES = [
-  "electron-squirrel-startup",
   "@libsql/client",
   "@libsql/darwin-arm64",
   "@libsql/darwin-x64",

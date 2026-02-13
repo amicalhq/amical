@@ -1,6 +1,7 @@
 import { app } from "electron";
 import { EventEmitter } from "events";
 import { FormatterConfig } from "../types/formatter";
+import { inferUpdateChannelFromVersion } from "../utils/update-channel";
 import {
   getSettingsSection,
   updateSettingsSection,
@@ -25,6 +26,8 @@ export interface AppPreferences {
   showInDock: boolean;
   muteSystemAudio: boolean;
   autoDictateOnNewNote: boolean;
+  autoUpdatesEnabled: boolean;
+  updateChannel: "stable" | "beta" | "alpha";
 }
 
 export class SettingsService extends EventEmitter {
@@ -294,6 +297,8 @@ export class SettingsService extends EventEmitter {
    */
   async getPreferences(): Promise<AppPreferences> {
     const preferences = await getSettingsSection("preferences");
+    const inferredChannel = inferUpdateChannelFromVersion(app.getVersion());
+
     return {
       launchAtLogin: preferences?.launchAtLogin ?? true,
       minimizeToTray: preferences?.minimizeToTray ?? true,
@@ -301,6 +306,10 @@ export class SettingsService extends EventEmitter {
       showInDock: preferences?.showInDock ?? true,
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
+      autoUpdatesEnabled: preferences?.autoUpdatesEnabled ?? true,
+      // New installs default to stable in DB; this inference covers older records
+      // that do not have updateChannel persisted yet.
+      updateChannel: preferences?.updateChannel ?? inferredChannel,
     };
   }
 
@@ -329,6 +338,8 @@ export class SettingsService extends EventEmitter {
         preferences.showWidgetWhileInactive !== undefined,
       showInDockChanged: preferences.showInDock !== undefined,
       muteSystemAudioChanged: preferences.muteSystemAudio !== undefined,
+      autoUpdatesChanged: preferences.autoUpdatesEnabled !== undefined,
+      updateChannelChanged: preferences.updateChannel !== undefined,
     });
   }
 

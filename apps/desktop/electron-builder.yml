@@ -1,0 +1,29 @@
+appId: com.amical.desktop
+productName: Amical
+
+directories:
+  output: out/builder
+
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+publish:
+  - provider: github
+    owner: amicalhq
+    repo: amical
+    releaseType: draft
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+    - target: zip
+
+win:
+  target:
+    - target: nsis
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}

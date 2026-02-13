@@ -47,6 +47,8 @@ const AppPreferencesSchema = z.object({
   showInDock: z.boolean().optional(),
   muteSystemAudio: z.boolean().optional(),
   autoDictateOnNewNote: z.boolean().optional(),
+  autoUpdatesEnabled: z.boolean().optional(),
+  updateChannel: z.enum(["stable", "beta", "alpha"]).optional(),
 });
 
 const UIThemeSchema = z.object({

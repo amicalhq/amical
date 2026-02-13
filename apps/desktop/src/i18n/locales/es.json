@@ -430,7 +430,16 @@
       },
       "autoUpdates": {
         "label": "Actualizaciones automáticas",
-        "description": "Buscar actualizaciones automáticamente"
+        "description": "Buscar actualizaciones automáticamente",
+        "channel": {
+          "label": "Canal de actualizaciones",
+          "description": "Elige el flujo de lanzamientos para este dispositivo.",
+          "options": {
+            "stable": "Estable",
+            "beta": "Beta",
+            "alpha": "Alfa"
+          }
+        }
       },
       "telemetry": {
         "label": "Telemetría anónima",

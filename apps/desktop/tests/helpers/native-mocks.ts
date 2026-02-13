@@ -153,8 +153,52 @@ export const mockPostHog = {
   })),
 };
 
-// Mock update-electron-app
-export const mockUpdateElectronApp = vi.fn();
+// Mock electron-updater
+export function createMockElectronUpdater() {
+  const listeners = new Map<string, Function[]>();
+
+  const autoUpdater = {
+    autoDownload: false,
+    autoInstallOnAppQuit: true,
+    allowPrerelease: false,
+    channel: "latest",
+    setFeedURL: vi.fn(),
+    checkForUpdates: vi.fn(() => Promise.resolve(null)),
+    downloadUpdate: vi.fn(() => Promise.resolve()),
+    quitAndInstall: vi.fn(),
+    on: vi.fn((event: string, handler: Function) => {
+      const handlers = listeners.get(event) || [];
+      handlers.push(handler);
+      listeners.set(event, handlers);
+      return autoUpdater;
+    }),
+    removeListener: vi.fn((event: string, handler: Function) => {
+      const handlers = listeners.get(event) || [];
+      listeners.set(
+        event,
+        handlers.filter((existing) => existing !== handler),
+      );
+      return autoUpdater;
+    }),
+    removeAllListeners: vi.fn((event?: string) => {
+      if (event) {
+        listeners.delete(event);
+      } else {
+        listeners.clear();
+      }
+      return autoUpdater;
+    }),
+    emit: vi.fn((event: string, ...args: unknown[]) => {
+      const handlers = listeners.get(event) || [];
+      handlers.forEach((handler) => handler(...args));
+      return handlers.length > 0;
+    }),
+  };
+
+  return { autoUpdater };
+}
+
+export const mockElectronUpdater = createMockElectronUpdater();
 
 export function createNativeMocks() {
   return {
@@ -167,6 +211,6 @@ export function createNativeMocks() {
     "node-machine-id": mockMachineId,
     systeminformation: mockSystemInformation,
     "posthog-node": mockPostHog,
-    "update-electron-app": mockUpdateElectronApp,
+    "electron-updater": mockElectronUpdater,
   };
 }

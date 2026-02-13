@@ -97,7 +97,7 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
   }));
 
   // Create and initialize ServiceManager
-  const serviceManager = ServiceManager.createInstance();
+  const serviceManager = await ServiceManager.createInstance();
 
   try {
     await serviceManager.initialize();

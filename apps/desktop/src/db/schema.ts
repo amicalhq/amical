@@ -163,6 +163,8 @@ export interface AppSettingsData {
     showInDock?: boolean;
     muteSystemAudio?: boolean;
     autoDictateOnNewNote?: boolean;
+    autoUpdatesEnabled?: boolean;
+    updateChannel?: "stable" | "beta" | "alpha";
   };
   telemetry?: {
     enabled?: boolean;
