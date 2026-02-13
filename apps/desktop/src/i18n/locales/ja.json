@@ -428,9 +428,17 @@
         "label": "デバッグモード",
         "description": "詳細なログを有効にする"
       },
-      "autoUpdates": {
-        "label": "自動アップデート",
-        "description": "自動的にアップデートを確認"
+      "updateChannel": {
+        "label": "アップデートチャンネル",
+        "description": "どのリリースチャンネルからアップデートを受け取るか選択",
+        "options": {
+          "stable": "安定版",
+          "beta": "ベータ版"
+        },
+        "toast": {
+          "updated": "アップデートチャンネルを変更しました",
+          "updateFailed": "アップデートチャンネルの変更に失敗しました。もう一度お試しください。"
+        }
       },
       "telemetry": {
         "label": "匿名テレメトリー",

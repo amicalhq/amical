@@ -125,8 +125,6 @@ export class AppManager {
       logger.main.debug("Opening external URL", { url });
     });
 
-    // Auto-update is now handled by update-electron-app in main.ts
-
     logger.main.info("Application initialized successfully");
   }
 

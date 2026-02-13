@@ -325,9 +325,6 @@ importers:
       tw-animate-css:
         specifier: ^1.2.9
         version: 1.3.7
-      update-electron-app:
-        specifier: ^3.1.1
-        version: 3.1.1
       uuid:
         specifier: ^11.1.0
         version: 11.1.0
@@ -4416,9 +4413,6 @@ packages:
   github-from-package@0.0.0:
     resolution: {integrity: sha512-SyHy3T1v2NUXn29OsWdxmK6RwHD+vkj3v8en8AOBZ1wBQ/hCAQ5bAQTD02kW4W9tUp/3Qh6J8r9EvntiyCmOOw==}
 
-  github-url-to-object@4.0.6:
-    resolution: {integrity: sha512-NaqbYHMUAlPcmWFdrAB7bcxrNIiiJWJe8s/2+iOc9vlcHlwHqSGrPk+Yi3nu6ebTwgsZEa7igz+NH2vEq3gYwQ==}
-
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
@@ -6634,9 +6628,6 @@ packages:
 
   update-check@1.5.4:
     resolution: {integrity: sha512-5YHsflzHP4t1G+8WGPlvKbJEbAJGCgw+Em+dGR1KmBUbr1J36SJBqlHLjR7oob7sco5hWHGQVcr9B2poIVDDTQ==}
-
-  update-electron-app@3.1.1:
-    resolution: {integrity: sha512-7duRr6sYn014tifhKgT/5i8N+6xLzmJVJ8hVtNrHXlIDNP6QbRe6VxZ1hSi2UH5oJPzhor/PH7yKU9em5xjRzQ==}
 
   upper-case-first@1.1.2:
     resolution: {integrity: sha512-wINKYvI3Db8dtjikdAqoBbZoP6Q+PZUyfMR7pmwHzjC2quzSkUq5DmPrTtPEqHaz8AGtmsB4TqwapMTM1QAQOQ==}
@@ -11399,10 +11390,6 @@ snapshots:
 
   github-from-package@0.0.0: {}
 
-  github-url-to-object@4.0.6:
-    dependencies:
-      is-url: 1.2.4
-
   glob-parent@5.1.2:
     dependencies:
       is-glob: 4.0.3
@@ -13808,11 +13795,6 @@ snapshots:
     dependencies:
       registry-auth-token: 3.3.2
       registry-url: 3.1.0
-
-  update-electron-app@3.1.1:
-    dependencies:
-      github-url-to-object: 4.0.6
-      ms: 2.1.3
 
   upper-case-first@1.1.2:
     dependencies:

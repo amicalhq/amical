@@ -174,10 +174,6 @@ vi.mock("posthog-node", () => ({
   }),
 }));
 
-vi.mock("update-electron-app", () => ({
-  default: vi.fn(),
-}));
-
 // Mock electron-log
 vi.mock("electron-log", () => ({
   default: {

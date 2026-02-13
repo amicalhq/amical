@@ -11,6 +11,13 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -75,6 +82,17 @@ export default function AdvancedSettingsPage() {
       setIsResetting(false);
       console.error("Failed to reset app:", error);
       toast.error(t("settings.advanced.toast.resetFailed"));
+    },
+  });
+
+  const updateChannelQuery = api.settings.getUpdateChannel.useQuery();
+  const setUpdateChannelMutation = api.settings.setUpdateChannel.useMutation({
+    onSuccess: () => {
+      utils.settings.getUpdateChannel.invalidate();
+      toast.success(t("settings.advanced.updateChannel.toast.updated"));
+    },
+    onError: () => {
+      toast.error(t("settings.advanced.updateChannel.toast.updateFailed"));
     },
   });
 
@@ -168,14 +186,31 @@ export default function AdvancedSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="auto-update">
-                {t("settings.advanced.autoUpdates.label")}
+              <Label htmlFor="update-channel">
+                {t("settings.advanced.updateChannel.label")}
               </Label>
               <p className="text-sm text-muted-foreground">
-                {t("settings.advanced.autoUpdates.description")}
+                {t("settings.advanced.updateChannel.description")}
               </p>
             </div>
-            <Switch id="auto-update" defaultChecked />
+            <Select
+              value={updateChannelQuery.data ?? "stable"}
+              onValueChange={(value: "stable" | "beta") =>
+                setUpdateChannelMutation.mutate(value)
+              }
+            >
+              <SelectTrigger className="w-[120px]" id="update-channel">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="stable">
+                  {t("settings.advanced.updateChannel.options.stable")}
+                </SelectItem>
+                <SelectItem value="beta">
+                  {t("settings.advanced.updateChannel.options.beta")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between">

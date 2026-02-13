@@ -767,6 +767,25 @@ export const settingsRouter = createRouter({
       }
     }),
 
+  // Get update channel
+  getUpdateChannel: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    return await settingsService.getUpdateChannel();
+  }),
+
+  // Set update channel
+  setUpdateChannel: procedure
+    .input(z.enum(["stable", "beta"]))
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      await settingsService.setUpdateChannel(input);
+
+      const logger = ctx.serviceManager.getLogger();
+      logger?.main.info("Update channel changed", { channel: input });
+
+      return true;
+    }),
+
   // Reset app - deletes database and models, then restarts
   resetApp: procedure.mutation(async ({ ctx }) => {
     try {

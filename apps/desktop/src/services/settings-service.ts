@@ -367,6 +367,22 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
+   * Get update channel
+   */
+  async getUpdateChannel(): Promise<"stable" | "beta"> {
+    const settings = await getAppSettings();
+    return settings.updateChannel ?? "stable";
+  }
+
+  /**
+   * Set update channel
+   */
+  async setUpdateChannel(channel: "stable" | "beta"): Promise<void> {
+    await updateAppSettings({ updateChannel: channel });
+    this.emit("update-channel-changed", channel);
+  }
+
+  /**
    * Get telemetry settings
    */
   async getTelemetrySettings(): Promise<AppSettingsData["telemetry"]> {

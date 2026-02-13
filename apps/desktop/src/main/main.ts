@@ -6,7 +6,6 @@ import { logger } from "./logger";
 
 import started from "electron-squirrel-startup";
 import { AppManager } from "./core/app-manager";
-import { updateElectronApp } from "update-electron-app";
 import { isWindows } from "../utils/platform";
 import { ServiceManager } from "./managers/service-manager";
 
@@ -49,25 +48,6 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   // Another instance is already running, quit this one
   app.quit();
-}
-
-// Set up auto-updater for production builds
-if (app.isPackaged && !isWindows()) {
-  updateElectronApp({
-    notifyUser: false,
-  });
-}
-if (app.isPackaged && isWindows()) {
-  // Check if running with --squirrel-firstrun (Windows only)
-  const isSquirrelFirstRun = process.argv.includes("--squirrel-firstrun");
-  // Delay update check on Windows to avoid Squirrel file lock issues
-  if (isWindows() && !isSquirrelFirstRun) {
-    setTimeout(() => {
-      updateElectronApp({
-        notifyUser: false,
-      });
-    }, 60000); // 60 second delay
-  }
 }
 
 const appManager = new AppManager();

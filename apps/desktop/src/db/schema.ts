@@ -193,6 +193,7 @@ export interface AppSettingsData {
       followed: boolean; // Whether user followed recommendation
     };
   };
+  updateChannel?: "stable" | "beta";
   dataMigrations?: {
     notesLexical?: number;
   };

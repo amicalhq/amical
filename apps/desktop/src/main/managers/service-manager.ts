@@ -70,7 +70,7 @@ export class ServiceManager {
     await this.initializeAIServices();
     this.initializeRecordingManager();
     await this.initializeShortcutManager();
-    this.initializeAutoUpdater();
+    await this.initializeAutoUpdater();
 
     this.isInitialized = true;
     logger.main.info("Services initialized successfully");
@@ -202,8 +202,9 @@ export class ServiceManager {
     logger.main.info("Shortcut manager initialized");
   }
 
-  private initializeAutoUpdater(): void {
+  private async initializeAutoUpdater(): Promise<void> {
     this.autoUpdaterService = new AutoUpdaterService();
+    await this.autoUpdaterService.initialize(this.settingsService!);
   }
 
   getLogger() {
@@ -252,6 +253,11 @@ export class ServiceManager {
     if (this.vadService) {
       logger.main.info("Cleaning up VAD service...");
       await this.vadService.dispose();
+    }
+
+    if (this.autoUpdaterService) {
+      logger.main.info("Cleaning up auto-updater...");
+      this.autoUpdaterService.cleanup();
     }
 
     if (this.nativeBridge) {

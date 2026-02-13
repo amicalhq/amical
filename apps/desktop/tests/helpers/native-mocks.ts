@@ -153,9 +153,6 @@ export const mockPostHog = {
   })),
 };
 
-// Mock update-electron-app
-export const mockUpdateElectronApp = vi.fn();
-
 export function createNativeMocks() {
   return {
     "onnxruntime-node": mockOnnxRuntime,
@@ -167,6 +164,5 @@ export function createNativeMocks() {
     "node-machine-id": mockMachineId,
     systeminformation: mockSystemInformation,
     "posthog-node": mockPostHog,
-    "update-electron-app": mockUpdateElectronApp,
   };
 }
