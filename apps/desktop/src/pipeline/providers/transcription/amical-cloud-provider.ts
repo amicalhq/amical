@@ -287,11 +287,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
                 const appType = detectApplicationType(
                   this.currentAccessibilityContext,
                 );
-                // Terminal apps expose command output, ANSI escape sequences, and
-                // prompt strings via the accessibility API.  Sending this raw text
-                // as context to the cloud transcription endpoint degrades
-                // recognition quality (garbled output).  Strip the surrounding
-                // text for terminal-type applications.
+                // Terminal apps expose noisy accessibility context (command
+                // output, ANSI escapes, prompt strings) that degrades cloud
+                // transcription quality.  Strip text fields and send appType
+                // as "default" since the server does not yet know "terminal".
                 const isTerminal = appType === "terminal";
                 return {
                   selectedText: isTerminal
@@ -306,7 +305,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
                     ? undefined
                     : this.currentAccessibilityContext!.context?.textSelection
                         ?.postSelectionText,
-                  appType,
+                  appType: isTerminal ? "default" : appType,
                   appBundleId:
                     this.currentAccessibilityContext!.context?.application
                       ?.bundleIdentifier,
