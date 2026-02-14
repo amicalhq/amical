@@ -7,7 +7,7 @@ import { GetAccessibilityContextResult } from "@amical/types";
 /**
  * Application type for formatting context
  */
-export type AppType = "email" | "chat" | "notes" | "amical-notes" | "default";
+export type AppType = "email" | "chat" | "notes" | "amical-notes" | "terminal" | "default";
 
 /**
  * App-type specific formatting rules inserted into the system prompt
@@ -38,6 +38,8 @@ const APP_TYPE_RULES: Record<AppType, string> = {
 - Use code blocks (\`\`\`) for technical content, commands, or code snippets
 - Keep formatting minimal and purposeful - don't over-format simple content
 - Preserve natural speech flow while adding structure where it improves clarity`,
+  // Terminal apps use universal rules only — no app-specific overrides.
+  terminal: "",
   default: "",
 };
 
@@ -106,6 +108,8 @@ We decided to ship on Friday.
 
 - Benchmark performance
 - Update docs</formatted_text>`,
+  // Terminal apps use universal examples only — no app-specific examples.
+  terminal: "",
   default: `### Filler removal + grammar fix:
 <input>so the main issue is that um we need more time</input>
 <formatted_text>The main issue is that we need more time.</formatted_text>
@@ -284,6 +288,14 @@ const BUNDLE_TO_TYPE: Record<string, AppType> = {
   "com.evernote.Evernote": "notes",
   "notion.id": "notes",
   "com.agiletortoise.Drafts-OSX": "notes",
+  "com.apple.Terminal": "terminal",
+  "com.googlecode.iterm2": "terminal",
+  "com.mitchellh.ghostty": "terminal",
+  "dev.warp.Warp-Stable": "terminal",
+  "net.kovidgoyal.kitty": "terminal",
+  "com.github.wez.wezterm": "terminal",
+  "io.alacritty": "terminal",
+  "co.zeit.hyper": "terminal",
 };
 
 // Browser bundle identifiers
