@@ -102,7 +102,7 @@ export function ShortcutsSettingsPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div>
       <div className="mb-8">
         <h1 className="text-xl font-bold">{t("settings.shortcuts.title")}</h1>
         <p className="text-muted-foreground mt-1 text-sm">

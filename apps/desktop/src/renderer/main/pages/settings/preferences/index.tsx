@@ -126,7 +126,7 @@ export default function PreferencesSettingsPage() {
     uiSettingsQuery.isLoading || updateUILocaleMutation.isPending;
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div>
       {/* Header Section */}
       <div className="mb-8">
         <h1 className="text-xl font-bold">{t("settings.preferences.title")}</h1>

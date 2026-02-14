@@ -47,7 +47,7 @@ export class WindowManager {
     const majorVersion = parseInt(systemVersion.split(".")[0], 10);
     const isTahoeOrLater = majorVersion >= 26;
 
-    return { x: 20, y: isTahoeOrLater ? 12 : 16 };
+    return { x: 16, y: 16 };
   }
 
   /** Calculate widget bounds with edge inset applied for taskbar auto-hide */
@@ -101,8 +101,12 @@ export class WindowManager {
   async updateAllWindowThemes(): Promise<void> {
     const colors = await this.getThemeColors();
 
-    // Update main window
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+    // Update main window (macOS uses vibrancy, no title bar overlay)
+    if (
+      process.platform !== "darwin" &&
+      this.mainWindow &&
+      !this.mainWindow.isDestroyed()
+    ) {
       this.mainWindow.setTitleBarOverlay({
         color: colors.backgroundColor,
         symbolColor: colors.symbolColor,
@@ -163,12 +167,21 @@ export class WindowManager {
       width: 1200,
       height: windowHeight,
       frame: true,
-      titleBarStyle: "hidden",
-      titleBarOverlay: {
-        color: colors.backgroundColor,
-        symbolColor: colors.symbolColor,
-        height: 32,
-      },
+      backgroundColor:
+        process.platform === "darwin" ? "#00000000" : colors.backgroundColor,
+      ...(process.platform === "darwin"
+        ? {
+            titleBarStyle: "hiddenInset",
+            vibrancy: "menu",
+          }
+        : {
+            titleBarStyle: "hidden",
+            titleBarOverlay: {
+              color: colors.backgroundColor,
+              symbolColor: colors.symbolColor,
+              height: 32,
+            },
+          }),
       trafficLightPosition: this.getTrafficLightPosition(),
       useContentSize: true,
       webPreferences: {

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SettingsSidebar } from "../../components/settings-sidebar";
@@ -10,6 +11,28 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsLayout() {
   const location = useLocation();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  // Reset scroll state on page change
+  useEffect(() => {
+    setIsScrolled(false);
+  }, [location.pathname]);
+
+  // IntersectionObserver to detect title scrolling out of view
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!sentinel || !root) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsScrolled(!entry.isIntersecting),
+      { root, threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [location.pathname]);
 
   const getSettingsPageTitle = (pathname: string): string => {
     // Check for dynamic routes first
@@ -39,31 +62,33 @@ function SettingsLayout() {
         } as React.CSSProperties
       }
     >
-      <div className="flex h-screen w-screen flex-col">
-        <SiteHeader
-          currentView={`${getSettingsPageTitle(location.pathname)}`}
-        />
-
-        <div className="flex flex-1 min-h-0">
-          <SettingsSidebar variant="inset" />
-          <SidebarInset className="!mt-0">
-            <div className="flex flex-1 flex-col min-h-0">
-              <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">
-                <div className="flex-1 overflow-y-auto">
+      <div className="flex h-screen w-screen">
+        <SettingsSidebar variant="inset" />
+        <SidebarInset className="!mt-0">
+          <SiteHeader
+            currentView={`${getSettingsPageTitle(location.pathname)}`}
+            showTitle={isScrolled}
+          />
+          <div className="flex flex-1 flex-col min-h-0">
+            <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">
+              <div ref={scrollRef} className="flex-1 overflow-y-auto">
+                <div
+                  className="mx-auto w-full flex flex-col gap-4 md:gap-6 relative"
+                  style={{
+                    maxWidth: "var(--content-max-width)",
+                    paddingInline: "var(--content-padding)",
+                  }}
+                >
                   <div
-                    className="mx-auto w-full flex flex-col gap-4 md:gap-6"
-                    style={{
-                      maxWidth: "var(--content-max-width)",
-                      padding: "var(--content-padding)",
-                    }}
-                  >
-                    <Outlet />
-                  </div>
+                    ref={sentinelRef}
+                    className="absolute top-0 h-[60px] w-px"
+                  />
+                  <Outlet />
                 </div>
               </div>
             </div>
-          </SidebarInset>
-        </div>
+          </div>
+        </SidebarInset>
       </div>
     </SidebarProvider>
   );

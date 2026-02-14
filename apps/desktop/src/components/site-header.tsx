@@ -1,30 +1,25 @@
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useRouter } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface SiteHeaderProps {
   currentView?: string;
+  showTitle?: boolean;
 }
 
 const dragRegion = { WebkitAppRegion: "drag" } as CSSProperties;
 const noDragRegion = { WebkitAppRegion: "no-drag" } as CSSProperties;
 
-export function SiteHeader({ currentView }: SiteHeaderProps) {
+export function SiteHeader({ currentView, showTitle = true }: SiteHeaderProps) {
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
-  const [isMacOS, setIsMacOS] = useState(false);
-
-  useEffect(() => {
-    // Detect if running on macOS
-    const platform = navigator.platform || navigator.userAgent;
-    setIsMacOS(/Mac|Darwin/i.test(platform));
-  }, []);
-
+  const isMacOS = window.electronAPI?.platform === "darwin";
+  const { state: sidebarState } = useSidebar();
   useEffect(() => {
     // Track navigation history in session storage
     const HISTORY_KEY = "navigation-history";
@@ -137,21 +132,17 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
   };
 
   return (
-    <header
-      className="flex h-[var(--header-height)] shrink-0 items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-sidebar/60 sticky top-0 z-50 w-full"
-      style={dragRegion}
-    >
-      <div className="flex w-full items-center gap-1">
-        {/* macOS traffic light button spacing */}
-        {isMacOS && <div className="w-[78px] flex-shrink-0" />}
-
-        <div className="flex items-center gap-1 px-4 lg:gap-2 lg:px-6 py-1.5">
-          <SidebarTrigger className="-ml-1" style={noDragRegion} />
-
-          <Separator orientation="vertical" className="h-4" />
-
-          {/* Navigation buttons */}
-          <div className="flex items-center gap-1">
+    <>
+      {isMacOS ? (
+        <div
+          className="fixed left-0 top-0 z-50 h-[var(--mac-titlebar-height)] w-full"
+          style={dragRegion}
+        >
+          <div
+            className="absolute top-2.5 flex items-center gap-1.5"
+            style={{ ...noDragRegion, left: "var(--mac-toolbar-left)" }}
+          >
+            <SidebarTrigger style={noDragRegion} />
             <Button
               variant="ghost"
               size="sm"
@@ -178,10 +169,57 @@ export function SiteHeader({ currentView }: SiteHeaderProps) {
             </Button>
           </div>
         </div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none select-none">
-          <h1 className="text-base font-medium">{currentView || "Amical"}</h1>
+      ) : null}
+      <header
+        className="flex h-[var(--header-height)] shrink-0 items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-sidebar/60 sticky top-0 z-40 w-full"
+        style={isMacOS ? undefined : dragRegion}
+      >
+        <div className="flex w-full items-center gap-1">
+          <div
+            className={`flex items-center gap-1 py-1.5 transition-[padding] duration-200 ${sidebarState === "expanded" ? "px-4" : "px-0"}`}
+          >
+            {isMacOS ? null : (
+              <>
+                <SidebarTrigger className="-ml-1" style={noDragRegion} />
+                <Separator orientation="vertical" className="h-4" />
+                {/* Navigation buttons */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleGoBack}
+                    disabled={!canGoBack}
+                    className="h-7 w-7 p-0"
+                    style={noDragRegion}
+                    title="Go back"
+                    aria-label="Go back"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleGoForward}
+                    disabled={!canGoForward}
+                    className="h-7 w-7 p-0"
+                    style={noDragRegion}
+                    title="Go forward"
+                    aria-label="Go forward"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+          <div
+            className={`flex items-center pointer-events-none select-none transition-opacity duration-200 ${showTitle ? "opacity-100" : "opacity-0"}`}
+          >
+            <Separator orientation="vertical" className="h-4" />
+            <h1 className="text-sm font-medium">{currentView || "Amical"}</h1>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+    </>
   );
 }

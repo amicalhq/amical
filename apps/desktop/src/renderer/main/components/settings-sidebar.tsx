@@ -50,9 +50,22 @@ export function SettingsSidebar({
     },
   ];
 
+  const isMacOS = window.electronAPI?.platform === "darwin";
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      <div className="h-[var(--header-height)]"></div>
+      <div
+        className={
+          isMacOS
+            ? "h-[var(--mac-titlebar-height)] shrink-0"
+            : "h-[var(--header-height)] shrink-0"
+        }
+        style={
+          isMacOS
+            ? ({ WebkitAppRegion: "drag" } as React.CSSProperties)
+            : undefined
+        }
+      />
       <SidebarHeader className="py-0 -mb-1">
         <SidebarMenu>
           <SidebarMenuItem>

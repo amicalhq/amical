@@ -88,6 +88,11 @@ const App: React.FC = () => {
   );
 };
 
+// Add vibrancy class on macOS so CSS can make sidebar transparent
+if (window.electronAPI?.platform === "darwin") {
+  document.documentElement.classList.add("vibrancy");
+}
+
 // Render the app
 const container = document.getElementById("root");
 if (container) {
