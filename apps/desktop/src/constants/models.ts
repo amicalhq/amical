@@ -7,6 +7,12 @@ export interface AvailableWhisperModel {
   description: string;
   downloadUrl: string;
   filename: string; // Expected filename after download
+  artifacts?: {
+    filename: string;
+    downloadUrl: string;
+    checksum?: string;
+    size?: number;
+  }[];
   checksum?: string; // Optional checksum for validation
   features: {
     icon: string;
@@ -15,9 +21,11 @@ export interface AvailableWhisperModel {
   speed: number;
   accuracy: number;
   setup: "offline" | "cloud";
+  runtime: "whisper-local" | "parakeet-onnx" | "cloud";
   provider: string;
   providerIcon: string;
   modelSize: string;
+  sourceUrl?: string;
 }
 
 // DownloadedModel type is now imported from the database schema
@@ -145,8 +153,60 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 4.5,
     accuracy: 4.5,
     setup: "cloud",
+    runtime: "cloud",
     provider: "Amical Cloud",
     providerIcon: "/assets/logo.svg",
+  },
+  {
+    id: "parakeet-ctc-0.6b-int8",
+    name: "NVIDIA Parakeet 0.6B (Local)",
+    type: "whisper",
+    description:
+      "Local CTC speech model optimized for fast English transcription with ONNX Runtime.",
+    checksum:
+      "3cfe22e14a7adf70b7b4ab33109a6fad4d7ca61821ca1f37168dc9b3d04b963b",
+    filename: "model.int8.onnx",
+    artifacts: [
+      {
+        filename: "model.int8.onnx",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx/resolve/main/model.int8.onnx",
+        checksum:
+          "3cfe22e14a7adf70b7b4ab33109a6fad4d7ca61821ca1f37168dc9b3d04b963b",
+        size: 653436437,
+      },
+      {
+        filename: "vocab.txt",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx/resolve/main/vocab.txt",
+      },
+    ],
+    downloadUrl:
+      "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx/resolve/main/model.int8.onnx",
+    size: 653436437,
+    sizeFormatted: "~623 MB",
+    modelSize: "~623 MB",
+    features: [
+      {
+        icon: "bolt",
+        tooltip: "Fast local transcription",
+      },
+      {
+        icon: "gauge",
+        tooltip: "DirectML/CPU ONNX runtime",
+      },
+      {
+        icon: "languages",
+        tooltip: "English-first CTC vocabulary",
+      },
+    ],
+    speed: 4.6,
+    accuracy: 4.2,
+    setup: "offline",
+    runtime: "parakeet-onnx",
+    provider: "NVIDIA",
+    providerIcon: "/icons/models/nvidia.svg",
+    sourceUrl: "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx",
   },
   {
     id: "whisper-tiny",
@@ -177,6 +237,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 5.0,
     accuracy: 2.5,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "OpenAI",
     providerIcon: "/icons/models/openai_dark.svg",
   },
@@ -209,6 +270,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 4.0,
     accuracy: 3.0,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "OpenAI",
     providerIcon: "/icons/models/openai_dark.svg",
   },
@@ -242,6 +304,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 3.0,
     accuracy: 3.8,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "OpenAI",
     providerIcon: "/icons/models/openai_dark.svg",
   },
@@ -274,6 +337,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 2.0,
     accuracy: 4.3,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "OpenAI",
     providerIcon: "/icons/models/openai_dark.svg",
   },
@@ -306,6 +370,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 1.5,
     accuracy: 4.7,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "OpenAI",
     providerIcon: "/icons/models/openai_dark.svg",
   },
@@ -338,6 +403,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 3.5,
     accuracy: 4.2,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "OpenAI",
     providerIcon: "/icons/models/openai_dark.svg",
   },

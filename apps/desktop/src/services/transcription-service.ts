@@ -7,6 +7,7 @@ import {
 } from "../pipeline/core/pipeline-types";
 import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
+import { ParakeetProvider } from "../pipeline/providers/transcription/parakeet-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
 import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
 import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
@@ -36,6 +37,7 @@ import * as fs from "node:fs";
  */
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
+  private parakeetProvider: ParakeetProvider;
   private cloudProvider: AmicalCloudProvider;
   private currentProvider: TranscriptionProvider | null = null;
   private streamingSessions = new Map<string, StreamingSession>();
@@ -58,6 +60,7 @@ export class TranscriptionService {
     private onboardingService: OnboardingService | null,
   ) {
     this.whisperProvider = new WhisperProvider(modelService);
+    this.parakeetProvider = new ParakeetProvider(modelService);
     this.cloudProvider = new AmicalCloudProvider();
     this.vadService = vadService;
     this.settingsService = settingsService;
@@ -83,10 +86,16 @@ export class TranscriptionService {
     // Find the model in AVAILABLE_MODELS
     const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
 
-    // Use cloud provider for Amical Cloud models
-    if (model?.provider === "Amical Cloud") {
+    // Use cloud provider for cloud-backed models
+    if (model?.setup === "cloud") {
       this.currentProvider = this.cloudProvider;
       return this.cloudProvider;
+    }
+
+    // Use Parakeet provider for local Parakeet ONNX models
+    if (model?.runtime === "parakeet-onnx") {
+      this.currentProvider = this.parakeetProvider;
+      return this.parakeetProvider;
     }
 
     // Default to whisper for all other models
@@ -100,7 +109,7 @@ export class TranscriptionService {
     const model = selectedModelId
       ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
       : null;
-    const isCloudModel = model?.provider === "Amical Cloud";
+    const isCloudModel = model?.setup === "cloud";
 
     // Only preload for local models
     if (!isCloudModel) {
@@ -114,10 +123,18 @@ export class TranscriptionService {
         // Check if models are available for preloading
         const hasModels = await this.isModelAvailable();
         if (hasModels) {
-          logger.transcription.info("Preloading Whisper model...");
-          await this.preloadWhisperModel();
-          this.modelWasPreloaded = true;
-          logger.transcription.info("Whisper model preloaded successfully");
+          const provider = await this.selectProvider();
+          if (provider === this.parakeetProvider) {
+            logger.transcription.info("Preloading Parakeet model...");
+            await this.parakeetProvider.preloadModel(selectedModelId || undefined);
+            this.modelWasPreloaded = true;
+            logger.transcription.info("Parakeet model preloaded successfully");
+          } else {
+            logger.transcription.info("Preloading Whisper model...");
+            await this.preloadWhisperModel();
+            this.modelWasPreloaded = true;
+            logger.transcription.info("Whisper model preloaded successfully");
+          }
         } else {
           logger.transcription.info(
             "Whisper model preloading skipped - no models available",
@@ -172,7 +189,7 @@ export class TranscriptionService {
       const selectedModelId = await this.modelService.getSelectedModel();
       if (selectedModelId) {
         const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
-        if (model?.provider === "Amical Cloud") {
+        if (model?.setup === "cloud") {
           return true;
         }
       }
@@ -206,12 +223,25 @@ export class TranscriptionService {
           if (shouldPreload) {
             const hasModels = await this.isModelAvailable();
             if (hasModels) {
-              logger.transcription.info(
-                "Loading Whisper model after model change...",
-              );
-              await this.whisperProvider.preloadModel();
-              this.modelWasPreloaded = true;
-              logger.transcription.info("Whisper model loaded successfully");
+              const provider = await this.selectProvider();
+              const selectedModelId = await this.modelService.getSelectedModel();
+              if (provider === this.parakeetProvider) {
+                logger.transcription.info(
+                  "Loading Parakeet model after model change...",
+                );
+                await this.parakeetProvider.preloadModel(
+                  selectedModelId || undefined,
+                );
+                this.modelWasPreloaded = true;
+                logger.transcription.info("Parakeet model loaded successfully");
+              } else {
+                logger.transcription.info(
+                  "Loading Whisper model after model change...",
+                );
+                await this.whisperProvider.preloadModel();
+                this.modelWasPreloaded = true;
+                logger.transcription.info("Whisper model loaded successfully");
+              }
             } else {
               logger.transcription.info("No models available to preload");
             }
@@ -312,6 +342,7 @@ export class TranscriptionService {
 
       // Select the appropriate provider
       const provider = await this.selectProvider();
+      const selectedSpeechModelId = await this.modelService.getSelectedModel();
 
       // Transcribe chunk (flush is done separately in finalizeSession)
       const chunkTranscription = await provider.transcribe({
@@ -319,6 +350,7 @@ export class TranscriptionService {
         speechProbability: speechProbability,
         context: {
           sessionId,
+          modelId: selectedSpeechModelId || undefined,
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
           previousChunk,
@@ -420,8 +452,10 @@ export class TranscriptionService {
 
         const provider = await this.selectProvider();
         usedCloudProvider = provider.name === "amical-cloud";
+        const selectedSpeechModelId = await this.modelService.getSelectedModel();
         const finalTranscription = await provider.flush({
           sessionId,
+          modelId: selectedSpeechModelId || undefined,
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
           previousChunk,
@@ -485,12 +519,13 @@ export class TranscriptionService {
         audioFilePath,
         hasAudioFile: !!audioFilePath,
       });
+      const selectedSpeechModelId = await this.modelService.getSelectedModel();
 
       await createTranscription({
         text: completeTranscription,
         language: session.context.sharedData.userPreferences?.language || "en",
         duration: session.context.sharedData.audioMetadata?.duration,
-        speechModel: "whisper-local",
+        speechModel: selectedSpeechModelId || "whisper-local",
         formattingModel,
         audioFile: audioFilePath,
         meta: {
@@ -925,6 +960,7 @@ export class TranscriptionService {
           audioData: frames[i],
           speechProbability: vadProbs[i],
           context: {
+            modelId: selectedModelId || undefined,
             vocabulary,
             language,
             previousChunk,
@@ -942,6 +978,7 @@ export class TranscriptionService {
       // Flush to get remaining buffered audio
       const aggregatedTranscription = transcriptionResults.join("");
       const finalTranscription = await provider.flush({
+        modelId: selectedModelId || undefined,
         vocabulary,
         language,
         aggregatedTranscription: aggregatedTranscription || undefined,
@@ -1028,6 +1065,7 @@ export class TranscriptionService {
    */
   async dispose(): Promise<void> {
     await this.whisperProvider.dispose();
+    await this.parakeetProvider.dispose();
     // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }

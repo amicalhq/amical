@@ -158,8 +158,8 @@ export async function getModelsByIds(
 }
 
 /**
- * Sync Local Whisper models with filesystem
- * Scans the models directory and syncs database records with actual files
+ * Sync local speech models with filesystem
+ * Scans expected model paths and syncs database records with actual files
  */
 export async function syncLocalWhisperModels(
   modelsDirectory: string,
@@ -185,24 +185,19 @@ export async function syncLocalWhisperModels(
   const existingModels = await getModelsByProvider("local-whisper");
   const existingModelMap = new Map(existingModels.map((m) => [m.id, m]));
 
-  // Scan the models directory for .bin files
-  const modelFiles = new Set<string>();
-  if (fs.existsSync(modelsDirectory)) {
-    const files = fs.readdirSync(modelsDirectory);
-    for (const file of files) {
-      if (file.endsWith(".bin")) {
-        modelFiles.add(file);
-      }
-    }
-  }
-
   // Map available models by ID for easy lookup
   // (we already have them indexed by ID, so we don't need this map)
 
   // Process each available model
   for (const model of availableModels) {
-    const filePath = path.join(modelsDirectory, model.filename);
-    const fileExists = modelFiles.has(model.filename);
+    const candidatePaths = [
+      path.join(modelsDirectory, model.filename),
+      path.join(modelsDirectory, model.id, model.filename),
+    ];
+    const filePath =
+      candidatePaths.find((candidatePath) => fs.existsSync(candidatePath)) ||
+      candidatePaths[1];
+    const fileExists = fs.existsSync(filePath);
     const existingRecord = existingModelMap.get(model.id);
 
     if (fileExists) {
