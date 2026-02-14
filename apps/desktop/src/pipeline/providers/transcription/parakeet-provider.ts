@@ -26,6 +26,7 @@ interface ResolvedParakeetPaths {
   ctcModelPath?: string;
   encoderModelPath?: string;
   decoderJointModelPath?: string;
+  nemoPreprocessorPath?: string;
   vocabPath: string;
   configPath?: string;
 }
@@ -50,6 +51,7 @@ export class ParakeetProvider implements TranscriptionProvider {
   readonly name = "parakeet-local";
 
   private ctcSession: ort.InferenceSession | null = null;
+  private tdtPreprocessorSession: ort.InferenceSession | null = null;
   private tdtEncoderSession: ort.InferenceSession | null = null;
   private tdtDecoderJointSession: ort.InferenceSession | null = null;
 
@@ -155,7 +157,7 @@ export class ParakeetProvider implements TranscriptionProvider {
         variant: this.currentModelVariant,
       });
 
-      const features = this.featureExtractor.extract(speechAudio);
+      const features = await this.extractFeatures(speechAudio);
 
       if (this.currentModelVariant === "tdt") {
         return this.transcribeTdt(features);
@@ -171,6 +173,89 @@ export class ParakeetProvider implements TranscriptionProvider {
         `Parakeet transcription failed: ${error instanceof Error ? error.message : String(error)}`,
         ErrorCodes.LOCAL_TRANSCRIPTION_FAILED,
       );
+    }
+  }
+
+  private async extractFeatures(audioData: Float32Array): Promise<ParakeetFeatures> {
+    if (this.currentModelVariant !== "tdt" || !this.tdtPreprocessorSession) {
+      return this.featureExtractor.extract(audioData);
+    }
+
+    try {
+      const waveformInputName = this.findName(
+        this.tdtPreprocessorSession.inputNames,
+        [/waveforms/i, /audio/i],
+        0,
+      );
+      const waveformLengthInputName = this.findName(
+        this.tdtPreprocessorSession.inputNames,
+        [/waveforms_lens/i, /length/i],
+        1,
+      );
+      const featuresOutputName = this.findName(
+        this.tdtPreprocessorSession.outputNames,
+        [/^features$/i, /mel/i],
+        0,
+      );
+      const featuresLengthOutputName = this.findName(
+        this.tdtPreprocessorSession.outputNames,
+        [/features_lens/i, /length/i],
+        1,
+      );
+
+      const waveformTensor = new ort.Tensor("float32", audioData, [1, audioData.length]);
+      const waveformLengthTensor = this.createIntegerTensorForInput(
+        this.tdtPreprocessorSession,
+        waveformLengthInputName,
+        [audioData.length],
+        [1],
+      );
+
+      const preprocessorResults = await this.tdtPreprocessorSession.run({
+        [waveformInputName]: waveformTensor,
+        [waveformLengthInputName]: waveformLengthTensor,
+      });
+
+      const featuresTensor = preprocessorResults[featuresOutputName] as ort.Tensor;
+      const featuresLengthTensor = preprocessorResults[featuresLengthOutputName] as ort.Tensor;
+      const featuresData = this.toFloat32Array(featuresTensor.data);
+      const dims = featuresTensor.dims;
+
+      if (dims.length !== 3 || dims[0] !== 1) {
+        throw new AppError(
+          `Unexpected Parakeet preprocessor output dims: ${dims.join("x")}`,
+          ErrorCodes.WORKER_INITIALIZATION_FAILED,
+        );
+      }
+
+      const featuresSize = Number(dims[1]);
+      const frameCount = Number(dims[2]);
+      if (!Number.isFinite(featuresSize) || !Number.isFinite(frameCount) || featuresSize <= 0 || frameCount <= 0) {
+        throw new AppError(
+          `Invalid Parakeet preprocessor output dims: ${dims.join("x")}`,
+          ErrorCodes.WORKER_INITIALIZATION_FAILED,
+        );
+      }
+
+      const featureLengths = this.toBigInt64Array(featuresLengthTensor.data);
+      const featuresLength = Math.max(
+        1,
+        Math.min(frameCount, Number(featureLengths[0] ?? BigInt(frameCount))),
+      );
+
+      return {
+        inputFeatures: featuresData,
+        inputShape: [1, featuresSize, frameCount],
+        featuresLength,
+      };
+    } catch (error) {
+      logger.transcription.warn(
+        "Parakeet TDT ONNX preprocessor failed, falling back to JS feature extraction",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return this.featureExtractor.extract(audioData);
     }
   }
 
@@ -462,6 +547,16 @@ export class ParakeetProvider implements TranscriptionProvider {
         featureSize: this.featureSize,
       });
     } else {
+      let preprocessorProviders: readonly string[] | null = null;
+      if (resolved.nemoPreprocessorPath) {
+        const preprocessorResult = await this.createSessionWithFallback(
+          resolved.nemoPreprocessorPath,
+          preferredProviders,
+        );
+        this.tdtPreprocessorSession = preprocessorResult.session;
+        preprocessorProviders = preprocessorResult.providersUsed;
+      }
+
       const encoderResult = await this.createSessionWithFallback(
         resolved.encoderModelPath!,
         preferredProviders,
@@ -478,10 +573,12 @@ export class ParakeetProvider implements TranscriptionProvider {
       logger.transcription.info("Initialized local Parakeet model", {
         modelId: requestedId,
         variant: resolved.variant,
+        nemoPreprocessorPath: resolved.nemoPreprocessorPath || null,
         encoderModelPath: resolved.encoderModelPath,
         decoderJointModelPath: resolved.decoderJointModelPath,
         vocabPath: resolved.vocabPath,
         executionProviders: {
+          preprocessor: preprocessorProviders,
           encoder: encoderResult.providersUsed,
           decoder: decoderResult.providersUsed,
         },
@@ -526,6 +623,10 @@ export class ParakeetProvider implements TranscriptionProvider {
     if (this.ctcSession) {
       await this.ctcSession.release();
       this.ctcSession = null;
+    }
+    if (this.tdtPreprocessorSession) {
+      await this.tdtPreprocessorSession.release();
+      this.tdtPreprocessorSession = null;
     }
     if (this.tdtEncoderSession) {
       await this.tdtEncoderSession.release();
@@ -595,11 +696,17 @@ export class ParakeetProvider implements TranscriptionProvider {
 
       const configPath =
         findFile(/^config\.json$/i) || path.join(modelDir, "config.json");
+      const nemoPathCandidate =
+        findFile(/^nemo\d+\.onnx$/i) || path.join(modelDir, "nemo128.onnx");
+      const nemoPreprocessorPath = await this.fileExists(nemoPathCandidate)
+        ? nemoPathCandidate
+        : undefined;
 
       return {
         variant: "tdt",
         encoderModelPath,
         decoderJointModelPath,
+        nemoPreprocessorPath,
         vocabPath,
         configPath,
       };
@@ -613,6 +720,15 @@ export class ParakeetProvider implements TranscriptionProvider {
       ctcModelPath,
       vocabPath,
     };
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async loadModelConfig(configPath?: string): Promise<ParakeetModelConfig> {
