@@ -10,7 +10,7 @@ import * as path from "path";
 import { app } from "electron";
 import { AppError, ErrorCodes } from "../../../types/error";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
-import { detectApplicationType } from "../formatting/formatter-prompt";
+
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
@@ -278,19 +278,13 @@ export class WhisperProvider implements TranscriptionProvider {
       return aggregatedTranscription;
     }
 
-    // Terminal apps expose command output and ANSI escape sequences via
-    // accessibility context.  Using that as initial_prompt degrades Whisper
-    // recognition quality, so skip it for terminal-type applications.
-    const appType = detectApplicationType(accessibilityContext);
-    if (appType === "terminal") {
-      logger.transcription.debug(
-        "Generated initial prompt: empty (terminal app - skipping noisy context)",
-      );
-      return "";
-    }
-
-    const beforeText =
+    const rawBeforeText =
       accessibilityContext?.context?.textSelection?.preSelectionText;
+    // Strip ANSI escape sequences that terminal apps expose via accessibility
+    // context — they degrade Whisper recognition quality.
+    const beforeText = rawBeforeText
+      // eslint-disable-next-line no-control-regex
+      ?.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g, "");
     if (beforeText && beforeText.trim().length > 0) {
       logger.transcription.debug(
         `Generated initial prompt from before text: "${beforeText}"`,

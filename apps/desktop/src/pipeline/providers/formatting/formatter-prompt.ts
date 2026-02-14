@@ -38,9 +38,7 @@ const APP_TYPE_RULES: Record<AppType, string> = {
 - Use code blocks (\`\`\`) for technical content, commands, or code snippets
 - Keep formatting minimal and purposeful - don't over-format simple content
 - Preserve natural speech flow while adding structure where it improves clarity`,
-  terminal: `- Preserve technical terminology and command names exactly as spoken
-- Do not interpret or reformat content that sounds like code or shell commands
-- Keep it plain text - no markdown formatting`,
+  terminal: "",
   default: "",
 };
 
@@ -109,9 +107,7 @@ We decided to ship on Friday.
 
 - Benchmark performance
 - Update docs</formatted_text>`,
-  terminal: `### Terminal dictation:
-<input>git commit dash m fix the login bug</input>
-<formatted_text>git commit -m "fix the login bug"</formatted_text>`,
+  terminal: "",
   default: `### Filler removal + grammar fix:
 <input>so the main issue is that um we need more time</input>
 <formatted_text>The main issue is that we need more time.</formatted_text>
