@@ -31,10 +31,11 @@ export function applyTextReplacements(
       const regex = new RegExp(escapedWord, "giu");
       result = result.replace(regex, replacement);
     } else {
-      // Alphabetic languages: Use Unicode-aware word boundary matching
-      // Negative lookbehind/lookahead ensures word is not part of a larger word
+      // Alphabetic languages: Use word boundary matching
+      // Only check Latin script boundaries to prevent "apple" matching in "pineapple"
+      // but allow matching adjacent to CJK characters (e.g., "Xavixの設定")
       const regex = new RegExp(
-        `(?<![\\p{L}\\p{N}])${escapedWord}(?![\\p{L}\\p{N}])`,
+        `(?<![\\p{Script=Latin}\\p{N}])${escapedWord}(?![\\p{Script=Latin}\\p{N}])`,
         "giu",
       );
       result = result.replace(regex, replacement);
