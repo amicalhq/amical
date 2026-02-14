@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 export default function DictationSettingsPage() {
   const { t } = useTranslation();
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div>
       <div className="mb-8">
         <h1 className="text-xl font-bold">{t("settings.dictation.title")}</h1>
         <p className="text-muted-foreground mt-1 text-sm">
