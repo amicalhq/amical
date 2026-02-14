@@ -38,6 +38,7 @@ const APP_TYPE_RULES: Record<AppType, string> = {
 - Use code blocks (\`\`\`) for technical content, commands, or code snippets
 - Keep formatting minimal and purposeful - don't over-format simple content
 - Preserve natural speech flow while adding structure where it improves clarity`,
+  // Terminal apps use universal rules only — no app-specific overrides.
   terminal: "",
   default: "",
 };
@@ -107,6 +108,7 @@ We decided to ship on Friday.
 
 - Benchmark performance
 - Update docs</formatted_text>`,
+  // Terminal apps use universal examples only — no app-specific examples.
   terminal: "",
   default: `### Filler removal + grammar fix:
 <input>so the main issue is that um we need more time</input>

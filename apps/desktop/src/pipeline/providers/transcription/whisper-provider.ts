@@ -11,7 +11,6 @@ import { app } from "electron";
 import { AppError, ErrorCodes } from "../../../types/error";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
 
-
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
 

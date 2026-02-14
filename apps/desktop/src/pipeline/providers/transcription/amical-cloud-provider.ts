@@ -301,9 +301,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
                 );
                 const isTerminal = appType === "terminal";
                 return {
-                  selectedText:
+                  selectedText: stripAnsiSequences(
                     this.currentAccessibilityContext!.context?.textSelection
                       ?.selectedText,
+                  ),
                   beforeText: stripAnsiSequences(
                     this.currentAccessibilityContext!.context?.textSelection
                       ?.preSelectionText,
