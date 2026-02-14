@@ -283,28 +283,40 @@ export class AmicalCloudProvider implements TranscriptionProvider {
             enabled: enableFormatting,
           },
           sharedContext: this.currentAccessibilityContext
-            ? {
-                selectedText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.selectedText,
-                beforeText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.preSelectionText,
-                afterText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.postSelectionText,
-                appType: detectApplicationType(
+            ? (() => {
+                const appType = detectApplicationType(
                   this.currentAccessibilityContext,
-                ),
-                appBundleId:
-                  this.currentAccessibilityContext.context?.application
-                    ?.bundleIdentifier,
-                appName:
-                  this.currentAccessibilityContext.context?.application?.name,
-                appUrl:
-                  this.currentAccessibilityContext.context?.windowInfo?.url,
-                surroundingContext: "", // Empty for now, future enhancement
-              }
+                );
+                // Terminal apps expose command output, ANSI escape sequences, and
+                // prompt strings via the accessibility API.  Sending this raw text
+                // as context to the cloud transcription endpoint degrades
+                // recognition quality (garbled output).  Strip the surrounding
+                // text for terminal-type applications.
+                const isTerminal = appType === "terminal";
+                return {
+                  selectedText: isTerminal
+                    ? undefined
+                    : this.currentAccessibilityContext!.context?.textSelection
+                        ?.selectedText,
+                  beforeText: isTerminal
+                    ? undefined
+                    : this.currentAccessibilityContext!.context?.textSelection
+                        ?.preSelectionText,
+                  afterText: isTerminal
+                    ? undefined
+                    : this.currentAccessibilityContext!.context?.textSelection
+                        ?.postSelectionText,
+                  appType,
+                  appBundleId:
+                    this.currentAccessibilityContext!.context?.application
+                      ?.bundleIdentifier,
+                  appName:
+                    this.currentAccessibilityContext!.context?.application?.name,
+                  appUrl:
+                    this.currentAccessibilityContext!.context?.windowInfo?.url,
+                  surroundingContext: "",
+                };
+              })()
             : undefined,
         }),
       });
