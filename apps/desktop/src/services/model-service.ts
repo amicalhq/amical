@@ -62,6 +62,7 @@ class ModelService extends EventEmitter {
   private settingsService: SettingsService;
   private readonly localSpeechPreference = [
     "whisper-large-v3-turbo",
+    "parakeet-tdt-0.6b-v3-int8",
     "parakeet-ctc-0.6b-int8",
     "whisper-large-v3",
     "whisper-medium",

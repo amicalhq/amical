@@ -159,10 +159,10 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
   },
   {
     id: "parakeet-ctc-0.6b-int8",
-    name: "NVIDIA Parakeet 0.6B (Local)",
+    name: "NVIDIA Parakeet CTC 0.6B",
     type: "whisper",
     description:
-      "Local CTC speech model optimized for fast English transcription with ONNX Runtime.",
+      "CTC speech model optimized for fast English transcription with ONNX Runtime.",
     checksum:
       "3cfe22e14a7adf70b7b4ab33109a6fad4d7ca61821ca1f37168dc9b3d04b963b",
     filename: "model.int8.onnx",
@@ -207,6 +207,72 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     provider: "NVIDIA",
     providerIcon: "/icons/models/nvidia.svg",
     sourceUrl: "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx",
+  },
+  {
+    id: "parakeet-tdt-0.6b-v3-int8",
+    name: "NVIDIA Parakeet TDT 0.6B v3",
+    type: "whisper",
+    description:
+      "Transducer speech model with improved multilingual quality and robustness using ONNX Runtime.",
+    checksum: "",
+    filename: "encoder-model.int8.onnx",
+    artifacts: [
+      {
+        filename: "encoder-model.int8.onnx",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/encoder-model.int8.onnx",
+        size: 652183999,
+      },
+      {
+        filename: "decoder_joint-model.int8.onnx",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/decoder_joint-model.int8.onnx",
+        size: 18202004,
+      },
+      {
+        filename: "nemo128.onnx",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/nemo128.onnx",
+        size: 139764,
+      },
+      {
+        filename: "vocab.txt",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/vocab.txt",
+        size: 93939,
+      },
+      {
+        filename: "config.json",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/config.json",
+      },
+    ],
+    downloadUrl:
+      "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/encoder-model.int8.onnx",
+    size: 670619706,
+    sizeFormatted: "~640 MB",
+    modelSize: "~640 MB",
+    features: [
+      {
+        icon: "award",
+        tooltip: "Higher-quality transducer decoding",
+      },
+      {
+        icon: "gauge",
+        tooltip: "DirectML/CPU ONNX runtime",
+      },
+      {
+        icon: "languages",
+        tooltip: "Strong multilingual support",
+      },
+    ],
+    speed: 4.3,
+    accuracy: 4.6,
+    setup: "offline",
+    runtime: "parakeet-onnx",
+    provider: "NVIDIA",
+    providerIcon: "/icons/models/nvidia.svg",
+    sourceUrl: "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx",
   },
   {
     id: "whisper-tiny",

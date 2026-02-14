@@ -6,7 +6,7 @@ const WIN_LENGTH = 400;
 const HOP_LENGTH = 160;
 const PREEMPHASIS = 0.97;
 const LOG_ZERO_GUARD = Math.pow(2, -24);
-const N_MELS = 80;
+const DEFAULT_N_MELS = 80;
 const F_MIN = 0;
 const F_MAX = SAMPLE_RATE / 2;
 const DECODE_SPACE_PATTERN = /^\s|\s\B|(\s)\b/g;
@@ -39,27 +39,27 @@ function buildCenteredHannWindow(): Float32Array {
   return window;
 }
 
-function buildMelFilterBank(): Float32Array[] {
+function buildMelFilterBank(numMels: number): Float32Array[] {
   const numBins = Math.floor(N_FFT / 2) + 1;
   const fbanks: Float32Array[] = Array.from(
-    { length: N_MELS },
+    { length: numMels },
     () => new Float32Array(numBins),
   );
 
   const minMel = hzToMel(F_MIN);
   const maxMel = hzToMel(F_MAX);
-  const melPoints = new Float64Array(N_MELS + 2);
+  const melPoints = new Float64Array(numMels + 2);
   for (let i = 0; i < melPoints.length; i++) {
-    melPoints[i] = minMel + ((maxMel - minMel) * i) / (N_MELS + 1);
+    melPoints[i] = minMel + ((maxMel - minMel) * i) / (numMels + 1);
   }
 
-  const bins = new Int32Array(N_MELS + 2);
+  const bins = new Int32Array(numMels + 2);
   for (let i = 0; i < bins.length; i++) {
     const hz = melToHz(melPoints[i]);
     bins[i] = Math.floor(((N_FFT + 1) * hz) / SAMPLE_RATE);
   }
 
-  for (let m = 1; m <= N_MELS; m++) {
+  for (let m = 1; m <= numMels; m++) {
     const left = bins[m - 1];
     const center = bins[m];
     const right = bins[m + 1];
@@ -165,10 +165,16 @@ function fftInPlace(
 }
 
 export class ParakeetFeatureExtractor {
+  private readonly nMels: number;
   private readonly window = buildCenteredHannWindow();
-  private readonly melBanks = buildMelFilterBank();
+  private readonly melBanks: Float32Array[];
   private readonly bitReverse = createBitReverseTable(N_FFT);
   private readonly twiddle = createTwiddleTables(N_FFT);
+
+  constructor(nMels = DEFAULT_N_MELS) {
+    this.nMels = nMels;
+    this.melBanks = buildMelFilterBank(nMels);
+  }
 
   extract(audioData: Float32Array): ParakeetFeatures {
     const preemphasized = new Float32Array(audioData.length);
@@ -185,7 +191,7 @@ export class ParakeetFeatureExtractor {
     const frameCount = Math.max(1, Math.floor((padded.length - N_FFT) / HOP_LENGTH) + 1);
     const featuresLength = Math.max(1, Math.floor(audioData.length / HOP_LENGTH));
 
-    const logMel = new Float32Array(frameCount * N_MELS);
+    const logMel = new Float32Array(frameCount * this.nMels);
     const real = new Float32Array(N_FFT);
     const imag = new Float32Array(N_FFT);
 
@@ -206,30 +212,30 @@ export class ParakeetFeatureExtractor {
         this.twiddle.sin,
       );
 
-      for (let m = 0; m < N_MELS; m++) {
+      for (let m = 0; m < this.nMels; m++) {
         const bank = this.melBanks[m];
         let energy = 0;
         for (let k = 0; k < bank.length; k++) {
           const power = real[k] * real[k] + imag[k] * imag[k];
           energy += power * bank[k];
         }
-        logMel[frame * N_MELS + m] = Math.log(energy + LOG_ZERO_GUARD);
+        logMel[frame * this.nMels + m] = Math.log(energy + LOG_ZERO_GUARD);
       }
     }
 
     const validFrames = Math.min(featuresLength, frameCount);
-    const normalized = new Float32Array(N_MELS * frameCount);
+    const normalized = new Float32Array(this.nMels * frameCount);
 
-    for (let m = 0; m < N_MELS; m++) {
+    for (let m = 0; m < this.nMels; m++) {
       let mean = 0;
       for (let f = 0; f < validFrames; f++) {
-        mean += logMel[f * N_MELS + m];
+        mean += logMel[f * this.nMels + m];
       }
       mean /= validFrames;
 
       let variance = 0;
       for (let f = 0; f < validFrames; f++) {
-        const delta = logMel[f * N_MELS + m] - mean;
+        const delta = logMel[f * this.nMels + m] - mean;
         variance += delta * delta;
       }
       const denom = Math.max(validFrames - 1, 1);
@@ -238,16 +244,26 @@ export class ParakeetFeatureExtractor {
       const invStd = 1 / (Math.sqrt(variance) + 1e-5);
       for (let f = 0; f < frameCount; f++) {
         normalized[m * frameCount + f] =
-          f < validFrames ? (logMel[f * N_MELS + m] - mean) * invStd : 0;
+          f < validFrames ? (logMel[f * this.nMels + m] - mean) * invStd : 0;
       }
     }
 
     return {
       inputFeatures: normalized,
-      inputShape: [1, N_MELS, frameCount],
+      inputShape: [1, this.nMels, frameCount],
       featuresLength: validFrames,
     };
   }
+}
+
+export function decodeParakeetTokens(tokenIds: number[], vocab: string[]): string {
+  const text = tokenIds
+    .map((id) => vocab[id] ?? "")
+    .filter((token) => token && !token.startsWith("<|") && token !== "<unk>")
+    .join("");
+  return text.replace(DECODE_SPACE_PATTERN, (_match, capturedSpace) => {
+    return capturedSpace ? " " : "";
+  });
 }
 
 export async function loadParakeetVocabulary(
@@ -326,8 +342,5 @@ export function decodeParakeetCtc(
     prevId = bestId;
   }
 
-  const text = tokenIds.map((id) => vocab[id] ?? "").join("");
-  return text.replace(DECODE_SPACE_PATTERN, (_match, capturedSpace) => {
-    return capturedSpace ? " " : "";
-  });
+  return decodeParakeetTokens(tokenIds, vocab);
 }

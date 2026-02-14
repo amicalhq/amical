@@ -43,6 +43,12 @@ export const modelsRouter = createRouter({
             // Include setup field from available model metadata
             return {
               ...downloaded,
+              // Always prefer current manifest metadata for display fields.
+              name: m.name,
+              size: m.sizeFormatted,
+              description: m.description,
+              speed: m.speed,
+              accuracy: m.accuracy,
               setup: m.setup,
             } as Model & { setup: "offline" | "cloud" };
           }
