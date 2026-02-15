@@ -629,7 +629,8 @@
       "toast": {
         "pushToTalkUpdated": "Push to talk shortcut updated",
         "handsFreeUpdated": "Hands-free mode shortcut updated",
-        "pasteLastTranscriptUpdated": "Paste last transcript shortcut updated"
+        "pasteLastTranscriptUpdated": "Paste last transcript shortcut updated",
+        "newNoteUpdated": "New note shortcut updated"
       },
       "pushToTalk": {
         "label": "Push to talk",
@@ -642,6 +643,10 @@
       "pasteLastTranscript": {
         "label": "Paste last transcript",
         "description": "Paste your most recent transcription into the active app"
+      },
+      "newNote": {
+        "label": "New note",
+        "description": "Open notes window and create a new note"
       },
       "validation": {
         "noKeysDetected": "No keys detected",

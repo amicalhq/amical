@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Square } from "lucide-react";
+import { NotebookPen, Square } from "lucide-react";
 import { Waveform } from "@/components/Waveform";
 import { useRecording } from "@/hooks/useRecording";
 import { api } from "@/trpc/react";
@@ -55,6 +55,8 @@ export const FloatingButton: React.FC = () => {
 
   // tRPC mutation to control widget mouse events
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
+  const openNotesWindowForNewNote =
+    api.widget.openNotesWindowForNewNote.useMutation();
 
   // Log component initialization
   useEffect(() => {
@@ -115,6 +117,16 @@ export const FloatingButton: React.FC = () => {
     await stopRecording();
   };
 
+  const handleOpenNotesClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await openNotesWindowForNewNote.mutateAsync();
+    } catch (error) {
+      console.error("Failed to open notes window widget", error);
+    }
+  };
+
   // Debounced mouse leave handler
   const handleMouseLeave = async () => {
     if (leaveTimeoutRef.current) {
@@ -144,11 +156,17 @@ export const FloatingButton: React.FC = () => {
     console.debug("Disabled mouse event forwarding for clicking");
   };
 
-  const expanded = isRecording || isStopping || isHovered;
+  const isWidgetActive = isRecording || isStopping || isHovered;
+  const showNotesAction = isHovered && !isRecording && !isStopping;
+  const sizeClass = !isWidgetActive
+    ? "h-[8px] w-[48px]"
+    : showNotesAction
+      ? "h-[24px] w-[124px]"
+      : "h-[24px] w-[96px]";
 
   // Function to render widget content based on state
   const renderWidgetContent = () => {
-    if (!expanded) return null;
+    if (!isWidgetActive) return null;
 
     // Show processing indicator when stopping
     if (isStopping) {
@@ -174,16 +192,28 @@ export const FloatingButton: React.FC = () => {
 
     // Show waveform visualization for all other states
     return (
-      <button
-        className="justify-center items-center flex flex-1 gap-1 h-full w-full"
-        role="button"
-        onClick={handleButtonClick}
-      >
-        <WaveformVisualization
-          isRecording={isRecording}
-          voiceDetected={voiceDetected}
-        />
-      </button>
+      <>
+        <button
+          className="justify-center items-center flex flex-1 gap-1 h-full"
+          role="button"
+          onClick={handleButtonClick}
+        >
+          <WaveformVisualization
+            isRecording={isRecording}
+            voiceDetected={voiceDetected}
+          />
+        </button>
+
+        {showNotesAction && (
+          <button
+            className="h-full px-2 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+            onClick={handleOpenNotesClick}
+            aria-label="Open notes"
+          >
+            <NotebookPen className="w-[14px] h-[14px]" />
+          </button>
+        )}
+      </>
     );
   };
 
@@ -193,14 +223,14 @@ export const FloatingButton: React.FC = () => {
       onMouseLeave={handleMouseLeave}
       className={`
         transition-all duration-200 ease-in-out
-        ${expanded ? "h-[24px] w-[96px]" : "h-[8px] w-[48px]"}
+        ${sizeClass}
         bg-black/70 rounded-[24px] backdrop-blur-md ring-[1px] ring-black/60 shadow-[0px_0px_15px_0px_rgba(0,0,0,0.40)]
         before:content-[''] before:absolute before:inset-[1px] before:rounded-[23px] before:outline before:outline-white/15 before:pointer-events-none
         mb-2 cursor-pointer select-none
       `}
       style={{ pointerEvents: "auto" }}
     >
-      {expanded && (
+      {isWidgetActive && (
         <div className="flex gap-[2px] h-full w-full justify-between">
           {renderWidgetContent()}
         </div>

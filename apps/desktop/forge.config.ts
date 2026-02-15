@@ -600,6 +600,10 @@ const config: ForgeConfig = {
           config: "vite.widget.config.mts",
         },
         {
+          name: "notes_widget_window",
+          config: "vite.notes-widget.config.mts",
+        },
+        {
           name: "onboarding_window",
           config: "vite.onboarding.config.mts",
         },

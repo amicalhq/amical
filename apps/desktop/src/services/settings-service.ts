@@ -16,6 +16,7 @@ export interface ShortcutsConfig {
   pushToTalk: number[];
   toggleRecording: number[];
   pasteLastTranscript: number[];
+  newNote: number[];
 }
 
 export interface AppPreferences {
@@ -146,6 +147,7 @@ export class SettingsService extends EventEmitter {
       pushToTalk: shortcuts?.pushToTalk ?? [],
       toggleRecording: shortcuts?.toggleRecording ?? [],
       pasteLastTranscript: shortcuts?.pasteLastTranscript ?? [],
+      newNote: shortcuts?.newNote ?? [],
     };
   }
 
@@ -164,6 +166,7 @@ export class SettingsService extends EventEmitter {
       pasteLastTranscript: shortcuts.pasteLastTranscript?.length
         ? shortcuts.pasteLastTranscript
         : undefined,
+      newNote: shortcuts.newNote?.length ? shortcuts.newNote : undefined,
     };
     await updateSettingsSection("shortcuts", dataToStore);
   }

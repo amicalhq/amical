@@ -15,6 +15,7 @@ class ShortcutManager {
     private var pushToTalkKeys: [Int] = []
     private var toggleRecordingKeys: [Int] = []
     private var pasteLastTranscriptKeys: [Int] = []
+    private var newNoteKeys: [Int] = []
     private var shortcutKeysSet = Set<Int>()
 
     // ============================================================================
@@ -54,15 +55,23 @@ class ShortcutManager {
 
     /// Update the configured shortcuts
     /// Called from IOBridge when setShortcuts RPC is received
-    func setShortcuts(pushToTalk: [Int], toggleRecording: [Int], pasteLastTranscript: [Int]) {
+    func setShortcuts(
+        pushToTalk: [Int],
+        toggleRecording: [Int],
+        pasteLastTranscript: [Int],
+        newNote: [Int]
+    ) {
         lock.lock()
         defer { lock.unlock() }
         self.pushToTalkKeys = pushToTalk
         self.toggleRecordingKeys = toggleRecording
         self.pasteLastTranscriptKeys = pasteLastTranscript
-        self.shortcutKeysSet = Set(pushToTalk + toggleRecording + pasteLastTranscript)
+        self.newNoteKeys = newNote
+        self.shortcutKeysSet = Set(
+            pushToTalk + toggleRecording + pasteLastTranscript + newNote
+        )
         logToStderr(
-            "[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording), Paste: \(pasteLastTranscript)"
+            "[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording), Paste: \(pasteLastTranscript), NewNote: \(newNote)"
         )
     }
 
@@ -207,7 +216,11 @@ class ShortcutManager {
         defer { lock.unlock() }
 
         // Early exit if no shortcuts configured
-        if pushToTalkKeys.isEmpty && toggleRecordingKeys.isEmpty && pasteLastTranscriptKeys.isEmpty {
+        if pushToTalkKeys.isEmpty
+            && toggleRecordingKeys.isEmpty
+            && pasteLastTranscriptKeys.isEmpty
+            && newNoteKeys.isEmpty
+        {
             return false
         }
 
@@ -235,6 +248,10 @@ class ShortcutManager {
         let pasteKeys = Set(pasteLastTranscriptKeys)
         let pasteMatch = !pasteKeys.isEmpty && pasteKeys == activeKeys
 
-        return pttMatch || toggleMatch || pasteMatch
+        // New note: exact match (only these keys pressed)
+        let newNoteKeysSet = Set(newNoteKeys)
+        let newNoteMatch = !newNoteKeysSet.isEmpty && newNoteKeysSet == activeKeys
+
+        return pttMatch || toggleMatch || pasteMatch || newNoteMatch
     }
 }

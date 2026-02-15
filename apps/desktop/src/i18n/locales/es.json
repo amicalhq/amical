@@ -629,7 +629,8 @@
       "toast": {
         "pushToTalkUpdated": "Atajo de pulsar para hablar actualizado",
         "handsFreeUpdated": "Atajo de modo manos libres actualizado",
-        "pasteLastTranscriptUpdated": "Atajo de pegar última transcripción actualizado"
+        "pasteLastTranscriptUpdated": "Atajo de pegar última transcripción actualizado",
+        "newNoteUpdated": "Atajo de nueva nota actualizado"
       },
       "pushToTalk": {
         "label": "Pulsar para hablar",
@@ -642,6 +643,10 @@
       "pasteLastTranscript": {
         "label": "Pegar última transcripción",
         "description": "Pega tu transcripción más reciente en la aplicación activa"
+      },
+      "newNote": {
+        "label": "Nueva nota",
+        "description": "Abre la ventana de notas y crea una nota nueva"
       },
       "validation": {
         "noKeysDetected": "No se detectaron teclas",
