@@ -3,7 +3,6 @@ import { resolve } from "path";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 // https://vitejs.dev/config
 export default defineConfig(async () => {
-  // @ts-ignore
   const { default: tailwindcss } = await import("@tailwindcss/vite");
 
   return {

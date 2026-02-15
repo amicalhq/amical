@@ -16,13 +16,47 @@ export const widgetRouter = createRouter({
         return false;
       }
 
-      const widgetWindow = windowManager.getWidgetWindow();
-      widgetWindow!.setIgnoreMouseEvents(input.ignore, {
-        forward: true,
-      });
+      windowManager.setWidgetIgnoreMouseEvents(input.ignore);
       logger.main.debug("Set widget ignore mouse events", input);
       return true;
     }),
+
+  openNotesWindowForNewNote: procedure.mutation(async ({ ctx }) => {
+    const windowManager = ctx.serviceManager.getService("windowManager");
+    if (!windowManager) {
+      logger.main.error("Window manager service not available");
+      return false;
+    }
+
+    windowManager.openNotesWindowForNewNote();
+    logger.main.info("Opened notes window");
+    return true;
+  }),
+
+  closeNotesWindow: procedure.mutation(async ({ ctx }) => {
+    const windowManager = ctx.serviceManager.getService("windowManager");
+    if (!windowManager) {
+      logger.main.error("Window manager service not available");
+      return false;
+    }
+
+    windowManager.closeNotesWindow();
+
+    // Closing the notes window should immediately return to normal visibility rules.
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    const preferences = await settingsService.getPreferences();
+    const isIdle = recordingManager.getState() === "idle";
+
+    if (preferences.showWidgetWhileInactive || !isIdle) {
+      windowManager.showWidget();
+    } else {
+      windowManager.hideWidget();
+    }
+
+    logger.main.info("Closed notes window");
+    return true;
+  }),
 
   // Navigate to a route in the main window (show and focus it first)
   navigateMainWindow: procedure

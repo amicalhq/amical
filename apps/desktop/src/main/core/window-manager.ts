@@ -10,10 +10,12 @@ import path from "node:path";
 import { logger } from "../logger";
 import type { SettingsService } from "../../services/settings-service";
 import type { createIPCHandler } from "electron-trpc-experimental/main";
+import { NotesWindowController } from "./windows/notes-window-controller";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 declare const WIDGET_WINDOW_VITE_NAME: string;
+declare const NOTES_WIDGET_WINDOW_VITE_NAME: string;
 declare const ONBOARDING_WINDOW_VITE_NAME: string;
 
 export class WindowManager {
@@ -21,6 +23,7 @@ export class WindowManager {
   private static readonly WIDGET_MAX_HEIGHT = 320 as const;
   private mainWindow: BrowserWindow | null = null;
   private widgetWindow: BrowserWindow | null = null;
+  private notesWindowController: NotesWindowController;
   private onboardingWindow: BrowserWindow | null = null;
   private widgetDisplayId: number | null = null;
   private cursorPollingInterval: NodeJS.Timeout | null = null;
@@ -50,8 +53,10 @@ export class WindowManager {
     return { x: 16, y: 16 };
   }
 
-  /** Calculate widget bounds with edge inset applied for taskbar auto-hide */
-  private getWidgetBounds(workArea: Electron.Rectangle): Electron.Rectangle {
+  /** Calculate widget default bounds with edge inset applied for taskbar auto-hide */
+  private getWidgetDefaultBounds(
+    workArea: Electron.Rectangle,
+  ): Electron.Rectangle {
     const inset = this.widgetEdgeInset;
     const maxWidth = Math.max(0, workArea.width - inset * 2);
     const maxHeight = Math.max(0, workArea.height - inset * 2);
@@ -68,10 +73,51 @@ export class WindowManager {
     };
   }
 
+  private getWidgetBounds(workArea: Electron.Rectangle): Electron.Rectangle {
+    return this.getWidgetDefaultBounds(workArea);
+  }
+
+  private getActiveWidgetDisplayWorkArea(): Electron.Rectangle {
+    const allDisplays = screen.getAllDisplays();
+    const trackedDisplay = this.widgetDisplayId
+      ? allDisplays.find((display) => display.id === this.widgetDisplayId)
+      : null;
+
+    if (trackedDisplay) {
+      return trackedDisplay.workArea;
+    }
+
+    const cursorDisplay = screen.getDisplayNearestPoint(
+      screen.getCursorScreenPoint(),
+    );
+    this.widgetDisplayId = cursorDisplay.id;
+    return cursorDisplay.workArea;
+  }
+
   constructor(
     private settingsService: SettingsService,
     private trpcHandler: ReturnType<typeof createIPCHandler>,
   ) {
+    this.notesWindowController = new NotesWindowController({
+      settingsService: this.settingsService,
+      trpcHandler: this.trpcHandler,
+      getWidgetWindow: () => this.widgetWindow,
+      getActiveWidgetDisplayWorkArea: () =>
+        this.getActiveWidgetDisplayWorkArea(),
+      setWidgetIgnoreMouseEvents: (ignore) =>
+        this.setWidgetIgnoreMouseEvents(ignore),
+      getWidgetEdgeInset: () => this.widgetEdgeInset,
+      setWidgetDisplayId: (displayId) => {
+        this.widgetDisplayId = displayId;
+      },
+      preloadPath: path.join(__dirname, "preload.js"),
+      notesWidgetFilePath: path.join(
+        __dirname,
+        `../renderer/${NOTES_WIDGET_WINDOW_VITE_NAME}/notes-widget.html`,
+      ),
+      mainWindowViteDevServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined,
+    });
+
     logger.main.info("WindowManager created with dependencies");
   }
 
@@ -94,8 +140,8 @@ export class WindowManager {
 
     // Return appropriate colors
     return isDark
-      ? { backgroundColor: "#171717", symbolColor: "#fafafa" }
-      : { backgroundColor: "#ffffff", symbolColor: "#171717" };
+      ? { backgroundColor: "#181818", symbolColor: "#fafafa" }
+      : { backgroundColor: "#ffffff", symbolColor: "#0a0a0a" };
   }
 
   async updateAllWindowThemes(): Promise<void> {
@@ -276,8 +322,8 @@ export class WindowManager {
 
     this.widgetDisplayId = mainScreen.id;
 
-    // Set ignore mouse events with forward option - clicks go through except on widget
-    this.widgetWindow.setIgnoreMouseEvents(true, { forward: true });
+    // Set pass-through mode in normal widget state
+    this.setWidgetIgnoreMouseEvents(true);
 
     logger.main.info("Widget window created", {
       bounds: this.widgetWindow.getBounds(),
@@ -306,6 +352,14 @@ export class WindowManager {
     this.widgetWindow.on("closed", () => {
       // Window is already destroyed, just clean up reference
       this.widgetWindow = null;
+    });
+
+    this.widgetWindow.on("moved", () => {
+      if (!this.widgetWindow || this.widgetWindow.isDestroyed()) {
+        return;
+      }
+      const display = screen.getDisplayMatching(this.widgetWindow.getBounds());
+      this.widgetDisplayId = display.id;
     });
 
     if (process.platform === "darwin") {
@@ -540,6 +594,26 @@ export class WindowManager {
     });
   }
 
+  setWidgetIgnoreMouseEvents(ignore: boolean): void {
+    if (!this.widgetWindow || this.widgetWindow.isDestroyed()) {
+      return;
+    }
+
+    this.widgetWindow.setIgnoreMouseEvents(ignore, { forward: true });
+  }
+
+  isNotesWindowVisible(): boolean {
+    return this.notesWindowController.isVisible();
+  }
+
+  closeNotesWindow(): void {
+    this.notesWindowController.close();
+  }
+
+  openNotesWindowForNewNote(): void {
+    this.notesWindowController.openForNewNote();
+  }
+
   getMainWindow(): BrowserWindow | null {
     return this.mainWindow;
   }
@@ -548,12 +622,21 @@ export class WindowManager {
     return this.widgetWindow;
   }
 
+  getNotesWindow(): BrowserWindow | null {
+    return this.notesWindowController.getWindow();
+  }
+
   getOnboardingWindow(): BrowserWindow | null {
     return this.onboardingWindow;
   }
 
   getAllWindows(): (BrowserWindow | null)[] {
-    return [this.mainWindow, this.widgetWindow, this.onboardingWindow];
+    return [
+      this.mainWindow,
+      this.widgetWindow,
+      this.notesWindowController.getWindow(),
+      this.onboardingWindow,
+    ];
   }
 
   openAllDevTools(): void {
@@ -572,6 +655,8 @@ export class WindowManager {
   }
 
   cleanup(): void {
+    this.notesWindowController.cleanup();
+
     // Stop cursor polling
     if (this.cursorPollingInterval) {
       clearInterval(this.cursorPollingInterval);

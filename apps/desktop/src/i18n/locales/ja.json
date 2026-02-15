@@ -629,7 +629,8 @@
       "toast": {
         "pushToTalkUpdated": "プッシュトゥトークのショートカットを更新しました",
         "handsFreeUpdated": "ハンズフリーモードのショートカットを更新しました",
-        "pasteLastTranscriptUpdated": "最新の文字起こしを貼り付けるショートカットを更新しました"
+        "pasteLastTranscriptUpdated": "最新の文字起こしを貼り付けるショートカットを更新しました",
+        "newNoteUpdated": "新規ノートのショートカットを更新しました"
       },
       "pushToTalk": {
         "label": "プッシュトゥトーク",
@@ -642,6 +643,10 @@
       "pasteLastTranscript": {
         "label": "最後の文字起こしを貼り付け",
         "description": "最新の文字起こしをアクティブなアプリに貼り付けます"
+      },
+      "newNote": {
+        "label": "新規ノート",
+        "description": "ノートウィンドウを開いて新しいノートを作成します"
       },
       "validation": {
         "noKeysDetected": "キーが検出されません",
