@@ -42,6 +42,9 @@
   <a href="https://github.com/amicalhq/amical/releases/latest">
     <img src="https://amical.ai/download_button_windows.png" alt="Download for Windows" height="60">
   </a>
+  <a href="https://amical.ai/beta">
+    <img src="https://amical.ai/mobile_beta_button.svg" alt="Apply for Mobile Beta" height="60">
+  </a>
 </p>
 
 ### Homebrew (macOS)
