@@ -5,6 +5,7 @@ import { useRecording } from "@/hooks/useRecording";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
+import { useTranslation } from "react-i18next";
 
 const NUM_WAVEFORM_BARS = 6; // Fewer bars to make room for stop button
 const DEBOUNCE_DELAY = 100; // milliseconds
@@ -51,6 +52,7 @@ const WaveformVisualization: React.FC<{
 );
 
 export const FloatingButton: React.FC = () => {
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout
   const clickTimeRef = useRef<number | null>(null); // Track when user clicked
@@ -215,7 +217,8 @@ export const FloatingButton: React.FC = () => {
           <button
             className="h-full px-2 flex items-center justify-center text-white/80 hover:text-white transition-colors"
             onClick={handleOpenNotesClick}
-            aria-label="Open notes"
+            aria-label={t("settings.notes.note.actions.openInNotesWindow")}
+            title={t("settings.notes.note.actions.openInNotesWindow")}
           >
             <NotebookPen className="w-[14px] h-[14px]" />
           </button>

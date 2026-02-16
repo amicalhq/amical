@@ -34,6 +34,8 @@ export class NotesWindowController {
   private notesWindow: BrowserWindow | null = null;
   private notesWindowBoundsAnimationInterval: NodeJS.Timeout | null = null;
   private notesWindowBoundsPersistTimeout: NodeJS.Timeout | null = null;
+  private pendingWindowEventsByChannel = new Map<string, unknown[]>();
+  private hasPendingDidFinishLoadFlush = false;
 
   constructor(private readonly options: NotesWindowControllerOptions) {}
 
@@ -281,11 +283,49 @@ export class NotesWindowController {
     };
 
     if (this.notesWindow.webContents.isLoadingMainFrame()) {
-      this.notesWindow.webContents.once("did-finish-load", sendRequest);
+      this.queuePendingEventToNotesWindow(channel, args);
       return;
     }
 
     sendRequest();
+  }
+
+  private queuePendingEventToNotesWindow(
+    channel: string,
+    args: unknown[],
+  ): void {
+    this.pendingWindowEventsByChannel.set(channel, args);
+
+    if (this.hasPendingDidFinishLoadFlush) {
+      return;
+    }
+
+    if (!this.notesWindow || this.notesWindow.isDestroyed()) {
+      this.pendingWindowEventsByChannel.clear();
+      return;
+    }
+
+    this.hasPendingDidFinishLoadFlush = true;
+    this.notesWindow.webContents.once("did-finish-load", () => {
+      this.hasPendingDidFinishLoadFlush = false;
+      this.flushPendingWindowEvents();
+    });
+  }
+
+  private flushPendingWindowEvents(): void {
+    if (!this.notesWindow || this.notesWindow.isDestroyed()) {
+      this.pendingWindowEventsByChannel.clear();
+      return;
+    }
+
+    const pendingEvents = Array.from(
+      this.pendingWindowEventsByChannel.entries(),
+    );
+    this.pendingWindowEventsByChannel.clear();
+
+    pendingEvents.forEach(([channel, args]) => {
+      this.notesWindow?.webContents.send(channel, ...args);
+    });
   }
 
   private sendOpenRequestToNotesWindow(noteId?: number): void {
@@ -363,6 +403,8 @@ export class NotesWindowController {
 
     this.notesWindow.on("close", () => {
       this.clearNotesWindowBoundsPersistTimeout();
+      this.pendingWindowEventsByChannel.clear();
+      this.hasPendingDidFinishLoadFlush = false;
       void this.persistNotesWindowBounds();
       this.options.trpcHandler.detachWindow(this.notesWindow!);
     });
@@ -370,6 +412,8 @@ export class NotesWindowController {
     this.notesWindow.on("closed", () => {
       this.clearNotesWindowBoundsAnimation();
       this.clearNotesWindowBoundsPersistTimeout();
+      this.pendingWindowEventsByChannel.clear();
+      this.hasPendingDidFinishLoadFlush = false;
       this.notesWindow = null;
     });
 
@@ -439,7 +483,7 @@ export class NotesWindowController {
   close(): void {
     this.clearNotesWindowBoundsAnimation();
     if (this.notesWindow && !this.notesWindow.isDestroyed()) {
-      this.notesWindow.hide();
+      this.notesWindow.close();
     }
   }
 

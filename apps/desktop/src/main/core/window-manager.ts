@@ -73,10 +73,6 @@ export class WindowManager {
     };
   }
 
-  private getWidgetBounds(workArea: Electron.Rectangle): Electron.Rectangle {
-    return this.getWidgetDefaultBounds(workArea);
-  }
-
   private getActiveWidgetDisplayWorkArea(): Electron.Rectangle {
     const allDisplays = screen.getAllDisplays();
     const trackedDisplay = this.widgetDisplayId
@@ -291,7 +287,7 @@ export class WindowManager {
 
   async createWidgetWindow(): Promise<void> {
     const mainScreen = screen.getPrimaryDisplay();
-    const widgetBounds = this.getWidgetBounds(mainScreen.workArea);
+    const widgetBounds = this.getWidgetDefaultBounds(mainScreen.workArea);
 
     logger.main.info("Creating widget window", {
       display: mainScreen.id,
@@ -541,7 +537,7 @@ export class WindowManager {
       // Update widget window bounds to new display
       if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
         this.widgetWindow.setBounds(
-          this.getWidgetBounds(focusedWindowDisplay.workArea),
+          this.getWidgetDefaultBounds(focusedWindowDisplay.workArea),
         );
       }
     });
@@ -569,7 +565,9 @@ export class WindowManager {
       this.widgetDisplayId = cursorDisplay.id;
 
       // Update widget window bounds to new display
-      this.widgetWindow.setBounds(this.getWidgetBounds(cursorDisplay.workArea));
+      this.widgetWindow.setBounds(
+        this.getWidgetDefaultBounds(cursorDisplay.workArea),
+      );
     }, 500); // Poll every 500ms
 
     logger.main.info("Started cursor polling for display detection");
@@ -585,7 +583,9 @@ export class WindowManager {
     const currentDisplay = screen.getDisplayNearestPoint(cursorPoint);
 
     // Update window bounds to match new display's work area
-    this.widgetWindow.setBounds(this.getWidgetBounds(currentDisplay.workArea));
+    this.widgetWindow.setBounds(
+      this.getWidgetDefaultBounds(currentDisplay.workArea),
+    );
     this.widgetDisplayId = currentDisplay.id;
     logger.main.info("Display configuration changed", {
       displayId: currentDisplay.id,

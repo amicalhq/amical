@@ -35,11 +35,11 @@ export function NotesWindowPanel({
 
   const [currentNoteId, setCurrentNoteId] = useState<number | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
-  const [isSyncing, setIsSyncing] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
 
   const autoRecordPendingNoteIdRef = useRef<number | null>(null);
   const autoRecordStartedNoteIdRef = useRef<number | null>(null);
+  const updateNoteTitleMutateRef = useRef(updateNoteTitleMutation.mutate);
 
   const createAndSwitchToNewNote = useCallback(async () => {
     if (createNoteMutation.isPending) {
@@ -59,7 +59,6 @@ export function NotesWindowPanel({
       setCurrentNoteId(note.id);
       setNoteTitle(note.title);
       setEditorReady(false);
-      setIsSyncing(false);
 
       let autoRecord = preferencesQuery.data?.autoDictateOnNewNote;
       if (autoRecord === undefined) {
@@ -98,7 +97,6 @@ export function NotesWindowPanel({
         setCurrentNoteId(note.id);
         setNoteTitle(note.title);
         setEditorReady(false);
-        setIsSyncing(false);
         autoRecordPendingNoteIdRef.current = null;
         autoRecordStartedNoteIdRef.current = null;
       } catch (error) {
@@ -134,6 +132,10 @@ export function NotesWindowPanel({
   }, [handleOpenRequest]);
 
   useEffect(() => {
+    updateNoteTitleMutateRef.current = updateNoteTitleMutation.mutate;
+  }, [updateNoteTitleMutation.mutate]);
+
+  useEffect(() => {
     if (typeof initialNoteId === "number" && initialNoteId > 0) {
       handleOpenRequest(initialNoteId);
       return;
@@ -146,9 +148,9 @@ export function NotesWindowPanel({
   const debouncedUpdateTitle = useMemo(
     () =>
       debounce((id: number, title: string) => {
-        updateNoteTitleMutation.mutate({ id, title });
+        updateNoteTitleMutateRef.current({ id, title });
       }, 500),
-    [updateNoteTitleMutation],
+    [],
   );
 
   useEffect(() => {
@@ -278,7 +280,6 @@ export function NotesWindowPanel({
                 >
                   <NoteEditor
                     noteId={currentNoteId}
-                    onSyncStatusChange={setIsSyncing}
                     onReady={() => setEditorReady(true)}
                   />
                 </div>
