@@ -14,6 +14,8 @@ import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { RecordingState } from "../../types/recording";
 import type { SettingsService } from "../../services/settings-service";
 import { runDataMigrations } from "../migrations/data-migrations";
+import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
+import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 
 export class AppManager {
   private windowManager!: WindowManager;
@@ -187,16 +189,38 @@ export class AppManager {
 
   private setupShortcutEventListeners(shortcutManager: ShortcutManager): void {
     shortcutManager.on("open-notes-window-triggered", () => {
-      try {
-        this.windowManager.openNotesWindow();
-      } catch (error) {
-        logger.main.error("Failed to open notes window from shortcut", {
-          error,
-        });
-      }
+      void this.handleOpenNotesWindowShortcut();
     });
 
     logger.main.info("Shortcut listeners connected in AppManager");
+  }
+
+  private async handleOpenNotesWindowShortcut(): Promise<void> {
+    try {
+      const featureFlagService =
+        this.serviceManager.getService("featureFlagService");
+      const noteWindowFlag = await getMainFeatureFlagState(
+        featureFlagService,
+        NOTE_WINDOW_FEATURE_FLAG,
+      );
+
+      if (!noteWindowFlag.enabled) {
+        logger.main.debug(
+          "Ignored notes window shortcut: feature flag is disabled",
+          {
+            flagKey: NOTE_WINDOW_FEATURE_FLAG,
+            flagValue: noteWindowFlag.value,
+          },
+        );
+        return;
+      }
+
+      this.windowManager.openNotesWindow();
+    } catch (error) {
+      logger.main.error("Failed to open notes window from shortcut", {
+        error,
+      });
+    }
   }
 
   private setupSettingsEventListeners(settingsService: SettingsService): void {

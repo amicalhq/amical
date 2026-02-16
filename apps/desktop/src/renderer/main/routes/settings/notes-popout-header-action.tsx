@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
+import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { Loader2, PanelTopOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -11,7 +13,12 @@ export function NotesPopoutHeaderAction({
   noteId,
 }: NotesPopoutHeaderActionProps) {
   const { t } = useTranslation();
+  const noteWindowFeatureFlag = useFeatureFlag(NOTE_WINDOW_FEATURE_FLAG);
   const openNotesWindowMutation = api.widget.openNotesWindow.useMutation();
+
+  if (!noteWindowFeatureFlag.enabled) {
+    return null;
+  }
 
   return (
     <Button

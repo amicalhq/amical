@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from "react";
 import { NotebookPen, Square } from "lucide-react";
 import { Waveform } from "@/components/Waveform";
 import { useRecording } from "@/hooks/useRecording";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
+import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 
 const NUM_WAVEFORM_BARS = 6; // Fewer bars to make room for stop button
 const DEBOUNCE_DELAY = 100; // milliseconds
@@ -56,6 +58,7 @@ export const FloatingButton: React.FC = () => {
   // tRPC mutation to control widget mouse events
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
   const openNotesWindow = api.widget.openNotesWindow.useMutation();
+  const noteWindowFeatureFlag = useFeatureFlag(NOTE_WINDOW_FEATURE_FLAG);
 
   // Log component initialization
   useEffect(() => {
@@ -72,6 +75,7 @@ export const FloatingButton: React.FC = () => {
     recordingStatus.state === "starting";
   const isStopping = recordingStatus.state === "stopping";
   const isHandsFreeMode = recordingStatus.mode === "hands-free";
+  const isNoteWindowEnabled = noteWindowFeatureFlag.enabled;
 
   // Track when recording state changes to "recording" after a click
   useEffect(() => {
@@ -119,6 +123,9 @@ export const FloatingButton: React.FC = () => {
   const handleOpenNotesClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isNoteWindowEnabled) {
+      return;
+    }
     try {
       await openNotesWindow.mutateAsync();
     } catch (error) {
@@ -156,7 +163,8 @@ export const FloatingButton: React.FC = () => {
   };
 
   const isWidgetActive = isRecording || isStopping || isHovered;
-  const showNotesAction = isHovered && !isRecording && !isStopping;
+  const showNotesAction =
+    isNoteWindowEnabled && isHovered && !isRecording && !isStopping;
   const sizeClass = !isWidgetActive
     ? "h-[8px] w-[48px]"
     : showNotesAction

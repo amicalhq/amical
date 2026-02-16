@@ -1,6 +1,8 @@
 import { createRouter, procedure } from "../trpc";
 import { z } from "zod";
 import { logger } from "@/main/logger";
+import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
+import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 
 export const widgetRouter = createRouter({
   setIgnoreMouseEvents: procedure
@@ -33,6 +35,22 @@ export const widgetRouter = createRouter({
       const windowManager = ctx.serviceManager.getService("windowManager");
       if (!windowManager) {
         logger.main.error("Window manager service not available");
+        return false;
+      }
+
+      const featureFlagService =
+        ctx.serviceManager.getService("featureFlagService");
+      const noteWindowFlag = await getMainFeatureFlagState(
+        featureFlagService,
+        NOTE_WINDOW_FEATURE_FLAG,
+      );
+
+      if (!noteWindowFlag.enabled) {
+        logger.main.info("Skipped opening notes window: feature disabled", {
+          flagKey: NOTE_WINDOW_FEATURE_FLAG,
+          flagValue: noteWindowFlag.value,
+          noteId: input?.noteId,
+        });
         return false;
       }
 
