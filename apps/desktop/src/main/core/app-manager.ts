@@ -186,9 +186,9 @@ export class AppManager {
   }
 
   private setupShortcutEventListeners(shortcutManager: ShortcutManager): void {
-    shortcutManager.on("new-note-triggered", () => {
+    shortcutManager.on("open-notes-window-triggered", () => {
       try {
-        this.windowManager.openNotesWindowForNewNote();
+        this.windowManager.openNotesWindow();
       } catch (error) {
         logger.main.error("Failed to open notes window from shortcut", {
           error,

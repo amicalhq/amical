@@ -268,7 +268,7 @@ export class NotesWindowController {
     }, 1000 / 60);
   }
 
-  private sendNewNoteRequestToNotesWindow(): void {
+  private sendEventToNotesWindow(channel: string, ...args: unknown[]): void {
     if (!this.notesWindow || this.notesWindow.isDestroyed()) {
       return;
     }
@@ -277,7 +277,7 @@ export class NotesWindowController {
       if (!this.notesWindow || this.notesWindow.isDestroyed()) {
         return;
       }
-      this.notesWindow.webContents.send("notes-window:new-note-requested");
+      this.notesWindow.webContents.send(channel, ...args);
     };
 
     if (this.notesWindow.webContents.isLoadingMainFrame()) {
@@ -286,6 +286,10 @@ export class NotesWindowController {
     }
 
     sendRequest();
+  }
+
+  private sendOpenRequestToNotesWindow(noteId?: number): void {
+    this.sendEventToNotesWindow("notes-window:open-requested", noteId);
   }
 
   private handleNotesWindowBoundsChanged(): void {
@@ -316,6 +320,7 @@ export class NotesWindowController {
 
   private createNotesWindow(
     initialBounds: Electron.Rectangle,
+    bootstrapNoteId?: number,
   ): BrowserWindow | null {
     if (this.notesWindow && !this.notesWindow.isDestroyed()) {
       return this.notesWindow;
@@ -341,12 +346,19 @@ export class NotesWindowController {
       },
     });
 
+    const bootstrapHash = new URLSearchParams({
+      noteId: typeof bootstrapNoteId === "number" ? `${bootstrapNoteId}` : "",
+    }).toString();
+
     if (this.options.mainWindowViteDevServerUrl) {
       const devUrl = new URL(this.options.mainWindowViteDevServerUrl);
       devUrl.pathname = "notes-widget.html";
+      devUrl.hash = bootstrapHash;
       this.notesWindow.loadURL(devUrl.toString());
     } else {
-      this.notesWindow.loadFile(this.options.notesWidgetFilePath);
+      this.notesWindow.loadFile(this.options.notesWidgetFilePath, {
+        hash: bootstrapHash,
+      });
     }
 
     this.notesWindow.on("close", () => {
@@ -379,7 +391,7 @@ export class NotesWindowController {
     return this.notesWindow;
   }
 
-  private async showNotesWindow(triggerNewNote: boolean): Promise<void> {
+  private async showNotesWindow(noteId?: number): Promise<void> {
     this.options.setWidgetIgnoreMouseEvents(true);
 
     const targetBounds = await this.getNotesWindowBounds(
@@ -391,10 +403,11 @@ export class NotesWindowController {
         ? widgetWindow.getBounds()
         : targetBounds;
 
-    const window =
-      this.notesWindow && !this.notesWindow.isDestroyed()
-        ? this.notesWindow
-        : this.createNotesWindow(sourceBounds);
+    const hasExistingWindow =
+      this.notesWindow && !this.notesWindow.isDestroyed();
+    const window = hasExistingWindow
+      ? this.notesWindow
+      : this.createNotesWindow(sourceBounds, noteId);
 
     if (!window || window.isDestroyed()) {
       return;
@@ -410,9 +423,8 @@ export class NotesWindowController {
       window.show();
       window.focus();
     }
-
-    if (triggerNewNote) {
-      this.sendNewNoteRequestToNotesWindow();
+    if (hasExistingWindow) {
+      this.sendOpenRequestToNotesWindow(noteId);
     }
   }
 
@@ -431,10 +443,8 @@ export class NotesWindowController {
     }
   }
 
-  openForNewNote(): void {
-    const hasExistingWindow =
-      this.notesWindow && !this.notesWindow.isDestroyed();
-    void this.showNotesWindow(Boolean(hasExistingWindow));
+  open(noteId?: number): void {
+    void this.showNotesWindow(noteId);
   }
 
   getWindow(): BrowserWindow | null {

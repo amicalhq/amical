@@ -21,17 +21,27 @@ export const widgetRouter = createRouter({
       return true;
     }),
 
-  openNotesWindowForNewNote: procedure.mutation(async ({ ctx }) => {
-    const windowManager = ctx.serviceManager.getService("windowManager");
-    if (!windowManager) {
-      logger.main.error("Window manager service not available");
-      return false;
-    }
+  openNotesWindow: procedure
+    .input(
+      z
+        .object({
+          noteId: z.number().int().positive().optional(),
+        })
+        .optional(),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const windowManager = ctx.serviceManager.getService("windowManager");
+      if (!windowManager) {
+        logger.main.error("Window manager service not available");
+        return false;
+      }
 
-    windowManager.openNotesWindowForNewNote();
-    logger.main.info("Opened notes window");
-    return true;
-  }),
+      windowManager.openNotesWindow(input?.noteId);
+      logger.main.info("Opened notes window", {
+        noteId: input?.noteId,
+      });
+      return true;
+    }),
 
   closeNotesWindow: procedure.mutation(async ({ ctx }) => {
     const windowManager = ctx.serviceManager.getService("windowManager");

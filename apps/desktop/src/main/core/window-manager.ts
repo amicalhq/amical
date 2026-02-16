@@ -610,8 +610,8 @@ export class WindowManager {
     this.notesWindowController.close();
   }
 
-  openNotesWindowForNewNote(): void {
-    this.notesWindowController.openForNewNote();
+  openNotesWindow(noteId?: number): void {
+    this.notesWindowController.open(noteId);
   }
 
   getMainWindow(): BrowserWindow | null {

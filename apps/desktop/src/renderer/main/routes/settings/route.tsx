@@ -4,16 +4,29 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SettingsSidebar } from "../../components/settings-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { useLocation } from "@tanstack/react-router";
+import {
+  SettingsHeaderProvider,
+  useSettingsHeaderActions,
+} from "./header-actions-context";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsLayout,
 });
 
 function SettingsLayout() {
+  return (
+    <SettingsHeaderProvider>
+      <SettingsLayoutContent />
+    </SettingsHeaderProvider>
+  );
+}
+
+function SettingsLayoutContent() {
   const location = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isScrolled, setIsScrolled] = useState(false);
+  const { actions: headerActions } = useSettingsHeaderActions();
 
   // Reset scroll state on page change
   useEffect(() => {
@@ -68,6 +81,7 @@ function SettingsLayout() {
           <SiteHeader
             currentView={`${getSettingsPageTitle(location.pathname)}`}
             showTitle={isScrolled}
+            actions={headerActions ?? undefined}
           />
           <div className="flex flex-1 flex-col min-h-0">
             <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">

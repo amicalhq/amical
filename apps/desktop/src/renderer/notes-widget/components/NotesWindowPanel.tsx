@@ -17,11 +17,13 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 interface NotesWindowPanelProps {
-  newNoteSignal: number;
+  initialNoteId?: number;
+  shouldCreateInitialNote?: boolean;
 }
 
 export function NotesWindowPanel({
-  newNoteSignal,
+  initialNoteId,
+  shouldCreateInitialNote = false,
 }: NotesWindowPanelProps): ReactNode {
   const { t, i18n } = useTranslation();
   const utils = api.useUtils();
@@ -36,7 +38,6 @@ export function NotesWindowPanel({
   const [isSyncing, setIsSyncing] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
 
-  const lastHandledSignalRef = useRef(0);
   const autoRecordPendingNoteIdRef = useRef<number | null>(null);
   const autoRecordStartedNoteIdRef = useRef<number | null>(null);
 
@@ -85,12 +86,62 @@ export function NotesWindowPanel({
     utils.settings.getPreferences,
   ]);
 
+  const openAndSwitchToExistingNote = useCallback(
+    async (noteId: number) => {
+      try {
+        const note = await utils.notes.getNoteById.fetch({ id: noteId });
+        if (!note) {
+          toast.error(t("settings.notes.notFound"));
+          return;
+        }
+
+        setCurrentNoteId(note.id);
+        setNoteTitle(note.title);
+        setEditorReady(false);
+        setIsSyncing(false);
+        autoRecordPendingNoteIdRef.current = null;
+        autoRecordStartedNoteIdRef.current = null;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : t("errors.generic");
+        toast.error(t("settings.notes.toast.loadFailed", { message }));
+      }
+    },
+    [t, utils.notes.getNoteById],
+  );
+
+  const handleOpenRequest = useCallback(
+    (noteId?: number) => {
+      if (typeof noteId === "number" && Number.isFinite(noteId) && noteId > 0) {
+        void openAndSwitchToExistingNote(noteId);
+        return;
+      }
+
+      void createAndSwitchToNewNote();
+    },
+    [createAndSwitchToNewNote, openAndSwitchToExistingNote],
+  );
+
   useEffect(() => {
-    if (newNoteSignal <= 0) return;
-    if (newNoteSignal === lastHandledSignalRef.current) return;
-    lastHandledSignalRef.current = newNoteSignal;
-    void createAndSwitchToNewNote();
-  }, [createAndSwitchToNewNote, newNoteSignal]);
+    const handler = (noteId?: number) => {
+      handleOpenRequest(noteId);
+    };
+
+    window.electronAPI.on("notes-window:open-requested", handler);
+    return () => {
+      window.electronAPI.off("notes-window:open-requested", handler);
+    };
+  }, [handleOpenRequest]);
+
+  useEffect(() => {
+    if (typeof initialNoteId === "number" && initialNoteId > 0) {
+      handleOpenRequest(initialNoteId);
+      return;
+    }
+    if (shouldCreateInitialNote) {
+      handleOpenRequest(undefined);
+    }
+  }, [handleOpenRequest, initialNoteId, shouldCreateInitialNote]);
 
   const debouncedUpdateTitle = useMemo(
     () =>

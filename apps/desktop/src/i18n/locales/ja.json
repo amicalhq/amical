@@ -689,6 +689,7 @@
         "bodyPlaceholder": "ノートを書き始めましょう...",
         "edited": "{{date}}に編集",
         "actions": {
+          "openInNotesWindow": "ノートウィンドウで開く",
           "delete": "削除"
         },
         "deleteDialog": {

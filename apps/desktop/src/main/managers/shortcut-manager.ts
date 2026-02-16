@@ -294,10 +294,10 @@ export class ShortcutManager extends EventEmitter {
     }
     this.exactMatchState.pasteLastTranscript = pasteMatch;
 
-    // Check new note shortcut
+    // Check open notes window shortcut
     const newNoteMatch = this.isNewNoteShortcutPressed();
     if (newNoteMatch && !this.exactMatchState.newNote) {
-      this.emit("new-note-triggered");
+      this.emit("open-notes-window-triggered");
     }
     this.exactMatchState.newNote = newNoteMatch;
   }

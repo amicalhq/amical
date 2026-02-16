@@ -55,8 +55,7 @@ export const FloatingButton: React.FC = () => {
 
   // tRPC mutation to control widget mouse events
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
-  const openNotesWindowForNewNote =
-    api.widget.openNotesWindowForNewNote.useMutation();
+  const openNotesWindow = api.widget.openNotesWindow.useMutation();
 
   // Log component initialization
   useEffect(() => {
@@ -121,7 +120,7 @@ export const FloatingButton: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      await openNotesWindowForNewNote.mutateAsync();
+      await openNotesWindow.mutateAsync();
     } catch (error) {
       console.error("Failed to open notes window widget", error);
     }

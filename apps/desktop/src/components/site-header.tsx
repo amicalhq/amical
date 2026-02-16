@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -9,12 +9,17 @@ import { useEffect, useState } from "react";
 interface SiteHeaderProps {
   currentView?: string;
   showTitle?: boolean;
+  actions?: ReactNode;
 }
 
 const dragRegion = { WebkitAppRegion: "drag" } as CSSProperties;
 const noDragRegion = { WebkitAppRegion: "no-drag" } as CSSProperties;
 
-export function SiteHeader({ currentView, showTitle = true }: SiteHeaderProps) {
+export function SiteHeader({
+  currentView,
+  showTitle = true,
+  actions,
+}: SiteHeaderProps) {
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -168,6 +173,14 @@ export function SiteHeader({ currentView, showTitle = true }: SiteHeaderProps) {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+          {actions ? (
+            <div
+              className="absolute top-2.5 right-2 flex items-center gap-1"
+              style={noDragRegion}
+            >
+              {actions}
+            </div>
+          ) : null}
         </div>
       ) : null}
       <header
@@ -218,6 +231,14 @@ export function SiteHeader({ currentView, showTitle = true }: SiteHeaderProps) {
             <Separator orientation="vertical" className="h-4" />
             <h1 className="text-sm font-medium">{currentView || "Amical"}</h1>
           </div>
+          {!isMacOS && actions ? (
+            <div
+              className="ml-auto pr-2 flex items-center gap-1"
+              style={noDragRegion}
+            >
+              {actions}
+            </div>
+          ) : null}
         </div>
       </header>
     </>

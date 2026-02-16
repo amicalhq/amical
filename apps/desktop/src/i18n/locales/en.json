@@ -689,6 +689,7 @@
         "bodyPlaceholder": "Start writing your note...",
         "edited": "Edited {{date}}",
         "actions": {
+          "openInNotesWindow": "Open in notes window",
           "delete": "Delete"
         },
         "deleteDialog": {
