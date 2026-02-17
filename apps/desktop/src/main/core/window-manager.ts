@@ -140,7 +140,22 @@ export class WindowManager {
       : { backgroundColor: "#ffffff", symbolColor: "#0a0a0a" };
   }
 
+  private async syncNativeThemeSource(): Promise<void> {
+    const uiSettings = await this.settingsService.getUISettings();
+    const desiredThemeSource = uiSettings?.theme ?? "system";
+
+    if (nativeTheme.themeSource === desiredThemeSource) {
+      return;
+    }
+
+    nativeTheme.themeSource = desiredThemeSource;
+    logger.main.info("Synced native theme source", {
+      themeSource: desiredThemeSource,
+    });
+  }
+
   async updateAllWindowThemes(): Promise<void> {
+    await this.syncNativeThemeSource();
     const colors = await this.getThemeColors();
 
     // Update main window (macOS uses vibrancy, no title bar overlay)
@@ -198,6 +213,8 @@ export class WindowManager {
 
     // Setup theme listener on first window creation
     this.setupThemeListener();
+
+    await this.syncNativeThemeSource();
 
     // Get theme colors before creating window
     const colors = await this.getThemeColors();
@@ -392,6 +409,8 @@ export class WindowManager {
 
     // Setup theme listener if not already done
     this.setupThemeListener();
+
+    await this.syncNativeThemeSource();
 
     // Get theme colors before creating window
     const colors = await this.getThemeColors();
