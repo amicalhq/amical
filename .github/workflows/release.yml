@@ -167,13 +167,33 @@ jobs:
         shell: bash
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
+      - name: Rename artifacts (macOS)
+        if: matrix.os == 'macos'
+        shell: bash
+        run: |
+          cd apps/desktop/out/make
+          for dmg in *.dmg; do
+            mv "$dmg" "Amical-macos-${{ matrix.arch }}.dmg"
+            echo "Renamed $dmg → Amical-macos-${{ matrix.arch }}.dmg"
+          done
+
+      - name: Rename artifacts (Windows)
+        if: matrix.os == 'windows'
+        shell: bash
+        run: |
+          cd apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}
+          for exe in *.exe; do
+            mv "$exe" "Amical-windows-${{ matrix.arch }}.exe"
+            echo "Renamed $exe → Amical-windows-${{ matrix.arch }}.exe"
+          done
+
       - name: Upload artifacts (macOS)
         if: matrix.os == 'macos'
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
           path: |
-            apps/desktop/out/make/*-${{ matrix.arch }}.dmg
+            apps/desktop/out/make/Amical-macos-${{ matrix.arch }}.dmg
             apps/desktop/out/make/zip/darwin/${{ matrix.arch }}/*.zip
 
       - name: Upload artifacts (Windows)
@@ -182,7 +202,7 @@ jobs:
         with:
           name: windows-${{ matrix.arch }}
           path: |
-            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.exe
+            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/Amical-windows-${{ matrix.arch }}.exe
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.nupkg
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/RELEASES
 
