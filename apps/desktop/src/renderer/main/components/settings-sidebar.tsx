@@ -1,5 +1,5 @@
 import * as React from "react";
-import { IconBookFilled } from "@tabler/icons-react";
+import { IconBookFilled, IconBrandDiscordFilled } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
 import { NavMain } from "@/components/nav-main";
@@ -21,14 +21,6 @@ export function SettingsSidebar({
 }: React.ComponentProps<typeof Sidebar>) {
   const { t } = useTranslation();
 
-  const DiscordIcon = () => (
-    <img
-      src="assets/discord-icon.svg"
-      alt={t("settings.sidebar.discordAlt")}
-      className="w-4 h-4"
-    />
-  );
-
   const navMain = SETTINGS_NAV_ITEMS.map(({ titleKey, url, icon }) => ({
     title: t(titleKey),
     url,
@@ -45,7 +37,7 @@ export function SettingsSidebar({
     {
       title: t("settings.sidebar.community"),
       url: "https://amical.ai/community",
-      icon: DiscordIcon,
+      icon: IconBrandDiscordFilled,
       external: true,
     },
   ];
