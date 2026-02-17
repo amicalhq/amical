@@ -39,17 +39,23 @@ body {
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: #f4f5f6;
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: #0d0d0d0d;
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: #0d0d0d14;
   --sidebar-ring: oklch(0.708 0 0);
   --content-padding: 2rem;
   --content-max-width: 75rem;
   --header-height: 3rem;
+
+  /* Titlebar drag-region & toolbar layout (shared across platforms) */
+  --titlebar-height: 40px;
+  --toolbar-left: 16px;
+  --toolbar-width: 104px;
+  --toolbar-end: calc(var(--toolbar-left) + var(--toolbar-width));
 }
 
 .dark {
@@ -77,22 +83,19 @@ body {
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: #222526;
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: #ffffff0a;
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-border: #ffffff14;
   --sidebar-ring: oklch(0.439 0 0);
 }
 
-/* macOS vibrancy layout variables */
+/* macOS: shift toolbar right to clear traffic light buttons */
 html.vibrancy {
-  --mac-titlebar-height: 40px; /* drag region height (traffic lights) */
-  --mac-toolbar-left: 96px; /* toolbar buttons left offset (after traffic lights) */
-  --mac-toolbar-width: 104px; /* sidebar-trigger + back + fwd buttons + gaps */
-  --mac-toolbar-end: calc(var(--mac-toolbar-left) + var(--mac-toolbar-width));
+  --toolbar-left: 96px;
 }
 
 /* macOS vibrancy: Codex-style materials (translucent sidebar + solid content) */
@@ -108,20 +111,6 @@ html.vibrancy.dark body {
   background: #18181880 !important;
 }
 
-html.vibrancy {
-  --sidebar: #ffffff80;
-  --sidebar-accent: #0d0d0d0d;
-  --sidebar-border: #0d0d0d14;
-}
-
-html.vibrancy.dark {
-  --sidebar: #18181880;
-  --sidebar-accent: #ffffff0a;
-  --sidebar-border: #ffffff14;
-  --background: #181818;
-  --card: #181818;
-}
-
 /* macOS vibrancy: prevent double bg-sidebar stacking (wrapper + sidebar-inner) */
 html.vibrancy [data-slot="sidebar-wrapper"] {
   background: transparent !important;
@@ -133,14 +122,12 @@ html.vibrancy [data-slot="sidebar"][data-mobile="true"] {
   background: transparent !important;
 }
 
-/* macOS vibrancy: flush content area (remove inset variant's margin/rounding/shadow) */
-html.vibrancy
-  [data-slot="sidebar"][data-variant="inset"]
-  [data-slot="sidebar-container"] {
+/* Flush content area (remove inset variant's margin/rounding/shadow) */
+[data-slot="sidebar"][data-variant="inset"] [data-slot="sidebar-container"] {
   padding: 0 !important;
 }
 
-html.vibrancy [data-slot="sidebar-inset"] {
+[data-slot="sidebar-inset"] {
   margin: 0 !important;
   box-shadow: none !important;
   border-top-left-radius: 0.75rem !important;
@@ -149,16 +136,15 @@ html.vibrancy [data-slot="sidebar-inset"] {
 }
 
 /* Smooth header padding transition matching sidebar collapse animation */
-html.vibrancy [data-slot="sidebar-inset"] > header {
+[data-slot="sidebar-inset"] > header {
   transition: padding-left 200ms linear;
 }
 
-/* Clear toolbar buttons (toggle + back/fwd) when sidebar is collapsed on macOS */
-html.vibrancy
-  [data-slot="sidebar"][data-state="collapsed"]
+/* Clear toolbar buttons (toggle + back/fwd) when sidebar is collapsed */
+[data-slot="sidebar"][data-state="collapsed"]
   ~ [data-slot="sidebar-inset"]
   > header {
-  padding-left: var(--mac-toolbar-end);
+  padding-left: var(--toolbar-end);
 }
 
 @theme inline {

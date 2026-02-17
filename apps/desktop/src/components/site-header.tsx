@@ -138,107 +138,60 @@ export function SiteHeader({
 
   return (
     <>
-      {isMacOS ? (
-        <div
-          className="fixed left-0 top-0 z-50 h-[var(--mac-titlebar-height)] w-full"
-          style={dragRegion}
-        >
-          <div
-            className="absolute top-2.5 flex items-center gap-1.5"
-            style={{ ...noDragRegion, left: "var(--mac-toolbar-left)" }}
-          >
-            <SidebarTrigger style={noDragRegion} />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleGoBack}
-              disabled={!canGoBack}
-              className="h-7 w-7 p-0"
-              style={noDragRegion}
-              title="Go back"
-              aria-label="Go back"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleGoForward}
-              disabled={!canGoForward}
-              className="h-7 w-7 p-0"
-              style={noDragRegion}
-              title="Go forward"
-              aria-label="Go forward"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-          {actions ? (
-            <div
-              className="absolute top-2.5 right-2 flex items-center gap-1"
-              style={noDragRegion}
-            >
-              {actions}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      <header
-        className="flex h-[var(--header-height)] shrink-0 items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-sidebar/60 sticky top-0 z-40 w-full"
-        style={isMacOS ? undefined : dragRegion}
+      <div
+        className="fixed left-0 top-0 z-50 h-[var(--titlebar-height)] w-full"
+        style={dragRegion}
       >
+        <div
+          className="absolute top-2.5 flex items-center gap-1.5"
+          style={{ ...noDragRegion, left: "var(--toolbar-left)" }}
+        >
+          <SidebarTrigger style={noDragRegion} />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleGoBack}
+            disabled={!canGoBack}
+            className="h-7 w-7 p-0"
+            style={noDragRegion}
+            title="Go back"
+            aria-label="Go back"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleGoForward}
+            disabled={!canGoForward}
+            className="h-7 w-7 p-0"
+            style={noDragRegion}
+            title="Go forward"
+            aria-label="Go forward"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        {actions ? (
+          <div
+            className={`absolute top-2.5 flex items-center gap-1 ${isMacOS ? "right-2" : "right-[140px]"}`}
+            style={noDragRegion}
+          >
+            {actions}
+          </div>
+        ) : null}
+      </div>
+      <header className="flex h-[var(--header-height)] shrink-0 items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-background sticky top-0 z-40 w-full">
         <div className="flex w-full items-center gap-1">
           <div
             className={`flex items-center gap-1 py-1.5 transition-[padding] duration-200 ${sidebarState === "expanded" ? "px-4" : "px-0"}`}
-          >
-            {isMacOS ? null : (
-              <>
-                <SidebarTrigger className="-ml-1" style={noDragRegion} />
-                <Separator orientation="vertical" className="h-4" />
-                {/* Navigation buttons */}
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleGoBack}
-                    disabled={!canGoBack}
-                    className="h-7 w-7 p-0"
-                    style={noDragRegion}
-                    title="Go back"
-                    aria-label="Go back"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleGoForward}
-                    disabled={!canGoForward}
-                    className="h-7 w-7 p-0"
-                    style={noDragRegion}
-                    title="Go forward"
-                    aria-label="Go forward"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
+          />
           <div
             className={`flex items-center pointer-events-none select-none transition-opacity duration-200 ${showTitle ? "opacity-100" : "opacity-0"}`}
           >
             <Separator orientation="vertical" className="h-4" />
             <h1 className="text-sm font-medium">{currentView || "Amical"}</h1>
           </div>
-          {!isMacOS && actions ? (
-            <div
-              className="ml-auto pr-2 flex items-center gap-1"
-              style={noDragRegion}
-            >
-              {actions}
-            </div>
-          ) : null}
         </div>
       </header>
     </>
