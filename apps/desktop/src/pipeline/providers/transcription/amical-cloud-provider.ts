@@ -15,6 +15,18 @@ import {
   type CloudErrorResponse,
 } from "../../../types/error";
 
+// Strip ANSI escape sequences and control characters from accessibility text.
+// Terminal apps expose raw terminal output via the accessibility API which
+// contains escape codes that degrade transcription quality.
+const ANSI_REGEX =
+  // eslint-disable-next-line no-control-regex
+  /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g;
+
+function stripAnsiSequences(text: string | undefined | null): string | undefined {
+  if (!text) return undefined;
+  return text.replace(ANSI_REGEX, "");
+}
+
 // Type guard to validate error codes from server
 const isValidErrorCode = (code: string | undefined): code is ErrorCode =>
   code !== undefined && Object.values(ErrorCodes).includes(code as ErrorCode);
@@ -283,28 +295,35 @@ export class AmicalCloudProvider implements TranscriptionProvider {
             enabled: enableFormatting,
           },
           sharedContext: this.currentAccessibilityContext
-            ? {
-                selectedText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.selectedText,
-                beforeText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.preSelectionText,
-                afterText:
-                  this.currentAccessibilityContext.context?.textSelection
-                    ?.postSelectionText,
-                appType: detectApplicationType(
+            ? (() => {
+                const appType = detectApplicationType(
                   this.currentAccessibilityContext,
-                ),
-                appBundleId:
-                  this.currentAccessibilityContext.context?.application
-                    ?.bundleIdentifier,
-                appName:
-                  this.currentAccessibilityContext.context?.application?.name,
-                appUrl:
-                  this.currentAccessibilityContext.context?.windowInfo?.url,
-                surroundingContext: "", // Empty for now, future enhancement
-              }
+                );
+                const isTerminal = appType === "terminal";
+                return {
+                  selectedText: stripAnsiSequences(
+                    this.currentAccessibilityContext!.context?.textSelection
+                      ?.selectedText,
+                  ),
+                  beforeText: stripAnsiSequences(
+                    this.currentAccessibilityContext!.context?.textSelection
+                      ?.preSelectionText,
+                  ),
+                  afterText: stripAnsiSequences(
+                    this.currentAccessibilityContext!.context?.textSelection
+                      ?.postSelectionText,
+                  ),
+                  appType: isTerminal ? "default" : appType,
+                  appBundleId:
+                    this.currentAccessibilityContext!.context?.application
+                      ?.bundleIdentifier,
+                  appName:
+                    this.currentAccessibilityContext!.context?.application?.name,
+                  appUrl:
+                    this.currentAccessibilityContext!.context?.windowInfo?.url,
+                  surroundingContext: "",
+                };
+              })()
             : undefined,
         }),
       });

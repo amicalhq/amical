@@ -277,8 +277,13 @@ export class WhisperProvider implements TranscriptionProvider {
       return aggregatedTranscription;
     }
 
-    const beforeText =
+    const rawBeforeText =
       accessibilityContext?.context?.textSelection?.preSelectionText;
+    // Strip ANSI escape sequences that terminal apps expose via accessibility
+    // context — they degrade Whisper recognition quality.
+    const beforeText = rawBeforeText
+      // eslint-disable-next-line no-control-regex
+      ?.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g, "");
     if (beforeText && beforeText.trim().length > 0) {
       logger.transcription.debug(
         `Generated initial prompt from before text: "${beforeText}"`,
