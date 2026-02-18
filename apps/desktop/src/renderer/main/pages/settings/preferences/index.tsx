@@ -77,6 +77,12 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleShowWidgetWhileActiveChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      showWidgetWhileActive: checked,
+    });
+  };
+
   const handleMinimizeToTrayChange = (checked: boolean) => {
     updatePreferencesMutation.mutate({
       minimizeToTray: checked,
@@ -115,6 +121,8 @@ export default function PreferencesSettingsPage() {
 
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
+  const showWidgetWhileActive =
+    preferencesQuery.data?.showWidgetWhileActive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
   const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
   const showInDock = preferencesQuery.data?.showInDock ?? true;
@@ -191,6 +199,25 @@ export default function PreferencesSettingsPage() {
               <Switch
                 checked={showWidgetWhileInactive}
                 onCheckedChange={handleShowWidgetWhileInactiveChange}
+                disabled={updatePreferencesMutation.isPending}
+              />
+            </div>
+
+            <Separator />
+
+            {/* Show Widget While Active Section */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  Show widget while active
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Show the widget on screen when recording
+                </p>
+              </div>
+              <Switch
+                checked={showWidgetWhileActive}
+                onCheckedChange={handleShowWidgetWhileActiveChange}
                 disabled={updatePreferencesMutation.isPending}
               />
             </div>
