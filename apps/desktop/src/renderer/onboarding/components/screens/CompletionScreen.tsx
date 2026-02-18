@@ -9,6 +9,7 @@ import { OnboardingShortcutInput } from "../shared/OnboardingShortcutInput";
 import { CheckCircle, Settings, Info } from "lucide-react";
 import { FeatureInterest, ModelType } from "../../../../types/onboarding";
 import { useTranslation } from "react-i18next";
+import { api } from "@/trpc/react";
 
 const DISCORD_URL = "https://amical.ai/community";
 
@@ -30,6 +31,7 @@ export function CompletionScreen({
   preferences,
 }: CompletionScreenProps) {
   const { t } = useTranslation();
+  const openExternal = api.onboarding.openExternal.useMutation();
   return (
     <OnboardingLayout
       title={t("onboarding.completion.title")}
@@ -79,7 +81,7 @@ export function CompletionScreen({
             </div>
             <Button
               variant="outline"
-              onClick={() => window.electronAPI.openExternal(DISCORD_URL)}
+              onClick={() => openExternal.mutate({ url: DISCORD_URL })}
             >
               {t("onboarding.completion.community.joinDiscord")}
             </Button>
