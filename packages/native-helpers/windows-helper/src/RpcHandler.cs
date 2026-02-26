@@ -306,7 +306,8 @@ namespace WindowsHelper
 
                 if (parameters != null)
                 {
-                    var success = accessibilityService.PasteText(parameters.Transcript, out var errorMessage);
+                    var keepInClipboard = parameters.KeepInClipboard ?? false;
+                    var success = accessibilityService.PasteText(parameters.Transcript, keepInClipboard, out var errorMessage);
                     return new RpcResponse
                     {
                         Id = request.Id.ToString(),
