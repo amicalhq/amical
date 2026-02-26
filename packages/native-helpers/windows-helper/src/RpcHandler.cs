@@ -314,7 +314,7 @@ namespace WindowsHelper
                         Result = new PasteTextResult
                         {
                             Success = success,
-                            Message = success ? "Pasted successfully" : (errorMessage ?? "Paste failed")
+                            Message = success ? (errorMessage ?? "Pasted successfully") : (errorMessage ?? "Paste failed")
                         }
                     };
                 }

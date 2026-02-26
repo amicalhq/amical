@@ -68,6 +68,7 @@ export default function AdvancedSettingsPage() {
       },
       onError: (error) => {
         console.error("Failed to update preferences:", error);
+        utils.settings.getPreferences.invalidate();
         toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
       },
     });
