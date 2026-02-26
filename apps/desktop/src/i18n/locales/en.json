@@ -245,6 +245,7 @@
       "discordAlt": "Discord",
       "copyErrorId": "Copy Error ID",
       "recordingSaved": "Your recording is saved. You can access it in History.",
+      "dismiss": "Dismiss notification",
       "description": {
         "noAudio": "No audio from \"{{microphone}}\"",
         "emptyTranscript": "No speech detected from \"{{microphone}}\"",
