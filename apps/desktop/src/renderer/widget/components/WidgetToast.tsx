@@ -1,4 +1,5 @@
 import React from "react";
+import { XIcon } from "lucide-react";
 import type {
   LocalizedText,
   WidgetNotificationAction,
@@ -22,6 +23,7 @@ interface WidgetToastProps {
   primaryAction?: WidgetNotificationAction;
   secondaryAction?: WidgetNotificationAction;
   onActionClick: (action: WidgetNotificationAction) => void;
+  onDismiss: () => void;
 }
 
 export const WidgetToast: React.FC<WidgetToastProps> = ({
@@ -33,6 +35,7 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
   primaryAction,
   secondaryAction,
   onActionClick,
+  onDismiss,
 }) => {
   const { t } = useTranslation();
 
@@ -48,7 +51,15 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
   };
 
   return (
-    <Card className="min-w-[300px] gap-3 py-4 shadow-lg">
+    <Card className="relative min-w-[300px] gap-3 py-4 shadow-lg">
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label={t("widget.notifications.dismiss")}
+        className="text-muted-foreground hover:text-foreground absolute top-1 right-1 flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+      >
+        <XIcon className="size-4" />
+      </button>
       <CardHeader className="gap-1 px-4 py-0 text-center">
         <CardTitle className={`text-sm ${isError ? "text-destructive" : ""}`}>
           {resolveText(title)}

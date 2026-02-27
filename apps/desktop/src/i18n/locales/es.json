@@ -245,6 +245,7 @@
       "discordAlt": "Discord",
       "copyErrorId": "Copiar ID de error",
       "recordingSaved": "Tu grabación fue guardada. Puedes acceder a ella en el Historial.",
+      "dismiss": "Descartar notificación",
       "description": {
         "noAudio": "Sin audio de \"{{microphone}}\"",
         "emptyTranscript": "No se detectó voz de \"{{microphone}}\"",

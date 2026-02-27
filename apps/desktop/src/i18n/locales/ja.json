@@ -245,6 +245,7 @@
       "discordAlt": "Discord",
       "copyErrorId": "エラーIDをコピー",
       "recordingSaved": "録音が保存されました。履歴からアクセスできます。",
+      "dismiss": "通知を閉じる",
       "description": {
         "noAudio": "「{{microphone}}」からの音声がありません",
         "emptyTranscript": "「{{microphone}}」から音声が検出されませんでした",
