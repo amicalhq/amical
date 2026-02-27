@@ -87,6 +87,10 @@ const defaultSettings: AppSettingsData = {
     enablePunctuation: true,
     enableTimestamps: false,
   },
+  dictation: {
+    autoDetectEnabled: true,
+    selectedLanguage: "en",
+  },
   recording: {
     defaultFormat: "wav",
     sampleRate: 16000,

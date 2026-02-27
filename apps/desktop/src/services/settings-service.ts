@@ -124,8 +124,14 @@ export class SettingsService extends EventEmitter {
   /**
    * Get dictation settings
    */
-  async getDictationSettings(): Promise<AppSettingsData["dictation"]> {
-    return await getSettingsSection("dictation");
+  async getDictationSettings(): Promise<
+    NonNullable<AppSettingsData["dictation"]>
+  > {
+    const dictationSettings = await getSettingsSection("dictation");
+    if (!dictationSettings) {
+      throw new Error("Dictation settings are missing");
+    }
+    return dictationSettings;
   }
 
   /**

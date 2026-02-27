@@ -488,7 +488,8 @@ export class TranscriptionService {
 
       await createTranscription({
         text: completeTranscription,
-        language: session.context.sharedData.userPreferences?.language || "en",
+        language:
+          session.context.sharedData.userPreferences?.language || "auto",
         duration: session.context.sharedData.audioMetadata?.duration,
         speechModel: "whisper-local",
         formattingModel,
@@ -555,7 +556,8 @@ export class TranscriptionService {
         formatting_duration_ms: formattingDuration,
         vad_enabled: !!this.vadService,
         session_type: "streaming",
-        language: session.context.sharedData.userPreferences?.language || "en",
+        language:
+          session.context.sharedData.userPreferences?.language || "auto",
         vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
       });
 
@@ -600,12 +602,10 @@ export class TranscriptionService {
 
     // Load dictation settings to get language preference
     const dictationSettings = await this.settingsService.getDictationSettings();
-    if (dictationSettings) {
-      context.sharedData.userPreferences.language =
-        dictationSettings.autoDetectEnabled
-          ? undefined
-          : dictationSettings.selectedLanguage || "en";
-    }
+    context.sharedData.userPreferences.language =
+      dictationSettings.autoDetectEnabled
+        ? undefined
+        : dictationSettings.selectedLanguage;
 
     // Load vocabulary and replacements
     const vocabEntries = await getVocabulary({ limit: 50 });

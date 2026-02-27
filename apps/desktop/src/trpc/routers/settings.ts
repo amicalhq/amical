@@ -42,7 +42,12 @@ const ModelProvidersConfigSchema = z.object({
 
 const DictationSettingsSchema = z.object({
   autoDetectEnabled: z.boolean(),
-  selectedLanguage: z.string().min(1), // Must be valid when autoDetectEnabled is false
+  selectedLanguage: z
+    .string()
+    .min(1)
+    .refine((value) => value !== "auto", {
+      message: "Selected language must be a concrete language",
+    }),
 });
 
 const AppPreferencesSchema = z.object({
@@ -380,14 +385,7 @@ export const settingsRouter = createRouter({
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
-
-      const allSettings = await settingsService.getAllSettings();
-      return (
-        allSettings.dictation || {
-          autoDetectEnabled: true,
-          selectedLanguage: "en",
-        }
-      );
+      return await settingsService.getDictationSettings();
     } catch (error) {
       const logger = ctx.serviceManager.getLogger();
       if (logger) {
@@ -411,28 +409,9 @@ export const settingsRouter = createRouter({
           throw new Error("SettingsService not available");
         }
 
-        // Validation: if autoDetectEnabled is false, ensure selectedLanguage is valid
-        if (
-          !input.autoDetectEnabled &&
-          (!input.selectedLanguage || input.selectedLanguage === "auto")
-        ) {
-          throw new Error(
-            "Selected language must be specified when auto-detect is disabled",
-          );
-        }
-
-        // Set default to "en" if switching from auto-detect enabled to disabled with invalid language
-        let selectedLanguage = input.selectedLanguage;
-        if (
-          !input.autoDetectEnabled &&
-          (!selectedLanguage || selectedLanguage === "auto")
-        ) {
-          selectedLanguage = "en";
-        }
-
         const dictationSettings = {
           autoDetectEnabled: input.autoDetectEnabled,
-          selectedLanguage,
+          selectedLanguage: input.selectedLanguage,
         };
 
         await settingsService.setDictationSettings(dictationSettings);
