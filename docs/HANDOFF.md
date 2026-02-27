@@ -8,7 +8,7 @@
 
 - **ブランチ**: `main`
 - **バージョン**: v1.0.1
-- **ステータス**: 開発環境構築完了、Issue #88 修正済み（未プッシュ）
+- **ステータス**: 開発環境構築完了、Issue #88 修正済み + ターミナル句読点修正済み（未プッシュ）
 
 ---
 
@@ -33,10 +33,15 @@
   - 実装: 言語別デフォルトプロンプト (`whisper-prompt-utils.ts`)
   - コミット: `de0b75e`, `ae0e67a`（ローカルのみ、未プッシュ）
   - 動作確認済み
+- ターミナルアプリ（iTerm2等）での句読点欠落の修正
+  - 設計書: `docs/plans/2026-02-27-terminal-punctuation-design.md`
+  - 実装計画: `docs/plans/2026-02-27-terminal-punctuation-plan.md`
+  - 実装: `isTerminalApp()` によるターミナル判定、`preSelectionText` スキップ
+  - dev モード + DMG パッケージ版で動作確認済み
 
 ### 未着手
 - upstream への PR 作成またはプッシュ
-- 追加機能の要件定義・設計
+- カスタムプロンプト機能の設計・実装（Issue #90 準拠）
 
 ---
 

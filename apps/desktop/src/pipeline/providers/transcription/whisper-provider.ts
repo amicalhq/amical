@@ -10,6 +10,7 @@ import * as path from "path";
 import { app } from "electron";
 import { AppError, ErrorCodes } from "../../../types/error";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
+import { generateInitialPromptForLanguage, isTerminalApp } from "./whisper-prompt-utils";
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
@@ -168,6 +169,7 @@ export class WhisperProvider implements TranscriptionProvider {
       const initialPrompt = this.generateInitialPrompt(
         aggregatedTranscription,
         context.accessibilityContext,
+        language,
       );
 
       const text = await this.workerWrapper.exec<string>("transcribeAudio", [
@@ -268,6 +270,7 @@ export class WhisperProvider implements TranscriptionProvider {
   private generateInitialPrompt(
     aggregatedTranscription?: string,
     accessibilityContext?: TranscribeContext["accessibilityContext"],
+    language?: string,
   ): string {
     if (aggregatedTranscription) {
       // Pass full transcription - whisper.cpp auto-truncates to last ~224 tokens
@@ -279,11 +282,26 @@ export class WhisperProvider implements TranscriptionProvider {
 
     const beforeText =
       accessibilityContext?.context?.textSelection?.preSelectionText;
-    if (beforeText && beforeText.trim().length > 0) {
+    const bundleId =
+      accessibilityContext?.context?.application?.bundleIdentifier;
+    if (beforeText && beforeText.trim().length > 0 && !isTerminalApp(bundleId)) {
       logger.transcription.debug(
         `Generated initial prompt from before text: "${beforeText}"`,
       );
       return beforeText;
+    }
+    if (beforeText && isTerminalApp(bundleId)) {
+      logger.transcription.debug(
+        `Skipped terminal preSelectionText for initial prompt (${bundleId})`,
+      );
+    }
+
+    const defaultPrompt = generateInitialPromptForLanguage(language);
+    if (defaultPrompt) {
+      logger.transcription.debug(
+        `Generated initial prompt from language default (${language}): "${defaultPrompt}"`,
+      );
+      return defaultPrompt;
     }
 
     logger.transcription.debug("Generated initial prompt: empty");
