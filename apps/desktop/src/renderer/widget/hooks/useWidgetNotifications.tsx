@@ -56,7 +56,8 @@ export const useWidgetNotifications = () => {
     >,
     duration = WIDGET_NOTIFICATION_TIMEOUT,
   ) => {
-    const micName = getEffectiveMicName() || t("widget.notifications.micFallback");
+    const micName =
+      getEffectiveMicName() || t("widget.notifications.micFallback");
     const description =
       notification.description ||
       getNotificationDescription(notification.type, micName);

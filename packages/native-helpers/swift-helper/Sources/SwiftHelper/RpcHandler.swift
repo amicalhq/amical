@@ -92,23 +92,47 @@ class IOBridge: NSObject {
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
 
-        case .muteSystemAudio:
-            logToStderr("[IOBridge] Handling muteSystemAudio for ID: \(request.id)")
+        case .startRecording:
+            logToStderr("[IOBridge] Handling startRecording for ID: \(request.id)")
 
+            // Parse params to get muteSystemAudio flag
+            var shouldMute = false
+            if let paramsAnyCodable = request.params {
+                do {
+                    let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                    let startParams = try jsonDecoder.decode(
+                        StartRecordingParamsSchema.self, from: paramsData)
+                    shouldMute = startParams.muteSystemAudio
+                } catch {
+                    logToStderr(
+                        "[IOBridge] Error decoding startRecording params: \(error.localizedDescription) for ID: \(request.id)"
+                    )
+                }
+            }
+
+            // ALWAYS play rec-start sound; conditionally mute in completion handler
             audioService.playSound(named: "rec-start") { [weak self] in
                 guard let self = self else {
                     HelperLogger.logToStderr(
-                        "[IOBridge] self is nil in playSound completion for muteSystemAudio. ID: \(request.id)"
+                        "[IOBridge] self is nil in playSound completion for startRecording. ID: \(request.id)"
                     )
                     return
                 }
 
-                self.logToStderr(
-                    "[IOBridge] rec-start.mp3 finished playing successfully. Proceeding to mute system audio. ID: \(request.id)"
-                )
-                let success = self.accessibilityService.muteSystemAudio()
-                let resultPayload = MuteSystemAudioResultSchema(
-                    message: success ? "Mute command sent" : "Failed to send mute command",
+                var success = true
+                if shouldMute {
+                    self.logToStderr(
+                        "[IOBridge] rec-start.mp3 finished playing. Proceeding to mute system audio. ID: \(request.id)"
+                    )
+                    success = self.accessibilityService.muteSystemAudio()
+                } else {
+                    self.logToStderr(
+                        "[IOBridge] rec-start.mp3 finished playing. Mute skipped by preference. ID: \(request.id)"
+                    )
+                }
+
+                let resultPayload = StartRecordingResultSchema(
+                    message: success ? "Recording started" : "Failed to mute system audio",
                     success: success)
 
                 var responseToSend: RPCResponseSchema
@@ -120,7 +144,7 @@ class IOBridge: NSObject {
                         error: nil, id: request.id, result: resultAsJsonAny)
                 } catch {
                     self.logToStderr(
-                        "[IOBridge] Error encoding muteSystemAudio result: \(error.localizedDescription) for ID: \(request.id)"
+                        "[IOBridge] Error encoding startRecording result: \(error.localizedDescription) for ID: \(request.id)"
                     )
                     let errPayload = Error(
                         code: -32603, data: nil,
@@ -132,15 +156,35 @@ class IOBridge: NSObject {
             }
             return
 
-        case .restoreSystemAudio:
-            logToStderr("[IOBridge] Handling restoreSystemAudio for ID: \(request.id)")
+        case .stopRecording:
+            logToStderr("[IOBridge] Handling stopRecording for ID: \(request.id)")
 
-            let success = accessibilityService.restoreSystemAudio()
-            if success {  // Play sound only if restore was successful
-                audioService.playSound(named: "rec-stop")
+            // Parse params to get wasMuted flag
+            var wasMuted = false
+            if let paramsAnyCodable = request.params {
+                do {
+                    let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                    let stopParams = try jsonDecoder.decode(
+                        StopRecordingParamsSchema.self, from: paramsData)
+                    wasMuted = stopParams.wasMuted
+                } catch {
+                    logToStderr(
+                        "[IOBridge] Error decoding stopRecording params: \(error.localizedDescription) for ID: \(request.id)"
+                    )
+                }
             }
-            let resultPayload = RestoreSystemAudioResultSchema(
-                message: success ? "Restore command sent" : "Failed to send restore command",
+
+            // Conditionally restore system audio
+            var success = true
+            if wasMuted {
+                success = accessibilityService.restoreSystemAudio()
+            }
+
+            // ALWAYS play rec-stop sound (fire-and-forget)
+            audioService.playSound(named: "rec-stop")
+
+            let resultPayload = StopRecordingResultSchema(
+                message: success ? "Recording stopped" : "Failed to restore system audio",
                 success: success)
 
             do {
@@ -149,12 +193,12 @@ class IOBridge: NSObject {
                 rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
             } catch {
                 logToStderr(
-                    "[IOBridge] Error encoding pauseSystemAudio result: \(error.localizedDescription) for ID: \(request.id)"
+                    "[IOBridge] Error encoding stopRecording result: \(error.localizedDescription) for ID: \(request.id)"
                 )
                 let errPayload = Error(
                     code: -32603, data: nil,
                     message: "Error encoding result: \(error.localizedDescription)")
-                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: nil)
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
 
         case .setShortcuts:

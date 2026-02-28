@@ -101,14 +101,14 @@ namespace WindowsHelper
                         response = HandlePasteText(request);
                         break;
 
-                    case Method.MuteSystemAudio:
-                        response = await HandleMuteSystemAudio(request);
+                    case Method.StartRecording:
+                        response = await HandleStartRecording(request);
                         // Return early so we don't send the placeholder response; the real response is sent
                         // by the completion callback after the rec-start sound finishes.
                         return;
 
-                    case Method.RestoreSystemAudio:
-                        response = HandleRestoreSystemAudio(request);
+                    case Method.StopRecording:
+                        response = HandleStopRecording(request);
                         break;
 
                     case Method.SetShortcuts:
@@ -344,55 +344,106 @@ namespace WindowsHelper
             };
         }
 
-        private async Task<RpcResponse> HandleMuteSystemAudio(RpcRequest request)
+        private async Task<RpcResponse> HandleStartRecording(RpcRequest request)
         {
-            LogToStderr($"Handling muteSystemAudio for ID: {request.Id}");
+            LogToStderr($"Handling startRecording for ID: {request.Id}");
 
-            // Store the request ID for the completion handler
+            // Parse params to get muteSystemAudio flag
+            var shouldMute = false;
+            if (request.Params != null)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
+                    var parameters = JsonSerializer.Deserialize<StartRecordingParams>(json, jsonOptions);
+                    if (parameters != null)
+                    {
+                        shouldMute = parameters.MuteSystemAudio;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogToStderr($"Error decoding startRecording params: {ex.Message}");
+                }
+            }
+
+            // Store the request ID and mute flag for the completion handler
             var requestId = request.Id.ToString();
+            var capturedShouldMute = shouldMute;
 
             audioCompletionHandler = (id) =>
             {
-                LogToStderr($"rec-start.mp3 finished playing. Proceeding to mute system audio. ID: {id}");
-                var success = audioService.MuteSystemAudio();
+                var success = true;
+                if (capturedShouldMute)
+                {
+                    LogToStderr($"rec-start.mp3 finished playing. Proceeding to mute system audio. ID: {id}");
+                    success = audioService.MuteSystemAudio();
+                }
+                else
+                {
+                    LogToStderr($"rec-start.mp3 finished playing. Mute skipped by preference. ID: {id}");
+                }
+
                 var response = new RpcResponse
                 {
                     Id = id,
-                    Result = new MuteSystemAudioResult
+                    Result = new StartRecordingResult
                     {
                         Success = success,
-                        Message = success ? "Mute command sent" : "Failed to send mute command"
+                        Message = success ? "Recording started" : "Failed to mute system audio"
                     }
                 };
                 SendRpcResponse(response);
                 audioCompletionHandler = null;
             };
 
-            // Play sound on thread pool - NAudio handles its own threading internally
+            // ALWAYS play rec-start sound
             await audioService.PlaySound("rec-start", requestId);
 
             // Return dummy response (real response sent after audio completion)
             return new RpcResponse { Id = request.Id.ToString() };
         }
 
-        private RpcResponse HandleRestoreSystemAudio(RpcRequest request)
+        private RpcResponse HandleStopRecording(RpcRequest request)
         {
-            LogToStderr($"Handling restoreSystemAudio for ID: {request.Id}");
+            LogToStderr($"Handling stopRecording for ID: {request.Id}");
 
-            var success = audioService.RestoreSystemAudio();
-            if (success)
+            // Parse params to get wasMuted flag
+            var wasMuted = false;
+            if (request.Params != null)
             {
-                // Play sound asynchronously - NAudio handles its own threading, don't wait
-                _ = audioService.PlaySound("rec-stop", request.Id.ToString());
+                try
+                {
+                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
+                    var parameters = JsonSerializer.Deserialize<StopRecordingParams>(json, jsonOptions);
+                    if (parameters != null)
+                    {
+                        wasMuted = parameters.WasMuted;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogToStderr($"Error decoding stopRecording params: {ex.Message}");
+                }
             }
+
+            // Conditionally restore system audio
+            var success = true;
+            if (wasMuted)
+            {
+                success = audioService.RestoreSystemAudio();
+            }
+
+            // ALWAYS play rec-stop sound (fire-and-forget)
+            _ = audioService.PlaySound("rec-stop", request.Id.ToString());
 
             return new RpcResponse
             {
                 Id = request.Id.ToString(),
-                Result = new RestoreSystemAudioResult
+                Result = new StopRecordingResult
                 {
                     Success = success,
-                    Message = success ? "Restore command sent" : "Failed to send restore command"
+                    Message = success ? "Recording stopped" : "Failed to restore system audio"
                 }
             };
         }
