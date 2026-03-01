@@ -8,6 +8,7 @@ export * from "./schemas/methods/get-accessibility-context.js";
 export * from "./schemas/methods/paste-text.js";
 export * from "./schemas/methods/mute-system-audio.js";
 export * from "./schemas/methods/restore-system-audio.js";
+export * from "./schemas/methods/play-sound.js";
 export * from "./schemas/methods/set-shortcuts.js";
 export * from "./schemas/methods/recheck-pressed-keys.js";
 

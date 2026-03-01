@@ -301,6 +301,13 @@ export class RecordingManager extends EventEmitter {
       const preferences = await settingsService.getPreferences();
       const shouldMute = preferences?.muteSystemAudio ?? true;
 
+      // Always play rec-start sound, await completion before muting (so chime isn't cut off)
+      try {
+        await nativeBridge.call("playSound", { sound: "rec-start" });
+      } catch (error) {
+        logger.audio.warn("Failed to play rec-start sound", { error });
+      }
+
       if (shouldMute) {
         const result = await nativeBridge.call("muteSystemAudio", {});
         this.systemAudioMuted = !!result?.success;
@@ -370,6 +377,14 @@ export class RecordingManager extends EventEmitter {
         this.systemAudioMuted = false;
         logger.main.warn("Failed to restore system audio", { error });
       }
+
+      // Always play rec-stop sound (fire-and-forget)
+      this.serviceManager
+        .getService("nativeBridge")
+        .call("playSound", { sound: "rec-stop" })
+        .catch((error) => {
+          logger.audio.warn("Failed to play rec-stop sound", { error });
+        });
 
       // Cancel streaming for cancel codes (not null, not dismissed)
       if (code && code !== "dismissed" && sessionId) {

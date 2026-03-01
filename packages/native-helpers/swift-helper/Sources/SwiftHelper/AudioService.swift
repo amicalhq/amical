@@ -3,7 +3,7 @@ import Foundation
 
 class AudioService: NSObject, AVAudioPlayerDelegate {
     private var audioPlayer: AVAudioPlayer?
-    private var audioCompletionHandler: (() -> Void)?
+    private var audioCompletionHandler: ((Bool) -> Void)?
     private var preloadedAudio: [String: Data] = [:]
     override init() {
         super.init()
@@ -21,10 +21,10 @@ class AudioService: NSObject, AVAudioPlayerDelegate {
         logToStderr("[AudioService] Audio files preloaded at startup")
     }
 
-    func playSound(named soundName: String, completion: (() -> Void)? = nil) {
+    func playSound(named soundName: String, completion: ((Bool) -> Void)? = nil) {
         logToStderr("[AudioService] playSound called with soundName: \(soundName)")
 
-        // Stop any currently playing sound
+        // Stop any currently playing sound and complete the previous handler as interrupted
         if audioPlayer?.isPlaying == true {
             logToStderr(
                 "[AudioService] Sound '\(audioPlayer?.url?.lastPathComponent ?? "previous")' is playing. Stopping it."
@@ -33,7 +33,9 @@ class AudioService: NSObject, AVAudioPlayerDelegate {
             audioPlayer?.stop()
         }
         audioPlayer = nil
+        let previousHandler = audioCompletionHandler
         audioCompletionHandler = nil
+        previousHandler?(false)
 
         audioCompletionHandler = completion
 
@@ -50,8 +52,10 @@ class AudioService: NSObject, AVAudioPlayerDelegate {
             case "rec-stop":
                 soundData = Data(PackageResources.rec_stop_mp3)
             default:
-                logToStderr("[AudioService] Error: Unknown sound name '\(soundName)'. Completion will not be called.")
+                logToStderr("[AudioService] Error: Unknown sound name '\(soundName)'. Calling completion immediately.")
+                let handler = audioCompletionHandler
                 audioCompletionHandler = nil
+                handler?(false)
                 return
             }
         }
@@ -64,15 +68,19 @@ class AudioService: NSObject, AVAudioPlayerDelegate {
                 logToStderr("[AudioService] Playing sound: \(soundName).mp3. Delegate will handle completion.")
             } else {
                 logToStderr(
-                    "[AudioService] Failed to start playing sound: \(soundName).mp3. Completion will not be called."
+                    "[AudioService] Failed to start playing sound: \(soundName).mp3. Calling completion immediately."
                 )
+                let handler = audioCompletionHandler
                 audioCompletionHandler = nil
+                handler?(false)
             }
         } catch {
             logToStderr(
-                "[AudioService] Error initializing AVAudioPlayer for \(soundName).mp3: \(error.localizedDescription). Completion will not be called."
+                "[AudioService] Error initializing AVAudioPlayer for \(soundName).mp3: \(error.localizedDescription). Calling completion immediately."
             )
+            let handler = audioCompletionHandler
             audioCompletionHandler = nil
+            handler?(false)
         }
     }
 
@@ -88,10 +96,10 @@ class AudioService: NSObject, AVAudioPlayerDelegate {
 
         if flag {
             logToStderr("[AudioService] Sound finished successfully. Executing completion handler.")
-            handlerToCall?()
         } else {
-            logToStderr("[AudioService] Sound did not finish successfully. Not executing completion handler.")
+            logToStderr("[AudioService] Sound did not finish successfully. Executing completion handler anyway.")
         }
+        handlerToCall?(flag)
     }
 
     private func logToStderr(_ message: String) {

@@ -38,6 +38,9 @@ import {
   RestoreSystemAudioParams,
   RestoreSystemAudioResult,
   RestoreSystemAudioResultSchema,
+  PlaySoundParams,
+  PlaySoundResult,
+  PlaySoundResultSchema,
   SetShortcutsParams,
   SetShortcutsResult,
   SetShortcutsResultSchema,
@@ -77,6 +80,10 @@ interface RPCMethods {
     params: RestoreSystemAudioParams;
     result: RestoreSystemAudioResult;
   };
+  playSound: {
+    params: PlaySoundParams;
+    result: PlaySoundResult;
+  };
   setShortcuts: {
     params: SetShortcutsParams;
     result: SetShortcutsResult;
@@ -106,6 +113,7 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
   pasteText: PasteTextResultSchema,
   muteSystemAudio: MuteSystemAudioResultSchema,
   restoreSystemAudio: RestoreSystemAudioResultSchema,
+  playSound: PlaySoundResultSchema,
   setShortcuts: SetShortcutsResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
 };

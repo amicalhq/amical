@@ -95,50 +95,29 @@ class IOBridge: NSObject {
         case .muteSystemAudio:
             logToStderr("[IOBridge] Handling muteSystemAudio for ID: \(request.id)")
 
-            audioService.playSound(named: "rec-start") { [weak self] in
-                guard let self = self else {
-                    HelperLogger.logToStderr(
-                        "[IOBridge] self is nil in playSound completion for muteSystemAudio. ID: \(request.id)"
-                    )
-                    return
-                }
+            let muteSuccess = accessibilityService.muteSystemAudio()
+            let muteResultPayload = MuteSystemAudioResultSchema(
+                message: muteSuccess ? "Mute command sent" : "Failed to send mute command",
+                success: muteSuccess)
 
-                self.logToStderr(
-                    "[IOBridge] rec-start.mp3 finished playing successfully. Proceeding to mute system audio. ID: \(request.id)"
+            do {
+                let resultData = try jsonEncoder.encode(muteResultPayload)
+                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
+                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+            } catch {
+                logToStderr(
+                    "[IOBridge] Error encoding muteSystemAudio result: \(error.localizedDescription) for ID: \(request.id)"
                 )
-                let success = self.accessibilityService.muteSystemAudio()
-                let resultPayload = MuteSystemAudioResultSchema(
-                    message: success ? "Mute command sent" : "Failed to send mute command",
-                    success: success)
-
-                var responseToSend: RPCResponseSchema
-                do {
-                    let resultData = try self.jsonEncoder.encode(resultPayload)
-                    let resultAsJsonAny = try self.jsonDecoder.decode(
-                        JSONAny.self, from: resultData)
-                    responseToSend = RPCResponseSchema(
-                        error: nil, id: request.id, result: resultAsJsonAny)
-                } catch {
-                    self.logToStderr(
-                        "[IOBridge] Error encoding muteSystemAudio result: \(error.localizedDescription) for ID: \(request.id)"
-                    )
-                    let errPayload = Error(
-                        code: -32603, data: nil,
-                        message: "Error encoding result: \(error.localizedDescription)")
-                    responseToSend = RPCResponseSchema(
-                        error: errPayload, id: request.id, result: nil)
-                }
-                self.sendRpcResponse(responseToSend)
+                let errPayload = Error(
+                    code: -32603, data: nil,
+                    message: "Error encoding result: \(error.localizedDescription)")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
-            return
 
         case .restoreSystemAudio:
             logToStderr("[IOBridge] Handling restoreSystemAudio for ID: \(request.id)")
 
             let success = accessibilityService.restoreSystemAudio()
-            if success {  // Play sound only if restore was successful
-                audioService.playSound(named: "rec-stop")
-            }
             let resultPayload = RestoreSystemAudioResultSchema(
                 message: success ? "Restore command sent" : "Failed to send restore command",
                 success: success)
@@ -223,6 +202,44 @@ class IOBridge: NSObject {
             } catch {
                 logToStderr(
                     "[IOBridge] Error processing recheckPressedKeys params: \(error.localizedDescription) for ID: \(request.id)"
+                )
+                let errPayload = Error(
+                    code: -32602, data: request.params,
+                    message: "Invalid params: \(error.localizedDescription)")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+            }
+
+        case .playSound:
+            logToStderr("[IOBridge] Handling playSound for ID: \(request.id)")
+            guard let paramsAnyCodable = request.params else {
+                let errPayload = Error(
+                    code: -32602, data: nil, message: "Missing params for playSound")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                sendRpcResponse(rpcResponse)
+                return
+            }
+
+            do {
+                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                let playSoundParams = try jsonDecoder.decode(
+                    PlaySoundParamsSchema.self, from: paramsData)
+
+                audioService.playSound(named: playSoundParams.sound) { [weak self] success in
+                    guard let self = self else {
+                        HelperLogger.logToStderr(
+                            "[IOBridge] self is nil in playSound completion. ID: \(request.id)")
+                        return
+                    }
+                    self.sendResult(
+                        id: request.id,
+                        result: PlaySoundResultSchema(
+                            message: success ? "Sound playback completed" : "Sound playback failed",
+                            success: success))
+                }
+                return
+            } catch {
+                logToStderr(
+                    "[IOBridge] Error processing playSound params: \(error.localizedDescription) for ID: \(request.id)"
                 )
                 let errPayload = Error(
                     code: -32602, data: request.params,

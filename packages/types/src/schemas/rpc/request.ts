@@ -13,6 +13,7 @@ const RPCMethodNameSchema = z.union([
   z.literal("pasteText"),
   z.literal("muteSystemAudio"),
   z.literal("restoreSystemAudio"),
+  z.literal("playSound"),
   z.literal("setShortcuts"),
   z.literal("recheckPressedKeys"),
 ]);
