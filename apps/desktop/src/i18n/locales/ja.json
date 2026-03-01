@@ -24,6 +24,16 @@
     "about": "Amicalについて",
     "quit": "終了"
   },
+  "updater": {
+    "updateAvailable": "アップデートがあります",
+    "requiredUpdate": "必須アップデート",
+    "versionAvailable": "バージョン {{version}} が利用可能です。",
+    "versionRequired": "バージョン {{version}} が必要です。",
+    "updateAvailableGeneric": "アップデートが利用可能です。",
+    "updateRequiredGeneric": "アップデートが必要です。",
+    "restartAndUpdate": "再起動してアップデート",
+    "later": "後で"
+  },
   "onboarding": {
     "app": {
       "loading": "オンボーディングを読み込み中...",

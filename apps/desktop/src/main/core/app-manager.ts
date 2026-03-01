@@ -1,4 +1,4 @@
-import { app, ipcMain, shell } from "electron";
+import { app, dialog, ipcMain, shell } from "electron";
 import { initializeDatabase } from "../../db";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
@@ -16,6 +16,7 @@ import type { SettingsService } from "../../services/settings-service";
 import { runDataMigrations } from "../migrations/data-migrations";
 import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
+import { initMainI18n } from "../../i18n/main";
 
 export class AppManager {
   private windowManager!: WindowManager;
@@ -124,6 +125,9 @@ export class AppManager {
     // Initialize tray
     await this.trayManager.initialize(this.windowManager, locale);
 
+    // Subscribe to auto-updater events for update dialogs
+    await this.setupAutoUpdaterEventListeners(locale);
+
     // Setup IPC handlers
     ipcMain.handle("open-external", async (_event, url: string) => {
       await shell.openExternal(url);
@@ -193,6 +197,99 @@ export class AppManager {
     });
 
     logger.main.info("Shortcut listeners connected in AppManager");
+  }
+
+  private async setupAutoUpdaterEventListeners(
+    locale?: string | null,
+  ): Promise<void> {
+    const autoUpdaterService =
+      this.serviceManager.getService("autoUpdaterService");
+    const i18n = await initMainI18n(locale);
+    const t = i18n.t.bind(i18n);
+
+    let dialogShowing = false;
+    let promptDismissed = false;
+    let dismissedVersion: string | undefined;
+
+    const tryShowDialog = () => {
+      if (dialogShowing) return;
+
+      const metadata = autoUpdaterService.getLastMetadata();
+      if (!metadata) return;
+      if (metadata.action === "none" || metadata.action === "silent") return;
+      if (!autoUpdaterService.isDownloaded()) return;
+      if (metadata.action === "prompt" && promptDismissed) {
+        // Only re-show if we can confirm it's a different version
+        const isNewVersion =
+          dismissedVersion &&
+          metadata.version &&
+          dismissedVersion !== metadata.version;
+        if (!isNewVersion) return;
+      }
+
+      const mainWindow = this.windowManager.getMainWindow();
+      if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isFocused()) {
+        return;
+      }
+
+      const isForce = metadata.action === "force";
+      dialogShowing = true;
+
+      const message = metadata.version
+        ? t(isForce ? "updater.versionRequired" : "updater.versionAvailable", {
+            version: metadata.version,
+          })
+        : t(
+            isForce
+              ? "updater.updateRequiredGeneric"
+              : "updater.updateAvailableGeneric",
+          );
+
+      dialog
+        .showMessageBox(mainWindow, {
+          type: "info",
+          title: t(
+            isForce ? "updater.requiredUpdate" : "updater.updateAvailable",
+          ),
+          message,
+          detail: metadata.message || undefined,
+          buttons: isForce
+            ? [t("updater.restartAndUpdate")]
+            : [t("updater.restartAndUpdate"), t("updater.later")],
+          defaultId: 0,
+          cancelId: isForce ? undefined : 1,
+          noLink: true,
+        })
+        .then(({ response }) => {
+          if (response === 0) {
+            autoUpdaterService.quitAndInstall();
+          } else {
+            promptDismissed = true;
+            dismissedVersion = metadata.version;
+          }
+        })
+        .catch((error) => {
+          logger.main.warn("Update dialog dismissed unexpectedly", { error });
+        })
+        .finally(() => {
+          dialogShowing = false;
+        });
+    };
+
+    // Show dialog when update finishes downloading (if window is focused)
+    autoUpdaterService.on("update-downloaded", () => {
+      tryShowDialog();
+    });
+
+    // Show dialog when user focuses the main window (if update is pending)
+    app.on("browser-window-focus", (_event, window) => {
+      const mainWindow = this.windowManager.getMainWindow();
+      if (window === mainWindow) {
+        tryShowDialog();
+      }
+    });
+
+    logger.main.info("Auto-updater event listeners set up");
   }
 
   private async handleOpenNotesWindowShortcut(): Promise<void> {

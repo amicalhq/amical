@@ -24,6 +24,16 @@
     "about": "Acerca de",
     "quit": "Salir"
   },
+  "updater": {
+    "updateAvailable": "Actualización disponible",
+    "requiredUpdate": "Actualización requerida",
+    "versionAvailable": "La versión {{version}} está disponible.",
+    "versionRequired": "Se requiere la versión {{version}}.",
+    "updateAvailableGeneric": "Hay una actualización disponible.",
+    "updateRequiredGeneric": "Se requiere una actualización.",
+    "restartAndUpdate": "Reiniciar y actualizar",
+    "later": "Más tarde"
+  },
   "onboarding": {
     "app": {
       "loading": "Cargando configuración inicial...",
