@@ -549,7 +549,16 @@
         "playAudio": "Play audio",
         "downloadAudio": "Download Audio",
         "delete": "Delete",
-        "retry": "Retry transcription"
+        "retry": "Retry transcription",
+        "report": "Report issue",
+        "reportDisabledTelemetry": "Enable telemetry in Advanced settings to report issues"
+      },
+      "report": {
+        "title": "Report Transcription Issue",
+        "description": "Describe what went wrong with this transcription. Your feedback helps us improve.",
+        "placeholder": "e.g., Words were missing, incorrect language detected, gibberish output...",
+        "cancel": "Cancel",
+        "submit": "Submit"
       },
       "dialog": {
         "title": "Transcription Details"
@@ -562,7 +571,9 @@
         "loadAudioFailed": "Failed to load audio file",
         "copied": "Copied to clipboard",
         "retrySuccess": "Transcription retried successfully",
-        "retryFailed": "Failed to retry transcription"
+        "retryFailed": "Failed to retry transcription",
+        "reportSuccess": "Report submitted successfully. Thank you for your feedback!",
+        "reportFailed": "Failed to submit report. Please try again."
       },
       "search": {
         "placeholder": "Search transcriptions..."

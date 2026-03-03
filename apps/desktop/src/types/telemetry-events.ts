@@ -104,3 +104,20 @@ export interface NoteCreatedEvent {
   has_initial_content: boolean;
   has_icon: boolean;
 }
+
+// ============================================================================
+// Transcription Events
+// ============================================================================
+
+/**
+ * Fired when a user reports a transcription from history
+ */
+export interface TranscriptionReportedEvent {
+  transcription_id: number;
+  feedback_text: string;
+  feedback_length: number;
+  speech_model: string;
+  formatting_model?: string;
+  language?: string;
+  report_channel: "history";
+}

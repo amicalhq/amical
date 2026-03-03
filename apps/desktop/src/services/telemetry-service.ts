@@ -12,6 +12,7 @@ import type {
   OnboardingAbandonedEvent,
   NativeHelperCrashedEvent,
   NoteCreatedEvent,
+  TranscriptionReportedEvent,
 } from "../types/telemetry-events";
 
 // Re-export from posthog-client for backwards compatibility
@@ -33,7 +34,7 @@ export interface TranscriptionMetrics {
   formatting_model?: string;
   formatting_duration_ms?: number;
   vad_enabled?: boolean;
-  session_type?: "streaming" | "batch";
+  is_retry?: boolean;
   language?: string;
   vocabulary_size?: number;
 }
@@ -355,6 +356,18 @@ export class TelemetryService {
   // ============================================================================
   // Transcription Events
   // ============================================================================
+
+  trackTranscriptionReported(props: TranscriptionReportedEvent): void {
+    if (!this.client.posthog || !this.enabled) return;
+
+    this.client.posthog.capture({
+      distinctId: this.client.machineId,
+      event: "transcription_reported",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked transcription reported", props);
+  }
 
   /**
    * Get system information for model recommendations

@@ -10,6 +10,7 @@ import { AppError, ErrorCodes, type ErrorCode } from "../../types/error";
 import { getLatestTranscription } from "../../db/transcriptions";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { v4 as uuid } from "uuid";
 
 export type RecordingMode = "idle" | "ptt" | "hands-free";
 export type TerminationCode =
@@ -261,8 +262,7 @@ export class RecordingManager extends EventEmitter {
       this.recordingStoppedAt = null;
       this.audioChunks = [];
 
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      this.currentSessionId = `session-${timestamp}`;
+      this.currentSessionId = uuid();
       this.setState("recording");
 
       this.startNoAudioTimer();

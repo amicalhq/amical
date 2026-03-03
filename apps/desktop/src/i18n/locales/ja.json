@@ -549,7 +549,16 @@
         "playAudio": "音声を再生",
         "downloadAudio": "音声をダウンロード",
         "delete": "削除",
-        "retry": "文字起こしを再試行"
+        "retry": "文字起こしを再試行",
+        "report": "問題を報告",
+        "reportDisabledTelemetry": "問題を報告するには詳細設定でテレメトリーを有効にしてください"
+      },
+      "report": {
+        "title": "文字起こしの問題を報告",
+        "description": "この文字起こしの問題点を説明してください。フィードバックは品質向上に役立ちます。",
+        "placeholder": "例：単語が欠落していた、言語の検出が間違っていた、意味不明な出力だった...",
+        "cancel": "キャンセル",
+        "submit": "送信"
       },
       "dialog": {
         "title": "文字起こしの詳細"
@@ -562,7 +571,9 @@
         "loadAudioFailed": "音声ファイルの読み込みに失敗しました",
         "copied": "クリップボードにコピーしました",
         "retrySuccess": "文字起こしの再試行に成功しました",
-        "retryFailed": "文字起こしの再試行に失敗しました"
+        "retryFailed": "文字起こしの再試行に失敗しました",
+        "reportSuccess": "レポートが送信されました。フィードバックありがとうございます！",
+        "reportFailed": "レポートの送信に失敗しました。もう一度お試しください。"
       },
       "search": {
         "placeholder": "文字起こしを検索..."
