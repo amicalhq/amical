@@ -50,6 +50,7 @@ export const useWidgetNotifications = () => {
       | "type"
       | "title"
       | "description"
+      | "subDescription"
       | "traceId"
       | "primaryAction"
       | "secondaryAction"
@@ -68,10 +69,7 @@ export const useWidgetNotifications = () => {
           title={notification.title}
           description={description}
           isError={true}
-          showRecordingSaved={
-            notification.type === "transcription_failed" ||
-            notification.type === "empty_transcript"
-          }
+          subDescription={notification.subDescription}
           traceId={notification.traceId}
           primaryAction={notification.primaryAction}
           secondaryAction={notification.secondaryAction}

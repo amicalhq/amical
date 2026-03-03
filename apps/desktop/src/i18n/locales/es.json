@@ -302,8 +302,8 @@
           "description": "Verifica tu conexión a internet"
         },
         "modelMissing": {
-          "title": "No hay modelo disponible",
-          "description": "Descarga un modelo local o cambia a la nube"
+          "title": "No hay modelo seleccionado",
+          "description": "Selecciona un modelo de transcripción."
         },
         "workerInitializationFailed": {
           "title": "Error de inicialización",

@@ -116,7 +116,7 @@ export interface TranscriptionReportedEvent {
   transcription_id: number;
   feedback_text: string;
   feedback_length: number;
-  speech_model: string;
+  speech_model?: string;
   formatting_model?: string;
   language?: string;
   report_channel: "history";

@@ -24,6 +24,7 @@ export interface WidgetNotificationAction {
 export interface WidgetNotificationConfig {
   title: LocalizedText;
   description: LocalizedText;
+  subDescription?: LocalizedText;
   primaryAction?: WidgetNotificationAction;
   secondaryAction?: WidgetNotificationAction;
 }
@@ -33,6 +34,7 @@ export interface WidgetNotification {
   type: WidgetNotificationType;
   title: LocalizedText;
   description?: LocalizedText; // Pre-filled description, or generated via template on frontend
+  subDescription?: LocalizedText;
   errorCode?: ErrorCode; // For transcription_failed
   traceId?: string; // For cloud debugging
   primaryAction?: WidgetNotificationAction;
@@ -71,6 +73,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.authRequired.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.logIn" },
       navigateTo: "/settings/account",
@@ -86,6 +89,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.rateLimitExceeded.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewUsage" },
       navigateTo: "/settings/account",
@@ -101,6 +105,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.internalServerError.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.support" },
       icon: "discord",
@@ -114,6 +119,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
   [ErrorCodes.UNKNOWN]: {
     title: { key: "widget.notifications.errorCode.unknown.title" },
     description: { key: "widget.notifications.errorCode.unknown.description" },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewHistory" },
       navigateTo: "/history",
@@ -129,6 +135,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.networkError.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.settings" },
       navigateTo: "/settings",
@@ -161,6 +168,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.workerInitializationFailed.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.support" },
       icon: "discord",
@@ -172,6 +180,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.workerCrashed.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.support" },
       icon: "discord",
@@ -185,6 +194,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.localTranscriptionFailed.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewHistory" },
       navigateTo: "/history",
@@ -219,6 +229,7 @@ export const WIDGET_NOTIFICATION_CONFIG: Record<
     description: {
       key: "widget.notifications.type.emptyTranscript.description",
     }, // Fallback, replaced by template
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.configureMicrophone" },
       navigateTo: "/settings/dictation",

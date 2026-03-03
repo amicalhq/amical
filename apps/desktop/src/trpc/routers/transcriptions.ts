@@ -209,11 +209,16 @@ export const transcriptionsRouter = createRouter({
         transcriptionId: input.transcriptionId,
       });
 
+      const speechModelForTelemetry =
+        transcription.speechModel?.trim() || undefined;
+
       telemetryService.trackTranscriptionReported({
         transcription_id: transcription.id,
         feedback_text: input.feedbackText,
         feedback_length: input.feedbackText.length,
-        speech_model: transcription.speechModel || "amical-cloud",
+        ...(speechModelForTelemetry
+          ? { speech_model: speechModelForTelemetry }
+          : {}),
         formatting_model: transcription.formattingModel || undefined,
         language: transcription.language || undefined,
         report_channel: "history",

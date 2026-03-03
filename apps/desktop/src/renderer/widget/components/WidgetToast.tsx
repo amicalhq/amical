@@ -17,8 +17,8 @@ import { useTranslation } from "react-i18next";
 interface WidgetToastProps {
   title: LocalizedText;
   description: LocalizedText;
+  subDescription?: LocalizedText;
   isError?: boolean;
-  showRecordingSaved?: boolean;
   traceId?: string;
   primaryAction?: WidgetNotificationAction;
   secondaryAction?: WidgetNotificationAction;
@@ -29,8 +29,8 @@ interface WidgetToastProps {
 export const WidgetToast: React.FC<WidgetToastProps> = ({
   title,
   description,
+  subDescription,
   isError,
-  showRecordingSaved,
   traceId,
   primaryAction,
   secondaryAction,
@@ -67,9 +67,9 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
         <CardDescription className="text-xs">
           {resolveText(description)}
         </CardDescription>
-        {showRecordingSaved && (
+        {subDescription && (
           <p className="text-muted-foreground text-xs">
-            {t("widget.notifications.recordingSaved")}
+            {resolveText(subDescription)}
           </p>
         )}
       </CardHeader>

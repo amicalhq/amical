@@ -302,8 +302,8 @@
           "description": "インターネット接続を確認してください"
         },
         "modelMissing": {
-          "title": "モデルがありません",
-          "description": "ローカルモデルをダウンロードするか、クラウドに切り替えてください"
+          "title": "モデルが選択されていません",
+          "description": "文字起こしモデルを選択してください。"
         },
         "workerInitializationFailed": {
           "title": "初期化に失敗しました",

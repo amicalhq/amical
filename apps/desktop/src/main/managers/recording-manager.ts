@@ -250,6 +250,12 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
+      const hasSelectedSpeechModel = await this.ensureSpeechModelSelected();
+      if (!hasSelectedSpeechModel) {
+        this.recordingInitiatedAt = null;
+        return;
+      }
+
       const startTime = performance.now();
       logger.audio.info("RecordingManager: doStart called", { mode });
 
@@ -648,6 +654,28 @@ export class RecordingManager extends EventEmitter {
   private isQuickAction(): boolean {
     if (!this.recordingInitiatedAt) return false;
     return Date.now() - this.recordingInitiatedAt < QUICK_PRESS_THRESHOLD;
+  }
+
+  private async ensureSpeechModelSelected(): Promise<boolean> {
+    const modelService = this.serviceManager.getService("modelService");
+    const selectedSpeechModel = await modelService.getSelectedModel();
+
+    if (selectedSpeechModel) {
+      return true;
+    }
+
+    logger.audio.warn("Cannot start recording - no speech model selected");
+    this.emit("widget-notification", {
+      type: "transcription_failed",
+      errorCode: ErrorCodes.MODEL_MISSING,
+    });
+    logger.audio.info("Emitted widget notification", {
+      type: "transcription_failed",
+      errorCode: ErrorCodes.MODEL_MISSING,
+      reason: "no_speech_model_selected",
+    });
+
+    return false;
   }
 
   private clearTimers(): void {

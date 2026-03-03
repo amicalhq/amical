@@ -302,8 +302,8 @@
           "description": "Check your internet connection"
         },
         "modelMissing": {
-          "title": "No model available",
-          "description": "Download a local model or switch to cloud"
+          "title": "No Model Selected",
+          "description": "Please select a transcription model."
         },
         "workerInitializationFailed": {
           "title": "Initialization failed",

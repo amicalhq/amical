@@ -150,6 +150,7 @@ export const recordingRouter = createRouter({
             data.type === "transcription_failed"
               ? (data.uiMessage ?? config.description)
               : undefined,
+          subDescription: config.subDescription,
           errorCode: data.errorCode,
           traceId: data.traceId,
           primaryAction: config.primaryAction,
