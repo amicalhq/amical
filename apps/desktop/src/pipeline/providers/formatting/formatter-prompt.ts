@@ -320,6 +320,7 @@ const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
     /messenger\.com/,
     /chat\.openai\.com/,
     /claude\.ai/,
+    /chat\.google\com/,
   ],
   notes: [
     /notion\.so/,
