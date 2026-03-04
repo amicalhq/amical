@@ -274,6 +274,7 @@ const BUNDLE_TO_TYPE: Record<string, AppType> = {
   "com.microsoft.Outlook": "email",
   "com.readdle.smartemail": "email",
   "com.google.Gmail": "email",
+  "com.superhuman.electron": "email",
   "com.tinyspeck.slackmacgap": "chat",
   "com.microsoft.teams": "chat",
   "com.facebook.archon": "chat", // Messenger
