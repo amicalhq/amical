@@ -435,6 +435,10 @@
         "label": "Preload Whisper Model",
         "description": "Load AI model at startup for faster transcription"
       },
+      "keepTranscriptInClipboard": {
+        "label": "Keep transcript in clipboard",
+        "description": "Leave transcribed text on your clipboard after pasting instead of restoring previous contents"
+      },
       "debugMode": {
         "label": "Debug Mode",
         "description": "Enable detailed logging"

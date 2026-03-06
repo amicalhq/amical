@@ -79,6 +79,7 @@ const defaultSettings: AppSettingsData = {
     showInDock: true,
     muteSystemAudio: true,
     autoDictateOnNewNote: false,
+    keepTranscriptInClipboard: false,
   },
   transcription: {
     language: "en",

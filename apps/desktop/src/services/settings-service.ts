@@ -26,6 +26,7 @@ export interface AppPreferences {
   showInDock: boolean;
   muteSystemAudio: boolean;
   autoDictateOnNewNote: boolean;
+  keepTranscriptInClipboard: boolean;
 }
 
 export class SettingsService extends EventEmitter {
@@ -310,6 +311,7 @@ export class SettingsService extends EventEmitter {
       showInDock: preferences?.showInDock ?? true,
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
+      keepTranscriptInClipboard: preferences?.keepTranscriptInClipboard ?? false,
     };
   }
 

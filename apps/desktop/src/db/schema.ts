@@ -170,6 +170,7 @@ export interface AppSettingsData {
     showInDock?: boolean;
     muteSystemAudio?: boolean;
     autoDictateOnNewNote?: boolean;
+    keepTranscriptInClipboard?: boolean;
   };
   telemetry?: {
     enabled?: boolean;

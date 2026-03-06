@@ -261,6 +261,10 @@ namespace WindowsHelper.Models
 
     public partial class PasteTextParams
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonPropertyName("keepInClipboard")]
+        public bool? KeepInClipboard { get; set; }
+
         [JsonPropertyName("transcript")]
         public string Transcript { get; set; }
     }
