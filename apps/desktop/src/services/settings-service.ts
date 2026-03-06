@@ -23,6 +23,7 @@ export interface AppPreferences {
   launchAtLogin: boolean;
   minimizeToTray: boolean;
   showWidgetWhileInactive: boolean;
+  showWidgetWhileActive: boolean;
   showInDock: boolean;
   muteSystemAudio: boolean;
   autoDictateOnNewNote: boolean;
@@ -307,6 +308,7 @@ export class SettingsService extends EventEmitter {
       launchAtLogin: preferences?.launchAtLogin ?? true,
       minimizeToTray: preferences?.minimizeToTray ?? true,
       showWidgetWhileInactive: preferences?.showWidgetWhileInactive ?? true,
+      showWidgetWhileActive: preferences?.showWidgetWhileActive ?? true,
       showInDock: preferences?.showInDock ?? true,
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
@@ -336,6 +338,8 @@ export class SettingsService extends EventEmitter {
       changes: preferences,
       showWidgetWhileInactiveChanged:
         preferences.showWidgetWhileInactive !== undefined,
+      showWidgetWhileActiveChanged:
+        preferences.showWidgetWhileActive !== undefined,
       showInDockChanged: preferences.showInDock !== undefined,
       muteSystemAudioChanged: preferences.muteSystemAudio !== undefined,
     });
