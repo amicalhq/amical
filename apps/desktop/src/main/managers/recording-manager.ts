@@ -69,6 +69,8 @@ export class RecordingManager extends EventEmitter {
 
   // System audio state tracking
   private systemAudioMuted: boolean = false;
+  // Sound muting for current session
+  private soundsMuted: boolean = false;
 
   constructor(private serviceManager: ServiceManager) {
     super();
@@ -303,13 +305,15 @@ export class RecordingManager extends EventEmitter {
       const nativeBridge = this.serviceManager.getService("nativeBridge");
       nativeBridge.refreshAccessibilityContext();
 
-      // Always call startRecording (plays sound), conditionally mute system audio
+      // Always call startRecording, conditionally mute system audio and play sounds
       const settingsService = this.serviceManager.getService("settingsService");
       const preferences = await settingsService.getPreferences();
       const shouldMute = preferences?.muteSystemAudio ?? true;
+      this.soundsMuted = preferences?.muteDictationSounds ?? false;
 
       const result = await nativeBridge.call("startRecording", {
         muteSystemAudio: shouldMute,
+        muteSounds: this.soundsMuted,
       });
       this.systemAudioMuted = shouldMute && !!result?.success;
     } catch (error) {
@@ -353,11 +357,12 @@ export class RecordingManager extends EventEmitter {
       this.recordingInitiatedAt = null;
       this.setMode("idle");
 
-      // Always call stopRecording (plays sound), conditionally restore system audio
+      // Always call stopRecording, conditionally restore system audio and play sounds
       try {
         const nativeBridge = this.serviceManager.getService("nativeBridge");
         await nativeBridge.call("stopRecording", {
           wasMuted: this.systemAudioMuted,
+          muteSounds: this.soundsMuted,
         });
         this.systemAudioMuted = false;
       } catch (error) {
@@ -771,11 +776,12 @@ export class RecordingManager extends EventEmitter {
       }
     }
 
-    // Always call stopRecording (plays sound), conditionally restore system audio
+    // Always call stopRecording, conditionally restore system audio and play sounds
     try {
       const nativeBridge = this.serviceManager.getService("nativeBridge");
       await nativeBridge.call("stopRecording", {
         wasMuted: this.systemAudioMuted,
+        muteSounds: this.soundsMuted,
       });
     } catch (error) {
       logger.main.warn(
@@ -802,6 +808,7 @@ export class RecordingManager extends EventEmitter {
     this.audioChunks = [];
     this.terminationCode = null;
     this.systemAudioMuted = false;
+    this.soundsMuted = false;
     this.clearTimers();
   }
 

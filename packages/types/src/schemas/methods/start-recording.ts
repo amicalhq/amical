@@ -3,6 +3,7 @@ import { z } from "zod";
 // Request params
 export const StartRecordingParamsSchema = z.object({
   muteSystemAudio: z.boolean(),
+  muteSounds: z.boolean().optional(),
 });
 export type StartRecordingParams = z.infer<typeof StartRecordingParamsSchema>;
 

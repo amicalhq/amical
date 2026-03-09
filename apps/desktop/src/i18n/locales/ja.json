@@ -397,6 +397,10 @@
         "label": "録音中にシステム音声をミュート",
         "description": "マイク録音中にシステムの出力音声を消音"
       },
+      "muteDictationSounds": {
+        "label": "ディクテーション音をミュート",
+        "description": "録音開始・終了時のサウンドを無効にする"
+      },
       "autoDictateOnNewNote": {
         "label": "新しいノートで自動音声入力",
         "description": "新しいノートを作成した時に自動的に音声入力を開始"

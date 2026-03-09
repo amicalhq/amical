@@ -3,6 +3,7 @@ import { z } from "zod";
 // Request params
 export const StopRecordingParamsSchema = z.object({
   wasMuted: z.boolean(),
+  muteSounds: z.boolean().optional(),
 });
 export type StopRecordingParams = z.infer<typeof StopRecordingParamsSchema>;
 

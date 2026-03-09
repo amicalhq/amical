@@ -56,6 +56,7 @@ const AppPreferencesSchema = z.object({
   showWidgetWhileInactive: z.boolean().optional(),
   showInDock: z.boolean().optional(),
   muteSystemAudio: z.boolean().optional(),
+  muteDictationSounds: z.boolean().optional(),
   autoDictateOnNewNote: z.boolean().optional(),
 });
 

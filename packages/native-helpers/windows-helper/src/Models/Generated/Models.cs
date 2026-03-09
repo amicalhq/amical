@@ -277,6 +277,10 @@ namespace WindowsHelper.Models
 
     public partial class StartRecordingParams
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonPropertyName("muteSounds")]
+        public bool? MuteSounds { get; set; }
+
         [JsonPropertyName("muteSystemAudio")]
         public bool MuteSystemAudio { get; set; }
     }
@@ -293,6 +297,10 @@ namespace WindowsHelper.Models
 
     public partial class StopRecordingParams
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonPropertyName("muteSounds")]
+        public bool? MuteSounds { get; set; }
+
         [JsonPropertyName("wasMuted")]
         public bool WasMuted { get; set; }
     }

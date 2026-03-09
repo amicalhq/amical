@@ -95,14 +95,16 @@ class IOBridge: NSObject {
         case .startRecording:
             logToStderr("[IOBridge] Handling startRecording for ID: \(request.id)")
 
-            // Parse params to get muteSystemAudio flag
+            // Parse params to get muteSystemAudio and muteSounds flags
             var shouldMute = false
+            var muteSounds = false
             if let paramsAnyCodable = request.params {
                 do {
                     let paramsData = try jsonEncoder.encode(paramsAnyCodable)
                     let startParams = try jsonDecoder.decode(
                         StartRecordingParamsSchema.self, from: paramsData)
                     shouldMute = startParams.muteSystemAudio
+                    muteSounds = startParams.muteSounds ?? false
                 } catch {
                     logToStderr(
                         "[IOBridge] Error decoding startRecording params: \(error.localizedDescription) for ID: \(request.id)"
@@ -110,30 +112,12 @@ class IOBridge: NSObject {
                 }
             }
 
-            // ALWAYS play rec-start sound; conditionally mute in completion handler
-            audioService.playSound(named: "rec-start") { [weak self] in
-                guard let self = self else {
-                    HelperLogger.logToStderr(
-                        "[IOBridge] self is nil in playSound completion for startRecording. ID: \(request.id)"
-                    )
-                    return
-                }
-
-                var success = true
-                if shouldMute {
-                    self.logToStderr(
-                        "[IOBridge] rec-start.mp3 finished playing. Proceeding to mute system audio. ID: \(request.id)"
-                    )
-                    success = self.accessibilityService.muteSystemAudio()
-                } else {
-                    self.logToStderr(
-                        "[IOBridge] rec-start.mp3 finished playing. Mute skipped by preference. ID: \(request.id)"
-                    )
-                }
-
+            // Helper to send startRecording response after optional sound + mute
+            let sendStartResponse: (Bool) -> Void = { [weak self] muteSuccess in
+                guard let self = self else { return }
                 let resultPayload = StartRecordingResultSchema(
-                    message: success ? "Recording started" : "Failed to mute system audio",
-                    success: success)
+                    message: muteSuccess ? "Recording started" : "Failed to mute system audio",
+                    success: muteSuccess)
 
                 var responseToSend: RPCResponseSchema
                 do {
@@ -154,19 +138,56 @@ class IOBridge: NSObject {
                 }
                 self.sendRpcResponse(responseToSend)
             }
+
+            if muteSounds {
+                // Skip sound, mute system audio immediately if needed
+                var success = true
+                if shouldMute {
+                    logToStderr("[IOBridge] Sounds muted. Proceeding to mute system audio directly. ID: \(request.id)")
+                    success = accessibilityService.muteSystemAudio()
+                } else {
+                    logToStderr("[IOBridge] Sounds muted. No system audio mute needed. ID: \(request.id)")
+                }
+                sendStartResponse(success)
+            } else {
+                // Play rec-start sound; conditionally mute in completion handler
+                audioService.playSound(named: "rec-start") { [weak self] in
+                    guard let self = self else {
+                        HelperLogger.logToStderr(
+                            "[IOBridge] self is nil in playSound completion for startRecording. ID: \(request.id)"
+                        )
+                        return
+                    }
+
+                    var success = true
+                    if shouldMute {
+                        self.logToStderr(
+                            "[IOBridge] rec-start.mp3 finished playing. Proceeding to mute system audio. ID: \(request.id)"
+                        )
+                        success = self.accessibilityService.muteSystemAudio()
+                    } else {
+                        self.logToStderr(
+                            "[IOBridge] rec-start.mp3 finished playing. Mute skipped by preference. ID: \(request.id)"
+                        )
+                    }
+                    sendStartResponse(success)
+                }
+            }
             return
 
         case .stopRecording:
             logToStderr("[IOBridge] Handling stopRecording for ID: \(request.id)")
 
-            // Parse params to get wasMuted flag
+            // Parse params to get wasMuted and muteSounds flags
             var wasMuted = false
+            var muteSounds = false
             if let paramsAnyCodable = request.params {
                 do {
                     let paramsData = try jsonEncoder.encode(paramsAnyCodable)
                     let stopParams = try jsonDecoder.decode(
                         StopRecordingParamsSchema.self, from: paramsData)
                     wasMuted = stopParams.wasMuted
+                    muteSounds = stopParams.muteSounds ?? false
                 } catch {
                     logToStderr(
                         "[IOBridge] Error decoding stopRecording params: \(error.localizedDescription) for ID: \(request.id)"
@@ -180,8 +201,10 @@ class IOBridge: NSObject {
                 success = accessibilityService.restoreSystemAudio()
             }
 
-            // ALWAYS play rec-stop sound (fire-and-forget)
-            audioService.playSound(named: "rec-stop")
+            // Play rec-stop sound unless muted (fire-and-forget)
+            if !muteSounds {
+                audioService.playSound(named: "rec-stop")
+            }
 
             let resultPayload = StopRecordingResultSchema(
                 message: success ? "Recording stopped" : "Failed to restore system audio",

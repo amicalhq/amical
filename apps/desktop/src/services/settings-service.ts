@@ -25,6 +25,7 @@ export interface AppPreferences {
   showWidgetWhileInactive: boolean;
   showInDock: boolean;
   muteSystemAudio: boolean;
+  muteDictationSounds: boolean;
   autoDictateOnNewNote: boolean;
 }
 
@@ -309,6 +310,7 @@ export class SettingsService extends EventEmitter {
       showWidgetWhileInactive: preferences?.showWidgetWhileInactive ?? true,
       showInDock: preferences?.showInDock ?? true,
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
+      muteDictationSounds: preferences?.muteDictationSounds ?? false,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
     };
   }

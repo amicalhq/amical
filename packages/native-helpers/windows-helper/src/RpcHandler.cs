@@ -102,9 +102,9 @@ namespace WindowsHelper
                         break;
 
                     case Method.StartRecording:
-                        response = await HandleStartRecording(request);
-                        // Return early so we don't send the placeholder response; the real response is sent
-                        // by the completion callback after the rec-start sound finishes.
+                        // HandleStartRecording sends its own response immediately or from the
+                        // rec-start completion callback, so there is nothing for the main loop to send.
+                        await HandleStartRecording(request);
                         return;
 
                     case Method.StopRecording:
@@ -344,12 +344,13 @@ namespace WindowsHelper
             };
         }
 
-        private async Task<RpcResponse> HandleStartRecording(RpcRequest request)
+        private async Task HandleStartRecording(RpcRequest request)
         {
             LogToStderr($"Handling startRecording for ID: {request.Id}");
 
-            // Parse params to get muteSystemAudio flag
+            // Parse params to get muteSystemAudio and muteSounds flags
             var shouldMute = false;
+            var muteSounds = false;
             if (request.Params != null)
             {
                 try
@@ -359,12 +360,40 @@ namespace WindowsHelper
                     if (parameters != null)
                     {
                         shouldMute = parameters.MuteSystemAudio;
+                        muteSounds = parameters.MuteSounds ?? false;
                     }
                 }
                 catch (Exception ex)
                 {
                     LogToStderr($"Error decoding startRecording params: {ex.Message}");
                 }
+            }
+
+            if (muteSounds)
+            {
+                // Skip sound, mute system audio immediately if needed
+                var success = true;
+                if (shouldMute)
+                {
+                    LogToStderr($"Sounds muted. Proceeding to mute system audio directly. ID: {request.Id}");
+                    success = audioService.MuteSystemAudio();
+                }
+                else
+                {
+                    LogToStderr($"Sounds muted. No system audio mute needed. ID: {request.Id}");
+                }
+
+                // Send response directly (caller returns early without sending)
+                SendRpcResponse(new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Result = new StartRecordingResult
+                    {
+                        Success = success,
+                        Message = success ? "Recording started" : "Failed to mute system audio"
+                    }
+                });
+                return;
             }
 
             // Store the request ID and mute flag for the completion handler
@@ -397,19 +426,17 @@ namespace WindowsHelper
                 audioCompletionHandler = null;
             };
 
-            // ALWAYS play rec-start sound
+            // Play rec-start sound
             await audioService.PlaySound("rec-start", requestId);
-
-            // Return dummy response (real response sent after audio completion)
-            return new RpcResponse { Id = request.Id.ToString() };
         }
 
         private RpcResponse HandleStopRecording(RpcRequest request)
         {
             LogToStderr($"Handling stopRecording for ID: {request.Id}");
 
-            // Parse params to get wasMuted flag
+            // Parse params to get wasMuted and muteSounds flags
             var wasMuted = false;
+            var muteSounds = false;
             if (request.Params != null)
             {
                 try
@@ -419,6 +446,7 @@ namespace WindowsHelper
                     if (parameters != null)
                     {
                         wasMuted = parameters.WasMuted;
+                        muteSounds = parameters.MuteSounds ?? false;
                     }
                 }
                 catch (Exception ex)
@@ -434,8 +462,11 @@ namespace WindowsHelper
                 success = audioService.RestoreSystemAudio();
             }
 
-            // ALWAYS play rec-stop sound (fire-and-forget)
-            _ = audioService.PlaySound("rec-stop", request.Id.ToString());
+            // Play rec-stop sound unless muted (fire-and-forget)
+            if (!muteSounds)
+            {
+                _ = audioService.PlaySound("rec-stop", request.Id.ToString());
+            }
 
             return new RpcResponse
             {
