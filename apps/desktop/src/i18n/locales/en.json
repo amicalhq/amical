@@ -364,7 +364,8 @@
       "community": "Community",
       "discordAlt": "Discord",
       "logoAlt": "Amical Logo",
-      "brand": "Amical"
+      "brand": "Amical",
+      "backToHome": "Back to home"
     },
     "search": {
       "buttonLabel": "Search",
