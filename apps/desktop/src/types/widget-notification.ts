@@ -3,7 +3,9 @@ import { ErrorCodes, type ErrorCode } from "./error";
 export type WidgetNotificationType =
   | "no_audio"
   | "empty_transcript"
-  | "transcription_failed";
+  | "transcription_failed"
+  | "recording_duration_warning"
+  | "recording_auto_stopped";
 
 export type WidgetNotificationActionIcon = "discord";
 
@@ -60,6 +62,14 @@ export const getNotificationDescription = (
       };
     case "transcription_failed":
       return { key: "widget.notifications.description.transcriptionFailed" };
+    case "recording_duration_warning":
+      return {
+        key: "widget.notifications.description.recordingDurationWarning",
+      };
+    case "recording_auto_stopped":
+      return {
+        key: "widget.notifications.description.recordingAutoStopped",
+      };
   }
 };
 
@@ -240,8 +250,24 @@ export const WIDGET_NOTIFICATION_CONFIG: Record<
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  recording_duration_warning: {
+    title: {
+      key: "widget.notifications.type.recordingDurationWarning.title",
+    },
+    description: {
+      key: "widget.notifications.type.recordingDurationWarning.description",
+    },
+  },
+  recording_auto_stopped: {
+    title: {
+      key: "widget.notifications.type.recordingAutoStopped.title",
+    },
+    description: {
+      key: "widget.notifications.type.recordingAutoStopped.description",
+    },
+  },
   // Placeholder for type checking - actual config comes from ERROR_CODE_CONFIG
   transcription_failed: ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN],
 };
 
-export const WIDGET_NOTIFICATION_TIMEOUT = 5000;
+export const WIDGET_NOTIFICATION_TIMEOUT = 7_000;

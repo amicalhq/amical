@@ -259,7 +259,9 @@
       "description": {
         "noAudio": "「{{microphone}}」からの音声がありません",
         "emptyTranscript": "「{{microphone}}」から音声が検出されませんでした",
-        "transcriptionFailed": "文字起こし中にエラーが発生しました"
+        "transcriptionFailed": "文字起こし中にエラーが発生しました",
+        "recordingDurationWarning": "Amicalは最大{{maxMinutes}}分間の連続ディクテーションに対応しています。必要に応じて新しいディクテーションを開始してください。",
+        "recordingAutoStopped": "最大ディクテーション時間に達しました。必要に応じて新しいディクテーションを開始してください。"
       },
       "action": {
         "logIn": "ログイン",
@@ -278,6 +280,14 @@
         "emptyTranscript": {
           "title": "発話が検出されません",
           "description": "もう少し大きな声で、またはマイクに近づいて話してください"
+        },
+        "recordingDurationWarning": {
+          "title": "ディクテーションは{{minutes}}分後に自動停止します",
+          "description": "Amicalは最大{{maxMinutes}}分間の連続ディクテーションに対応しています。必要に応じて新しいディクテーションを開始してください。"
+        },
+        "recordingAutoStopped": {
+          "title": "ディクテーションが自動停止しました",
+          "description": "最大ディクテーション時間に達しました。必要に応じて新しいディクテーションを開始してください。"
         }
       },
       "errorCode": {

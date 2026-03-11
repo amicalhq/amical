@@ -25,6 +25,10 @@ const NO_AUDIO_TIMEOUT = 5000;
 const STUCK_STATE_TIMEOUT = 10000;
 const CLEANUP_STOPPING_WAIT_TIMEOUT = 1000;
 
+// Recording duration limits (ms)
+const RECORDING_WARNING_TIMEOUT = 5 * 60 * 1000; // 5 minutes - show warning toast
+const RECORDING_MAX_DURATION = 6 * 60 * 1000; // 6 minutes - auto-stop
+
 /**
  * Manages recording state and coordinates audio recording across the application
  * Acts as the single source of truth for recording status
@@ -50,6 +54,8 @@ export class RecordingManager extends EventEmitter {
   private cancelTimer: NodeJS.Timeout | null = null;
   private noAudioTimer: NodeJS.Timeout | null = null;
   private stuckStateTimer: NodeJS.Timeout | null = null;
+  private warningTimer: NodeJS.Timeout | null = null;
+  private maxDurationTimer: NodeJS.Timeout | null = null;
 
   // Session state
   private currentSessionId: string | null = null;
@@ -274,6 +280,7 @@ export class RecordingManager extends EventEmitter {
       this.setState("recording");
 
       this.startNoAudioTimer();
+      this.startDurationTimers();
 
       // Async init inside mutex
       this.initPromise = this.initializeSession();
@@ -696,6 +703,14 @@ export class RecordingManager extends EventEmitter {
       clearTimeout(this.stuckStateTimer);
       this.stuckStateTimer = null;
     }
+    if (this.warningTimer) {
+      clearTimeout(this.warningTimer);
+      this.warningTimer = null;
+    }
+    if (this.maxDurationTimer) {
+      clearTimeout(this.maxDurationTimer);
+      this.maxDurationTimer = null;
+    }
   }
 
   private clearNoAudioTimer(): void {
@@ -757,6 +772,40 @@ export class RecordingManager extends EventEmitter {
         this.endRecording("no_audio");
       }
     }, NO_AUDIO_TIMEOUT);
+  }
+
+  private startDurationTimers(): void {
+    const remainingMinutes = Math.round(
+      (RECORDING_MAX_DURATION - RECORDING_WARNING_TIMEOUT) / 60_000,
+    );
+
+    this.warningTimer = setTimeout(() => {
+      if (this.recordingState === "recording") {
+        logger.audio.warn("Recording duration warning", {
+          sessionId: this.currentSessionId,
+          remainingMinutes,
+        });
+        this.emit("widget-notification", {
+          type: "recording_duration_warning",
+          params: {
+            minutes: remainingMinutes,
+            maxMinutes: Math.round(RECORDING_MAX_DURATION / 60_000),
+          },
+        });
+      }
+    }, RECORDING_WARNING_TIMEOUT);
+
+    this.maxDurationTimer = setTimeout(() => {
+      if (this.recordingState === "recording") {
+        logger.audio.warn("Recording auto-stopped at max duration", {
+          sessionId: this.currentSessionId,
+        });
+        this.emit("widget-notification", {
+          type: "recording_auto_stopped",
+        });
+        this.endRecording();
+      }
+    }, RECORDING_MAX_DURATION);
   }
 
   private async forceIdle(): Promise<void> {

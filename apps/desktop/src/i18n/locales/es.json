@@ -259,7 +259,9 @@
       "description": {
         "noAudio": "Sin audio de \"{{microphone}}\"",
         "emptyTranscript": "No se detectó voz de \"{{microphone}}\"",
-        "transcriptionFailed": "Ocurrió un error durante la transcripción"
+        "transcriptionFailed": "Ocurrió un error durante la transcripción",
+        "recordingDurationWarning": "Amical admite hasta {{maxMinutes}} minutos de dictado continuo. Inicia un nuevo dictado si es necesario.",
+        "recordingAutoStopped": "Se alcanzó la duración máxima de dictado. Inicia un nuevo dictado si es necesario."
       },
       "action": {
         "logIn": "Iniciar sesión",
@@ -278,6 +280,14 @@
         "emptyTranscript": {
           "title": "No se detectó voz",
           "description": "Intenta hablar más fuerte o más cerca del micrófono"
+        },
+        "recordingDurationWarning": {
+          "title": "El dictado se detendrá en {{minutes}} minutos",
+          "description": "Amical admite hasta {{maxMinutes}} minutos de dictado continuo. Inicia un nuevo dictado si es necesario."
+        },
+        "recordingAutoStopped": {
+          "title": "Dictado detenido automáticamente",
+          "description": "Se alcanzó la duración máxima de dictado. Inicia un nuevo dictado si es necesario."
         }
       },
       "errorCode": {

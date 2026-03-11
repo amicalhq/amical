@@ -259,7 +259,9 @@
       "description": {
         "noAudio": "No audio from \"{{microphone}}\"",
         "emptyTranscript": "No speech detected from \"{{microphone}}\"",
-        "transcriptionFailed": "An error occurred during transcription"
+        "transcriptionFailed": "An error occurred during transcription",
+        "recordingDurationWarning": "Amical supports up to {{maxMinutes}} minutes of continuous dictation. Start a new dictation if needed.",
+        "recordingAutoStopped": "Max dictation duration reached. Start a new dictation if needed."
       },
       "action": {
         "logIn": "Log In",
@@ -278,6 +280,14 @@
         "emptyTranscript": {
           "title": "No speech detected",
           "description": "Try speaking louder or closer to the mic"
+        },
+        "recordingDurationWarning": {
+          "title": "Dictation will auto-stop in {{minutes}} minutes",
+          "description": "Amical supports up to {{maxMinutes}} minutes of continuous dictation. Start a new dictation if needed."
+        },
+        "recordingAutoStopped": {
+          "title": "Dictation auto-stopped",
+          "description": "Max dictation duration reached. Start a new dictation if needed."
         }
       },
       "errorCode": {
