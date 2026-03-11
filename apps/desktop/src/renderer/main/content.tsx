@@ -28,13 +28,19 @@ const LEGACY_ROUTE_MAP: Record<string, string> = {
   "/settings": "/settings/preferences",
 };
 
+function navigateToRoute(route: string) {
+  const normalizedRoute = LEGACY_ROUTE_MAP[route] ?? route;
+  const url = new URL(normalizedRoute, "http://localhost");
+  const search = Object.fromEntries(url.searchParams.entries());
+  router.navigate({ to: url.pathname, search });
+}
+
 // Root App component with routing
 const App: React.FC = () => {
   // Listen for navigation events from main process (e.g., from widget)
   useEffect(() => {
     const handleNavigate = (route: string) => {
-      const normalizedRoute = LEGACY_ROUTE_MAP[route] ?? route;
-      router.navigate({ to: normalizedRoute });
+      navigateToRoute(route);
     };
 
     window.electronAPI?.on?.("navigate", handleNavigate);

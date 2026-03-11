@@ -36,9 +36,13 @@ export function SettingsSidebar({
   const { t } = useTranslation();
   const location = useLocation();
   const sidebarCtaFlag = useFeatureFlag(SIDEBAR_CTA_FEATURE_FLAG);
-  const isHomeSidebar = !SETTINGS_NAV_ITEMS.some((item) =>
-    location.pathname.startsWith(item.url),
-  );
+  const isSettingsRoute =
+    location.pathname === "/settings" ||
+    location.pathname === "/settings/" ||
+    SETTINGS_NAV_ITEMS.some((item) =>
+      location.pathname.startsWith(item.url),
+    );
+  const isHomeSidebar = !isSettingsRoute;
 
   const sidebarCtaPayload = sidebarCtaFlag.enabled
     ? parseSidebarCtaPayload(sidebarCtaFlag.payload)
