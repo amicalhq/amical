@@ -76,7 +76,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.logIn" },
-      navigateTo: "/settings/ai-models?tab=speech",
+      navigateTo: "/settings/account",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },
@@ -92,7 +92,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewUsage" },
-      navigateTo: "/settings/ai-models?tab=speech",
+      navigateTo: "/settings/account",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },
@@ -113,7 +113,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.viewHistory" },
-      navigateTo: "/settings/history",
+      navigateTo: "/history",
     },
   },
   [ErrorCodes.UNKNOWN]: {
@@ -122,7 +122,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewHistory" },
-      navigateTo: "/settings/history",
+      navigateTo: "/history",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },
@@ -138,7 +138,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.settings" },
-      navigateTo: "/settings/preferences",
+      navigateTo: "/settings",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },
@@ -197,7 +197,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewHistory" },
-      navigateTo: "/settings/history",
+      navigateTo: "/history",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },
