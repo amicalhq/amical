@@ -11,22 +11,31 @@ import {
   type Icon,
 } from "@tabler/icons-react";
 
-export interface SettingsNavItem {
+export interface SidebarNavItem {
   titleKey: string;
   url: string;
-  descriptionKey: string;
   icon: Icon | string;
+}
+
+export interface SettingsNavItem extends SidebarNavItem {
+  descriptionKey: string;
   type: "settings";
 }
 
-export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
+export const HOME_NAV_ITEMS: SidebarNavItem[] = [
   {
     titleKey: "settings.nav.notes.title",
     url: "/settings/notes",
-    descriptionKey: "settings.nav.notes.description",
     icon: IconNotes,
-    type: "settings",
   },
+  {
+    titleKey: "menu.settings",
+    url: "/settings/preferences",
+    icon: IconSettings,
+  },
+];
+
+export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
     titleKey: "settings.nav.preferences.title",
     url: "/settings/preferences",

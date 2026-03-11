@@ -26,8 +26,14 @@ declare module "@tanstack/react-router" {
 const App: React.FC = () => {
   // Listen for navigation events from main process (e.g., from widget)
   useEffect(() => {
+    const LEGACY_ROUTE_MAP: Record<string, string> = {
+      "/history": "/settings/history",
+      "/settings/account": "/settings/ai-models?tab=speech",
+    };
+
     const handleNavigate = (route: string) => {
-      router.navigate({ to: route });
+      const normalizedRoute = LEGACY_ROUTE_MAP[route] ?? route;
+      router.navigate({ to: normalizedRoute });
     };
 
     window.electronAPI?.on?.("navigate", handleNavigate);

@@ -2,8 +2,10 @@ import * as React from "react";
 import {
   IconBookFilled,
   IconBrandDiscordFilled,
+  IconChevronLeft,
   IconInfoCircle,
 } from "@tabler/icons-react";
+import { Link, useLocation } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { NavMain } from "@/components/nav-main";
@@ -26,19 +28,22 @@ import {
 } from "@/utils/feature-flags";
 import { CommandSearchButton } from "./command-search-button";
 import { CreateNoteButton } from "./create-note-button";
-import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
+import { HOME_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
 export function SettingsSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
   const { t } = useTranslation();
+  const location = useLocation();
   const sidebarCtaFlag = useFeatureFlag(SIDEBAR_CTA_FEATURE_FLAG);
+  const isHomeSidebar = location.pathname.startsWith("/settings/notes");
 
   const sidebarCtaPayload = sidebarCtaFlag.enabled
     ? parseSidebarCtaPayload(sidebarCtaFlag.payload)
     : null;
 
-  const navMain = SETTINGS_NAV_ITEMS.map(({ titleKey, url, icon }) => ({
+  const navMainItems = isHomeSidebar ? HOME_NAV_ITEMS : SETTINGS_NAV_ITEMS;
+  const navMain = navMainItems.map(({ titleKey, url, icon }) => ({
     title: t(titleKey),
     url,
     icon: typeof icon === "string" ? undefined : icon,
@@ -83,33 +88,59 @@ export function SettingsSidebar({
         className="h-[var(--titlebar-height)] shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
-      <SidebarHeader className="py-0 -mb-1">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <div className="inline-flex items-center gap-2.5 font-semibold w-full">
-                <img
-                  src="assets/logo.svg"
-                  alt={t("settings.sidebar.logoAlt")}
-                  className="!size-7"
-                />
-                <span className="font-semibold">
-                  {t("settings.sidebar.brand")}
-                </span>
+      {isHomeSidebar ? (
+        <SidebarHeader className="py-0 -mb-1">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                className="data-[slot=sidebar-menu-button]:!p-1.5"
+              >
+                <div className="inline-flex items-center gap-2.5 font-semibold w-full">
+                  <img
+                    src="assets/logo.svg"
+                    alt={t("settings.sidebar.logoAlt")}
+                    className="!size-7"
+                  />
+                  <span className="font-semibold">
+                    {t("settings.sidebar.brand")}
+                  </span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <CreateNoteButton />
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <CommandSearchButton />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+      ) : (
+        <SidebarHeader className="py-0 -mb-1">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                className="data-[slot=sidebar-menu-button]:!p-1.5"
+              >
+                <Link
+                  to="/settings/notes"
+                  aria-label={t("settings.sidebar.backToHome")}
+                >
+                  <IconChevronLeft />
+                  <span>{t("settings.sidebar.backToHome")}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <div className="inline-flex items-center gap-2.5 w-full px-2 py-1.5 font-semibold">
+                {t("menu.settings")}
               </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <CreateNoteButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <CommandSearchButton />
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+      )}
       <SidebarContent>
         <NavMain items={navMain} />
         <NavSecondary items={navSecondary} className="mt-auto" />

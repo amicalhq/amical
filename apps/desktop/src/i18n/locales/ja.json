@@ -364,7 +364,8 @@
       "community": "コミュニティ",
       "discordAlt": "Discord",
       "logoAlt": "Amical ロゴ",
-      "brand": "Amical"
+      "brand": "Amical",
+      "backToHome": "ホームに戻る"
     },
     "search": {
       "buttonLabel": "検索",
