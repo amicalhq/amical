@@ -36,7 +36,9 @@ export function SettingsSidebar({
   const { t } = useTranslation();
   const location = useLocation();
   const sidebarCtaFlag = useFeatureFlag(SIDEBAR_CTA_FEATURE_FLAG);
-  const isHomeSidebar = location.pathname.startsWith("/settings/notes");
+  const isHomeSidebar = !SETTINGS_NAV_ITEMS.some((item) =>
+    location.pathname.startsWith(item.url),
+  );
 
   const sidebarCtaPayload = sidebarCtaFlag.enabled
     ? parseSidebarCtaPayload(sidebarCtaFlag.payload)

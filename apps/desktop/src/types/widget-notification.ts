@@ -138,7 +138,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.settings" },
-      navigateTo: "/settings",
+      navigateTo: "/settings/preferences",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },

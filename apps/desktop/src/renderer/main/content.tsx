@@ -22,15 +22,16 @@ declare module "@tanstack/react-router" {
   }
 }
 
+const LEGACY_ROUTE_MAP: Record<string, string> = {
+  "/history": "/settings/history",
+  "/settings/account": "/settings/ai-models?tab=speech",
+  "/settings": "/settings/preferences",
+};
+
 // Root App component with routing
 const App: React.FC = () => {
   // Listen for navigation events from main process (e.g., from widget)
   useEffect(() => {
-    const LEGACY_ROUTE_MAP: Record<string, string> = {
-      "/history": "/settings/history",
-      "/settings/account": "/settings/ai-models?tab=speech",
-    };
-
     const handleNavigate = (route: string) => {
       const normalizedRoute = LEGACY_ROUTE_MAP[route] ?? route;
       router.navigate({ to: normalizedRoute });
