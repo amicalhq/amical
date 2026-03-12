@@ -3,7 +3,7 @@
     "loading": "載入 Amical 中..."
   },
   "errors": {
-    "generic": "發生錯誤。請再試一次。"
+    "generic": "發生錯誤，請再試一次。"
   },
   "menu": {
     "file": "檔案",
@@ -26,11 +26,11 @@
   },
   "updater": {
     "updateAvailable": "有可用更新",
-    "requiredUpdate": "必須更新",
-    "versionAvailable": "提供版本 {{version}} 。",
-    "versionRequired": "需要版本 {{version}} 。",
-    "updateAvailableGeneric": "提供更新。",
-    "updateRequiredGeneric": "需要更新。",
+    "requiredUpdate": "需要更新",
+    "versionAvailable": "有新版本 {{version}}",
+    "versionRequired": "需要版本 {{version}}",
+    "updateAvailableGeneric": "有可用的更新",
+    "updateRequiredGeneric": "需要更新版本",
     "restartAndUpdate": "重新啟動並更新",
     "later": "稍後"
   },
@@ -50,15 +50,15 @@
     },
     "toast": {
       "loadStateFailed": "無法載入引導狀態",
-      "savePreferencesFailed": "設定儲存失敗。請再試一次。",
+      "savePreferencesFailed": "設定儲存失敗，請再試一次。",
       "completed": "引導完成！",
-      "completeFailed": "無法完成引導。請再試一次。",
+      "completeFailed": "無法完成引導，請再試一次。",
       "resetSuccess": "成功重設引導程序",
       "resetFailed": "無法重設引導程序"
     },
     "errorBoundary": {
       "title": "發生錯誤",
-      "description": "我們在引導過程中遇到錯誤。請再試一次。",
+      "description": "我們在引導過程中遇到錯誤，請再試一次。",
       "tryAgain": "重試",
       "restart": "重新啟動引導程序",
       "supportNote": "如果問題持續發生，請聯絡支援團隊或查看說明文件。"
@@ -145,7 +145,7 @@
         "otherDetailsRequired": "請為「其他」提供詳細資訊"
       },
       "other": {
-        "label": "請具體說明",
+        "label": "請說明",
         "placeholder": "告訴我們更多...",
         "charCount": "{{count}}/{{max}} 個字元"
       }
@@ -157,7 +157,7 @@
       "recommended": "推薦",
       "prosLabel": "優點：",
       "consLabel": "缺點：",
-      "note": "您可以日後在設定中更改您的模型 - 選項並非永久不變。",
+      "note": "您可以日後在設定中更改您的模型，一切皆可調整。",
       "recommendation": {
         "label": "推薦：",
         "text": "根據您的系統規格，我們推薦"
@@ -209,14 +209,14 @@
         "title": "需要登入",
         "description": "雲端轉錄功能需要驗證身分才能繼續。",
         "error": {
-          "loginStartFailed": "開啟登入失敗。請再試一次。"
+          "loginStartFailed": "登入開啟失敗，請再試一次。"
         }
       },
       "local": {
-        "downloadingTitle": "下載本機模型中",
+        "downloadingTitle": "正在下載本機模型",
         "downloadingDescription": "正在為私密、離線的轉錄進行本機模型設定",
-        "readyTitle": "本機模型準備就緒",
-        "readyDescription": "隨時可開始進行私密、離線轉錄",
+        "readyTitle": "本機模型已準備就緒",
+        "readyDescription": "隨時可開始進行私密、離線的轉錄",
         "alreadyInstalled": "模型已安裝",
         "downloadComplete": "下載完成",
         "using": "正在使用：{{model}}",
@@ -240,12 +240,12 @@
       "next": {
         "title": "一切準備就緒！",
         "items": {
-          "pushToTalk": "使用一鍵說話的快捷鍵，開始您的轉錄",
+          "pushToTalk": "使用一鍵說話的快捷鍵開始您的轉錄",
           "widget": "點擊懸浮小工具以便快速存取",
           "settings": "探索設定頁面以獲得更多自訂選項"
         }
       },
-      "info": "所有的設定隨時都可以在應用程式偏好設定中更改。",
+      "info": "所有設定隨時都可以在偏好設定中更改。",
       "infoLocalModel": "您選擇的本機模型已準備好離線使用。"
     }
   },
@@ -254,14 +254,14 @@
       "micFallback": "您的麥克風",
       "discordAlt": "Discord",
       "copyErrorId": "複製錯誤 ID",
-      "recordingSaved": "您的錄音已儲存。您可以在歷史紀錄中存取它。",
+      "recordingSaved": "您的錄音已儲存，您可以在歷史紀錄中存取它。",
       "dismiss": "關閉通知",
       "description": {
         "noAudio": "「{{microphone}}」沒有音訊",
         "emptyTranscript": "「{{microphone}}」未偵測到語音",
         "transcriptionFailed": "轉錄過程中發生錯誤",
-        "recordingDurationWarning": "Amical 支援最長 {{maxMinutes}} 分鐘的連續聽寫。如有需要，請開始新的聽寫。",
-        "recordingAutoStopped": "達到聽寫時間上限。如有需要，請開始新的聽寫。"
+        "recordingDurationWarning": "Amical 支援最長 {{maxMinutes}} 分鐘的連續聽寫，如有需要請開始新的聽寫。",
+        "recordingAutoStopped": "達到聽寫時間上限，如有需要請開始新的聽寫。"
       },
       "action": {
         "logIn": "登入",
@@ -283,11 +283,11 @@
         },
         "recordingDurationWarning": {
           "title": "聽寫將在 {{minutes}} 分鐘後自動停止",
-          "description": "Amical 支援最長 {{maxMinutes}} 分鐘的連續聽寫。如有需要，請開始新的聽寫。"
+          "description": "Amical 支援最長 {{maxMinutes}} 分鐘的連續聽寫，如有需要請開始新的聽寫。"
         },
         "recordingAutoStopped": {
           "title": "聽寫已自動停止",
-          "description": "達到聽寫時間上限。如有需要，請開始新的聽寫。"
+          "description": "達到聽寫時間上限，如有需要請開始新的聽寫。"
         }
       },
       "errorCode": {
@@ -309,11 +309,11 @@
         },
         "networkError": {
           "title": "連線錯誤",
-          "description": "請檢查您的網際網路連線"
+          "description": "請檢查您的網路連線"
         },
         "modelMissing": {
           "title": "尚未選擇模型",
-          "description": "請選擇一個轉錄模型。"
+          "description": "請選擇一個轉錄模型"
         },
         "workerInitializationFailed": {
           "title": "初始化失敗",
@@ -334,31 +334,31 @@
     "nav": {
       "notes": {
         "title": "筆記",
-        "description": "管理您的筆記"
+        "description": "您的筆記管理"
       },
       "preferences": {
         "title": "偏好設定",
-        "description": "配置應用程式的一般偏好設定和行為"
+        "description": "應用程式的一般偏好設定和行為"
       },
       "dictation": {
         "title": "聽寫",
-        "description": "配置語音辨識和聽寫設定"
+        "description": "語音辨識和聽寫設定"
       },
       "shortcuts": {
         "title": "捷徑",
-        "description": "自訂鍵盤捷徑和熱鍵"
+        "description": "自訂鍵盤捷徑和快捷鍵"
       },
       "vocabulary": {
         "title": "詞彙",
-        "description": "管理自訂詞彙和字詞辨識"
+        "description": "自訂詞彙和字詞辨識管理"
       },
       "aiModels": {
         "title": "AI 模型",
-        "description": "配置 AI 模型和提供商"
+        "description": "AI 模型和提供商設定"
       },
       "history": {
         "title": "歷史紀錄",
-        "description": "檢視和管理轉錄歷史紀錄"
+        "description": "轉錄歷史紀錄檢視和管理"
       },
       "advanced": {
         "title": "進階設定",
@@ -373,7 +373,7 @@
       "docs": "說明文件",
       "community": "社群",
       "discordAlt": "Discord",
-      "logoAlt": "Amical 標誌",
+      "logoAlt": "Amical Logo",
       "brand": "Amical"
     },
     "search": {
@@ -389,7 +389,7 @@
       "description": "自訂您的應用程式行為和外觀",
       "toast": {
         "updated": "偏好設定已更新",
-        "updateFailed": "無法更新偏好設定。請再試一次。"
+        "updateFailed": "無法更新偏好設定，請再試一次。"
       },
       "launchAtLogin": {
         "label": "登入時啟動",
@@ -409,10 +409,10 @@
       },
       "muteDictationSounds": {
         "label": "將聽寫音效靜音",
-        "description": "停用錄音時的開始和停止音效"
+        "description": "停用錄音開始和停止的音效"
       },
       "autoDictateOnNewNote": {
-        "label": "寫新筆記時自動聽寫",
+        "label": "新筆記自動聽寫",
         "description": "建立新筆記時自動開始聽寫"
       },
       "language": {
@@ -438,13 +438,13 @@
       },
       "theme": {
         "label": "主題與外觀",
-        "description": "設定您偏好的色彩配置"
+        "description": "設定您偏好的配色"
       }
     },
     "advanced": {
-      "title": "進階設定",
-      "description": "進階設定選項與實驗性功能",
-      "cardTitle": "進階項目",
+      "title": "進階",
+      "description": "進階設定與實驗性功能",
+      "cardTitle": "進階設定",
       "cardDescription": "進階設定與管理選項",
       "preloadModel": {
         "label": "預載 Whisper 模型",
@@ -455,19 +455,19 @@
         "description": "啟用詳細紀錄的功能"
       },
       "updateChannel": {
-        "label": "更新頻道通道",
-        "description": "選擇您希望從哪個發布頻道接收更新",
+        "label": "更新頻道",
+        "description": "選擇您希望從哪個頻道接收更新",
         "options": {
           "stable": "穩定版",
           "beta": "Beta 版"
         },
         "toast": {
           "updated": "更新頻道已變更",
-          "updateFailed": "變更更新頻道失敗。請再試一次。"
+          "updateFailed": "變更更新頻道失敗，請再試一次。"
         }
       },
       "telemetry": {
-        "label": "匿名的遙測資料回傳",
+        "label": "匿名遙測資料回傳",
         "description": "分享匿名使用資料，幫助我們改進 Amical。",
         "learnMore": "了解更多"
       },
@@ -508,12 +508,12 @@
       },
       "toast": {
         "settingsUpdated": "設定已更新",
-        "settingsUpdateFailed": "無法更新設定。請再試一次。",
+        "settingsUpdateFailed": "無法更新設定，請再試一次。",
         "telemetryUpdated": "遙測設定已更新",
-        "telemetryUpdateFailed": "無法更新遙測設定。請再試一次。",
+        "telemetryUpdateFailed": "無法更新遙測設定，請再試一次。",
         "resetting": "正在重設應用程式...",
-        "resetSuccess": "應用程式已成功重設。重新啟動中...",
-        "resetFailed": "應用程式重設失敗。請稍後再試。",
+        "resetSuccess": "應用程式已成功重設，重新啟動中...",
+        "resetFailed": "應用程式重設失敗，請稍後再試。",
         "logSaved": "日誌檔案儲存成功",
         "logSaveFailed": "日誌檔案儲存失敗",
         "machineIdCopied": "系統識別碼已複製到剪貼簿"
@@ -569,7 +569,7 @@
       },
       "report": {
         "title": "回報轉錄問題",
-        "description": "描述這項轉錄出了什麼問題。您的反饋有助於我們改進。",
+        "description": "描述這項轉錄出了什麼問題，您的回饋有助於我們改進。",
         "placeholder": "例如：遺漏詞語、偵測到錯誤語言、輸出亂碼...",
         "cancel": "取消",
         "submit": "提交"
@@ -586,8 +586,8 @@
         "copied": "已複製到剪貼簿",
         "retrySuccess": "已成功重試轉錄",
         "retryFailed": "重試轉錄失敗",
-        "reportSuccess": "回報提交成功。感謝您的反饋！",
-        "reportFailed": "無法提交回報。請稍後再試。"
+        "reportSuccess": "回報提交成功，感謝您的回饋！",
+        "reportFailed": "無法提交回報，請稍後再試。"
       },
       "search": {
         "placeholder": "搜尋轉錄內容..."
@@ -606,7 +606,7 @@
     },
     "dictation": {
       "title": "聽寫",
-      "description": "配置聽寫、語言、麥克風及 AI 模型設定",
+      "description": "聽寫、語言、麥克風及 AI 模型設定",
       "language": {
         "autoDetect": {
           "label": "自動偵測語言",
@@ -623,7 +623,7 @@
         "systemDefault": "系統預設",
         "systemDefaultWithName": "系統預設 ({{deviceName}})",
         "noDevices": "沒有可用的麥克風",
-        "noDevicesHelp": "未偵測到麥克風。請檢查您的音訊設備。",
+        "noDevicesHelp": "未偵測到麥克風，請檢查您的音訊設備。",
         "toast": {
           "changed": "麥克風變更為 {{deviceName}}",
           "systemDefault": "使用系統預設麥克風",
@@ -653,20 +653,20 @@
         "noLanguageModels": "缺少可用的語言模型，無法進行格式化。",
         "syncLanguageModels": "同步語言模型",
         "toast": {
-          "saveFailed": "無法儲存格式設定。請稍後再試。",
+          "saveFailed": "無法儲存格式設定，請稍後再試。",
           "loginInBrowser": "請在瀏覽器中完成登入",
           "loginStartFailed": "無法啟動登入程序"
         }
       }
     },
     "shortcuts": {
-      "title": "捷徑",
-      "description": "設定聽寫和免持模式的鍵盤捷徑",
+      "title": "快捷鍵",
+      "description": "設定聽寫和免持模式的快捷鍵",
       "toast": {
-        "pushToTalkUpdated": "一鍵說話的捷徑已更新",
-        "handsFreeUpdated": "免持模式捷徑已更新",
-        "pasteLastTranscriptUpdated": "貼上最後一次轉錄內容的捷徑已更新",
-        "newNoteUpdated": "建立新筆記的捷徑已更新"
+        "pushToTalkUpdated": "一鍵說話的快捷鍵已更新",
+        "handsFreeUpdated": "免持模式快捷鍵已更新",
+        "pasteLastTranscriptUpdated": "貼上最後一次轉錄內容的快捷鍵已更新",
+        "newNoteUpdated": "建立新筆記的快捷鍵已更新"
       },
       "pushToTalk": {
         "label": "一鍵說話 (Push to talk)",
@@ -678,7 +678,7 @@
       },
       "pasteLastTranscript": {
         "label": "貼上最後的轉錄",
-        "description": "將您最近的轉錄結果貼上到當前活躍的應用程式中"
+        "description": "將您最近的轉錄結果貼上到當前的應用程式中"
       },
       "newNote": {
         "label": "新筆記",
@@ -688,11 +688,11 @@
         "noKeysDetected": "未偵測到任何按鍵",
         "tooManyKeys": "按鍵數量過多 - 請使用 {{max}} 個或更少",
         "invalidKeyCombination": "無效的按鍵組合",
-        "alreadyAssigned": "該捷徑已指派給其他操作",
-        "conflictsWithSystem": "{{shortcut}} 與目前的系統捷徑相衝突",
+        "alreadyAssigned": "該快捷鍵已指派給其他操作",
+        "conflictsWithSystem": "{{shortcut}} 與目前的系統快捷鍵衝突",
         "addModifier": "請增加修飾鍵（如 Cmd、Ctrl 或是 Fn）",
         "duplicateModifierPairs": "無法同時使用左側與右側的 {{modifier}}",
-        "overlapsWithPushToTalk": "這與您的「一鍵說話」捷徑重疊，可能會導致問題產生"
+        "overlapsWithPushToTalk": "這與您的「一鍵說話」快捷鍵重疊，可能會導致問題產生"
       },
       "input": {
         "pressKeys": "請按下按鍵..."
@@ -748,21 +748,21 @@
       }
     },
     "vocabulary": {
-      "title": "詞彙",
+      "title": "字典",
       "description": "管理您的自訂詞彙和用於聽寫的字詞替換。",
       "addButton": "新增單字",
       "loading": "載入自訂詞彙中...",
-      "empty": "找不到任何詞彙。添加您的第一個自訂詞彙以開始使用。",
+      "empty": "找不到任何詞彙。加入您的第一個自訂詞彙以開始使用。",
       "toast": {
         "added": "已加入詞彙到您的字典中",
         "addFailed": "加入單字失敗：{{message}}",
         "updated": "詞彙已更新",
         "updateFailed": "無法更新單字：{{message}}",
-        "deleted": "單字已從詞彙庫中刪除",
+        "deleted": "單字已從字典中刪除",
         "deleteFailed": "無法刪除單字：{{message}}"
       },
       "dialog": {
-        "addTitle": "新增至詞彙庫",
+        "addTitle": "新增至字典",
         "editTitle": "編輯詞彙",
         "replacementLabel": "設定為替代字詞",
         "misspellingPlaceholder": "常見錯誤拼寫...",
@@ -823,7 +823,7 @@
           "disconnected": "已斷開"
         },
         "placeholders": {
-          "openRouter": "API 密鑰 (API Key)",
+          "openRouter": "API 金鑰",
           "ollama": "Ollama 網址 (例如 http://localhost:11434)"
         },
         "buttons": {
@@ -834,18 +834,18 @@
         },
         "removeDialog": {
           "title": "移除提供商連線",
-          "description": "確定要移除該 {{provider}} 的連線嗎？這將會中斷連線並刪除此提供商所有已同步的模型。此動作無法復原。",
+          "description": "確定要移除 {{provider}} 的連線嗎？這將會中斷連線並刪除此提供商所有已同步的模型。此動作無法復原。",
           "cancel": "取消",
           "confirm": "移除提供商"
         },
         "toast": {
           "configSaved": "{{provider}} 設定已成功儲存！",
-          "configSaveFailed": "儲存 {{provider}} 設定失敗。請再試一次。",
+          "configSaveFailed": "儲存 {{provider}} 設定失敗，請再試一次。",
           "validated": "{{provider}} 連線已成功驗證！",
           "validationFailed": "{{provider}} 驗證失敗：{{message}}",
           "validationError": "{{provider}} 驗證錯誤：{{message}}",
           "removed": "已成功移除 {{provider}} 提供商！",
-          "removeFailed": "移除 {{provider}} 提供商失敗。請再試一下。"
+          "removeFailed": "移除 {{provider}} 提供商失敗，請再試一下。"
         },
         "validationFailed": "驗證失敗"
       },
@@ -853,11 +853,11 @@
         "title": "已同步的模型",
         "toast": {
           "removed": "模型已成功移除！",
-          "removeFailed": "移除模型失敗。請稍後再試。",
+          "removeFailed": "移除模型失敗，請再試一次。",
           "defaultLanguageUpdated": "預設語言模型已更新！",
-          "defaultLanguageFailed": "設定預設語言模型失敗。請稍後再試。",
+          "defaultLanguageFailed": "設定預設語言模型失敗，請再試一次。",
           "defaultEmbeddingUpdated": "預設 Embedding 模型已更新！",
-          "defaultEmbeddingFailed": "設定預設 Embedding 模型失敗。請再試一次。"
+          "defaultEmbeddingFailed": "設定預設 Embedding 模型失敗，請再試一次。"
         },
         "errorDefaultRemove": "請先選擇其他模型作為預設，再嘗試移除此模型。",
         "empty": {
@@ -870,14 +870,14 @@
           "size": "檔案大小",
           "context": "上下文範圍",
           "actions": "操作",
-          "unknown": "未知的",
+          "unknown": "未知",
           "currentDefault": "目前的預設模型",
           "setDefault": "設為預設模型",
           "remove": "移除模型"
         },
         "deleteDialog": {
           "title": "確認刪除",
-          "description": "確信要從您的同步模型庫中移除「{{modelName}}」嗎？此操作無法撤銷。",
+          "description": "確定要從您的同步模型庫中移除「{{modelName}}」嗎？此操作無法撤銷。",
           "cancel": "取消",
           "confirm": "移除模型"
         },
@@ -903,7 +903,7 @@
         "syncButton_other": "同步 {{count}} 個模型",
         "toast": {
           "synced": "已成功將模型同步至資料庫！",
-          "syncFailed": "同步模型資料到底部時發生錯誤。請再試一次。"
+          "syncFailed": "同步模型至資料庫時發生錯誤，請再試一次。"
         }
       },
       "speech": {
@@ -930,13 +930,13 @@
         },
         "deleteDialog": {
           "title": "刪除模型",
-          "description": "您確定要刪除此模型嗎？刪除後無法撤回，未來如需使用必須重新下載。",
+          "description": "您確定要刪除此模型嗎？刪除後無法復原，未來如需使用必須重新下載。",
           "cancel": "取消",
           "confirm": "刪除"
         },
         "loginDialog": {
           "title": "需要登入",
-          "description": "如要體驗 Amical 雲端轉錄，需使用您的 Amical 帳號登入。這麼做才能在雲端啟用具備高準確度的轉錄功能。",
+          "description": "如要體驗 Amical 雲端轉錄，需使用您的 Amical 帳號登入，才能啟用高準確度的轉錄功能。",
           "browserNotice": "點擊「登入」後，系統會將您引導至瀏覽器以完成登入程序。",
           "cloudBenefit": "快速、高準確度的雲端轉錄",
           "cancel": "取消",
@@ -947,7 +947,7 @@
           "downloadStartFailed": "無法開始下載",
           "downloadCancelFailed": "無法取消下載",
           "deleteFailed": "無法刪除模型",
-          "cloudSelected": "已選取 Amical 雲端模型。並啟用了雲端格式化。",
+          "cloudSelected": "已選取 Amical 雲端模型並啟用了雲端格式化。",
           "selectFailed": "選擇模型時發生錯誤",
           "loginInBrowser": "請在您的網頁中完成登入程序",
           "loginStartFailed": "啟動登入程序時發生錯誤",
