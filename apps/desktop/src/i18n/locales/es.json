@@ -422,7 +422,8 @@
           "system": "Sistema",
           "en": "English",
           "ja": "日本語",
-          "es": "Español"
+          "es": "Español",
+          "zh-TW": "繁體中文"
         },
         "restartDialog": {
           "title": "Se requiere reiniciar",
