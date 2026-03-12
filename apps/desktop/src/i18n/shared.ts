@@ -39,7 +39,12 @@ export const resolveLocale = (locale?: string | null): SupportedLocale => {
     return base as SupportedLocale;
   }
 
-  if (base === "zh") {
+  if (
+    normalized === "zh" ||
+    normalized === "zh-HK" ||
+    normalized === "zh-MO" ||
+    normalized.startsWith("zh-Hant")
+  ) {
     return "zh-TW";
   }
 

@@ -565,7 +565,8 @@
         "downloadAudio": "下載音訊",
         "delete": "刪除",
         "retry": "重試轉錄",
-        "report": "回報問題"
+        "report": "回報問題",
+        "reportDisabledTelemetry": "請先在進階設定中啟用遙測，才能回報問題"
       },
       "report": {
         "title": "回報轉錄問題",
