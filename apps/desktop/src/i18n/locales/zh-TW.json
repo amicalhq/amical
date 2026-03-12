@@ -669,7 +669,7 @@
         "newNoteUpdated": "建立新筆記的快捷鍵已更新"
       },
       "pushToTalk": {
-        "label": "一鍵說話 (Push to talk)",
+        "label": "一鍵說話",
         "description": "按住按鍵的同時進行聽寫"
       },
       "handsFree": {
@@ -748,7 +748,7 @@
       }
     },
     "vocabulary": {
-      "title": "字典",
+      "title": "詞彙",
       "description": "管理您的自訂詞彙和用於聽寫的字詞替換。",
       "addButton": "新增單字",
       "loading": "載入自訂詞彙中...",
