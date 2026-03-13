@@ -345,7 +345,7 @@
         "description": "語音辨識和聽寫設定"
       },
       "shortcuts": {
-        "title": "捷徑",
+        "title": "快捷鍵",
         "description": "自訂鍵盤捷徑和快捷鍵"
       },
       "vocabulary": {
@@ -373,7 +373,7 @@
       "docs": "說明文件",
       "community": "社群",
       "discordAlt": "Discord",
-      "logoAlt": "Amical Logo",
+      "logoAlt": "Amical 標誌",
       "brand": "Amical"
     },
     "search": {
