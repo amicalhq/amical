@@ -422,7 +422,8 @@
           "system": "システム",
           "en": "English",
           "es": "Español",
-          "ja": "日本語"
+          "ja": "日本語",
+          "zh-TW": "繁體中文"
         },
         "restartDialog": {
           "title": "再起動が必要です",
