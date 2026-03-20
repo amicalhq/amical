@@ -30,7 +30,7 @@ export const modelsRouter = createRouter({
         // Return all available whisper models as Model type
         // We need to convert from AvailableWhisperModel to Model format
         const availableModels = modelService.getAvailableModels();
-        const downloadedModels = await modelService.getDownloadedModels();
+        const downloadedModels = await modelService.getValidDownloadedModels();
 
         // Check authentication status for cloud model filtering
         const authService = ctx.serviceManager.getService("authService");

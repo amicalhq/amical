@@ -14,7 +14,6 @@ import {
   getModelsByProvider,
   getDownloadedWhisperModels,
   removeModel,
-  modelExists,
   syncLocalWhisperModels,
   getAllModels,
   syncModelsForProvider,
@@ -129,6 +128,9 @@ class ModelService extends EventEmitter {
         speed: model.speed,
         accuracy: model.accuracy,
         filename: model.filename,
+        artifacts: model.artifacts?.map((artifact) => ({
+          filename: artifact.filename,
+        })),
       }));
 
       const syncResult = await syncLocalWhisperModels(
@@ -319,17 +321,24 @@ class ModelService extends EventEmitter {
     return record;
   }
 
-  // Get only valid downloaded models (files that exist on disk)
-  // Since we sync on init and only store downloaded models, all models in DB are valid
+  // Get only valid downloaded models (all required artifacts exist on disk)
   async getValidDownloadedModels(): Promise<Record<string, DBModel>> {
-    return this.getDownloadedModels();
+    const downloadedModels = await this.getDownloadedModels();
+    const validModels: Record<string, DBModel> = {};
+
+    for (const model of Object.values(downloadedModels)) {
+      if (this.isDownloadedModelValid(model)) {
+        validModels[model.id] = model;
+      }
+    }
+
+    return validModels;
   }
 
   // Check if a model is downloaded
-  // Since we only store downloaded models, just check if it exists in DB
   async isModelDownloaded(modelId: string): Promise<boolean> {
-    const models = await getModelsByProvider("local-whisper");
-    return models.some((m) => m.id === modelId);
+    const downloadedModels = await this.getValidDownloadedModels();
+    return !!downloadedModels[modelId];
   }
 
   // Get download progress for a model
@@ -1229,10 +1238,11 @@ class ModelService extends EventEmitter {
         (m) => m.id === defaultSpeechModel,
       );
       const isAmicalModel = availableModel?.setup === "cloud";
-      const existsInDb = await modelExists("local-whisper", defaultSpeechModel);
+      const validDownloadedModels = await this.getValidDownloadedModels();
+      const existsLocally = !!validDownloadedModels[defaultSpeechModel];
 
       // Amical cloud models are always valid; local models must exist in DB
-      if (!isAmicalModel && !existsInDb) {
+      if (!isAmicalModel && !existsLocally) {
         logger.main.info("Clearing invalid default speech model", {
           modelId: defaultSpeechModel,
         });
@@ -1293,6 +1303,43 @@ class ModelService extends EventEmitter {
         );
       }
     }
+  }
+
+  private isDownloadedModelValid(model: DBModel): boolean {
+    if (!model.localPath) {
+      return false;
+    }
+
+    const availableModel = AVAILABLE_MODELS.find(
+      (available) => available.id === model.id && available.setup === "offline",
+    );
+    if (!availableModel) {
+      return false;
+    }
+
+    const modelDirectory = path.dirname(model.localPath);
+    const recordedLocalFiles =
+      model.originalModel &&
+      typeof model.originalModel === "object" &&
+      Array.isArray(
+        (model.originalModel as { localFiles?: unknown }).localFiles,
+      )
+        ? (model.originalModel as { localFiles: unknown[] }).localFiles.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+    const requiredFilenames =
+      availableModel.artifacts && availableModel.artifacts.length > 0
+        ? availableModel.artifacts.map((artifact) => artifact.filename)
+        : [availableModel.filename];
+
+    return requiredFilenames.every((filename) => {
+      const recordedMatch = recordedLocalFiles.find(
+        (localFile) => path.basename(localFile) === filename,
+      );
+      const resolvedPath = recordedMatch || path.join(modelDirectory, filename);
+      return fs.existsSync(resolvedPath);
+    });
   }
 }
 

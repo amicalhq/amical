@@ -172,6 +172,9 @@ export async function syncLocalWhisperModels(
     speed: number;
     accuracy: number;
     filename: string;
+    artifacts?: Array<{
+      filename: string;
+    }>;
   }>,
 ): Promise<{ added: number; updated: number; removed: number }> {
   const fs = await import("fs");
@@ -188,33 +191,96 @@ export async function syncLocalWhisperModels(
   // Map available models by ID for easy lookup
   // (we already have them indexed by ID, so we don't need this map)
 
+  const resolveRequiredLocalFiles = (
+    model: (typeof availableModels)[number],
+  ) => {
+    const requiredFilenames =
+      model.artifacts && model.artifacts.length > 0
+        ? model.artifacts.map((artifact) => artifact.filename)
+        : [model.filename];
+
+    const resolvedFiles = requiredFilenames
+      .map((filename) => {
+        const candidatePaths = [
+          path.join(modelsDirectory, filename),
+          path.join(modelsDirectory, model.id, filename),
+        ];
+
+        return candidatePaths.find((candidatePath) =>
+          fs.existsSync(candidatePath),
+        );
+      })
+      .filter((filePath): filePath is string => !!filePath);
+
+    return resolvedFiles.length === requiredFilenames.length
+      ? resolvedFiles
+      : null;
+  };
+
   // Process each available model
   for (const model of availableModels) {
-    const candidatePaths = [
-      path.join(modelsDirectory, model.filename),
-      path.join(modelsDirectory, model.id, model.filename),
-    ];
+    const resolvedFiles = resolveRequiredLocalFiles(model);
     const filePath =
-      candidatePaths.find((candidatePath) => fs.existsSync(candidatePath)) ||
-      candidatePaths[1];
-    const fileExists = fs.existsSync(filePath);
+      resolvedFiles?.find(
+        (resolvedFilePath) =>
+          path.basename(resolvedFilePath) === model.filename,
+      ) || path.join(modelsDirectory, model.id, model.filename);
+    const fileExists = !!resolvedFiles;
     const existingRecord = existingModelMap.get(model.id);
 
     if (fileExists) {
-      // File exists on disk
-      const stats = fs.statSync(filePath);
+      const sizeBytes = resolvedFiles.reduce(
+        (sum, resolvedFilePath) => sum + fs.statSync(resolvedFilePath).size,
+        0,
+      );
+      const existingLocalFiles =
+        existingRecord?.originalModel &&
+        typeof existingRecord.originalModel === "object" &&
+        !Array.isArray(existingRecord.originalModel) &&
+        Array.isArray(
+          (
+            existingRecord.originalModel as {
+              localFiles?: unknown;
+            }
+          ).localFiles,
+        )
+          ? (
+              existingRecord.originalModel as {
+                localFiles: unknown[];
+              }
+            ).localFiles.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [];
+      const localFilesChanged =
+        existingLocalFiles.length !== resolvedFiles.length ||
+        existingLocalFiles.some(
+          (existingLocalFile, index) =>
+            existingLocalFile !== resolvedFiles[index],
+        );
+      const originalModel =
+        existingRecord?.originalModel &&
+        typeof existingRecord.originalModel === "object" &&
+        !Array.isArray(existingRecord.originalModel)
+          ? {
+              ...existingRecord.originalModel,
+              localFiles: resolvedFiles,
+            }
+          : { localFiles: resolvedFiles };
 
       if (existingRecord) {
         // Update existing record if needed
         if (
           existingRecord.localPath !== filePath ||
-          existingRecord.sizeBytes !== stats.size
+          existingRecord.sizeBytes !== sizeBytes ||
+          localFilesChanged
         ) {
           await upsertModel({
             ...existingRecord,
             localPath: filePath,
-            sizeBytes: stats.size,
+            sizeBytes,
             downloadedAt: existingRecord.downloadedAt || new Date(),
+            originalModel,
           });
           updated++;
         }
@@ -231,10 +297,10 @@ export async function syncLocalWhisperModels(
           speed: model.speed,
           accuracy: model.accuracy,
           localPath: filePath,
-          sizeBytes: stats.size,
+          sizeBytes,
           downloadedAt: new Date(),
           context: null,
-          originalModel: null,
+          originalModel,
         });
         added++;
       }
