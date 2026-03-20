@@ -1,47 +1,54 @@
 import * as React from "react";
-import { type Icon } from "@tabler/icons-react";
+import { useLocation } from "@tanstack/react-router";
 
+import {
+  NavSecondaryItemButton,
+  type NavSecondaryItem,
+} from "@/components/nav-secondary-item-button";
 import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { AuthButton } from "@/components/auth-button";
 import { FeedbackButton } from "@/components/feedback-button";
 import { DevThemeToggle } from "@/components/dev-theme-toggle";
+import { DevFeatureFlagsRefresh } from "@/components/dev-feature-flags-refresh";
+import { isInternalUrl } from "@/utils/url";
+export type { NavSecondaryItem } from "@/components/nav-secondary-item-button";
 
 export function NavSecondary({
   items,
   ...props
 }: {
-  items: {
-    title: string;
-    url: string;
-    icon: Icon;
-    external?: boolean;
-  }[];
+  items: NavSecondaryItem[];
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const location = useLocation();
+
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
         <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton
-                onClick={async () => {
-                  if (item.external && item.url) {
-                    await window.electronAPI.openExternal(item.url);
+          {items.map((item) => {
+            return (
+              <SidebarMenuItem key={item.id}>
+                <NavSecondaryItemButton
+                  item={item}
+                  isActive={
+                    isInternalUrl(item.url) &&
+                    location.pathname.startsWith(item.url)
                   }
-                }}
-              >
-                <item.icon />
-                <span>{item.title}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-          {process.env.NODE_ENV === "development" && <DevThemeToggle />}
+                />
+              </SidebarMenuItem>
+            );
+          })}
+          {process.env.NODE_ENV === "development" && (
+            <>
+              <DevThemeToggle />
+              <DevFeatureFlagsRefresh />
+            </>
+          )}
           <FeedbackButton />
           <AuthButton />
         </SidebarMenu>

@@ -155,7 +155,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     setup: "cloud",
     runtime: "cloud",
     provider: "Amical Cloud",
-    providerIcon: "/assets/logo.svg",
+    providerIcon: "/assets/icon_logo.svg",
   },
   {
     id: "parakeet-tdt-0.6b-v3-int8",
@@ -253,8 +253,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     accuracy: 2.5,
     setup: "offline",
     runtime: "whisper-local",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-base",
@@ -286,8 +286,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     accuracy: 3.0,
     setup: "offline",
     runtime: "whisper-local",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-small",
@@ -320,8 +320,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     accuracy: 3.8,
     setup: "offline",
     runtime: "whisper-local",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-medium",
@@ -353,8 +353,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     accuracy: 4.3,
     setup: "offline",
     runtime: "whisper-local",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-large-v3",
@@ -386,8 +386,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     accuracy: 4.7,
     setup: "offline",
     runtime: "whisper-local",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-large-v3-turbo",
@@ -419,7 +419,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     accuracy: 4.2,
     setup: "offline",
     runtime: "whisper-local",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
 ];

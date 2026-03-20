@@ -12,6 +12,8 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -25,8 +27,10 @@ import {
   Search,
   RotateCcw,
   Loader2,
+  Flag,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { api } from "@/trpc/react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
@@ -83,6 +87,8 @@ interface HistoryTableCardProps {
   onDownload: (transcriptionId: number) => void;
   onDelete: (id: number) => void;
   onRetry: (id: number) => void;
+  onReport: (id: number, feedbackText: string) => void;
+  isTelemetryEnabled: boolean;
   hovered: number | null;
   setHovered: (id: number | null) => void;
   currentPlayingId: number | null;
@@ -97,6 +103,8 @@ function HistoryTableCard({
   onDownload,
   onDelete,
   onRetry,
+  onReport,
+  isTelemetryEnabled,
   setHovered,
   currentPlayingId,
   isPlaying,
@@ -105,6 +113,11 @@ function HistoryTableCard({
   const { t } = useTranslation();
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportTranscriptionId, setReportTranscriptionId] = useState<
+    number | null
+  >(null);
+  const [reportText, setReportText] = useState("");
 
   const handleReadMore = (text: string) => {
     setSelectedText(text);
@@ -251,6 +264,41 @@ function HistoryTableCard({
                           </Tooltip>
                         </TooltipProvider>
                       )}
+                      {item.audioFile &&
+                        item.speechModel === "amical-cloud" && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    disabled={!isTelemetryEnabled}
+                                    onClick={() => {
+                                      if (!isTelemetryEnabled) {
+                                        return;
+                                      }
+                                      setReportTranscriptionId(item.id);
+                                      setReportText("");
+                                      setReportDialogOpen(true);
+                                    }}
+                                  >
+                                    <Flag className="w-4 h-4" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  {isTelemetryEnabled
+                                    ? t("settings.history.actions.report")
+                                    : t(
+                                        "settings.history.actions.reportDisabledTelemetry",
+                                      )}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -286,6 +334,43 @@ function HistoryTableCard({
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent className="bg-secondary">
+          <DialogHeader>
+            <DialogTitle>{t("settings.history.report.title")}</DialogTitle>
+            <DialogDescription>
+              {t("settings.history.report.description")}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={reportText}
+            onChange={(e) => setReportText(e.target.value)}
+            placeholder={t("settings.history.report.placeholder")}
+            maxLength={2000}
+            rows={4}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setReportDialogOpen(false)}
+            >
+              {t("settings.history.report.cancel")}
+            </Button>
+            <Button
+              disabled={!reportText.trim()}
+              onClick={() => {
+                if (reportTranscriptionId && reportText.trim()) {
+                  onReport(reportTranscriptionId, reportText.trim());
+                  setReportDialogOpen(false);
+                }
+              }}
+            >
+              {t("settings.history.report.submit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -295,6 +380,8 @@ export default function HistorySettingsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [hovered, setHovered] = useState<number | null>(null);
   const audioPlayer = useAudioPlayer();
+  const telemetrySettingsQuery = api.settings.getTelemetrySettings.useQuery();
+  const isTelemetryEnabled = telemetrySettingsQuery.data?.enabled !== false;
 
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
@@ -349,6 +436,17 @@ export default function HistorySettingsPage() {
       onError: (error) => {
         console.error("Error downloading audio:", error);
         toast.error(t("settings.history.toast.downloadFailed"));
+      },
+    });
+
+  const reportTranscriptionMutation =
+    api.transcriptions.reportTranscription.useMutation({
+      onSuccess: () => {
+        toast.success(t("settings.history.toast.reportSuccess"));
+      },
+      onError: (error) => {
+        console.error("Error reporting transcription:", error);
+        toast.error(t("settings.history.toast.reportFailed"));
       },
     });
 
@@ -408,6 +506,13 @@ export default function HistorySettingsPage() {
     retryTranscriptionMutation.mutate({ id });
   }
 
+  function handleReport(id: number, feedbackText: string) {
+    reportTranscriptionMutation.mutate({
+      transcriptionId: id,
+      feedbackText,
+    });
+  }
+
   function handleDelete(id: number) {
     deleteTranscriptionMutation.mutate({ id });
   }
@@ -415,7 +520,7 @@ export default function HistorySettingsPage() {
   const groupedHistory = groupHistoryByDate(transcriptions);
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div>
       {/* Header Section */}
       <div className="mb-8">
         <h1 className="text-xl font-bold">{t("settings.history.title")}</h1>
@@ -471,6 +576,8 @@ export default function HistorySettingsPage() {
                   onDownload={handleDownload}
                   onDelete={handleDelete}
                   onRetry={handleRetry}
+                  onReport={handleReport}
+                  isTelemetryEnabled={isTelemetryEnabled}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
@@ -493,6 +600,8 @@ export default function HistorySettingsPage() {
                   onDownload={handleDownload}
                   onDelete={handleDelete}
                   onRetry={handleRetry}
+                  onReport={handleReport}
+                  isTelemetryEnabled={isTelemetryEnabled}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
@@ -515,6 +624,8 @@ export default function HistorySettingsPage() {
                   onDownload={handleDownload}
                   onDelete={handleDelete}
                   onRetry={handleRetry}
+                  onReport={handleReport}
+                  isTelemetryEnabled={isTelemetryEnabled}
                   hovered={hovered}
                   setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}

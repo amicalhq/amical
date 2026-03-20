@@ -90,6 +90,13 @@ export class FeatureFlagService {
       logger.main.info("Feature flags refreshed", {
         count: Object.keys(this.flags).length,
       });
+      logger.main.debug("Feature flags refreshed details", {
+        flags: Object.keys(this.flags).map((key) => ({
+          key,
+          value: this.flags[key],
+          payload: this.payloads[key],
+        })),
+      });
     } catch (err) {
       logger.main.error("Failed to refresh feature flags:", err);
     }

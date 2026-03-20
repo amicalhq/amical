@@ -11,8 +11,8 @@ const RPCMethodNameSchema = z.union([
   z.literal("getAccessibilityStatus"),
   z.literal("requestAccessibilityPermission"),
   z.literal("pasteText"),
-  z.literal("muteSystemAudio"),
-  z.literal("restoreSystemAudio"),
+  z.literal("startRecording"),
+  z.literal("stopRecording"),
   z.literal("setShortcuts"),
   z.literal("recheckPressedKeys"),
 ]);
@@ -52,22 +52,6 @@ export const PasteTextRequestSchema = RpcRequestSchema.extend({
   params: PasteTextParamsSchema, // Assuming pasteText always requires params
 });
 export type PasteTextRequest = z.infer<typeof PasteTextRequestSchema>;
-
-export const PlaySystemAudioRequestSchema = RpcRequestSchema.extend({
-  method: z.literal("playSystemAudio"),
-  params: z.null(),
-});
-export type PlaySystemAudioRequest = z.infer<
-  typeof PlaySystemAudioRequestSchema
->;
-
-export const PauseSystemAudioRequestSchema = RpcRequestSchema.extend({
-  method: z.literal("pauseSystemAudio"),
-  params: z.null(),
-});
-export type PauseSystemAudioRequest = z.infer<
-  typeof PauseSystemAudioRequestSchema
->;
 
 export const RecheckPressedKeysRequestSchema = RpcRequestSchema.extend({
   method: z.literal("recheckPressedKeys"),

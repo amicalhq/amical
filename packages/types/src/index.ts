@@ -6,8 +6,8 @@ export * from "./schemas/rpc/response.js";
 export * from "./schemas/methods/get-accessibility-tree-details.js";
 export * from "./schemas/methods/get-accessibility-context.js";
 export * from "./schemas/methods/paste-text.js";
-export * from "./schemas/methods/mute-system-audio.js";
-export * from "./schemas/methods/restore-system-audio.js";
+export * from "./schemas/methods/start-recording.js";
+export * from "./schemas/methods/stop-recording.js";
 export * from "./schemas/methods/set-shortcuts.js";
 export * from "./schemas/methods/recheck-pressed-keys.js";
 

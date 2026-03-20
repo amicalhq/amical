@@ -117,6 +117,12 @@ export interface AppSettingsData {
   ui?: {
     theme: "light" | "dark" | "system";
     locale?: string;
+    notesWindow?: {
+      xRatio: number;
+      yRatio: number;
+      widthRatio: number;
+      heightRatio: number;
+    };
   };
   transcription?: {
     language: string;
@@ -138,6 +144,7 @@ export interface AppSettingsData {
     pushToTalk?: number[];
     toggleRecording?: number[];
     pasteLastTranscript?: number[];
+    newNote?: number[];
   };
 
   modelProvidersConfig?: {
@@ -154,7 +161,7 @@ export interface AppSettingsData {
 
   dictation?: {
     autoDetectEnabled: boolean;
-    selectedLanguage: string; // Required when autoDetectEnabled is false, defaults to "en"
+    selectedLanguage: string; // Concrete language used when auto-detect is disabled
   };
   preferences?: {
     launchAtLogin?: boolean;
@@ -162,6 +169,7 @@ export interface AppSettingsData {
     showWidgetWhileInactive?: boolean;
     showInDock?: boolean;
     muteSystemAudio?: boolean;
+    muteDictationSounds?: boolean;
     autoDictateOnNewNote?: boolean;
   };
   telemetry?: {

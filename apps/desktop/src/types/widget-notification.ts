@@ -3,7 +3,9 @@ import { ErrorCodes, type ErrorCode } from "./error";
 export type WidgetNotificationType =
   | "no_audio"
   | "empty_transcript"
-  | "transcription_failed";
+  | "transcription_failed"
+  | "recording_duration_warning"
+  | "recording_auto_stopped";
 
 export type WidgetNotificationActionIcon = "discord";
 
@@ -24,6 +26,7 @@ export interface WidgetNotificationAction {
 export interface WidgetNotificationConfig {
   title: LocalizedText;
   description: LocalizedText;
+  subDescription?: LocalizedText;
   primaryAction?: WidgetNotificationAction;
   secondaryAction?: WidgetNotificationAction;
 }
@@ -33,6 +36,7 @@ export interface WidgetNotification {
   type: WidgetNotificationType;
   title: LocalizedText;
   description?: LocalizedText; // Pre-filled description, or generated via template on frontend
+  subDescription?: LocalizedText;
   errorCode?: ErrorCode; // For transcription_failed
   traceId?: string; // For cloud debugging
   primaryAction?: WidgetNotificationAction;
@@ -58,6 +62,14 @@ export const getNotificationDescription = (
       };
     case "transcription_failed":
       return { key: "widget.notifications.description.transcriptionFailed" };
+    case "recording_duration_warning":
+      return {
+        key: "widget.notifications.description.recordingDurationWarning",
+      };
+    case "recording_auto_stopped":
+      return {
+        key: "widget.notifications.description.recordingAutoStopped",
+      };
   }
 };
 
@@ -71,6 +83,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.authRequired.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.logIn" },
       navigateTo: "/settings/account",
@@ -86,6 +99,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.rateLimitExceeded.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewUsage" },
       navigateTo: "/settings/account",
@@ -101,6 +115,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.internalServerError.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.support" },
       icon: "discord",
@@ -114,6 +129,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
   [ErrorCodes.UNKNOWN]: {
     title: { key: "widget.notifications.errorCode.unknown.title" },
     description: { key: "widget.notifications.errorCode.unknown.description" },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewHistory" },
       navigateTo: "/history",
@@ -129,6 +145,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.networkError.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.settings" },
       navigateTo: "/settings",
@@ -161,6 +178,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.workerInitializationFailed.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.support" },
       icon: "discord",
@@ -172,6 +190,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.workerCrashed.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.support" },
       icon: "discord",
@@ -185,6 +204,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     description: {
       key: "widget.notifications.errorCode.localTranscriptionFailed.description",
     },
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewHistory" },
       navigateTo: "/history",
@@ -219,6 +239,7 @@ export const WIDGET_NOTIFICATION_CONFIG: Record<
     description: {
       key: "widget.notifications.type.emptyTranscript.description",
     }, // Fallback, replaced by template
+    subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.configureMicrophone" },
       navigateTo: "/settings/dictation",
@@ -229,8 +250,24 @@ export const WIDGET_NOTIFICATION_CONFIG: Record<
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  recording_duration_warning: {
+    title: {
+      key: "widget.notifications.type.recordingDurationWarning.title",
+    },
+    description: {
+      key: "widget.notifications.type.recordingDurationWarning.description",
+    },
+  },
+  recording_auto_stopped: {
+    title: {
+      key: "widget.notifications.type.recordingAutoStopped.title",
+    },
+    description: {
+      key: "widget.notifications.type.recordingAutoStopped.description",
+    },
+  },
   // Placeholder for type checking - actual config comes from ERROR_CODE_CONFIG
   transcription_failed: ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN],
 };
 
-export const WIDGET_NOTIFICATION_TIMEOUT = 5000;
+export const WIDGET_NOTIFICATION_TIMEOUT = 7_000;

@@ -1,9 +1,16 @@
 import * as React from "react";
-import { IconBookFilled } from "@tabler/icons-react";
+import {
+  IconBookFilled,
+  IconBrandDiscordFilled,
+  IconInfoCircle,
+} from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
 import { NavMain } from "@/components/nav-main";
-import { NavSecondary } from "@/components/nav-secondary";
+import {
+  NavSecondary,
+  type NavSecondaryItem,
+} from "@/components/nav-secondary";
 import {
   Sidebar,
   SidebarContent,
@@ -12,6 +19,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import {
+  parseSidebarCtaPayload,
+  SIDEBAR_CTA_FEATURE_FLAG,
+} from "@/utils/feature-flags";
 import { CommandSearchButton } from "./command-search-button";
 import { CreateNoteButton } from "./create-note-button";
 import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
@@ -20,14 +32,11 @@ export function SettingsSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
   const { t } = useTranslation();
+  const sidebarCtaFlag = useFeatureFlag(SIDEBAR_CTA_FEATURE_FLAG);
 
-  const DiscordIcon = () => (
-    <img
-      src="assets/discord-icon.svg"
-      alt={t("settings.sidebar.discordAlt")}
-      className="w-4 h-4"
-    />
-  );
+  const sidebarCtaPayload = sidebarCtaFlag.enabled
+    ? parseSidebarCtaPayload(sidebarCtaFlag.payload)
+    : null;
 
   const navMain = SETTINGS_NAV_ITEMS.map(({ titleKey, url, icon }) => ({
     title: t(titleKey),
@@ -35,24 +44,45 @@ export function SettingsSidebar({
     icon: typeof icon === "string" ? undefined : icon,
   }));
 
-  const navSecondary = [
+  const baseNavSecondary: NavSecondaryItem[] = [
     {
+      id: "docs",
       title: t("settings.sidebar.docs"),
       url: "https://amical.ai/docs",
       icon: IconBookFilled,
-      external: true,
     },
     {
+      id: "community",
       title: t("settings.sidebar.community"),
       url: "https://amical.ai/community",
-      icon: DiscordIcon,
-      external: true,
+      icon: IconBrandDiscordFilled,
     },
   ];
 
+  const navSecondaryCta: NavSecondaryItem | null = sidebarCtaPayload
+    ? {
+        id: "sidebar-cta",
+        title: sidebarCtaPayload.text,
+        url: sidebarCtaPayload.url,
+        icon: IconInfoCircle,
+        ctaStyle: {
+          palette: sidebarCtaPayload.palette,
+          style: sidebarCtaPayload.style,
+          emoji: sidebarCtaPayload.emoji,
+        },
+      }
+    : null;
+
+  const navSecondary: NavSecondaryItem[] = navSecondaryCta
+    ? [navSecondaryCta, ...baseNavSecondary]
+    : baseNavSecondary;
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      <div className="h-[var(--header-height)]"></div>
+      <div
+        className="h-[var(--titlebar-height)] shrink-0"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      />
       <SidebarHeader className="py-0 -mb-1">
         <SidebarMenu>
           <SidebarMenuItem>

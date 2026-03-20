@@ -37,7 +37,7 @@ export function LanguageSettings() {
   // Sync local state with server data
   useEffect(() => {
     if (dictationSettings) {
-      setSelectedLanguage(dictationSettings.selectedLanguage);
+      setSelectedLanguage(dictationSettings.selectedLanguage || "en");
       setAutoDetect(dictationSettings.autoDetectEnabled);
     }
   }, [dictationSettings]);
@@ -46,9 +46,11 @@ export function LanguageSettings() {
   const handleAutoDetectChange = async (enabled: boolean) => {
     setAutoDetect(enabled);
 
+    const resolvedLanguage = selectedLanguage || "en";
+
     const newSettings = {
       autoDetectEnabled: enabled,
-      selectedLanguage: enabled ? selectedLanguage : selectedLanguage || "en",
+      selectedLanguage: resolvedLanguage,
     };
 
     try {

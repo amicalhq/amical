@@ -42,6 +42,9 @@
   <a href="https://github.com/amicalhq/amical/releases/latest">
     <img src="https://amical.ai/download_button_windows.png" alt="Download for Windows" height="60">
   </a>
+  <a href="https://amical.ai/beta">
+    <img src="https://amical.ai/mobile_beta_button.svg" alt="Apply for Mobile Beta" height="60">
+  </a>
 </p>
 
 ### Homebrew (macOS)
@@ -100,9 +103,8 @@ Context-aware dictation that adapts to what you're doing: drafting an email, cha
 
 ## 🤗 Contributing
 
-Contributions are welcome! Please read the [Contributing Guide][contributing] to get started.
+Contributions are welcome! Reach out to the team in our [Discord server](https://amical.ai/community) to learn more.
 
-- **💡 [Contributing Guide][contributing]**: Learn about our contribution process and coding standards.
 - **🐛 [Report an Issue][issues]**: Found a bug? Let us know!
 - **💬 [Start a Discussion][discussions]**: Have ideas or suggestions? We'd love to hear from you.
 
@@ -112,8 +114,7 @@ Released under [MIT][license].
 
 <!-- REFERENCE LINKS -->
 
-[contributing]: https://github.com/amicalhq/amical/blob/main/CONTRIBUTING.md
 [license]: https://github.com/amicalhq/amical/blob/main/LICENSE
-[discussions]: https://discuss.amical.ai
+[discussions]: https://amical.ai/community
 [issues]: https://github.com/amicalhq/amical/issues
 [pulls]: https://github.com/amicalhq/amical/pulls "submit a pull request"

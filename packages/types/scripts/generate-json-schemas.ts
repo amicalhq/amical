@@ -18,13 +18,13 @@ import {
   PasteTextResultSchema,
 } from "../src/schemas/methods/paste-text.js";
 import {
-  MuteSystemAudioParamsSchema,
-  MuteSystemAudioResultSchema,
-} from "../src/schemas/methods/mute-system-audio.js";
+  StartRecordingParamsSchema,
+  StartRecordingResultSchema,
+} from "../src/schemas/methods/start-recording.js";
 import {
-  RestoreSystemAudioParamsSchema,
-  RestoreSystemAudioResultSchema,
-} from "../src/schemas/methods/restore-system-audio.js";
+  StopRecordingParamsSchema,
+  StopRecordingResultSchema,
+} from "../src/schemas/methods/stop-recording.js";
 import {
   SetShortcutsParamsSchema,
   SetShortcutsResultSchema,
@@ -77,23 +77,23 @@ const schemasToGenerate = [
   { zod: PasteTextParamsSchema, name: "PasteTextParams", category: "methods" },
   { zod: PasteTextResultSchema, name: "PasteTextResult", category: "methods" },
   {
-    zod: RestoreSystemAudioParamsSchema,
-    name: "RestoreSystemAudioParams",
+    zod: StartRecordingParamsSchema,
+    name: "StartRecordingParams",
     category: "methods",
   },
   {
-    zod: RestoreSystemAudioResultSchema,
-    name: "RestoreSystemAudioResult",
+    zod: StartRecordingResultSchema,
+    name: "StartRecordingResult",
     category: "methods",
   },
   {
-    zod: MuteSystemAudioParamsSchema,
-    name: "MuteSystemAudioParams",
+    zod: StopRecordingParamsSchema,
+    name: "StopRecordingParams",
     category: "methods",
   },
   {
-    zod: MuteSystemAudioResultSchema,
-    name: "MuteSystemAudioResult",
+    zod: StopRecordingResultSchema,
+    name: "StopRecordingResult",
     category: "methods",
   },
   {

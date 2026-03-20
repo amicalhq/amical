@@ -1,4 +1,4 @@
-import { app, ipcMain, shell } from "electron";
+import { app, dialog, ipcMain, shell } from "electron";
 import { initializeDatabase } from "../../db";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
@@ -10,9 +10,13 @@ import { router } from "../../trpc/router";
 import { createContext } from "../../trpc/context";
 import type { OnboardingService } from "../../services/onboarding-service";
 import type { RecordingManager } from "../managers/recording-manager";
+import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { RecordingState } from "../../types/recording";
 import type { SettingsService } from "../../services/settings-service";
 import { runDataMigrations } from "../migrations/data-migrations";
+import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
+import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
+import { initMainI18n } from "../../i18n/main";
 
 export class AppManager {
   private windowManager!: WindowManager;
@@ -96,6 +100,8 @@ export class AppManager {
     // Subscribe to recording state changes for widget visibility
     const recordingManager = this.serviceManager.getService("recordingManager");
     this.setupRecordingEventListeners(recordingManager);
+    const shortcutManager = this.serviceManager.getService("shortcutManager");
+    this.setupShortcutEventListeners(shortcutManager);
 
     // Check if onboarding is needed using OnboardingService (single source of truth)
     const onboardingCheck = await onboardingService.checkNeedsOnboarding();
@@ -118,6 +124,9 @@ export class AppManager {
 
     // Initialize tray
     await this.trayManager.initialize(this.windowManager, locale);
+
+    // Subscribe to auto-updater events for update dialogs
+    await this.setupAutoUpdaterEventListeners(locale);
 
     // Setup IPC handlers
     ipcMain.handle("open-external", async (_event, url: string) => {
@@ -180,6 +189,135 @@ export class AppManager {
     });
 
     logger.main.info("Recording state listener connected in AppManager");
+  }
+
+  private setupShortcutEventListeners(shortcutManager: ShortcutManager): void {
+    shortcutManager.on("open-notes-window-triggered", () => {
+      void this.handleOpenNotesWindowShortcut();
+    });
+
+    logger.main.info("Shortcut listeners connected in AppManager");
+  }
+
+  private async setupAutoUpdaterEventListeners(
+    locale?: string | null,
+  ): Promise<void> {
+    const autoUpdaterService =
+      this.serviceManager.getService("autoUpdaterService");
+    const i18n = await initMainI18n(locale);
+    const t = i18n.t.bind(i18n);
+
+    let dialogShowing = false;
+    let promptDismissed = false;
+    let dismissedVersion: string | undefined;
+
+    const tryShowDialog = () => {
+      if (dialogShowing) return;
+
+      const metadata = autoUpdaterService.getLastMetadata();
+      if (!metadata) return;
+      if (metadata.action === "none" || metadata.action === "silent") return;
+      if (!autoUpdaterService.isDownloaded()) return;
+      if (metadata.action === "prompt" && promptDismissed) {
+        // Only re-show if we can confirm it's a different version
+        const isNewVersion =
+          dismissedVersion &&
+          metadata.version &&
+          dismissedVersion !== metadata.version;
+        if (!isNewVersion) return;
+      }
+
+      const mainWindow = this.windowManager.getMainWindow();
+      if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isFocused()) {
+        return;
+      }
+
+      const isForce = metadata.action === "force";
+      dialogShowing = true;
+
+      const message = metadata.version
+        ? t(isForce ? "updater.versionRequired" : "updater.versionAvailable", {
+            version: metadata.version,
+          })
+        : t(
+            isForce
+              ? "updater.updateRequiredGeneric"
+              : "updater.updateAvailableGeneric",
+          );
+
+      dialog
+        .showMessageBox(mainWindow, {
+          type: "info",
+          title: t(
+            isForce ? "updater.requiredUpdate" : "updater.updateAvailable",
+          ),
+          message,
+          detail: metadata.message || undefined,
+          buttons: isForce
+            ? [t("updater.restartAndUpdate")]
+            : [t("updater.restartAndUpdate"), t("updater.later")],
+          defaultId: 0,
+          cancelId: isForce ? undefined : 1,
+          noLink: true,
+        })
+        .then(({ response }) => {
+          if (response === 0) {
+            autoUpdaterService.quitAndInstall();
+          } else {
+            promptDismissed = true;
+            dismissedVersion = metadata.version;
+          }
+        })
+        .catch((error) => {
+          logger.main.warn("Update dialog dismissed unexpectedly", { error });
+        })
+        .finally(() => {
+          dialogShowing = false;
+        });
+    };
+
+    // Show dialog when update finishes downloading (if window is focused)
+    autoUpdaterService.on("update-downloaded", () => {
+      tryShowDialog();
+    });
+
+    // Show dialog when user focuses the main window (if update is pending)
+    app.on("browser-window-focus", (_event, window) => {
+      const mainWindow = this.windowManager.getMainWindow();
+      if (window === mainWindow) {
+        tryShowDialog();
+      }
+    });
+
+    logger.main.info("Auto-updater event listeners set up");
+  }
+
+  private async handleOpenNotesWindowShortcut(): Promise<void> {
+    try {
+      const featureFlagService =
+        this.serviceManager.getService("featureFlagService");
+      const noteWindowFlag = await getMainFeatureFlagState(
+        featureFlagService,
+        NOTE_WINDOW_FEATURE_FLAG,
+      );
+
+      if (!noteWindowFlag.enabled) {
+        logger.main.debug(
+          "Ignored notes window shortcut: feature flag is disabled",
+          {
+            flagKey: NOTE_WINDOW_FEATURE_FLAG,
+            flagValue: noteWindowFlag.value,
+          },
+        );
+        return;
+      }
+
+      this.windowManager.openNotesWindow();
+    } catch (error) {
+      logger.main.error("Failed to open notes window from shortcut", {
+        error,
+      });
+    }
   }
 
   private setupSettingsEventListeners(settingsService: SettingsService): void {
@@ -297,6 +435,7 @@ export class AppManager {
 
     // When a second instance tries to start, focus our existing window
     const mainWindow = this.windowManager.getMainWindow();
+    const notesWindow = this.windowManager.getNotesWindow();
     const widgetWindow = this.windowManager.getWidgetWindow();
 
     // Try to show and focus the main window first
@@ -306,6 +445,9 @@ export class AppManager {
       }
       mainWindow.focus();
       mainWindow.show();
+    } else if (notesWindow && !notesWindow.isDestroyed()) {
+      notesWindow.focus();
+      notesWindow.show();
     } else if (widgetWindow && !widgetWindow.isDestroyed()) {
       // If no main window, focus the widget window
       widgetWindow.focus();

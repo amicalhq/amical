@@ -15,6 +15,7 @@ class ShortcutManager {
     private var pushToTalkKeys: [Int] = []
     private var toggleRecordingKeys: [Int] = []
     private var pasteLastTranscriptKeys: [Int] = []
+    private var newNoteKeys: [Int] = []
     private var shortcutKeysSet = Set<Int>()
 
     // ============================================================================
@@ -54,15 +55,23 @@ class ShortcutManager {
 
     /// Update the configured shortcuts
     /// Called from IOBridge when setShortcuts RPC is received
-    func setShortcuts(pushToTalk: [Int], toggleRecording: [Int], pasteLastTranscript: [Int]) {
+    func setShortcuts(
+        pushToTalk: [Int],
+        toggleRecording: [Int],
+        pasteLastTranscript: [Int],
+        newNote: [Int]
+    ) {
         lock.lock()
         defer { lock.unlock() }
         self.pushToTalkKeys = pushToTalk
         self.toggleRecordingKeys = toggleRecording
         self.pasteLastTranscriptKeys = pasteLastTranscript
-        self.shortcutKeysSet = Set(pushToTalk + toggleRecording + pasteLastTranscript)
+        self.newNoteKeys = newNote
+        self.shortcutKeysSet = Set(
+            pushToTalk + toggleRecording + pasteLastTranscript + newNote
+        )
         logToStderr(
-            "[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording), Paste: \(pasteLastTranscript)"
+            "[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording), Paste: \(pasteLastTranscript), NewNote: \(newNote)"
         )
     }
 
@@ -108,13 +117,21 @@ class ShortcutManager {
         pressedRegularKeys.remove(keyCode)
     }
 
-    /// Check if a key is actually pressed using CGEventSource
+    /// Check if a non-modifier key is actually pressed using CGEventSource.
+    /// Must use .hidSystemState here: our event tap consumes shortcut key events
+    /// (returns nil), which removes them from .combinedSessionState. This caused
+    /// recheckPressedKeys to see held-but-consumed keys as "not pressed", emitting
+    /// false keyUp events that stopped PTT recording mid-speech.
     private func isKeyActuallyPressed(_ keyCode: CGKeyCode) -> Bool {
-        return CGEventSource.keyState(.combinedSessionState, key: keyCode)
+        return CGEventSource.keyState(.hidSystemState, key: keyCode)
     }
 
     /// Check provided key codes against OS truth and return any stale entries.
     func getStalePressedKeyCodes(_ keyCodes: [Int]) -> [Int] {
+        // Modifiers use .combinedSessionState: they pass through the event tap
+        // unconsumed (via flagsChanged), so .combinedSessionState is accurate for
+        // them and is more compatible with key remapping software (e.g. Karabiner).
+        // Non-modifier keys use isKeyActuallyPressed (.hidSystemState) above.
         let flags = CGEventSource.flagsState(.combinedSessionState)
         var stale: [Int] = []
         for keyCode in keyCodes {
@@ -207,7 +224,11 @@ class ShortcutManager {
         defer { lock.unlock() }
 
         // Early exit if no shortcuts configured
-        if pushToTalkKeys.isEmpty && toggleRecordingKeys.isEmpty && pasteLastTranscriptKeys.isEmpty {
+        if pushToTalkKeys.isEmpty
+            && toggleRecordingKeys.isEmpty
+            && pasteLastTranscriptKeys.isEmpty
+            && newNoteKeys.isEmpty
+        {
             return false
         }
 
@@ -235,6 +256,10 @@ class ShortcutManager {
         let pasteKeys = Set(pasteLastTranscriptKeys)
         let pasteMatch = !pasteKeys.isEmpty && pasteKeys == activeKeys
 
-        return pttMatch || toggleMatch || pasteMatch
+        // New note: exact match (only these keys pressed)
+        let newNoteKeysSet = Set(newNoteKeys)
+        let newNoteMatch = !newNoteKeysSet.isEmpty && newNoteKeysSet == activeKeys
+
+        return pttMatch || toggleMatch || pasteMatch || newNoteMatch
     }
 }

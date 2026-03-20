@@ -95,6 +95,12 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleMuteDictationSoundsChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      muteDictationSounds: checked,
+    });
+  };
+
   const handleLanguageChange = (value: string) => {
     setSelectedLocale(value);
 
@@ -119,6 +125,8 @@ export default function PreferencesSettingsPage() {
   const launchAtLogin = preferencesQuery.data?.launchAtLogin ?? true;
   const showInDock = preferencesQuery.data?.showInDock ?? true;
   const muteSystemAudio = preferencesQuery.data?.muteSystemAudio ?? true;
+  const muteDictationSounds =
+    preferencesQuery.data?.muteDictationSounds ?? false;
   const autoDictateOnNewNote =
     preferencesQuery.data?.autoDictateOnNewNote ?? false;
   const isMac = window.electronAPI.platform === "darwin";
@@ -126,7 +134,7 @@ export default function PreferencesSettingsPage() {
     uiSettingsQuery.isLoading || updateUILocaleMutation.isPending;
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div>
       {/* Header Section */}
       <div className="mb-8">
         <h1 className="text-xl font-bold">{t("settings.preferences.title")}</h1>
@@ -232,6 +240,28 @@ export default function PreferencesSettingsPage() {
               <Switch
                 checked={muteSystemAudio}
                 onCheckedChange={handleMuteSystemAudioChange}
+                disabled={
+                  updatePreferencesMutation.isPending ||
+                  preferencesQuery.isLoading
+                }
+              />
+            </div>
+
+            <Separator />
+
+            {/* Mute dictation sounds */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  {t("settings.preferences.muteDictationSounds.label")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.preferences.muteDictationSounds.description")}
+                </p>
+              </div>
+              <Switch
+                checked={muteDictationSounds}
+                onCheckedChange={handleMuteDictationSoundsChange}
                 disabled={
                   updatePreferencesMutation.isPending ||
                   preferencesQuery.isLoading

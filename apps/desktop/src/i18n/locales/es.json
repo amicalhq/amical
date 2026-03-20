@@ -24,6 +24,16 @@
     "about": "Acerca de",
     "quit": "Salir"
   },
+  "updater": {
+    "updateAvailable": "Actualización disponible",
+    "requiredUpdate": "Actualización requerida",
+    "versionAvailable": "La versión {{version}} está disponible.",
+    "versionRequired": "Se requiere la versión {{version}}.",
+    "updateAvailableGeneric": "Hay una actualización disponible.",
+    "updateRequiredGeneric": "Se requiere una actualización.",
+    "restartAndUpdate": "Reiniciar y actualizar",
+    "later": "Más tarde"
+  },
   "onboarding": {
     "app": {
       "loading": "Cargando configuración inicial...",
@@ -245,10 +255,13 @@
       "discordAlt": "Discord",
       "copyErrorId": "Copiar ID de error",
       "recordingSaved": "Tu grabación fue guardada. Puedes acceder a ella en el Historial.",
+      "dismiss": "Descartar notificación",
       "description": {
         "noAudio": "Sin audio de \"{{microphone}}\"",
         "emptyTranscript": "No se detectó voz de \"{{microphone}}\"",
-        "transcriptionFailed": "Ocurrió un error durante la transcripción"
+        "transcriptionFailed": "Ocurrió un error durante la transcripción",
+        "recordingDurationWarning": "Amical admite hasta {{maxMinutes}} minutos de dictado continuo. Inicia un nuevo dictado si es necesario.",
+        "recordingAutoStopped": "Se alcanzó la duración máxima de dictado. Inicia un nuevo dictado si es necesario."
       },
       "action": {
         "logIn": "Iniciar sesión",
@@ -267,6 +280,14 @@
         "emptyTranscript": {
           "title": "No se detectó voz",
           "description": "Intenta hablar más fuerte o más cerca del micrófono"
+        },
+        "recordingDurationWarning": {
+          "title": "El dictado se detendrá en {{minutes}} minutos",
+          "description": "Amical admite hasta {{maxMinutes}} minutos de dictado continuo. Inicia un nuevo dictado si es necesario."
+        },
+        "recordingAutoStopped": {
+          "title": "Dictado detenido automáticamente",
+          "description": "Se alcanzó la duración máxima de dictado. Inicia un nuevo dictado si es necesario."
         }
       },
       "errorCode": {
@@ -291,8 +312,8 @@
           "description": "Verifica tu conexión a internet"
         },
         "modelMissing": {
-          "title": "No hay modelo disponible",
-          "description": "Descarga un modelo local o cambia a la nube"
+          "title": "No hay modelo seleccionado",
+          "description": "Selecciona un modelo de transcripción."
         },
         "workerInitializationFailed": {
           "title": "Error de inicialización",
@@ -385,6 +406,10 @@
       "muteSystemAudio": {
         "label": "Silenciar audio del sistema durante la grabación",
         "description": "Silenciar la salida del sistema mientras se captura audio del micrófono"
+      },
+      "muteDictationSounds": {
+        "label": "Silenciar sonidos de dictado",
+        "description": "Desactivar los sonidos de inicio y fin al grabar"
       },
       "autoDictateOnNewNote": {
         "label": "Dictar automáticamente en nota nueva",
@@ -538,7 +563,16 @@
         "playAudio": "Reproducir audio",
         "downloadAudio": "Descargar audio",
         "delete": "Eliminar",
-        "retry": "Reintentar transcripción"
+        "retry": "Reintentar transcripción",
+        "report": "Reportar problema",
+        "reportDisabledTelemetry": "Activa la telemetría en Configuración avanzada para reportar problemas"
+      },
+      "report": {
+        "title": "Reportar problema de transcripción",
+        "description": "Describe qué salió mal con esta transcripción. Tu comentario nos ayuda a mejorar.",
+        "placeholder": "Ej., Faltaban palabras, idioma incorrecto detectado, resultado incoherente...",
+        "cancel": "Cancelar",
+        "submit": "Enviar"
       },
       "dialog": {
         "title": "Detalles de la transcripción"
@@ -551,7 +585,9 @@
         "loadAudioFailed": "No se pudo cargar el archivo de audio",
         "copied": "Copiado al portapapeles",
         "retrySuccess": "Transcripción reintentada correctamente",
-        "retryFailed": "No se pudo reintentar la transcripción"
+        "retryFailed": "No se pudo reintentar la transcripción",
+        "reportSuccess": "Reporte enviado correctamente. ¡Gracias por tu comentario!",
+        "reportFailed": "No se pudo enviar el reporte. Por favor, inténtalo de nuevo."
       },
       "search": {
         "placeholder": "Buscar transcripciones..."
@@ -629,7 +665,8 @@
       "toast": {
         "pushToTalkUpdated": "Atajo de pulsar para hablar actualizado",
         "handsFreeUpdated": "Atajo de modo manos libres actualizado",
-        "pasteLastTranscriptUpdated": "Atajo de pegar última transcripción actualizado"
+        "pasteLastTranscriptUpdated": "Atajo de pegar última transcripción actualizado",
+        "newNoteUpdated": "Atajo de nueva nota actualizado"
       },
       "pushToTalk": {
         "label": "Pulsar para hablar",
@@ -642,6 +679,10 @@
       "pasteLastTranscript": {
         "label": "Pegar última transcripción",
         "description": "Pega tu transcripción más reciente en la aplicación activa"
+      },
+      "newNote": {
+        "label": "Nueva nota",
+        "description": "Abre la ventana de notas y crea una nota nueva"
       },
       "validation": {
         "noKeysDetected": "No se detectaron teclas",
@@ -684,6 +725,7 @@
         "bodyPlaceholder": "Comienza a escribir tu nota...",
         "edited": "Editado {{date}}",
         "actions": {
+          "openInNotesWindow": "Abrir en ventana de notas",
           "delete": "Eliminar"
         },
         "deleteDialog": {

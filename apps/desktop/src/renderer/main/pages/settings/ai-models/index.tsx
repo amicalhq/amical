@@ -15,7 +15,7 @@ export default function AIModelsSettingsPage() {
   const { tab } = routeApi.useSearch();
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div>
       <h1 className="text-xl font-bold mb-6">{t("settings.aiModels.title")}</h1>
       <Tabs
         value={tab}

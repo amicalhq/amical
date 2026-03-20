@@ -144,6 +144,18 @@ export function App() {
       ]);
       setPlatform(platformResult);
 
+      const hasMissingPermissions =
+        micStatus !== "granted" ||
+        (platformResult === "darwin" && !accessStatus);
+      const hasCompletedOnboarding = !!state?.completedVersion;
+
+      // If onboarding is being re-opened due to permission loss after completion,
+      // force users to the permissions screen instead of resuming stale screens.
+      if (hasCompletedOnboarding && hasMissingPermissions) {
+        setCurrentScreen(OnboardingScreen.Permissions);
+        return;
+      }
+
       // Resume from last visited screen if available
       if (state?.lastVisitedScreen) {
         // Smart resume: if last screen was permissions and permissions now granted, skip to next

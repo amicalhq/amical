@@ -11,6 +11,7 @@ import { AppError, ErrorCodes, type ErrorCode } from "../../types/error";
 import { getLatestTranscription } from "../../db/transcriptions";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { v4 as uuid } from "uuid";
 
 export type RecordingMode = "idle" | "ptt" | "hands-free";
 export type TerminationCode =
@@ -23,6 +24,11 @@ export type TerminationCode =
 const QUICK_PRESS_THRESHOLD = 500;
 const NO_AUDIO_TIMEOUT = 5000;
 const STUCK_STATE_TIMEOUT = 10000;
+const CLEANUP_STOPPING_WAIT_TIMEOUT = 1000;
+
+// Recording duration limits (ms)
+const RECORDING_WARNING_TIMEOUT = 5 * 60 * 1000; // 5 minutes - show warning toast
+const RECORDING_MAX_DURATION = 6 * 60 * 1000; // 6 minutes - auto-stop
 
 /**
  * Manages recording state and coordinates audio recording across the application
@@ -49,6 +55,8 @@ export class RecordingManager extends EventEmitter {
   private cancelTimer: NodeJS.Timeout | null = null;
   private noAudioTimer: NodeJS.Timeout | null = null;
   private stuckStateTimer: NodeJS.Timeout | null = null;
+  private warningTimer: NodeJS.Timeout | null = null;
+  private maxDurationTimer: NodeJS.Timeout | null = null;
 
   // Session state
   private currentSessionId: string | null = null;
@@ -69,6 +77,8 @@ export class RecordingManager extends EventEmitter {
   // System audio state tracking
   private systemAudioMuted: boolean = false;
   private transcriptionServiceUnavailableNotified: boolean = false;
+  // Sound muting for current session
+  private soundsMuted: boolean = false;
 
   constructor(private serviceManager: ServiceManager) {
     super();
@@ -250,6 +260,12 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
+      const hasSelectedSpeechModel = await this.ensureSpeechModelSelected();
+      if (!hasSelectedSpeechModel) {
+        this.recordingInitiatedAt = null;
+        return;
+      }
+
       const startTime = performance.now();
       logger.audio.info("RecordingManager: doStart called", { mode });
 
@@ -263,11 +279,11 @@ export class RecordingManager extends EventEmitter {
       this.recordingStoppedAt = null;
       this.audioChunks = [];
 
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      this.currentSessionId = `session-${timestamp}`;
+      this.currentSessionId = uuid();
       this.setState("recording");
 
       this.startNoAudioTimer();
+      this.startDurationTimers();
 
       // Async init inside mutex
       this.initPromise = this.initializeSession();
@@ -299,21 +315,17 @@ export class RecordingManager extends EventEmitter {
       const nativeBridge = this.serviceManager.getService("nativeBridge");
       nativeBridge.refreshAccessibilityContext();
 
-      // Conditionally mute system audio based on preferences
+      // Always call startRecording, conditionally mute system audio and play sounds
       const settingsService = this.serviceManager.getService("settingsService");
       const preferences = await settingsService.getPreferences();
       const shouldMute = preferences?.muteSystemAudio ?? true;
+      this.soundsMuted = preferences?.muteDictationSounds ?? false;
 
-      if (shouldMute) {
-        const result = await nativeBridge.call("muteSystemAudio", {});
-        this.systemAudioMuted = !!result?.success;
-        logger.audio.info("System audio mute requested", {
-          success: this.systemAudioMuted,
-        });
-      } else {
-        this.systemAudioMuted = false;
-        logger.audio.info("System audio mute skipped by settings");
-      }
+      const result = await nativeBridge.call("startRecording", {
+        muteSystemAudio: shouldMute,
+        muteSounds: this.soundsMuted,
+      });
+      this.systemAudioMuted = shouldMute && !!result?.success;
     } catch (error) {
       this.systemAudioMuted = false;
       logger.audio.error("Failed to initialize session", { error });
@@ -355,23 +367,19 @@ export class RecordingManager extends EventEmitter {
       this.recordingInitiatedAt = null;
       this.setMode("idle");
 
-      // Restore audio after state change (can happen while final chunk is in flight)
+      // Always call stopRecording, conditionally restore system audio and play sounds
       try {
-        if (this.systemAudioMuted) {
-          const nativeBridge = this.serviceManager.getService("nativeBridge");
-          const result = await nativeBridge.call("restoreSystemAudio", {});
-          this.systemAudioMuted = false;
-          logger.audio.info("System audio restore requested", {
-            success: !!result?.success,
-          });
-        } else {
-          logger.audio.info(
-            "Skipped restoring system audio (not muted by app)",
-          );
-        }
+        const nativeBridge = this.serviceManager.getService("nativeBridge");
+        await nativeBridge.call("stopRecording", {
+          wasMuted: this.systemAudioMuted,
+          muteSounds: this.soundsMuted,
+        });
+        this.systemAudioMuted = false;
       } catch (error) {
         this.systemAudioMuted = false;
-        logger.main.warn("Failed to restore system audio", { error });
+        logger.main.warn("Failed to stop recording via native bridge", {
+          error,
+        });
       }
 
       // Cancel streaming for cancel codes (not null, not dismissed)
@@ -671,6 +679,28 @@ export class RecordingManager extends EventEmitter {
     return Date.now() - this.recordingInitiatedAt < QUICK_PRESS_THRESHOLD;
   }
 
+  private async ensureSpeechModelSelected(): Promise<boolean> {
+    const modelService = this.serviceManager.getService("modelService");
+    const selectedSpeechModel = await modelService.getSelectedModel();
+
+    if (selectedSpeechModel) {
+      return true;
+    }
+
+    logger.audio.warn("Cannot start recording - no speech model selected");
+    this.emit("widget-notification", {
+      type: "transcription_failed",
+      errorCode: ErrorCodes.MODEL_MISSING,
+    });
+    logger.audio.info("Emitted widget notification", {
+      type: "transcription_failed",
+      errorCode: ErrorCodes.MODEL_MISSING,
+      reason: "no_speech_model_selected",
+    });
+
+    return false;
+  }
+
   private clearTimers(): void {
     if (this.cancelTimer) {
       clearTimeout(this.cancelTimer);
@@ -684,6 +714,14 @@ export class RecordingManager extends EventEmitter {
       clearTimeout(this.stuckStateTimer);
       this.stuckStateTimer = null;
     }
+    if (this.warningTimer) {
+      clearTimeout(this.warningTimer);
+      this.warningTimer = null;
+    }
+    if (this.maxDurationTimer) {
+      clearTimeout(this.maxDurationTimer);
+      this.maxDurationTimer = null;
+    }
   }
 
   private clearNoAudioTimer(): void {
@@ -691,6 +729,48 @@ export class RecordingManager extends EventEmitter {
       clearTimeout(this.noAudioTimer);
       this.noAudioTimer = null;
     }
+  }
+
+  private async waitForIdleOrTimeout(timeoutMs: number): Promise<void> {
+    if (this.recordingState === "idle") {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timeoutHandle);
+        this.off("state-changed", onStateChanged);
+      };
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+
+      const onStateChanged = (state: RecordingState) => {
+        if (state === "idle") {
+          finish();
+        }
+      };
+
+      const timeoutHandle = setTimeout(() => {
+        logger.audio.info("Cleanup wait for idle timed out", {
+          timeoutMs,
+          state: this.recordingState,
+        });
+        finish();
+      }, timeoutMs);
+
+      this.on("state-changed", onStateChanged);
+
+      if (this.recordingState === "idle") {
+        finish();
+      }
+    });
   }
 
   private startNoAudioTimer(): void {
@@ -703,6 +783,40 @@ export class RecordingManager extends EventEmitter {
         this.endRecording("no_audio");
       }
     }, NO_AUDIO_TIMEOUT);
+  }
+
+  private startDurationTimers(): void {
+    const remainingMinutes = Math.round(
+      (RECORDING_MAX_DURATION - RECORDING_WARNING_TIMEOUT) / 60_000,
+    );
+
+    this.warningTimer = setTimeout(() => {
+      if (this.recordingState === "recording") {
+        logger.audio.warn("Recording duration warning", {
+          sessionId: this.currentSessionId,
+          remainingMinutes,
+        });
+        this.emit("widget-notification", {
+          type: "recording_duration_warning",
+          params: {
+            minutes: remainingMinutes,
+            maxMinutes: Math.round(RECORDING_MAX_DURATION / 60_000),
+          },
+        });
+      }
+    }, RECORDING_WARNING_TIMEOUT);
+
+    this.maxDurationTimer = setTimeout(() => {
+      if (this.recordingState === "recording") {
+        logger.audio.warn("Recording auto-stopped at max duration", {
+          sessionId: this.currentSessionId,
+        });
+        this.emit("widget-notification", {
+          type: "recording_auto_stopped",
+        });
+        this.endRecording();
+      }
+    }, RECORDING_MAX_DURATION);
   }
 
   private async forceIdle(): Promise<void> {
@@ -722,21 +836,22 @@ export class RecordingManager extends EventEmitter {
       }
     }
 
-    // Restore system audio if we muted it earlier
-    if (this.systemAudioMuted) {
-      try {
-        const nativeBridge = this.serviceManager.getService("nativeBridge");
-        const result = await nativeBridge.call("restoreSystemAudio", {});
-        logger.audio.info("System audio restore requested (forceIdle)", {
-          success: !!result?.success,
-        });
-      } catch (error) {
-        logger.main.warn("Failed to restore system audio in forceIdle", {
+    // Always call stopRecording, conditionally restore system audio and play sounds
+    try {
+      const nativeBridge = this.serviceManager.getService("nativeBridge");
+      await nativeBridge.call("stopRecording", {
+        wasMuted: this.systemAudioMuted,
+        muteSounds: this.soundsMuted,
+      });
+    } catch (error) {
+      logger.main.warn(
+        "Failed to stop recording via native bridge in forceIdle",
+        {
           error,
-        });
-      } finally {
-        this.systemAudioMuted = false;
-      }
+        },
+      );
+    } finally {
+      this.systemAudioMuted = false;
     }
 
     this.audioChunks = [];
@@ -754,6 +869,7 @@ export class RecordingManager extends EventEmitter {
     this.terminationCode = null;
     this.systemAudioMuted = false;
     this.transcriptionServiceUnavailableNotified = false;
+    this.soundsMuted = false;
     this.clearTimers();
   }
 
@@ -902,26 +1018,14 @@ export class RecordingManager extends EventEmitter {
   async cleanup(): Promise<void> {
     this.clearTimers();
 
-    // Stop recording if active
+    // Stop recording if active (endRecording handles stopRecording RPC)
     if (this.recordingState === "recording") {
       await this.endRecording();
     }
 
-    // Restore system audio if we muted it and are not recording anymore
-    if (this.systemAudioMuted) {
-      try {
-        const nativeBridge = this.serviceManager.getService("nativeBridge");
-        const result = await nativeBridge.call("restoreSystemAudio", {});
-        logger.audio.info("System audio restore requested (cleanup)", {
-          success: !!result?.success,
-        });
-      } catch (error) {
-        logger.main.warn("Failed to restore system audio during cleanup", {
-          error,
-        });
-      } finally {
-        this.systemAudioMuted = false;
-      }
+    // If shutdown catches us mid-stop, briefly wait for natural transition to idle.
+    if (this.recordingState === "stopping") {
+      await this.waitForIdleOrTimeout(CLEANUP_STOPPING_WAIT_TIMEOUT);
     }
 
     // Clear any active session

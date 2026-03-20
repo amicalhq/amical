@@ -16,6 +16,7 @@ export interface ShortcutsConfig {
   pushToTalk: number[];
   toggleRecording: number[];
   pasteLastTranscript: number[];
+  newNote: number[];
 }
 
 export interface AppPreferences {
@@ -24,6 +25,7 @@ export interface AppPreferences {
   showWidgetWhileInactive: boolean;
   showInDock: boolean;
   muteSystemAudio: boolean;
+  muteDictationSounds: boolean;
   autoDictateOnNewNote: boolean;
 }
 
@@ -123,8 +125,14 @@ export class SettingsService extends EventEmitter {
   /**
    * Get dictation settings
    */
-  async getDictationSettings(): Promise<AppSettingsData["dictation"]> {
-    return await getSettingsSection("dictation");
+  async getDictationSettings(): Promise<
+    NonNullable<AppSettingsData["dictation"]>
+  > {
+    const dictationSettings = await getSettingsSection("dictation");
+    if (!dictationSettings) {
+      throw new Error("Dictation settings are missing");
+    }
+    return dictationSettings;
   }
 
   /**
@@ -146,6 +154,7 @@ export class SettingsService extends EventEmitter {
       pushToTalk: shortcuts?.pushToTalk ?? [],
       toggleRecording: shortcuts?.toggleRecording ?? [],
       pasteLastTranscript: shortcuts?.pasteLastTranscript ?? [],
+      newNote: shortcuts?.newNote ?? [],
     };
   }
 
@@ -164,6 +173,7 @@ export class SettingsService extends EventEmitter {
       pasteLastTranscript: shortcuts.pasteLastTranscript?.length
         ? shortcuts.pasteLastTranscript
         : undefined,
+      newNote: shortcuts.newNote?.length ? shortcuts.newNote : undefined,
     };
     await updateSettingsSection("shortcuts", dataToStore);
   }
@@ -300,6 +310,7 @@ export class SettingsService extends EventEmitter {
       showWidgetWhileInactive: preferences?.showWidgetWhileInactive ?? true,
       showInDock: preferences?.showInDock ?? true,
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
+      muteDictationSounds: preferences?.muteDictationSounds ?? false,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
     };
   }

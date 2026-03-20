@@ -32,12 +32,12 @@ import {
   PasteTextParams,
   PasteTextResult,
   PasteTextResultSchema,
-  MuteSystemAudioParams,
-  MuteSystemAudioResult,
-  MuteSystemAudioResultSchema,
-  RestoreSystemAudioParams,
-  RestoreSystemAudioResult,
-  RestoreSystemAudioResultSchema,
+  StartRecordingParams,
+  StartRecordingResult,
+  StartRecordingResultSchema,
+  StopRecordingParams,
+  StopRecordingResult,
+  StopRecordingResultSchema,
   SetShortcutsParams,
   SetShortcutsResult,
   SetShortcutsResultSchema,
@@ -69,13 +69,13 @@ interface RPCMethods {
     params: PasteTextParams;
     result: PasteTextResult;
   };
-  muteSystemAudio: {
-    params: MuteSystemAudioParams;
-    result: MuteSystemAudioResult;
+  startRecording: {
+    params: StartRecordingParams;
+    result: StartRecordingResult;
   };
-  restoreSystemAudio: {
-    params: RestoreSystemAudioParams;
-    result: RestoreSystemAudioResult;
+  stopRecording: {
+    params: StopRecordingParams;
+    result: StopRecordingResult;
   };
   setShortcuts: {
     params: SetShortcutsParams;
@@ -104,8 +104,8 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
   getAccessibilityStatus: GetAccessibilityStatusResultSchema,
   requestAccessibilityPermission: RequestAccessibilityPermissionResultSchema,
   pasteText: PasteTextResultSchema,
-  muteSystemAudio: MuteSystemAudioResultSchema,
-  restoreSystemAudio: RestoreSystemAudioResultSchema,
+  startRecording: StartRecordingResultSchema,
+  stopRecording: StopRecordingResultSchema,
   setShortcuts: SetShortcutsResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
 };
@@ -354,8 +354,8 @@ export class NativeBridge extends EventEmitter {
 
             // Log at INFO level for critical audio operations, DEBUG for others
             const logLevel =
-              pendingItem.method === "muteSystemAudio" ||
-              pendingItem.method === "restoreSystemAudio"
+              pendingItem.method === "startRecording" ||
+              pendingItem.method === "stopRecording"
                 ? "info"
                 : "debug";
 
@@ -619,7 +619,7 @@ export class NativeBridge extends EventEmitter {
 
     // Log at INFO level for critical audio operations, DEBUG for others
     const logLevel =
-      method === "muteSystemAudio" || method === "restoreSystemAudio"
+      method === "startRecording" || method === "stopRecording"
         ? "info"
         : "debug";
     const logMessage = `Sending RPC request: ${method}`;
@@ -801,6 +801,7 @@ export class NativeBridge extends EventEmitter {
         pushToTalk: shortcuts.pushToTalk,
         toggleRecording: shortcuts.toggleRecording,
         pasteLastTranscript: shortcuts.pasteLastTranscript,
+        newNote: shortcuts.newNote,
         success: result.success,
       });
       return result.success;

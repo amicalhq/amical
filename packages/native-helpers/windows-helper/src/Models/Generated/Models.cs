@@ -16,10 +16,10 @@
 //    var getAccessibilityContextResult = GetAccessibilityContextResult.FromJson(jsonString);
 //    var pasteTextParams = PasteTextParams.FromJson(jsonString);
 //    var pasteTextResult = PasteTextResult.FromJson(jsonString);
-//    var muteSystemAudioParams = MuteSystemAudioParams.FromJson(jsonString);
-//    var muteSystemAudioResult = MuteSystemAudioResult.FromJson(jsonString);
-//    var restoreSystemAudioParams = RestoreSystemAudioParams.FromJson(jsonString);
-//    var restoreSystemAudioResult = RestoreSystemAudioResult.FromJson(jsonString);
+//    var startRecordingParams = StartRecordingParams.FromJson(jsonString);
+//    var startRecordingResult = StartRecordingResult.FromJson(jsonString);
+//    var stopRecordingParams = StopRecordingParams.FromJson(jsonString);
+//    var stopRecordingResult = StopRecordingResult.FromJson(jsonString);
 //    var setShortcutsParams = SetShortcutsParams.FromJson(jsonString);
 //    var setShortcutsResult = SetShortcutsResult.FromJson(jsonString);
 //    var recheckPressedKeysParams = RecheckPressedKeysParams.FromJson(jsonString);
@@ -275,7 +275,17 @@ namespace WindowsHelper.Models
         public bool Success { get; set; }
     }
 
-    public partial class MuteSystemAudioResult
+    public partial class StartRecordingParams
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonPropertyName("muteSounds")]
+        public bool? MuteSounds { get; set; }
+
+        [JsonPropertyName("muteSystemAudio")]
+        public bool MuteSystemAudio { get; set; }
+    }
+
+    public partial class StartRecordingResult
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("message")]
@@ -285,7 +295,17 @@ namespace WindowsHelper.Models
         public bool Success { get; set; }
     }
 
-    public partial class RestoreSystemAudioResult
+    public partial class StopRecordingParams
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonPropertyName("muteSounds")]
+        public bool? MuteSounds { get; set; }
+
+        [JsonPropertyName("wasMuted")]
+        public bool WasMuted { get; set; }
+    }
+
+    public partial class StopRecordingResult
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("message")]
@@ -297,6 +317,9 @@ namespace WindowsHelper.Models
 
     public partial class SetShortcutsParams
     {
+        [JsonPropertyName("newNote")]
+        public List<long> NewNote { get; set; }
+
         [JsonPropertyName("pasteLastTranscript")]
         public List<long> PasteLastTranscript { get; set; }
 
@@ -537,7 +560,7 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, MuteSystemAudio, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, RestoreSystemAudio, SetShortcuts };
+    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, SetShortcuts, StartRecording, StopRecording };
 
     public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
 
@@ -591,24 +614,24 @@ namespace WindowsHelper.Models
         public static PasteTextResult FromJson(string json) => JsonSerializer.Deserialize<PasteTextResult>(json, WindowsHelper.Models.Converter.Settings);
     }
 
-    public class MuteSystemAudioParams
+    public partial class StartRecordingParams
     {
-        public static object FromJson(string json) => JsonSerializer.Deserialize<object>(json, WindowsHelper.Models.Converter.Settings);
+        public static StartRecordingParams FromJson(string json) => JsonSerializer.Deserialize<StartRecordingParams>(json, WindowsHelper.Models.Converter.Settings);
     }
 
-    public partial class MuteSystemAudioResult
+    public partial class StartRecordingResult
     {
-        public static MuteSystemAudioResult FromJson(string json) => JsonSerializer.Deserialize<MuteSystemAudioResult>(json, WindowsHelper.Models.Converter.Settings);
+        public static StartRecordingResult FromJson(string json) => JsonSerializer.Deserialize<StartRecordingResult>(json, WindowsHelper.Models.Converter.Settings);
     }
 
-    public class RestoreSystemAudioParams
+    public partial class StopRecordingParams
     {
-        public static object FromJson(string json) => JsonSerializer.Deserialize<object>(json, WindowsHelper.Models.Converter.Settings);
+        public static StopRecordingParams FromJson(string json) => JsonSerializer.Deserialize<StopRecordingParams>(json, WindowsHelper.Models.Converter.Settings);
     }
 
-    public partial class RestoreSystemAudioResult
+    public partial class StopRecordingResult
     {
-        public static RestoreSystemAudioResult FromJson(string json) => JsonSerializer.Deserialize<RestoreSystemAudioResult>(json, WindowsHelper.Models.Converter.Settings);
+        public static StopRecordingResult FromJson(string json) => JsonSerializer.Deserialize<StopRecordingResult>(json, WindowsHelper.Models.Converter.Settings);
     }
 
     public partial class SetShortcutsParams
@@ -661,9 +684,10 @@ namespace WindowsHelper.Models
         public static string ToJson(this GetAccessibilityContextResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this PasteTextParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this PasteTextResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
-        public static string ToJson(this object self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
-        public static string ToJson(this MuteSystemAudioResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
-        public static string ToJson(this RestoreSystemAudioResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this StartRecordingParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this StartRecordingResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this StopRecordingParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this StopRecordingResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this SetShortcutsParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this SetShortcutsResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this RecheckPressedKeysParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
@@ -709,18 +733,18 @@ namespace WindowsHelper.Models
                     return Method.GetAccessibilityStatus;
                 case "getAccessibilityTreeDetails":
                     return Method.GetAccessibilityTreeDetails;
-                case "muteSystemAudio":
-                    return Method.MuteSystemAudio;
                 case "pasteText":
                     return Method.PasteText;
                 case "recheckPressedKeys":
                     return Method.RecheckPressedKeys;
                 case "requestAccessibilityPermission":
                     return Method.RequestAccessibilityPermission;
-                case "restoreSystemAudio":
-                    return Method.RestoreSystemAudio;
                 case "setShortcuts":
                     return Method.SetShortcuts;
+                case "startRecording":
+                    return Method.StartRecording;
+                case "stopRecording":
+                    return Method.StopRecording;
             }
             throw new Exception("Cannot unmarshal type Method");
         }
@@ -738,9 +762,6 @@ namespace WindowsHelper.Models
                 case Method.GetAccessibilityTreeDetails:
                     JsonSerializer.Serialize(writer, "getAccessibilityTreeDetails", options);
                     return;
-                case Method.MuteSystemAudio:
-                    JsonSerializer.Serialize(writer, "muteSystemAudio", options);
-                    return;
                 case Method.PasteText:
                     JsonSerializer.Serialize(writer, "pasteText", options);
                     return;
@@ -750,11 +771,14 @@ namespace WindowsHelper.Models
                 case Method.RequestAccessibilityPermission:
                     JsonSerializer.Serialize(writer, "requestAccessibilityPermission", options);
                     return;
-                case Method.RestoreSystemAudio:
-                    JsonSerializer.Serialize(writer, "restoreSystemAudio", options);
-                    return;
                 case Method.SetShortcuts:
                     JsonSerializer.Serialize(writer, "setShortcuts", options);
+                    return;
+                case Method.StartRecording:
+                    JsonSerializer.Serialize(writer, "startRecording", options);
+                    return;
+                case Method.StopRecording:
+                    JsonSerializer.Serialize(writer, "stopRecording", options);
                     return;
             }
             throw new Exception("Cannot marshal type Method");

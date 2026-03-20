@@ -7,6 +7,7 @@ import type {
   WidgetNotification,
   WidgetNotificationType,
   WidgetNotificationConfig,
+  LocalizedText,
 } from "../../types/widget-notification";
 import {
   WIDGET_NOTIFICATION_CONFIG,
@@ -129,6 +130,7 @@ export const recordingRouter = createRouter({
         uiTitle?: string;
         uiMessage?: string;
         traceId?: string;
+        params?: Record<string, string | number>;
       }) => {
         let config: WidgetNotificationConfig;
 
@@ -140,16 +142,24 @@ export const recordingRouter = createRouter({
           config = WIDGET_NOTIFICATION_CONFIG[data.type];
         }
 
+        // Inject params into i18n objects if provided
+        const injectParams = (text: LocalizedText): LocalizedText => {
+          if (!data.params || typeof text === "string") return text;
+          return { ...text, params: { ...text.params, ...data.params } };
+        };
+
+        // no_audio and empty_transcript use mic-name template on frontend
+        const usesFrontendTemplate =
+          data.type === "no_audio" || data.type === "empty_transcript";
+
         emit.next({
           id: uuid(),
           type: data.type,
-          // Use UI overrides if provided, fall back to config
-          title: data.uiTitle ?? config.title,
-          // Only send description for transcription_failed; audio notifications use mic-name template on frontend
-          description:
-            data.type === "transcription_failed"
-              ? (data.uiMessage ?? config.description)
-              : undefined,
+          title: data.uiTitle ?? injectParams(config.title),
+          description: usesFrontendTemplate
+            ? undefined
+            : (data.uiMessage ?? injectParams(config.description)),
+          subDescription: config.subDescription,
           errorCode: data.errorCode,
           traceId: data.traceId,
           primaryAction: config.primaryAction,

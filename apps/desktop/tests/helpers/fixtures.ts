@@ -16,11 +16,13 @@ const defaultShortcutNames = isMacOS()
       pushToTalk: ["Fn"],
       toggleRecording: ["Fn", "Space"],
       pasteLastTranscript: ["Cmd", "Ctrl", "V"],
+      newNote: ["Cmd", "Ctrl", "N"],
     }
   : {
       pushToTalk: ["Ctrl", "Win"],
       toggleRecording: ["Ctrl", "Win", "Space"],
       pasteLastTranscript: ["Alt", "Shift", "Z"],
+      newNote: ["Alt", "Shift", "N"],
     };
 
 const toKeycodes = (keys: string[]): number[] =>
@@ -32,6 +34,7 @@ const defaultShortcuts = {
   pushToTalk: toKeycodes(defaultShortcutNames.pushToTalk),
   toggleRecording: toKeycodes(defaultShortcutNames.toggleRecording),
   pasteLastTranscript: toKeycodes(defaultShortcutNames.pasteLastTranscript),
+  newNote: toKeycodes(defaultShortcutNames.newNote),
 };
 
 /**
@@ -64,6 +67,7 @@ export const defaultAppSettings: AppSettingsData = {
     pushToTalk: defaultShortcuts.pushToTalk,
     toggleRecording: defaultShortcuts.toggleRecording,
     pasteLastTranscript: defaultShortcuts.pasteLastTranscript,
+    newNote: defaultShortcuts.newNote,
   },
   modelProvidersConfig: {
     defaultSpeechModel: "local-whisper:ggml-base.en",

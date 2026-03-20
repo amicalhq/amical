@@ -1,11 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Square } from "lucide-react";
+import { NotebookPen, Square } from "lucide-react";
 import { Waveform } from "@/components/Waveform";
 import { useRecording } from "@/hooks/useRecording";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
+import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
+import { useTranslation } from "react-i18next";
 
 const NUM_WAVEFORM_BARS = 6; // Fewer bars to make room for stop button
 const DEBOUNCE_DELAY = 100; // milliseconds
+const TOAST_INTERACTION_STATE_EVENT = "widget:toast-interaction-state";
 
 // Separate component for the stop button
 const StopButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
@@ -49,17 +53,36 @@ const WaveformVisualization: React.FC<{
 );
 
 export const FloatingButton: React.FC = () => {
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout
   const clickTimeRef = useRef<number | null>(null); // Track when user clicked
+  const hasActiveToastRef = useRef(false);
 
   // tRPC mutation to control widget mouse events
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
+  const openNotesWindow = api.widget.openNotesWindow.useMutation();
+  const noteWindowFeatureFlag = useFeatureFlag(NOTE_WINDOW_FEATURE_FLAG);
 
   // Log component initialization
   useEffect(() => {
     console.log("FloatingButton component initialized");
+
+    const handleToastInteractionState = (event: Event) => {
+      const customEvent = event as CustomEvent<{ active: boolean }>;
+      hasActiveToastRef.current = !!customEvent.detail?.active;
+    };
+
+    window.addEventListener(
+      TOAST_INTERACTION_STATE_EVENT,
+      handleToastInteractionState,
+    );
+
     return () => {
+      window.removeEventListener(
+        TOAST_INTERACTION_STATE_EVENT,
+        handleToastInteractionState,
+      );
       console.debug("FloatingButton component unmounting");
     };
   }, []);
@@ -71,6 +94,7 @@ export const FloatingButton: React.FC = () => {
     recordingStatus.state === "starting";
   const isStopping = recordingStatus.state === "stopping";
   const isHandsFreeMode = recordingStatus.mode === "hands-free";
+  const isNoteWindowEnabled = noteWindowFeatureFlag.enabled;
 
   // Track when recording state changes to "recording" after a click
   useEffect(() => {
@@ -92,7 +116,6 @@ export const FloatingButton: React.FC = () => {
     console.log("FAB: Button clicked at", clickTime);
     console.log("FAB: Current status:", recordingStatus);
 
-    // Only start recording if not already recording
     if (recordingStatus.state === "idle") {
       const startRecordingCallTime = performance.now();
       await startRecording();
@@ -115,6 +138,19 @@ export const FloatingButton: React.FC = () => {
     await stopRecording();
   };
 
+  const handleOpenNotesClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isNoteWindowEnabled) {
+      return;
+    }
+    try {
+      await openNotesWindow.mutateAsync();
+    } catch (error) {
+      console.error("Failed to open notes window widget", error);
+    }
+  };
+
   // Debounced mouse leave handler
   const handleMouseLeave = async () => {
     if (leaveTimeoutRef.current) {
@@ -122,6 +158,12 @@ export const FloatingButton: React.FC = () => {
     }
     leaveTimeoutRef.current = setTimeout(async () => {
       setIsHovered(false);
+      if (hasActiveToastRef.current) {
+        console.debug(
+          "Skipped re-enabling mouse pass-through while toast is active",
+        );
+        return;
+      }
       // Re-enable mouse event forwarding when not hovering
       try {
         await setIgnoreMouseEvents.mutateAsync({ ignore: true });
@@ -144,11 +186,18 @@ export const FloatingButton: React.FC = () => {
     console.debug("Disabled mouse event forwarding for clicking");
   };
 
-  const expanded = isRecording || isStopping || isHovered;
+  const isWidgetActive = isRecording || isStopping || isHovered;
+  const showNotesAction =
+    isNoteWindowEnabled && isHovered && !isRecording && !isStopping;
+  const sizeClass = !isWidgetActive
+    ? "h-[8px] w-[48px]"
+    : showNotesAction
+      ? "h-[24px] w-[124px]"
+      : "h-[24px] w-[96px]";
 
   // Function to render widget content based on state
   const renderWidgetContent = () => {
-    if (!expanded) return null;
+    if (!isWidgetActive) return null;
 
     // Show processing indicator when stopping
     if (isStopping) {
@@ -174,16 +223,29 @@ export const FloatingButton: React.FC = () => {
 
     // Show waveform visualization for all other states
     return (
-      <button
-        className="justify-center items-center flex flex-1 gap-1 h-full w-full"
-        role="button"
-        onClick={handleButtonClick}
-      >
-        <WaveformVisualization
-          isRecording={isRecording}
-          voiceDetected={voiceDetected}
-        />
-      </button>
+      <>
+        <button
+          className="justify-center items-center flex flex-1 gap-1 h-full"
+          role="button"
+          onClick={handleButtonClick}
+        >
+          <WaveformVisualization
+            isRecording={isRecording}
+            voiceDetected={voiceDetected}
+          />
+        </button>
+
+        {showNotesAction && (
+          <button
+            className="h-full px-2 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+            onClick={handleOpenNotesClick}
+            aria-label={t("settings.notes.note.actions.openInNotesWindow")}
+            title={t("settings.notes.note.actions.openInNotesWindow")}
+          >
+            <NotebookPen className="w-[14px] h-[14px]" />
+          </button>
+        )}
+      </>
     );
   };
 
@@ -193,14 +255,14 @@ export const FloatingButton: React.FC = () => {
       onMouseLeave={handleMouseLeave}
       className={`
         transition-all duration-200 ease-in-out
-        ${expanded ? "h-[24px] w-[96px]" : "h-[8px] w-[48px]"}
+        ${sizeClass}
         bg-black/70 rounded-[24px] backdrop-blur-md ring-[1px] ring-black/60 shadow-[0px_0px_15px_0px_rgba(0,0,0,0.40)]
         before:content-[''] before:absolute before:inset-[1px] before:rounded-[23px] before:outline before:outline-white/15 before:pointer-events-none
         mb-2 cursor-pointer select-none
       `}
       style={{ pointerEvents: "auto" }}
     >
-      {expanded && (
+      {isWidgetActive && (
         <div className="flex gap-[2px] h-full w-full justify-between">
           {renderWidgetContent()}
         </div>
