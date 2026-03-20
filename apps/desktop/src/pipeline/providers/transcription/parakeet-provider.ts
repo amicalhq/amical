@@ -12,20 +12,15 @@ import { AppError, ErrorCodes } from "../../../types/error";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
 import {
   ParakeetFeatureExtractor,
-  decodeParakeetCtc,
   decodeParakeetTokens,
   loadParakeetVocabulary,
   ParakeetVocabulary,
   ParakeetFeatures,
 } from "../../utils/parakeet-feature-extractor";
 
-type ParakeetModelVariant = "ctc" | "tdt";
-
 interface ResolvedParakeetPaths {
-  variant: ParakeetModelVariant;
-  ctcModelPath?: string;
-  encoderModelPath?: string;
-  decoderJointModelPath?: string;
+  encoderModelPath: string;
+  decoderJointModelPath: string;
   nemoPreprocessorPath?: string;
   vocabPath: string;
   configPath?: string;
@@ -50,14 +45,11 @@ interface TdtDecoderState {
 export class ParakeetProvider implements TranscriptionProvider {
   readonly name = "parakeet-local";
 
-  private ctcSession: ort.InferenceSession | null = null;
   private tdtPreprocessorSession: ort.InferenceSession | null = null;
   private tdtEncoderSession: ort.InferenceSession | null = null;
   private tdtDecoderJointSession: ort.InferenceSession | null = null;
 
-  private ctcOutputName: string | null = null;
   private currentModelId: string | null = null;
-  private currentModelVariant: ParakeetModelVariant | null = null;
   private vocabulary: ParakeetVocabulary | null = null;
 
   private frameBuffer: Float32Array[] = [];
@@ -118,16 +110,14 @@ export class ParakeetProvider implements TranscriptionProvider {
 
   async dispose(): Promise<void> {
     await this.releaseSessions();
-    this.ctcOutputName = null;
     this.currentModelId = null;
-    this.currentModelVariant = null;
     this.vocabulary = null;
     this.reset();
   }
 
   private async doTranscription(_context: TranscribeContext): Promise<string> {
     try {
-      if (!this.vocabulary || !this.currentModelVariant) {
+      if (!this.vocabulary) {
         throw new AppError(
           "Parakeet model is not initialized",
           ErrorCodes.WORKER_INITIALIZATION_FAILED,
@@ -154,16 +144,10 @@ export class ParakeetProvider implements TranscriptionProvider {
         before: rawAudio.length,
         after: speechAudio.length,
         segments: segments.length,
-        variant: this.currentModelVariant,
       });
 
       const features = await this.extractFeatures(speechAudio);
-
-      if (this.currentModelVariant === "tdt") {
-        return this.transcribeTdt(features);
-      }
-
-      return this.transcribeCtc(features);
+      return this.transcribeTdt(features);
     } catch (error) {
       logger.transcription.error("Parakeet transcription failed", { error });
       if (error instanceof AppError) {
@@ -176,8 +160,10 @@ export class ParakeetProvider implements TranscriptionProvider {
     }
   }
 
-  private async extractFeatures(audioData: Float32Array): Promise<ParakeetFeatures> {
-    if (this.currentModelVariant !== "tdt" || !this.tdtPreprocessorSession) {
+  private async extractFeatures(
+    audioData: Float32Array,
+  ): Promise<ParakeetFeatures> {
+    if (!this.tdtPreprocessorSession) {
       return this.featureExtractor.extract(audioData);
     }
 
@@ -203,7 +189,10 @@ export class ParakeetProvider implements TranscriptionProvider {
         1,
       );
 
-      const waveformTensor = new ort.Tensor("float32", audioData, [1, audioData.length]);
+      const waveformTensor = new ort.Tensor("float32", audioData, [
+        1,
+        audioData.length,
+      ]);
       const waveformLengthTensor = this.createIntegerTensorForInput(
         this.tdtPreprocessorSession,
         waveformLengthInputName,
@@ -216,8 +205,12 @@ export class ParakeetProvider implements TranscriptionProvider {
         [waveformLengthInputName]: waveformLengthTensor,
       });
 
-      const featuresTensor = preprocessorResults[featuresOutputName] as ort.Tensor;
-      const featuresLengthTensor = preprocessorResults[featuresLengthOutputName] as ort.Tensor;
+      const featuresTensor = preprocessorResults[
+        featuresOutputName
+      ] as ort.Tensor;
+      const featuresLengthTensor = preprocessorResults[
+        featuresLengthOutputName
+      ] as ort.Tensor;
       const featuresData = this.toFloat32Array(featuresTensor.data);
       const dims = featuresTensor.dims;
 
@@ -230,7 +223,12 @@ export class ParakeetProvider implements TranscriptionProvider {
 
       const featuresSize = Number(dims[1]);
       const frameCount = Number(dims[2]);
-      if (!Number.isFinite(featuresSize) || !Number.isFinite(frameCount) || featuresSize <= 0 || frameCount <= 0) {
+      if (
+        !Number.isFinite(featuresSize) ||
+        !Number.isFinite(frameCount) ||
+        featuresSize <= 0 ||
+        frameCount <= 0
+      ) {
         throw new AppError(
           `Invalid Parakeet preprocessor output dims: ${dims.join("x")}`,
           ErrorCodes.WORKER_INITIALIZATION_FAILED,
@@ -259,48 +257,12 @@ export class ParakeetProvider implements TranscriptionProvider {
     }
   }
 
-  private async transcribeCtc(features: ParakeetFeatures): Promise<string> {
-    if (!this.ctcSession || !this.vocabulary || !this.ctcOutputName) {
-      throw new AppError(
-        "Parakeet CTC model is not initialized",
-        ErrorCodes.WORKER_INITIALIZATION_FAILED,
-      );
-    }
-
-    const inputName = this.findName(this.ctcSession.inputNames, [/audio_signal/i], 0);
-    const lengthName = this.findName(this.ctcSession.inputNames, [/length/i], 1);
-
-    const inputTensor = new ort.Tensor(
-      "float32",
-      features.inputFeatures,
-      features.inputShape,
-    );
-    const lengthTensor = this.createIntegerTensorForInput(
-      this.ctcSession,
-      lengthName,
-      [features.featuresLength],
-      [1],
-    );
-
-    const results = await this.ctcSession.run({
-      [inputName]: inputTensor,
-      [lengthName]: lengthTensor,
-    });
-
-    const logitsTensor = results[this.ctcOutputName] as ort.Tensor;
-    const logits = this.toFloat32Array(logitsTensor.data);
-
-    return decodeParakeetCtc(
-      logits,
-      logitsTensor.dims,
-      this.vocabulary.tokens,
-      this.vocabulary.blankTokenId,
-      features.featuresLength,
-    );
-  }
-
   private async transcribeTdt(features: ParakeetFeatures): Promise<string> {
-    if (!this.tdtEncoderSession || !this.tdtDecoderJointSession || !this.vocabulary) {
+    if (
+      !this.tdtEncoderSession ||
+      !this.tdtDecoderJointSession ||
+      !this.vocabulary
+    ) {
       throw new AppError(
         "Parakeet TDT model is not initialized",
         ErrorCodes.WORKER_INITIALIZATION_FAILED,
@@ -353,7 +315,10 @@ export class ParakeetProvider implements TranscriptionProvider {
     const encodedLengths = this.toBigInt64Array(encodedLengthTensor.data);
     const encodedLength = Math.max(
       1,
-      Math.min(accessor.timeSteps, Number(encodedLengths[0] ?? BigInt(accessor.timeSteps))),
+      Math.min(
+        accessor.timeSteps,
+        Number(encodedLengths[0] ?? BigInt(accessor.timeSteps)),
+      ),
     );
 
     const decoderOutputName = this.findName(
@@ -414,13 +379,14 @@ export class ParakeetProvider implements TranscriptionProvider {
     const guardLimit = encodedLength * Math.max(8, this.maxTokensPerStep * 4);
 
     while (t < encodedLength && guard++ < guardLimit) {
-      const encoderStepTensor = new ort.Tensor(
-        "float32",
-        accessor.at(t),
-        [1, accessor.hiddenSize, 1],
-      );
+      const encoderStepTensor = new ort.Tensor("float32", accessor.at(t), [
+        1,
+        accessor.hiddenSize,
+        1,
+      ]);
 
-      const lastTokenId = tokenIds.length > 0 ? tokenIds[tokenIds.length - 1] : blankTokenId;
+      const lastTokenId =
+        tokenIds.length > 0 ? tokenIds[tokenIds.length - 1] : blankTokenId;
       const targetsTensor = this.createIntegerTensorForInput(
         this.tdtDecoderJointSession,
         decoderTargetsInputName,
@@ -472,7 +438,10 @@ export class ParakeetProvider implements TranscriptionProvider {
       if (stepCount > 0) {
         t += stepCount;
         emittedTokens = 0;
-      } else if (token === blankTokenId || emittedTokens >= this.maxTokensPerStep) {
+      } else if (
+        token === blankTokenId ||
+        emittedTokens >= this.maxTokensPerStep
+      ) {
         t += 1;
         emittedTokens = 0;
       }
@@ -493,10 +462,8 @@ export class ParakeetProvider implements TranscriptionProvider {
     if (
       this.vocabulary &&
       this.currentModelId === requestedId &&
-      ((this.currentModelVariant === "ctc" && this.ctcSession) ||
-        (this.currentModelVariant === "tdt" &&
-          this.tdtEncoderSession &&
-          this.tdtDecoderJointSession))
+      this.tdtEncoderSession &&
+      this.tdtDecoderJointSession
     ) {
       return;
     }
@@ -506,11 +473,7 @@ export class ParakeetProvider implements TranscriptionProvider {
 
     const config = await this.loadModelConfig(resolved.configPath);
     this.featureSize =
-      typeof config.features_size === "number"
-        ? config.features_size
-        : resolved.variant === "tdt"
-          ? 128
-          : 80;
+      typeof config.features_size === "number" ? config.features_size : 128;
     this.maxTokensPerStep =
       typeof config.max_tokens_per_step === "number"
         ? config.max_tokens_per_step
@@ -526,75 +489,53 @@ export class ParakeetProvider implements TranscriptionProvider {
           ? (["coreml", "cpu"] as const)
           : (["cpu"] as const);
 
-    if (resolved.variant === "ctc") {
-      const { session, providersUsed } = await this.createSessionWithFallback(
-        resolved.ctcModelPath!,
+    let preprocessorProviders: readonly string[] | null = null;
+    if (resolved.nemoPreprocessorPath) {
+      const preprocessorResult = await this.createSessionWithFallback(
+        resolved.nemoPreprocessorPath,
         preferredProviders,
       );
-      this.ctcSession = session;
-      this.ctcOutputName =
-        session.outputNames.find((name) => /logprob|logits/i.test(name)) ||
-        session.outputNames[0] ||
-        null;
-
-      logger.transcription.info("Initialized local Parakeet model", {
-        modelId: requestedId,
-        variant: resolved.variant,
-        modelPath: resolved.ctcModelPath,
-        vocabPath: resolved.vocabPath,
-        executionProviders: providersUsed,
-        outputName: this.ctcOutputName,
-        featureSize: this.featureSize,
-      });
-    } else {
-      let preprocessorProviders: readonly string[] | null = null;
-      if (resolved.nemoPreprocessorPath) {
-        const preprocessorResult = await this.createSessionWithFallback(
-          resolved.nemoPreprocessorPath,
-          preferredProviders,
-        );
-        this.tdtPreprocessorSession = preprocessorResult.session;
-        preprocessorProviders = preprocessorResult.providersUsed;
-      }
-
-      const encoderResult = await this.createSessionWithFallback(
-        resolved.encoderModelPath!,
-        preferredProviders,
-      );
-      const decoderResult = await this.createSessionWithFallback(
-        resolved.decoderJointModelPath!,
-        preferredProviders,
-      );
-
-      this.tdtEncoderSession = encoderResult.session;
-      this.tdtDecoderJointSession = decoderResult.session;
-      this.ctcOutputName = null;
-
-      logger.transcription.info("Initialized local Parakeet model", {
-        modelId: requestedId,
-        variant: resolved.variant,
-        nemoPreprocessorPath: resolved.nemoPreprocessorPath || null,
-        encoderModelPath: resolved.encoderModelPath,
-        decoderJointModelPath: resolved.decoderJointModelPath,
-        vocabPath: resolved.vocabPath,
-        executionProviders: {
-          preprocessor: preprocessorProviders,
-          encoder: encoderResult.providersUsed,
-          decoder: decoderResult.providersUsed,
-        },
-        featureSize: this.featureSize,
-        maxTokensPerStep: this.maxTokensPerStep,
-      });
+      this.tdtPreprocessorSession = preprocessorResult.session;
+      preprocessorProviders = preprocessorResult.providersUsed;
     }
 
+    const encoderResult = await this.createSessionWithFallback(
+      resolved.encoderModelPath,
+      preferredProviders,
+    );
+    const decoderResult = await this.createSessionWithFallback(
+      resolved.decoderJointModelPath,
+      preferredProviders,
+    );
+
+    this.tdtEncoderSession = encoderResult.session;
+    this.tdtDecoderJointSession = decoderResult.session;
+
+    logger.transcription.info("Initialized local Parakeet model", {
+      modelId: requestedId,
+      nemoPreprocessorPath: resolved.nemoPreprocessorPath || null,
+      encoderModelPath: resolved.encoderModelPath,
+      decoderJointModelPath: resolved.decoderJointModelPath,
+      vocabPath: resolved.vocabPath,
+      executionProviders: {
+        preprocessor: preprocessorProviders,
+        encoder: encoderResult.providersUsed,
+        decoder: decoderResult.providersUsed,
+      },
+      featureSize: this.featureSize,
+      maxTokensPerStep: this.maxTokensPerStep,
+    });
+
     this.currentModelId = requestedId;
-    this.currentModelVariant = resolved.variant;
   }
 
   private async createSessionWithFallback(
     modelPath: string,
     preferredProviders: readonly string[],
-  ): Promise<{ session: ort.InferenceSession; providersUsed: readonly string[] }> {
+  ): Promise<{
+    session: ort.InferenceSession;
+    providersUsed: readonly string[];
+  }> {
     try {
       const session = await ort.InferenceSession.create(modelPath, {
         executionProviders: [...preferredProviders],
@@ -620,10 +561,6 @@ export class ParakeetProvider implements TranscriptionProvider {
   }
 
   private async releaseSessions(): Promise<void> {
-    if (this.ctcSession) {
-      await this.ctcSession.release();
-      this.ctcSession = null;
-    }
     if (this.tdtPreprocessorSession) {
       await this.tdtPreprocessorSession.release();
       this.tdtPreprocessorSession = null;
@@ -641,7 +578,8 @@ export class ParakeetProvider implements TranscriptionProvider {
   private async resolveSelectedParakeetModelId(
     requestedModelId?: string,
   ): Promise<string> {
-    const selectedId = requestedModelId || (await this.modelService.getSelectedModel());
+    const selectedId =
+      requestedModelId || (await this.modelService.getSelectedModel());
     if (!selectedId) {
       throw new AppError("No speech model selected", ErrorCodes.MODEL_MISSING);
     }
@@ -656,7 +594,9 @@ export class ParakeetProvider implements TranscriptionProvider {
     return selectedId;
   }
 
-  private async resolveModelPaths(modelId: string): Promise<ResolvedParakeetPaths> {
+  private async resolveModelPaths(
+    modelId: string,
+  ): Promise<ResolvedParakeetPaths> {
     const downloadedModels = await this.modelService.getDownloadedModels();
     const downloaded = downloadedModels[modelId];
 
@@ -671,8 +611,12 @@ export class ParakeetProvider implements TranscriptionProvider {
     const localFiles =
       downloaded.originalModel &&
       typeof downloaded.originalModel === "object" &&
-      Array.isArray((downloaded.originalModel as { localFiles?: unknown }).localFiles)
-        ? (downloaded.originalModel as { localFiles: unknown[] }).localFiles.filter(
+      Array.isArray(
+        (downloaded.originalModel as { localFiles?: unknown }).localFiles,
+      )
+        ? (
+            downloaded.originalModel as { localFiles: unknown[] }
+          ).localFiles.filter(
             (value): value is string => typeof value === "string",
           )
         : [downloaded.localPath];
@@ -683,42 +627,42 @@ export class ParakeetProvider implements TranscriptionProvider {
     const vocabPath =
       findFile(/^vocab\.txt$/i) || path.join(modelDir, "vocab.txt");
 
-    const decoderJointModelPath = findFile(/^decoder_joint-model(?:\.int8)?\.onnx$/i);
-    const encoderModelPath = findFile(/^encoder-model(?:\.int8)?\.onnx$/i);
+    const decoderJointPathCandidate =
+      findFile(/^decoder_joint-model(?:\.int8)?\.onnx$/i) ||
+      path.join(modelDir, "decoder_joint-model.int8.onnx");
+    const encoderPathCandidate =
+      findFile(/^encoder-model(?:\.int8)?\.onnx$/i) ||
+      path.join(modelDir, "encoder-model.int8.onnx");
+    const decoderJointModelPath = (await this.fileExists(
+      decoderJointPathCandidate,
+    ))
+      ? decoderJointPathCandidate
+      : undefined;
+    const encoderModelPath = (await this.fileExists(encoderPathCandidate))
+      ? encoderPathCandidate
+      : undefined;
 
-    if (decoderJointModelPath || encoderModelPath) {
-      if (!decoderJointModelPath || !encoderModelPath) {
-        throw new AppError(
-          `Parakeet TDT artifacts are incomplete for ${modelId}`,
-          ErrorCodes.MODEL_MISSING,
-        );
-      }
-
-      const configPath =
-        findFile(/^config\.json$/i) || path.join(modelDir, "config.json");
-      const nemoPathCandidate =
-        findFile(/^nemo\d+\.onnx$/i) || path.join(modelDir, "nemo128.onnx");
-      const nemoPreprocessorPath = await this.fileExists(nemoPathCandidate)
-        ? nemoPathCandidate
-        : undefined;
-
-      return {
-        variant: "tdt",
-        encoderModelPath,
-        decoderJointModelPath,
-        nemoPreprocessorPath,
-        vocabPath,
-        configPath,
-      };
+    if (!decoderJointModelPath || !encoderModelPath) {
+      throw new AppError(
+        `Parakeet TDT artifacts are incomplete for ${modelId}`,
+        ErrorCodes.MODEL_MISSING,
+      );
     }
 
-    const ctcModelPath =
-      findFile(/^model(?:\.int8)?\.onnx$/i) || downloaded.localPath;
+    const configPath =
+      findFile(/^config\.json$/i) || path.join(modelDir, "config.json");
+    const nemoPathCandidate =
+      findFile(/^nemo\d+\.onnx$/i) || path.join(modelDir, "nemo128.onnx");
+    const nemoPreprocessorPath = (await this.fileExists(nemoPathCandidate))
+      ? nemoPathCandidate
+      : undefined;
 
     return {
-      variant: "ctc",
-      ctcModelPath,
+      encoderModelPath,
+      decoderJointModelPath,
+      nemoPreprocessorPath,
       vocabPath,
+      configPath,
     };
   }
 
@@ -731,7 +675,9 @@ export class ParakeetProvider implements TranscriptionProvider {
     }
   }
 
-  private async loadModelConfig(configPath?: string): Promise<ParakeetModelConfig> {
+  private async loadModelConfig(
+    configPath?: string,
+  ): Promise<ParakeetModelConfig> {
     if (!configPath) {
       return {};
     }
@@ -759,7 +705,12 @@ export class ParakeetProvider implements TranscriptionProvider {
     const dim1 = Number(dims[1]);
     const dim2 = Number(dims[2]);
 
-    if (!Number.isFinite(dim1) || !Number.isFinite(dim2) || dim1 <= 0 || dim2 <= 0) {
+    if (
+      !Number.isFinite(dim1) ||
+      !Number.isFinite(dim2) ||
+      dim1 <= 0 ||
+      dim2 <= 0
+    ) {
       throw new AppError(
         `Invalid Parakeet encoder output dims: ${dims.join("x")}`,
         ErrorCodes.WORKER_INITIALIZATION_FAILED,
@@ -807,8 +758,16 @@ export class ParakeetProvider implements TranscriptionProvider {
     const hidden2 = this.dimToNumber(state2Shape?.[2], hidden1);
 
     return {
-      state1: new ort.Tensor("float32", new Float32Array(layers * hidden1), [layers, 1, hidden1]),
-      state2: new ort.Tensor("float32", new Float32Array(layers * hidden2), [layers, 1, hidden2]),
+      state1: new ort.Tensor("float32", new Float32Array(layers * hidden1), [
+        layers,
+        1,
+        hidden1,
+      ]),
+      state2: new ort.Tensor("float32", new Float32Array(layers * hidden2), [
+        layers,
+        1,
+        hidden2,
+      ]),
     };
   }
 
@@ -829,7 +788,10 @@ export class ParakeetProvider implements TranscriptionProvider {
     return metadata.shape;
   }
 
-  private dimToNumber(value: number | string | undefined, fallback: number): number {
+  private dimToNumber(
+    value: number | string | undefined,
+    fallback: number,
+  ): number {
     if (typeof value === "number" && Number.isFinite(value) && value > 0) {
       return value;
     }
@@ -854,9 +816,7 @@ export class ParakeetProvider implements TranscriptionProvider {
     // Default to int64 for NeMo/Parakeet paths that use long tensors.
     return new ort.Tensor(
       "int64",
-      BigInt64Array.from(
-        values.map((value) => BigInt(Math.trunc(value))),
-      ),
+      BigInt64Array.from(values.map((value) => BigInt(Math.trunc(value)))),
       Array.from(dims),
     );
   }
@@ -903,7 +863,9 @@ export class ParakeetProvider implements TranscriptionProvider {
     if (data instanceof BigInt64Array) {
       return data;
     }
-    const values = Array.from(data as ArrayLike<number>, (value) => BigInt(Math.trunc(value)));
+    const values = Array.from(data as ArrayLike<number>, (value) =>
+      BigInt(Math.trunc(value)),
+    );
     return BigInt64Array.from(values);
   }
 

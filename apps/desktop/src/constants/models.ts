@@ -158,57 +158,6 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     providerIcon: "/assets/logo.svg",
   },
   {
-    id: "parakeet-ctc-0.6b-int8",
-    name: "NVIDIA Parakeet CTC 0.6B",
-    type: "whisper",
-    description:
-      "CTC speech model optimized for fast English transcription with ONNX Runtime.",
-    checksum:
-      "3cfe22e14a7adf70b7b4ab33109a6fad4d7ca61821ca1f37168dc9b3d04b963b",
-    filename: "model.int8.onnx",
-    artifacts: [
-      {
-        filename: "model.int8.onnx",
-        downloadUrl:
-          "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx/resolve/main/model.int8.onnx",
-        checksum:
-          "3cfe22e14a7adf70b7b4ab33109a6fad4d7ca61821ca1f37168dc9b3d04b963b",
-        size: 653436437,
-      },
-      {
-        filename: "vocab.txt",
-        downloadUrl:
-          "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx/resolve/main/vocab.txt",
-      },
-    ],
-    downloadUrl:
-      "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx/resolve/main/model.int8.onnx",
-    size: 653436437,
-    sizeFormatted: "~623 MB",
-    modelSize: "~623 MB",
-    features: [
-      {
-        icon: "bolt",
-        tooltip: "Fast local transcription",
-      },
-      {
-        icon: "gauge",
-        tooltip: "DirectML/CPU ONNX runtime",
-      },
-      {
-        icon: "languages",
-        tooltip: "English-first CTC vocabulary",
-      },
-    ],
-    speed: 4.6,
-    accuracy: 4.2,
-    setup: "offline",
-    runtime: "parakeet-onnx",
-    provider: "NVIDIA",
-    providerIcon: "/icons/models/nvidia.svg",
-    sourceUrl: "https://huggingface.co/istupakov/parakeet-ctc-0.6b-onnx",
-  },
-  {
     id: "parakeet-tdt-0.6b-v3-int8",
     name: "NVIDIA Parakeet TDT 0.6B v3",
     type: "whisper",

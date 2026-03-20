@@ -34,7 +34,8 @@ function buildCenteredHannWindow(): Float32Array {
   const window = new Float32Array(N_FFT);
   const pad = (N_FFT - WIN_LENGTH) / 2;
   for (let i = 0; i < WIN_LENGTH; i++) {
-    window[pad + i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (WIN_LENGTH - 1));
+    window[pad + i] =
+      0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (WIN_LENGTH - 1));
   }
   return window;
 }
@@ -188,8 +189,14 @@ export class ParakeetFeatureExtractor {
     const padded = new Float32Array(preemphasized.length + N_FFT);
     padded.set(preemphasized, N_FFT / 2);
 
-    const frameCount = Math.max(1, Math.floor((padded.length - N_FFT) / HOP_LENGTH) + 1);
-    const featuresLength = Math.max(1, Math.floor(audioData.length / HOP_LENGTH));
+    const frameCount = Math.max(
+      1,
+      Math.floor((padded.length - N_FFT) / HOP_LENGTH) + 1,
+    );
+    const featuresLength = Math.max(
+      1,
+      Math.floor(audioData.length / HOP_LENGTH),
+    );
 
     const logMel = new Float32Array(frameCount * this.nMels);
     const real = new Float32Array(N_FFT);
@@ -256,7 +263,10 @@ export class ParakeetFeatureExtractor {
   }
 }
 
-export function decodeParakeetTokens(tokenIds: number[], vocab: string[]): string {
+export function decodeParakeetTokens(
+  tokenIds: number[],
+  vocab: string[],
+): string {
   const text = tokenIds
     .map((id) => vocab[id] ?? "")
     .filter((token) => token && !token.startsWith("<|") && token !== "<unk>")
@@ -298,49 +308,4 @@ export async function loadParakeetVocabulary(
     tokens,
     blankTokenId: blankTokenId >= 0 ? blankTokenId : tokens.length - 1,
   };
-}
-
-export function decodeParakeetCtc(
-  logits: Float32Array,
-  dims: readonly number[],
-  vocab: string[],
-  blankTokenId: number,
-  requestedLength: number,
-): string {
-  if (dims.length !== 3 || dims[0] !== 1) {
-    return "";
-  }
-
-  const [_, dim1, dim2] = dims;
-  const vocabSize = vocab.length;
-
-  const timeFirst = dim2 === vocabSize;
-  const timeSteps = timeFirst ? dim1 : dim2;
-  const availableLength = Math.min(requestedLength, timeSteps);
-
-  const tokenIds: number[] = [];
-  let prevId = blankTokenId;
-
-  for (let t = 0; t < availableLength; t++) {
-    let bestId = 0;
-    let bestLogit = -Number.MAX_VALUE;
-
-    for (let v = 0; v < vocabSize; v++) {
-      const index = timeFirst
-        ? t * vocabSize + v
-        : v * timeSteps + t;
-      const value = logits[index] ?? -Number.MAX_VALUE;
-      if (value > bestLogit) {
-        bestLogit = value;
-        bestId = v;
-      }
-    }
-
-    if (bestId !== blankTokenId && bestId !== prevId) {
-      tokenIds.push(bestId);
-    }
-    prevId = bestId;
-  }
-
-  return decodeParakeetTokens(tokenIds, vocab);
 }

@@ -56,14 +56,16 @@ interface ModelManagerEvents {
   ) => void;
 }
 
+const LEGACY_PARAKEET_CTC_MODEL_ID = "parakeet-ctc-0.6b-int8";
+const PARAKEET_TDT_MODEL_ID = "parakeet-tdt-0.6b-v3-int8";
+
 class ModelService extends EventEmitter {
   private state: ModelManagerState;
   private modelsDirectory: string;
   private settingsService: SettingsService;
   private readonly localSpeechPreference = [
     "whisper-large-v3-turbo",
-    "parakeet-tdt-0.6b-v3-int8",
-    "parakeet-ctc-0.6b-int8",
+    PARAKEET_TDT_MODEL_ID,
     "whisper-large-v3",
     "whisper-medium",
     "whisper-small",
@@ -116,18 +118,18 @@ class ModelService extends EventEmitter {
   async initialize(): Promise<void> {
     try {
       // Sync local speech models with filesystem
-      const whisperModelsData = AVAILABLE_MODELS
-        .filter((model) => model.setup === "offline" && !!model.filename)
-        .map((model) => ({
-          id: model.id,
-          name: model.name,
-          description: model.description,
-          size: model.sizeFormatted,
-          checksum: model.checksum,
-          speed: model.speed,
-          accuracy: model.accuracy,
-          filename: model.filename,
-        }));
+      const whisperModelsData = AVAILABLE_MODELS.filter(
+        (model) => model.setup === "offline" && !!model.filename,
+      ).map((model) => ({
+        id: model.id,
+        name: model.name,
+        description: model.description,
+        size: model.sizeFormatted,
+        checksum: model.checksum,
+        speed: model.speed,
+        accuracy: model.accuracy,
+        filename: model.filename,
+      }));
 
       const syncResult = await syncLocalWhisperModels(
         this.modelsDirectory,
@@ -141,7 +143,7 @@ class ModelService extends EventEmitter {
       });
 
       // Restore selected model from settings and validate availability
-      const savedSelection = await this.settingsService.getDefaultSpeechModel();
+      const savedSelection = await this.getSelectedModel();
 
       if (savedSelection) {
         // Validate the saved selection is still available
@@ -546,8 +548,7 @@ class ModelService extends EventEmitter {
       // Auto-select if this is the first model
       const allDownloadedModels = await this.getValidDownloadedModels();
       const downloadedModelCount = Object.keys(allDownloadedModels).length;
-      const currentSelection =
-        await this.settingsService.getDefaultSpeechModel();
+      const currentSelection = await this.getSelectedModel();
 
       if (downloadedModelCount === 1 && !currentSelection) {
         await this.applySpeechModelSelection(
@@ -611,7 +612,7 @@ class ModelService extends EventEmitter {
     }
 
     // Check if this is the selected model BEFORE deletion
-    const currentSelection = await this.settingsService.getDefaultSpeechModel();
+    const currentSelection = await this.getSelectedModel();
     const wasSelected = currentSelection === modelId;
 
     // Delete file
@@ -725,7 +726,40 @@ class ModelService extends EventEmitter {
 
   // Get currently selected model for transcription
   async getSelectedModel(): Promise<string | null> {
-    return (await this.settingsService.getDefaultSpeechModel()) || null;
+    const selectedModelId =
+      (await this.settingsService.getDefaultSpeechModel()) || null;
+    return this.normalizeLegacySpeechModelSelection(selectedModelId);
+  }
+
+  private async normalizeLegacySpeechModelSelection(
+    modelId: string | null,
+  ): Promise<string | null> {
+    if (modelId !== LEGACY_PARAKEET_CTC_MODEL_ID) {
+      return modelId;
+    }
+
+    const downloadedModels = await this.getValidDownloadedModels();
+    const fallbackModelIds = Object.keys(downloadedModels).filter(
+      (downloadedModelId) => downloadedModelId !== LEGACY_PARAKEET_CTC_MODEL_ID,
+    );
+    const fallbackModelId = downloadedModels[PARAKEET_TDT_MODEL_ID]
+      ? PARAKEET_TDT_MODEL_ID
+      : fallbackModelIds.length > 0
+        ? this.pickPreferredLocalModelId(fallbackModelIds)
+        : null;
+
+    await this.applySpeechModelSelection(
+      fallbackModelId,
+      fallbackModelId ? "auto-after-deletion" : "cleared",
+      modelId,
+    );
+
+    logger.main.info("Migrated legacy Parakeet CTC speech selection", {
+      from: modelId,
+      to: fallbackModelId,
+    });
+
+    return fallbackModelId;
   }
 
   private async syncFormatterConfigForSpeechChange(
@@ -806,6 +840,10 @@ class ModelService extends EventEmitter {
 
   // Set selected model for transcription
   async setSelectedModel(modelId: string | null): Promise<void> {
+    if (modelId === LEGACY_PARAKEET_CTC_MODEL_ID) {
+      modelId = PARAKEET_TDT_MODEL_ID;
+    }
+
     const oldModelId = await this.getSelectedModel();
 
     // If setting to a specific model, validate it exists
@@ -1185,8 +1223,7 @@ class ModelService extends EventEmitter {
    */
   async validateAndClearInvalidDefaults(): Promise<void> {
     // Check default speech model
-    const defaultSpeechModel =
-      await this.settingsService.getDefaultSpeechModel();
+    const defaultSpeechModel = await this.getSelectedModel();
     if (defaultSpeechModel) {
       const availableModel = AVAILABLE_MODELS.find(
         (m) => m.id === defaultSpeechModel,
