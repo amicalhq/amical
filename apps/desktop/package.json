@@ -44,7 +44,7 @@
     "build:types": "pnpm --filter @amical/types build",
     "build:swift-helper": "pnpm --filter @amical/swift-helper build",
     "build:windows-helper": "pnpm --filter @amical/windows-helper build",
-    "build:native-helper": "node -e \"const { execSync } = require('node:child_process'); const cmd = process.platform === 'darwin' ? 'pnpm run build:swift-helper' : process.platform === 'win32' ? 'pnpm run build:windows-helper' : 'echo No native helpers'; execSync(cmd, { stdio: 'inherit' });\"",
+    "build:native-helper": "node -p \"process.platform === 'darwin' ? 'build:swift-helper' : process.platform === 'win32' ? 'build:windows-helper' : 'echo No native helpers'\" | xargs pnpm run",
     "dev": "pnpm start",
     "download-node": "tsx scripts/download-node-binaries.ts",
     "download-node:all": "tsx scripts/download-node-binaries.ts --all"
