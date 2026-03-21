@@ -12,38 +12,48 @@ import { useAudioDevices } from "@/hooks/useAudioDevices";
 import { useTranslation } from "react-i18next";
 
 /**
- * Simplified microphone selection component for onboarding
+ * Simplified microphone selection component for onboarding.
+ * Sets the selected device as the top priority in the priority list.
  */
 export function OnboardingMicrophoneSelect() {
   const { t } = useTranslation();
   const { data: settings } = api.settings.getSettings.useQuery();
-  const setPreferredMicrophone =
-    api.settings.setPreferredMicrophone.useMutation();
+  const setMicrophonePriorityList =
+    api.settings.setMicrophonePriorityList.useMutation();
   const { devices: audioDevices } = useAudioDevices();
 
-  const currentMicrophoneName = settings?.recording?.preferredMicrophoneName;
+  const priorityList = settings?.recording?.microphonePriorityList ?? [];
+
+  // The current top-priority device, or "default"
+  const currentTopDevice =
+    priorityList.length > 0
+      ? (audioDevices.find((d) => d.label === priorityList[0])?.deviceId ??
+        "default")
+      : "default";
 
   const handleMicrophoneChange = async (deviceId: string) => {
     try {
+      if (deviceId === "default") {
+        // Clear priority list — use system default
+        await setMicrophonePriorityList.mutateAsync({ deviceNames: [] });
+        return;
+      }
+
       const selected = audioDevices.find(
         (device) => device.deviceId === deviceId,
       );
-      const actualDeviceName =
-        deviceId === "default" ? null : (selected?.label ?? null);
+      if (!selected) return;
 
-      await setPreferredMicrophone.mutateAsync({
-        deviceName: actualDeviceName,
-      });
+      // Move the selected device to the top of the priority list
+      const newList = [
+        selected.label,
+        ...priorityList.filter((name) => name !== selected.label),
+      ];
+      await setMicrophonePriorityList.mutateAsync({ deviceNames: newList });
     } catch (error) {
       console.error("Failed to set preferred microphone:", error);
     }
   };
-
-  // Find the current selection value
-  const currentSelectionValue = currentMicrophoneName
-    ? (audioDevices.find((device) => device.label === currentMicrophoneName)
-        ?.deviceId ?? "default")
-    : "default";
 
   return (
     <div className="flex items-center justify-between">
@@ -57,7 +67,7 @@ export function OnboardingMicrophoneSelect() {
       </div>
       <div className="min-w-[200px]">
         <Select
-          value={currentSelectionValue}
+          value={currentTopDevice}
           onValueChange={handleMicrophoneChange}
         >
           <SelectTrigger className="w-full">

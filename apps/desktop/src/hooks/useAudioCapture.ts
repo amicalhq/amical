@@ -42,15 +42,21 @@ export const useAudioCapture = ({
     },
   });
 
-  // Get user's preferred microphone from settings
-  const { data: settings } = api.settings.getSettings.useQuery();
-  const preferredMicrophoneName = settings?.recording?.preferredMicrophoneName;
+  // tRPC client for fetching fresh settings at recording start
+  const utils = api.useUtils();
 
   const startCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
       try {
         const overallStartTime = performance.now();
         console.log("AudioCapture: Starting audio capture");
+
+        // Fetch fresh settings (bypass cache) to ensure latest microphone priority
+        const freshSettings = await utils.settings.getSettings.fetch();
+        const microphonePriorityList =
+          freshSettings?.recording?.microphonePriorityList;
+        const preferredMicrophoneName =
+          freshSettings?.recording?.preferredMicrophoneName;
 
         // Build audio constraints
         const audioConstraints: MediaTrackConstraints = {
@@ -61,8 +67,38 @@ export const useAudioCapture = ({
           autoGainControl: true,
         };
 
-        // Add deviceId if user has a preference
-        if (preferredMicrophoneName) {
+        // Select microphone based on priority list or legacy preference
+        if (microphonePriorityList && microphonePriorityList.length > 0) {
+          const enumerateStartTime = performance.now();
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const enumerateDuration = performance.now() - enumerateStartTime;
+          console.log(
+            `AudioCapture: enumerateDevices took ${enumerateDuration.toFixed(2)}ms`,
+          );
+
+          const audioInputs = devices.filter(
+            (device) => device.kind === "audioinput",
+          );
+
+          // Find the first connected device from the priority list
+          let selectedDeviceName = "(system default)";
+          for (const deviceName of microphonePriorityList) {
+            const matched = audioInputs.find(
+              (device) => device.label === deviceName,
+            );
+            if (matched) {
+              audioConstraints.deviceId = { exact: matched.deviceId };
+              selectedDeviceName = deviceName;
+              break;
+            }
+          }
+
+          console.log(
+            "AudioCapture: Using priority microphone:",
+            selectedDeviceName,
+          );
+        } else if (preferredMicrophoneName) {
+          // Legacy fallback: single preferred microphone
           const enumerateStartTime = performance.now();
           const devices = await navigator.mediaDevices.enumerateDevices();
           const enumerateDuration = performance.now() - enumerateStartTime;
@@ -191,7 +227,7 @@ export const useAudioCapture = ({
         throw error;
       }
     });
-  }, [onAudioChunk, preferredMicrophoneName]);
+  }, [onAudioChunk, utils]);
 
   const stopCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {

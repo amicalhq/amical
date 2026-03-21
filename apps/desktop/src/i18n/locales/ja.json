@@ -619,14 +619,19 @@
       "microphone": {
         "label": "マイク",
         "description": "使用するマイクを選択してください。",
+        "priorityDescription": "ドラッグしてマイクの優先順位を変更できます。接続中の最も優先度の高いデバイスが使用されます。",
         "placeholder": "マイクを選択",
         "systemDefault": "システムデフォルト",
         "systemDefaultWithName": "システムデフォルト（{{deviceName}}）",
+        "systemDefaultFallback": "システムデフォルト（フォールバック）",
+        "connected": "接続中",
+        "disconnected": "未接続",
         "noDevices": "マイクがありません",
         "noDevicesHelp": "マイクが検出されませんでした。オーディオデバイスを確認してください。",
         "toast": {
           "changed": "マイクを{{deviceName}}に変更しました",
           "systemDefault": "システムデフォルトのマイクを使用します",
+          "priorityUpdated": "マイクの優先順位を更新しました",
           "changeFailed": "マイクの変更に失敗しました"
         }
       },

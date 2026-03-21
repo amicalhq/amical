@@ -83,6 +83,7 @@ const RecordingSettingsSchema = z.object({
   silenceThreshold: z.number().optional(),
   maxRecordingDuration: z.number().optional(),
   preferredMicrophoneName: z.string().optional(),
+  microphonePriorityList: z.array(z.string()).optional(),
 });
 
 export const settingsRouter = createRouter({
@@ -328,7 +329,7 @@ export const settingsRouter = createRouter({
     });
   }),
 
-  // Set preferred microphone
+  // Set preferred microphone (legacy, kept for backward compatibility)
   setPreferredMicrophone: procedure
     .input(
       z.object({
@@ -369,6 +370,50 @@ export const settingsRouter = createRouter({
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
           logger.main.error("Error setting preferred microphone:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set microphone priority list
+  setMicrophonePriorityList: procedure
+    .input(
+      z.object({
+        deviceNames: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        const currentSettings = await settingsService.getRecordingSettings();
+
+        const updatedSettings = {
+          defaultFormat: "wav" as const,
+          sampleRate: 16000 as const,
+          autoStopSilence: false,
+          silenceThreshold: 0.1,
+          maxRecordingDuration: 300,
+          ...currentSettings,
+          microphonePriorityList: input.deviceNames,
+        };
+
+        await settingsService.setRecordingSettings(updatedSettings);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Microphone priority list updated:", input.deviceNames);
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting microphone priority list:", error);
         }
         throw error;
       }

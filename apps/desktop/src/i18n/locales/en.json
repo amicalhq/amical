@@ -619,14 +619,19 @@
       "microphone": {
         "label": "Microphone",
         "description": "Choose your preferred microphone.",
+        "priorityDescription": "Drag to reorder microphone priority. The highest-priority connected device will be used.",
         "placeholder": "Select a microphone",
         "systemDefault": "System Default",
         "systemDefaultWithName": "System Default ({{deviceName}})",
+        "systemDefaultFallback": "System Default (fallback)",
+        "connected": "Connected",
+        "disconnected": "Disconnected",
         "noDevices": "No microphones available",
         "noDevicesHelp": "No microphones detected. Please check your audio devices.",
         "toast": {
           "changed": "Microphone changed to {{deviceName}}",
           "systemDefault": "Using system default microphone",
+          "priorityUpdated": "Microphone priority updated",
           "changeFailed": "Failed to change microphone"
         }
       },
