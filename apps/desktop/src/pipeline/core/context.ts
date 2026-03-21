@@ -35,7 +35,7 @@ export function createDefaultContext(sessionId: string): PipelineContext {
       vocabulary: [],
       replacements: new Map(),
       userPreferences: {
-        language: "en",
+        language: undefined,
         formattingStyle: "formal",
       },
       audioMetadata: {

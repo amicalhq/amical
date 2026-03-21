@@ -24,6 +24,16 @@
     "about": "Amicalについて",
     "quit": "終了"
   },
+  "updater": {
+    "updateAvailable": "アップデートがあります",
+    "requiredUpdate": "必須アップデート",
+    "versionAvailable": "バージョン {{version}} が利用可能です。",
+    "versionRequired": "バージョン {{version}} が必要です。",
+    "updateAvailableGeneric": "アップデートが利用可能です。",
+    "updateRequiredGeneric": "アップデートが必要です。",
+    "restartAndUpdate": "再起動してアップデート",
+    "later": "後で"
+  },
   "onboarding": {
     "app": {
       "loading": "オンボーディングを読み込み中...",
@@ -245,10 +255,13 @@
       "discordAlt": "Discord",
       "copyErrorId": "エラーIDをコピー",
       "recordingSaved": "録音が保存されました。履歴からアクセスできます。",
+      "dismiss": "通知を閉じる",
       "description": {
         "noAudio": "「{{microphone}}」からの音声がありません",
         "emptyTranscript": "「{{microphone}}」から音声が検出されませんでした",
-        "transcriptionFailed": "文字起こし中にエラーが発生しました"
+        "transcriptionFailed": "文字起こし中にエラーが発生しました",
+        "recordingDurationWarning": "Amicalは最大{{maxMinutes}}分間の連続ディクテーションに対応しています。必要に応じて新しいディクテーションを開始してください。",
+        "recordingAutoStopped": "最大ディクテーション時間に達しました。必要に応じて新しいディクテーションを開始してください。"
       },
       "action": {
         "logIn": "ログイン",
@@ -267,6 +280,14 @@
         "emptyTranscript": {
           "title": "発話が検出されません",
           "description": "もう少し大きな声で、またはマイクに近づいて話してください"
+        },
+        "recordingDurationWarning": {
+          "title": "ディクテーションは{{minutes}}分後に自動停止します",
+          "description": "Amicalは最大{{maxMinutes}}分間の連続ディクテーションに対応しています。必要に応じて新しいディクテーションを開始してください。"
+        },
+        "recordingAutoStopped": {
+          "title": "ディクテーションが自動停止しました",
+          "description": "最大ディクテーション時間に達しました。必要に応じて新しいディクテーションを開始してください。"
         }
       },
       "errorCode": {
@@ -291,8 +312,8 @@
           "description": "インターネット接続を確認してください"
         },
         "modelMissing": {
-          "title": "モデルがありません",
-          "description": "ローカルモデルをダウンロードするか、クラウドに切り替えてください"
+          "title": "モデルが選択されていません",
+          "description": "文字起こしモデルを選択してください。"
         },
         "workerInitializationFailed": {
           "title": "初期化に失敗しました",
@@ -385,6 +406,10 @@
       "muteSystemAudio": {
         "label": "録音中にシステム音声をミュート",
         "description": "マイク録音中にシステムの出力音声を消音"
+      },
+      "muteDictationSounds": {
+        "label": "ディクテーション音をミュート",
+        "description": "録音開始・終了時のサウンドを無効にする"
       },
       "autoDictateOnNewNote": {
         "label": "新しいノートで自動音声入力",
@@ -538,7 +563,16 @@
         "playAudio": "音声を再生",
         "downloadAudio": "音声をダウンロード",
         "delete": "削除",
-        "retry": "文字起こしを再試行"
+        "retry": "文字起こしを再試行",
+        "report": "問題を報告",
+        "reportDisabledTelemetry": "問題を報告するには詳細設定でテレメトリーを有効にしてください"
+      },
+      "report": {
+        "title": "文字起こしの問題を報告",
+        "description": "この文字起こしの問題点を説明してください。フィードバックは品質向上に役立ちます。",
+        "placeholder": "例：単語が欠落していた、言語の検出が間違っていた、意味不明な出力だった...",
+        "cancel": "キャンセル",
+        "submit": "送信"
       },
       "dialog": {
         "title": "文字起こしの詳細"
@@ -551,7 +585,9 @@
         "loadAudioFailed": "音声ファイルの読み込みに失敗しました",
         "copied": "クリップボードにコピーしました",
         "retrySuccess": "文字起こしの再試行に成功しました",
-        "retryFailed": "文字起こしの再試行に失敗しました"
+        "retryFailed": "文字起こしの再試行に失敗しました",
+        "reportSuccess": "レポートが送信されました。フィードバックありがとうございます！",
+        "reportFailed": "レポートの送信に失敗しました。もう一度お試しください。"
       },
       "search": {
         "placeholder": "文字起こしを検索..."

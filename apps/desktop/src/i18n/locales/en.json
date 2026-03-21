@@ -24,6 +24,16 @@
     "about": "About",
     "quit": "Quit"
   },
+  "updater": {
+    "updateAvailable": "Update Available",
+    "requiredUpdate": "Required Update",
+    "versionAvailable": "Version {{version}} is available.",
+    "versionRequired": "Version {{version}} is required.",
+    "updateAvailableGeneric": "An update is available.",
+    "updateRequiredGeneric": "An update is required.",
+    "restartAndUpdate": "Restart & Update",
+    "later": "Later"
+  },
   "onboarding": {
     "app": {
       "loading": "Loading onboarding...",
@@ -245,10 +255,13 @@
       "discordAlt": "Discord",
       "copyErrorId": "Copy Error ID",
       "recordingSaved": "Your recording is saved. You can access it in History.",
+      "dismiss": "Dismiss notification",
       "description": {
         "noAudio": "No audio from \"{{microphone}}\"",
         "emptyTranscript": "No speech detected from \"{{microphone}}\"",
-        "transcriptionFailed": "An error occurred during transcription"
+        "transcriptionFailed": "An error occurred during transcription",
+        "recordingDurationWarning": "Amical supports up to {{maxMinutes}} minutes of continuous dictation. Start a new dictation if needed.",
+        "recordingAutoStopped": "Max dictation duration reached. Start a new dictation if needed."
       },
       "action": {
         "logIn": "Log In",
@@ -267,6 +280,14 @@
         "emptyTranscript": {
           "title": "No speech detected",
           "description": "Try speaking louder or closer to the mic"
+        },
+        "recordingDurationWarning": {
+          "title": "Dictation will auto-stop in {{minutes}} minutes",
+          "description": "Amical supports up to {{maxMinutes}} minutes of continuous dictation. Start a new dictation if needed."
+        },
+        "recordingAutoStopped": {
+          "title": "Dictation auto-stopped",
+          "description": "Max dictation duration reached. Start a new dictation if needed."
         }
       },
       "errorCode": {
@@ -291,8 +312,8 @@
           "description": "Check your internet connection"
         },
         "modelMissing": {
-          "title": "No model available",
-          "description": "Download a local model or switch to cloud"
+          "title": "No Model Selected",
+          "description": "Please select a transcription model."
         },
         "workerInitializationFailed": {
           "title": "Initialization failed",
@@ -385,6 +406,10 @@
       "muteSystemAudio": {
         "label": "Mute system audio during recording",
         "description": "Silence system output while capturing microphone audio"
+      },
+      "muteDictationSounds": {
+        "label": "Mute dictation sounds",
+        "description": "Disable the start and stop sounds when recording"
       },
       "autoDictateOnNewNote": {
         "label": "Auto-dictate on new note",
@@ -538,7 +563,16 @@
         "playAudio": "Play audio",
         "downloadAudio": "Download Audio",
         "delete": "Delete",
-        "retry": "Retry transcription"
+        "retry": "Retry transcription",
+        "report": "Report issue",
+        "reportDisabledTelemetry": "Enable telemetry in Advanced settings to report issues"
+      },
+      "report": {
+        "title": "Report Transcription Issue",
+        "description": "Describe what went wrong with this transcription. Your feedback helps us improve.",
+        "placeholder": "e.g., Words were missing, incorrect language detected, gibberish output...",
+        "cancel": "Cancel",
+        "submit": "Submit"
       },
       "dialog": {
         "title": "Transcription Details"
@@ -551,7 +585,9 @@
         "loadAudioFailed": "Failed to load audio file",
         "copied": "Copied to clipboard",
         "retrySuccess": "Transcription retried successfully",
-        "retryFailed": "Failed to retry transcription"
+        "retryFailed": "Failed to retry transcription",
+        "reportSuccess": "Report submitted successfully. Thank you for your feedback!",
+        "reportFailed": "Failed to submit report. Please try again."
       },
       "search": {
         "placeholder": "Search transcriptions..."

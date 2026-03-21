@@ -33,10 +33,10 @@ try {
     "generated/json-schemas/methods/get-accessibility-context-result.schema.json " +
     "generated/json-schemas/methods/paste-text-params.schema.json " +
     "generated/json-schemas/methods/paste-text-result.schema.json " +
-    "generated/json-schemas/methods/mute-system-audio-params.schema.json " +
-    "generated/json-schemas/methods/mute-system-audio-result.schema.json " +
-    "generated/json-schemas/methods/restore-system-audio-params.schema.json " +
-    "generated/json-schemas/methods/restore-system-audio-result.schema.json " +
+    "generated/json-schemas/methods/start-recording-params.schema.json " +
+    "generated/json-schemas/methods/start-recording-result.schema.json " +
+    "generated/json-schemas/methods/stop-recording-params.schema.json " +
+    "generated/json-schemas/methods/stop-recording-result.schema.json " +
     "generated/json-schemas/methods/set-shortcuts-params.schema.json " +
     "generated/json-schemas/methods/set-shortcuts-result.schema.json " +
     "generated/json-schemas/methods/recheck-pressed-keys-params.schema.json " +

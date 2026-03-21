@@ -486,11 +486,17 @@ export class TranscriptionService {
         hasAudioFile: !!audioFilePath,
       });
 
+      const selectedModelId = await this.modelService.getSelectedModel();
+      const speechModelId = usedCloudProvider
+        ? "amical-cloud"
+        : selectedModelId || "whisper-local";
+
       await createTranscription({
         text: completeTranscription,
-        language: session.context.sharedData.userPreferences?.language || "en",
+        language:
+          session.context.sharedData.userPreferences?.language || "auto",
         duration: session.context.sharedData.audioMetadata?.duration,
-        speechModel: "whisper-local",
+        speechModel: speechModelId,
         formattingModel,
         audioFile: audioFilePath,
         meta: {
@@ -520,7 +526,6 @@ export class TranscriptionService {
         ? completionTime - session.recordingStartedAt
         : undefined;
 
-      const selectedModel = await this.modelService.getSelectedModel();
       const audioDurationSeconds =
         session.context.sharedData.audioMetadata?.duration;
 
@@ -537,7 +542,7 @@ export class TranscriptionService {
 
       this.telemetryService.trackTranscriptionCompleted({
         session_id: sessionId,
-        model_id: selectedModel!,
+        model_id: speechModelId,
         model_preloaded: this.modelWasPreloaded,
         whisper_native_binding: whisperNativeBinding,
         total_duration_ms: totalDuration || 0,
@@ -554,8 +559,8 @@ export class TranscriptionService {
         formatting_model: formattingModel,
         formatting_duration_ms: formattingDuration,
         vad_enabled: !!this.vadService,
-        session_type: "streaming",
-        language: session.context.sharedData.userPreferences?.language || "en",
+        language:
+          session.context.sharedData.userPreferences?.language || "auto",
         vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
       });
 
@@ -600,12 +605,10 @@ export class TranscriptionService {
 
     // Load dictation settings to get language preference
     const dictationSettings = await this.settingsService.getDictationSettings();
-    if (dictationSettings) {
-      context.sharedData.userPreferences.language =
-        dictationSettings.autoDetectEnabled
-          ? undefined
-          : dictationSettings.selectedLanguage || "en";
-    }
+    context.sharedData.userPreferences.language =
+      dictationSettings.autoDetectEnabled
+        ? undefined
+        : dictationSettings.selectedLanguage;
 
     // Load vocabulary and replacements
     const vocabEntries = await getVocabulary({ limit: 50 });
@@ -838,6 +841,8 @@ export class TranscriptionService {
    * Bypasses RecordingManager entirely — works directly with providers.
    */
   async retryTranscription(transcriptionId: number): Promise<string> {
+    const retryStartedAt = performance.now();
+
     // Guard: reject if a recording session is active
     if (this.streamingSessions.size > 0) {
       throw new Error("Cannot retry while recording is in progress");
@@ -861,6 +866,7 @@ export class TranscriptionService {
 
     // Build fresh context for vocabulary, language, and replacements
     const context = await this.buildContext();
+    const retrySessionId = context.sessionId;
     const vocabulary = context.sharedData.vocabulary;
     const language = context.sharedData.userPreferences?.language;
 
@@ -898,6 +904,7 @@ export class TranscriptionService {
 
     logger.transcription.info("Starting transcription retry", {
       transcriptionId,
+      sessionId: retrySessionId,
       audioFile: record.audioFile,
       audioSamples: audioData.length,
       totalFrames: frames.length,
@@ -925,6 +932,7 @@ export class TranscriptionService {
           audioData: frames[i],
           speechProbability: vadProbs[i],
           context: {
+            sessionId: retrySessionId,
             vocabulary,
             language,
             previousChunk,
@@ -942,6 +950,7 @@ export class TranscriptionService {
       // Flush to get remaining buffered audio
       const aggregatedTranscription = transcriptionResults.join("");
       const finalTranscription = await provider.flush({
+        sessionId: retrySessionId,
         vocabulary,
         language,
         aggregatedTranscription: aggregatedTranscription || undefined,
@@ -975,10 +984,14 @@ export class TranscriptionService {
       formattingStyle: context.sharedData.userPreferences?.formattingStyle,
     });
 
+    const speechModelId = usedCloudProvider
+      ? "amical-cloud"
+      : selectedModelId || "whisper-local";
+
     // Update the existing record in-place
     await updateTranscription(transcriptionId, {
       text: formatResult.text,
-      speechModel: selectedModelId || "whisper-local",
+      speechModel: speechModelId,
       formattingModel: formatResult.formattingModel,
       meta: {
         ...(typeof record.meta === "object" && record.meta !== null
@@ -989,8 +1002,34 @@ export class TranscriptionService {
       },
     });
 
+    const processingDuration = performance.now() - retryStartedAt;
+    const audioDurationSeconds = audioData.length / 16000;
+
+    this.telemetryService.trackTranscriptionCompleted({
+      session_id: retrySessionId,
+      model_id: speechModelId,
+      model_preloaded: this.modelWasPreloaded,
+      total_duration_ms: processingDuration,
+      processing_duration_ms: processingDuration,
+      audio_duration_seconds: audioDurationSeconds,
+      realtime_factor:
+        audioDurationSeconds && processingDuration
+          ? audioDurationSeconds / (processingDuration / 1000)
+          : undefined,
+      text_length: formatResult.text.length,
+      word_count: formatResult.text.trim().split(/\s+/).length,
+      formatting_enabled: formatResult.formattingUsed,
+      formatting_model: formatResult.formattingModel,
+      formatting_duration_ms: formatResult.formattingDuration,
+      vad_enabled: !!this.vadService,
+      is_retry: true,
+      language: language || "auto",
+      vocabulary_size: vocabulary.length,
+    });
+
     logger.transcription.info("Transcription retry completed", {
       transcriptionId,
+      sessionId: retrySessionId,
       textLength: formatResult.text.length,
       formattingUsed: formatResult.formattingUsed,
     });

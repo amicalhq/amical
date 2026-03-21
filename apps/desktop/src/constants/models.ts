@@ -146,7 +146,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     accuracy: 4.5,
     setup: "cloud",
     provider: "Amical Cloud",
-    providerIcon: "/assets/logo.svg",
+    providerIcon: "/assets/icon_logo.svg",
   },
   {
     id: "whisper-tiny",
@@ -177,8 +177,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 5.0,
     accuracy: 2.5,
     setup: "offline",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-base",
@@ -209,8 +209,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 4.0,
     accuracy: 3.0,
     setup: "offline",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-small",
@@ -242,8 +242,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 3.0,
     accuracy: 3.8,
     setup: "offline",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-medium",
@@ -274,8 +274,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 2.0,
     accuracy: 4.3,
     setup: "offline",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-large-v3",
@@ -306,8 +306,8 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 1.5,
     accuracy: 4.7,
     setup: "offline",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
   {
     id: "whisper-large-v3-turbo",
@@ -338,7 +338,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 3.5,
     accuracy: 4.2,
     setup: "offline",
-    provider: "OpenAI",
-    providerIcon: "/icons/models/openai_dark.svg",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
   },
 ];

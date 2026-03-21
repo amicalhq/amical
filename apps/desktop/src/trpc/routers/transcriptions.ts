@@ -37,6 +37,11 @@ const UpdateTranscriptionSchema = z.object({
   language: z.string().optional(),
 });
 
+const ReportTranscriptionSchema = z.object({
+  transcriptionId: z.number(),
+  feedbackText: z.string().min(1).max(2000),
+});
+
 export const transcriptionsRouter = createRouter({
   // Get transcriptions list with pagination and filtering
   getTranscriptions: procedure
@@ -187,13 +192,47 @@ export const transcriptionsRouter = createRouter({
       return await transcriptionService.retryTranscription(input.id);
     }),
 
+  // Report a transcription issue (telemetry only)
+  reportTranscription: procedure
+    .input(ReportTranscriptionSchema)
+    .mutation(async ({ input, ctx }) => {
+      const logger = ctx.serviceManager.getLogger();
+      const telemetryService =
+        ctx.serviceManager.getService("telemetryService");
+      const transcription = await getTranscriptionById(input.transcriptionId);
+
+      if (!transcription) {
+        throw new Error("Transcription not found");
+      }
+
+      logger.main.info("Transcription report captured via telemetry", {
+        transcriptionId: input.transcriptionId,
+      });
+
+      const speechModelForTelemetry =
+        transcription.speechModel?.trim() || undefined;
+
+      telemetryService.trackTranscriptionReported({
+        transcription_id: transcription.id,
+        feedback_text: input.feedbackText,
+        feedback_length: input.feedbackText.length,
+        ...(speechModelForTelemetry
+          ? { speech_model: speechModelForTelemetry }
+          : {}),
+        formatting_model: transcription.formattingModel || undefined,
+        language: transcription.language || undefined,
+        report_channel: "history",
+      });
+
+      return { success: true };
+    }),
+
   // Download audio file with save dialog
   // Mutation because this triggers a system dialog and file write operation
   // Not a query since it has side effects beyond just fetching data
   downloadAudioFile: procedure
     .input(z.object({ transcriptionId: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      console.log("Downloading audio file", input);
       const transcription = await getTranscriptionById(input.transcriptionId);
 
       if (!transcription?.audioFile) {
