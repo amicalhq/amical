@@ -10,6 +10,7 @@ import {
   type ShortcutType,
   type ValidationResult,
 } from "@/utils/shortcut-validation";
+import { MAC_KEYCODES, WINDOWS_KEYCODES } from "@/utils/keycodes";
 
 const log = logger.main;
 const PRESSED_KEYS_RECHECK_INTERVAL_MS = 10000;
@@ -44,6 +45,7 @@ export class ShortcutManager extends EventEmitter {
     pasteLastTranscript: false,
     newNote: false,
   };
+  private escapeWasPressed = false;
 
   constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
     super();
@@ -300,6 +302,19 @@ export class ShortcutManager extends EventEmitter {
       this.emit("open-notes-window-triggered");
     }
     this.exactMatchState.newNote = newNoteMatch;
+
+    // Check Escape key for cancel recording (hardcoded)
+    const escapeKeyCode =
+      process.platform === "win32"
+        ? WINDOWS_KEYCODES.ESCAPE
+        : MAC_KEYCODES.ESCAPE;
+    const activeKeysList = this.getActiveKeys();
+    const isEscapePressed =
+      activeKeysList.length === 1 && activeKeysList[0] === escapeKeyCode;
+    if (isEscapePressed && !this.escapeWasPressed) {
+      this.emit("cancel-recording-triggered");
+    }
+    this.escapeWasPressed = isEscapePressed;
   }
 
   private isPTTShortcutPressed(): boolean {

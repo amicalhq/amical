@@ -15,6 +15,7 @@ export type RecordingMode = "idle" | "ptt" | "hands-free";
 export type TerminationCode =
   | "dismissed"
   | "quick_release"
+  | "cancelled"
   | "no_audio"
   | "error";
 
@@ -99,6 +100,11 @@ export class RecordingManager extends EventEmitter {
     // Handle paste last transcription shortcut
     shortcutManager.on("paste-last-transcript-triggered", async () => {
       await this.pasteLatestTranscription();
+    });
+
+    // Handle cancel recording (Escape key)
+    shortcutManager.on("cancel-recording-triggered", async () => {
+      await this.cancelRecording();
     });
   }
 
@@ -639,6 +645,21 @@ export class RecordingManager extends EventEmitter {
   // ═══════════════════════════════════════════════════════════════════
   // DISMISS SUPPORT
   // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Cancel the current recording (Escape key)
+   * Discards audio data completely
+   */
+  public async cancelRecording(): Promise<void> {
+    if (this.recordingState !== "recording") {
+      logger.audio.debug("Cannot cancel - not recording", {
+        currentState: this.recordingState,
+      });
+      return;
+    }
+    logger.audio.info("Recording cancelled by user");
+    await this.endRecording("cancelled");
+  }
 
   /**
    * Dismiss the current recording (called during stopping state)
