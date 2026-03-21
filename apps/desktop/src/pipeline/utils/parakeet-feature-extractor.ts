@@ -296,16 +296,27 @@ export async function loadParakeetVocabulary(
     tokensById.set(id, token);
   }
 
+  if (tokensById.size === 0) {
+    throw new Error(`Parakeet vocabulary is empty or invalid: ${vocabPath}`);
+  }
+
   const maxId = Math.max(...tokensById.keys());
   const tokens: string[] = Array.from({ length: maxId + 1 }, () => "");
   for (const [id, token] of tokensById.entries()) {
     tokens[id] = token;
   }
 
+  if (tokens.length === 0) {
+    throw new Error(`Parakeet vocabulary produced no tokens: ${vocabPath}`);
+  }
+
   const blankTokenId = tokens.findIndex((token) => token === "<blk>");
+  if (blankTokenId < 0) {
+    throw new Error(`Parakeet vocabulary is missing <blk>: ${vocabPath}`);
+  }
 
   return {
     tokens,
-    blankTokenId: blankTokenId >= 0 ? blankTokenId : tokens.length - 1,
+    blankTokenId,
   };
 }

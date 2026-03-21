@@ -444,46 +444,96 @@ class ModelService extends EventEmitter {
         }
 
         const fileStream = fs.createWriteStream(artifactPath);
+        let fileStreamError: Error | null = null;
+        const onFileStreamError = (error: Error) => {
+          fileStreamError = error;
+        };
+        fileStream.on("error", onFileStreamError);
         const reader = response.body?.getReader();
         if (!reader) {
+          fileStream.destroy();
           throw new Error(`Failed to read ${artifact.filename}`);
         }
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          if (abortController.signal.aborted) {
-            fileStream.close();
-            if (fs.existsSync(artifactPath)) {
-              fs.unlinkSync(artifactPath);
+        let writeCompleted = false;
+        try {
+          while (true) {
+            if (fileStreamError) {
+              throw fileStreamError;
             }
-            throw new Error("Download cancelled");
+
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            if (abortController.signal.aborted) {
+              fileStream.close();
+              if (fs.existsSync(artifactPath)) {
+                fs.unlinkSync(artifactPath);
+              }
+              throw new Error("Download cancelled");
+            }
+
+            const canContinue = fileStream.write(value);
+            if (!canContinue) {
+              await new Promise<void>((resolve, reject) => {
+                const onDrain = () => {
+                  fileStream.off("error", onDrainError);
+                  resolve();
+                };
+                const onDrainError = (error: Error) => {
+                  fileStream.off("drain", onDrain);
+                  reject(error);
+                };
+
+                fileStream.once("drain", onDrain);
+                fileStream.once("error", onDrainError);
+              });
+            }
+
+            if (fileStreamError) {
+              throw fileStreamError;
+            }
+
+            bytesDownloaded += value.length;
+            progress.bytesDownloaded = bytesDownloaded;
+            progress.progress =
+              progress.totalBytes > 0
+                ? Math.round((bytesDownloaded / progress.totalBytes) * 100)
+                : 0;
+
+            const progressPercent = progress.progress;
+            if (
+              progressPercent - lastProgressEmit >= 1 ||
+              bytesDownloaded -
+                (lastProgressEmit * progress.totalBytes) / 100 >=
+                1024 * 1024
+            ) {
+              this.emit("download-progress", modelId, { ...progress });
+              lastProgressEmit = progressPercent;
+            }
           }
 
-          fileStream.write(value);
-          bytesDownloaded += value.length;
-          progress.bytesDownloaded = bytesDownloaded;
-          progress.progress =
-            progress.totalBytes > 0
-              ? Math.round((bytesDownloaded / progress.totalBytes) * 100)
-              : 0;
+          await new Promise<void>((resolve, reject) => {
+            const onFinish = () => {
+              fileStream.off("error", onFinishError);
+              resolve();
+            };
+            const onFinishError = (error: Error) => {
+              fileStream.off("finish", onFinish);
+              reject(error);
+            };
 
-          const progressPercent = progress.progress;
-          if (
-            progressPercent - lastProgressEmit >= 1 ||
-            bytesDownloaded - (lastProgressEmit * progress.totalBytes) / 100 >=
-              1024 * 1024
-          ) {
-            this.emit("download-progress", modelId, { ...progress });
-            lastProgressEmit = progressPercent;
+            fileStream.once("finish", onFinish);
+            fileStream.once("error", onFinishError);
+            fileStream.end();
+          });
+          writeCompleted = true;
+        } finally {
+          fileStream.off("error", onFileStreamError);
+          if (!writeCompleted && !fileStream.closed) {
+            fileStream.destroy();
           }
         }
-
-        await new Promise<void>((resolve, reject) => {
-          fileStream.end(() => resolve());
-          fileStream.on("error", reject);
-        });
 
         if (artifact.checksum) {
           const fileChecksum = await this.calculateFileChecksum(

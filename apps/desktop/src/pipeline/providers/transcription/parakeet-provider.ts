@@ -124,9 +124,9 @@ export class ParakeetProvider implements TranscriptionProvider {
         );
       }
 
+      const bufferedFrames = [...this.frameBuffer];
       const vadProbs = [...this.frameBufferSpeechProbabilities];
-      const rawAudio = this.aggregateFrames();
-      this.reset();
+      const rawAudio = this.aggregateFrames(bufferedFrames);
 
       const { audio: speechAudio, segments } = extractSpeechFromVad(
         rawAudio,
@@ -137,6 +137,7 @@ export class ParakeetProvider implements TranscriptionProvider {
         logger.transcription.debug(
           "Skipping Parakeet transcription - no speech detected by VAD filter",
         );
+        this.reset();
         return "";
       }
 
@@ -147,7 +148,9 @@ export class ParakeetProvider implements TranscriptionProvider {
       });
 
       const features = await this.extractFeatures(speechAudio);
-      return this.transcribeTdt(features);
+      const transcript = await this.transcribeTdt(features);
+      this.reset();
+      return transcript;
     } catch (error) {
       logger.transcription.error("Parakeet transcription failed", { error });
       if (error instanceof AppError) {
@@ -469,18 +472,16 @@ export class ParakeetProvider implements TranscriptionProvider {
     }
 
     const resolved = await this.resolveModelPaths(requestedId);
-    await this.releaseSessions();
-
     const config = await this.loadModelConfig(resolved.configPath);
-    this.featureSize =
+    const newFeatureSize =
       typeof config.features_size === "number" ? config.features_size : 128;
-    this.maxTokensPerStep =
+    const newMaxTokensPerStep =
       typeof config.max_tokens_per_step === "number"
         ? config.max_tokens_per_step
         : 10;
-    this.featureExtractor = new ParakeetFeatureExtractor(this.featureSize);
+    const newFeatureExtractor = new ParakeetFeatureExtractor(newFeatureSize);
 
-    this.vocabulary = await loadParakeetVocabulary(resolved.vocabPath);
+    const newVocabulary = await loadParakeetVocabulary(resolved.vocabPath);
 
     const preferredProviders =
       process.platform === "win32"
@@ -490,26 +491,58 @@ export class ParakeetProvider implements TranscriptionProvider {
           : (["cpu"] as const);
 
     let preprocessorProviders: readonly string[] | null = null;
-    if (resolved.nemoPreprocessorPath) {
-      const preprocessorResult = await this.createSessionWithFallback(
-        resolved.nemoPreprocessorPath,
+    let newPreprocessorSession: ort.InferenceSession | null = null;
+    let newEncoderSession: ort.InferenceSession | null = null;
+    let newDecoderSession: ort.InferenceSession | null = null;
+    let encoderProviders: readonly string[] = ["cpu"];
+    let decoderProviders: readonly string[] = ["cpu"];
+
+    try {
+      if (resolved.nemoPreprocessorPath) {
+        const preprocessorResult = await this.createSessionWithFallback(
+          resolved.nemoPreprocessorPath,
+          preferredProviders,
+        );
+        newPreprocessorSession = preprocessorResult.session;
+        preprocessorProviders = preprocessorResult.providersUsed;
+      }
+
+      const encoderResult = await this.createSessionWithFallback(
+        resolved.encoderModelPath,
         preferredProviders,
       );
-      this.tdtPreprocessorSession = preprocessorResult.session;
-      preprocessorProviders = preprocessorResult.providersUsed;
+      newEncoderSession = encoderResult.session;
+      encoderProviders = encoderResult.providersUsed;
+
+      const decoderResult = await this.createSessionWithFallback(
+        resolved.decoderJointModelPath,
+        preferredProviders,
+      );
+      newDecoderSession = decoderResult.session;
+      decoderProviders = decoderResult.providersUsed;
+
+      await this.releaseSessions();
+
+      this.featureSize = newFeatureSize;
+      this.maxTokensPerStep = newMaxTokensPerStep;
+      this.featureExtractor = newFeatureExtractor;
+      this.vocabulary = newVocabulary;
+      this.tdtPreprocessorSession = newPreprocessorSession;
+      this.tdtEncoderSession = newEncoderSession;
+      this.tdtDecoderJointSession = newDecoderSession;
+      this.currentModelId = requestedId;
+
+      newPreprocessorSession = null;
+      newEncoderSession = null;
+      newDecoderSession = null;
+    } catch (error) {
+      await Promise.allSettled([
+        this.releaseSession(newPreprocessorSession),
+        this.releaseSession(newEncoderSession),
+        this.releaseSession(newDecoderSession),
+      ]);
+      throw error;
     }
-
-    const encoderResult = await this.createSessionWithFallback(
-      resolved.encoderModelPath,
-      preferredProviders,
-    );
-    const decoderResult = await this.createSessionWithFallback(
-      resolved.decoderJointModelPath,
-      preferredProviders,
-    );
-
-    this.tdtEncoderSession = encoderResult.session;
-    this.tdtDecoderJointSession = decoderResult.session;
 
     logger.transcription.info("Initialized local Parakeet model", {
       modelId: requestedId,
@@ -519,14 +552,12 @@ export class ParakeetProvider implements TranscriptionProvider {
       vocabPath: resolved.vocabPath,
       executionProviders: {
         preprocessor: preprocessorProviders,
-        encoder: encoderResult.providersUsed,
-        decoder: decoderResult.providersUsed,
+        encoder: encoderProviders,
+        decoder: decoderProviders,
       },
       featureSize: this.featureSize,
       maxTokensPerStep: this.maxTokensPerStep,
     });
-
-    this.currentModelId = requestedId;
   }
 
   private async createSessionWithFallback(
@@ -572,6 +603,14 @@ export class ParakeetProvider implements TranscriptionProvider {
     if (this.tdtDecoderJointSession) {
       await this.tdtDecoderJointSession.release();
       this.tdtDecoderJointSession = null;
+    }
+  }
+
+  private async releaseSession(
+    session: ort.InferenceSession | null,
+  ): Promise<void> {
+    if (session) {
+      await session.release();
     }
   }
 
@@ -905,15 +944,14 @@ export class ParakeetProvider implements TranscriptionProvider {
     return false;
   }
 
-  private aggregateFrames(): Float32Array {
-    const totalLength = this.frameBuffer.reduce(
-      (sum, frame) => sum + frame.length,
-      0,
-    );
+  private aggregateFrames(
+    frames: readonly Float32Array[] = this.frameBuffer,
+  ): Float32Array {
+    const totalLength = frames.reduce((sum, frame) => sum + frame.length, 0);
     const aggregated = new Float32Array(totalLength);
 
     let offset = 0;
-    for (const frame of this.frameBuffer) {
+    for (const frame of frames) {
       aggregated.set(frame, offset);
       offset += frame.length;
     }
