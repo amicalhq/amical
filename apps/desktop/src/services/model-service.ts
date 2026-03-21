@@ -449,13 +449,47 @@ class ModelService extends EventEmitter {
           fileStreamError = error;
         };
         fileStream.on("error", onFileStreamError);
+        const awaitFileStreamClose = async (
+          closeAction: () => void,
+          preserveOriginalError = false,
+        ): Promise<void> => {
+          if (fileStream.closed) {
+            if (!preserveOriginalError && fileStreamError) {
+              throw fileStreamError;
+            }
+            return;
+          }
+
+          let closeError: Error | null = null;
+          await new Promise<void>((resolve) => {
+            const onClose = () => {
+              cleanup();
+              resolve();
+            };
+            const onCloseError = (error: Error) => {
+              closeError ??= error;
+            };
+            const cleanup = () => {
+              fileStream.off("close", onClose);
+              fileStream.off("error", onCloseError);
+            };
+
+            fileStream.once("close", onClose);
+            fileStream.on("error", onCloseError);
+            closeAction();
+          });
+
+          const streamError = closeError ?? fileStreamError;
+          if (!preserveOriginalError && streamError) {
+            throw streamError;
+          }
+        };
         const reader = response.body?.getReader();
         if (!reader) {
-          fileStream.destroy();
+          await awaitFileStreamClose(() => fileStream.destroy(), true);
           throw new Error(`Failed to read ${artifact.filename}`);
         }
 
-        let writeCompleted = false;
         try {
           while (true) {
             if (fileStreamError) {
@@ -466,7 +500,7 @@ class ModelService extends EventEmitter {
             if (done) break;
 
             if (abortController.signal.aborted) {
-              fileStream.close();
+              await awaitFileStreamClose(() => fileStream.close(), true);
               if (fs.existsSync(artifactPath)) {
                 fs.unlinkSync(artifactPath);
               }
@@ -513,26 +547,14 @@ class ModelService extends EventEmitter {
             }
           }
 
-          await new Promise<void>((resolve, reject) => {
-            const onFinish = () => {
-              fileStream.off("error", onFinishError);
-              resolve();
-            };
-            const onFinishError = (error: Error) => {
-              fileStream.off("finish", onFinish);
-              reject(error);
-            };
-
-            fileStream.once("finish", onFinish);
-            fileStream.once("error", onFinishError);
-            fileStream.end();
-          });
-          writeCompleted = true;
+          await awaitFileStreamClose(() => fileStream.end());
+        } catch (error) {
+          if (!fileStream.closed && !fileStream.destroyed) {
+            await awaitFileStreamClose(() => fileStream.destroy(), true);
+          }
+          throw error;
         } finally {
           fileStream.off("error", onFileStreamError);
-          if (!writeCompleted && !fileStream.closed) {
-            fileStream.destroy();
-          }
         }
 
         if (artifact.checksum) {
