@@ -1,4 +1,4 @@
-import { ipcMain, app } from "electron";
+import { ipcMain, app, clipboard } from "electron";
 import { EventEmitter } from "node:events";
 import { Mutex } from "async-mutex";
 import { logger, logPerformance } from "../logger";
@@ -902,6 +902,22 @@ export class RecordingManager extends EventEmitter {
     if (!transcription || typeof transcription !== "string") {
       logger.main.warn("Invalid transcription, not pasting");
       return;
+    }
+
+    // Copy to clipboard if enabled
+    try {
+      const settingsService = this.serviceManager.getService("settingsService");
+      const preferences = await settingsService.getPreferences();
+      if (preferences?.copyToClipboard) {
+        clipboard.writeText(transcription);
+        logger.main.info("Transcription copied to clipboard", {
+          textLength: transcription.length,
+        });
+      }
+    } catch (error) {
+      logger.main.warn("Failed to copy transcription to clipboard", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     try {

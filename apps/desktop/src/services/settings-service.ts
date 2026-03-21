@@ -27,6 +27,7 @@ export interface AppPreferences {
   muteSystemAudio: boolean;
   muteDictationSounds: boolean;
   autoDictateOnNewNote: boolean;
+  copyToClipboard: boolean;
 }
 
 export class SettingsService extends EventEmitter {
@@ -312,6 +313,7 @@ export class SettingsService extends EventEmitter {
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
       muteDictationSounds: preferences?.muteDictationSounds ?? false,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
+      copyToClipboard: preferences?.copyToClipboard ?? false,
     };
   }
 

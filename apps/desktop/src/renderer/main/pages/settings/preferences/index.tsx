@@ -119,6 +119,12 @@ export default function PreferencesSettingsPage() {
     });
   };
 
+  const handleCopyToClipboardChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({
+      copyToClipboard: checked,
+    });
+  };
+
   const showWidgetWhileInactive =
     preferencesQuery.data?.showWidgetWhileInactive ?? true;
   const minimizeToTray = preferencesQuery.data?.minimizeToTray ?? false;
@@ -129,6 +135,7 @@ export default function PreferencesSettingsPage() {
     preferencesQuery.data?.muteDictationSounds ?? false;
   const autoDictateOnNewNote =
     preferencesQuery.data?.autoDictateOnNewNote ?? false;
+  const copyToClipboard = preferencesQuery.data?.copyToClipboard ?? false;
   const isMac = window.electronAPI.platform === "darwin";
   const localeDisabled =
     uiSettingsQuery.isLoading || updateUILocaleMutation.isPending;
@@ -262,6 +269,28 @@ export default function PreferencesSettingsPage() {
               <Switch
                 checked={muteDictationSounds}
                 onCheckedChange={handleMuteDictationSoundsChange}
+                disabled={
+                  updatePreferencesMutation.isPending ||
+                  preferencesQuery.isLoading
+                }
+              />
+            </div>
+
+            <Separator />
+
+            {/* Copy to Clipboard */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-medium text-foreground">
+                  {t("settings.preferences.copyToClipboard.label")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.preferences.copyToClipboard.description")}
+                </p>
+              </div>
+              <Switch
+                checked={copyToClipboard}
+                onCheckedChange={handleCopyToClipboardChange}
                 disabled={
                   updatePreferencesMutation.isPending ||
                   preferencesQuery.isLoading

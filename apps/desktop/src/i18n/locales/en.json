@@ -411,6 +411,10 @@
         "label": "Mute dictation sounds",
         "description": "Disable the start and stop sounds when recording"
       },
+      "copyToClipboard": {
+        "label": "Copy to clipboard",
+        "description": "Also copy transcription results to the clipboard"
+      },
       "autoDictateOnNewNote": {
         "label": "Auto-dictate on new note",
         "description": "Automatically start dictation when creating a new note"

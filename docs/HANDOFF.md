@@ -35,7 +35,14 @@
 - no_audio / empty_transcript ウィジェット通知の非表示化
   - `recording-manager.ts`: `widget-notification` emit を削除、ログのみ残す
   - 動作（no_audio 時の自動キャンセル等）はそのまま維持
-  - コミット: `13d3123`
+  - コミット: `39aba13`
+- 文字起こし結果のクリップボードコピー機能
+  - `db/schema.ts`: `preferences` に `copyToClipboard?: boolean` 追加
+  - `services/settings-service.ts`: `AppPreferences` に `copyToClipboard` 追加（デフォルト: false）
+  - `trpc/routers/settings.ts`: Zod スキーマに追加
+  - `recording-manager.ts`: `pasteTranscription` 内で Electron `clipboard.writeText()` を呼び出し
+  - `preferences/index.tsx`: ON/OFF トグル UI 追加
+  - `en.json` / `ja.json`: ラベル追加
 
 ### 以前の完了分
 - フォーク元（amicalhq/amical）からフォーク

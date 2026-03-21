@@ -172,6 +172,7 @@ export interface AppSettingsData {
     muteSystemAudio?: boolean;
     muteDictationSounds?: boolean;
     autoDictateOnNewNote?: boolean;
+    copyToClipboard?: boolean;
   };
   telemetry?: {
     enabled?: boolean;
