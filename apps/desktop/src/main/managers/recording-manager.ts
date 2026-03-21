@@ -639,9 +639,8 @@ export class RecordingManager extends EventEmitter {
           ? this.recordingStoppedAt - this.recordingStartedAt
           : 0;
       if (sessionDurationMs > 5000) {
-        this.emit("widget-notification", { type: "empty_transcript" });
-        logger.audio.info("Emitted widget notification", {
-          type: "empty_transcript",
+        logger.audio.info("Empty transcript (notification suppressed)", {
+          sessionDurationMs,
         });
       }
     }
@@ -788,8 +787,7 @@ export class RecordingManager extends EventEmitter {
       if (this.recordingState === "recording" && !this.firstChunkReceived) {
         logger.audio.warn("No audio detected for 5 seconds");
         this.emit("no-audio-detected");
-        this.emit("widget-notification", { type: "no_audio" });
-        logger.audio.info("Emitted widget notification", { type: "no_audio" });
+        logger.audio.info("No audio detected (notification suppressed)");
         this.endRecording("no_audio");
       }
     }, NO_AUDIO_TIMEOUT);
