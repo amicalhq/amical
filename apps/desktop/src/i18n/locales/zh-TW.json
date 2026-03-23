@@ -240,7 +240,7 @@
       "next": {
         "title": "一切準備就緒！",
         "items": {
-          "pushToTalk": "使用一鍵說話的快捷鍵開始您的轉錄",
+          "pushToTalk": "使用「按住說話」快捷鍵開始轉錄",
           "widget": "點擊懸浮小工具以便快速存取",
           "settings": "探索設定頁面以獲得更多自訂選項"
         }
@@ -354,7 +354,7 @@
       },
       "aiModels": {
         "title": "AI 模型",
-        "description": "AI 模型和提供商設定"
+        "description": "AI 模型與提供者設定"
       },
       "history": {
         "title": "歷史紀錄",
@@ -540,7 +540,7 @@
         },
         "discord": {
           "title": "Discord 社群",
-          "description": "加入我們的社群獲取支援與討論",
+          "description": "加入我們的社群以獲得支援與交流",
           "alt": "Discord"
         }
       },
@@ -664,13 +664,13 @@
       "title": "快捷鍵",
       "description": "設定聽寫和免持模式的快捷鍵",
       "toast": {
-        "pushToTalkUpdated": "一鍵說話的快捷鍵已更新",
+        "pushToTalkUpdated": "「按住說話」快捷鍵已更新",
         "handsFreeUpdated": "免持模式快捷鍵已更新",
         "pasteLastTranscriptUpdated": "貼上最後一次轉錄內容的快捷鍵已更新",
         "newNoteUpdated": "建立新筆記的快捷鍵已更新"
       },
       "pushToTalk": {
-        "label": "一鍵說話",
+        "label": "按住說話",
         "description": "按住按鍵的同時進行聽寫"
       },
       "handsFree": {
@@ -693,7 +693,7 @@
         "conflictsWithSystem": "{{shortcut}} 與目前的系統快捷鍵衝突",
         "addModifier": "請增加修飾鍵（如 Cmd、Ctrl 或是 Fn）",
         "duplicateModifierPairs": "無法同時使用左側與右側的 {{modifier}}",
-        "overlapsWithPushToTalk": "這與您的「一鍵說話」快捷鍵重疊，可能會導致問題產生"
+        "overlapsWithPushToTalk": "這與您的「按住說話」快捷鍵重疊，可能會導致問題"
       },
       "input": {
         "pressKeys": "請按下按鍵..."
@@ -717,7 +717,7 @@
         "deleted": "筆記已刪除",
         "deleteFailed": "無法刪除該筆記：{{message}}",
         "saveFailed": "無法儲存更改",
-        "upgradedToRichNotes": "您的筆記已升級具有 Markdown 格式功能的豐富化筆記。",
+        "upgradedToRichNotes": "您的筆記已升級為支援 Markdown 格式的豐富文字筆記。",
         "loadFailed": "無法載入此筆記"
       },
       "note": {
@@ -744,7 +744,7 @@
         "connect": {
           "title": "連結您的日曆",
           "description": "連結日曆即可開始",
-          "button": "關聯日曆"
+          "button": "連接日曆"
         }
       }
     },
@@ -798,7 +798,7 @@
         "default": "預設模型",
         "speech": "預設語音模型",
         "language": "預設語言模型",
-        "embedding": "預設 Embedding 模型"
+        "embedding": "預設嵌入模型"
       },
       "defaultModel": {
         "toast": {
@@ -816,7 +816,8 @@
       },
       "providers": {
         "openRouter": "OpenRouter",
-        "ollama": "Ollama"
+        "ollama": "Ollama",
+        "openAICompatible": "OpenAI 相容"
       },
       "provider": {
         "status": {
@@ -825,19 +826,21 @@
         },
         "placeholders": {
           "openRouter": "API 金鑰",
-          "ollama": "Ollama 網址 (例如 http://localhost:11434)"
+          "ollama": "Ollama 網址 (例如 http://localhost:11434)",
+          "openAICompatibleApiKey": "API 金鑰",
+          "openAICompatibleBaseURL": "基礎 URL (例如 http://localhost:1234/v1)"
         },
         "buttons": {
           "connect": "連接",
           "validating": "正在驗證...",
           "syncModels": "同步模型",
-          "removeProvider": "移除提供商"
+          "removeProvider": "移除提供者"
         },
         "removeDialog": {
-          "title": "移除提供商連線",
-          "description": "確定要移除 {{provider}} 的連線嗎？這將會中斷連線並刪除此提供商所有已同步的模型。此動作無法復原。",
+          "title": "移除提供者連線",
+          "description": "確定要移除 {{provider}} 的連線嗎？這會中斷連線並移除此提供者的所有已同步模型。此動作無法復原。",
           "cancel": "取消",
-          "confirm": "移除提供商"
+          "confirm": "移除提供者"
         },
         "toast": {
           "configSaved": "{{provider}} 設定已成功儲存！",
@@ -845,8 +848,8 @@
           "validated": "{{provider}} 連線已成功驗證！",
           "validationFailed": "{{provider}} 驗證失敗：{{message}}",
           "validationError": "{{provider}} 驗證錯誤：{{message}}",
-          "removed": "已成功移除 {{provider}} 提供商！",
-          "removeFailed": "移除 {{provider}} 提供商失敗，請再試一下。"
+          "removed": "已成功移除 {{provider}} 提供者！",
+          "removeFailed": "移除 {{provider}} 提供者失敗，請再試一次。"
         },
         "validationFailed": "驗證失敗"
       },
@@ -857,17 +860,17 @@
           "removeFailed": "移除模型失敗，請再試一次。",
           "defaultLanguageUpdated": "預設語言模型已更新！",
           "defaultLanguageFailed": "設定預設語言模型失敗，請再試一次。",
-          "defaultEmbeddingUpdated": "預設 Embedding 模型已更新！",
-          "defaultEmbeddingFailed": "設定預設 Embedding 模型失敗，請再試一次。"
+          "defaultEmbeddingUpdated": "預設嵌入模型已更新！",
+          "defaultEmbeddingFailed": "設定預設嵌入模型失敗，請再試一次。"
         },
         "errorDefaultRemove": "請先選擇其他模型作為預設，再嘗試移除此模型。",
         "empty": {
           "title": "尚未同步模型。",
-          "description": "透過連線至提供商並同步模型，以在這裡看到它們。"
+          "description": "連接提供者並同步模型後，模型就會顯示在這裡。"
         },
         "table": {
           "name": "名稱",
-          "provider": "提供商",
+          "provider": "提供者",
           "size": "檔案大小",
           "context": "上下文範圍",
           "actions": "操作",
@@ -890,10 +893,10 @@
       "syncDialog": {
         "title": "選擇 {{provider}} {{modelType}}模型",
         "description": "請選擇您要從 {{provider}} 同步哪些 {{modelType}}模型。",
-        "fetching": "正在獲取 {{available}} 個模型...",
-        "available": "可用",
-        "fetchFailed": "模型獲取失敗",
-        "fetchFailedWithMessage": "獲取模型發生錯誤：{{message}}",
+        "fetching": "正在取得{{available}}模型...",
+        "available": "可用的",
+        "fetchFailed": "取得模型失敗",
+        "fetchFailedWithMessage": "取得模型時發生錯誤：{{message}}",
         "searchPlaceholder": "搜尋模型...",
         "clear": "清除",
         "size": "大小：{{size}}",
