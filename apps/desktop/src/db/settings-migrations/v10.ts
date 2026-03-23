@@ -1,6 +1,6 @@
 import type { AppSettingsData } from "../schema";
 
-// v9 -> v10: add keepTranscriptInClipboard preference
+// v9 -> v10: add preserveClipboard preference
 export function migrateToV10(data: unknown): AppSettingsData {
   const oldData = data as AppSettingsData;
   const preferences = oldData.preferences ?? {};
@@ -9,7 +9,7 @@ export function migrateToV10(data: unknown): AppSettingsData {
     ...oldData,
     preferences: {
       ...preferences,
-      keepTranscriptInClipboard: false,
+      preserveClipboard: true,
     },
   };
 }

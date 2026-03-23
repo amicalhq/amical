@@ -887,22 +887,20 @@ export class RecordingManager extends EventEmitter {
 
     try {
       const nativeBridge = this.serviceManager.getService("nativeBridge");
-      const settingsService =
-        this.serviceManager.getService("settingsService");
+      const settingsService = this.serviceManager.getService("settingsService");
       const preferences = await settingsService.getPreferences();
-      const keepInClipboard =
-        preferences?.keepTranscriptInClipboard ?? false;
+      const preserveClipboard = preferences?.preserveClipboard ?? true;
 
       logger.main.info("Pasting transcription to active application", {
         textLength: transcription.length,
-        keepInClipboard,
+        preserveClipboard,
       });
 
       if (nativeBridge) {
         void nativeBridge
           .call("pasteText", {
             transcript: transcription,
-            keepInClipboard,
+            preserveClipboard,
           })
           .catch((error) => {
             logger.main.warn(

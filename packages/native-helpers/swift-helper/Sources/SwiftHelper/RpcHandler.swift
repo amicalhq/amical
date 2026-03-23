@@ -73,8 +73,8 @@ class IOBridge: NSObject {
                 logToStderr("[IOBridge] Decoded pasteParams.transcript for ID: \(request.id)")
 
                 // Call the actual paste function (to be implemented in AccessibilityService or similar)
-                let keepInClipboard = pasteParams.keepInClipboard ?? false
-                let success = accessibilityService.pasteText(transcript: pasteParams.transcript, keepInClipboard: keepInClipboard)
+                let preserveClipboard = pasteParams.preserveClipboard ?? true
+                let success = accessibilityService.pasteText(transcript: pasteParams.transcript, preserveClipboard: preserveClipboard)
 
                 // Corrected to use generated Swift model name from models.swift
                 let resultPayload = PasteTextResultSchema(

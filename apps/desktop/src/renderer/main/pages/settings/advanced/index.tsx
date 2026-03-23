@@ -35,8 +35,7 @@ import { useTranslation } from "react-i18next";
 export default function AdvancedSettingsPage() {
   const { t } = useTranslation();
   const [preloadWhisperModel, setPreloadWhisperModel] = useState(true);
-  const [keepTranscriptInClipboard, setKeepTranscriptInClipboard] =
-    useState(false);
+  const [preserveClipboard, setPreserveClipboard] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
 
   // tRPC queries and mutations
@@ -60,18 +59,17 @@ export default function AdvancedSettingsPage() {
       },
     });
 
-  const updatePreferencesMutation =
-    api.settings.updatePreferences.useMutation({
-      onSuccess: () => {
-        utils.settings.getPreferences.invalidate();
-        toast.success(t("settings.advanced.toast.settingsUpdated"));
-      },
-      onError: (error) => {
-        console.error("Failed to update preferences:", error);
-        utils.settings.getPreferences.invalidate();
-        toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
-      },
-    });
+  const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
+    onSuccess: () => {
+      utils.settings.getPreferences.invalidate();
+      toast.success(t("settings.advanced.toast.settingsUpdated"));
+    },
+    onError: (error) => {
+      console.error("Failed to update preferences:", error);
+      utils.settings.getPreferences.invalidate();
+      toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
+    },
+  });
 
   const updateTelemetrySettingsMutation =
     api.settings.updateTelemetrySettings.useMutation({
@@ -134,9 +132,7 @@ export default function AdvancedSettingsPage() {
 
   useEffect(() => {
     if (preferencesQuery.data) {
-      setKeepTranscriptInClipboard(
-        preferencesQuery.data.keepTranscriptInClipboard ?? false,
-      );
+      setPreserveClipboard(preferencesQuery.data.preserveClipboard ?? true);
     }
   }, [preferencesQuery.data]);
 
@@ -147,10 +143,10 @@ export default function AdvancedSettingsPage() {
     });
   };
 
-  const handleKeepTranscriptInClipboardChange = (checked: boolean) => {
-    setKeepTranscriptInClipboard(checked);
+  const handlePreserveClipboardChange = (checked: boolean) => {
+    setPreserveClipboard(checked);
     updatePreferencesMutation.mutate({
-      keepTranscriptInClipboard: checked,
+      preserveClipboard: checked,
     });
   };
 
@@ -205,19 +201,17 @@ export default function AdvancedSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="keep-transcript-clipboard">
-                {t("settings.advanced.keepTranscriptInClipboard.label")}
+              <Label htmlFor="preserve-clipboard">
+                {t("settings.advanced.preserveClipboard.label")}
               </Label>
               <p className="text-sm text-muted-foreground">
-                {t(
-                  "settings.advanced.keepTranscriptInClipboard.description",
-                )}
+                {t("settings.advanced.preserveClipboard.description")}
               </p>
             </div>
             <Switch
-              id="keep-transcript-clipboard"
-              checked={keepTranscriptInClipboard}
-              onCheckedChange={handleKeepTranscriptInClipboardChange}
+              id="preserve-clipboard"
+              checked={preserveClipboard}
+              onCheckedChange={handlePreserveClipboardChange}
             />
           </div>
 

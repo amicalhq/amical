@@ -3,7 +3,7 @@ import { z } from "zod";
 // Request params
 export const PasteTextParamsSchema = z.object({
   transcript: z.string(),
-  keepInClipboard: z.boolean().optional(),
+  preserveClipboard: z.boolean().optional(),
 });
 export type PasteTextParams = z.infer<typeof PasteTextParamsSchema>;
 

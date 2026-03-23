@@ -64,7 +64,7 @@ const AppPreferencesSchema = z.object({
   muteSystemAudio: z.boolean().optional(),
   muteDictationSounds: z.boolean().optional(),
   autoDictateOnNewNote: z.boolean().optional(),
-  keepTranscriptInClipboard: z.boolean().optional(),
+  preserveClipboard: z.boolean().optional(),
 });
 
 const UIThemeSchema = z.object({

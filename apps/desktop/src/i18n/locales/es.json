@@ -450,9 +450,9 @@
         "label": "Precargar modelo Whisper",
         "description": "Cargar el modelo de IA al iniciar para una transcripción más rápida"
       },
-      "keepTranscriptInClipboard": {
-        "label": "Mantener transcripción en el portapapeles",
-        "description": "Dejar el texto transcrito en el portapapeles después de pegar en lugar de restaurar el contenido anterior"
+      "preserveClipboard": {
+        "label": "Conservar el contenido del portapapeles",
+        "description": "Después de pegar una transcripción, restaura lo que antes estaba en el portapapeles."
       },
       "debugMode": {
         "label": "Modo de depuración",

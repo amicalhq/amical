@@ -35,13 +35,13 @@ namespace WindowsHelper.Services
             return AccessibilityContextService.GetAccessibilityContext(editableOnly);
         }
 
-        public bool PasteText(string text, bool keepInClipboard, out string? errorMessage)
+        public bool PasteText(string text, bool preserveClipboard, out string? errorMessage)
         {
             errorMessage = null;
 
             try
             {
-                LogToStderr($"PasteText called with text length: {text.Length}, keepInClipboard: {keepInClipboard}");
+                LogToStderr($"PasteText called with text length: {text.Length}, preserveClipboard: {preserveClipboard}");
 
                 // Save original clipboard content
                 var savedContent = clipboardService.Save();
@@ -67,11 +67,7 @@ namespace WindowsHelper.Services
                 // Wait for paste to complete before restoring
                 Thread.Sleep(200);
 
-                if (keepInClipboard)
-                {
-                    LogToStderr("keepInClipboard=true, skipping clipboard restoration.");
-                }
-                else
+                if (preserveClipboard)
                 {
                     // Restore original clipboard synchronously and report errors
                     var restoreError = clipboardService.RestoreSync(savedContent, newSeq);
@@ -82,6 +78,10 @@ namespace WindowsHelper.Services
                         LogToStderr(errorMessage);
                         // Still return true since the paste itself worked
                     }
+                }
+                else
+                {
+                    LogToStderr("preserveClipboard=false, skipping clipboard restoration.");
                 }
 
                 return true;
