@@ -1,65 +1,66 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import { CoreMessage, generateText } from "ai";
 import { FormattingProvider, FormatParams } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
-import { constructFormatterPrompt } from "./formatter-prompt";
-import { extractFormattedText } from "./extract-formatted-text";
-import { normalizeOllamaUrl } from "../../../utils/provider-utils";
 import { getUserAgent } from "../../../utils/http-client";
+import { extractFormattedText } from "./extract-formatted-text";
+import { constructFormatterPrompt } from "./formatter-prompt";
 
-export class OllamaFormatter implements FormattingProvider {
-  readonly name = "ollama";
+export class OpenAICompatibleFormatter implements FormattingProvider {
+  readonly name = "openai-compatible";
+
+  private provider: ReturnType<typeof createOpenAI>;
+  private baseURL: string;
 
   constructor(
-    private ollamaUrl: string,
+    apiKey: string,
+    baseURL: string,
     private model: string,
   ) {
-    this.ollamaUrl = normalizeOllamaUrl(ollamaUrl);
+    this.baseURL = baseURL;
+    this.provider = createOpenAI({
+      apiKey,
+      baseURL,
+      compatibility: "compatible",
+      name: "openai-compatible",
+      headers: {
+        "User-Agent": getUserAgent(),
+      },
+    });
   }
 
   async format(params: FormatParams): Promise<string> {
     try {
       const { text, context } = params;
-
-      // Construct the formatter prompt using the same function as OpenRouter
       const { systemPrompt, userPrompt } = constructFormatterPrompt(context);
       const userPromptContent = userPrompt(text);
+      const messages: CoreMessage[] = [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: userPromptContent,
+        },
+      ];
       const requestPayload = {
         provider: this.name,
-        endpoint: `${this.ollamaUrl}/api/chat`,
+        endpoint: `${this.baseURL}/chat/completions`,
         model: this.model,
-        stream: false,
-        options: {
-          temperature: 0.1,
-          num_predict: 5000,
-        },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPromptContent },
-        ],
+        temperature: 0.1,
+        maxTokens: 5000,
+        messages,
       };
 
       logger.pipeline.debug("Formatting LLM request payload", requestPayload);
 
-      // Use Ollama's chat endpoint for system/user message structure
-      const response = await fetch(requestPayload.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": getUserAgent(),
-        },
-        body: JSON.stringify({
-          model: requestPayload.model,
-          messages: requestPayload.messages,
-          stream: requestPayload.stream,
-          options: requestPayload.options,
-        }),
+      const { text: aiResponse } = await generateText({
+        model: this.provider(this.model),
+        messages: requestPayload.messages,
+        temperature: requestPayload.temperature,
+        maxTokens: requestPayload.maxTokens,
       });
-
-      if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const aiResponse = data.message?.content ?? "";
 
       logger.pipeline.debug("Formatting LLM raw response", {
         provider: this.name,
@@ -67,7 +68,6 @@ export class OllamaFormatter implements FormattingProvider {
         rawResponse: aiResponse,
       });
 
-      // Extract formatted text from XML tags, with original input as fallback
       const extraction = extractFormattedText(aiResponse, text);
 
       if (extraction.usedFallback) {

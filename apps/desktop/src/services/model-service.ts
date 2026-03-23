@@ -17,10 +17,9 @@ import {
   modelExists,
   syncLocalWhisperModels,
   getAllModels,
-  syncModelsForProvider,
-  removeModelsForProvider,
+  syncModelsForProviderInstance,
+  removeModelsForProviderInstance,
   upsertModel,
-  getModelById,
 } from "../db/models";
 import {
   ValidationResult,
@@ -28,15 +27,115 @@ import {
   OllamaResponse,
   OpenRouterModel,
   OllamaModel,
+  OpenAICompatibleResponse,
+  OpenAICompatibleModel,
 } from "../types/providers";
 import { SettingsService } from "./settings-service";
 import { AuthService } from "./auth-service";
 import { logger } from "../main/logger";
 import { getUserAgent } from "../utils/http-client";
+import { type RemoteProvider } from "../constants/remote-providers";
+import {
+  isOllamaEmbeddingModelName,
+  normalizeOllamaUrl,
+  normalizeOpenAICompatibleBaseURL,
+} from "../utils/provider-utils";
+import {
+  PROVIDER_TYPES,
+  getProviderDisplayName,
+  getRemoteProviderType,
+  getSystemProviderInstanceId,
+} from "../constants/provider-types";
+import {
+  getSpeechModelIdFromStoredSelection,
+  getSpeechModelSelectionKey,
+  isAmicalCloudSelectionValue,
+  resolveStoredModelSelectionValue,
+} from "../utils/model-selection";
 
 // Type for models fetched from external APIs
-type FetchedModel = Pick<DBModel, "id" | "name" | "provider"> &
+type FetchedModel = Pick<
+  DBModel,
+  "id" | "name" | "provider" | "providerType" | "providerInstanceId"
+> &
   Partial<DBModel>;
+
+const PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
+
+function getProviderIdentity(provider: RemoteProvider) {
+  const providerType = getRemoteProviderType(provider);
+
+  return {
+    providerType,
+    providerInstanceId: getSystemProviderInstanceId(providerType),
+    providerLabel: getProviderDisplayName(providerType),
+  };
+}
+
+async function extractProviderErrorMessage(
+  response: Response,
+): Promise<string> {
+  try {
+    const errorData = await response.json();
+    const providerMessage =
+      (errorData as any)?.error?.message ||
+      (errorData as any)?.error?.type ||
+      (errorData as any)?.message;
+
+    if (typeof providerMessage === "string" && providerMessage.length > 0) {
+      return providerMessage;
+    }
+  } catch {
+    // Ignore JSON parsing failures and fall back to status-based messages.
+  }
+
+  switch (response.status) {
+    case 401:
+      return "Invalid API key";
+    case 403:
+      return "Access denied";
+    case 429:
+      return "Rate limited";
+    default:
+      return `HTTP ${response.status}: ${response.statusText}`;
+  }
+}
+
+function formatContextLength(contextLength?: number): string {
+  return contextLength ? `${Math.floor(contextLength / 1000)}k` : "Unknown";
+}
+
+function isOpenAICompatibleChatModel(model: OpenAICompatibleModel): boolean {
+  const id = model.id.toLowerCase();
+  const excludedPatterns = [
+    "embedding",
+    "embed",
+    "whisper",
+    "moderation",
+    "rerank",
+    "transcrib",
+    "speech",
+    "tts",
+    "audio",
+  ];
+
+  return !excludedPatterns.some((pattern) => id.includes(pattern));
+}
+
+function formatProviderRequestError(
+  error: unknown,
+  fallbackMessage = "Connection failed",
+): string {
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return "Connection timed out";
+  }
+
+  if (error instanceof TypeError) {
+    return "Could not reach provider. Check the base URL.";
+  }
+
+  return error instanceof Error ? error.message : fallbackMessage;
+}
 
 interface ModelManagerEvents {
   "download-progress": (modelId: string, progress: DownloadProgress) => void;
@@ -129,7 +228,7 @@ class ModelService extends EventEmitter {
       });
 
       // Restore selected model from settings and validate availability
-      const savedSelection = await this.settingsService.getDefaultSpeechModel();
+      const savedSelection = await this.getSelectedModel();
 
       if (savedSelection) {
         // Validate the saved selection is still available
@@ -226,6 +325,7 @@ class ModelService extends EventEmitter {
 
       // Validate all default models after sync
       await this.validateAndClearInvalidDefaults();
+      await this.validateAndNormalizeFormatterConfigSelections();
 
       // Setup auth event listeners
       this.setupAuthEventListeners();
@@ -474,6 +574,10 @@ class ModelService extends EventEmitter {
       // Create/update model record in database with download info
       await upsertModel({
         id: model.id,
+        providerType: PROVIDER_TYPES.localWhisper,
+        providerInstanceId: getSystemProviderInstanceId(
+          PROVIDER_TYPES.localWhisper,
+        ),
         provider: "local-whisper",
         name: model.name,
         type: "speech",
@@ -575,7 +679,7 @@ class ModelService extends EventEmitter {
     }
 
     // Check if this is the selected model BEFORE deletion
-    const currentSelection = await this.settingsService.getDefaultSpeechModel();
+    const currentSelection = await this.getSelectedModel();
     const wasSelected = currentSelection === modelId;
 
     // Delete file
@@ -588,7 +692,11 @@ class ModelService extends EventEmitter {
     }
 
     // Remove the model record from database (we only store downloaded models)
-    await removeModel(downloadedModel.provider, downloadedModel.id);
+    await removeModel(
+      downloadedModel.providerInstanceId,
+      "speech",
+      downloadedModel.id,
+    );
 
     // Handle selection update if needed
     if (wasSelected) {
@@ -666,7 +774,22 @@ class ModelService extends EventEmitter {
 
   // Get currently selected model for transcription
   async getSelectedModel(): Promise<string | null> {
-    return (await this.settingsService.getDefaultSpeechModel()) || null;
+    const selection = await this.settingsService.getDefaultSpeechModel();
+    if (!selection) {
+      return null;
+    }
+
+    const modelId = getSpeechModelIdFromStoredSelection(selection);
+    if (!modelId) {
+      return null;
+    }
+
+    const normalizedSelection = getSpeechModelSelectionKey(modelId);
+    if (normalizedSelection !== selection) {
+      await this.settingsService.setDefaultSpeechModel(normalizedSelection);
+    }
+
+    return modelId;
   }
 
   private async syncFormatterConfigForSpeechChange(
@@ -683,13 +806,13 @@ class ModelService extends EventEmitter {
     const fallbackModelId = formatterConfig.fallbackModelId;
     const movedToCloud = newModelId === "amical-cloud";
     const movedFromCloud = oldModelId === "amical-cloud";
-    const usingCloudFormatting = currentModelId === "amical-cloud";
+    const usingCloudFormatting = isAmicalCloudSelectionValue(currentModelId);
 
-    let nextConfig = { ...formatterConfig };
+    const nextConfig = { ...formatterConfig };
     let updated = false;
 
     if (movedToCloud && !usingCloudFormatting) {
-      if (currentModelId && currentModelId !== "amical-cloud") {
+      if (currentModelId && !isAmicalCloudSelectionValue(currentModelId)) {
         nextConfig.fallbackModelId = currentModelId;
       } else if (!fallbackModelId) {
         const defaultLanguageModel =
@@ -699,7 +822,7 @@ class ModelService extends EventEmitter {
         }
       }
 
-      nextConfig.modelId = "amical-cloud";
+      nextConfig.modelId = getSpeechModelSelectionKey("amical-cloud");
       nextConfig.enabled = true;
       updated = true;
     } else if (movedFromCloud && usingCloudFormatting) {
@@ -708,7 +831,9 @@ class ModelService extends EventEmitter {
         (await this.settingsService.getDefaultLanguageModel());
 
       nextConfig.modelId =
-        fallback && fallback !== "amical-cloud" ? fallback : undefined;
+        fallback && !isAmicalCloudSelectionValue(fallback)
+          ? fallback
+          : undefined;
       updated = true;
     }
 
@@ -732,7 +857,9 @@ class ModelService extends EventEmitter {
       return;
     }
 
-    await this.settingsService.setDefaultSpeechModel(modelId || undefined);
+    await this.settingsService.setDefaultSpeechModel(
+      modelId ? getSpeechModelSelectionKey(modelId) : undefined,
+    );
     await this.syncFormatterConfigForSpeechChange(previousModelId, modelId);
 
     this.emit("selection-changed", previousModelId, modelId, reason, "speech");
@@ -840,16 +967,13 @@ class ModelService extends EventEmitter {
           "Content-Type": "application/json",
           "User-Agent": getUserAgent(),
         },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          (errorData as any)?.error?.message ||
-          `HTTP ${response.status}: ${response.statusText}`;
         return {
           success: false,
-          error: errorMessage,
+          error: await extractProviderErrorMessage(response),
         };
       }
 
@@ -857,7 +981,7 @@ class ModelService extends EventEmitter {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Connection failed",
+        error: formatProviderRequestError(error),
       };
     }
   }
@@ -867,7 +991,7 @@ class ModelService extends EventEmitter {
    */
   async validateOllamaConnection(url: string): Promise<ValidationResult> {
     try {
-      const cleanUrl = url.replace(/\/$/, "");
+      const cleanUrl = normalizeOllamaUrl(url);
       const versionUrl = `${cleanUrl}/api/version`;
 
       const response = await fetch(versionUrl, {
@@ -876,12 +1000,13 @@ class ModelService extends EventEmitter {
           "Content-Type": "application/json",
           "User-Agent": getUserAgent(),
         },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       });
 
       if (!response.ok) {
         return {
           success: false,
-          error: `HTTP ${response.status}: ${response.statusText}`,
+          error: await extractProviderErrorMessage(response),
         };
       }
 
@@ -889,10 +1014,46 @@ class ModelService extends EventEmitter {
     } catch (error) {
       return {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to connect to Ollama. Make sure Ollama is running.",
+        error: formatProviderRequestError(
+          error,
+          "Failed to connect to Ollama. Make sure Ollama is running.",
+        ),
+      };
+    }
+  }
+
+  /**
+   * Validate OpenAI-compatible connection by testing the configured base URL.
+   */
+  async validateOpenAICompatibleConnection(
+    baseURL: string,
+    apiKey: string,
+  ): Promise<ValidationResult> {
+    const normalizedBaseURL = normalizeOpenAICompatibleBaseURL(baseURL);
+
+    try {
+      const response = await fetch(`${normalizedBaseURL}/models`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
+        },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: await extractProviderErrorMessage(response),
+        };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: formatProviderRequestError(error),
       };
     }
   }
@@ -902,6 +1063,7 @@ class ModelService extends EventEmitter {
    */
   async fetchOpenRouterModels(apiKey: string): Promise<FetchedModel[]> {
     try {
+      const identity = getProviderIdentity("OpenRouter");
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
@@ -909,10 +1071,11 @@ class ModelService extends EventEmitter {
           "Content-Type": "application/json",
           "User-Agent": getUserAgent(),
         },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(await extractProviderErrorMessage(response));
       }
 
       const data: OpenRouterResponse = await response.json();
@@ -931,14 +1094,14 @@ class ModelService extends EventEmitter {
         }
 
         // Convert context length to readable format
-        const contextLength = model.context_length
-          ? `${Math.floor(model.context_length / 1000)}k`
-          : "Unknown";
+        const contextLength = formatContextLength(model.context_length);
 
         return {
           id: model.id,
           name: model.name,
-          provider: "OpenRouter",
+          providerType: identity.providerType,
+          providerInstanceId: identity.providerInstanceId,
+          provider: identity.providerLabel,
           size,
           context: contextLength,
           description: model.description,
@@ -959,7 +1122,8 @@ class ModelService extends EventEmitter {
    */
   async fetchOllamaModels(url: string): Promise<FetchedModel[]> {
     try {
-      const cleanUrl = url.replace(/\/$/, "");
+      const identity = getProviderIdentity("Ollama");
+      const cleanUrl = normalizeOllamaUrl(url);
       const modelsUrl = `${cleanUrl}/api/tags`;
 
       const response = await fetch(modelsUrl, {
@@ -968,10 +1132,11 @@ class ModelService extends EventEmitter {
           "Content-Type": "application/json",
           "User-Agent": getUserAgent(),
         },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(await extractProviderErrorMessage(response));
       }
 
       const data: OllamaResponse = await response.json();
@@ -1005,7 +1170,9 @@ class ModelService extends EventEmitter {
         return {
           id: model.name,
           name: displayName,
-          provider: "Ollama",
+          providerType: identity.providerType,
+          providerInstanceId: identity.providerInstanceId,
+          provider: identity.providerLabel,
           size,
           context: contextLength,
           description: model.details?.family || undefined,
@@ -1022,19 +1189,72 @@ class ModelService extends EventEmitter {
   }
 
   /**
+   * Fetch available models from an OpenAI-compatible endpoint.
+   */
+  async fetchOpenAICompatibleModels(
+    baseURL: string,
+    apiKey: string,
+  ): Promise<FetchedModel[]> {
+    const normalizedBaseURL = normalizeOpenAICompatibleBaseURL(baseURL);
+    const identity = getProviderIdentity("OpenAI Compatible");
+
+    try {
+      const response = await fetch(`${normalizedBaseURL}/models`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
+        },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        throw new Error(await extractProviderErrorMessage(response));
+      }
+
+      const data: OpenAICompatibleResponse = await response.json();
+
+      return data.data.filter(isOpenAICompatibleChatModel).map(
+        (model: OpenAICompatibleModel): FetchedModel => ({
+          id: model.id,
+          name: model.id,
+          providerType: identity.providerType,
+          providerInstanceId: identity.providerInstanceId,
+          provider: identity.providerLabel,
+          size: "Unknown",
+          context: formatContextLength(
+            model.context_length ?? model.context_window,
+          ),
+          description:
+            typeof model.description === "string"
+              ? model.description
+              : undefined,
+          originalModel: model,
+        }),
+      );
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch OpenAI-compatible models",
+      );
+    }
+  }
+
+  /**
    * Get all synced provider models from database
    */
   async getSyncedProviderModels(): Promise<DBModel[]> {
     const models = await getAllModels();
-    // Filter to only remote provider models (exclude local-whisper)
-    return models.filter((m) => m.provider !== "local-whisper");
+    return models.filter((m) => m.providerType !== PROVIDER_TYPES.localWhisper);
   }
 
   /**
    * Get synced models by provider
    */
-  async getSyncedModelsByProvider(provider: string): Promise<DBModel[]> {
-    const models = await getModelsByProvider(provider);
+  async getSyncedModelsByProvider(providerType: string): Promise<DBModel[]> {
+    const models = await getModelsByProvider(providerType);
     return models;
   }
 
@@ -1042,16 +1262,32 @@ class ModelService extends EventEmitter {
    * Sync provider models to database (replace all models for a provider)
    */
   async syncProviderModelsToDatabase(
-    provider: string,
+    provider: RemoteProvider,
     models: FetchedModel[],
   ): Promise<void> {
+    await this.normalizeLegacyStoredSelections();
+
+    const providerType = getRemoteProviderType(provider);
+    const providerInstanceId = getSystemProviderInstanceId(providerType);
+    const providerLabel = getProviderDisplayName(providerType);
+    const syncedModels =
+      providerType === PROVIDER_TYPES.openAICompatible
+        ? models.filter((model) =>
+            isOpenAICompatibleChatModel({ id: model.id ?? "" }),
+          )
+        : models;
+
     // Convert to NewModel format
-    const newModels: NewModel[] = models.map((m) => ({
+    const newModels: NewModel[] = syncedModels.map((m) => ({
       id: m.id!,
-      provider: provider,
+      providerType,
+      providerInstanceId,
+      provider: providerLabel,
       name: m.name!,
       type:
-        provider === "Ollama" && m.name && m.name.includes("embed")
+        providerType === PROVIDER_TYPES.ollama &&
+        m.name &&
+        isOllamaEmbeddingModelName(m.name)
           ? "embedding"
           : "language",
       size: m.size || null,
@@ -1067,20 +1303,25 @@ class ModelService extends EventEmitter {
       accuracy: null,
     }));
 
-    await syncModelsForProvider(provider, newModels);
+    await syncModelsForProviderInstance(providerInstanceId, newModels);
 
     // Validate default models after sync
     await this.validateAndClearInvalidDefaults();
+    await this.validateAndNormalizeFormatterConfigSelections();
   }
 
   /**
    * Remove all models for a provider
    */
-  async removeProviderModels(provider: string): Promise<void> {
-    await removeModelsForProvider(provider);
+  async removeProviderModels(provider: RemoteProvider): Promise<void> {
+    const providerType = getRemoteProviderType(provider);
+    const providerInstanceId = getSystemProviderInstanceId(providerType);
+
+    await removeModelsForProviderInstance(providerInstanceId);
 
     // Validate default models after removal
     await this.validateAndClearInvalidDefaults();
+    await this.validateAndNormalizeFormatterConfigSelections();
   }
 
   // ============================================
@@ -1091,8 +1332,29 @@ class ModelService extends EventEmitter {
    * Get default language model
    */
   async getDefaultLanguageModel(): Promise<string | null> {
-    const modelId = await this.settingsService.getDefaultLanguageModel();
-    return modelId || null;
+    const modelSelection = await this.settingsService.getDefaultLanguageModel();
+    if (!modelSelection) {
+      return null;
+    }
+
+    const languageModels = (await getAllModels()).filter(
+      (model) => model.type === "language",
+    );
+    const normalizedSelection = resolveStoredModelSelectionValue(
+      languageModels,
+      modelSelection,
+      "language",
+    );
+
+    if (!normalizedSelection) {
+      return null;
+    }
+
+    if (normalizedSelection !== modelSelection) {
+      await this.settingsService.setDefaultLanguageModel(normalizedSelection);
+    }
+
+    return normalizedSelection;
   }
 
   /**
@@ -1106,8 +1368,30 @@ class ModelService extends EventEmitter {
    * Get default embedding model
    */
   async getDefaultEmbeddingModel(): Promise<string | null> {
-    const modelId = await this.settingsService.getDefaultEmbeddingModel();
-    return modelId || null;
+    const modelSelection =
+      await this.settingsService.getDefaultEmbeddingModel();
+    if (!modelSelection) {
+      return null;
+    }
+
+    const embeddingModels = (await getAllModels()).filter(
+      (model) => model.type === "embedding",
+    );
+    const normalizedSelection = resolveStoredModelSelectionValue(
+      embeddingModels,
+      modelSelection,
+      "embedding",
+    );
+
+    if (!normalizedSelection) {
+      return null;
+    }
+
+    if (normalizedSelection !== modelSelection) {
+      await this.settingsService.setDefaultEmbeddingModel(normalizedSelection);
+    }
+
+    return normalizedSelection;
   }
 
   /**
@@ -1115,6 +1399,128 @@ class ModelService extends EventEmitter {
    */
   async setDefaultEmbeddingModel(modelId: string | null): Promise<void> {
     await this.settingsService.setDefaultEmbeddingModel(modelId || undefined);
+  }
+
+  private async normalizeLegacyStoredSelections(): Promise<void> {
+    const allModels = await getAllModels();
+    const languageModels = allModels.filter(
+      (model) => model.type === "language",
+    );
+    const embeddingModels = allModels.filter(
+      (model) => model.type === "embedding",
+    );
+
+    const defaultSpeechModel =
+      await this.settingsService.getDefaultSpeechModel();
+    if (defaultSpeechModel) {
+      const speechModelId =
+        getSpeechModelIdFromStoredSelection(defaultSpeechModel);
+      if (speechModelId) {
+        const normalizedSelection = getSpeechModelSelectionKey(speechModelId);
+        if (normalizedSelection !== defaultSpeechModel) {
+          await this.settingsService.setDefaultSpeechModel(normalizedSelection);
+        }
+      }
+    }
+
+    const defaultLanguageModel =
+      await this.settingsService.getDefaultLanguageModel();
+    if (defaultLanguageModel) {
+      const normalizedSelection = resolveStoredModelSelectionValue(
+        languageModels,
+        defaultLanguageModel,
+        "language",
+      );
+      if (normalizedSelection && normalizedSelection !== defaultLanguageModel) {
+        await this.settingsService.setDefaultLanguageModel(normalizedSelection);
+      }
+    }
+
+    const defaultEmbeddingModel =
+      await this.settingsService.getDefaultEmbeddingModel();
+    if (defaultEmbeddingModel) {
+      const normalizedSelection = resolveStoredModelSelectionValue(
+        embeddingModels,
+        defaultEmbeddingModel,
+        "embedding",
+      );
+      if (
+        normalizedSelection &&
+        normalizedSelection !== defaultEmbeddingModel
+      ) {
+        await this.settingsService.setDefaultEmbeddingModel(
+          normalizedSelection,
+        );
+      }
+    }
+
+    await this.normalizeFormatterConfigSelections(languageModels, {
+      preserveUnresolvedSelections: true,
+    });
+  }
+
+  private async validateAndNormalizeFormatterConfigSelections(): Promise<void> {
+    const languageModels = (await getAllModels()).filter(
+      (model) => model.type === "language",
+    );
+    await this.normalizeFormatterConfigSelections(languageModels);
+  }
+
+  private async normalizeFormatterConfigSelections(
+    languageModels: DBModel[],
+    options?: {
+      preserveUnresolvedSelections?: boolean;
+    },
+  ): Promise<void> {
+    const formatterConfig = await this.settingsService.getFormatterConfig();
+    if (!formatterConfig) {
+      return;
+    }
+
+    const normalizeSelection = (
+      value: string | undefined,
+    ): string | undefined => {
+      if (!value) {
+        return undefined;
+      }
+
+      if (isAmicalCloudSelectionValue(value)) {
+        return getSpeechModelSelectionKey("amical-cloud");
+      }
+
+      const normalizedSelection = resolveStoredModelSelectionValue(
+        languageModels,
+        value,
+        "language",
+      );
+
+      if (
+        normalizedSelection === undefined &&
+        options?.preserveUnresolvedSelections
+      ) {
+        return value;
+      }
+
+      return normalizedSelection;
+    };
+
+    const normalizedModelId = normalizeSelection(formatterConfig.modelId);
+    const normalizedFallbackModelId = normalizeSelection(
+      formatterConfig.fallbackModelId,
+    );
+
+    if (
+      normalizedModelId === formatterConfig.modelId &&
+      normalizedFallbackModelId === formatterConfig.fallbackModelId
+    ) {
+      return;
+    }
+
+    await this.settingsService.setFormatterConfig({
+      ...formatterConfig,
+      modelId: normalizedModelId,
+      fallbackModelId: normalizedFallbackModelId,
+    });
   }
 
   /**
@@ -1127,22 +1533,38 @@ class ModelService extends EventEmitter {
     const defaultSpeechModel =
       await this.settingsService.getDefaultSpeechModel();
     if (defaultSpeechModel) {
-      const availableModel = AVAILABLE_MODELS.find(
-        (m) => m.id === defaultSpeechModel,
-      );
-      const isAmicalModel = availableModel?.provider === "Amical Cloud";
-      const existsInDb = await modelExists("local-whisper", defaultSpeechModel);
+      const speechModelId =
+        getSpeechModelIdFromStoredSelection(defaultSpeechModel);
 
-      // Amical cloud models are always valid; local models must exist in DB
-      if (!isAmicalModel && !existsInDb) {
-        logger.main.info("Clearing invalid default speech model", {
-          modelId: defaultSpeechModel,
-        });
-        await this.applySpeechModelSelection(
-          null,
-          "auto-after-deletion",
-          defaultSpeechModel,
+      if (!speechModelId) {
+        await this.applySpeechModelSelection(null, "auto-after-deletion", null);
+      } else {
+        const normalizedSelection = getSpeechModelSelectionKey(speechModelId);
+        const availableModel = AVAILABLE_MODELS.find(
+          (m) => m.id === speechModelId,
         );
+        const isAmicalModel = availableModel?.provider === "Amical Cloud";
+        const existsInDb = await modelExists(
+          getSystemProviderInstanceId(PROVIDER_TYPES.localWhisper),
+          "speech",
+          speechModelId,
+        );
+
+        if (normalizedSelection !== defaultSpeechModel) {
+          await this.settingsService.setDefaultSpeechModel(normalizedSelection);
+        }
+
+        // Amical cloud models are always valid; local models must exist in DB
+        if (!isAmicalModel && !existsInDb) {
+          logger.main.info("Clearing invalid default speech model", {
+            modelId: speechModelId,
+          });
+          await this.applySpeechModelSelection(
+            null,
+            "auto-after-deletion",
+            speechModelId,
+          );
+        }
       }
     }
 
@@ -1150,13 +1572,16 @@ class ModelService extends EventEmitter {
     const defaultLanguageModel =
       await this.settingsService.getDefaultLanguageModel();
     if (defaultLanguageModel) {
-      // Check all models to find if this ID exists with any provider
-      const allModels = await getAllModels();
-      const modelExists = allModels.some(
-        (m) => m.id === defaultLanguageModel && m.type === "language",
+      const allModels = (await getAllModels()).filter(
+        (model) => model.type === "language",
+      );
+      const normalizedSelection = resolveStoredModelSelectionValue(
+        allModels,
+        defaultLanguageModel,
+        "language",
       );
 
-      if (!modelExists) {
+      if (!normalizedSelection) {
         logger.main.info("Clearing invalid default language model", {
           modelId: defaultLanguageModel,
         });
@@ -1168,6 +1593,8 @@ class ModelService extends EventEmitter {
           "auto-after-deletion",
           "language",
         );
+      } else if (normalizedSelection !== defaultLanguageModel) {
+        await this.settingsService.setDefaultLanguageModel(normalizedSelection);
       }
     }
 
@@ -1175,13 +1602,16 @@ class ModelService extends EventEmitter {
     const defaultEmbeddingModel =
       await this.settingsService.getDefaultEmbeddingModel();
     if (defaultEmbeddingModel) {
-      // Check all models to find if this ID exists with any provider
-      const allModels = await getAllModels();
-      const modelExists = allModels.some(
-        (m) => m.id === defaultEmbeddingModel && m.type === "embedding",
+      const allModels = (await getAllModels()).filter(
+        (model) => model.type === "embedding",
+      );
+      const normalizedSelection = resolveStoredModelSelectionValue(
+        allModels,
+        defaultEmbeddingModel,
+        "embedding",
       );
 
-      if (!modelExists) {
+      if (!normalizedSelection) {
         logger.main.info("Clearing invalid default embedding model", {
           modelId: defaultEmbeddingModel,
         });
@@ -1192,6 +1622,10 @@ class ModelService extends EventEmitter {
           null,
           "auto-after-deletion",
           "embedding",
+        );
+      } else if (normalizedSelection !== defaultEmbeddingModel) {
+        await this.settingsService.setDefaultEmbeddingModel(
+          normalizedSelection,
         );
       }
     }

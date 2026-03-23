@@ -5,6 +5,11 @@ import type { FormatterConfig } from "@/types/formatter";
 import { useTranslation } from "react-i18next";
 
 import type { ComboboxOption } from "@/components/ui/combobox";
+import {
+  getModelSelectionKey,
+  getSpeechModelSelectionKey,
+  resolveStoredModelSelectionValue,
+} from "@/utils/model-selection";
 
 interface UseFormattingSettingsReturn {
   // State
@@ -118,6 +123,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
   const languageModels = languageModelsQuery.data || [];
   const hasLanguageModels = languageModels.length > 0;
   const isCloudSpeechSelected = speechModelQuery.data === "amical-cloud";
+  const cloudFormattingOptionValue = getSpeechModelSelectionKey("amical-cloud");
   const canUseCloudFormatting =
     isCloudSpeechSelected && (isAuthenticated ?? false);
   const hasFormattingOptions = hasLanguageModels || canUseCloudFormatting;
@@ -140,7 +146,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
 
     const options: ComboboxOption[] = [
       {
-        value: "amical-cloud",
+        value: cloudFormattingOptionValue,
         label: t("settings.dictation.formatting.cloudOptionLabel"),
         disabled: !canUseCloudFormatting,
         disabledReason: getCloudDisabledReason(),
@@ -148,7 +154,11 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     ];
 
     const languageOptions = languageModels.map((model) => ({
-      value: model.id,
+      value: getModelSelectionKey(
+        model.providerInstanceId,
+        model.type,
+        model.id,
+      ),
       label: `${model.name} (${model.provider})`,
     }));
 
@@ -157,6 +167,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     canUseCloudFormatting,
     isCloudSpeechSelected,
     isAuthenticated,
+    cloudFormattingOptionValue,
     languageModels,
     t,
   ]);
@@ -169,22 +180,44 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     const preferredModelId =
       formatterConfig?.modelId || defaultLanguageModelQuery.data || "";
 
-    return optionValues.has(preferredModelId) ? preferredModelId : "";
-  }, [defaultLanguageModelQuery.data, formatterConfig?.modelId, optionValues]);
+    if (optionValues.has(preferredModelId)) {
+      return preferredModelId;
+    }
+
+    if (preferredModelId === "amical-cloud") {
+      return cloudFormattingOptionValue;
+    }
+
+    const normalizedSelection = resolveStoredModelSelectionValue(
+      languageModels,
+      preferredModelId,
+      "language",
+    );
+
+    return normalizedSelection && optionValues.has(normalizedSelection)
+      ? normalizedSelection
+      : "";
+  }, [
+    cloudFormattingOptionValue,
+    defaultLanguageModelQuery.data,
+    formatterConfig?.modelId,
+    languageModels,
+    optionValues,
+  ]);
 
   // Inline state conditions
   const showCloudRequiresSpeech =
-    selectedModelId === "amical-cloud" && !isCloudSpeechSelected;
+    selectedModelId === cloudFormattingOptionValue && !isCloudSpeechSelected;
   const showCloudRequiresAuth =
-    selectedModelId === "amical-cloud" &&
+    selectedModelId === cloudFormattingOptionValue &&
     isCloudSpeechSelected &&
     !isAuthenticated;
   const showCloudReady =
-    selectedModelId === "amical-cloud" && canUseCloudFormatting;
+    selectedModelId === cloudFormattingOptionValue && canUseCloudFormatting;
   const showNoLanguageModels =
     !hasLanguageModels &&
     !canUseCloudFormatting &&
-    selectedModelId !== "amical-cloud";
+    selectedModelId !== cloudFormattingOptionValue;
 
   // Handlers
   const handleFormattingEnabledChange = useCallback(
@@ -218,12 +251,12 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
         fallbackModelId: formatterConfig?.fallbackModelId,
       };
 
-      if (modelId !== "amical-cloud") {
+      if (modelId !== cloudFormattingOptionValue) {
         nextConfig.fallbackModelId = modelId;
       } else if (
         !nextConfig.fallbackModelId &&
         currentModelId &&
-        currentModelId !== "amical-cloud"
+        currentModelId !== cloudFormattingOptionValue
       ) {
         nextConfig.fallbackModelId = currentModelId;
       }
@@ -232,6 +265,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     },
     [
       formatterConfig,
+      cloudFormattingOptionValue,
       defaultLanguageModelQuery.data,
       setFormatterConfigMutation,
     ],

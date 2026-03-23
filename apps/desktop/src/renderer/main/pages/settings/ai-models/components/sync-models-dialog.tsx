@@ -1,6 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -10,17 +12,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import type { Model } from "@/db/schema";
 import { useTranslation } from "react-i18next";
+import {
+  REMOTE_PROVIDERS,
+  type RemoteProvider,
+} from "@/constants/remote-providers";
+import {
+  getRemoteProviderType,
+  getSystemProviderInstanceId,
+} from "@/constants/provider-types";
+import { getModelSelectionKey } from "@/utils/model-selection";
 
 interface SyncModelsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  provider: "OpenRouter" | "Ollama";
+  provider: RemoteProvider;
   modelType?: "language" | "embedding";
 }
 
@@ -31,25 +39,28 @@ export default function SyncModelsDialog({
   modelType = "language",
 }: SyncModelsDialogProps) {
   const { t } = useTranslation();
+  const utils = api.useUtils();
+
   const providerLabel =
-    provider === "OpenRouter"
+    provider === REMOTE_PROVIDERS.openRouter
       ? t("settings.aiModels.providers.openRouter")
-      : t("settings.aiModels.providers.ollama");
+      : provider === REMOTE_PROVIDERS.ollama
+        ? t("settings.aiModels.providers.ollama")
+        : t("settings.aiModels.providers.openAICompatible");
   const modelTypePrefix =
     modelType === "embedding"
       ? `${t("settings.aiModels.modelTypes.embedding")} `
       : "";
 
-  // Local state
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [credentials, setCredentials] = useState<{
     openRouterApiKey?: string;
     ollamaUrl?: string;
+    openAICompatibleApiKey?: string;
+    openAICompatibleBaseURL?: string;
   }>({});
 
-  // tRPC queries and mutations
-  const utils = api.useUtils();
   const modelProvidersConfigQuery =
     api.settings.getModelProvidersConfig.useQuery();
   const syncedModelsQuery = api.models.getSyncedProviderModels.useQuery();
@@ -60,28 +71,32 @@ export default function SyncModelsDialog({
 
   const fetchOpenRouterModelsQuery = api.models.fetchOpenRouterModels.useQuery(
     { apiKey: credentials.openRouterApiKey ?? "" },
-    {
-      enabled: false, // We'll trigger manually
-    },
+    { enabled: false },
   );
 
   const fetchOllamaModelsQuery = api.models.fetchOllamaModels.useQuery(
     { url: credentials.ollamaUrl ?? "" },
-    {
-      enabled: false, // We'll trigger manually
-    },
+    { enabled: false },
   );
+
+  const fetchOpenAICompatibleModelsQuery =
+    api.models.fetchOpenAICompatibleModels.useQuery(
+      {
+        apiKey: credentials.openAICompatibleApiKey ?? "",
+        baseURL: credentials.openAICompatibleBaseURL ?? "",
+      },
+      { enabled: false },
+    );
 
   const syncProviderModelsMutation =
     api.models.syncProviderModelsToDatabase.useMutation({
       onSuccess: () => {
-        // Invalidate all related queries to refresh parent components
         utils.models.getSyncedProviderModels.invalidate();
         utils.models.getDefaultLanguageModel.invalidate();
         utils.models.getDefaultEmbeddingModel.invalidate();
         toast.success(t("settings.aiModels.syncDialog.toast.synced"));
       },
-      onError: (error: any) => {
+      onError: (error: unknown) => {
         console.error("Failed to sync models to database:", error);
         toast.error(t("settings.aiModels.syncDialog.toast.syncFailed"));
       },
@@ -101,52 +116,70 @@ export default function SyncModelsDialog({
       },
     });
 
-  // Extract credentials when provider config is available
   useEffect(() => {
-    if (modelProvidersConfigQuery.data) {
-      const config = modelProvidersConfigQuery.data;
-      setCredentials({
-        openRouterApiKey: config.openRouter?.apiKey,
-        ollamaUrl: config.ollama?.url,
-      });
+    if (!modelProvidersConfigQuery.data) {
+      return;
     }
+
+    const config = modelProvidersConfigQuery.data;
+    setCredentials({
+      openRouterApiKey: config.openRouter?.apiKey,
+      ollamaUrl: config.ollama?.url,
+      openAICompatibleApiKey: config.openAICompatible?.apiKey,
+      openAICompatibleBaseURL: config.openAICompatible?.baseURL,
+    });
   }, [modelProvidersConfigQuery.data]);
 
-  // Pre-select already synced models and start fetching when dialog opens
   useEffect(() => {
-    if (open && syncedModelsQuery.data) {
-      const syncedModelIds = syncedModelsQuery.data
-        .filter((m) => m.provider === provider)
-        .map((m) => m.id);
-      setSelectedModels(syncedModelIds);
-      setSearchTerm("");
+    if (!open || !syncedModelsQuery.data) {
+      return;
+    }
 
-      // Start fetching models if we have credentials
-      if (provider === "OpenRouter" && credentials.openRouterApiKey) {
-        fetchOpenRouterModelsQuery.refetch();
-      } else if (provider === "Ollama" && credentials.ollamaUrl) {
-        fetchOllamaModelsQuery.refetch();
-      }
+    const syncedModelIds = syncedModelsQuery.data
+      .filter((model) => model.providerType === getRemoteProviderType(provider))
+      .map((model) => model.id);
+    setSelectedModels(syncedModelIds);
+    setSearchTerm("");
+
+    if (
+      provider === REMOTE_PROVIDERS.openRouter &&
+      credentials.openRouterApiKey
+    ) {
+      fetchOpenRouterModelsQuery.refetch();
+      return;
+    }
+
+    if (provider === REMOTE_PROVIDERS.ollama && credentials.ollamaUrl) {
+      fetchOllamaModelsQuery.refetch();
+      return;
+    }
+
+    if (
+      provider === REMOTE_PROVIDERS.openAICompatible &&
+      credentials.openAICompatibleApiKey &&
+      credentials.openAICompatibleBaseURL
+    ) {
+      fetchOpenAICompatibleModelsQuery.refetch();
     }
   }, [open, syncedModelsQuery.data, provider, credentials]);
 
-  // Get the appropriate query based on provider
   const activeQuery =
-    provider === "OpenRouter"
+    provider === REMOTE_PROVIDERS.openRouter
       ? fetchOpenRouterModelsQuery
-      : fetchOllamaModelsQuery;
+      : provider === REMOTE_PROVIDERS.ollama
+        ? fetchOllamaModelsQuery
+        : fetchOpenAICompatibleModelsQuery;
+
   const availableModels = activeQuery.data || [];
   const isFetching = activeQuery.isLoading || activeQuery.isFetching;
   const fetchError = activeQuery.error?.message || "";
 
-  // Filter models based on search
   const filteredModels = availableModels.filter(
     (model) =>
       model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       model.id.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  // Handle model selection
   const toggleModel = (modelId: string, checked: boolean) => {
     if (checked) {
       setSelectedModels((prev) => [...prev, modelId]);
@@ -155,29 +188,44 @@ export default function SyncModelsDialog({
     }
   };
 
-  // Handle sync
+  const handleCancel = () => {
+    onOpenChange(false);
+    setSelectedModels([]);
+    setSearchTerm("");
+  };
+
   const handleSync = async () => {
     const modelsToSync = availableModels.filter((model) =>
       selectedModels.includes(model.id),
     );
 
-    // Sync to database
     await syncProviderModelsMutation.mutateAsync({
       provider,
       models: modelsToSync,
     });
 
-    // Set first model as default if no default is set and this is a language model
     if (modelType === "language" && modelsToSync.length > 0) {
       if (!defaultLanguageModelQuery.data) {
-        setDefaultLanguageModelMutation.mutate({ modelId: modelsToSync[0].id });
+        setDefaultLanguageModelMutation.mutate({
+          modelId: getModelSelectionKey(
+            getSystemProviderInstanceId(getRemoteProviderType(provider)),
+            "language",
+            modelsToSync[0].id,
+          ),
+        });
       }
-    } else if (modelType === "embedding" && modelsToSync.length > 0) {
-      // For embedding models, only set default if no default is set and this is Ollama provider
-      // (embedding models only work with Ollama)
-      if (provider === "Ollama" && !defaultEmbeddingModelQuery.data) {
+    } else if (
+      modelType === "embedding" &&
+      modelsToSync.length > 0 &&
+      provider === REMOTE_PROVIDERS.ollama
+    ) {
+      if (!defaultEmbeddingModelQuery.data) {
         setDefaultEmbeddingModelMutation.mutate({
-          modelId: modelsToSync[0].id,
+          modelId: getModelSelectionKey(
+            getSystemProviderInstanceId(getRemoteProviderType(provider)),
+            "embedding",
+            modelsToSync[0].id,
+          ),
         });
       }
     }
@@ -185,17 +233,10 @@ export default function SyncModelsDialog({
     handleCancel();
   };
 
-  // Handle cancel
-  const handleCancel = () => {
-    onOpenChange(false);
-    setSelectedModels([]);
-    setSearchTerm("");
-  };
-
-  // Determine display limits and grid layout
-  const displayLimit = provider === "OpenRouter" ? 10 : undefined;
+  const displayLimit =
+    provider === REMOTE_PROVIDERS.openRouter ? 10 : undefined;
   const gridCols =
-    provider === "OpenRouter"
+    provider === REMOTE_PROVIDERS.openRouter
       ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
       : "grid-cols-1 md:grid-cols-2";
 
@@ -219,7 +260,7 @@ export default function SyncModelsDialog({
 
         <div
           className={
-            provider === "Ollama"
+            provider === REMOTE_PROVIDERS.ollama
               ? "overflow-y-auto"
               : "max-h-96 overflow-y-auto"
           }
@@ -230,7 +271,7 @@ export default function SyncModelsDialog({
               <span>
                 {t("settings.aiModels.syncDialog.fetching", {
                   available:
-                    provider === "Ollama"
+                    provider === REMOTE_PROVIDERS.ollama
                       ? t("settings.aiModels.syncDialog.available")
                       : "",
                 })}
@@ -240,18 +281,18 @@ export default function SyncModelsDialog({
             <div className="text-center py-8">
               <p
                 className={
-                  provider === "Ollama"
+                  provider === REMOTE_PROVIDERS.ollama
                     ? "text-red-500 mb-2"
                     : "text-destructive"
                 }
               >
-                {provider === "Ollama"
+                {provider === REMOTE_PROVIDERS.ollama
                   ? t("settings.aiModels.syncDialog.fetchFailed")
                   : t("settings.aiModels.syncDialog.fetchFailedWithMessage", {
                       message: fetchError,
                     })}
               </p>
-              {provider === "Ollama" && (
+              {provider === REMOTE_PROVIDERS.ollama && (
                 <p className="text-sm text-muted-foreground">{fetchError}</p>
               )}
             </div>
@@ -310,11 +351,6 @@ export default function SyncModelsDialog({
                           })}
                         </span>
                       </div>
-                      {/* {model.description && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {model.description}
-                        </p>
-                      )} */}
                     </div>
                   </div>
                 ))}
@@ -331,12 +367,13 @@ export default function SyncModelsDialog({
             onClick={handleSync}
             disabled={
               selectedModels.length === 0 ||
+              isFetching ||
               syncProviderModelsMutation.isPending
             }
           >
             {syncProviderModelsMutation.isPending ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 {t("settings.aiModels.syncDialog.syncing")}
               </>
             ) : (

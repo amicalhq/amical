@@ -815,7 +815,8 @@
       },
       "providers": {
         "openRouter": "OpenRouter",
-        "ollama": "Ollama"
+        "ollama": "Ollama",
+        "openAICompatible": "OpenAI互換"
       },
       "provider": {
         "status": {
@@ -824,7 +825,9 @@
         },
         "placeholders": {
           "openRouter": "APIキー",
-          "ollama": "Ollama URL（例: http://localhost:11434）"
+          "ollama": "Ollama URL（例: http://localhost:11434）",
+          "openAICompatibleApiKey": "APIキー",
+          "openAICompatibleBaseURL": "ベースURL（例: http://localhost:1234/v1）"
         },
         "buttons": {
           "connect": "接続",

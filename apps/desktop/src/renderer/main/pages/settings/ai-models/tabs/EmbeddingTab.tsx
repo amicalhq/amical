@@ -5,6 +5,7 @@ import SyncedModelsList from "../components/synced-models-list";
 import DefaultModelCombobox from "../components/default-model-combobox";
 import ProviderAccordion from "../components/provider-accordion";
 import { useTranslation } from "react-i18next";
+import { REMOTE_PROVIDERS } from "@/constants/remote-providers";
 
 // Note: OpenRouter doesn't provide embedding models, only Ollama for now
 
@@ -21,7 +22,10 @@ export default function EmbeddingTab() {
 
         {/* Providers Accordions */}
         <Accordion type="multiple" className="w-full">
-          <ProviderAccordion provider="Ollama" modelType="embedding" />
+          <ProviderAccordion
+            provider={REMOTE_PROVIDERS.ollama}
+            modelType="embedding"
+          />
         </Accordion>
 
         {/* Synced Models List */}

@@ -3,14 +3,6 @@ export interface ValidationResult {
   error?: string;
 }
 
-export interface OpenRouterValidationRequest {
-  apiKey: string;
-}
-
-export interface OllamaValidationRequest {
-  url: string;
-}
-
 // OpenRouter API response types
 export interface OpenRouterModel {
   id: string;
@@ -58,13 +50,31 @@ export interface OllamaResponse {
   models: OllamaModel[];
 }
 
+// OpenAI-compatible /v1/models response types
+export interface OpenAICompatibleModel {
+  id: string;
+  object?: string;
+  created?: number;
+  owned_by?: string;
+  context_length?: number;
+  context_window?: number;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface OpenAICompatibleResponse {
+  data: OpenAICompatibleModel[];
+}
+
 // Unified model interface for UI
 export interface ProviderModel {
   id: string; // Unique identifier (model ID)
   name: string; // Display name
-  provider: string; // "OpenRouter" | "Ollama"
+  providerType: string; // Stable provider type key (e.g. "openrouter", "ollama")
+  providerInstanceId: string; // Stable provider instance ID
+  provider: string; // e.g. "OpenRouter", "Ollama", "OpenAI Compatible"
   size?: string; // Model size (e.g., "7B", "Large")
   context: string; // Context length (e.g., "32k", "128k")
   description?: string; // Optional description
-  originalModel?: OpenRouterModel | OllamaModel; // Keep original for reference
+  originalModel?: OpenRouterModel | OllamaModel | OpenAICompatibleModel; // Keep original for reference
 }

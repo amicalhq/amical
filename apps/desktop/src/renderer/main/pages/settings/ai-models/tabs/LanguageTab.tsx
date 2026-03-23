@@ -5,6 +5,7 @@ import SyncedModelsList from "../components/synced-models-list";
 import DefaultModelCombobox from "../components/default-model-combobox";
 import ProviderAccordion from "../components/provider-accordion";
 import { useTranslation } from "react-i18next";
+import { REMOTE_PROVIDERS } from "@/constants/remote-providers";
 
 export default function LanguageTab() {
   const { t } = useTranslation();
@@ -19,8 +20,18 @@ export default function LanguageTab() {
 
         {/* Providers Accordions */}
         <Accordion type="multiple" className="w-full">
-          <ProviderAccordion provider="OpenRouter" modelType="language" />
-          <ProviderAccordion provider="Ollama" modelType="language" />
+          <ProviderAccordion
+            provider={REMOTE_PROVIDERS.openRouter}
+            modelType="language"
+          />
+          <ProviderAccordion
+            provider={REMOTE_PROVIDERS.ollama}
+            modelType="language"
+          />
+          <ProviderAccordion
+            provider={REMOTE_PROVIDERS.openAICompatible}
+            modelType="language"
+          />
         </Accordion>
 
         {/* Synced Models List */}
