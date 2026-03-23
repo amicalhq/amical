@@ -122,7 +122,7 @@ export class WindowManager {
     symbolColor: string;
   }> {
     const uiSettings = await this.settingsService.getUISettings();
-    const theme = uiSettings?.theme || "system";
+    const theme = uiSettings.theme;
 
     // Determine if we should use dark colors
     let isDark = false;
@@ -142,7 +142,7 @@ export class WindowManager {
 
   private async syncNativeThemeSource(): Promise<void> {
     const uiSettings = await this.settingsService.getUISettings();
-    const desiredThemeSource = uiSettings?.theme ?? "system";
+    const desiredThemeSource = uiSettings.theme;
 
     if (nativeTheme.themeSource === desiredThemeSource) {
       return;
@@ -183,7 +183,7 @@ export class WindowManager {
     // Listen for system theme changes
     nativeTheme.on("updated", async () => {
       const uiSettings = await this.settingsService.getUISettings();
-      const theme = uiSettings?.theme || "system";
+      const theme = uiSettings.theme;
 
       // Only update if theme is set to "system"
       if (theme === "system") {

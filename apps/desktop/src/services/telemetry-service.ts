@@ -58,9 +58,9 @@ export class TelemetryService {
 
     // Sync opt-out state with database settings
     const telemetrySettings = await this.settingsService.getTelemetrySettings();
-    const userTelemetryEnabled = telemetrySettings?.enabled !== false;
+    const userTelemetryEnabled = telemetrySettings.enabled !== false;
 
-    if (telemetrySettings?.enabled === false) {
+    if (telemetrySettings.enabled === false) {
       await this.client.posthog.optOut();
       logger.main.debug("Opted out of telemetry");
     } else {

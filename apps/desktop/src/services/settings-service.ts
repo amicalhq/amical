@@ -89,10 +89,8 @@ export class SettingsService extends EventEmitter {
   ): Promise<void> {
     await updateSettingsSection("ui", uiSettings);
 
-    // Emit event if theme changed (AppManager will handle window updates)
-    if (uiSettings?.theme !== undefined) {
-      this.emit("theme-changed", { theme: uiSettings.theme });
-    }
+    // AppManager handles window updates when the theme changes.
+    this.emit("theme-changed", { theme: uiSettings.theme });
   }
 
   /**
@@ -430,7 +428,7 @@ export class SettingsService extends EventEmitter {
   /**
    * Get telemetry settings
    */
-  async getTelemetrySettings(): Promise<AppSettingsData["telemetry"]> {
+  async getTelemetrySettings(): Promise<NonNullable<AppSettingsData["telemetry"]>> {
     const telemetry = await getSettingsSection("telemetry");
     return telemetry ?? { enabled: true }; // Default to enabled
   }
