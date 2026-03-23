@@ -450,6 +450,10 @@
         "label": "Whisperモデルをプリロード",
         "description": "起動時にAIモデルを読み込み、文字起こしを高速化"
       },
+      "preserveClipboard": {
+        "label": "クリップボードの内容を保持",
+        "description": "文字起こしを貼り付けた後、もともとクリップボードにあった内容を復元します。"
+      },
       "debugMode": {
         "label": "デバッグモード",
         "description": "詳細なログを有効にする"

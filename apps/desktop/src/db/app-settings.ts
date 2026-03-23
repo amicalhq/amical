@@ -80,6 +80,7 @@ const defaultSettings: AppSettingsData = {
     muteSystemAudio: true,
     muteDictationSounds: false,
     autoDictateOnNewNote: false,
+    preserveClipboard: true,
   },
   transcription: {
     language: "en",

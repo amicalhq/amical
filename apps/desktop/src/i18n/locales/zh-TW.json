@@ -450,6 +450,10 @@
         "label": "預載 Whisper 模型",
         "description": "啟動時載入 AI 模型以獲得更快的轉錄速度"
       },
+      "preserveClipboard": {
+        "label": "保留原有剪貼簿內容",
+        "description": "貼上轉錄內容後，恢復先前在剪貼簿中的內容。"
+      },
       "debugMode": {
         "label": "除錯模式",
         "description": "啟用詳細紀錄的功能"
