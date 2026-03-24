@@ -428,7 +428,9 @@ export class SettingsService extends EventEmitter {
   /**
    * Get telemetry settings
    */
-  async getTelemetrySettings(): Promise<NonNullable<AppSettingsData["telemetry"]>> {
+  async getTelemetrySettings(): Promise<
+    NonNullable<AppSettingsData["telemetry"]>
+  > {
     const telemetry = await getSettingsSection("telemetry");
     return telemetry ?? { enabled: true }; // Default to enabled
   }

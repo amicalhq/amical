@@ -9,6 +9,10 @@
  * - Properties: snake_case for consistency
  */
 
+import { z } from "zod";
+import { ErrorCodes, type ErrorCode } from "./error";
+import type { WidgetNotificationType } from "./widget-notification";
+
 // ============================================================================
 // Onboarding Events
 // ============================================================================
@@ -121,3 +125,34 @@ export interface TranscriptionReportedEvent {
   language?: string;
   report_channel: "history";
 }
+
+// ============================================================================
+// Widget Notification Events
+// ============================================================================
+
+/**
+ * Fired when a widget notification/toast is shown to the user
+ */
+export const widgetNotificationShownSchema = z.object({
+  notification_type: z.enum<
+    WidgetNotificationType,
+    [WidgetNotificationType, ...WidgetNotificationType[]]
+  >([
+    "no_audio",
+    "empty_transcript",
+    "transcription_failed",
+    "recording_duration_warning",
+    "recording_auto_stopped",
+  ]),
+  error_code: z
+    .enum<
+      ErrorCode,
+      [ErrorCode, ...ErrorCode[]]
+    >(Object.values(ErrorCodes) as [ErrorCode, ...ErrorCode[]])
+    .optional(),
+  trace_id: z.string().optional(),
+});
+
+export type WidgetNotificationShownEvent = z.infer<
+  typeof widgetNotificationShownSchema
+>;

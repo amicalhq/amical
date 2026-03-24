@@ -17,6 +17,7 @@ export const useWidgetNotifications = () => {
   const { t } = useTranslation();
   const navigateMainWindow = api.widget.navigateMainWindow.useMutation();
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
+  const trackEvent = api.telemetry.trackEvent.useMutation();
   const { data: settings } = api.settings.getSettings.useQuery();
   const { defaultDeviceName } = useAudioDevices();
   const activeToastIdsRef = useRef<Set<string | number>>(new Set());
@@ -107,6 +108,14 @@ export const useWidgetNotifications = () => {
   api.recording.widgetNotifications.useSubscription(undefined, {
     onData: (notification) => {
       showNotificationToast(notification);
+      trackEvent.mutate({
+        event: "widget_notification_shown",
+        payload: {
+          notification_type: notification.type,
+          error_code: notification.errorCode,
+          trace_id: notification.traceId,
+        },
+      });
     },
     onError: (error) => {
       console.error("Widget notification subscription error:", error);

@@ -13,6 +13,7 @@ import type {
   NativeHelperCrashedEvent,
   NoteCreatedEvent,
   TranscriptionReportedEvent,
+  WidgetNotificationShownEvent,
 } from "../types/telemetry-events";
 
 // Re-export from posthog-client for backwards compatibility
@@ -367,6 +368,22 @@ export class TelemetryService {
     });
 
     logger.main.debug("Tracked transcription reported", props);
+  }
+
+  // ============================================================================
+  // Widget Notification Events
+  // ============================================================================
+
+  trackWidgetNotificationShown(props: WidgetNotificationShownEvent): void {
+    if (!this.client.posthog || !this.enabled) return;
+
+    this.client.posthog.capture({
+      distinctId: this.client.machineId,
+      event: "widget_notification_shown",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked widget notification shown", props);
   }
 
   /**
