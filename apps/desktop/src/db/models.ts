@@ -1,6 +1,7 @@
 import { eq, and, or } from "drizzle-orm";
 import { db } from ".";
 import { models, type Model, type NewModel } from "./schema";
+import type { ModelSelectionType } from "../utils/model-selection";
 
 /**
  * Database operations for unified models table
@@ -16,8 +17,25 @@ export async function getAllModels(): Promise<Model[]> {
 /**
  * Get models by provider
  */
-export async function getModelsByProvider(provider: string): Promise<Model[]> {
-  return await db.select().from(models).where(eq(models.provider, provider));
+export async function getModelsByProvider(
+  providerType: string,
+): Promise<Model[]> {
+  return await db
+    .select()
+    .from(models)
+    .where(eq(models.providerType, providerType));
+}
+
+/**
+ * Get models by provider instance
+ */
+export async function getModelsByProviderInstance(
+  providerInstanceId: string,
+): Promise<Model[]> {
+  return await db
+    .select()
+    .from(models)
+    .where(eq(models.providerInstanceId, providerInstanceId));
 }
 
 /**
@@ -31,26 +49,33 @@ export async function getModelsByType(type: string): Promise<Model[]> {
  * Get models by provider and type
  */
 export async function getModelsByProviderAndType(
-  provider: string,
+  providerType: string,
   type: string,
 ): Promise<Model[]> {
   return await db
     .select()
     .from(models)
-    .where(and(eq(models.provider, provider), eq(models.type, type)));
+    .where(and(eq(models.providerType, providerType), eq(models.type, type)));
 }
 
 /**
- * Get a specific model by provider and ID
+ * Get a specific model by provider instance, type, and ID
  */
 export async function getModelById(
-  provider: string,
+  providerInstanceId: string,
+  type: ModelSelectionType,
   id: string,
 ): Promise<Model | null> {
   const result = await db
     .select()
     .from(models)
-    .where(and(eq(models.provider, provider), eq(models.id, id)));
+    .where(
+      and(
+        eq(models.providerInstanceId, providerInstanceId),
+        eq(models.type, type),
+        eq(models.id, id),
+      ),
+    );
 
   return result.length > 0 ? result[0] : null;
 }
@@ -63,7 +88,7 @@ export async function getDownloadedWhisperModels(): Promise<Model[]> {
     .select()
     .from(models)
     .where(
-      and(eq(models.provider, "local-whisper"), eq(models.type, "speech")),
+      and(eq(models.providerType, "local-whisper"), eq(models.type, "speech")),
     );
 }
 
@@ -72,7 +97,11 @@ export async function getDownloadedWhisperModels(): Promise<Model[]> {
  */
 export async function upsertModel(model: NewModel): Promise<void> {
   // Check if model exists
-  const existing = await getModelById(model.provider, model.id);
+  const existing = await getModelById(
+    model.providerInstanceId,
+    model.type as ModelSelectionType,
+    model.id,
+  );
 
   if (existing) {
     // Update existing model
@@ -82,7 +111,13 @@ export async function upsertModel(model: NewModel): Promise<void> {
         ...model,
         updatedAt: new Date(),
       })
-      .where(and(eq(models.provider, model.provider), eq(models.id, model.id)));
+      .where(
+        and(
+          eq(models.providerInstanceId, model.providerInstanceId),
+          eq(models.type, model.type),
+          eq(models.id, model.id),
+        ),
+      );
   } else {
     // Insert new model
     await db.insert(models).values(model);
@@ -90,15 +125,17 @@ export async function upsertModel(model: NewModel): Promise<void> {
 }
 
 /**
- * Sync models for a provider (replace all models)
+ * Sync models for a provider instance (replace all models)
  */
-export async function syncModelsForProvider(
-  provider: string,
+export async function syncModelsForProviderInstance(
+  providerInstanceId: string,
   newModels: NewModel[],
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    // Delete existing models for this provider
-    await tx.delete(models).where(eq(models.provider, provider));
+    // Delete existing models for this provider instance
+    await tx
+      .delete(models)
+      .where(eq(models.providerInstanceId, providerInstanceId));
 
     // Insert new models
     if (newModels.length > 0) {
@@ -110,30 +147,51 @@ export async function syncModelsForProvider(
 /**
  * Remove a model
  */
-export async function removeModel(provider: string, id: string): Promise<void> {
+export async function removeModel(
+  providerInstanceId: string,
+  type: ModelSelectionType,
+  id: string,
+): Promise<void> {
   await db
     .delete(models)
-    .where(and(eq(models.provider, provider), eq(models.id, id)));
+    .where(
+      and(
+        eq(models.providerInstanceId, providerInstanceId),
+        eq(models.type, type),
+        eq(models.id, id),
+      ),
+    );
 }
 
 /**
- * Remove all models for a provider
+ * Remove all models for a provider instance
  */
-export async function removeModelsForProvider(provider: string): Promise<void> {
-  await db.delete(models).where(eq(models.provider, provider));
+export async function removeModelsForProviderInstance(
+  providerInstanceId: string,
+): Promise<void> {
+  await db
+    .delete(models)
+    .where(eq(models.providerInstanceId, providerInstanceId));
 }
 
 /**
  * Check if a model exists
  */
 export async function modelExists(
-  provider: string,
+  providerInstanceId: string,
+  type: ModelSelectionType,
   id: string,
 ): Promise<boolean> {
   const result = await db
     .select({ id: models.id })
     .from(models)
-    .where(and(eq(models.provider, provider), eq(models.id, id)));
+    .where(
+      and(
+        eq(models.providerInstanceId, providerInstanceId),
+        eq(models.type, type),
+        eq(models.id, id),
+      ),
+    );
 
   return result.length > 0;
 }
@@ -142,13 +200,21 @@ export async function modelExists(
  * Get models by IDs (for batch operations)
  */
 export async function getModelsByIds(
-  modelIds: Array<{ provider: string; id: string }>,
+  modelIds: Array<{
+    providerInstanceId: string;
+    type: ModelSelectionType;
+    id: string;
+  }>,
 ): Promise<Model[]> {
   if (modelIds.length === 0) return [];
 
-  // Build OR conditions for each provider-id pair
-  const conditions = modelIds.map(({ provider, id }) =>
-    and(eq(models.provider, provider), eq(models.id, id)),
+  // Build OR conditions for each provider instance / type / id tuple
+  const conditions = modelIds.map(({ providerInstanceId, type, id }) =>
+    and(
+      eq(models.providerInstanceId, providerInstanceId),
+      eq(models.type, type),
+      eq(models.id, id),
+    ),
   );
 
   return await db
@@ -288,6 +354,8 @@ export async function syncLocalWhisperModels(
         // Add new record for found file
         await upsertModel({
           id: model.id,
+          providerType: "local-whisper",
+          providerInstanceId: "system-local-whisper",
           provider: "local-whisper",
           name: model.name,
           type: "speech",
@@ -309,7 +377,11 @@ export async function syncLocalWhisperModels(
       existingModelMap.delete(model.id);
     } else if (existingRecord && existingRecord.localPath) {
       // File doesn't exist but we have a record with download info - remove it
-      await removeModel(existingRecord.provider, existingRecord.id);
+      await removeModel(
+        existingRecord.providerInstanceId,
+        "speech",
+        existingRecord.id,
+      );
       removed++;
 
       // Mark as processed
@@ -320,7 +392,7 @@ export async function syncLocalWhisperModels(
   // Remove any remaining records that don't have corresponding available models
   // (these would be orphaned records)
   for (const [, model] of existingModelMap) {
-    await removeModel(model.provider, model.id);
+    await removeModel(model.providerInstanceId, "speech", model.id);
     removed++;
   }
 

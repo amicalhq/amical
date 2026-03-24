@@ -306,14 +306,15 @@ namespace WindowsHelper
 
                 if (parameters != null)
                 {
-                    var success = accessibilityService.PasteText(parameters.Transcript, out var errorMessage);
+                    var preserveClipboard = parameters.PreserveClipboard ?? true;
+                    var success = accessibilityService.PasteText(parameters.Transcript, preserveClipboard, out var errorMessage);
                     return new RpcResponse
                     {
                         Id = request.Id.ToString(),
                         Result = new PasteTextResult
                         {
                             Success = success,
-                            Message = success ? "Pasted successfully" : (errorMessage ?? "Paste failed")
+                            Message = success ? (errorMessage ?? "Pasted successfully") : (errorMessage ?? "Paste failed")
                         }
                     };
                 }

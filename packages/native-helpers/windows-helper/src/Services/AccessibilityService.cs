@@ -35,13 +35,13 @@ namespace WindowsHelper.Services
             return AccessibilityContextService.GetAccessibilityContext(editableOnly);
         }
 
-        public bool PasteText(string text, out string? errorMessage)
+        public bool PasteText(string text, bool preserveClipboard, out string? errorMessage)
         {
             errorMessage = null;
 
             try
             {
-                LogToStderr($"PasteText called with text length: {text.Length}");
+                LogToStderr($"PasteText called with text length: {text.Length}, preserveClipboard: {preserveClipboard}");
 
                 // Save original clipboard content
                 var savedContent = clipboardService.Save();
@@ -67,14 +67,21 @@ namespace WindowsHelper.Services
                 // Wait for paste to complete before restoring
                 Thread.Sleep(200);
 
-                // Restore original clipboard synchronously and report errors
-                var restoreError = clipboardService.RestoreSync(savedContent, newSeq);
-                if (restoreError != null)
+                if (preserveClipboard)
                 {
-                    // Paste succeeded but restore failed - report as partial success
-                    errorMessage = $"Paste succeeded but clipboard restore failed: {restoreError}";
-                    LogToStderr(errorMessage);
-                    // Still return true since the paste itself worked
+                    // Restore original clipboard synchronously and report errors
+                    var restoreError = clipboardService.RestoreSync(savedContent, newSeq);
+                    if (restoreError != null)
+                    {
+                        // Paste succeeded but restore failed - report as partial success
+                        errorMessage = $"Paste succeeded but clipboard restore failed: {restoreError}";
+                        LogToStderr(errorMessage);
+                        // Still return true since the paste itself worked
+                    }
+                }
+                else
+                {
+                    LogToStderr("preserveClipboard=false, skipping clipboard restoration.");
                 }
 
                 return true;

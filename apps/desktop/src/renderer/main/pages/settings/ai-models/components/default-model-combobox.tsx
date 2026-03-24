@@ -6,6 +6,10 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import ChangeDefaultModelDialog from "./change-default-model-dialog";
 import { useTranslation } from "react-i18next";
+import {
+  findModelBySelectionValue,
+  getModelSelectionKey,
+} from "@/utils/model-selection";
 
 interface DefaultModelComboboxProps {
   modelType: "speech" | "language" | "embedding";
@@ -102,7 +106,7 @@ export default function DefaultModelCombobox({
     } else {
       // Provider models for language/embedding
       return modelsQuery.data.map((m) => ({
-        value: m.id,
+        value: getModelSelectionKey(m.providerInstanceId, m.type, m.id),
         label: m.name,
       }));
     }
@@ -134,8 +138,12 @@ export default function DefaultModelCombobox({
   // Find the selected model for the dialog
   const selectedModel = useMemo(() => {
     if (!pendingModelId || !modelsQuery.data) return undefined;
-    return modelsQuery.data.find((m) => m.id === pendingModelId);
-  }, [pendingModelId, modelsQuery.data]);
+    if (modelType === "speech") {
+      return modelsQuery.data.find((m) => m.id === pendingModelId);
+    }
+
+    return findModelBySelectionValue(modelsQuery.data, pendingModelId);
+  }, [modelType, pendingModelId, modelsQuery.data]);
 
   // Loading state
   if (modelsQuery.isLoading || defaultModelQuery.isLoading) {

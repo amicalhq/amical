@@ -117,7 +117,7 @@ export class NotesWindowController {
 
   private async getNotesWindowLayout(): Promise<NotesWindowLayout | null> {
     const uiSettings = await this.options.settingsService.getUISettings();
-    const layout = uiSettings?.notesWindow;
+    const layout = uiSettings.notesWindow;
     if (!layout) return null;
 
     if (

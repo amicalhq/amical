@@ -318,8 +318,8 @@ export class RecordingManager extends EventEmitter {
       // Always call startRecording, conditionally mute system audio and play sounds
       const settingsService = this.serviceManager.getService("settingsService");
       const preferences = await settingsService.getPreferences();
-      const shouldMute = preferences?.muteSystemAudio ?? true;
-      this.soundsMuted = preferences?.muteDictationSounds ?? false;
+      const shouldMute = preferences.muteSystemAudio;
+      this.soundsMuted = preferences.muteDictationSounds;
 
       const result = await nativeBridge.call("startRecording", {
         muteSystemAudio: shouldMute,
@@ -920,15 +920,20 @@ export class RecordingManager extends EventEmitter {
 
     try {
       const nativeBridge = this.serviceManager.getService("nativeBridge");
+      const settingsService = this.serviceManager.getService("settingsService");
+      const preferences = await settingsService.getPreferences();
+      const preserveClipboard = preferences.preserveClipboard;
 
       logger.main.info("Pasting transcription to active application", {
         textLength: transcription.length,
+        preserveClipboard,
       });
 
       if (nativeBridge) {
         void nativeBridge
           .call("pasteText", {
             transcript: transcription,
+            preserveClipboard,
           })
           .catch((error) => {
             logger.main.warn(

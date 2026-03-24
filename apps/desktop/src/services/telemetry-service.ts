@@ -13,6 +13,7 @@ import type {
   NativeHelperCrashedEvent,
   NoteCreatedEvent,
   TranscriptionReportedEvent,
+  WidgetNotificationShownEvent,
 } from "../types/telemetry-events";
 
 // Re-export from posthog-client for backwards compatibility
@@ -58,9 +59,9 @@ export class TelemetryService {
 
     // Sync opt-out state with database settings
     const telemetrySettings = await this.settingsService.getTelemetrySettings();
-    const userTelemetryEnabled = telemetrySettings?.enabled !== false;
+    const userTelemetryEnabled = telemetrySettings.enabled !== false;
 
-    if (telemetrySettings?.enabled === false) {
+    if (telemetrySettings.enabled === false) {
       await this.client.posthog.optOut();
       logger.main.debug("Opted out of telemetry");
     } else {
@@ -367,6 +368,22 @@ export class TelemetryService {
     });
 
     logger.main.debug("Tracked transcription reported", props);
+  }
+
+  // ============================================================================
+  // Widget Notification Events
+  // ============================================================================
+
+  trackWidgetNotificationShown(props: WidgetNotificationShownEvent): void {
+    if (!this.client.posthog || !this.enabled) return;
+
+    this.client.posthog.capture({
+      distinctId: this.client.machineId,
+      event: "widget_notification_shown",
+      properties: { ...props, ...this.persistedProperties },
+    });
+
+    logger.main.debug("Tracked widget notification shown", props);
   }
 
   /**

@@ -68,7 +68,9 @@ export const models = sqliteTable(
   {
     // Identity
     id: text("id").notNull(),
-    provider: text("provider").notNull(), // "local-whisper", "openrouter", "ollama"
+    providerType: text("provider_type").notNull(), // "amical", "local-whisper", "openrouter", "ollama", "openai-compatible"
+    providerInstanceId: text("provider_instance_id").notNull(), // Stable configured instance ID
+    provider: text("provider").notNull(), // Display label
 
     // Common fields
     name: text("name").notNull(),
@@ -99,10 +101,11 @@ export const models = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    // Composite primary key on (provider, id)
-    primaryKey({ columns: [table.provider, table.id] }),
+    // Composite primary key on (provider instance, type, id)
+    primaryKey({ columns: [table.providerInstanceId, table.type, table.id] }),
     // Indexes for efficient lookups
-    index("models_provider_idx").on(table.provider),
+    index("models_provider_type_idx").on(table.providerType),
+    index("models_provider_instance_idx").on(table.providerInstanceId),
     index("models_type_idx").on(table.type),
   ],
 );
@@ -111,8 +114,8 @@ export const models = sqliteTable(
 export interface AppSettingsData {
   formatterConfig?: {
     enabled: boolean;
-    modelId?: string; // Formatting model selection (language model ID or "amical-cloud")
-    fallbackModelId?: string; // Last non-cloud formatting model for auto-restore
+    modelId?: string; // Selection key "<providerInstanceId>::<type>::<id>" or legacy raw model ID
+    fallbackModelId?: string; // Last non-cloud formatting selection key or legacy raw model ID
   };
   ui?: {
     theme: "light" | "dark" | "system";
@@ -154,9 +157,13 @@ export interface AppSettingsData {
     ollama?: {
       url: string;
     };
-    defaultSpeechModel?: string; // Model ID for default speech model (Whisper)
-    defaultLanguageModel?: string; // Model ID for default language model
-    defaultEmbeddingModel?: string; // Model ID for default embedding model
+    openAICompatible?: {
+      apiKey: string;
+      baseURL: string;
+    };
+    defaultSpeechModel?: string; // Selection key "<providerInstanceId>::speech::<id>" or legacy speech model ID
+    defaultLanguageModel?: string; // Selection key "<providerInstanceId>::language::<id>" or legacy language model ID
+    defaultEmbeddingModel?: string; // Selection key "<providerInstanceId>::embedding::<id>" or legacy embedding model ID
   };
 
   dictation?: {
@@ -171,6 +178,7 @@ export interface AppSettingsData {
     muteSystemAudio?: boolean;
     muteDictationSounds?: boolean;
     autoDictateOnNewNote?: boolean;
+    preserveClipboard?: boolean;
   };
   telemetry?: {
     enabled?: boolean;

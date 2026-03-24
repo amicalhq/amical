@@ -422,7 +422,8 @@
           "system": "Sistema",
           "en": "English",
           "ja": "日本語",
-          "es": "Español"
+          "es": "Español",
+          "zh-TW": "繁體中文"
         },
         "restartDialog": {
           "title": "Se requiere reiniciar",
@@ -448,6 +449,10 @@
       "preloadModel": {
         "label": "Precargar modelo Whisper",
         "description": "Cargar el modelo de IA al iniciar para una transcripción más rápida"
+      },
+      "preserveClipboard": {
+        "label": "Conservar el contenido del portapapeles",
+        "description": "Después de pegar una transcripción, restaura lo que antes estaba en el portapapeles."
       },
       "debugMode": {
         "label": "Modo de depuración",
@@ -815,7 +820,8 @@
       },
       "providers": {
         "openRouter": "OpenRouter",
-        "ollama": "Ollama"
+        "ollama": "Ollama",
+        "openAICompatible": "Compatible con OpenAI"
       },
       "provider": {
         "status": {
@@ -824,7 +830,9 @@
         },
         "placeholders": {
           "openRouter": "Clave API",
-          "ollama": "URL de Ollama (ej., http://localhost:11434)"
+          "ollama": "URL de Ollama (ej., http://localhost:11434)",
+          "openAICompatibleApiKey": "Clave API",
+          "openAICompatibleBaseURL": "URL base (ej., http://localhost:1234/v1)"
         },
         "buttons": {
           "connect": "Conectar",

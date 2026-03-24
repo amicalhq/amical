@@ -31,6 +31,11 @@ import { toast } from "sonner";
 import ChangeDefaultModelDialog from "./change-default-model-dialog";
 import type { Model } from "@/db/schema";
 import { useTranslation } from "react-i18next";
+import { PROVIDER_TYPES } from "@/constants/provider-types";
+import {
+  findModelBySelectionValue,
+  getModelSelectionKey,
+} from "@/utils/model-selection";
 
 interface SyncedModelsListProps {
   modelType: "language" | "embedding";
@@ -116,7 +121,7 @@ export default function SyncedModelsList({
       // For embedding models, only show Ollama models
       if (modelType === "embedding") {
         filteredModels = syncedModelsQuery.data.filter(
-          (model) => model.provider.toLowerCase() === "ollama",
+          (model) => model.providerType === PROVIDER_TYPES.ollama,
         );
       }
 
@@ -233,74 +238,84 @@ export default function SyncedModelsList({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {syncedModels.map((model) => (
-                  <TableRow key={model.id}>
-                    <TableCell className="font-medium">{model.name}</TableCell>
-                    <TableCell>{model.provider}</TableCell>
-                    <TableCell>
-                      {model.size ||
-                        t("settings.aiModels.syncedModels.table.unknown")}
-                    </TableCell>
-                    <TableCell>{model.context}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() =>
-                                  openChangeDefaultDialog(model.id)
-                                }
-                              >
-                                <Check
-                                  className={cn(
-                                    "w-4 h-4",
-                                    defaultModel === model.id
-                                      ? "text-green-500"
-                                      : "text-muted-foreground",
-                                  )}
-                                />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                {defaultModel === model.id
-                                  ? t(
-                                      "settings.aiModels.syncedModels.table.currentDefault",
-                                    )
-                                  : t(
-                                      "settings.aiModels.syncedModels.table.setDefault",
+                {syncedModels.map((model) => {
+                  const selectionKey = getModelSelectionKey(
+                    model.providerInstanceId,
+                    model.type,
+                    model.id,
+                  );
+
+                  return (
+                    <TableRow key={selectionKey}>
+                      <TableCell className="font-medium">
+                        {model.name}
+                      </TableCell>
+                      <TableCell>{model.provider}</TableCell>
+                      <TableCell>
+                        {model.size ||
+                          t("settings.aiModels.syncedModels.table.unknown")}
+                      </TableCell>
+                      <TableCell>{model.context}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    openChangeDefaultDialog(selectionKey)
+                                  }
+                                >
+                                  <Check
+                                    className={cn(
+                                      "w-4 h-4",
+                                      defaultModel === selectionKey
+                                        ? "text-green-500"
+                                        : "text-muted-foreground",
                                     )}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => openDeleteDialog(model.id)}
-                              >
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                {t(
-                                  "settings.aiModels.syncedModels.table.remove",
-                                )}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                                  />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  {defaultModel === selectionKey
+                                    ? t(
+                                        "settings.aiModels.syncedModels.table.currentDefault",
+                                      )
+                                    : t(
+                                        "settings.aiModels.syncedModels.table.setDefault",
+                                      )}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => openDeleteDialog(selectionKey)}
+                                >
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  {t(
+                                    "settings.aiModels.syncedModels.table.remove",
+                                  )}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -317,7 +332,8 @@ export default function SyncedModelsList({
             <DialogDescription>
               {t("settings.aiModels.syncedModels.deleteDialog.description", {
                 modelName:
-                  syncedModels.find((m) => m.id === modelToDelete)?.name ?? "",
+                  findModelBySelectionValue(syncedModels, modelToDelete)
+                    ?.name ?? "",
               })}
             </DialogDescription>
           </DialogHeader>
@@ -335,7 +351,7 @@ export default function SyncedModelsList({
       <ChangeDefaultModelDialog
         open={changeDefaultDialogOpen}
         onOpenChange={setChangeDefaultDialogOpen}
-        selectedModel={syncedModels.find((m) => m.id === newDefaultModel)}
+        selectedModel={findModelBySelectionValue(syncedModels, newDefaultModel)}
         onConfirm={confirmChangeDefault}
         modelType={modelType}
       />

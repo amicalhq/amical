@@ -9,8 +9,8 @@ import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { ParakeetProvider } from "../pipeline/providers/transcription/parakeet-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
-import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
-import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
+import { createRemoteFormattingProvider } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
+import type { RemoteFormattingProviderType } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
@@ -31,6 +31,13 @@ import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
 import * as fs from "node:fs";
+import { PROVIDER_TYPES } from "../constants/provider-types";
+import {
+  findModelBySelectionValue,
+  getModelSelectionKey,
+  getSpeechModelSelectionKey,
+  isAmicalCloudSelectionValue,
+} from "../utils/model-selection";
 
 /**
  * Service for audio transcription and optional formatting
@@ -439,7 +446,8 @@ export class TranscriptionService {
 
       const formatterConfig = await this.settingsService.getFormatterConfig();
       const shouldUseCloudFormatting =
-        formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+        formatterConfig?.enabled &&
+        isAmicalCloudSelectionValue(formatterConfig.modelId);
       let usedCloudProvider = false;
 
       // Flush provider to get any remaining buffered audio
@@ -755,14 +763,14 @@ export class TranscriptionService {
       logger.transcription.debug("Formatting skipped: disabled in config");
     } else if (!text.trim().length) {
       logger.transcription.debug("Formatting skipped: empty transcription");
-    } else if (formatterConfig.modelId === "amical-cloud") {
+    } else if (isAmicalCloudSelectionValue(formatterConfig.modelId)) {
       if (!options.usedCloudProvider) {
         logger.transcription.warn(
           "Formatting skipped: Amical Cloud formatting requires cloud transcription",
         );
       } else {
         formattingUsed = true;
-        formattingModel = "amical-cloud";
+        formattingModel = getSpeechModelSelectionKey("amical-cloud");
       }
     } else {
       const modelId =
@@ -774,26 +782,34 @@ export class TranscriptionService {
         );
       } else {
         const allModels = await this.modelService.getSyncedProviderModels();
-        const model = allModels.find(
-          (m) => m.id === modelId && m.type === "language",
+        const model = findModelBySelectionValue(
+          allModels.filter((entry) => entry.type === "language"),
+          modelId,
         );
 
         if (!model) {
           logger.transcription.warn("Formatting skipped: model not found", {
             modelId,
           });
-        } else if (model.provider === "OpenRouter") {
-          const config = await this.settingsService.getOpenRouterConfig();
-          if (!config?.apiKey) {
+        } else if (model.providerType !== PROVIDER_TYPES.localWhisper) {
+          const provider = await createRemoteFormattingProvider(
+            this.settingsService,
+            model.providerType as RemoteFormattingProviderType,
+            model.id,
+          );
+
+          if (!provider) {
             logger.transcription.warn(
-              "Formatting skipped: OpenRouter API key missing",
+              "Formatting skipped: provider config missing",
+              {
+                provider: model.provider,
+              },
             );
           } else {
             logger.transcription.info("Starting formatting", {
               provider: model.provider,
-              model: modelId,
+              model: model.id,
             });
-            const provider = new OpenRouterProvider(config.apiKey, modelId);
             const result = await this.formatWithProvider(provider, text, {
               style: options.formattingStyle,
               vocabulary: options.vocabulary,
@@ -803,29 +819,11 @@ export class TranscriptionService {
               text = result.text;
               formattingDuration = result.duration;
               formattingUsed = true;
-              formattingModel = modelId;
-            }
-          }
-        } else if (model.provider === "Ollama") {
-          const config = await this.settingsService.getOllamaConfig();
-          if (!config?.url) {
-            logger.transcription.warn("Formatting skipped: Ollama URL missing");
-          } else {
-            logger.transcription.info("Starting formatting", {
-              provider: model.provider,
-              model: modelId,
-            });
-            const provider = new OllamaFormatter(config.url, modelId);
-            const result = await this.formatWithProvider(provider, text, {
-              style: options.formattingStyle,
-              vocabulary: options.vocabulary,
-              accessibilityContext: options.accessibilityContext,
-            });
-            if (result) {
-              text = result.text;
-              formattingDuration = result.duration;
-              formattingUsed = true;
-              formattingModel = modelId;
+              formattingModel = getModelSelectionKey(
+                model.providerInstanceId,
+                model.type,
+                model.id,
+              );
             }
           }
         } else {
@@ -911,7 +909,8 @@ export class TranscriptionService {
     const selectedModelId = await this.modelService.getSelectedModel();
     const formatterConfig = await this.settingsService.getFormatterConfig();
     const shouldUseCloudFormatting =
-      formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+      formatterConfig?.enabled &&
+      isAmicalCloudSelectionValue(formatterConfig.modelId);
 
     // Split audio into 512-sample frames for per-frame VAD
     const FRAME_SIZE = 512;

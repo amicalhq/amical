@@ -447,7 +447,7 @@ class AccessibilityService {
     }
 
     // Pastes the given text into the active application
-    public func pasteText(transcript: String) -> Bool {
+    public func pasteText(transcript: String, preserveClipboard: Bool = true) -> Bool {
         logToStderr("[AccessibilityService] Attempting to paste transcript: \(transcript).")
 
         let pasteboard = NSPasteboard.general
@@ -512,10 +512,14 @@ class AccessibilityService {
 
         // Restore the original pasteboard content after a short delay
         // to allow the paste action to complete.
-        DispatchQueue.main.asyncAfter(deadline: .now() + PASTE_RESTORE_DELAY_SECONDS) {
-            self.restorePasteboard(
-                pasteboard: pasteboard, items: originalPasteboardItems,
-                originalChangeCount: originalChangeCount)
+        if preserveClipboard {
+            DispatchQueue.main.asyncAfter(deadline: .now() + PASTE_RESTORE_DELAY_SECONDS) {
+                self.restorePasteboard(
+                    pasteboard: pasteboard, items: originalPasteboardItems,
+                    originalChangeCount: originalChangeCount)
+            }
+        } else {
+            logToStderr("[AccessibilityService] preserveClipboard=false, skipping pasteboard restoration.")
         }
 
         return true

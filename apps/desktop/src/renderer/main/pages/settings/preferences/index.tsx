@@ -321,6 +321,9 @@ export default function PreferencesSettingsPage() {
                   <SelectItem value="ja">
                     {t("settings.preferences.language.options.ja")}
                   </SelectItem>
+                  <SelectItem value="zh-TW">
+                    {t("settings.preferences.language.options.zh-TW")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

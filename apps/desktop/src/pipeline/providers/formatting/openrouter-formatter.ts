@@ -4,18 +4,23 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { constructFormatterPrompt } from "./formatter-prompt";
 import { extractFormattedText } from "./extract-formatted-text";
 
-import { generateText } from "ai";
+import { CoreMessage, generateText } from "ai";
+import { getUserAgent } from "../../../utils/http-client";
 
 export class OpenRouterProvider implements FormattingProvider {
   readonly name = "openrouter";
 
-  private provider: any;
+  private provider: ReturnType<typeof createOpenRouter>;
+  private endpoint = "https://openrouter.ai/api/v1/chat/completions";
   private model: string;
 
   constructor(apiKey: string, model: string) {
     // Configure OpenRouter provider
     this.provider = createOpenRouter({
       apiKey: apiKey,
+      headers: {
+        "User-Agent": getUserAgent(),
+      },
     });
 
     this.model = model;
@@ -31,30 +36,36 @@ export class OpenRouterProvider implements FormattingProvider {
 
       // Build user prompt with context
       const userPromptContent = userPrompt(text);
-
-      logger.pipeline.info("Formatting request", {
+      const messages: CoreMessage[] = [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: userPromptContent,
+        },
+      ];
+      const requestPayload = {
+        provider: this.name,
+        endpoint: this.endpoint,
         model: this.model,
-        systemPrompt,
-        userPrompt: userPromptContent,
-      });
+        temperature: 0.1,
+        maxTokens: 5000,
+        messages,
+      };
+
+      logger.pipeline.debug("Formatting LLM request payload", requestPayload);
 
       const { text: aiResponse } = await generateText({
         model: this.provider(this.model),
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
-            role: "user",
-            content: userPromptContent,
-          },
-        ],
-        temperature: 0.1, // Low temperature for consistent formatting
-        maxTokens: 2000,
+        messages: requestPayload.messages,
+        temperature: requestPayload.temperature,
+        maxTokens: requestPayload.maxTokens,
       });
 
-      logger.pipeline.debug("Formatting raw response", {
+      logger.pipeline.debug("Formatting LLM raw response", {
+        provider: this.name,
         model: this.model,
         rawResponse: aiResponse,
       });
@@ -67,23 +78,24 @@ export class OpenRouterProvider implements FormattingProvider {
           {
             model: this.model,
             reason: extraction.reason,
-            rawResponsePreview: aiResponse.substring(0, 200),
+            rawResponseLength: aiResponse.length,
           },
           "Formatting XML extraction failed, returning original text",
         );
       }
 
-      logger.pipeline.debug("Formatting completed", {
+      logger.pipeline.debug("Formatting LLM parsed response", {
+        provider: this.name,
         original: text,
         formatted: extraction.text,
         usedFallback: extraction.usedFallback,
+        fallbackReason: extraction.reason,
       });
 
       return extraction.text;
     } catch (error) {
       logger.pipeline.error("Formatting failed:", error);
-      // Return original text if formatting fails - simple fallback
-      return params.text;
+      throw error;
     }
   }
 }

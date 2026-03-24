@@ -35,9 +35,15 @@ const OllamaConfigSchema = z.object({
   url: z.string().url().or(z.literal("")),
 });
 
+const OpenAICompatibleConfigSchema = z.object({
+  apiKey: z.string(),
+  baseURL: z.string().url(),
+});
+
 const ModelProvidersConfigSchema = z.object({
   openRouter: OpenRouterConfigSchema.optional(),
   ollama: OllamaConfigSchema.optional(),
+  openAICompatible: OpenAICompatibleConfigSchema.optional(),
 });
 
 const DictationSettingsSchema = z.object({
@@ -58,6 +64,7 @@ const AppPreferencesSchema = z.object({
   muteSystemAudio: z.boolean().optional(),
   muteDictationSounds: z.boolean().optional(),
   autoDictateOnNewNote: z.boolean().optional(),
+  preserveClipboard: z.boolean().optional(),
 });
 
 const UIThemeSchema = z.object({
@@ -525,6 +532,33 @@ export const settingsRouter = createRouter({
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
           logger.main.error("Error setting Ollama config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Set OpenAI-compatible configuration
+  setOpenAICompatibleConfig: procedure
+    .input(OpenAICompatibleConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setOpenAICompatibleConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("OpenAI-compatible configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting OpenAI-compatible config:", error);
         }
         throw error;
       }

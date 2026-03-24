@@ -8,6 +8,10 @@ import {
   updateAppSettings,
 } from "../db/app-settings";
 import type { AppSettingsData } from "../db/schema";
+import {
+  normalizeOllamaUrl,
+  normalizeOpenAICompatibleBaseURL,
+} from "../utils/provider-utils";
 
 /**
  * Database-backed settings service with typed configuration
@@ -27,6 +31,7 @@ export interface AppPreferences {
   muteSystemAudio: boolean;
   muteDictationSounds: boolean;
   autoDictateOnNewNote: boolean;
+  preserveClipboard: boolean;
 }
 
 export class SettingsService extends EventEmitter {
@@ -84,10 +89,8 @@ export class SettingsService extends EventEmitter {
   ): Promise<void> {
     await updateSettingsSection("ui", uiSettings);
 
-    // Emit event if theme changed (AppManager will handle window updates)
-    if (uiSettings?.theme !== undefined) {
-      this.emit("theme-changed", { theme: uiSettings.theme });
-    }
+    // AppManager handles window updates when the theme changes.
+    this.emit("theme-changed", { theme: uiSettings.theme });
   }
 
   /**
@@ -228,18 +231,46 @@ export class SettingsService extends EventEmitter {
    */
   async setOllamaConfig(config: { url: string }): Promise<void> {
     const currentConfig = await this.getModelProvidersConfig();
+    const normalizedUrl = normalizeOllamaUrl(config.url);
 
     // If URL is empty, remove the ollama config entirely
-    if (config.url === "") {
+    if (normalizedUrl === "") {
       const updatedConfig = { ...currentConfig };
       delete updatedConfig.ollama;
       await this.setModelProvidersConfig(updatedConfig);
     } else {
       await this.setModelProvidersConfig({
         ...currentConfig,
-        ollama: config,
+        ollama: { url: normalizedUrl },
       });
     }
+  }
+
+  /**
+   * Get OpenAI-compatible configuration
+   */
+  async getOpenAICompatibleConfig(): Promise<
+    { apiKey: string; baseURL: string } | undefined
+  > {
+    const config = await this.getModelProvidersConfig();
+    return config?.openAICompatible;
+  }
+
+  /**
+   * Update OpenAI-compatible configuration
+   */
+  async setOpenAICompatibleConfig(config: {
+    apiKey: string;
+    baseURL: string;
+  }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      openAICompatible: {
+        apiKey: config.apiKey.trim(),
+        baseURL: normalizeOpenAICompatibleBaseURL(config.baseURL),
+      },
+    });
   }
 
   /**
@@ -312,6 +343,7 @@ export class SettingsService extends EventEmitter {
       muteSystemAudio: preferences?.muteSystemAudio ?? true,
       muteDictationSounds: preferences?.muteDictationSounds ?? false,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
+      preserveClipboard: preferences?.preserveClipboard ?? true,
     };
   }
 
@@ -396,7 +428,9 @@ export class SettingsService extends EventEmitter {
   /**
    * Get telemetry settings
    */
-  async getTelemetrySettings(): Promise<AppSettingsData["telemetry"]> {
+  async getTelemetrySettings(): Promise<
+    NonNullable<AppSettingsData["telemetry"]>
+  > {
     const telemetry = await getSettingsSection("telemetry");
     return telemetry ?? { enabled: true }; // Default to enabled
   }

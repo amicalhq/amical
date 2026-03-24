@@ -422,7 +422,8 @@
           "system": "System",
           "en": "English",
           "es": "Español",
-          "ja": "日本語"
+          "ja": "日本語",
+          "zh-TW": "繁體中文"
         },
         "restartDialog": {
           "title": "Restart required",
@@ -448,6 +449,10 @@
       "preloadModel": {
         "label": "Preload Whisper Model",
         "description": "Load AI model at startup for faster transcription"
+      },
+      "preserveClipboard": {
+        "label": "Preserve clipboard contents",
+        "description": "After pasting a transcript, restore whatever was previously on your clipboard."
       },
       "debugMode": {
         "label": "Debug Mode",
@@ -815,7 +820,8 @@
       },
       "providers": {
         "openRouter": "OpenRouter",
-        "ollama": "Ollama"
+        "ollama": "Ollama",
+        "openAICompatible": "OpenAI Compatible"
       },
       "provider": {
         "status": {
@@ -824,7 +830,9 @@
         },
         "placeholders": {
           "openRouter": "API Key",
-          "ollama": "Ollama URL (e.g., http://localhost:11434)"
+          "ollama": "Ollama URL (e.g., http://localhost:11434)",
+          "openAICompatibleApiKey": "API Key",
+          "openAICompatibleBaseURL": "Base URL (e.g., http://localhost:1234/v1)"
         },
         "buttons": {
           "connect": "Connect",

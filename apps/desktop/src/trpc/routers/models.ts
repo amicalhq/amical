@@ -1,13 +1,71 @@
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
+import type { Context } from "../context";
 import type {
   AvailableWhisperModel,
   DownloadProgress,
 } from "../../constants/models";
-import type { Model } from "../../db/schema";
+import type { AppSettingsData, Model } from "../../db/schema";
 import type { ValidationResult } from "../../types/providers";
 import { removeModel } from "../../db/models";
+import {
+  REMOTE_PROVIDERS,
+  type RemoteProvider,
+} from "../../constants/remote-providers";
+import {
+  PROVIDER_TYPES,
+  getSystemProviderInstanceId,
+} from "../../constants/provider-types";
+import {
+  findModelBySelectionValue,
+  type ModelSelectionType,
+} from "../../utils/model-selection";
+
+type ProviderConfigKey = keyof NonNullable<
+  AppSettingsData["modelProvidersConfig"]
+>;
+
+const remoteProviderSchema = z.enum([
+  REMOTE_PROVIDERS.openRouter,
+  REMOTE_PROVIDERS.ollama,
+  REMOTE_PROVIDERS.openAICompatible,
+]);
+
+const syncedProviderModelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  providerType: z.string(),
+  providerInstanceId: z.string(),
+  provider: z.string(),
+  size: z.string().optional().nullable(),
+  context: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  originalModel: z.unknown().optional().nullable(),
+});
+
+async function removeProviderEndpoint(
+  ctx: Context,
+  provider: RemoteProvider,
+  configKey: ProviderConfigKey,
+): Promise<true> {
+  const modelService = ctx.serviceManager.getService("modelService");
+  if (!modelService) {
+    throw new Error("Model manager service not initialized");
+  }
+
+  await modelService.removeProviderModels(provider);
+
+  const settingsService = ctx.serviceManager.getService("settingsService");
+  if (settingsService) {
+    const currentConfig = await settingsService.getModelProvidersConfig();
+    const updatedConfig = { ...currentConfig };
+    delete updatedConfig[configKey];
+    await settingsService.setModelProvidersConfig(updatedConfig);
+  }
+
+  return true;
+}
 
 export const modelsRouter = createRouter({
   // Unified models fetching
@@ -49,12 +107,29 @@ export const modelsRouter = createRouter({
               description: m.description,
               speed: m.speed,
               accuracy: m.accuracy,
+              providerType:
+                m.id === "amical-cloud"
+                  ? PROVIDER_TYPES.amical
+                  : PROVIDER_TYPES.localWhisper,
+              providerInstanceId:
+                m.id === "amical-cloud"
+                  ? getSystemProviderInstanceId(PROVIDER_TYPES.amical)
+                  : getSystemProviderInstanceId(PROVIDER_TYPES.localWhisper),
+              provider: m.provider,
               setup: m.setup,
             } as Model & { setup: "offline" | "cloud" };
           }
           // Create a partial Model for non-downloaded models
           return {
             id: m.id,
+            providerType:
+              m.id === "amical-cloud"
+                ? PROVIDER_TYPES.amical
+                : PROVIDER_TYPES.localWhisper,
+            providerInstanceId:
+              m.id === "amical-cloud"
+                ? getSystemProviderInstanceId(PROVIDER_TYPES.amical)
+                : getSystemProviderInstanceId(PROVIDER_TYPES.localWhisper),
             name: m.name,
             provider: m.provider,
             type: "speech" as const,
@@ -100,17 +175,7 @@ export const modelsRouter = createRouter({
 
       // Filter by type if specified
       if (input.type) {
-        models = models.filter((m) => {
-          if (input.type === "embedding") {
-            return (
-              m.provider === "Ollama" && m.name.toLowerCase().includes("embed")
-            );
-          }
-          // For language models, exclude embedding models
-          return !(
-            m.provider === "Ollama" && m.name.toLowerCase().includes("embed")
-          );
-        });
+        models = models.filter((m) => m.type === input.type);
       }
 
       return models;
@@ -256,6 +321,19 @@ export const modelsRouter = createRouter({
       return await modelService.validateOllamaConnection(input.url);
     }),
 
+  validateOpenAICompatibleConnection: procedure
+    .input(z.object({ baseURL: z.string().url(), apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateOpenAICompatibleConnection(
+        input.baseURL,
+        input.apiKey,
+      );
+    }),
+
   // Provider model fetching
   fetchOpenRouterModels: procedure
     .input(z.object({ apiKey: z.string() }))
@@ -277,6 +355,19 @@ export const modelsRouter = createRouter({
       return await modelService.fetchOllamaModels(input.url);
     }),
 
+  fetchOpenAICompatibleModels: procedure
+    .input(z.object({ baseURL: z.string().url(), apiKey: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.fetchOpenAICompatibleModels(
+        input.baseURL,
+        input.apiKey,
+      );
+    }),
+
   // Provider model database sync
   getSyncedProviderModels: procedure.query(
     async ({ ctx }): Promise<Model[]> => {
@@ -291,8 +382,8 @@ export const modelsRouter = createRouter({
   syncProviderModelsToDatabase: procedure
     .input(
       z.object({
-        provider: z.string(),
-        models: z.array(z.any()), // ProviderModel[]
+        provider: remoteProviderSchema,
+        models: z.array(syncedProviderModelSchema),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -418,92 +509,36 @@ export const modelsRouter = createRouter({
 
       // Find the model to get its provider
       const allModels = await modelService.getSyncedProviderModels();
-      const model = allModels.find((m) => m.id === input.modelId);
+      const model = findModelBySelectionValue(allModels, input.modelId);
 
       if (!model) {
         throw new Error(`Model not found: ${input.modelId}`);
       }
 
-      await removeModel(model.provider, input.modelId);
+      await removeModel(
+        model.providerInstanceId,
+        model.type as ModelSelectionType,
+        model.id,
+      );
       return true;
     }),
 
   // Remove provider endpoints
-  removeOpenRouterProvider: procedure.mutation(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
-    if (!modelService) {
-      throw new Error("Model manager service not initialized");
-    }
+  removeOpenRouterProvider: procedure.mutation(({ ctx }) =>
+    removeProviderEndpoint(ctx, REMOTE_PROVIDERS.openRouter, "openRouter"),
+  ),
 
-    // Remove all OpenRouter models from database
-    await modelService.removeProviderModels("OpenRouter");
+  removeOllamaProvider: procedure.mutation(({ ctx }) =>
+    removeProviderEndpoint(ctx, REMOTE_PROVIDERS.ollama, "ollama"),
+  ),
 
-    // Clear OpenRouter config from settings
-    const settingsService = ctx.serviceManager.getService("settingsService");
-    if (settingsService) {
-      const currentConfig = await settingsService.getModelProvidersConfig();
-      const updatedConfig = { ...currentConfig };
-      delete updatedConfig.openRouter;
-
-      // Clear default if it's an OpenRouter model
-      const allModels = await modelService.getSyncedProviderModels();
-      const openRouterModels = allModels.filter(
-        (m) => m.provider === "OpenRouter",
-      );
-      if (
-        currentConfig?.defaultLanguageModel &&
-        openRouterModels.some(
-          (m) => m.id === currentConfig.defaultLanguageModel,
-        )
-      ) {
-        updatedConfig.defaultLanguageModel = undefined;
-      }
-
-      await settingsService.setModelProvidersConfig(updatedConfig);
-    }
-
-    return true;
-  }),
-
-  removeOllamaProvider: procedure.mutation(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
-    if (!modelService) {
-      throw new Error("Model manager service not initialized");
-    }
-
-    // Remove all Ollama models from database
-    await modelService.removeProviderModels("Ollama");
-
-    // Clear Ollama config from settings
-    const settingsService = ctx.serviceManager.getService("settingsService");
-    if (settingsService) {
-      const currentConfig = await settingsService.getModelProvidersConfig();
-      const updatedConfig = { ...currentConfig };
-      delete updatedConfig.ollama;
-
-      // Clear defaults if they're Ollama models
-      const allModels = await modelService.getSyncedProviderModels();
-      const ollamaModels = allModels.filter((m) => m.provider === "Ollama");
-
-      if (
-        currentConfig?.defaultLanguageModel &&
-        ollamaModels.some((m) => m.id === currentConfig.defaultLanguageModel)
-      ) {
-        updatedConfig.defaultLanguageModel = undefined;
-      }
-
-      if (
-        currentConfig?.defaultEmbeddingModel &&
-        ollamaModels.some((m) => m.id === currentConfig.defaultEmbeddingModel)
-      ) {
-        updatedConfig.defaultEmbeddingModel = undefined;
-      }
-
-      await settingsService.setModelProvidersConfig(updatedConfig);
-    }
-
-    return true;
-  }),
+  removeOpenAICompatibleProvider: procedure.mutation(({ ctx }) =>
+    removeProviderEndpoint(
+      ctx,
+      REMOTE_PROVIDERS.openAICompatible,
+      "openAICompatible",
+    ),
+  ),
 
   // Subscriptions using Observables
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict

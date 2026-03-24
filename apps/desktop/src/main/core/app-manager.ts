@@ -395,7 +395,7 @@ export class AppManager {
   private async setupMenu(): Promise<string> {
     const settingsService = this.serviceManager.getService("settingsService");
     const uiSettings = await settingsService.getUISettings();
-    const locale = uiSettings?.locale ?? app.getLocale();
+    const locale = uiSettings.locale ?? app.getLocale();
     await setupApplicationMenu(
       () => this.windowManager.createOrShowMainWindow(),
       () => {
