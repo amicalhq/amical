@@ -176,7 +176,18 @@ export class ServiceManager {
         this.nativeBridge,
         this.onboardingService,
       );
-      await this.transcriptionService.initialize();
+      try {
+        await this.transcriptionService.initialize();
+      } catch (error) {
+        this.telemetryService?.captureException(error, {
+          source: "service_manager",
+          stage: "initialize_ai_services_preload",
+        });
+        logger.transcription.error(
+          "Transcription service preload failed, continuing with lazy initialization",
+          error,
+        );
+      }
 
       logger.transcription.info("Transcription Service initialized", {
         client: "Pipeline with Whisper",
@@ -246,24 +257,29 @@ export class ServiceManager {
       );
     }
 
-    const services: ServiceMap = {
-      posthogClient: this.posthogClient!,
-      telemetryService: this.telemetryService!,
-      featureFlagService: this.featureFlagService!,
-      modelService: this.modelService!,
-      transcriptionService: this.transcriptionService!,
-      settingsService: this.settingsService!,
-      authService: this.authService!,
-      vadService: this.vadService!,
-      nativeBridge: this.nativeBridge!,
-      autoUpdaterService: this.autoUpdaterService!,
-      recordingManager: this.recordingManager!,
-      shortcutManager: this.shortcutManager!,
-      windowManager: this.windowManager!,
-      onboardingService: this.onboardingService!,
+    const services = {
+      posthogClient: this.posthogClient,
+      telemetryService: this.telemetryService,
+      featureFlagService: this.featureFlagService,
+      modelService: this.modelService,
+      transcriptionService: this.transcriptionService,
+      settingsService: this.settingsService,
+      authService: this.authService,
+      vadService: this.vadService,
+      nativeBridge: this.nativeBridge,
+      autoUpdaterService: this.autoUpdaterService,
+      recordingManager: this.recordingManager,
+      shortcutManager: this.shortcutManager,
+      windowManager: this.windowManager,
+      onboardingService: this.onboardingService,
     };
 
-    return services[serviceName];
+    const service = services[serviceName];
+    if (!service) {
+      throw new Error(`Service '${serviceName}' is not available`);
+    }
+
+    return service as ServiceMap[K];
   }
 
   async cleanup(): Promise<void> {

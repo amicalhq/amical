@@ -7,6 +7,12 @@ export interface AvailableWhisperModel {
   description: string;
   downloadUrl: string;
   filename: string; // Expected filename after download
+  artifacts?: {
+    filename: string;
+    downloadUrl: string;
+    checksum?: string;
+    size?: number;
+  }[];
   checksum?: string; // Optional checksum for validation
   features: {
     icon: string;
@@ -15,9 +21,11 @@ export interface AvailableWhisperModel {
   speed: number;
   accuracy: number;
   setup: "offline" | "cloud";
+  runtime: "whisper-local" | "parakeet-onnx" | "cloud";
   provider: string;
   providerIcon: string;
   modelSize: string;
+  sourceUrl?: string;
 }
 
 // DownloadedModel type is now imported from the database schema
@@ -145,8 +153,75 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 4.5,
     accuracy: 4.5,
     setup: "cloud",
+    runtime: "cloud",
     provider: "Amical Cloud",
     providerIcon: "/assets/icon_logo.svg",
+  },
+  {
+    id: "parakeet-tdt-0.6b-v3-int8",
+    name: "NVIDIA Parakeet TDT 0.6B v3",
+    type: "whisper",
+    description:
+      "Transducer speech model with improved multilingual quality and robustness using ONNX Runtime.",
+    checksum: "",
+    filename: "encoder-model.int8.onnx",
+    artifacts: [
+      {
+        filename: "encoder-model.int8.onnx",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/encoder-model.int8.onnx",
+        size: 652183999,
+      },
+      {
+        filename: "decoder_joint-model.int8.onnx",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/decoder_joint-model.int8.onnx",
+        size: 18202004,
+      },
+      {
+        filename: "nemo128.onnx",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/nemo128.onnx",
+        size: 139764,
+      },
+      {
+        filename: "vocab.txt",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/vocab.txt",
+        size: 93939,
+      },
+      {
+        filename: "config.json",
+        downloadUrl:
+          "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/config.json",
+      },
+    ],
+    downloadUrl:
+      "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/encoder-model.int8.onnx",
+    size: 670619706,
+    sizeFormatted: "~640 MB",
+    modelSize: "~640 MB",
+    features: [
+      {
+        icon: "award",
+        tooltip: "Higher-quality transducer decoding",
+      },
+      {
+        icon: "gauge",
+        tooltip: "DirectML/CPU ONNX runtime",
+      },
+      {
+        icon: "languages",
+        tooltip: "Strong multilingual support",
+      },
+    ],
+    speed: 4.3,
+    accuracy: 4.6,
+    setup: "offline",
+    runtime: "parakeet-onnx",
+    provider: "NVIDIA",
+    providerIcon: "/icons/models/nvidia.svg",
+    sourceUrl: "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx",
   },
   {
     id: "whisper-tiny",
@@ -177,6 +252,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 5.0,
     accuracy: 2.5,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "Local",
     providerIcon: "/icons/models/local.svg",
   },
@@ -209,6 +285,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 4.0,
     accuracy: 3.0,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "Local",
     providerIcon: "/icons/models/local.svg",
   },
@@ -242,6 +319,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 3.0,
     accuracy: 3.8,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "Local",
     providerIcon: "/icons/models/local.svg",
   },
@@ -274,6 +352,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 2.0,
     accuracy: 4.3,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "Local",
     providerIcon: "/icons/models/local.svg",
   },
@@ -306,6 +385,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 1.5,
     accuracy: 4.7,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "Local",
     providerIcon: "/icons/models/local.svg",
   },
@@ -338,6 +418,7 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     speed: 3.5,
     accuracy: 4.2,
     setup: "offline",
+    runtime: "whisper-local",
     provider: "Local",
     providerIcon: "/icons/models/local.svg",
   },

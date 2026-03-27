@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { Mutex } from "async-mutex";
 import { logger, logPerformance } from "../logger";
 import type { ServiceManager } from "@/main/managers/service-manager";
+import type { TranscriptionService } from "../../services/transcription-service";
 import type { RecordingState } from "../../types/recording";
 import type { ShortcutManager } from "./shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
@@ -75,6 +76,7 @@ export class RecordingManager extends EventEmitter {
 
   // System audio state tracking
   private systemAudioMuted: boolean = false;
+  private transcriptionServiceUnavailableNotified: boolean = false;
   // Sound muting for current session
   private soundsMuted: boolean = false;
 
@@ -272,6 +274,7 @@ export class RecordingManager extends EventEmitter {
       this.setMode(mode);
       this.terminationCode = null;
       this.firstChunkReceived = false;
+      this.transcriptionServiceUnavailableNotified = false;
       this.recordingStartedAt = performance.now();
       this.recordingStoppedAt = null;
       this.audioChunks = [];
@@ -302,10 +305,10 @@ export class RecordingManager extends EventEmitter {
     try {
       // Reset VAD state for fresh speech detection (mutex-protected to avoid
       // interleaving with retry VAD computation)
-      const transcriptionService = this.serviceManager.getService(
-        "transcriptionService",
-      );
-      await transcriptionService.resetVadForNewSession();
+      const transcriptionService = this.getTranscriptionService();
+      if (transcriptionService) {
+        await transcriptionService.resetVadForNewSession();
+      }
 
       // Refresh accessibility context (TextMarker API for Electron support)
       // Fire and forget - context will be ready by the time first audio chunk arrives
@@ -382,10 +385,10 @@ export class RecordingManager extends EventEmitter {
       // Cancel streaming for cancel codes (not null, not dismissed)
       if (code && code !== "dismissed" && sessionId) {
         try {
-          const transcriptionService = this.serviceManager.getService(
-            "transcriptionService",
-          );
-          await transcriptionService.cancelStreamingSession(sessionId);
+          const transcriptionService = this.getTranscriptionService();
+          if (transcriptionService) {
+            await transcriptionService.cancelStreamingSession(sessionId);
+          }
         } catch (error) {
           logger.audio.warn("Failed to cancel streaming session", { error });
         }
@@ -442,14 +445,14 @@ export class RecordingManager extends EventEmitter {
         // Also send to transcription if we have a session and not terminated
         if (this.currentSessionId && !this.terminationCode) {
           try {
-            const transcriptionService = this.serviceManager.getService(
-              "transcriptionService",
-            );
-            await transcriptionService.processStreamingChunk({
-              sessionId: this.currentSessionId,
-              audioChunk: chunk,
-              recordingStartedAt: this.recordingStartedAt || undefined,
-            });
+            const transcriptionService = this.getTranscriptionService();
+            if (transcriptionService) {
+              await transcriptionService.processStreamingChunk({
+                sessionId: this.currentSessionId,
+                audioChunk: chunk,
+                recordingStartedAt: this.recordingStartedAt || undefined,
+              });
+            }
           } catch (error) {
             logger.audio.error("Error processing final chunk:", error);
           }
@@ -474,10 +477,13 @@ export class RecordingManager extends EventEmitter {
 
     // Stream to transcription (skip if terminated)
     if (!this.terminationCode) {
+      const transcriptionService = this.getTranscriptionService();
+      if (!transcriptionService) {
+        await this.endRecording("error");
+        return;
+      }
+
       try {
-        const transcriptionService = this.serviceManager.getService(
-          "transcriptionService",
-        );
         await transcriptionService.processStreamingChunk({
           sessionId,
           audioChunk: chunk,
@@ -553,10 +559,10 @@ export class RecordingManager extends EventEmitter {
     if (code === "dismissed") {
       // Cancel streaming session to prevent memory leak and audio bleed
       try {
-        const transcriptionService = this.serviceManager.getService(
-          "transcriptionService",
-        );
-        await transcriptionService.cancelStreamingSession(sessionId);
+        const transcriptionService = this.getTranscriptionService();
+        if (transcriptionService) {
+          await transcriptionService.cancelStreamingSession(sessionId);
+        }
       } catch (error) {
         logger.audio.warn("Failed to cancel streaming session", { error });
       }
@@ -573,9 +579,14 @@ export class RecordingManager extends EventEmitter {
     // NORMAL - get transcription and paste
     let result = "";
     try {
-      const transcriptionService = this.serviceManager.getService(
-        "transcriptionService",
-      );
+      const transcriptionService = this.getTranscriptionService();
+      if (!transcriptionService) {
+        throw new AppError(
+          "Transcription service unavailable",
+          ErrorCodes.WORKER_INITIALIZATION_FAILED,
+        );
+      }
+
       result = await transcriptionService.finalizeSession({
         sessionId,
         audioFilePath: audioFilePath || undefined,
@@ -814,12 +825,12 @@ export class RecordingManager extends EventEmitter {
     // Cancel streaming session if one exists to prevent memory leak and audio bleed
     if (this.currentSessionId) {
       try {
-        const transcriptionService = this.serviceManager.getService(
-          "transcriptionService",
-        );
-        await transcriptionService.cancelStreamingSession(
-          this.currentSessionId,
-        );
+        const transcriptionService = this.getTranscriptionService();
+        if (transcriptionService) {
+          await transcriptionService.cancelStreamingSession(
+            this.currentSessionId,
+          );
+        }
       } catch (error) {
         logger.audio.warn("Failed to cancel streaming session", { error });
       }
@@ -857,8 +868,30 @@ export class RecordingManager extends EventEmitter {
     this.audioChunks = [];
     this.terminationCode = null;
     this.systemAudioMuted = false;
+    this.transcriptionServiceUnavailableNotified = false;
     this.soundsMuted = false;
     this.clearTimers();
+  }
+
+  private getTranscriptionService(): TranscriptionService | null {
+    try {
+      const transcriptionService = this.serviceManager.getService(
+        "transcriptionService",
+      );
+      return transcriptionService || null;
+    } catch (error) {
+      if (!this.transcriptionServiceUnavailableNotified) {
+        logger.audio.warn("Transcription service unavailable", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.emit("widget-notification", {
+          type: "transcription_failed",
+          errorCode: ErrorCodes.WORKER_INITIALIZATION_FAILED,
+        });
+        this.transcriptionServiceUnavailableNotified = true;
+      }
+      return null;
+    }
   }
 
   /**

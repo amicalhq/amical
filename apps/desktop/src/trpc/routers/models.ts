@@ -88,7 +88,7 @@ export const modelsRouter = createRouter({
         // Return all available whisper models as Model type
         // We need to convert from AvailableWhisperModel to Model format
         const availableModels = modelService.getAvailableModels();
-        const downloadedModels = await modelService.getDownloadedModels();
+        const downloadedModels = await modelService.getValidDownloadedModels();
 
         // Check authentication status for cloud model filtering
         const authService = ctx.serviceManager.getService("authService");
@@ -101,6 +101,12 @@ export const modelsRouter = createRouter({
             // Include setup field from available model metadata
             return {
               ...downloaded,
+              // Always prefer current manifest metadata for display fields.
+              name: m.name,
+              size: m.sizeFormatted,
+              description: m.description,
+              speed: m.speed,
+              accuracy: m.accuracy,
               providerType:
                 m.id === "amical-cloud"
                   ? PROVIDER_TYPES.amical

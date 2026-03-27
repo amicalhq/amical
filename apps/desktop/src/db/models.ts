@@ -224,8 +224,8 @@ export async function getModelsByIds(
 }
 
 /**
- * Sync Local Whisper models with filesystem
- * Scans the models directory and syncs database records with actual files
+ * Sync local speech models with filesystem
+ * Scans expected model paths and syncs database records with actual files
  */
 export async function syncLocalWhisperModels(
   modelsDirectory: string,
@@ -238,6 +238,9 @@ export async function syncLocalWhisperModels(
     speed: number;
     accuracy: number;
     filename: string;
+    artifacts?: Array<{
+      filename: string;
+    }>;
   }>,
 ): Promise<{ added: number; updated: number; removed: number }> {
   const fs = await import("fs");
@@ -251,41 +254,99 @@ export async function syncLocalWhisperModels(
   const existingModels = await getModelsByProvider("local-whisper");
   const existingModelMap = new Map(existingModels.map((m) => [m.id, m]));
 
-  // Scan the models directory for .bin files
-  const modelFiles = new Set<string>();
-  if (fs.existsSync(modelsDirectory)) {
-    const files = fs.readdirSync(modelsDirectory);
-    for (const file of files) {
-      if (file.endsWith(".bin")) {
-        modelFiles.add(file);
-      }
-    }
-  }
-
   // Map available models by ID for easy lookup
   // (we already have them indexed by ID, so we don't need this map)
 
+  const resolveRequiredLocalFiles = (
+    model: (typeof availableModels)[number],
+  ) => {
+    const requiredFilenames =
+      model.artifacts && model.artifacts.length > 0
+        ? model.artifacts.map((artifact) => artifact.filename)
+        : [model.filename];
+
+    const resolvedFiles = requiredFilenames
+      .map((filename) => {
+        const candidatePaths = [
+          path.join(modelsDirectory, filename),
+          path.join(modelsDirectory, model.id, filename),
+        ];
+
+        return candidatePaths.find((candidatePath) =>
+          fs.existsSync(candidatePath),
+        );
+      })
+      .filter((filePath): filePath is string => !!filePath);
+
+    return resolvedFiles.length === requiredFilenames.length
+      ? resolvedFiles
+      : null;
+  };
+
   // Process each available model
   for (const model of availableModels) {
-    const filePath = path.join(modelsDirectory, model.filename);
-    const fileExists = modelFiles.has(model.filename);
+    const resolvedFiles = resolveRequiredLocalFiles(model);
+    const filePath =
+      resolvedFiles?.find(
+        (resolvedFilePath) =>
+          path.basename(resolvedFilePath) === model.filename,
+      ) || path.join(modelsDirectory, model.id, model.filename);
+    const fileExists = !!resolvedFiles;
     const existingRecord = existingModelMap.get(model.id);
 
     if (fileExists) {
-      // File exists on disk
-      const stats = fs.statSync(filePath);
+      const sizeBytes = resolvedFiles.reduce(
+        (sum, resolvedFilePath) => sum + fs.statSync(resolvedFilePath).size,
+        0,
+      );
+      const existingLocalFiles =
+        existingRecord?.originalModel &&
+        typeof existingRecord.originalModel === "object" &&
+        !Array.isArray(existingRecord.originalModel) &&
+        Array.isArray(
+          (
+            existingRecord.originalModel as {
+              localFiles?: unknown;
+            }
+          ).localFiles,
+        )
+          ? (
+              existingRecord.originalModel as {
+                localFiles: unknown[];
+              }
+            ).localFiles.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [];
+      const localFilesChanged =
+        existingLocalFiles.length !== resolvedFiles.length ||
+        existingLocalFiles.some(
+          (existingLocalFile, index) =>
+            existingLocalFile !== resolvedFiles[index],
+        );
+      const originalModel =
+        existingRecord?.originalModel &&
+        typeof existingRecord.originalModel === "object" &&
+        !Array.isArray(existingRecord.originalModel)
+          ? {
+              ...existingRecord.originalModel,
+              localFiles: resolvedFiles,
+            }
+          : { localFiles: resolvedFiles };
 
       if (existingRecord) {
         // Update existing record if needed
         if (
           existingRecord.localPath !== filePath ||
-          existingRecord.sizeBytes !== stats.size
+          existingRecord.sizeBytes !== sizeBytes ||
+          localFilesChanged
         ) {
           await upsertModel({
             ...existingRecord,
             localPath: filePath,
-            sizeBytes: stats.size,
+            sizeBytes,
             downloadedAt: existingRecord.downloadedAt || new Date(),
+            originalModel,
           });
           updated++;
         }
@@ -304,10 +365,10 @@ export async function syncLocalWhisperModels(
           speed: model.speed,
           accuracy: model.accuracy,
           localPath: filePath,
-          sizeBytes: stats.size,
+          sizeBytes,
           downloadedAt: new Date(),
           context: null,
-          originalModel: null,
+          originalModel,
         });
         added++;
       }

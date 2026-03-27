@@ -14,7 +14,6 @@ import {
   getModelsByProvider,
   getDownloadedWhisperModels,
   removeModel,
-  modelExists,
   syncLocalWhisperModels,
   getAllModels,
   syncModelsForProviderInstance,
@@ -155,10 +154,22 @@ interface ModelManagerEvents {
   ) => void;
 }
 
+const LEGACY_PARAKEET_CTC_MODEL_ID = "parakeet-ctc-0.6b-int8";
+const PARAKEET_TDT_MODEL_ID = "parakeet-tdt-0.6b-v3-int8";
+
 class ModelService extends EventEmitter {
   private state: ModelManagerState;
   private modelsDirectory: string;
   private settingsService: SettingsService;
+  private readonly localSpeechPreference = [
+    "whisper-large-v3-turbo",
+    PARAKEET_TDT_MODEL_ID,
+    "whisper-large-v3",
+    "whisper-medium",
+    "whisper-small",
+    "whisper-base",
+    "whisper-tiny",
+  ];
 
   constructor(settingsService: SettingsService) {
     super();
@@ -204,8 +215,10 @@ class ModelService extends EventEmitter {
   // Initialize and validate models on startup
   async initialize(): Promise<void> {
     try {
-      // Sync Whisper models with filesystem
-      const whisperModelsData = AVAILABLE_MODELS.map((model) => ({
+      // Sync local speech models with filesystem
+      const whisperModelsData = AVAILABLE_MODELS.filter(
+        (model) => model.setup === "offline" && !!model.filename,
+      ).map((model) => ({
         id: model.id,
         name: model.name,
         description: model.description,
@@ -214,6 +227,9 @@ class ModelService extends EventEmitter {
         speed: model.speed,
         accuracy: model.accuracy,
         filename: model.filename,
+        artifacts: model.artifacts?.map((artifact) => ({
+          filename: artifact.filename,
+        })),
       }));
 
       const syncResult = await syncLocalWhisperModels(
@@ -247,22 +263,8 @@ class ModelService extends EventEmitter {
             const downloadedModelIds = Object.keys(downloadedModels);
 
             if (downloadedModelIds.length > 0) {
-              const preferredOrder = [
-                "whisper-large-v3-turbo",
-                "whisper-large-v3",
-                "whisper-medium",
-                "whisper-small",
-                "whisper-base",
-                "whisper-tiny",
-              ];
-
-              let newModelId = downloadedModelIds[0];
-              for (const candidateId of preferredOrder) {
-                if (downloadedModels[candidateId]) {
-                  newModelId = candidateId;
-                  break;
-                }
-              }
+              const newModelId =
+                this.pickPreferredLocalModelId(downloadedModelIds);
 
               await this.applySpeechModelSelection(
                 newModelId,
@@ -297,29 +299,18 @@ class ModelService extends EventEmitter {
 
         if (downloadedModelCount > 0) {
           // Auto-select the best available model using the preferred order
-          const preferredOrder = [
-            "whisper-large-v3-turbo",
-            "whisper-large-v3",
-            "whisper-medium",
-            "whisper-small",
-            "whisper-base",
-            "whisper-tiny",
-          ];
-
-          for (const candidateId of preferredOrder) {
-            if (downloadedModels[candidateId]) {
-              await this.applySpeechModelSelection(
-                candidateId,
-                "auto-first-download",
-                null,
-              );
-              logger.main.info("Auto-selected speech model on initialization", {
-                modelId: candidateId,
-                availableModels: Object.keys(downloadedModels),
-              });
-              break;
-            }
-          }
+          const downloadedModelIds = Object.keys(downloadedModels);
+          const candidateId =
+            this.pickPreferredLocalModelId(downloadedModelIds);
+          await this.applySpeechModelSelection(
+            candidateId,
+            "auto-first-download",
+            null,
+          );
+          logger.main.info("Auto-selected speech model on initialization", {
+            modelId: candidateId,
+            availableModels: downloadedModelIds,
+          });
         }
       }
 
@@ -357,22 +348,8 @@ class ModelService extends EventEmitter {
 
             if (downloadedModelIds.length > 0) {
               // Find the best local model from preferred order
-              const preferredOrder = [
-                "whisper-large-v3-turbo",
-                "whisper-large-v3",
-                "whisper-medium",
-                "whisper-small",
-                "whisper-base",
-                "whisper-tiny",
-              ];
-
-              let newModelId = downloadedModelIds[0]; // Fallback to first available
-              for (const candidateId of preferredOrder) {
-                if (downloadedModels[candidateId]) {
-                  newModelId = candidateId;
-                  break;
-                }
-              }
+              const newModelId =
+                this.pickPreferredLocalModelId(downloadedModelIds);
 
               await this.applySpeechModelSelection(
                 newModelId,
@@ -418,6 +395,15 @@ class ModelService extends EventEmitter {
     }
   }
 
+  private pickPreferredLocalModelId(downloadedModelIds: string[]): string {
+    for (const candidateId of this.localSpeechPreference) {
+      if (downloadedModelIds.includes(candidateId)) {
+        return candidateId;
+      }
+    }
+    return downloadedModelIds[0];
+  }
+
   // Get all available models from manifest
   getAvailableModels(): AvailableWhisperModel[] {
     return AVAILABLE_MODELS;
@@ -435,17 +421,24 @@ class ModelService extends EventEmitter {
     return record;
   }
 
-  // Get only valid downloaded models (files that exist on disk)
-  // Since we sync on init and only store downloaded models, all models in DB are valid
+  // Get only valid downloaded models (all required artifacts exist on disk)
   async getValidDownloadedModels(): Promise<Record<string, DBModel>> {
-    return this.getDownloadedModels();
+    const downloadedModels = await this.getDownloadedModels();
+    const validModels: Record<string, DBModel> = {};
+
+    for (const model of Object.values(downloadedModels)) {
+      if (this.isDownloadedModelValid(model)) {
+        validModels[model.id] = model;
+      }
+    }
+
+    return validModels;
   }
 
   // Check if a model is downloaded
-  // Since we only store downloaded models, just check if it exists in DB
   async isModelDownloaded(modelId: string): Promise<boolean> {
-    const models = await getModelsByProvider("local-whisper");
-    return models.some((m) => m.id === modelId);
+    const downloadedModels = await this.getValidDownloadedModels();
+    return !!downloadedModels[modelId];
   }
 
   // Get download progress for a model
@@ -465,6 +458,10 @@ class ModelService extends EventEmitter {
       throw new Error(`Model not found: ${modelId}`);
     }
 
+    if (model.setup === "cloud") {
+      throw new Error(`Cloud model cannot be downloaded: ${modelId}`);
+    }
+
     if (await this.isModelDownloaded(modelId)) {
       throw new Error(`Model already downloaded: ${modelId}`);
     }
@@ -474,14 +471,37 @@ class ModelService extends EventEmitter {
     }
 
     const abortController = new AbortController();
-    const downloadPath = path.join(this.modelsDirectory, model.filename);
+    const modelDirectory = path.join(this.modelsDirectory, model.id);
+    fs.mkdirSync(modelDirectory, { recursive: true });
+
+    const artifacts =
+      model.artifacts && model.artifacts.length > 0
+        ? model.artifacts
+        : [
+            {
+              filename: model.filename,
+              downloadUrl: model.downloadUrl,
+              checksum: model.checksum,
+              size: model.size,
+            },
+          ];
+    const primaryArtifact =
+      artifacts.find((artifact) => artifact.filename === model.filename) ||
+      artifacts[0];
+    const downloadPath = path.join(modelDirectory, primaryArtifact.filename);
 
     const progress: DownloadProgress = {
       modelId,
       progress: 0,
       status: "downloading",
       bytesDownloaded: 0,
-      totalBytes: model.size,
+      totalBytes: (() => {
+        const artifactBytes = artifacts.reduce(
+          (sum, artifact) => sum + (artifact.size || 0),
+          0,
+        );
+        return artifactBytes > 0 ? artifactBytes : model.size;
+      })(),
       abortController,
     };
 
@@ -492,84 +512,174 @@ class ModelService extends EventEmitter {
       logger.main.info("Starting model download", {
         modelId,
         size: model.sizeFormatted,
-        url: model.downloadUrl,
+        artifacts: artifacts.map((artifact) => artifact.filename),
       });
 
-      const response = await fetch(model.downloadUrl, {
-        signal: abortController.signal,
-        headers: {
-          "User-Agent": getUserAgent(),
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to download: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      const totalBytes =
-        parseInt(response.headers.get("content-length") || "0") || model.size;
-      progress.totalBytes = totalBytes;
-
-      const fileStream = fs.createWriteStream(downloadPath);
       let bytesDownloaded = 0;
       let lastProgressEmit = 0;
+      const localFiles: string[] = [];
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Failed to get response reader");
-      }
+      for (const artifact of artifacts) {
+        const artifactPath = path.join(modelDirectory, artifact.filename);
 
-      while (true) {
-        const { done, value } = await reader.read();
+        const response = await fetch(artifact.downloadUrl, {
+          signal: abortController.signal,
+          headers: {
+            "User-Agent": getUserAgent(),
+          },
+        });
 
-        if (done) break;
-
-        if (abortController.signal.aborted) {
-          fileStream.close();
-          fs.unlinkSync(downloadPath);
-          throw new Error("Download cancelled");
+        if (!response.ok) {
+          throw new Error(
+            `Failed to download ${artifact.filename}: ${response.status} ${response.statusText}`,
+          );
         }
 
-        fileStream.write(value);
-        bytesDownloaded += value.length;
-
-        progress.bytesDownloaded = bytesDownloaded;
-        progress.progress = Math.round((bytesDownloaded / totalBytes) * 100);
-
-        // Emit progress every 1% or 1MB to avoid too many events
-        const progressPercent = progress.progress;
-        if (
-          progressPercent - lastProgressEmit >= 1 ||
-          bytesDownloaded - (lastProgressEmit * totalBytes) / 100 >= 1024 * 1024
-        ) {
-          this.emit("download-progress", modelId, { ...progress });
-          lastProgressEmit = progressPercent;
+        const artifactBytes =
+          parseInt(response.headers.get("content-length") || "0") ||
+          artifact.size ||
+          0;
+        if (!artifact.size && artifactBytes > 0) {
+          progress.totalBytes += artifactBytes;
         }
+
+        const fileStream = fs.createWriteStream(artifactPath);
+        let fileStreamError: Error | null = null;
+        const onFileStreamError = (error: Error) => {
+          fileStreamError = error;
+        };
+        fileStream.on("error", onFileStreamError);
+        const awaitFileStreamClose = async (
+          closeAction: () => void,
+          preserveOriginalError = false,
+        ): Promise<void> => {
+          if (fileStream.closed) {
+            if (!preserveOriginalError && fileStreamError) {
+              throw fileStreamError;
+            }
+            return;
+          }
+
+          let closeError: Error | null = null;
+          await new Promise<void>((resolve) => {
+            const onClose = () => {
+              cleanup();
+              resolve();
+            };
+            const onCloseError = (error: Error) => {
+              closeError ??= error;
+            };
+            const cleanup = () => {
+              fileStream.off("close", onClose);
+              fileStream.off("error", onCloseError);
+            };
+
+            fileStream.once("close", onClose);
+            fileStream.on("error", onCloseError);
+            closeAction();
+          });
+
+          const streamError = closeError ?? fileStreamError;
+          if (!preserveOriginalError && streamError) {
+            throw streamError;
+          }
+        };
+        const reader = response.body?.getReader();
+        if (!reader) {
+          await awaitFileStreamClose(() => fileStream.destroy(), true);
+          throw new Error(`Failed to read ${artifact.filename}`);
+        }
+
+        try {
+          while (true) {
+            if (fileStreamError) {
+              throw fileStreamError;
+            }
+
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            if (abortController.signal.aborted) {
+              await awaitFileStreamClose(() => fileStream.close(), true);
+              if (fs.existsSync(artifactPath)) {
+                fs.unlinkSync(artifactPath);
+              }
+              throw new Error("Download cancelled");
+            }
+
+            const canContinue = fileStream.write(value);
+            if (!canContinue) {
+              await new Promise<void>((resolve, reject) => {
+                const onDrain = () => {
+                  fileStream.off("error", onDrainError);
+                  resolve();
+                };
+                const onDrainError = (error: Error) => {
+                  fileStream.off("drain", onDrain);
+                  reject(error);
+                };
+
+                fileStream.once("drain", onDrain);
+                fileStream.once("error", onDrainError);
+              });
+            }
+
+            if (fileStreamError) {
+              throw fileStreamError;
+            }
+
+            bytesDownloaded += value.length;
+            progress.bytesDownloaded = bytesDownloaded;
+            progress.progress =
+              progress.totalBytes > 0
+                ? Math.round((bytesDownloaded / progress.totalBytes) * 100)
+                : 0;
+
+            const progressPercent = progress.progress;
+            if (
+              progressPercent - lastProgressEmit >= 1 ||
+              bytesDownloaded -
+                (lastProgressEmit * progress.totalBytes) / 100 >=
+                1024 * 1024
+            ) {
+              this.emit("download-progress", modelId, { ...progress });
+              lastProgressEmit = progressPercent;
+            }
+          }
+
+          await awaitFileStreamClose(() => fileStream.end());
+        } catch (error) {
+          if (!fileStream.closed && !fileStream.destroyed) {
+            await awaitFileStreamClose(() => fileStream.destroy(), true);
+          }
+          throw error;
+        } finally {
+          fileStream.off("error", onFileStreamError);
+        }
+
+        if (artifact.checksum) {
+          const fileChecksum = await this.calculateFileChecksum(
+            artifactPath,
+            artifact.checksum,
+          );
+          if (fileChecksum !== artifact.checksum.toLowerCase()) {
+            fs.unlinkSync(artifactPath);
+            throw new Error(
+              `Checksum mismatch for ${artifact.filename}. Expected: ${artifact.checksum}, Got: ${fileChecksum}`,
+            );
+          }
+        }
+
+        localFiles.push(artifactPath);
       }
 
-      fileStream.end();
-
-      // Get actual file size (no validation against expected size)
       const stats = fs.statSync(downloadPath);
       logger.main.info("Download completed", {
         modelId,
-        expectedSize: totalBytes,
+        fileCount: localFiles.length,
+        primaryPath: downloadPath,
         actualSize: stats.size,
-        sizeDifference: Math.abs(stats.size - totalBytes),
       });
-
-      // Verify checksum if provided
-      if (model.checksum) {
-        const fileChecksum = await this.calculateFileChecksum(downloadPath);
-        if (fileChecksum !== model.checksum) {
-          fs.unlinkSync(downloadPath);
-          throw new Error(
-            `Checksum mismatch. Expected: ${model.checksum}, Got: ${fileChecksum}`,
-          );
-        }
-      }
 
       // Create/update model record in database with download info
       await upsertModel({
@@ -587,10 +697,19 @@ class ModelService extends EventEmitter {
         speed: model.speed,
         accuracy: model.accuracy,
         localPath: downloadPath,
-        sizeBytes: stats.size,
+        sizeBytes: localFiles.reduce((sum, filePath) => {
+          try {
+            return sum + fs.statSync(filePath).size;
+          } catch {
+            return sum;
+          }
+        }, 0),
         downloadedAt: new Date(),
         context: null,
-        originalModel: null,
+        originalModel: {
+          localFiles,
+          sourceUrl: model.sourceUrl || null,
+        },
       });
 
       // Get the updated model from database
@@ -608,14 +727,13 @@ class ModelService extends EventEmitter {
       logger.main.info("Model download completed", {
         modelId,
         path: downloadPath,
-        size: stats.size,
+        size: downloadedModel.sizeBytes,
       });
 
       // Auto-select if this is the first model
       const allDownloadedModels = await this.getValidDownloadedModels();
       const downloadedModelCount = Object.keys(allDownloadedModels).length;
-      const currentSelection =
-        await this.settingsService.getDefaultSpeechModel();
+      const currentSelection = await this.getSelectedModel();
 
       if (downloadedModelCount === 1 && !currentSelection) {
         await this.applySpeechModelSelection(
@@ -630,9 +748,9 @@ class ModelService extends EventEmitter {
     } catch (error) {
       // Clean up on error
       this.state.activeDownloads.delete(modelId);
-
-      if (fs.existsSync(downloadPath)) {
-        fs.unlinkSync(downloadPath);
+      const modelDirectory = path.join(this.modelsDirectory, model.id);
+      if (fs.existsSync(modelDirectory)) {
+        fs.rmSync(modelDirectory, { recursive: true, force: true });
       }
 
       const err = error instanceof Error ? error : new Error(String(error));
@@ -683,12 +801,36 @@ class ModelService extends EventEmitter {
     const wasSelected = currentSelection === modelId;
 
     // Delete file
-    if (downloadedModel.localPath && fs.existsSync(downloadedModel.localPath)) {
-      fs.unlinkSync(downloadedModel.localPath);
-      logger.main.info("Deleted model file", {
-        modelId,
-        path: downloadedModel.localPath,
-      });
+    const localFiles =
+      downloadedModel.originalModel &&
+      typeof downloadedModel.originalModel === "object" &&
+      Array.isArray(
+        (downloadedModel.originalModel as { localFiles?: unknown }).localFiles,
+      )
+        ? (
+            downloadedModel.originalModel as {
+              localFiles: unknown[];
+            }
+          ).localFiles.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : downloadedModel.localPath
+          ? [downloadedModel.localPath]
+          : [];
+
+    for (const localFile of localFiles) {
+      if (fs.existsSync(localFile)) {
+        fs.unlinkSync(localFile);
+        logger.main.info("Deleted model file", {
+          modelId,
+          path: localFile,
+        });
+      }
+    }
+
+    const modelDirectory = path.join(this.modelsDirectory, modelId);
+    if (fs.existsSync(modelDirectory)) {
+      fs.rmSync(modelDirectory, { recursive: true, force: true });
     }
 
     // Remove the model record from database (we only store downloaded models)
@@ -702,30 +844,24 @@ class ModelService extends EventEmitter {
     if (wasSelected) {
       // Try to auto-select next best model
       const remainingModels = await this.getValidDownloadedModels();
-      const preferredOrder = [
-        "whisper-large-v3-turbo",
-        "whisper-large-v1",
-        "whisper-medium",
-        "whisper-small",
-        "whisper-base",
-        "whisper-tiny",
-      ];
+      const remainingModelIds = Object.keys(remainingModels);
+      const candidateId =
+        remainingModelIds.length > 0
+          ? this.pickPreferredLocalModelId(remainingModelIds)
+          : null;
 
       let autoSelected = false;
-      for (const candidateId of preferredOrder) {
-        if (remainingModels[candidateId]) {
-          await this.applySpeechModelSelection(
-            candidateId,
-            "auto-after-deletion",
-            modelId,
-          );
-          logger.main.info("Auto-selected new model after deletion", {
-            oldModel: modelId,
-            newModel: candidateId,
-          });
-          autoSelected = true;
-          break;
-        }
+      if (candidateId) {
+        await this.applySpeechModelSelection(
+          candidateId,
+          "auto-after-deletion",
+          modelId,
+        );
+        logger.main.info("Auto-selected new model after deletion", {
+          oldModel: modelId,
+          newModel: candidateId,
+        });
+        autoSelected = true;
       }
 
       if (!autoSelected) {
@@ -743,14 +879,19 @@ class ModelService extends EventEmitter {
     await this.validateAndClearInvalidDefaults();
   }
 
-  // Calculate file checksum (SHA-1)
-  private async calculateFileChecksum(filePath: string): Promise<string> {
+  // Calculate file checksum (auto-detect algorithm from expected hash length)
+  private async calculateFileChecksum(
+    filePath: string,
+    expectedChecksum?: string,
+  ): Promise<string> {
+    const algorithm =
+      expectedChecksum && expectedChecksum.length === 64 ? "sha256" : "sha1";
     return new Promise((resolve, reject) => {
-      const hash = crypto.createHash("sha1");
+      const hash = crypto.createHash(algorithm);
       const stream = fs.createReadStream(filePath);
 
       stream.on("data", (data) => hash.update(data));
-      stream.on("end", () => resolve(hash.digest("hex")));
+      stream.on("end", () => resolve(hash.digest("hex").toLowerCase()));
       stream.on("error", reject);
     });
   }
@@ -784,12 +925,50 @@ class ModelService extends EventEmitter {
       return null;
     }
 
-    const normalizedSelection = getSpeechModelSelectionKey(modelId);
+    const normalizedModelId =
+      await this.normalizeLegacySpeechModelSelection(modelId);
+    if (!normalizedModelId) {
+      return null;
+    }
+
+    const normalizedSelection =
+      getSpeechModelSelectionKey(normalizedModelId);
     if (normalizedSelection !== selection) {
       await this.settingsService.setDefaultSpeechModel(normalizedSelection);
     }
 
-    return modelId;
+    return normalizedModelId;
+  }
+
+  private async normalizeLegacySpeechModelSelection(
+    modelId: string | null,
+  ): Promise<string | null> {
+    if (modelId !== LEGACY_PARAKEET_CTC_MODEL_ID) {
+      return modelId;
+    }
+
+    const downloadedModels = await this.getValidDownloadedModels();
+    const fallbackModelIds = Object.keys(downloadedModels).filter(
+      (downloadedModelId) => downloadedModelId !== LEGACY_PARAKEET_CTC_MODEL_ID,
+    );
+    const fallbackModelId = downloadedModels[PARAKEET_TDT_MODEL_ID]
+      ? PARAKEET_TDT_MODEL_ID
+      : fallbackModelIds.length > 0
+        ? this.pickPreferredLocalModelId(fallbackModelIds)
+        : null;
+
+    await this.applySpeechModelSelection(
+      fallbackModelId,
+      fallbackModelId ? "auto-after-deletion" : "cleared",
+      modelId,
+    );
+
+    logger.main.info("Migrated legacy Parakeet CTC speech selection", {
+      from: modelId,
+      to: fallbackModelId,
+    });
+
+    return fallbackModelId;
   }
 
   private async syncFormatterConfigForSpeechChange(
@@ -872,6 +1051,10 @@ class ModelService extends EventEmitter {
 
   // Set selected model for transcription
   async setSelectedModel(modelId: string | null): Promise<void> {
+    if (modelId === LEGACY_PARAKEET_CTC_MODEL_ID) {
+      modelId = PARAKEET_TDT_MODEL_ID;
+    }
+
     const oldModelId = await this.getSelectedModel();
 
     // If setting to a specific model, validate it exists
@@ -914,7 +1097,7 @@ class ModelService extends EventEmitter {
     // Otherwise, find the best available model (prioritize by quality)
     const preferredOrder = [
       "whisper-large-v3-turbo",
-      "whisper-large-v1",
+      "whisper-large-v3",
       "whisper-medium",
       "whisper-small",
       "whisper-base",
@@ -1530,40 +1713,43 @@ class ModelService extends EventEmitter {
    */
   async validateAndClearInvalidDefaults(): Promise<void> {
     // Check default speech model
-    const defaultSpeechModel =
+    const storedDefaultSpeechModel =
       await this.settingsService.getDefaultSpeechModel();
-    if (defaultSpeechModel) {
+    if (storedDefaultSpeechModel) {
       const speechModelId =
-        getSpeechModelIdFromStoredSelection(defaultSpeechModel);
+        getSpeechModelIdFromStoredSelection(storedDefaultSpeechModel);
 
       if (!speechModelId) {
         await this.applySpeechModelSelection(null, "auto-after-deletion", null);
       } else {
-        const normalizedSelection = getSpeechModelSelectionKey(speechModelId);
-        const availableModel = AVAILABLE_MODELS.find(
-          (m) => m.id === speechModelId,
-        );
-        const isAmicalModel = availableModel?.provider === "Amical Cloud";
-        const existsInDb = await modelExists(
-          getSystemProviderInstanceId(PROVIDER_TYPES.localWhisper),
-          "speech",
-          speechModelId,
-        );
+        const normalizedSpeechModelId =
+          await this.normalizeLegacySpeechModelSelection(speechModelId);
 
-        if (normalizedSelection !== defaultSpeechModel) {
-          await this.settingsService.setDefaultSpeechModel(normalizedSelection);
-        }
-
-        // Amical cloud models are always valid; local models must exist in DB
-        if (!isAmicalModel && !existsInDb) {
-          logger.main.info("Clearing invalid default speech model", {
-            modelId: speechModelId,
-          });
-          await this.applySpeechModelSelection(
-            null,
-            "auto-after-deletion",
-            speechModelId,
+        if (normalizedSpeechModelId) {
+          const normalizedSelection =
+            getSpeechModelSelectionKey(normalizedSpeechModelId);
+          const availableModel = AVAILABLE_MODELS.find(
+            (m) => m.id === normalizedSpeechModelId,
           );
+          const isAmicalModel = availableModel?.setup === "cloud";
+          const validDownloadedModels = await this.getValidDownloadedModels();
+          const existsLocally = !!validDownloadedModels[normalizedSpeechModelId];
+
+          if (normalizedSelection !== storedDefaultSpeechModel) {
+            await this.settingsService.setDefaultSpeechModel(normalizedSelection);
+          }
+
+          // Amical cloud models are always valid; local models must have a complete bundle.
+          if (!isAmicalModel && !existsLocally) {
+            logger.main.info("Clearing invalid default speech model", {
+              modelId: normalizedSpeechModelId,
+            });
+            await this.applySpeechModelSelection(
+              null,
+              "auto-after-deletion",
+              normalizedSpeechModelId,
+            );
+          }
         }
       }
     }
@@ -1629,6 +1815,43 @@ class ModelService extends EventEmitter {
         );
       }
     }
+  }
+
+  private isDownloadedModelValid(model: DBModel): boolean {
+    if (!model.localPath) {
+      return false;
+    }
+
+    const availableModel = AVAILABLE_MODELS.find(
+      (available) => available.id === model.id && available.setup === "offline",
+    );
+    if (!availableModel) {
+      return false;
+    }
+
+    const modelDirectory = path.dirname(model.localPath);
+    const recordedLocalFiles =
+      model.originalModel &&
+      typeof model.originalModel === "object" &&
+      Array.isArray(
+        (model.originalModel as { localFiles?: unknown }).localFiles,
+      )
+        ? (model.originalModel as { localFiles: unknown[] }).localFiles.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+    const requiredFilenames =
+      availableModel.artifacts && availableModel.artifacts.length > 0
+        ? availableModel.artifacts.map((artifact) => artifact.filename)
+        : [availableModel.filename];
+
+    return requiredFilenames.every((filename) => {
+      const recordedMatch = recordedLocalFiles.find(
+        (localFile) => path.basename(localFile) === filename,
+      );
+      const resolvedPath = recordedMatch || path.join(modelDirectory, filename);
+      return fs.existsSync(resolvedPath);
+    });
   }
 }
 
