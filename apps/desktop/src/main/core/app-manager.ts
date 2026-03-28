@@ -433,27 +433,18 @@ export class AppManager {
       return;
     }
 
-    // When a second instance tries to start, focus our existing window
+    // On Windows, closing main window destroys it, so we recreate it here.
+    // widgetWindow is not suitable as a foreground window (focusable: false).
     const mainWindow = this.windowManager.getMainWindow();
-    const notesWindow = this.windowManager.getNotesWindow();
-    const widgetWindow = this.windowManager.getWidgetWindow();
 
-    // Try to show and focus the main window first
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore();
       }
       mainWindow.focus();
       mainWindow.show();
-    } else if (notesWindow && !notesWindow.isDestroyed()) {
-      notesWindow.focus();
-      notesWindow.show();
-    } else if (widgetWindow && !widgetWindow.isDestroyed()) {
-      // If no main window, focus the widget window
-      widgetWindow.focus();
-      widgetWindow.show();
     } else {
-      // If no windows are open, create them
+      // main window was destroyed - recreate it
       this.windowManager.createOrShowMainWindow();
     }
 
