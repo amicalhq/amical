@@ -84,8 +84,9 @@ const methods = {
       suppress_blank: boolean;
       suppress_non_speech_tokens: boolean;
       no_timestamps: boolean;
+      format?: string;
     },
-  ): Promise<string> {
+  ): Promise<{ text: string; detectedLanguage?: string }> {
     if (!whisperInstance) {
       throw new Error("Whisper instance is not initialized");
     }
@@ -109,6 +110,7 @@ const methods = {
     // Filter out hallucination/no-speech segments
     const segments = transcription as Array<{
       text: string;
+      lang?: string;
       noSpeechProb?: number;
     }>;
 
@@ -125,7 +127,14 @@ const methods = {
       `Segments: ${segments.length} total, ${kept.length} kept, ${droppedCount} dropped`,
     );
 
-    return kept.map((segment) => segment.text).join("");
+    const detectedLanguage = segments.find(
+      (segment) => typeof segment.lang === "string" && segment.lang.trim(),
+    )?.lang;
+
+    return {
+      text: kept.map((segment) => segment.text).join(""),
+      detectedLanguage,
+    };
   },
 
   async dispose(): Promise<void> {

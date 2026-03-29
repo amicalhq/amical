@@ -20,6 +20,7 @@ import {
   getTranscriptionById,
   updateTranscription,
 } from "../db/transcriptions";
+import { incrementDailyStats } from "../db/daily-stats";
 import { getVocabulary } from "../db/vocabulary";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
@@ -37,6 +38,7 @@ import {
   getSpeechModelSelectionKey,
   isAmicalCloudSelectionValue,
 } from "../utils/model-selection";
+import { countWords } from "../utils/dictation-stats";
 
 /**
  * Service for audio transcription and optional formatting
@@ -321,7 +323,7 @@ export class TranscriptionService {
       const provider = await this.selectProvider();
 
       // Transcribe chunk (flush is done separately in finalizeSession)
-      const chunkTranscription = await provider.transcribe({
+      const chunkResult = await provider.transcribe({
         audioData: audioChunk,
         speechProbability: speechProbability,
         context: {
@@ -333,18 +335,22 @@ export class TranscriptionService {
           language: session.context.sharedData.userPreferences?.language,
         },
       });
+      session.detectedLanguage = this.mergeDetectedLanguage(
+        session.detectedLanguage,
+        chunkResult.detectedLanguage,
+      );
 
       // Accumulate the result only if Whisper returned something
       // (it returns empty string while buffering)
       this.accumulateTranscriptionResult(
         session.transcriptionResults,
-        chunkTranscription,
+        chunkResult.text,
         provider.name === "amical-cloud",
       );
-      if (chunkTranscription.trim()) {
+      if (chunkResult.text.trim()) {
         logger.transcription.info("Whisper returned transcription", {
           sessionId,
-          transcriptionLength: chunkTranscription.length,
+          transcriptionLength: chunkResult.text.length,
           totalResults: session.transcriptionResults.length,
         });
       }
@@ -352,7 +358,7 @@ export class TranscriptionService {
       logger.transcription.debug("Processed frame", {
         sessionId,
         frameSize: audioChunk.length,
-        hadTranscription: chunkTranscription.length > 0,
+        hadTranscription: chunkResult.text.length > 0,
       });
     } finally {
       // Release transcription mutex - always release even on error
@@ -428,7 +434,7 @@ export class TranscriptionService {
 
         const provider = await this.selectProvider();
         usedCloudProvider = provider.name === "amical-cloud";
-        const finalTranscription = await provider.flush({
+        const finalResult = await provider.flush({
           sessionId,
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
@@ -437,16 +443,20 @@ export class TranscriptionService {
           language: session.context.sharedData.userPreferences?.language,
           formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
         });
+        session.detectedLanguage = this.mergeDetectedLanguage(
+          session.detectedLanguage,
+          finalResult.detectedLanguage,
+        );
 
         this.accumulateTranscriptionResult(
           session.transcriptionResults,
-          finalTranscription,
+          finalResult.text,
           usedCloudProvider,
         );
-        if (finalTranscription.trim()) {
+        if (finalResult.text.trim()) {
           logger.transcription.info("Whisper returned final transcription", {
             sessionId,
-            transcriptionLength: finalTranscription.length,
+            transcriptionLength: finalResult.text.length,
             totalResults: session.transcriptionResults.length,
           });
         }
@@ -454,27 +464,33 @@ export class TranscriptionService {
         this.transcriptionMutex.release();
       }
 
-      let completeTranscription = session.transcriptionResults.join("");
+      let rawTranscription = session.transcriptionResults.join("");
 
       // Apply simple pre-formatting for local models (handles Whisper leading space artifact)
       if (!usedCloudProvider) {
         const preSelectionText =
           session.context.sharedData.accessibilityContext?.context
             ?.textSelection?.preSelectionText;
-        completeTranscription = this.preFormatLocalTranscription(
-          completeTranscription,
+        rawTranscription = this.preFormatLocalTranscription(
+          rawTranscription,
           preSelectionText,
         );
       }
 
       logger.transcription.info("Finalizing streaming session", {
         sessionId,
-        rawTranscriptionLength: completeTranscription.length,
+        rawTranscriptionLength: rawTranscription.length,
         chunkCount: session.transcriptionResults.length,
       });
 
+      const requestedLanguage =
+        session.context.sharedData.userPreferences?.language || "auto";
+      const detectedLanguage = this.sanitizeDetectedLanguage(
+        session.detectedLanguage,
+      );
+
       const formatResult = await this.applyFormattingAndReplacements({
-        text: completeTranscription,
+        text: rawTranscription,
         usedCloudProvider,
         vocabulary: session.context.sharedData.vocabulary,
         accessibilityContext: session.context.sharedData.accessibilityContext,
@@ -482,7 +498,11 @@ export class TranscriptionService {
         formattingStyle:
           session.context.sharedData.userPreferences?.formattingStyle,
       });
-      completeTranscription = formatResult.text;
+      const completeTranscription = formatResult.text;
+      const transcriptionWordCount = countWords(
+        formatResult.textBeforeReplacements,
+        detectedLanguage ?? requestedLanguage,
+      );
       const formattingUsed = formatResult.formattingUsed;
       const formattingModel = formatResult.formattingModel;
       const formattingDuration = formatResult.formattingDuration;
@@ -501,8 +521,8 @@ export class TranscriptionService {
 
       await createTranscription({
         text: completeTranscription,
-        language:
-          session.context.sharedData.userPreferences?.language || "auto",
+        language: requestedLanguage,
+        detectedLanguage,
         duration: session.context.sharedData.audioMetadata?.duration,
         speechModel: speechModelId,
         formattingModel,
@@ -515,6 +535,15 @@ export class TranscriptionService {
             session.context.sharedData.userPreferences?.formattingStyle,
         },
       });
+
+      try {
+        await incrementDailyStats(transcriptionWordCount);
+      } catch (error) {
+        logger.transcription.error("Failed to increment dictation stats", {
+          sessionId,
+          error,
+        });
+      }
 
       // Track transcription completion
       const completionTime = performance.now();
@@ -562,13 +591,12 @@ export class TranscriptionService {
             ? audioDurationSeconds / (totalDuration / 1000)
             : undefined,
         text_length: completeTranscription.length,
-        word_count: completeTranscription.trim().split(/\s+/).length,
+        word_count: transcriptionWordCount,
         formatting_enabled: formattingUsed,
         formatting_model: formattingModel,
         formatting_duration_ms: formattingDuration,
         vad_enabled: !!this.vadService,
-        language:
-          session.context.sharedData.userPreferences?.language || "auto",
+        language: requestedLanguage,
         vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
       });
 
@@ -586,6 +614,11 @@ export class TranscriptionService {
       await createTranscription({
         text: "",
         audioFile: audioFilePath || undefined,
+        language:
+          session.context.sharedData.userPreferences?.language || "auto",
+        detectedLanguage: this.sanitizeDetectedLanguage(
+          session.detectedLanguage,
+        ),
         meta: {
           sessionId,
           status: "failed",
@@ -598,6 +631,20 @@ export class TranscriptionService {
         errorCode,
         audioFilePath,
       });
+
+      try {
+        // Failed rows still appear in History, so they intentionally contribute
+        // to totalTranscriptions even though they add zero dictated words.
+        await incrementDailyStats(0);
+      } catch (statsError) {
+        logger.transcription.error(
+          "Failed to increment failed dictation stats",
+          {
+            sessionId,
+            error: statsError,
+          },
+        );
+      }
 
       // Clean up session
       this.streamingSessions.delete(sessionId);
@@ -711,6 +758,7 @@ export class TranscriptionService {
     formattingStyle?: string;
   }): Promise<{
     text: string;
+    textBeforeReplacements: string;
     formattingUsed: boolean;
     formattingModel?: string;
     formattingDuration?: number;
@@ -798,6 +846,8 @@ export class TranscriptionService {
       }
     }
 
+    const textBeforeReplacements = text;
+
     // Apply vocabulary replacements (final post-processing step)
     if (options.replacements.size > 0) {
       const beforeReplacements = text;
@@ -811,7 +861,13 @@ export class TranscriptionService {
       }
     }
 
-    return { text, formattingUsed, formattingModel, formattingDuration };
+    return {
+      text,
+      textBeforeReplacements,
+      formattingUsed,
+      formattingModel,
+      formattingDuration,
+    };
   }
 
   /**
@@ -911,6 +967,9 @@ export class TranscriptionService {
 
     // Transcribe using current provider settings
     const transcriptionResults: string[] = [];
+    let detectedLanguage = this.sanitizeDetectedLanguage(
+      record.detectedLanguage,
+    );
     let usedCloudProvider = false;
 
     await this.transcriptionMutex.acquire();
@@ -927,7 +986,7 @@ export class TranscriptionService {
             : undefined;
         const aggregatedTranscription = transcriptionResults.join("");
 
-        const chunkTranscription = await provider.transcribe({
+        const chunkResult = await provider.transcribe({
           audioData: frames[i],
           speechProbability: vadProbs[i],
           context: {
@@ -938,27 +997,35 @@ export class TranscriptionService {
             aggregatedTranscription: aggregatedTranscription || undefined,
           },
         });
+        detectedLanguage = this.mergeDetectedLanguage(
+          detectedLanguage,
+          chunkResult.detectedLanguage,
+        );
 
         this.accumulateTranscriptionResult(
           transcriptionResults,
-          chunkTranscription,
+          chunkResult.text,
           usedCloudProvider,
         );
       }
 
       // Flush to get remaining buffered audio
       const aggregatedTranscription = transcriptionResults.join("");
-      const finalTranscription = await provider.flush({
+      const finalResult = await provider.flush({
         sessionId: retrySessionId,
         vocabulary,
         language,
         aggregatedTranscription: aggregatedTranscription || undefined,
         formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
       });
+      detectedLanguage = this.mergeDetectedLanguage(
+        detectedLanguage,
+        finalResult.detectedLanguage,
+      );
 
       this.accumulateTranscriptionResult(
         transcriptionResults,
-        finalTranscription,
+        finalResult.text,
         usedCloudProvider,
       );
     } finally {
@@ -986,10 +1053,19 @@ export class TranscriptionService {
     const speechModelId = usedCloudProvider
       ? "amical-cloud"
       : selectedModelId || "whisper-local";
+    const previousWordCount = countWords(
+      record.text,
+      record.detectedLanguage ?? record.language,
+    );
+    const nextWordCount = countWords(
+      formatResult.textBeforeReplacements,
+      detectedLanguage ?? language,
+    );
 
     // Update the existing record in-place
     await updateTranscription(transcriptionId, {
       text: formatResult.text,
+      detectedLanguage: this.sanitizeDetectedLanguage(detectedLanguage),
       speechModel: speechModelId,
       formattingModel: formatResult.formattingModel,
       meta: {
@@ -1000,6 +1076,23 @@ export class TranscriptionService {
         retriedAt: new Date().toISOString(),
       },
     });
+
+    // Retries only upgrade a previously empty history row into its first
+    // successful counted transcription. We intentionally do not rebalance
+    // lifetime stats for already-counted rows when a retry changes the text.
+    if (previousWordCount === 0 && nextWordCount > 0) {
+      try {
+        await incrementDailyStats(nextWordCount, new Date(), 0);
+      } catch (error) {
+        logger.transcription.error(
+          "Failed to increment retry dictation stats",
+          {
+            transcriptionId,
+            error,
+          },
+        );
+      }
+    }
 
     const processingDuration = performance.now() - retryStartedAt;
     const audioDurationSeconds = audioData.length / 16000;
@@ -1016,7 +1109,7 @@ export class TranscriptionService {
           ? audioDurationSeconds / (processingDuration / 1000)
           : undefined,
       text_length: formatResult.text.length,
-      word_count: formatResult.text.trim().split(/\s+/).length,
+      word_count: nextWordCount,
       formatting_enabled: formatResult.formattingUsed,
       formatting_model: formatResult.formattingModel,
       formatting_duration_ms: formatResult.formattingDuration,
@@ -1050,6 +1143,23 @@ export class TranscriptionService {
       results.length = 0;
     }
     results.push(newText);
+  }
+
+  private sanitizeDetectedLanguage(
+    detectedLanguage?: string | null,
+  ): string | undefined {
+    const trimmed = detectedLanguage?.trim();
+    return trimmed ? trimmed : undefined;
+  }
+
+  private mergeDetectedLanguage(
+    currentLanguage?: string,
+    nextLanguage?: string,
+  ): string | undefined {
+    return (
+      this.sanitizeDetectedLanguage(nextLanguage) ??
+      this.sanitizeDetectedLanguage(currentLanguage)
+    );
   }
 
   /**

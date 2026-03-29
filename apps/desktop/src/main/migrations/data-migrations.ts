@@ -1,17 +1,39 @@
 import * as Y from "yjs";
 import { logger } from "../logger";
+import { db } from "../../db";
 import { getAppSettings, updateAppSettings } from "../../db/app-settings";
+import { seedDailyStats } from "../../db/daily-stats";
 import {
   getUniqueNoteIds,
   getYjsUpdatesByNoteId,
   replaceYjsUpdates,
 } from "../../db/notes";
+import { transcriptions } from "../../db/schema";
 import {
   isLexicalEditorStateJsonString,
   serializePlainTextToLexicalEditorStateJson,
 } from "../../services/notes/lexical-editor-state";
+import { countWords, toLocalStatsDate } from "../../utils/dictation-stats";
 
 const NOTES_LEXICAL_MIGRATION_VERSION = 1;
+const DICTATION_DAILY_STATS_MIGRATION_VERSION = 2;
+
+async function persistDataMigrationVersion(
+  currentDataMigrations: Record<string, number>,
+  migrationKey: string,
+  version: number,
+): Promise<Record<string, number>> {
+  const nextDataMigrations = {
+    ...currentDataMigrations,
+    [migrationKey]: version,
+  };
+
+  await updateAppSettings({
+    dataMigrations: nextDataMigrations,
+  });
+
+  return nextDataMigrations;
+}
 
 async function migrateNotesToLexicalEditorState(): Promise<{
   notesChecked: number;
@@ -55,36 +77,130 @@ async function migrateNotesToLexicalEditorState(): Promise<{
   };
 }
 
+async function migrateDictationDailyStats(): Promise<{
+  transcriptionsChecked: number;
+  statsDaysWritten: number;
+}> {
+  const existingTranscriptions = await db
+    .select({
+      text: transcriptions.text,
+      timestamp: transcriptions.timestamp,
+      language: transcriptions.language,
+    })
+    .from(transcriptions);
+
+  const statsByDate = new Map<
+    string,
+    {
+      wordCount: number;
+      transcriptionCount: number;
+      createdAt: Date;
+      updatedAt: Date;
+    }
+  >();
+
+  for (const transcription of existingTranscriptions) {
+    const wordCount = countWords(transcription.text, transcription.language);
+
+    const timestamp =
+      transcription.timestamp instanceof Date
+        ? transcription.timestamp
+        : new Date(transcription.timestamp);
+    const date = toLocalStatsDate(timestamp);
+    const existingBucket = statsByDate.get(date);
+
+    if (existingBucket) {
+      existingBucket.wordCount += wordCount;
+      existingBucket.transcriptionCount += 1;
+      if (timestamp < existingBucket.createdAt) {
+        existingBucket.createdAt = timestamp;
+      }
+      if (timestamp > existingBucket.updatedAt) {
+        existingBucket.updatedAt = timestamp;
+      }
+      continue;
+    }
+
+    statsByDate.set(date, {
+      wordCount,
+      transcriptionCount: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+
+  await seedDailyStats(
+    Array.from(statsByDate.entries()).map(([date, bucket]) => ({
+      date,
+      wordCount: bucket.wordCount,
+      transcriptionCount: bucket.transcriptionCount,
+      createdAt: bucket.createdAt,
+      updatedAt: bucket.updatedAt,
+    })),
+  );
+
+  return {
+    transcriptionsChecked: existingTranscriptions.length,
+    statsDaysWritten: statsByDate.size,
+  };
+}
+
 export async function runDataMigrations(): Promise<void> {
   try {
     const settings = await getAppSettings();
-    const currentVersion = settings.dataMigrations?.notesLexical ?? 0;
+    let currentDataMigrations = settings.dataMigrations ?? {};
 
-    if (currentVersion >= NOTES_LEXICAL_MIGRATION_VERSION) {
-      return;
+    if (
+      (currentDataMigrations.notesLexical ?? 0) <
+      NOTES_LEXICAL_MIGRATION_VERSION
+    ) {
+      const startTime = Date.now();
+      logger.db.info("Running notes lexical data migration", {
+        notesLexicalFrom: currentDataMigrations.notesLexical ?? 0,
+        notesLexicalTo: NOTES_LEXICAL_MIGRATION_VERSION,
+      });
+
+      const { notesChecked, notesMigrated } =
+        await migrateNotesToLexicalEditorState();
+
+      currentDataMigrations = await persistDataMigrationVersion(
+        currentDataMigrations,
+        "notesLexical",
+        NOTES_LEXICAL_MIGRATION_VERSION,
+      );
+
+      logger.db.info("Notes lexical migration complete", {
+        notesChecked,
+        notesMigrated,
+        durationMs: Date.now() - startTime,
+      });
     }
 
-    const startTime = Date.now();
-    logger.db.info("Running data migrations", {
-      notesLexicalFrom: currentVersion,
-      notesLexicalTo: NOTES_LEXICAL_MIGRATION_VERSION,
-    });
+    if (
+      (currentDataMigrations.dictationDailyStats ?? 0) <
+      DICTATION_DAILY_STATS_MIGRATION_VERSION
+    ) {
+      const startTime = Date.now();
+      logger.db.info("Running dictation daily stats migration", {
+        dictationDailyStatsFrom: currentDataMigrations.dictationDailyStats ?? 0,
+        dictationDailyStatsTo: DICTATION_DAILY_STATS_MIGRATION_VERSION,
+      });
 
-    const { notesChecked, notesMigrated } =
-      await migrateNotesToLexicalEditorState();
+      const { transcriptionsChecked, statsDaysWritten } =
+        await migrateDictationDailyStats();
 
-    await updateAppSettings({
-      dataMigrations: {
-        ...(settings.dataMigrations ?? {}),
-        notesLexical: NOTES_LEXICAL_MIGRATION_VERSION,
-      },
-    });
+      currentDataMigrations = await persistDataMigrationVersion(
+        currentDataMigrations,
+        "dictationDailyStats",
+        DICTATION_DAILY_STATS_MIGRATION_VERSION,
+      );
 
-    logger.db.info("Data migrations complete", {
-      notesChecked,
-      notesMigrated,
-      durationMs: Date.now() - startTime,
-    });
+      logger.db.info("Dictation daily stats migration complete", {
+        transcriptionsChecked,
+        statsDaysWritten,
+        durationMs: Date.now() - startTime,
+      });
+    }
   } catch (error) {
     logger.db.error("Data migrations failed", error);
   }

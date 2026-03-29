@@ -29,6 +29,13 @@
       "when": 1774266872355,
       "tag": "0003_faithful_donald_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1774744286877,
+      "tag": "0004_simple_chronomancer",
+      "breakpoints": true
     }
   ]
 }

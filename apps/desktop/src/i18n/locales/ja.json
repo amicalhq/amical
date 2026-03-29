@@ -597,6 +597,9 @@
       "search": {
         "placeholder": "文字起こしを検索..."
       },
+      "stats": {
+        "wordsDictated": "音声入力した単語数"
+      },
       "empty": {
         "searchTitle": "文字起こしが見つかりません",
         "searchDescription": "検索条件を変更してお試しください。",

@@ -6,12 +6,12 @@ import { createRouter, procedure } from "../trpc";
 import {
   getTranscriptions,
   getTranscriptionById,
-  createTranscription,
   updateTranscription,
   deleteTranscription,
   getTranscriptionsCount,
   searchTranscriptions,
 } from "../../db/transcriptions.js";
+import { getLifetimeStats } from "../../db/daily-stats.js";
 import { deleteAudioFile } from "../../utils/audio-file-cleanup.js";
 
 // Input schemas
@@ -21,13 +21,6 @@ const GetTranscriptionsSchema = z.object({
   sortBy: z.enum(["timestamp", "createdAt"]).optional(),
   sortOrder: z.enum(["asc", "desc"]).optional(),
   search: z.string().optional(),
-});
-
-const CreateTranscriptionSchema = z.object({
-  text: z.string(),
-  timestamp: z.date().optional(),
-  audioFile: z.string().optional(),
-  language: z.string().optional(),
 });
 
 const UpdateTranscriptionSchema = z.object({
@@ -43,6 +36,10 @@ const ReportTranscriptionSchema = z.object({
 });
 
 export const transcriptionsRouter = createRouter({
+  getLifetimeStats: procedure.query(async () => {
+    return await getLifetimeStats();
+  }),
+
   // Get transcriptions list with pagination and filtering
   getTranscriptions: procedure
     .input(GetTranscriptionsSchema)
@@ -74,13 +71,6 @@ export const transcriptionsRouter = createRouter({
     )
     .query(async ({ input }) => {
       return await searchTranscriptions(input.searchTerm, input.limit);
-    }),
-
-  // Create transcription
-  createTranscription: procedure
-    .input(CreateTranscriptionSchema)
-    .mutation(async ({ input }) => {
-      return await createTranscription(input);
     }),
 
   // Update transcription

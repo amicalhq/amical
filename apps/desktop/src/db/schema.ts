@@ -5,6 +5,7 @@ import {
   integer,
   real,
   index,
+  uniqueIndex,
   primaryKey,
   blob,
 } from "drizzle-orm/sqlite-core";
@@ -17,6 +18,7 @@ export const transcriptions = sqliteTable("transcriptions", {
     .notNull()
     .default(sql`(unixepoch())`),
   language: text("language").default("en"),
+  detectedLanguage: text("detected_language"),
   audioFile: text("audio_file"), // Path to the audio file
   confidence: real("confidence"), // AI confidence score (0-1)
   duration: integer("duration"), // Duration in seconds
@@ -217,6 +219,7 @@ export interface AppSettingsData {
   };
   dataMigrations?: {
     notesLexical?: number;
+    dictationDailyStats?: number;
   };
 }
 
@@ -253,6 +256,19 @@ export const yjsUpdates = sqliteTable(
   ],
 );
 
+export const dailyStats = sqliteTable(
+  "daily_stats",
+  {
+    id: text("id").notNull().primaryKey(),
+    date: text("date").notNull(),
+    wordCount: integer("word_count").notNull().default(0),
+    transcriptionCount: integer("transcription_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [uniqueIndex("daily_stats_date_unique_idx").on(table.date)],
+);
+
 // Export types for TypeScript
 export type Transcription = typeof transcriptions.$inferSelect;
 export type NewTranscription = typeof transcriptions.$inferInsert;
@@ -266,3 +282,5 @@ export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 export type YjsUpdate = typeof yjsUpdates.$inferSelect;
 export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;
+export type DailyStat = typeof dailyStats.$inferSelect;
+export type NewDailyStat = typeof dailyStats.$inferInsert;

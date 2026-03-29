@@ -597,6 +597,9 @@
       "search": {
         "placeholder": "Buscar transcripciones..."
       },
+      "stats": {
+        "wordsDictated": "Palabras dictadas"
+      },
       "empty": {
         "searchTitle": "No se encontraron transcripciones",
         "searchDescription": "Intenta ajustar los términos de búsqueda.",

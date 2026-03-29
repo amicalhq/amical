@@ -9,6 +9,11 @@ export interface WhisperOptions {
 
 export { getLoadedBindingInfo } from "./loader";
 
+export interface WhisperSegment {
+  text: string;
+  lang?: string;
+}
+
 export class Whisper {
   private ctx: any;
 
@@ -26,7 +31,7 @@ export class Whisper {
   async transcribe(
     audio: Float32Array | null,
     options: Record<string, unknown>,
-  ): Promise<{ result: Promise<Array<{ text: string }>> }> {
+  ): Promise<{ result: Promise<WhisperSegment[]> }> {
     const payload =
       audio instanceof Float32Array ? { audio, ...options } : options;
     const segments = binding.full(this.ctx, payload);

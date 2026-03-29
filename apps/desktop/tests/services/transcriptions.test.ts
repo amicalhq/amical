@@ -1,12 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as schema from "@db/schema";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
-import {
-  seedDatabase,
-  fixtures,
-  sampleTranscriptions,
-} from "../helpers/fixtures";
+import { seedDatabase, sampleTranscriptions } from "../helpers/fixtures";
 import { initializeTestServices } from "../helpers/test-app";
 import { setTestDatabase } from "../setup";
+import { countWords } from "@utils/dictation-stats";
 
 describe("Transcriptions Service", () => {
   let testDb: TestDatabase;
@@ -219,6 +217,64 @@ describe("Transcriptions Service", () => {
 
       expect(count).toBe(sampleTranscriptions.length);
       expect(count).toBeGreaterThan(0);
+    });
+  });
+
+  describe("Lifetime Stats", () => {
+    beforeEach(async () => {
+      testDb = await createTestDatabase();
+      setTestDatabase(testDb.db);
+      await seedDatabase(testDb, "withTranscriptions");
+      const totalWords = sampleTranscriptions.reduce(
+        (sum, transcription) => sum + countWords(transcription.text),
+        0,
+      );
+      const now = new Date();
+
+      await testDb.db.insert(schema.dailyStats).values({
+        id: `stats-${now.getTime()}`,
+        date: "2026-03-29",
+        wordCount: totalWords,
+        transcriptionCount: sampleTranscriptions.length,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const result = await initializeTestServices(testDb);
+      serviceManager = result.serviceManager;
+      trpcCaller = result.trpcCaller;
+      cleanup = result.cleanup;
+    });
+
+    it("should return lifetime stats totals", async () => {
+      const stats = await trpcCaller.transcriptions.getLifetimeStats();
+
+      expect(stats.totalWords).toBe(
+        sampleTranscriptions.reduce(
+          (sum, transcription) => sum + countWords(transcription.text),
+          0,
+        ),
+      );
+      expect(stats.totalTranscriptions).toBe(sampleTranscriptions.length);
+    });
+
+    it("should not reduce lifetime stats when transcription history is deleted", async () => {
+      const beforeDelete = await trpcCaller.transcriptions.getLifetimeStats();
+      const transcriptions = await trpcCaller.transcriptions.getTranscriptions({
+        limit: 10,
+        offset: 0,
+      });
+
+      await trpcCaller.transcriptions.deleteTranscription({
+        id: transcriptions[0].id,
+      });
+
+      const afterDelete = await trpcCaller.transcriptions.getLifetimeStats();
+
+      expect(afterDelete.totalWords).toBe(beforeDelete.totalWords);
+      expect(afterDelete.totalTranscriptions).toBe(
+        beforeDelete.totalTranscriptions,
+      );
     });
   });
 });

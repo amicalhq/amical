@@ -2,6 +2,7 @@ import {
   TranscriptionProvider,
   TranscribeParams,
   TranscribeContext,
+  TranscriptionOutput,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { AuthService } from "../../../services/auth-service";
@@ -76,7 +77,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   /**
    * Process an audio chunk - buffers and conditionally transcribes
    */
-  async transcribe(params: TranscribeParams): Promise<string> {
+  async transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
     try {
       const { audioData, speechProbability = 1, context } = params;
 
@@ -113,7 +114,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
       // Only transcribe if speech/silence patterns indicate we should
       if (!this.shouldTranscribe()) {
-        return "";
+        return { text: "" };
       }
 
       return this.doTranscription(false);
@@ -127,7 +128,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
    * Flush any buffered audio and return transcription with formatting
    * Called at the end of a recording session
    */
-  async flush(context: TranscribeContext): Promise<string> {
+  async flush(context: TranscribeContext): Promise<TranscriptionOutput> {
     try {
       // Store context for API call
       this.currentLanguage = context.language;
@@ -161,7 +162,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private async doTranscription(
     enableFormatting: boolean,
     isFinal = false,
-  ): Promise<string> {
+  ): Promise<TranscriptionOutput> {
     // Combine all frames into a single Float32Array
     const totalLength = this.frameBuffer.reduce(
       (acc, frame) => acc + frame.length,
@@ -225,13 +226,13 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     isRetry = false,
     enableFormatting = false,
     isFinal = false,
-  ): Promise<string> {
+  ): Promise<TranscriptionOutput> {
     // Skip API call if there's nothing to process
     if (audioData.length === 0) {
       const hasTextToFormat =
         enableFormatting && this.currentAggregatedTranscription?.trim();
       if (!hasTextToFormat) {
-        return "";
+        return { text: "" };
       }
     }
 
@@ -419,6 +420,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       transcription: result.transcription,
     });
 
-    return result.transcription;
+    return {
+      text: result.transcription,
+      detectedLanguage: result.language,
+    };
   }
 }

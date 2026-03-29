@@ -1,6 +1,12 @@
 import { useState } from "react";
 import type { Transcription } from "@/db/schema";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardDescription,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import {
@@ -376,12 +382,18 @@ function HistoryTableCard({
 }
 
 export default function HistorySettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
   const [hovered, setHovered] = useState<number | null>(null);
   const audioPlayer = useAudioPlayer();
   const telemetrySettingsQuery = api.settings.getTelemetrySettings.useQuery();
   const isTelemetryEnabled = telemetrySettingsQuery.data?.enabled !== false;
+  const lifetimeStatsQuery = api.transcriptions.getLifetimeStats.useQuery(
+    undefined,
+    {
+      refetchInterval: 5000,
+    },
+  );
 
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
@@ -404,6 +416,7 @@ export default function HistorySettingsPage() {
       onSuccess: () => {
         // Invalidate and refetch transcriptions data
         utils.transcriptions.getTranscriptions.invalidate();
+        utils.transcriptions.getLifetimeStats.invalidate();
         toast.success(t("settings.history.toast.deleted"));
       },
       onError: (error) => {
@@ -418,6 +431,7 @@ export default function HistorySettingsPage() {
     api.transcriptions.retryTranscription.useMutation({
       onSuccess: () => {
         utils.transcriptions.getTranscriptions.invalidate();
+        utils.transcriptions.getLifetimeStats.invalidate();
         toast.success(t("settings.history.toast.retrySuccess"));
         setRetryingId(null);
       },
@@ -518,7 +532,9 @@ export default function HistorySettingsPage() {
   }
 
   const groupedHistory = groupHistoryByDate(transcriptions);
-
+  const formattedLifetimeWords = new Intl.NumberFormat(i18n.language).format(
+    lifetimeStatsQuery.data?.totalWords ?? 0,
+  );
   return (
     <div>
       {/* Header Section */}
@@ -530,6 +546,17 @@ export default function HistorySettingsPage() {
       </div>
 
       <div className="space-y-6">
+        <Card className="max-w-xs bg-gradient-to-t from-primary/5 to-card py-4 shadow-xs dark:bg-card">
+          <CardHeader className="pb-0">
+            <CardDescription>
+              {t("settings.history.stats.wordsDictated")}
+            </CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">
+              {formattedLifetimeWords}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+
         {/* Search Bar */}
         <div className="flex items-center space-x-4">
           <div className="relative flex-1 max-w-sm">

@@ -25,6 +25,11 @@ export interface TranscribeParams {
   context: TranscribeContext;
 }
 
+export interface TranscriptionOutput {
+  text: string;
+  detectedLanguage?: string;
+}
+
 // Formatting input parameters
 export interface FormatParams {
   text: string;
@@ -40,8 +45,8 @@ export interface FormatParams {
 // Transcription provider interface
 export interface TranscriptionProvider {
   readonly name: string;
-  transcribe(params: TranscribeParams): Promise<string>;
-  flush(context: TranscribeContext): Promise<string>;
+  transcribe(params: TranscribeParams): Promise<TranscriptionOutput>;
+  flush(context: TranscribeContext): Promise<TranscriptionOutput>;
   reset(): void; // Clear internal buffers without transcribing
 }
 
@@ -74,6 +79,7 @@ export interface StreamingPipelineContext extends PipelineContext {
 export interface StreamingSession {
   context: StreamingPipelineContext;
   transcriptionResults: string[]; // Accumulate all transcription chunks
+  detectedLanguage?: string;
   firstChunkReceivedAt?: number; // When first audio chunk arrived at transcription service
   recordingStartedAt?: number; // When user pressed record button (from RecordingManager)
   recordingStoppedAt?: number; // When user released record button (from RecordingManager)

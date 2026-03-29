@@ -597,6 +597,9 @@
       "search": {
         "placeholder": "搜尋轉錄內容..."
       },
+      "stats": {
+        "wordsDictated": "已口述字詞數"
+      },
       "empty": {
         "searchTitle": "找不到轉錄內容",
         "searchDescription": "請嘗試調整搜尋條件。",
