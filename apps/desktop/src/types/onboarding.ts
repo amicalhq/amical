@@ -38,6 +38,7 @@ export enum DiscoverySource {
 export enum ModelType {
   Cloud = "cloud",
   Local = "local",
+  OpenAIWhisper = "openai-whisper",
 }
 
 // ============================================================================

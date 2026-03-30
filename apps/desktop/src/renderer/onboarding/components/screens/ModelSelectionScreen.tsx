@@ -7,7 +7,7 @@ import { NavigationButtons } from "../shared/NavigationButtons";
 import { ModelSetupModal } from "./ModelSetupModal";
 import { useSystemRecommendation } from "../../hooks/useSystemRecommendation";
 import { ModelType } from "../../../../types/onboarding";
-import { Cloud, Laptop, Sparkles, Check, X, Star } from "lucide-react";
+import { Cloud, Laptop, Sparkles, Check, X, Star, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -34,9 +34,11 @@ export function ModelSelectionScreen({
   const [setupComplete, setSetupComplete] = useState<{
     [ModelType.Cloud]: boolean;
     [ModelType.Local]: boolean;
+    [ModelType.OpenAIWhisper]: boolean;
   }>({
     [ModelType.Cloud]: false,
     [ModelType.Local]: false,
+    [ModelType.OpenAIWhisper]: false,
   });
 
   const models = [
@@ -55,6 +57,21 @@ export function ModelSelectionScreen({
       icon: Cloud,
       iconBg: "bg-blue-500/10",
       iconColor: "text-blue-500",
+    },
+    {
+      id: ModelType.OpenAIWhisper,
+      title: t("onboarding.modelSelection.models.openai.title"),
+      subtitle: t("onboarding.modelSelection.models.openai.subtitle"),
+      description: t("onboarding.modelSelection.models.openai.description"),
+      pros: [
+        t("onboarding.modelSelection.models.openai.pros.accurate"),
+        t("onboarding.modelSelection.models.openai.pros.fast"),
+        t("onboarding.modelSelection.models.openai.pros.noLogin"),
+      ],
+      cons: [t("onboarding.modelSelection.models.openai.cons.apiKey")],
+      icon: KeyRound,
+      iconBg: "bg-green-500/10",
+      iconColor: "text-green-500",
     },
     {
       id: ModelType.Local,

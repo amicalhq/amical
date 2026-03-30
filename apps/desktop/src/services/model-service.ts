@@ -237,7 +237,11 @@ class ModelService extends EventEmitter {
         );
 
         // Check if it's a cloud model and user is authenticated
-        if (availableModel?.setup === "cloud") {
+        // OpenAI Whisper uses an API key, not Amical Cloud OAuth
+        if (
+          availableModel?.setup === "cloud" &&
+          availableModel?.provider !== "OpenAI"
+        ) {
           const authService = AuthService.getInstance();
           const isAuthenticated = await authService.isAuthenticated();
 
@@ -350,8 +354,11 @@ class ModelService extends EventEmitter {
             (m) => m.id === selectedModelId,
           );
 
-          if (availableModel?.setup === "cloud") {
-            // Cloud model selected but user logged out - auto-switch to first downloaded local model
+          if (
+            availableModel?.setup === "cloud" &&
+            availableModel?.provider !== "OpenAI"
+          ) {
+            // Amical Cloud model selected but user logged out - auto-switch to first downloaded local model
             const downloadedModels = await this.getValidDownloadedModels();
             const downloadedModelIds = Object.keys(downloadedModels);
 
@@ -762,6 +769,18 @@ class ModelService extends EventEmitter {
 
   // Check if any models are available for transcription
   async isAvailable(): Promise<boolean> {
+    // Check if a cloud model is selected (Amical Cloud or OpenAI Whisper)
+    const selectedModelId = await this.getSelectedModel();
+    if (selectedModelId) {
+      const availableModel = AVAILABLE_MODELS.find(
+        (m) => m.id === selectedModelId,
+      );
+      if (availableModel?.setup === "cloud") {
+        return true;
+      }
+    }
+
+    // Otherwise check for downloaded local models
     const downloadedModels = await this.getValidDownloadedModels();
     return Object.keys(downloadedModels).length > 0;
   }
@@ -879,8 +898,16 @@ class ModelService extends EventEmitter {
       // Check if it's a cloud model
       const availableModel = AVAILABLE_MODELS.find((m) => m.id === modelId);
 
-      if (availableModel?.setup === "cloud") {
-        // Cloud model - check authentication
+      if (availableModel?.provider === "OpenAI") {
+        // OpenAI Whisper - check API key is configured
+        const config =
+          await this.settingsService.getOpenAIWhisperConfig();
+        if (!config?.apiKey) {
+          throw new Error("OpenAI API key required");
+        }
+        logger.main.info("Selecting OpenAI Whisper model", { modelId });
+      } else if (availableModel?.setup === "cloud") {
+        // Amical Cloud model - check authentication
         const authService = AuthService.getInstance();
         const isAuthenticated = await authService.isAuthenticated();
 
@@ -1047,6 +1074,56 @@ class ModelService extends EventEmitter {
           success: false,
           error: await extractProviderErrorMessage(response),
         };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: formatProviderRequestError(error),
+      };
+    }
+  }
+
+  /**
+   * Validate OpenAI Whisper connection by checking the API key
+   * against the OpenAI models endpoint and verifying whisper-1 is available
+   */
+  async validateOpenAIWhisperConnection(
+    apiKey: string,
+  ): Promise<ValidationResult> {
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
+        },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: await extractProviderErrorMessage(response),
+        };
+      }
+
+      // Verify whisper-1 model is accessible
+      const data = await response.json();
+      const models = data?.data;
+      if (Array.isArray(models)) {
+        const hasWhisper = models.some(
+          (m: { id?: string }) => m.id === "whisper-1",
+        );
+        if (!hasWhisper) {
+          return {
+            success: false,
+            error:
+              "API key is valid but whisper-1 model is not accessible. Please check your API permissions.",
+          };
+        }
       }
 
       return { success: true };
@@ -1544,6 +1621,8 @@ class ModelService extends EventEmitter {
           (m) => m.id === speechModelId,
         );
         const isAmicalModel = availableModel?.provider === "Amical Cloud";
+        const isOpenAIModel = availableModel?.provider === "OpenAI";
+        const isCloudModel = isAmicalModel || isOpenAIModel;
         const existsInDb = await modelExists(
           getSystemProviderInstanceId(PROVIDER_TYPES.localWhisper),
           "speech",
@@ -1554,8 +1633,8 @@ class ModelService extends EventEmitter {
           await this.settingsService.setDefaultSpeechModel(normalizedSelection);
         }
 
-        // Amical cloud models are always valid; local models must exist in DB
-        if (!isAmicalModel && !existsInDb) {
+        // Cloud models (Amical Cloud, OpenAI Whisper) are always valid; local models must exist in DB
+        if (!isCloudModel && !existsInDb) {
           logger.main.info("Clearing invalid default speech model", {
             modelId: speechModelId,
           });

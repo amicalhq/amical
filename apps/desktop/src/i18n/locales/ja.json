@@ -326,6 +326,10 @@
         "localTranscriptionFailed": {
           "title": "ローカル文字起こしに失敗しました",
           "description": "Whisperの音声処理に失敗しました"
+        },
+        "cloudTranscriptionFailed": {
+          "title": "Cloud transcription failed",
+          "description": "OpenAI Whisper API request failed"
         }
       }
     }

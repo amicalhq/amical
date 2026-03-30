@@ -326,6 +326,10 @@
         "localTranscriptionFailed": {
           "title": "La transcripción local falló",
           "description": "El procesamiento de audio de Whisper falló"
+        },
+        "cloudTranscriptionFailed": {
+          "title": "Cloud transcription failed",
+          "description": "OpenAI Whisper API request failed"
         }
       }
     }
