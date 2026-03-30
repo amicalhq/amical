@@ -326,6 +326,10 @@
         "localTranscriptionFailed": {
           "title": "本機轉錄失敗",
           "description": "Whisper 音訊處理失敗"
+        },
+        "cloudTranscriptionFailed": {
+          "title": "Cloud transcription failed",
+          "description": "OpenAI Whisper API request failed"
         }
       }
     }

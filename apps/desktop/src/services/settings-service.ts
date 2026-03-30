@@ -274,6 +274,37 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
+   * Get OpenAI Whisper configuration
+   */
+  async getOpenAIWhisperConfig(): Promise<{ apiKey: string } | undefined> {
+    const config = await this.getModelProvidersConfig();
+    return config?.openAIWhisper;
+  }
+
+  /**
+   * Update OpenAI Whisper configuration
+   */
+  async setOpenAIWhisperConfig(config: { apiKey: string }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      openAIWhisper: {
+        apiKey: config.apiKey.trim(),
+      },
+    });
+  }
+
+  /**
+   * Remove OpenAI Whisper configuration
+   */
+  async removeOpenAIWhisperConfig(): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    const updatedConfig = { ...currentConfig };
+    delete updatedConfig.openAIWhisper;
+    await this.setModelProvidersConfig(updatedConfig);
+  }
+
+  /**
    * Get default speech model (Whisper)
    */
   async getDefaultSpeechModel(): Promise<string | undefined> {

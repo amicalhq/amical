@@ -181,6 +181,19 @@
             "internetLogin": "Needs internet and login"
           }
         },
+        "openai": {
+          "title": "OpenAI Whisper",
+          "subtitle": "Bring your own API key - fast cloud transcription",
+          "description": "Use your own OpenAI API key for cloud-based Whisper transcription. No login required.",
+          "pros": {
+            "accurate": "High accuracy",
+            "fast": "Fast cloud processing",
+            "noLogin": "No login needed"
+          },
+          "cons": {
+            "apiKey": "Requires OpenAI API key"
+          }
+        },
         "local": {
           "title": "Local Models",
           "subtitle": "Private, offline, and free - runs fully on your device.",
@@ -210,6 +223,19 @@
         "description": "Cloud transcription needs authentication to continue.",
         "error": {
           "loginStartFailed": "Failed to open login. Please try again."
+        }
+      },
+      "openai": {
+        "title": "Connect OpenAI API Key",
+        "description": "Enter your OpenAI API key to use cloud-based Whisper transcription.",
+        "placeholder": "Enter your OpenAI API key (sk-...)",
+        "connect": "Connect",
+        "connected": "API key validated and saved!",
+        "toast": {
+          "validated": "OpenAI API key validated successfully"
+        },
+        "error": {
+          "validationFailed": "Failed to validate API key. Please check and try again."
         }
       },
       "local": {
@@ -326,6 +352,10 @@
         "localTranscriptionFailed": {
           "title": "Local transcription failed",
           "description": "Whisper audio processing failed"
+        },
+        "cloudTranscriptionFailed": {
+          "title": "Cloud transcription failed",
+          "description": "OpenAI Whisper API request failed"
         }
       }
     }
