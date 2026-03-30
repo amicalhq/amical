@@ -64,7 +64,7 @@ describe("OpenAI Whisper Provider", () => {
         context: { language: "en" },
       });
 
-      expect(result).toBe("");
+      expect(result.text).toBe("");
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -84,17 +84,17 @@ describe("OpenAI Whisper Provider", () => {
 
       // Send 3+ seconds of silence to trigger transcription
       const silenceFrameCount = Math.ceil((3.1 * sampleRate) / frameSize);
-      let result = "";
+      let result = { text: "" };
       for (let i = 0; i < silenceFrameCount; i++) {
         result = await provider.transcribe({
           audioData: new Float32Array(frameSize).fill(0.0),
           speechProbability: 0.01,
           context: { language: "en" },
         });
-        if (result) break;
+        if (result.text) break;
       }
 
-      expect(result).toBe("Hello world");
+      expect(result.text).toBe("Hello world");
       expect(fetchSpy).toHaveBeenCalledTimes(1);
 
       const [url, options] = fetchSpy.mock.calls[0];
@@ -155,13 +155,13 @@ describe("OpenAI Whisper Provider", () => {
 
       const result = await provider.flush({ language: "en" });
 
-      expect(result).toBe("Hello world");
+      expect(result.text).toBe("Hello world");
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should return empty on flush with no buffered audio", async () => {
       const result = await provider.flush({ language: "en" });
-      expect(result).toBe("");
+      expect(result.text).toBe("");
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -179,7 +179,7 @@ describe("OpenAI Whisper Provider", () => {
       provider.reset();
 
       const result = await provider.flush({ language: "en" });
-      expect(result).toBe("");
+      expect(result.text).toBe("");
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
@@ -426,7 +426,7 @@ describe("OpenAI Whisper Provider - Integration", () => {
       }
 
       const result = await provider.flush({ language: "en" });
-      expect(typeof result).toBe("string");
+      expect(typeof result.text).toBe("string");
     }, 15000);
   });
 });

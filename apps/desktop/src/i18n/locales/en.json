@@ -355,7 +355,7 @@
         },
         "cloudTranscriptionFailed": {
           "title": "Cloud transcription failed",
-          "description": "OpenAI Whisper API request failed"
+          "description": "Cloud transcription request failed"
         }
       }
     }
@@ -911,6 +911,25 @@
           "removeFailed": "Failed to remove {{provider}} provider. Please try again."
         },
         "validationFailed": "Validation failed"
+      },
+      "openAIWhisper": {
+        "title": "OpenAI Whisper",
+        "description": "Use your own OpenAI API key for cloud-based Whisper transcription. No login required.",
+        "placeholder": "Enter your OpenAI API key (sk-...)",
+        "statusConnected": "Connected",
+        "statusNotConfigured": "Not configured",
+        "connect": "Connect",
+        "validating": "Validating...",
+        "remove": "Remove",
+        "configureFirst": "Please configure your OpenAI API key above first.",
+        "toast": {
+          "validated": "OpenAI API key validated successfully",
+          "validationFailed": "Failed to validate OpenAI API key",
+          "configSaved": "OpenAI Whisper configuration saved",
+          "configSaveFailed": "Failed to save OpenAI Whisper configuration",
+          "configRemoved": "OpenAI Whisper configuration removed",
+          "configRemoveFailed": "Failed to remove OpenAI Whisper configuration"
+        }
       },
       "syncedModels": {
         "title": "Synced Models",

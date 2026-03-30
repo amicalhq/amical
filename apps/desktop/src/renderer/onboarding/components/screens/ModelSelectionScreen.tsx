@@ -152,7 +152,9 @@ export function ModelSelectionScreen({
                 <span className="font-medium whitespace-nowrap">
                   {recommendation.suggested === ModelType.Cloud
                     ? t("onboarding.modelSelection.models.cloud.title")
-                    : t("onboarding.modelSelection.models.local.title")}
+                    : recommendation.suggested === ModelType.OpenAIWhisper
+                      ? t("onboarding.modelSelection.models.openai.title")
+                      : t("onboarding.modelSelection.models.local.title")}
                 </span>
                 .
               </div>

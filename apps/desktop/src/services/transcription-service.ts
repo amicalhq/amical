@@ -207,7 +207,7 @@ export class TranscriptionService {
       const selectedModelId = await this.modelService.getSelectedModel();
       if (selectedModelId) {
         const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
-        if (model?.provider === "Amical Cloud") {
+        if (model?.provider === "Amical Cloud" || model?.provider === "OpenAI") {
           return true;
         }
       }

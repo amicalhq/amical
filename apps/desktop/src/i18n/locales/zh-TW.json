@@ -328,8 +328,8 @@
           "description": "Whisper 音訊處理失敗"
         },
         "cloudTranscriptionFailed": {
-          "title": "Cloud transcription failed",
-          "description": "OpenAI Whisper API request failed"
+          "title": "雲端轉寫失敗",
+          "description": "雲端轉寫請求失敗"
         }
       }
     }

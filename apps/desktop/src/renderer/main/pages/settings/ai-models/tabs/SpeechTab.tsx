@@ -222,18 +222,18 @@ export default function SpeechTab() {
           setOpenAIWhisperConfigMutation.mutate({
             apiKey: openAIApiKey.trim(),
           });
-          toast.success("OpenAI API key validated successfully");
+          toast.success(t("settings.aiModels.openAIWhisper.toast.validated"));
         } else {
           setOpenAIValidationError(
-            result.error || "Failed to validate API key",
+            result.error || t("settings.aiModels.openAIWhisper.toast.validationFailed"),
           );
-          toast.error(result.error || "Failed to validate OpenAI API key");
+          toast.error(result.error || t("settings.aiModels.openAIWhisper.toast.validationFailed"));
         }
       },
       onError: (error) => {
         setOpenAIValidating(false);
         setOpenAIValidationError(error.message);
-        toast.error("Failed to validate OpenAI API key");
+        toast.error(t("settings.aiModels.openAIWhisper.toast.validationFailed"));
       },
     });
 
@@ -245,7 +245,7 @@ export default function SpeechTab() {
       },
       onError: (error) => {
         console.error("Failed to save OpenAI Whisper config:", error);
-        toast.error("Failed to save OpenAI Whisper configuration");
+        toast.error(t("settings.aiModels.openAIWhisper.toast.configSaveFailed"));
       },
     });
 
@@ -257,11 +257,11 @@ export default function SpeechTab() {
         setOpenAIValidationError("");
         utils.settings.getModelProvidersConfig.invalidate();
         utils.models.getSelectedModel.invalidate();
-        toast.success("OpenAI Whisper configuration removed");
+        toast.success(t("settings.aiModels.openAIWhisper.toast.configRemoved"));
       },
       onError: (error) => {
         console.error("Failed to remove OpenAI Whisper config:", error);
-        toast.error("Failed to remove OpenAI Whisper configuration");
+        toast.error(t("settings.aiModels.openAIWhisper.toast.configRemoveFailed"));
       },
     });
 
@@ -451,7 +451,7 @@ export default function SpeechTab() {
     // If OpenAI model and not configured, show a toast hint
     if (isOpenAIModel && openAIStatus !== "connected") {
       toast.error(
-        "Please configure your OpenAI API key above first.",
+        t("settings.aiModels.openAIWhisper.configureFirst"),
       );
       return;
     }
@@ -519,7 +519,7 @@ export default function SpeechTab() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <KeyRound className="w-4 h-4" />
-                <Label className="font-semibold">OpenAI Whisper</Label>
+                <Label className="font-semibold">{t("settings.aiModels.openAIWhisper.title")}</Label>
               </div>
               <Badge
                 variant="secondary"
@@ -537,18 +537,17 @@ export default function SpeechTab() {
                   }`}
                 />
                 {openAIStatus === "connected"
-                  ? "Connected"
-                  : "Not configured"}
+                  ? t("settings.aiModels.openAIWhisper.statusConnected")
+                  : t("settings.aiModels.openAIWhisper.statusNotConfigured")}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              Use your own OpenAI API key for cloud-based Whisper transcription.
-              No login required.
+              {t("settings.aiModels.openAIWhisper.description")}
             </p>
             <div className="flex flex-col md:flex-row md:items-center gap-3">
               <Input
                 type="password"
-                placeholder="Enter your OpenAI API key (sk-...)"
+                placeholder={t("settings.aiModels.openAIWhisper.placeholder")}
                 value={openAIApiKey}
                 onChange={(e) => setOpenAIApiKey(e.target.value)}
                 className="max-w-sm"
@@ -563,10 +562,10 @@ export default function SpeechTab() {
                   {openAIValidating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Validating...
+                      {t("settings.aiModels.openAIWhisper.validating")}
                     </>
                   ) : (
-                    "Connect"
+                    t("settings.aiModels.openAIWhisper.connect")
                   )}
                 </Button>
               ) : (
@@ -575,7 +574,7 @@ export default function SpeechTab() {
                   onClick={handleOpenAIRemove}
                   className="text-destructive hover:text-destructive"
                 >
-                  Remove
+                  {t("settings.aiModels.openAIWhisper.remove")}
                 </Button>
               )}
             </div>

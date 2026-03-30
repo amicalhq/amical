@@ -255,6 +255,7 @@ export function ModelSetupModal({
                 <Input
                   type="password"
                   placeholder={t("onboarding.modelSetup.openai.placeholder")}
+                  aria-label="OpenAI API key"
                   value={openAIApiKey}
                   onChange={(e) => setOpenAIApiKey(e.target.value)}
                   onKeyDown={(e) => {

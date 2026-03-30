@@ -283,7 +283,7 @@ export class OpenAIWhisperProvider implements TranscriptionProvider {
       }
       throw new AppError(
         `OpenAI Whisper transcription failed: ${error instanceof Error ? error.message : error}`,
-        ErrorCodes.LOCAL_TRANSCRIPTION_FAILED,
+        ErrorCodes.CLOUD_TRANSCRIPTION_FAILED,
       );
     }
   }

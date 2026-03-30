@@ -328,8 +328,8 @@
           "description": "El procesamiento de audio de Whisper falló"
         },
         "cloudTranscriptionFailed": {
-          "title": "Cloud transcription failed",
-          "description": "OpenAI Whisper API request failed"
+          "title": "Error de transcripción en la nube",
+          "description": "La solicitud de transcripción en la nube falló"
         }
       }
     }
