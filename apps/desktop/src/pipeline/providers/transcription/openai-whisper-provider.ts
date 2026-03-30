@@ -279,9 +279,15 @@ export class OpenAIWhisperProvider implements TranscriptionProvider {
 
       return { text };
     } catch (error) {
-      // Restore buffers so audio is not lost on transient failures
+      // Restore buffers so audio is not lost on transient failures.
+      // Collapse to a single entry to maintain 1:1 alignment between
+      // frameBuffer and frameBufferSpeechProbabilities.
+      const meanProb =
+        vadProbs.length > 0
+          ? vadProbs.reduce((a, b) => a + b, 0) / vadProbs.length
+          : 1;
       this.frameBuffer = [rawAudio];
-      this.frameBufferSpeechProbabilities = vadProbs;
+      this.frameBufferSpeechProbabilities = [meanProb];
 
       logger.transcription.error("OpenAI Whisper transcription error:", error);
       if (error instanceof AppError) {
