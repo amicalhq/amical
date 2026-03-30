@@ -126,8 +126,11 @@ export class OpenAIWhisperProvider implements TranscriptionProvider {
   }
 
   private shouldTranscribe(): boolean {
-    const audioDurationMs =
-      ((this.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) * 1000;
+    const totalSamples = this.frameBuffer.reduce(
+      (sum, buf) => sum + buf.length,
+      0,
+    );
+    const audioDurationMs = (totalSamples / this.SAMPLE_RATE) * 1000;
     const silenceDurationMs =
       ((this.currentSilenceFrameCount * this.FRAME_SIZE) / this.SAMPLE_RATE) *
       1000;
