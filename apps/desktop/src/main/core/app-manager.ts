@@ -441,8 +441,8 @@ export class AppManager {
       if (mainWindow.isMinimized()) {
         mainWindow.restore();
       }
-      mainWindow.focus();
       mainWindow.show();
+      mainWindow.focus();
     } else {
       // main window was destroyed - recreate it
       this.windowManager.createOrShowMainWindow();
