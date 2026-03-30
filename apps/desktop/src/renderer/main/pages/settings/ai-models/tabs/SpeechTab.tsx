@@ -214,13 +214,13 @@ export default function SpeechTab() {
 
   const validateOpenAIWhisperMutation =
     api.models.validateOpenAIWhisperConnection.useMutation({
-      onSuccess: (result) => {
+      onSuccess: (result, variables) => {
         setOpenAIValidating(false);
         if (result.success) {
           setOpenAIValidationError("");
-          // Save the config
+          // Save the config using the exact key that was validated
           setOpenAIWhisperConfigMutation.mutate({
-            apiKey: openAIApiKey.trim(),
+            apiKey: variables.apiKey,
           });
           toast.success(t("settings.aiModels.openAIWhisper.toast.validated"));
         } else {
@@ -269,7 +269,8 @@ export default function SpeechTab() {
   useEffect(() => {
     const config = modelProvidersConfigQuery.data;
     if (config?.openAIWhisper?.apiKey) {
-      setOpenAIApiKey(config.openAIWhisper.apiKey);
+      // Don't copy the real key into React state — use a masked placeholder
+      setOpenAIApiKey("••••••••••••••••");
       setOpenAIStatus("connected");
     } else {
       setOpenAIApiKey("");
@@ -548,6 +549,7 @@ export default function SpeechTab() {
               <Input
                 type="password"
                 placeholder={t("settings.aiModels.openAIWhisper.placeholder")}
+                aria-label={t("settings.aiModels.openAIWhisper.title")}
                 value={openAIApiKey}
                 onChange={(e) => setOpenAIApiKey(e.target.value)}
                 className="max-w-sm"

@@ -150,6 +150,10 @@ export class OpenAIWhisperProvider implements TranscriptionProvider {
   private async doTranscription(
     context: TranscribeContext,
   ): Promise<TranscriptionOutput> {
+    // Capture buffers before try so they're accessible in catch for restoration
+    const vadProbs = [...this.frameBufferSpeechProbabilities];
+    const rawAudio = this.aggregateFrames();
+
     try {
       // Get API key
       const config = await this.settingsService.getOpenAIWhisperConfig();
@@ -160,20 +164,13 @@ export class OpenAIWhisperProvider implements TranscriptionProvider {
         );
       }
 
-      // Capture speech probabilities before reset
-      const vadProbs = [...this.frameBufferSpeechProbabilities];
-
-      // Aggregate buffered frames
-      const rawAudio = this.aggregateFrames();
-
-      // Clear buffers immediately after aggregation
-      this.reset();
-
       // Apply VAD filtering to extract speech-only portions
       const { audio: filteredAudio, segments: speechSegments } =
         extractSpeechFromVad(rawAudio, vadProbs);
 
       if (filteredAudio.length === 0) {
+        // No speech detected — safe to clear buffers
+        this.reset();
         logger.transcription.debug(
           "OpenAI Whisper: Skipping - no speech detected by VAD filter",
         );
@@ -270,13 +267,19 @@ export class OpenAIWhisperProvider implements TranscriptionProvider {
       // response_format=text returns plain text
       const text = (await response.text()).trim();
 
+      // Success — clear buffers now that audio has been processed
+      this.reset();
+
       logger.transcription.info("OpenAI Whisper transcription successful", {
         textLength: text.length,
-        preview: text.length > 100 ? text.slice(0, 100) + "…" : text,
       });
 
       return { text };
     } catch (error) {
+      // Restore buffers so audio is not lost on transient failures
+      this.frameBuffer = [rawAudio];
+      this.frameBufferSpeechProbabilities = vadProbs;
+
       logger.transcription.error("OpenAI Whisper transcription error:", error);
       if (error instanceof AppError) {
         throw error;

@@ -118,12 +118,13 @@ export class TranscriptionService {
     const model = selectedModelId
       ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
       : null;
-    const isCloudModel =
-      model?.provider === "Amical Cloud" || model?.provider === "OpenAI";
-
-    // Also check if OpenAI Whisper is configured (even if not yet selected)
+    // Also check if OpenAI Whisper is configured
     const openAIConfig =
       await this.settingsService.getOpenAIWhisperConfig();
+    const isOpenAIWithKey =
+      model?.provider === "OpenAI" && !!openAIConfig?.apiKey;
+    const isCloudModel =
+      model?.provider === "Amical Cloud" || isOpenAIWithKey;
     const hasCloudOption = isCloudModel || !!openAIConfig?.apiKey;
 
     // Only preload for local models
@@ -207,8 +208,15 @@ export class TranscriptionService {
       const selectedModelId = await this.modelService.getSelectedModel();
       if (selectedModelId) {
         const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
-        if (model?.provider === "Amical Cloud" || model?.provider === "OpenAI") {
+        if (model?.provider === "Amical Cloud") {
           return true;
+        }
+        if (model?.provider === "OpenAI") {
+          const config =
+            await this.settingsService.getOpenAIWhisperConfig();
+          if (config?.apiKey) {
+            return true;
+          }
         }
       }
 
