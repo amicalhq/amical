@@ -1,12 +1,8 @@
 name: Release
 
 on:
+  pull_request:
   push:
-    branches:
-      - feat.windows.support
-      - feat/whisper.migration
-      - feat/vulkan-support
-      - ui2
     tags:
       - "v*"
   workflow_dispatch:
@@ -37,6 +33,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
           submodules: recursive
 
       - name: Verify architecture
@@ -111,18 +109,18 @@ jobs:
         run: pnpm download-node
 
       - name: Import Developer ID cert
-        if: matrix.os == 'macos'
+        if: matrix.os == 'macos' && github.event_name != 'pull_request'
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.DEVELOPER_CERT_BASE64 }}
           p12-password: ${{ secrets.DEVELOPER_CERT_PASSPHRASE }}
 
       - name: List signing identities (debug)
-        if: matrix.os == 'macos'
+        if: matrix.os == 'macos' && github.event_name != 'pull_request'
         run: security find-identity -v -p codesigning
 
-      - name: Build artifacts (macOS)
-        if: matrix.os == 'macos'
+      - name: Build artifacts (macOS release)
+        if: matrix.os == 'macos' && github.event_name != 'pull_request'
         working-directory: apps/desktop
         env:
           SKIP_CODESIGNING: false
@@ -144,8 +142,27 @@ jobs:
           echo "Building macOS ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}
 
-      - name: Build artifacts (Windows)
-        if: matrix.os == 'windows'
+      - name: Build artifacts (macOS PR)
+        if: matrix.os == 'macos' && github.event_name == 'pull_request'
+        working-directory: apps/desktop
+        env:
+          SKIP_CODESIGNING: "true"
+          SKIP_NOTARIZATION: "true"
+          TELEMETRY_ENABLED: "false"
+          POSTHOG_HOST: https://app.posthog.com
+          POSTHOG_API_KEY: ""
+          FEEDBACK_SURVEY_ID: ""
+          AUTH_CLIENT_ID: ""
+          AUTHORIZATION_ENDPOINT: ""
+          AUTH_TOKEN_ENDPOINT: ""
+          API_ENDPOINT: ""
+          AUTH_REDIRECT_URI: ""
+        run: |
+          echo "Building unsigned macOS ${{ matrix.arch }} PR artifacts"
+          pnpm make:${{ matrix.arch }}
+
+      - name: Build artifacts (Windows release)
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
         working-directory: apps/desktop
         env:
           POSTHOG_HOST: https://app.posthog.com
@@ -159,6 +176,23 @@ jobs:
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
         run: |
           echo "Building Windows x64 artifacts"
+          pnpm make:windows
+
+      - name: Build artifacts (Windows PR)
+        if: matrix.os == 'windows' && github.event_name == 'pull_request'
+        working-directory: apps/desktop
+        env:
+          TELEMETRY_ENABLED: "false"
+          POSTHOG_HOST: https://app.posthog.com
+          POSTHOG_API_KEY: ""
+          FEEDBACK_SURVEY_ID: ""
+          AUTH_CLIENT_ID: ""
+          AUTHORIZATION_ENDPOINT: ""
+          AUTH_TOKEN_ENDPOINT: ""
+          API_ENDPOINT: ""
+          AUTH_REDIRECT_URI: ""
+        run: |
+          echo "Building Windows x64 PR artifacts"
           pnpm make:windows
 
       - name: Get version from package.json
@@ -209,6 +243,7 @@ jobs:
   release:
     name: Create Release
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -216,11 +251,286 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
 
       - name: Get version from package.json
         id: package_version
         working-directory: apps/desktop
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Resolve release context
+        id: release_context
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CURRENT_TAG="${{ github.event.inputs.tag }}"
+            CURRENT_TAG="${CURRENT_TAG#refs/tags/}"
+            CURRENT_REF="refs/tags/${CURRENT_TAG}"
+
+            if ! git rev-parse --verify --quiet "${CURRENT_REF}^{commit}" >/dev/null; then
+              echo "Tag ${CURRENT_TAG} does not exist"
+              exit 1
+            fi
+
+            CURRENT_SHA=$(git rev-parse "${CURRENT_REF}^{commit}")
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            CURRENT_TAG="${{ github.ref_name }}"
+            CURRENT_REF="${{ github.ref }}"
+            CURRENT_SHA=$(git rev-parse "${CURRENT_REF}^{commit}")
+          else
+            CURRENT_TAG="${{ github.ref_name }}"
+            CURRENT_REF="${{ github.ref }}"
+            CURRENT_SHA="${{ github.sha }}"
+          fi
+
+          if [[ ! "$CURRENT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be semver-formatted, e.g. v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+
+          if [[ "$CURRENT_TAG" == *-* ]]; then
+            IS_PRERELEASE=true
+          else
+            IS_PRERELEASE=false
+          fi
+
+          echo "current_tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
+          echo "current_ref=$CURRENT_REF" >> "$GITHUB_OUTPUT"
+          echo "current_sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT_TAG="${{ steps.release_context.outputs.current_tag }}"
+          CURRENT_REF="${{ steps.release_context.outputs.current_ref }}"
+          CURRENT_SHA="${{ steps.release_context.outputs.current_sha }}"
+          IS_PRERELEASE="${{ steps.release_context.outputs.is_prerelease }}"
+          VERSION="${{ steps.package_version.outputs.version }}"
+
+          echo "Resolved release target: ${CURRENT_TAG} (${CURRENT_REF} -> ${CURRENT_SHA})"
+          echo "Treating release as prerelease=${IS_PRERELEASE}"
+
+          FEATURE_REGEX='^[[:space:]]*[Ff][Ee][Aa][Tt](\([^)]*\))?[[:space:]]*:[[:space:]]*'
+          FIX_REGEX='^[[:space:]]*[Ff][Ii][Xx](\([^)]*\))?[[:space:]]*:[[:space:]]*'
+          RELEASE_REGEX='^[[:space:]]*[Cc][Hh][Oo][Rr][Ee](\([^)]*\))?[[:space:]]*:[[:space:]]*[Rr][Ee][Ll][Ee][Aa][Ss][Ee]'
+
+          format_commits() {
+            local category="$1"
+            git log --no-merges --format='%s%x1f%h%x1e' "$RANGE" |
+              while IFS= read -r -d $'\x1e' record; do
+                IFS=$'\x1f' read -r msg hash <<< "$record"
+
+                case "$category" in
+                  features)
+                    [[ "$msg" =~ $FEATURE_REGEX ]] || continue
+                    clean=$(printf '%s' "$msg" | sed -E 's/^[[:space:]]*feat(\([^)]*\))?[[:space:]]*:[[:space:]]*//I')
+                    scope=$(printf '%s' "$msg" | sed -nE 's/^[[:space:]]*feat\(([^)]*)\).*/\1/Ip')
+                    ;;
+                  fixes)
+                    [[ "$msg" =~ $FIX_REGEX ]] || continue
+                    clean=$(printf '%s' "$msg" | sed -E 's/^[[:space:]]*fix(\([^)]*\))?[[:space:]]*:[[:space:]]*//I')
+                    scope=$(printf '%s' "$msg" | sed -nE 's/^[[:space:]]*fix\(([^)]*)\).*/\1/Ip')
+                    ;;
+                  others)
+                    [[ ! "$msg" =~ $FEATURE_REGEX ]] || continue
+                    [[ ! "$msg" =~ $FIX_REGEX ]] || continue
+                    [[ ! "$msg" =~ $RELEASE_REGEX ]] || continue
+                    clean=$(printf '%s' "$msg" | sed -E 's/^[[:space:]]*(chore|refactor|docs|style|perf|test|build|ci)(\([^)]*\))?[[:space:]]*:[[:space:]]*//I')
+                    scope=""
+                    ;;
+                esac
+
+                if [[ "$category" != "others" && -n "$scope" ]]; then
+                  printf -- '- **%s**: %s (%s)\n' "$scope" "$clean" "$hash"
+                else
+                  printf -- '- %s (%s)\n' "$clean" "$hash"
+                fi
+              done || true
+          }
+
+          # Determine previous tag from the resolved commit, considering only semver release tags.
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$CURRENT_SHA"^ 2>/dev/null || echo "")
+          else
+            PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude='*-*' "$CURRENT_SHA"^ 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="$CURRENT_SHA"
+            echo "No previous tag found, including all commits up to $CURRENT_SHA"
+          else
+            RANGE="${PREV_TAG}..${CURRENT_SHA}"
+            echo "Generating changelog for $RANGE"
+          fi
+
+          # --- Build release notes ---
+          {
+            echo "## Amical Desktop v${VERSION}"
+            echo ""
+
+            # Features
+            FEATURES=$(format_commits features)
+            NEW_CONTRIBUTORS_MARKDOWN=""
+
+            if [ -n "$FEATURES" ]; then
+              echo "### Features"
+              printf '%s\n' "$FEATURES"
+              echo ""
+            fi
+
+            # Bug Fixes
+            FIXES=$(format_commits fixes)
+
+            if [ -n "$FIXES" ]; then
+              echo "### Bug Fixes"
+              printf '%s\n' "$FIXES"
+              echo ""
+            fi
+
+            # Other Changes (exclude release commits and reverts)
+            OTHERS=$(format_commits others)
+
+            if [ -n "$OTHERS" ]; then
+              echo "### Other Changes"
+              printf '%s\n' "$OTHERS"
+              echo ""
+            fi
+
+            # New Contributors (extracted from GitHub's auto-generated release notes)
+            if [ -n "$PREV_TAG" ]; then
+              GH_NOTES=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+                -f tag_name="$CURRENT_TAG" \
+                -f target_commitish="$CURRENT_SHA" \
+                -f previous_tag_name="$PREV_TAG" \
+                --jq '.body' 2>/dev/null || true)
+              # Extract only the "New Contributors" section
+              NEW_CONTRIBUTORS=$(echo "$GH_NOTES" | sed -n '/## New Contributors/,/^## /{ /^## [^N]/d; p; }')
+              if [ -n "$NEW_CONTRIBUTORS" ]; then
+                NEW_CONTRIBUTORS_MARKDOWN=$(echo "$NEW_CONTRIBUTORS" | sed 's/^## /### /')
+                echo "$NEW_CONTRIBUTORS" | sed 's/^## /### /'
+                echo ""
+              fi
+            fi
+
+            # Static download/install instructions
+            echo "### Downloads"
+            echo ""
+            echo "#### macOS"
+            echo "- **Apple Silicon (M1/M2/M3)**: Download the DMG or ZIP file for arm64"
+            echo "- **Intel**: Download the DMG or ZIP file for x64"
+            echo ""
+            echo "#### Windows"
+            echo "- **Windows (x64)**: Download the .exe installer for 64-bit Windows"
+            echo ""
+            echo "### Installation"
+            echo ""
+            echo "**macOS**:"
+            echo "- **DMG**: Download and open the DMG file, then drag Amical to your Applications folder"
+            echo "- **ZIP**: Download and extract the ZIP file, then drag Amical to your Applications folder"
+            echo ""
+            echo "**Windows**:"
+            echo "- Download and run the .exe installer"
+            echo "- Follow the installation wizard"
+            echo "- The app will be installed to your user AppData folder and a shortcut will be created"
+            echo ""
+            echo "The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation on macOS."
+          } > release-notes.md
+
+          CURRENT_TAG="$CURRENT_TAG" \
+          CURRENT_SHA="$CURRENT_SHA" \
+          PREV_TAG="$PREV_TAG" \
+          RANGE="$RANGE" \
+          VERSION="$VERSION" \
+          IS_PRERELEASE="$IS_PRERELEASE" \
+          NEW_CONTRIBUTORS_MARKDOWN="$NEW_CONTRIBUTORS_MARKDOWN" \
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+
+          const version = process.env.VERSION;
+          const currentTag = process.env.CURRENT_TAG;
+          const currentSha = process.env.CURRENT_SHA;
+          const prevTag = process.env.PREV_TAG || null;
+          const range = process.env.RANGE;
+          const isPrerelease = process.env.IS_PRERELEASE === 'true';
+          const newContributorsMarkdown = process.env.NEW_CONTRIBUTORS_MARKDOWN || '';
+          const markdown = fs.readFileSync('release-notes.md', 'utf8');
+
+          const logOutput = execFileSync(
+            'git',
+            ['log', '--no-merges', '--format=%s%x1f%h%x1e', range],
+            { encoding: 'utf8' }
+          );
+
+          const commits = logOutput
+            .split('\x1e')
+            .filter(Boolean)
+            .map(record => {
+              const [message, hash] = record.split('\x1f');
+              return { message, hash };
+            });
+
+          const featureRegex = /^\s*feat(?:\(([^)]*)\))?\s*:\s*(.*)$/i;
+          const fixRegex = /^\s*fix(?:\(([^)]*)\))?\s*:\s*(.*)$/i;
+          const releaseRegex = /^\s*chore(?:\([^)]*\))?\s*:\s*release/i;
+          const otherPrefixRegex = /^\s*(chore|refactor|docs|style|perf|test|build|ci)(?:\([^)]*\))?\s*:\s*/i;
+
+          const payload = {
+            version,
+            tag: currentTag,
+            currentSha,
+            previousTag: prevTag,
+            prerelease: isPrerelease,
+            range,
+            generatedAt: new Date().toISOString(),
+            sections: {
+              features: [],
+              fixes: [],
+              others: [],
+            },
+            newContributorsMarkdown: newContributorsMarkdown || null,
+            markdown,
+          };
+
+          for (const { message, hash } of commits) {
+            const featureMatch = message.match(featureRegex);
+            if (featureMatch) {
+              payload.sections.features.push({
+                scope: featureMatch[1] || null,
+                text: featureMatch[2],
+                hash,
+              });
+              continue;
+            }
+
+            const fixMatch = message.match(fixRegex);
+            if (fixMatch) {
+              payload.sections.fixes.push({
+                scope: fixMatch[1] || null,
+                text: fixMatch[2],
+                hash,
+              });
+              continue;
+            }
+
+            if (releaseRegex.test(message)) {
+              continue;
+            }
+
+            payload.sections.others.push({
+              text: message.replace(otherPrefixRegex, ''),
+              hash,
+            });
+          }
+
+          fs.writeFileSync('release-notes.json', `${JSON.stringify(payload, null, 2)}\n`);
+          NODE
+
+          echo "=== Generated Release Notes ==="
+          cat release-notes.md
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -239,37 +549,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          prerelease: true
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          prerelease: ${{ steps.release_context.outputs.is_prerelease == 'true' }}
+          tag_name: ${{ steps.release_context.outputs.current_tag }}
+          target_commitish: ${{ steps.release_context.outputs.current_sha }}
           name: Amical Desktop v${{ steps.package_version.outputs.version }}
-          body: |
-            ## Amical Desktop v${{ steps.package_version.outputs.version }}
-
-            ### What's New
-            - Please update this section with actual changes
-
-            ### Downloads
-
-            #### macOS
-            - **Apple Silicon (M1/M2/M3)**: Download the DMG or ZIP file for arm64
-            - **Intel**: Download the DMG or ZIP file for x64
-
-            #### Windows
-            - **Windows (x64)**: Download the .exe installer for 64-bit Windows
-
-            ### Installation
-
-            **macOS**: 
-            - **DMG**: Download and open the DMG file, then drag Amical to your Applications folder
-            - **ZIP**: Download and extract the ZIP file, then drag Amical to your Applications folder
-
-            **Windows**:
-            - Download and run the .exe installer
-            - Follow the installation wizard
-            - The app will be installed to your user AppData folder and a shortcut will be created
-
-            The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation on macOS.
+          body_path: release-notes.md
           files: |
+            release-notes.json
             artifacts/macos-arm64/*.dmg
             artifacts/macos-arm64/zip/darwin/arm64/*.zip
             artifacts/macos-x64/*.dmg
