@@ -319,9 +319,9 @@ jobs:
 
           format_commits() {
             local category="$1"
-            git log --no-merges --format='%s%x1f%h%x1e' "$RANGE" |
-              while IFS= read -r -d $'\x1e' record; do
-                IFS=$'\x1f' read -r msg hash <<< "$record"
+            git log --no-merges --format='%s%x1f%h' "$RANGE" |
+              while IFS=$'\x1f' read -r msg hash; do
+                [[ -n "$msg" && -n "$hash" ]] || continue
 
                 case "$category" in
                   features)
@@ -461,17 +461,18 @@ jobs:
 
           const logOutput = execFileSync(
             'git',
-            ['log', '--no-merges', '--format=%s%x1f%h%x1e', range],
+            ['log', '--no-merges', '--format=%s%x1f%h', range],
             { encoding: 'utf8' }
           );
 
           const commits = logOutput
-            .split('\x1e')
-            .filter(Boolean)
-            .map(record => {
-              const [message, hash] = record.split('\x1f');
+            .split('\n')
+            .filter(line => line.trim().length > 0)
+            .map(line => {
+              const [message, hash] = line.split('\x1f');
               return { message, hash };
-            });
+            })
+            .filter(({ message, hash }) => Boolean(message && hash));
 
           const featureRegex = /^\s*feat(?:\(([^)]*)\))?\s*:\s*(.*)$/i;
           const fixRegex = /^\s*fix(?:\(([^)]*)\))?\s*:\s*(.*)$/i;
