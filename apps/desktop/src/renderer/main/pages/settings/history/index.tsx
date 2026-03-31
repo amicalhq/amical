@@ -34,7 +34,23 @@ import {
   RotateCcw,
   Loader2,
   Flag,
+  MoreHorizontal,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -385,6 +401,7 @@ export default function HistorySettingsPage() {
   const { t, i18n } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
   const [hovered, setHovered] = useState<number | null>(null);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
   const audioPlayer = useAudioPlayer();
   const telemetrySettingsQuery = api.settings.getTelemetrySettings.useQuery();
   const isTelemetryEnabled = telemetrySettingsQuery.data?.enabled !== false;
@@ -422,6 +439,19 @@ export default function HistorySettingsPage() {
       onError: (error) => {
         console.error("Error deleting transcription:", error);
         toast.error(t("settings.history.toast.deleteFailed"));
+      },
+    });
+
+  const deleteAllTranscriptionsMutation =
+    api.transcriptions.deleteAllTranscriptions.useMutation({
+      onSuccess: () => {
+        utils.transcriptions.getTranscriptions.invalidate();
+        utils.transcriptions.getLifetimeStats.invalidate();
+        toast.success(t("settings.history.toast.allDeleted"));
+      },
+      onError: (error) => {
+        console.error("Error deleting all transcriptions:", error);
+        toast.error(t("settings.history.toast.allDeleteFailed"));
       },
     });
 
@@ -558,7 +588,7 @@ export default function HistorySettingsPage() {
         </Card>
 
         {/* Search Bar */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
@@ -568,7 +598,58 @@ export default function HistorySettingsPage() {
               className="pl-10"
             />
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="ml-auto">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setDeleteAllDialogOpen(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t("settings.history.deleteAll.menuItem")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
+
+        <AlertDialog
+          open={deleteAllDialogOpen}
+          onOpenChange={setDeleteAllDialogOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("settings.history.deleteAll.dialog.title")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("settings.history.deleteAll.dialog.description")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("settings.history.deleteAll.dialog.cancel")}
+              </AlertDialogCancel>
+              <Button
+                variant="destructive"
+                disabled={deleteAllTranscriptionsMutation.isPending}
+                onClick={() => {
+                  deleteAllTranscriptionsMutation.mutate(undefined, {
+                    onSettled: () => setDeleteAllDialogOpen(false),
+                  });
+                }}
+              >
+                {deleteAllTranscriptionsMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {t("settings.history.deleteAll.dialog.confirm")}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {transcriptions.length === 0 ? (
           <Card className="p-0">

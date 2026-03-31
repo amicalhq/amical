@@ -30,6 +30,7 @@ import {
   CURRENT_SETTINGS_VERSION,
   migrateSettings,
 } from "./settings-migrations";
+import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention";
 
 // Singleton ID for app settings (we only have one settings record)
 const SETTINGS_ID = 1;
@@ -81,6 +82,9 @@ const defaultSettings: AppSettingsData = {
     muteDictationSounds: false,
     autoDictateOnNewNote: false,
     preserveClipboard: true,
+  },
+  history: {
+    retentionPeriod: DEFAULT_HISTORY_RETENTION_PERIOD,
   },
   transcription: {
     language: "en",

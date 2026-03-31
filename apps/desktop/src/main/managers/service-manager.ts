@@ -14,6 +14,7 @@ import { TelemetryService } from "../../services/telemetry-service";
 import { AuthService } from "../../services/auth-service";
 import { OnboardingService } from "../../services/onboarding-service";
 import { FeatureFlagService } from "../../services/feature-flag-service";
+import { HistoryCleanupService } from "../../services/history-cleanup-service";
 
 /**
  * Service map for type-safe service access
@@ -51,6 +52,7 @@ export class ServiceManager {
   private authService: AuthService | null = null;
   private vadService: VADService | null = null;
   private onboardingService: OnboardingService | null = null;
+  private historyCleanupService: HistoryCleanupService | null = null;
 
   private nativeBridge: NativeBridge | null = null;
   private autoUpdaterService: AutoUpdaterService | null = null;
@@ -67,6 +69,7 @@ export class ServiceManager {
     }
 
     this.initializeSettingsService();
+    await this.initializeHistoryCleanupService();
     this.initializeAuthService();
     await this.initializePostHogClient();
     await this.initializeTelemetryService();
@@ -111,6 +114,18 @@ export class ServiceManager {
   private initializeSettingsService(): void {
     this.settingsService = new SettingsService();
     logger.main.info("Settings service initialized");
+  }
+
+  private async initializeHistoryCleanupService(): Promise<void> {
+    if (!this.settingsService) {
+      throw new Error("Settings service not initialized");
+    }
+
+    this.historyCleanupService = new HistoryCleanupService(
+      this.settingsService,
+    );
+    await this.historyCleanupService.initialize();
+    logger.main.info("History cleanup service initialized");
   }
 
   private initializeAuthService(): void {
@@ -290,6 +305,11 @@ export class ServiceManager {
       this.autoUpdaterService.cleanup();
     }
 
+    if (this.historyCleanupService) {
+      logger.main.info("Cleaning up history cleanup service...");
+      await this.historyCleanupService.cleanup();
+    }
+
     if (this.nativeBridge) {
       logger.main.info("Stopping native helper...");
       this.nativeBridge.stopHelper();
@@ -324,6 +344,17 @@ export class ServiceManager {
       ServiceManager.instance = new ServiceManager();
     }
     return ServiceManager.instance;
+  }
+
+  static async resetInstanceForTests(): Promise<void> {
+    if (ServiceManager.instance) {
+      await ServiceManager.instance.cleanup();
+      ServiceManager.instance = null;
+    }
+  }
+
+  static clearInstanceForTests(): void {
+    ServiceManager.instance = null;
   }
 
   setWindowManager(windowManager: WindowManager): void {

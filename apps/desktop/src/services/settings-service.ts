@@ -12,6 +12,7 @@ import {
   normalizeOllamaUrl,
   normalizeOpenAICompatibleBaseURL,
 } from "../utils/provider-utils";
+import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention";
 
 /**
  * Database-backed settings service with typed configuration
@@ -32,6 +33,10 @@ export interface AppPreferences {
   muteDictationSounds: boolean;
   autoDictateOnNewNote: boolean;
   preserveClipboard: boolean;
+}
+
+export interface HistorySettings {
+  retentionPeriod: NonNullable<AppSettingsData["history"]>["retentionPeriod"];
 }
 
 export class SettingsService extends EventEmitter {
@@ -372,6 +377,30 @@ export class SettingsService extends EventEmitter {
         preferences.showWidgetWhileInactive !== undefined,
       showInDockChanged: preferences.showInDock !== undefined,
       muteSystemAudioChanged: preferences.muteSystemAudio !== undefined,
+    });
+  }
+
+  /**
+   * Get history settings
+   */
+  async getHistorySettings(): Promise<HistorySettings> {
+    const history = await getSettingsSection("history");
+    return {
+      retentionPeriod:
+        history?.retentionPeriod ?? DEFAULT_HISTORY_RETENTION_PERIOD,
+    };
+  }
+
+  /**
+   * Update history settings
+   */
+  async setHistorySettings(historySettings: HistorySettings): Promise<void> {
+    const previousSettings = await this.getHistorySettings();
+    await updateSettingsSection("history", historySettings);
+
+    this.emit("history-settings-changed", {
+      previous: previousSettings,
+      current: historySettings,
     });
   }
 

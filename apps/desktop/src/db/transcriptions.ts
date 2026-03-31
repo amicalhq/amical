@@ -1,15 +1,4 @@
-import {
-  eq,
-  desc,
-  asc,
-  and,
-  ilike,
-  count,
-  gte,
-  lte,
-  sql,
-  like,
-} from "drizzle-orm";
+import { eq, desc, asc, and, count, gte, lte, lt, sql } from "drizzle-orm";
 import { db } from ".";
 import {
   transcriptions,
@@ -116,6 +105,25 @@ export async function deleteTranscription(id: number) {
     .returning();
 
   return result[0] || null;
+}
+
+// Delete all transcriptions
+export async function deleteAllTranscriptions() {
+  return await db.delete(transcriptions).returning({
+    id: transcriptions.id,
+    audioFile: transcriptions.audioFile,
+  });
+}
+
+// Delete transcriptions older than the provided cutoff date
+export async function deleteTranscriptionsOlderThan(cutoffDate: Date) {
+  return await db
+    .delete(transcriptions)
+    .where(lt(transcriptions.timestamp, cutoffDate))
+    .returning({
+      id: transcriptions.id,
+      audioFile: transcriptions.audioFile,
+    });
 }
 
 // Get transcriptions count

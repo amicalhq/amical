@@ -358,7 +358,7 @@
       },
       "history": {
         "title": "History",
-        "description": "View and manage transcription history"
+        "description": "View and manage dictation history"
       },
       "advanced": {
         "title": "Advanced",
@@ -470,6 +470,17 @@
           "updateFailed": "Failed to change update channel. Please try again."
         }
       },
+      "historyRetention": {
+        "label": "History Retention",
+        "description": "Automatically delete dictation history older than the selected period",
+        "options": {
+          "1d": "Daily",
+          "7d": "7 days",
+          "14d": "14 days",
+          "28d": "28 days",
+          "never": "Never"
+        }
+      },
       "telemetry": {
         "label": "Anonymous Telemetry",
         "description": "Help improve Amical by sharing anonymous usage data.",
@@ -556,7 +567,7 @@
     },
     "history": {
       "title": "History",
-      "description": "Your recent transcription history",
+      "description": "Your recent dictation history",
       "item": {
         "failed": "transcription failed",
         "noWords": "no words detected"
@@ -582,9 +593,20 @@
       "dialog": {
         "title": "Transcription Details"
       },
+      "deleteAll": {
+        "menuItem": "Delete all history",
+        "dialog": {
+          "title": "Delete all dictation history?",
+          "description": "This action cannot be undone. All dictations and their associated audio files will be permanently deleted.",
+          "cancel": "Cancel",
+          "confirm": "Delete all"
+        }
+      },
       "toast": {
         "deleted": "Transcription deleted",
         "deleteFailed": "Failed to delete transcription",
+        "allDeleted": "All dictation history deleted",
+        "allDeleteFailed": "Failed to delete dictation history",
         "downloaded": "Audio file downloaded",
         "downloadFailed": "Failed to download audio file",
         "loadAudioFailed": "Failed to load audio file",
@@ -603,8 +625,8 @@
       "empty": {
         "searchTitle": "No transcriptions found",
         "searchDescription": "Try adjusting your search terms.",
-        "defaultTitle": "No transcription history yet",
-        "defaultDescription": "Your recent transcriptions will appear here."
+        "defaultTitle": "No dictation history yet",
+        "defaultDescription": "Your recent dictation history will appear here."
       },
       "group": {
         "today": "Today",

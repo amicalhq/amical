@@ -27,6 +27,8 @@ export async function initializeTestApp(
 ): Promise<TestApp> {
   const { skipOnboarding = true, skipWindows = false } = options;
 
+  await ServiceManager.resetInstanceForTests();
+
   // Mock the database module to use our test database
   vi.doMock("@db", () => ({
     db: testDb.db,
@@ -64,8 +66,8 @@ export async function initializeTestApp(
     serviceManager,
     trpcCaller,
     cleanup: async () => {
-      // Clean up services
-      // Note: Add cleanup logic as needed
+      await appManager.cleanup();
+      ServiceManager.clearInstanceForTests();
     },
   };
 }
@@ -88,6 +90,8 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
   trpcCaller: ReturnType<typeof router.createCaller>;
   cleanup: () => Promise<void>;
 }> {
+  await ServiceManager.resetInstanceForTests();
+
   // Mock the database module
   vi.doMock("@db", () => ({
     db: testDb.db,
@@ -97,7 +101,7 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
   }));
 
   // Create and initialize ServiceManager
-  const serviceManager = ServiceManager.createInstance();
+  const serviceManager = ServiceManager.getInstance();
 
   try {
     await serviceManager.initialize();
@@ -113,7 +117,8 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
     serviceManager,
     trpcCaller,
     cleanup: async () => {
-      // Cleanup logic
+      await serviceManager.cleanup();
+      ServiceManager.clearInstanceForTests();
     },
   };
 }

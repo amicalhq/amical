@@ -7,6 +7,10 @@ import { createRouter, procedure } from "../trpc";
 import { dbPath, closeDatabase } from "../../db";
 import type { AppSettingsData } from "../../db/schema";
 import * as fs from "fs/promises";
+import {
+  HISTORY_RETENTION_PERIODS,
+  DEFAULT_HISTORY_RETENTION_PERIOD,
+} from "../../constants/history-retention";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
@@ -65,6 +69,10 @@ const AppPreferencesSchema = z.object({
   muteDictationSounds: z.boolean().optional(),
   autoDictateOnNewNote: z.boolean().optional(),
   preserveClipboard: z.boolean().optional(),
+});
+
+const HistorySettingsSchema = z.object({
+  retentionPeriod: z.enum(HISTORY_RETENTION_PERIODS),
 });
 
 const UIThemeSchema = z.object({
@@ -640,6 +648,36 @@ export const settingsRouter = createRouter({
 
       await settingsService.setPreferences(input);
       // Window updates are handled via settings events in AppManager
+
+      return true;
+    }),
+
+  // Get history settings
+  getHistorySettings: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+
+    return await settingsService.getHistorySettings();
+  }),
+
+  // Update history settings
+  updateHistorySettings: procedure
+    .input(HistorySettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      await settingsService.setHistorySettings({
+        retentionPeriod:
+          input.retentionPeriod ?? DEFAULT_HISTORY_RETENTION_PERIOD,
+      });
+
+      const logger = ctx.serviceManager.getLogger();
+      logger?.main.info("History settings updated", input);
 
       return true;
     }),

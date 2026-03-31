@@ -9,6 +9,7 @@ import {
   primaryKey,
   blob,
 } from "drizzle-orm/sqlite-core";
+import type { HistoryRetentionPeriod } from "../constants/history-retention";
 
 // Transcriptions table
 export const transcriptions = sqliteTable("transcriptions", {
@@ -181,6 +182,9 @@ export interface AppSettingsData {
     muteDictationSounds?: boolean;
     autoDictateOnNewNote?: boolean;
     preserveClipboard?: boolean;
+  };
+  history?: {
+    retentionPeriod: HistoryRetentionPeriod;
   };
   telemetry?: {
     enabled?: boolean;

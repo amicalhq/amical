@@ -8,11 +8,12 @@ import {
   getTranscriptionById,
   updateTranscription,
   deleteTranscription,
+  deleteAllTranscriptions,
   getTranscriptionsCount,
   searchTranscriptions,
 } from "../../db/transcriptions.js";
 import { getLifetimeStats } from "../../db/daily-stats.js";
-import { deleteAudioFile } from "../../utils/audio-file-cleanup.js";
+import { deleteAudioFilesForTranscriptions } from "../../utils/audio-file-cleanup.js";
 
 // Input schemas
 const GetTranscriptionsSchema = z.object({
@@ -89,31 +90,38 @@ export const transcriptionsRouter = createRouter({
   deleteTranscription: procedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      // Get transcription to check for audio file
-      const transcription = await getTranscriptionById(input.id);
-
-      // Delete the transcription
       const result = await deleteTranscription(input.id);
+      const deletedAudioFiles = result
+        ? await deleteAudioFilesForTranscriptions([result])
+        : 0;
 
-      // Delete associated audio file if it exists
-      if (transcription?.audioFile) {
-        try {
-          await deleteAudioFile(transcription.audioFile);
-        } catch (error) {
-          const logger = ctx.serviceManager.getLogger();
-          logger.main.warn(
-            "Failed to delete audio file during transcription deletion",
-            {
-              transcriptionId: input.id,
-              audioFile: transcription.audioFile,
-              error,
-            },
-          );
-        }
-      }
+      const logger = ctx.serviceManager.getLogger();
+      logger.main.info("Transcription deleted", {
+        transcriptionId: input.id,
+        deletedAudioFiles,
+      });
 
       return result;
     }),
+
+  // Delete all transcription history
+  deleteAllTranscriptions: procedure.mutation(async ({ ctx }) => {
+    const deletedTranscriptions = await deleteAllTranscriptions();
+    const deletedAudioFiles = await deleteAudioFilesForTranscriptions(
+      deletedTranscriptions,
+    );
+
+    const logger = ctx.serviceManager.getLogger();
+    logger.main.info("All transcriptions deleted", {
+      deletedTranscriptions: deletedTranscriptions.length,
+      deletedAudioFiles,
+    });
+
+    return {
+      deletedCount: deletedTranscriptions.length,
+      deletedAudioFiles,
+    };
+  }),
 
   // Get audio file for playback
   // Implemented as mutation instead of query because:

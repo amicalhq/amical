@@ -2,6 +2,11 @@ import { app } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "../main/logger";
+import type { Transcription } from "../db/schema";
+
+export const DEFAULT_AUDIO_FILE_RETENTION_DAYS = 7;
+export const DEFAULT_AUDIO_FILE_MAX_AGE_MS =
+  DEFAULT_AUDIO_FILE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 /**
  * Clean up old audio files from the temporary directory
@@ -12,7 +17,7 @@ export async function cleanupAudioFiles(options?: {
   maxAgeMs?: number;
   maxSizeBytes?: number;
 }): Promise<void> {
-  const maxAgeMs = options?.maxAgeMs ?? 7 * 24 * 60 * 60 * 1000; // 7 days
+  const maxAgeMs = options?.maxAgeMs ?? DEFAULT_AUDIO_FILE_MAX_AGE_MS;
   const maxSizeBytes = options?.maxSizeBytes ?? 500 * 1024 * 1024; // 500MB
 
   const audioDir = path.join(app.getPath("temp"), "amical-audio");
@@ -121,4 +126,33 @@ export async function deleteAudioFile(filePath: string): Promise<void> {
     }
     // File doesn't exist, that's fine
   }
+}
+
+export async function deleteAudioFilesForTranscriptions(
+  transcriptions: Array<Pick<Transcription, "id" | "audioFile">>,
+): Promise<number> {
+  let deletedAudioFiles = 0;
+  const handledPaths = new Set<string>();
+
+  for (const transcription of transcriptions) {
+    const audioFile = transcription.audioFile?.trim();
+    if (!audioFile || handledPaths.has(audioFile)) {
+      continue;
+    }
+
+    handledPaths.add(audioFile);
+
+    try {
+      await deleteAudioFile(audioFile);
+      deletedAudioFiles += 1;
+    } catch (error) {
+      logger.main.warn("Failed to delete audio file for transcription", {
+        transcriptionId: transcription.id,
+        audioFile,
+        error,
+      });
+    }
+  }
+
+  return deletedAudioFiles;
 }

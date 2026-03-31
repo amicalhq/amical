@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { DEFAULT_HISTORY_RETENTION_PERIOD } from "@/constants/history-retention";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -98,6 +99,18 @@ export default function AdvancedSettingsPage() {
       toast.error(t("settings.advanced.toast.resetFailed"));
     },
   });
+
+  const historySettingsQuery = api.settings.getHistorySettings.useQuery();
+  const updateHistorySettingsMutation =
+    api.settings.updateHistorySettings.useMutation({
+      onSuccess: () => {
+        utils.settings.getHistorySettings.invalidate();
+        toast.success(t("settings.advanced.toast.settingsUpdated"));
+      },
+      onError: () => {
+        toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
+      },
+    });
 
   const updateChannelQuery = api.settings.getUpdateChannel.useQuery();
   const setUpdateChannelMutation = api.settings.setUpdateChannel.useMutation({
@@ -251,6 +264,54 @@ export default function AdvancedSettingsPage() {
                 </SelectItem>
                 <SelectItem value="beta">
                   {t("settings.advanced.updateChannel.options.beta")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="history-retention">
+                {t("settings.advanced.historyRetention.label")}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.advanced.historyRetention.description")}
+              </p>
+            </div>
+            <Select
+              value={
+                historySettingsQuery.data?.retentionPeriod ??
+                DEFAULT_HISTORY_RETENTION_PERIOD
+              }
+              onValueChange={(value) =>
+                updateHistorySettingsMutation.mutate({
+                  retentionPeriod: value as
+                    | "1d"
+                    | "7d"
+                    | "14d"
+                    | "28d"
+                    | "never",
+                })
+              }
+            >
+              <SelectTrigger className="w-[120px]" id="history-retention">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1d">
+                  {t("settings.advanced.historyRetention.options.1d")}
+                </SelectItem>
+                <SelectItem value="7d">
+                  {t("settings.advanced.historyRetention.options.7d")}
+                </SelectItem>
+                <SelectItem value="14d">
+                  {t("settings.advanced.historyRetention.options.14d")}
+                </SelectItem>
+                <SelectItem value="28d">
+                  {t("settings.advanced.historyRetention.options.28d")}
+                </SelectItem>
+                <SelectItem value="never">
+                  {t("settings.advanced.historyRetention.options.never")}
                 </SelectItem>
               </SelectContent>
             </Select>

@@ -82,6 +82,9 @@ export const defaultAppSettings: AppSettingsData = {
     showWidgetWhileInactive: true,
     muteSystemAudio: true,
   },
+  history: {
+    retentionPeriod: "never",
+  },
   telemetry: {
     enabled: false,
   },
@@ -89,6 +92,7 @@ export const defaultAppSettings: AppSettingsData = {
     isAuthenticated: false,
     idToken: null,
     refreshToken: null,
+    accessToken: null,
     expiresAt: null,
   },
 };
@@ -280,6 +284,7 @@ export const fixtures = {
         isAuthenticated: true,
         idToken: "test-id-token",
         refreshToken: "test-refresh-token",
+        accessToken: "test-access-token",
         expiresAt: Date.now() + 3600000, // 1 hour from now
         userInfo: {
           sub: "test-user-123",
