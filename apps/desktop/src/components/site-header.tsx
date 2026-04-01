@@ -1,10 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { useRouter } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useSidebar } from "@/components/ui/sidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { SettingsNavigationControls } from "@/renderer/main/components/settings-navigation-controls";
 
 interface SiteHeaderProps {
   currentView?: string;
@@ -20,121 +18,9 @@ export function SiteHeader({
   showTitle = true,
   actions,
 }: SiteHeaderProps) {
-  const router = useRouter();
-  const [canGoBack, setCanGoBack] = useState(false);
-  const [canGoForward, setCanGoForward] = useState(false);
   const isMacOS = window.electronAPI?.platform === "darwin";
+  const isMobile = useIsMobile();
   const { state: sidebarState } = useSidebar();
-  useEffect(() => {
-    // Track navigation history in session storage
-    const HISTORY_KEY = "navigation-history";
-    const INDEX_KEY = "navigation-index";
-
-    // Initialize or get existing history
-    let history: string[] = JSON.parse(
-      sessionStorage.getItem(HISTORY_KEY) || "[]",
-    );
-
-    // If this is the first load, initialize with current path
-    if (history.length === 0) {
-      history = [router.state.location.pathname];
-      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-      sessionStorage.setItem(INDEX_KEY, "0");
-    }
-
-    const updateNavigationState = () => {
-      const storedHistory = JSON.parse(
-        sessionStorage.getItem(HISTORY_KEY) || "[]",
-      );
-      const storedIndex = parseInt(sessionStorage.getItem(INDEX_KEY) || "0");
-
-      setCanGoBack(storedIndex > 0);
-      setCanGoForward(storedIndex < storedHistory.length - 1);
-    };
-
-    let isNavigatingProgrammatically = false;
-
-    const handleNavigation = () => {
-      const currentPath = router.state.location.pathname;
-      let storedHistory: string[] = JSON.parse(
-        sessionStorage.getItem(HISTORY_KEY) || "[]",
-      );
-      let storedIndex = parseInt(sessionStorage.getItem(INDEX_KEY) || "0");
-
-      if (isNavigatingProgrammatically) {
-        // Navigation was triggered by back/forward buttons, index already updated
-        isNavigatingProgrammatically = false;
-      } else {
-        // Check if this is a back/forward navigation by comparing with history
-        const previousPath = storedHistory[storedIndex - 1];
-        const nextPath = storedHistory[storedIndex + 1];
-
-        if (previousPath === currentPath) {
-          // User went back
-          storedIndex = Math.max(0, storedIndex - 1);
-        } else if (nextPath === currentPath) {
-          // User went forward
-          storedIndex = Math.min(storedHistory.length - 1, storedIndex + 1);
-        } else {
-          // New navigation - truncate forward history and add new entry
-          storedHistory = storedHistory.slice(0, storedIndex + 1);
-          storedHistory.push(currentPath);
-          storedIndex = storedHistory.length - 1;
-        }
-
-        sessionStorage.setItem(HISTORY_KEY, JSON.stringify(storedHistory));
-        sessionStorage.setItem(INDEX_KEY, storedIndex.toString());
-      }
-
-      updateNavigationState();
-    };
-
-    // Initial state
-    updateNavigationState();
-
-    // Listen for route changes
-    const unsubscribe = router.subscribe("onResolved", handleNavigation);
-
-    // Override the navigation methods to track programmatic navigation
-    const originalBack = router.history.back.bind(router.history);
-    const originalForward = router.history.forward.bind(router.history);
-
-    router.history.back = () => {
-      const storedIndex = parseInt(sessionStorage.getItem(INDEX_KEY) || "0");
-      if (storedIndex > 0) {
-        isNavigatingProgrammatically = true;
-        sessionStorage.setItem(INDEX_KEY, (storedIndex - 1).toString());
-        originalBack();
-      }
-    };
-
-    router.history.forward = () => {
-      const storedHistory = JSON.parse(
-        sessionStorage.getItem(HISTORY_KEY) || "[]",
-      );
-      const storedIndex = parseInt(sessionStorage.getItem(INDEX_KEY) || "0");
-      if (storedIndex < storedHistory.length - 1) {
-        isNavigatingProgrammatically = true;
-        sessionStorage.setItem(INDEX_KEY, (storedIndex + 1).toString());
-        originalForward();
-      }
-    };
-
-    return () => {
-      unsubscribe();
-      // Restore original methods
-      router.history.back = originalBack;
-      router.history.forward = originalForward;
-    };
-  }, [router]);
-
-  const handleGoBack = () => {
-    router.history.back();
-  };
-
-  const handleGoForward = () => {
-    router.history.forward();
-  };
 
   return (
     <>
@@ -142,36 +28,12 @@ export function SiteHeader({
         className="fixed left-0 top-0 z-50 h-[var(--titlebar-height)] w-full"
         style={dragRegion}
       >
-        <div
+        <SettingsNavigationControls
           className="absolute top-2.5 flex items-center gap-1.5"
+          interactiveStyle={noDragRegion}
+          showNavigation={!isMobile}
           style={{ ...noDragRegion, left: "var(--toolbar-left)" }}
-        >
-          <SidebarTrigger style={noDragRegion} />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleGoBack}
-            disabled={!canGoBack}
-            className="h-7 w-7 p-0"
-            style={noDragRegion}
-            title="Go back"
-            aria-label="Go back"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleGoForward}
-            disabled={!canGoForward}
-            className="h-7 w-7 p-0"
-            style={noDragRegion}
-            title="Go forward"
-            aria-label="Go forward"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        />
         {actions ? (
           <div
             className={`absolute top-2.5 flex items-center gap-1 ${isMacOS ? "right-2" : "right-[140px]"}`}

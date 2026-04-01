@@ -18,6 +18,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import {
@@ -26,12 +27,17 @@ import {
 } from "@/utils/feature-flags";
 import { CommandSearchButton } from "./command-search-button";
 import { CreateNoteButton } from "./create-note-button";
+import { SettingsNavigationControls } from "./settings-navigation-controls";
 import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
+
+const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const noDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function SettingsSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
   const { t } = useTranslation();
+  const { isMobile } = useSidebar();
   const sidebarCtaFlag = useFeatureFlag(SIDEBAR_CTA_FEATURE_FLAG);
 
   const sidebarCtaPayload = sidebarCtaFlag.enabled
@@ -80,9 +86,17 @@ export function SettingsSidebar({
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <div
-        className="h-[var(--titlebar-height)] shrink-0"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      />
+        className="relative h-[var(--titlebar-height)] shrink-0"
+        style={dragRegion}
+      >
+        {isMobile ? (
+          <SettingsNavigationControls
+            className="absolute top-2.5"
+            interactiveStyle={noDragRegion}
+            style={{ ...noDragRegion, left: "var(--toolbar-left)" }}
+          />
+        ) : null}
+      </div>
       <SidebarHeader className="py-0 -mb-1">
         <SidebarMenu>
           <SidebarMenuItem>

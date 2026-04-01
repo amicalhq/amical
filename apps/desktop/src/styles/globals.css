@@ -117,8 +117,7 @@ html.vibrancy [data-slot="sidebar-wrapper"] {
 }
 
 /* macOS vibrancy: use window tint for sidebar background (avoid double opacity) */
-html.vibrancy [data-slot="sidebar-inner"],
-html.vibrancy [data-slot="sidebar"][data-mobile="true"] {
+html.vibrancy [data-slot="sidebar-inner"] {
   background: transparent !important;
 }
 
