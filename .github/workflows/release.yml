@@ -17,24 +17,10 @@ on:
 jobs:
   build:
     name: Build ${{ matrix.os == 'macos' && 'macOS' || 'Windows' }} (${{ matrix.arch }})
-    if: |
-      github.event_name != 'push' ||
-      github.ref_type == 'tag' ||
-      github.ref_name != 'windows.sign.test' ||
-      matrix.os == 'windows'
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        include:
-          - os: macos
-            arch: arm64
-            runner: macos-latest
-          - os: macos
-            arch: x64
-            runner: macos-15-intel
-          - os: windows
-            arch: x64
-            runner: windows-2025
+        include: ${{ fromJSON((github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == 'windows.sign.test') && '[{"os":"windows","arch":"x64","runner":"windows-2025"}]' || '[{"os":"macos","arch":"arm64","runner":"macos-latest"},{"os":"macos","arch":"x64","runner":"macos-15-intel"},{"os":"windows","arch":"x64","runner":"windows-2025"}]') }}
 
     steps:
       - name: Checkout code
