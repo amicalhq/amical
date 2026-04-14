@@ -6,6 +6,7 @@ import split2 from "split2";
 import { v4 as uuid } from "uuid";
 import type { ZodTypeAny } from "zod";
 import { getNativeHelperName, getNativeHelperDir } from "../../utils/platform";
+import { extractHostnameFromBrowserUrl } from "../../utils/url";
 
 import { EventEmitter } from "events";
 import { createScopedLogger } from "../../main/logger";
@@ -109,6 +110,22 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
   setShortcuts: SetShortcutsResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
 };
+
+function normalizeAccessibilityContext(
+  context: AppContext | null,
+): AppContext | null {
+  if (!context?.windowInfo?.url) {
+    return context;
+  }
+
+  return {
+    ...context,
+    windowInfo: {
+      ...context.windowInfo,
+      url: extractHostnameFromBrowserUrl(context.windowInfo.url),
+    },
+  };
+}
 
 class NativeBridgeTimeoutError extends Error {
   constructor(
@@ -763,13 +780,15 @@ export class NativeBridge extends EventEmitter {
       const result = await this.call("getAccessibilityContext", {
         editableOnly: false,
       });
-      this.accessibilityContext = result.context;
+      this.accessibilityContext = normalizeAccessibilityContext(result.context);
       this.logger.debug("Accessibility context refreshed", {
-        hasApplication: !!result.context?.application?.name,
-        hasFocusedElement: !!result.context?.focusedElement?.role,
-        hasTextSelection: !!result.context?.textSelection?.selectedText,
-        extractionMethod: result.context?.textSelection?.extractionMethod,
-        metricsMs: result.context?.metrics?.totalTimeMs,
+        hasApplication: !!this.accessibilityContext?.application?.name,
+        hasFocusedElement: !!this.accessibilityContext?.focusedElement?.role,
+        hasTextSelection:
+          !!this.accessibilityContext?.textSelection?.selectedText,
+        extractionMethod:
+          this.accessibilityContext?.textSelection?.extractionMethod,
+        metricsMs: this.accessibilityContext?.metrics?.totalTimeMs,
       });
     } catch (error) {
       this.logger.error("Failed to refresh accessibility context", {

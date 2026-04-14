@@ -337,7 +337,7 @@ const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
   ],
   chat: [
     /web\.whatsapp\.com/,
-    /discord\.com\/channels/,
+    /discord\.com/,
     /teams\.microsoft\.com/,
     /slack\.com/,
     /web\.telegram\.org/,
