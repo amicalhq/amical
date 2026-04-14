@@ -196,7 +196,7 @@ jobs:
           }
 
           $targets = Get-ChildItem -Path $packageRoot -Recurse -File |
-            Where-Object { $_.Extension -in '.exe', '.dll', '.node' } |
+            Where-Object { $_.Extension -in '.exe', '.node' } |
             Where-Object { & $isPortableExecutable $_.FullName } |
             ForEach-Object { [System.IO.Path]::GetRelativePath($packageRoot, $_.FullName) }
 
