@@ -1,6 +1,6 @@
 {
   "name": "@amical/desktop",
-  "version": "1.1.1",
+  "version": "1.1.1-windows.sign.test",
   "description": "Amical Desktop app",
   "main": ".vite/build/main.js",
   "productName": "Amical",
@@ -63,6 +63,7 @@
     "@electron-forge/plugin-vite": "7.8.2",
     "@electron-forge/publisher-github": "7.8.2",
     "@electron/fuses": "^1.8.0",
+    "@electron/windows-sign": "1.2.2",
     "@rollup/plugin-commonjs": "^28.0.6",
     "@tailwindcss/vite": "^4.1.6",
     "@tanstack/react-router-devtools": "^1.131.41",

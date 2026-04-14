@@ -19,8 +19,11 @@ describe("classifyUpdaterError", () => {
   });
 
   it("keeps unrelated updater errors as generic", () => {
-    expect(classifyUpdaterError(new Error("Remote release File is empty or corrupted"), "darwin")).toBe(
-      "generic",
-    );
+    expect(
+      classifyUpdaterError(
+        new Error("Remote release File is empty or corrupted"),
+        "darwin",
+      ),
+    ).toBe("generic");
   });
 });

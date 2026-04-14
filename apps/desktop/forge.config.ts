@@ -1,4 +1,5 @@
 import "dotenv/config";
+import type { WindowsSignOptions } from "@electron/packager";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -43,6 +44,50 @@ export const EXTERNAL_DEPENDENCIES = [
   "@amical/whisper-wrapper",
   // Add any other native modules you need here
 ];
+
+const getWindowsSignConfig = (): WindowsSignOptions | undefined => {
+  const isEnabled =
+    process.platform === "win32" &&
+    process.env.WINDOWS_CODESIGNING_ENABLED === "true";
+
+  if (!isEnabled) {
+    return undefined;
+  }
+
+  const dlibPath = process.env.AZURE_CODE_SIGNING_DLIB;
+  const metadataPath = process.env.AZURE_METADATA_JSON;
+
+  if (!dlibPath || !metadataPath) {
+    throw new Error(
+      "Windows code signing is enabled, but AZURE_CODE_SIGNING_DLIB or AZURE_METADATA_JSON is missing.",
+    );
+  }
+
+  if (!existsSync(dlibPath)) {
+    throw new Error(`Windows code signing dlib not found at ${dlibPath}.`);
+  }
+
+  if (!existsSync(metadataPath)) {
+    throw new Error(
+      `Windows code signing metadata file not found at ${metadataPath}.`,
+    );
+  }
+
+  return {
+    automaticallySelectCertificate: false,
+    description: "Amical",
+    website: "https://amical.ai",
+    hashes: ["sha256"] as WindowsSignOptions["hashes"],
+    signToolPath: process.env.WINDOWS_SIGNTOOL_PATH,
+    signWithParams: ["/dlib", dlibPath, "/dmdf", metadataPath],
+    timestampServer: "http://timestamp.acs.microsoft.com",
+  };
+};
+
+const windowsSign = getWindowsSignConfig();
+// MakerSquirrel currently resolves a different @electron/windows-sign type entrypoint
+// than packagerConfig, so we cast once here to avoid a false-positive type mismatch.
+const squirrelWindowsSign = windowsSign as any;
 
 const config: ForgeConfig = {
   hooks: {
@@ -432,6 +477,11 @@ const config: ForgeConfig = {
         schemes: ["amical"],
       },
     ],
+    ...(windowsSign
+      ? {
+          windowsSign,
+        }
+      : {}),
     // Code signing configuration for macOS
     ...(process.env.SKIP_CODESIGNING === "true"
       ? {}
@@ -548,6 +598,11 @@ const config: ForgeConfig = {
     new MakerSquirrel({
       name: "Amical",
       setupIcon: "./assets/logo.ico",
+      ...(squirrelWindowsSign
+        ? {
+            windowsSign: squirrelWindowsSign,
+          }
+        : {}),
     }),
     new MakerZIP(
       {

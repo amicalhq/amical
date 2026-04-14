@@ -3,6 +3,8 @@ name: Release
 on:
   pull_request:
   push:
+    branches:
+      - "windows.sign.test"
     tags:
       - "v*"
   workflow_dispatch:
@@ -15,6 +17,11 @@ on:
 jobs:
   build:
     name: Build ${{ matrix.os == 'macos' && 'macOS' || 'Windows' }} (${{ matrix.arch }})
+    if: |
+      github.event_name != 'push' ||
+      github.ref_type == 'tag' ||
+      github.ref_name != 'windows.sign.test' ||
+      matrix.os == 'windows'
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -108,6 +115,66 @@ jobs:
         working-directory: apps/desktop
         run: pnpm download-node
 
+      - name: Install Artifact Signing client tools
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          winget install --exact --id Microsoft.Azure.ArtifactSigningClientTools --accept-package-agreements --accept-source-agreements
+
+      - name: Prepare Windows code signing
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object { [version](Split-Path -Leaf (Split-Path -Parent $_.DirectoryName)) } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            throw "Unable to locate signtool.exe in the Windows SDK."
+          }
+
+          $dlib = Get-ChildItem -Path $env:ProgramFiles, ${env:ProgramFiles(x86)} -Filter Azure.CodeSigning.Dlib.dll -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $dlib) {
+            throw "Unable to locate Azure.CodeSigning.Dlib.dll after installing the Artifact Signing client tools."
+          }
+
+          $signingDir = Join-Path $env:RUNNER_TEMP "artifact-signing"
+          New-Item -ItemType Directory -Force -Path $signingDir | Out-Null
+
+          $dlibCopy = Join-Path $signingDir "Azure.CodeSigning.Dlib.dll"
+          $metadataPath = Join-Path $signingDir "metadata.json"
+
+          Copy-Item $dlib $dlibCopy -Force
+
+          @"
+          {
+            "Endpoint": "${{ secrets.AZURE_CODESIGN_ENDPOINT }}",
+            "CodeSigningAccountName": "${{ secrets.AZURE_CODESIGN_ACCOUNT_NAME }}",
+            "CertificateProfileName": "${{ secrets.AZURE_CODESIGN_PROFILE_NAME }}",
+            "CorrelationId": "${{ secrets.AZURE_CODESIGN_CORRELATION_ID || github.run_id }}",
+            "ExcludeCredentials": [
+              "ManagedIdentityCredential",
+              "VisualStudioCredential",
+              "VisualStudioCodeCredential",
+              "AzureCliCredential",
+              "AzurePowerShellCredential",
+              "AzureDeveloperCliCredential",
+              "InteractiveBrowserCredential",
+              "SharedTokenCacheCredential",
+              "BrokerCredential",
+              "WorkloadIdentityCredential"
+            ]
+          }
+          "@ | Set-Content -Path $metadataPath -Encoding utf8
+
+          "WINDOWS_CODESIGNING_ENABLED=true" >> $env:GITHUB_ENV
+          "WINDOWS_SIGNTOOL_PATH=$signtool" >> $env:GITHUB_ENV
+          "AZURE_CODE_SIGNING_DLIB=$dlibCopy" >> $env:GITHUB_ENV
+          "AZURE_METADATA_JSON=$metadataPath" >> $env:GITHUB_ENV
+
       - name: Import Developer ID cert
         if: matrix.os == 'macos' && github.event_name != 'pull_request'
         uses: apple-actions/import-codesign-certs@v3
@@ -165,6 +232,9 @@ jobs:
         if: matrix.os == 'windows' && github.event_name != 'pull_request'
         working-directory: apps/desktop
         env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
@@ -243,7 +313,7 @@ jobs:
   release:
     name: Create Release
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
