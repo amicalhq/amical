@@ -371,9 +371,6 @@ importers:
       '@electron/fuses':
         specifier: ^1.8.0
         version: 1.8.0
-      '@electron/windows-sign':
-        specifier: 1.2.2
-        version: 1.2.2
       '@rollup/plugin-commonjs':
         specifier: ^28.0.6
         version: 28.0.6(rollup@4.47.1)
