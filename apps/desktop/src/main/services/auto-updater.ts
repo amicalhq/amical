@@ -12,11 +12,37 @@ export type UpdateAction = "none" | "silent" | "prompt" | "force";
 
 const VALID_ACTIONS = new Set<string>(["none", "silent", "prompt", "force"]);
 
+type UpdaterErrorClassification = "read_only_volume" | "generic";
+
 export interface UpdateMetadata {
   action: UpdateAction;
   version?: string;
   message?: string;
   releaseNotes?: string;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+export function classifyUpdaterError(
+  error: unknown,
+  platform: NodeJS.Platform = process.platform,
+): UpdaterErrorClassification {
+  const message = getErrorMessage(error).toLowerCase();
+
+  if (
+    platform === "darwin" &&
+    (message.includes("read-only volume") ||
+      message.includes("read only volume"))
+  ) {
+    return "read_only_volume";
+  }
+
+  return "generic";
 }
 
 export class AutoUpdaterService extends EventEmitter {
@@ -107,10 +133,22 @@ export class AutoUpdaterService extends EventEmitter {
   private registerEventHandlers(): void {
     autoUpdater.on("error", (error) => {
       this.isChecking = false;
-      logger.updater.error("Auto-updater error", { error: error.message });
+      const classification = classifyUpdaterError(error);
+      const message = getErrorMessage(error);
+
+      if (classification === "read_only_volume") {
+        logger.updater.warn("Auto-updater warning", {
+          error: message,
+          classification,
+        });
+        return;
+      }
+
+      logger.updater.error("Auto-updater error", { error: message });
       this.telemetryService?.captureException(error, {
         source: "auto_updater",
         channel: this.currentChannel,
+        classification,
       });
     });
 
