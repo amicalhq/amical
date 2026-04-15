@@ -11,6 +11,11 @@ func eventTapCallback(
     }
     let anInstance = Unmanaged<SwiftHelper>.fromOpaque(refcon).takeUnretainedValue()
 
+    // Skip events we synthesized (e.g., Cmd+V for paste) to prevent feedback loops
+    if event.getIntegerValueField(.eventSourceUserData) == SELF_GENERATED_EVENT_TAG {
+        return Unmanaged.passRetained(event)
+    }
+
     if type == .keyDown || type == .keyUp {
         let shouldConsume = handleKeyEvent(anInstance, type: type, event: event)
         return shouldConsume ? nil : Unmanaged.passRetained(event)

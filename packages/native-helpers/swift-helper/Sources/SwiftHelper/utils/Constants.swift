@@ -70,6 +70,14 @@ let EXTRACTION_TIMEOUT_MS: Double = 600.0
 /// Delay before restoring pasteboard after paste (seconds)
 let PASTE_RESTORE_DELAY_SECONDS: Double = 0.7
 
+// MARK: - Self-Generated Event Tag
+
+/// Sentinel value written to CGEvent.eventSourceUserData to tag events
+/// synthesized by this helper (e.g., Cmd+V for paste). The event tap
+/// checks this field and skips tagged events to prevent a feedback loop
+/// where simulated keystrokes re-trigger the shortcut that caused them.
+let SELF_GENERATED_EVENT_TAG: Int64 = 0x414D4943_414C5048  // "AMICALPH" in ASCII
+
 // MARK: - Virtual Key Codes (macOS)
 
 /// Virtual key code for 'V' key
