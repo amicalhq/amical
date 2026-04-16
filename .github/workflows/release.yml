@@ -175,8 +175,90 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
         run: |
-          echo "Building Windows x64 artifacts"
-          pnpm make:windows
+          echo "Packaging unsigned Windows x64 app"
+          pnpm package:windows
+
+      - name: Build Windows package signing catalog
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        id: windows_package_catalog
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\out\Amical-win32-${{ matrix.arch }}"
+          $catalogPath = Join-Path $packageRoot "artifact-signing-package-catalog.txt"
+
+          $isPortableExecutable = {
+            param([string]$Path)
+            try {
+              $stream = [System.IO.File]::OpenRead($Path)
+              try {
+                $buffer = New-Object byte[] 2
+                $read = $stream.Read($buffer, 0, 2)
+                return $read -eq 2 -and $buffer[0] -eq 0x4D -and $buffer[1] -eq 0x5A
+              } finally {
+                $stream.Dispose()
+              }
+            } catch {
+              return $false
+            }
+          }
+
+          $targets = Get-ChildItem -Path $packageRoot -Recurse -File |
+            Where-Object { $_.Extension -in '.exe', '.node' } |
+            Where-Object { & $isPortableExecutable $_.FullName } |
+            ForEach-Object { [System.IO.Path]::GetRelativePath($packageRoot, $_.FullName) }
+
+          if (-not $targets) {
+            throw "No signable Windows binaries found in $packageRoot"
+          }
+
+          $targets | Set-Content -Path $catalogPath -Encoding utf8
+
+          "catalog_path=$catalogPath" >> $env:GITHUB_OUTPUT
+
+      - name: Sign packaged Windows app
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        uses: azure/artifact-signing-action@v1
+        with:
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          endpoint: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_CODESIGN_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CODESIGN_PROFILE_NAME }}
+          correlation-id: ${{ secrets.AZURE_CODESIGN_CORRELATION_ID || github.run_id }}
+          files-catalog: ${{ steps.windows_package_catalog.outputs.catalog_path }}
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Amical
+          description-url: https://amical.ai
+
+      - name: Build Windows installer from signed package
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        working-directory: apps/desktop
+        run: |
+          echo "Making Windows installer from signed package"
+          pnpm exec electron-forge make --platform=win32 --arch=${{ matrix.arch }} --skip-package
+
+      - name: Sign Windows installer artifacts
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        uses: azure/artifact-signing-action@v1
+        with:
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          endpoint: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_CODESIGN_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CODESIGN_PROFILE_NAME }}
+          correlation-id: ${{ secrets.AZURE_CODESIGN_CORRELATION_ID || github.run_id }}
+          files-folder: ${{ github.workspace }}\apps\desktop\out\make\squirrel.windows\${{ matrix.arch }}
+          files-folder-filter: exe,msi
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Amical
+          description-url: https://amical.ai
 
       - name: Build artifacts (Windows PR)
         if: matrix.os == 'windows' && github.event_name == 'pull_request'
@@ -243,7 +325,7 @@ jobs:
   release:
     name: Create Release
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
