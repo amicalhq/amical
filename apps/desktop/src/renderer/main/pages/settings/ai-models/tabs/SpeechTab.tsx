@@ -22,9 +22,11 @@ import {
   Trash2,
   LogIn,
   Cloud,
+  KeyRound,
 } from "lucide-react";
 import { DynamicIcon } from "lucide-react/dynamic";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   TooltipContent,
   Tooltip,
@@ -128,6 +130,14 @@ export default function SpeechTab() {
     undefined,
   );
 
+  // OpenAI Whisper API key state
+  const [openAIApiKey, setOpenAIApiKey] = useState("");
+  const [openAIStatus, setOpenAIStatus] = useState<
+    "connected" | "disconnected"
+  >("disconnected");
+  const [openAIValidating, setOpenAIValidating] = useState(false);
+  const [openAIValidationError, setOpenAIValidationError] = useState("");
+
   // tRPC queries
   const availableModelsQuery = api.models.getAvailableModels.useQuery();
   const downloadedModelsQuery = api.models.getDownloadedModels.useQuery();
@@ -197,6 +207,89 @@ export default function SpeechTab() {
       toast.error(t("settings.aiModels.speech.toast.loginStartFailed"));
     },
   });
+
+  // OpenAI Whisper tRPC queries and mutations
+  const modelProvidersConfigQuery =
+    api.settings.getModelProvidersConfig.useQuery();
+
+  const validateOpenAIWhisperMutation =
+    api.models.validateOpenAIWhisperConnection.useMutation({
+      onSuccess: (result, variables) => {
+        setOpenAIValidating(false);
+        if (result.success) {
+          setOpenAIValidationError("");
+          // Save the config using the exact key that was validated
+          setOpenAIWhisperConfigMutation.mutate({
+            apiKey: variables.apiKey,
+          });
+          toast.success(t("settings.aiModels.openAIWhisper.toast.validated"));
+        } else {
+          setOpenAIValidationError(
+            result.error || t("settings.aiModels.openAIWhisper.toast.validationFailed"),
+          );
+          toast.error(result.error || t("settings.aiModels.openAIWhisper.toast.validationFailed"));
+        }
+      },
+      onError: (error) => {
+        setOpenAIValidating(false);
+        setOpenAIValidationError(error.message);
+        toast.error(t("settings.aiModels.openAIWhisper.toast.validationFailed"));
+      },
+    });
+
+  const setOpenAIWhisperConfigMutation =
+    api.settings.setOpenAIWhisperConfig.useMutation({
+      onSuccess: () => {
+        setOpenAIStatus("connected");
+        utils.settings.getModelProvidersConfig.invalidate();
+      },
+      onError: (error) => {
+        console.error("Failed to save OpenAI Whisper config:", error);
+        toast.error(t("settings.aiModels.openAIWhisper.toast.configSaveFailed"));
+      },
+    });
+
+  const removeOpenAIWhisperConfigMutation =
+    api.settings.removeOpenAIWhisperConfig.useMutation({
+      onSuccess: () => {
+        setOpenAIStatus("disconnected");
+        setOpenAIApiKey("");
+        setOpenAIValidationError("");
+        utils.settings.getModelProvidersConfig.invalidate();
+        utils.models.getSelectedModel.invalidate();
+        toast.success(t("settings.aiModels.openAIWhisper.toast.configRemoved"));
+      },
+      onError: (error) => {
+        console.error("Failed to remove OpenAI Whisper config:", error);
+        toast.error(t("settings.aiModels.openAIWhisper.toast.configRemoveFailed"));
+      },
+    });
+
+  // Sync OpenAI Whisper state from stored config
+  useEffect(() => {
+    const config = modelProvidersConfigQuery.data;
+    if (config?.openAIWhisper?.apiKey) {
+      // Don't copy the real key into React state — use a masked placeholder
+      setOpenAIApiKey("••••••••••••••••");
+      setOpenAIStatus("connected");
+    } else {
+      setOpenAIApiKey("");
+      setOpenAIStatus("disconnected");
+    }
+  }, [modelProvidersConfigQuery.data]);
+
+  const handleOpenAIConnect = () => {
+    const trimmedKey = openAIApiKey.trim();
+    if (!trimmedKey) return;
+
+    setOpenAIValidating(true);
+    setOpenAIValidationError("");
+    validateOpenAIWhisperMutation.mutate({ apiKey: trimmedKey });
+  };
+
+  const handleOpenAIRemove = () => {
+    removeOpenAIWhisperConfigMutation.mutate();
+  };
 
   // Initialize active downloads progress on load
   useEffect(() => {
@@ -354,6 +447,15 @@ export default function SpeechTab() {
     // Check if this is a cloud model
     const model = availableModels.find((m) => m.id === modelId);
     const isCloudModel = model?.provider === "Amical Cloud";
+    const isOpenAIModel = model?.provider === "OpenAI";
+
+    // If OpenAI model and not configured, show a toast hint
+    if (isOpenAIModel && openAIStatus !== "connected") {
+      toast.error(
+        t("settings.aiModels.openAIWhisper.configureFirst"),
+      );
+      return;
+    }
 
     // If cloud model and not authenticated, show login dialog
     if (isCloudModel && !isAuthenticated) {
@@ -412,6 +514,79 @@ export default function SpeechTab() {
             modelType="speech"
             title={t("settings.aiModels.defaultModels.speech")}
           />
+
+          {/* OpenAI Whisper API Key Configuration */}
+          <div className="border rounded-md p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4" />
+                <Label className="font-semibold">{t("settings.aiModels.openAIWhisper.title")}</Label>
+              </div>
+              <Badge
+                variant="secondary"
+                className={`text-xs flex items-center gap-1 ${
+                  openAIStatus === "connected"
+                    ? "text-green-500 border-green-500"
+                    : "text-muted-foreground border-muted-foreground"
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full inline-block mr-1 ${
+                    openAIStatus === "connected"
+                      ? "bg-green-500"
+                      : "bg-muted-foreground"
+                  }`}
+                />
+                {openAIStatus === "connected"
+                  ? t("settings.aiModels.openAIWhisper.statusConnected")
+                  : t("settings.aiModels.openAIWhisper.statusNotConfigured")}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t("settings.aiModels.openAIWhisper.description")}
+            </p>
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              <Input
+                type="password"
+                placeholder={t("settings.aiModels.openAIWhisper.placeholder")}
+                aria-label={t("settings.aiModels.openAIWhisper.title")}
+                value={openAIApiKey}
+                onChange={(e) => setOpenAIApiKey(e.target.value)}
+                className="max-w-sm"
+                disabled={openAIStatus === "connected"}
+              />
+              {openAIStatus === "disconnected" ? (
+                <Button
+                  variant="outline"
+                  onClick={handleOpenAIConnect}
+                  disabled={!openAIApiKey.trim() || openAIValidating}
+                >
+                  {openAIValidating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t("settings.aiModels.openAIWhisper.validating")}
+                    </>
+                  ) : (
+                    t("settings.aiModels.openAIWhisper.connect")
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={handleOpenAIRemove}
+                  className="text-destructive hover:text-destructive"
+                >
+                  {t("settings.aiModels.openAIWhisper.remove")}
+                </Button>
+              )}
+            </div>
+            {openAIValidationError && (
+              <p className="text-xs text-destructive">
+                {openAIValidationError}
+              </p>
+            )}
+          </div>
+
           <div>
             <Label className="text-lg font-semibold mb-2 block">
               {t("settings.aiModels.speech.availableModels")}
@@ -447,11 +622,16 @@ export default function SpeechTab() {
                         const isDownloading =
                           progress?.status === "downloading";
                         const isCloudModel = model.provider === "Amical Cloud";
+                        const isOpenAIModel = model.provider === "OpenAI";
 
-                        // Cloud models can be selected if authenticated, local models need to be downloaded
+                        // Cloud models can be selected if authenticated,
+                        // OpenAI models can be selected if API key is configured,
+                        // local models need to be downloaded
                         const canSelect = isCloudModel
                           ? (isAuthenticated ?? false)
-                          : isDownloaded && isTranscriptionAvailable;
+                          : isOpenAIModel
+                            ? openAIStatus === "connected"
+                            : isDownloaded && isTranscriptionAvailable;
 
                         return (
                           <TableRow
@@ -547,6 +727,15 @@ export default function SpeechTab() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col items-center space-y-1">
+                                {/* OpenAI models show key icon */}
+                                {isOpenAIModel && (
+                                  <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
+                                    <KeyRound
+                                      className={`w-4 h-4 ${openAIStatus === "connected" ? "text-green-500" : "text-muted-foreground"}`}
+                                    />
+                                  </div>
+                                )}
+
                                 {/* Cloud models show cloud icon or login button */}
                                 {isCloudModel && (
                                   <>
@@ -570,6 +759,7 @@ export default function SpeechTab() {
 
                                 {/* Local models show download/delete buttons */}
                                 {!isCloudModel &&
+                                  !isOpenAIModel &&
                                   !isDownloaded &&
                                   !isDownloading && (
                                     <button
@@ -586,6 +776,7 @@ export default function SpeechTab() {
                                   )}
 
                                 {!isCloudModel &&
+                                  !isOpenAIModel &&
                                   !isDownloaded &&
                                   isDownloading && (
                                     <div className="relative">
@@ -638,7 +829,7 @@ export default function SpeechTab() {
                                     </div>
                                   )}
 
-                                {!isCloudModel && isDownloaded && (
+                                {!isCloudModel && !isOpenAIModel && isDownloaded && (
                                   <button
                                     type="button"
                                     onClick={(e) =>

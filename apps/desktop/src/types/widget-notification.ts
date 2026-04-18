@@ -215,6 +215,24 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  [ErrorCodes.CLOUD_TRANSCRIPTION_FAILED]: {
+    title: {
+      key: "widget.notifications.errorCode.cloudTranscriptionFailed.title",
+    },
+    description: {
+      key: "widget.notifications.errorCode.cloudTranscriptionFailed.description",
+    },
+    subDescription: { key: "widget.notifications.recordingSaved" },
+    primaryAction: {
+      label: { key: "widget.notifications.action.viewHistory" },
+      navigateTo: "/history",
+    },
+    secondaryAction: {
+      label: { key: "widget.notifications.action.support" },
+      icon: "discord",
+      externalUrl: DISCORD_SUPPORT_URL,
+    },
+  },
 };
 
 export const WIDGET_NOTIFICATION_CONFIG: Record<

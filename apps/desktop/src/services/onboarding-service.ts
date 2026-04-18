@@ -29,9 +29,9 @@ type OnboardingStateDb = {
   skippedScreens?: string[];
   featureInterests?: string[];
   discoverySource?: string;
-  selectedModelType?: "cloud" | "local";
+  selectedModelType?: "cloud" | "local" | "openai-whisper";
   modelRecommendation?: {
-    suggested: "cloud" | "local";
+    suggested: "cloud" | "local" | "openai-whisper";
     reason: string;
     followed: boolean;
   };
@@ -148,7 +148,8 @@ export class OnboardingService extends EventEmitter {
       if (state.selectedModelType !== undefined) {
         stateForDb.selectedModelType = state.selectedModelType as
           | "cloud"
-          | "local";
+          | "local"
+          | "openai-whisper";
       }
       if (state.completedVersion !== undefined) {
         stateForDb.completedVersion = state.completedVersion;
@@ -163,7 +164,7 @@ export class OnboardingService extends EventEmitter {
       }
       if (state.modelRecommendation !== undefined) {
         stateForDb.modelRecommendation = {
-          suggested: state.modelRecommendation.suggested as "cloud" | "local",
+          suggested: state.modelRecommendation.suggested as "cloud" | "local" | "openai-whisper",
           reason: state.modelRecommendation.reason,
           followed: state.modelRecommendation.followed,
         };
@@ -231,6 +232,9 @@ export class OnboardingService extends EventEmitter {
         if (preferences.selectedModelType === "cloud") {
           await this.modelService.setSelectedModel("amical-cloud");
           logger.main.info("Set default speech model to amical-cloud");
+        } else if (preferences.selectedModelType === "openai-whisper") {
+          await this.modelService.setSelectedModel("openai-whisper");
+          logger.main.info("Set default speech model to openai-whisper");
         } else if (preferences.selectedModelType === "local") {
           // Keep existing selection if any, otherwise use first downloaded model
           const currentModel = await this.modelService.getSelectedModel();
@@ -680,7 +684,36 @@ export class OnboardingService extends EventEmitter {
     try {
       logger.main.info("Completing onboarding flow");
 
-      // Save the final state
+      // Ensure the selected model is persisted before saving completion state.
+      // savePreferences (which also calls setSelectedModel) runs as fire-and-forget
+      // from the renderer, so it may not have completed yet. We must set the model
+      // before emitting "completed" (which triggers app.relaunch).
+      if (finalState.selectedModelType === "cloud") {
+        await this.modelService.setSelectedModel("amical-cloud");
+        logger.main.info(
+          "Set default speech model to amical-cloud during completion",
+        );
+      } else if (finalState.selectedModelType === "openai-whisper") {
+        await this.modelService.setSelectedModel("openai-whisper");
+        logger.main.info(
+          "Set default speech model to openai-whisper during completion",
+        );
+      } else if (finalState.selectedModelType === "local") {
+        const currentModel = await this.modelService.getSelectedModel();
+        if (!currentModel) {
+          const downloadedModels =
+            await this.modelService.getDownloadedModels();
+          const downloadedIds = Object.keys(downloadedModels);
+          if (downloadedIds.length > 0) {
+            await this.modelService.setSelectedModel(downloadedIds[0]);
+            logger.main.info(
+              `Set default speech model to ${downloadedIds[0]} during completion`,
+            );
+          }
+        }
+      }
+
+      // Save the final state after model is set
       await this.completeOnboarding(finalState);
 
       this.isOnboardingInProgress = false;

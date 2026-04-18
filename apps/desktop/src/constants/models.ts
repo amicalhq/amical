@@ -149,6 +149,37 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     providerIcon: "/assets/icon_logo.svg",
   },
   {
+    id: "openai-whisper",
+    name: "OpenAI Whisper",
+    type: "whisper",
+    description: "Cloud transcription using your own OpenAI API key.",
+    checksum: "",
+    filename: "",
+    downloadUrl: "",
+    size: 0,
+    sizeFormatted: "Cloud",
+    modelSize: "Cloud",
+    features: [
+      {
+        icon: "key-round",
+        tooltip: "Bring your own API key",
+      },
+      {
+        icon: "bolt",
+        tooltip: "Fast cloud transcription",
+      },
+      {
+        icon: "languages",
+        tooltip: "Multilingual support",
+      },
+    ],
+    speed: 4.0,
+    accuracy: 4.5,
+    setup: "cloud",
+    provider: "OpenAI",
+    providerIcon: "/icons/models/openai_dark.svg",
+  },
+  {
     id: "whisper-tiny",
     name: "Whisper Tiny",
     type: "whisper",

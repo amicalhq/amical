@@ -44,10 +44,15 @@ const OpenAICompatibleConfigSchema = z.object({
   baseURL: z.string().url(),
 });
 
+const OpenAIWhisperConfigSchema = z.object({
+  apiKey: z.string().min(1),
+});
+
 const ModelProvidersConfigSchema = z.object({
   openRouter: OpenRouterConfigSchema.optional(),
   ollama: OllamaConfigSchema.optional(),
   openAICompatible: OpenAICompatibleConfigSchema.optional(),
+  openAIWhisper: OpenAIWhisperConfigSchema.optional(),
 });
 
 const DictationSettingsSchema = z.object({
@@ -571,6 +576,58 @@ export const settingsRouter = createRouter({
         throw error;
       }
     }),
+
+  // Set OpenAI Whisper configuration
+  setOpenAIWhisperConfig: procedure
+    .input(OpenAIWhisperConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setOpenAIWhisperConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("OpenAI Whisper configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting OpenAI Whisper config:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Remove OpenAI Whisper configuration
+  removeOpenAIWhisperConfig: procedure.mutation(async ({ ctx }) => {
+    try {
+      const settingsService =
+        ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      await settingsService.removeOpenAIWhisperConfig();
+
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.info("OpenAI Whisper configuration removed");
+      }
+
+      return true;
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error removing OpenAI Whisper config:", error);
+      }
+      throw error;
+    }
+  }),
 
   // Get data path
   getDataPath: procedure.query(() => {

@@ -326,6 +326,10 @@
         "localTranscriptionFailed": {
           "title": "本機轉錄失敗",
           "description": "Whisper 音訊處理失敗"
+        },
+        "cloudTranscriptionFailed": {
+          "title": "雲端轉寫失敗",
+          "description": "雲端轉寫請求失敗"
         }
       }
     }

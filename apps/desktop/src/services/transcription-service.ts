@@ -8,6 +8,7 @@ import {
 import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
+import { OpenAIWhisperProvider } from "../pipeline/providers/transcription/openai-whisper-provider";
 import { createRemoteFormattingProvider } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
 import type { RemoteFormattingProviderType } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
 import { ModelService } from "../services/model-service";
@@ -46,6 +47,7 @@ import { countWords } from "../utils/dictation-stats";
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private cloudProvider: AmicalCloudProvider;
+  private openAIWhisperProvider: OpenAIWhisperProvider;
   private currentProvider: TranscriptionProvider | null = null;
   private streamingSessions = new Map<string, StreamingSession>();
   private vadService: VADService | null;
@@ -68,6 +70,7 @@ export class TranscriptionService {
   ) {
     this.whisperProvider = new WhisperProvider(modelService);
     this.cloudProvider = new AmicalCloudProvider();
+    this.openAIWhisperProvider = new OpenAIWhisperProvider(settingsService);
     this.vadService = vadService;
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
@@ -98,6 +101,12 @@ export class TranscriptionService {
       return this.cloudProvider;
     }
 
+    // Use OpenAI Whisper provider
+    if (model?.provider === "OpenAI") {
+      this.currentProvider = this.openAIWhisperProvider;
+      return this.openAIWhisperProvider;
+    }
+
     // Default to whisper for all other models
     this.currentProvider = this.whisperProvider;
     return this.whisperProvider;
@@ -109,7 +118,14 @@ export class TranscriptionService {
     const model = selectedModelId
       ? AVAILABLE_MODELS.find((m) => m.id === selectedModelId)
       : null;
-    const isCloudModel = model?.provider === "Amical Cloud";
+    // Also check if OpenAI Whisper is configured
+    const openAIConfig =
+      await this.settingsService.getOpenAIWhisperConfig();
+    const isOpenAIWithKey =
+      model?.provider === "OpenAI" && !!openAIConfig?.apiKey;
+    const isCloudModel =
+      model?.provider === "Amical Cloud" || isOpenAIWithKey;
+    const hasCloudOption = isCloudModel || !!openAIConfig?.apiKey;
 
     // Only preload for local models
     if (!isCloudModel) {
@@ -123,28 +139,39 @@ export class TranscriptionService {
         // Check if models are available for preloading
         const hasModels = await this.isModelAvailable();
         if (hasModels) {
-          logger.transcription.info("Preloading Whisper model...");
-          await this.preloadWhisperModel();
-          this.modelWasPreloaded = true;
-          logger.transcription.info("Whisper model preloaded successfully");
+          try {
+            logger.transcription.info("Preloading Whisper model...");
+            await this.preloadWhisperModel();
+            this.modelWasPreloaded = true;
+            logger.transcription.info("Whisper model preloaded successfully");
+          } catch (preloadError) {
+            logger.transcription.error(
+              "Failed to preload Whisper model, continuing without local model:",
+              preloadError,
+            );
+            // Don't throw - cloud providers can still work without local model
+          }
         } else {
           logger.transcription.info(
             "Whisper model preloading skipped - no models available",
           );
-          setTimeout(async () => {
-            const onboardingCheck =
-              await this.onboardingService?.checkNeedsOnboarding();
-            if (!onboardingCheck?.needed) {
-              dialog.showMessageBox({
-                type: "warning",
-                title: "No Transcription Models",
-                message: "No transcription models are available.",
-                detail:
-                  "To use voice transcription, please download a model from Speech Models or use a cloud model.",
-                buttons: ["OK"],
-              });
-            }
-          }, 2000); // Delay to ensure windows are ready
+          // Only show the warning if there's no cloud option available either
+          if (!hasCloudOption) {
+            setTimeout(async () => {
+              const onboardingCheck =
+                await this.onboardingService?.checkNeedsOnboarding();
+              if (!onboardingCheck?.needed) {
+                dialog.showMessageBox({
+                  type: "warning",
+                  title: "No Transcription Models",
+                  message: "No transcription models are available.",
+                  detail:
+                    "To use voice transcription, please download a model from Speech Models or use a cloud model.",
+                  buttons: ["OK"],
+                });
+              }
+            }, 2000); // Delay to ensure windows are ready
+          }
         }
       } else {
         logger.transcription.info("Whisper model preloading disabled");
@@ -183,6 +210,13 @@ export class TranscriptionService {
         const model = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
         if (model?.provider === "Amical Cloud") {
           return true;
+        }
+        if (model?.provider === "OpenAI") {
+          const config =
+            await this.settingsService.getOpenAIWhisperConfig();
+          if (config?.apiKey) {
+            return true;
+          }
         }
       }
 

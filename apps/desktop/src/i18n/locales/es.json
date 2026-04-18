@@ -326,6 +326,10 @@
         "localTranscriptionFailed": {
           "title": "La transcripción local falló",
           "description": "El procesamiento de audio de Whisper falló"
+        },
+        "cloudTranscriptionFailed": {
+          "title": "Error de transcripción en la nube",
+          "description": "La solicitud de transcripción en la nube falló"
         }
       }
     }

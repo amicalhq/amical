@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { Loader2, Download, AlertCircle, Check } from "lucide-react";
 import { api } from "@/trpc/react";
 import { ModelType } from "../../../../types/onboarding";
@@ -45,6 +46,8 @@ export function ModelSetupModal({
   const [modelAlreadyInstalled, setModelAlreadyInstalled] = useState(false);
   const [installedModelName, setInstalledModelName] = useState<string>("");
   const [downloadComplete, setDownloadComplete] = useState(false);
+  const [openAIApiKey, setOpenAIApiKey] = useState("");
+  const [openAIValidated, setOpenAIValidated] = useState(false);
 
   // Get recommended local model based on hardware
   const { data: recommendedModelId = "whisper-base" } =
@@ -65,6 +68,12 @@ export function ModelSetupModal({
     },
   });
   const downloadModelMutation = api.models.downloadModel.useMutation();
+
+  // OpenAI Whisper mutations
+  const validateOpenAIWhisperMutation =
+    api.models.validateOpenAIWhisperConnection.useMutation();
+  const setOpenAIWhisperConfigMutation =
+    api.settings.setOpenAIWhisperConfig.useMutation();
 
   // Subscribe to auth state changes for Cloud model OAuth completion
   api.auth.onAuthStateChange.useSubscription(undefined, {
@@ -139,6 +148,37 @@ export function ModelSetupModal({
     }
   };
 
+  // Handle OpenAI Whisper API key validation and save
+  const handleOpenAIConnect = async () => {
+    const trimmedKey = openAIApiKey.trim();
+    if (!trimmedKey) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await validateOpenAIWhisperMutation.mutateAsync({
+        apiKey: trimmedKey,
+      });
+
+      if (result.success) {
+        await setOpenAIWhisperConfigMutation.mutateAsync({
+          apiKey: trimmedKey,
+        });
+        setOpenAIValidated(true);
+        setIsLoading(false);
+        toast.success(t("onboarding.modelSetup.openai.toast.validated"));
+      } else {
+        setError(result.error || t("onboarding.modelSetup.openai.error.validationFailed"));
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error("OpenAI validation error:", err);
+      setError(t("onboarding.modelSetup.openai.error.validationFailed"));
+      setIsLoading(false);
+    }
+  };
+
   // Auto-start download for local models or check if already installed
   useEffect(() => {
     if (isOpen && modelType === ModelType.Local && downloadedModels) {
@@ -183,6 +223,77 @@ export function ModelSetupModal({
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t("onboarding.modelSetup.actions.signIn")}
             </Button>
+          </DialogFooter>
+        </>
+      );
+    }
+
+    if (modelType === ModelType.OpenAIWhisper) {
+      return (
+        <>
+          <DialogHeader>
+            <DialogTitle>
+              {t("onboarding.modelSetup.openai.title")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("onboarding.modelSetup.openai.description")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {openAIValidated ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="rounded-full bg-green-500/10 p-3">
+                  <Check className="h-6 w-6 text-green-500" />
+                </div>
+                <p className="font-medium">
+                  {t("onboarding.modelSetup.openai.connected")}
+                </p>
+              </div>
+            ) : (
+              <>
+                <Input
+                  type="password"
+                  placeholder={t("onboarding.modelSetup.openai.placeholder")}
+                  aria-label="OpenAI API key"
+                  value={openAIApiKey}
+                  onChange={(e) => setOpenAIApiKey(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && openAIApiKey.trim()) {
+                      handleOpenAIConnect();
+                    }
+                  }}
+                  disabled={isLoading}
+                />
+                {error && (
+                  <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="space-x-2">
+            <Button variant="outline" onClick={() => onClose(false)}>
+              {t("onboarding.modelSetup.actions.cancel")}
+            </Button>
+            {openAIValidated ? (
+              <Button onClick={onContinue}>
+                {t("onboarding.navigation.continue")}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleOpenAIConnect}
+                disabled={!openAIApiKey.trim() || isLoading}
+              >
+                {isLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {t("onboarding.modelSetup.openai.connect")}
+              </Button>
+            )}
           </DialogFooter>
         </>
       );
