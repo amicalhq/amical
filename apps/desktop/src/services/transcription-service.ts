@@ -66,7 +66,7 @@ export class TranscriptionService {
     private nativeBridge: NativeBridge | null,
     private onboardingService: OnboardingService | null,
   ) {
-    this.whisperProvider = new WhisperProvider(modelService);
+    this.whisperProvider = new WhisperProvider(modelService, settingsService);
     this.cloudProvider = new AmicalCloudProvider();
     this.vadService = vadService;
     this.settingsService = settingsService;

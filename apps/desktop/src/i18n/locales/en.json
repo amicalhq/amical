@@ -356,6 +356,10 @@
         "title": "AI Models",
         "description": "Configure AI models and providers"
       },
+      "hardware": {
+        "title": "Hardware",
+        "description": "Choose which CPU or GPU runs local models"
+      },
       "history": {
         "title": "History",
         "description": "View and manage dictation history"
@@ -439,6 +443,29 @@
       "theme": {
         "label": "Theme",
         "description": "Choose your preferred color scheme"
+      }
+    },
+    "hardware": {
+      "title": "Hardware",
+      "description": "Select which device runs local speech models (e.g. Whisper). Changes take effect on the next transcription.",
+      "computeDevice": {
+        "label": "Compute device",
+        "description": "Auto lets Amical pick the best available backend for your machine. Choose CPU to disable GPU acceleration, or pick a specific GPU to force it.",
+        "options": {
+          "auto": "Auto (recommended)",
+          "cpu": "CPU only"
+        }
+      },
+      "detected": {
+        "title": "Detected hardware",
+        "refresh": "Refresh",
+        "emptyGpus": "No GPUs detected on this system.",
+        "backends": "Available backends",
+        "dedicated": "Dedicated",
+        "integrated": "Integrated"
+      },
+      "warnings": {
+        "noGpuBackend": "This build of Amical does not ship a GPU-accelerated Whisper binary. The selected GPU will be used only if a matching backend (CUDA / Vulkan / Metal) is available at runtime; otherwise transcription will fall back to CPU."
       }
     },
     "advanced": {

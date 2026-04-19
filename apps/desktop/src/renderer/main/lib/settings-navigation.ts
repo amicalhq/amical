@@ -8,6 +8,7 @@ import {
   IconKeyboard,
   IconAdjustments,
   IconNotes,
+  IconCpu,
   type Icon,
 } from "@tabler/icons-react";
 
@@ -60,6 +61,13 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/ai-models",
     descriptionKey: "settings.nav.aiModels.description",
     icon: IconBrain,
+    type: "settings",
+  },
+  {
+    titleKey: "settings.nav.hardware.title",
+    url: "/settings/hardware",
+    descriptionKey: "settings.nav.hardware.description",
+    icon: IconCpu,
     type: "settings",
   },
   {

@@ -33,6 +33,11 @@
 - [🤗 Contributing](#-contributing)
 - [🎗 License](#-license)
 
+See also [docs/hardware-selection.md](docs/hardware-selection.md) for the
+new Settings → Hardware tab (CPU / GPU selector) and
+[docs/building-whisper-cuda-windows.md](docs/building-whisper-cuda-windows.md)
+for building the CUDA whisper binary on Windows.
+
 ## ⬇️ Download
 
 <p>

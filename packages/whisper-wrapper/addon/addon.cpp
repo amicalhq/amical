@@ -266,9 +266,19 @@ Napi::Value init_model(const Napi::CallbackInfo& info) {
     flash_attn = options.Get("flash_attn").As<Napi::Boolean>();
   }
 
+  int gpu_device = 0;
+  bool gpu_device_set = false;
+  if (options.Has("gpu_device")) {
+    gpu_device = options.Get("gpu_device").As<Napi::Number>().Int32Value();
+    gpu_device_set = true;
+  }
+
   whisper_context_params cparams = whisper_context_default_params();
   cparams.use_gpu = use_gpu;
   cparams.flash_attn = flash_attn;
+  if (gpu_device_set) {
+    cparams.gpu_device = gpu_device;
+  }
 
   whisper_context* ctx = whisper_init_from_file_with_params(model.c_str(), cparams);
   if (ctx == nullptr) {
