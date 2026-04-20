@@ -177,6 +177,7 @@ export interface AppSettingsData {
     launchAtLogin?: boolean;
     minimizeToTray?: boolean;
     showWidgetWhileInactive?: boolean;
+    showWidgetWhileActive?: boolean;
     showInDock?: boolean;
     muteSystemAudio?: boolean;
     muteDictationSounds?: boolean;

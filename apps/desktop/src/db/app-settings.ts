@@ -77,6 +77,7 @@ const defaultSettings: AppSettingsData = {
   preferences: {
     launchAtLogin: true,
     showWidgetWhileInactive: true,
+    showWidgetWhileActive: true,
     showInDock: true,
     muteSystemAudio: true,
     muteDictationSounds: false,
