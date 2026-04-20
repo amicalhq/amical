@@ -449,7 +449,8 @@
         "description": "Automático deja que Amical elija el mejor backend disponible. Elige CPU para desactivar la aceleración por GPU, o selecciona una GPU concreta para forzarla.",
         "options": {
           "auto": "Automático (recomendado)",
-          "cpu": "Solo CPU"
+          "cpu": "Solo CPU",
+          "unavailable": "GPU #{{index}} (no detectada)"
         }
       },
       "detected": {

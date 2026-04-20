@@ -39,9 +39,11 @@ supported:
     `setComputeSettings` + a `compute-changed` event.
   - `db/schema.ts` adds a `compute` section to `AppSettingsData`.
   - `TranscriptionService` passes `SettingsService` to `WhisperProvider`,
-    which now reads compute settings, forwards them to the worker fork on
-    every `initializeModel` call, and disposes its worker when settings
-    change.
+    which now reads compute settings and forwards them to the worker fork
+    on every `initializeModel` call. `TranscriptionService` listens for
+    `compute-changed` and disposes the provider (under `modelLoadMutex` +
+    `transcriptionMutex`) so the next call rebuilds the worker with the
+    new backend.
 
 ## Build-script fixes (shipped as part of this branch)
 
@@ -58,7 +60,7 @@ anyone trying to compile the CUDA binary on Windows / CUDA 13:
 
 ## Files touched
 
-```
+```text
 packages/whisper-wrapper/addon/addon.cpp
 packages/whisper-wrapper/addon/CMakeLists.txt
 packages/whisper-wrapper/bin/build-addon.js

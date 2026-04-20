@@ -128,6 +128,14 @@ export function HardwareSection() {
             <SelectItem value="cpu">
               {t("settings.hardware.computeDevice.options.cpu")}
             </SelectItem>
+            {isGpuValue(selection) &&
+              !gpus.some((gpu) => `gpu:${gpu.index}` === selection) && (
+                <SelectItem value={selection}>
+                  {t("settings.hardware.computeDevice.options.unavailable", {
+                    index: selection.slice("gpu:".length),
+                  })}
+                </SelectItem>
+              )}
             {gpus.map((gpu) => {
               const vram = formatVram(gpu.vramMB);
               const label = vram ? `${gpu.model} · ${vram}` : gpu.model;
