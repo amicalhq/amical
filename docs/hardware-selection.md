@@ -1,7 +1,8 @@
 # Hardware selection for local models
 
-Amical can run Whisper locally on your CPU or on a GPU. Settings → **Hardware**
-now lets you choose exactly where the model runs.
+Amical can run Whisper locally on your CPU or on a GPU. Settings →
+**Advanced** now includes a Hardware section that lets you choose exactly
+where the model runs.
 
 ## Available modes
 

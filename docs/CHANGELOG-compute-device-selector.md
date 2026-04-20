@@ -2,8 +2,9 @@
 
 ## Summary
 
-Adds a new Settings → **Hardware** tab that lets users pick which CPU or GPU
-runs local Whisper models. Three modes are supported:
+Adds a new **Hardware** section inside Settings → **Advanced** that lets
+users pick which CPU or GPU runs local Whisper models. Three modes are
+supported:
 
 - **Auto** — existing behaviour; loader picks the first usable native
   backend (Metal → OpenBLAS → CUDA → Vulkan → platform default → CPU
@@ -17,8 +18,8 @@ runs local Whisper models. Three modes are supported:
 
 - New tRPC endpoints: `settings.getComputeSettings`,
   `settings.setComputeSettings`, `hardware.getSnapshot`.
-- New route and sidebar entry `/settings/hardware` with matching `en` and
-  `es` translations.
+- New Hardware section rendered inside `/settings/advanced`, with matching
+  `en` and `es` translations (strings live under `settings.hardware.*`).
 - Tooltips and warning when a user picks a GPU in a build that does not
   ship a GPU-accelerated binary.
 
@@ -75,8 +76,8 @@ apps/desktop/src/trpc/routers/hardware.ts                         (new)
 apps/desktop/src/trpc/routers/settings.ts
 apps/desktop/src/renderer/main/lib/settings-navigation.ts
 apps/desktop/src/renderer/main/routes/settings/route.tsx
-apps/desktop/src/renderer/main/routes/settings/hardware.tsx       (new)
-apps/desktop/src/renderer/main/pages/settings/hardware/index.tsx  (new)
+apps/desktop/src/renderer/main/pages/settings/advanced/index.tsx
+apps/desktop/src/renderer/main/pages/settings/advanced/hardware-section.tsx (new)
 apps/desktop/src/i18n/locales/{en,es}.json
 docs/hardware-selection.md                                        (new)
 docs/building-whisper-cuda-windows.md                             (new)

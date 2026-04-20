@@ -356,10 +356,6 @@
         "title": "Modelos de IA",
         "description": "Configura modelos y proveedores de IA"
       },
-      "hardware": {
-        "title": "Hardware",
-        "description": "Elige qué CPU o GPU ejecuta los modelos locales"
-      },
       "history": {
         "title": "Historial",
         "description": "Consulta y administra el historial de transcripciones"

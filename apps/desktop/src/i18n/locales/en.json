@@ -356,10 +356,6 @@
         "title": "AI Models",
         "description": "Configure AI models and providers"
       },
-      "hardware": {
-        "title": "Hardware",
-        "description": "Choose which CPU or GPU runs local models"
-      },
       "history": {
         "title": "History",
         "description": "View and manage dictation history"

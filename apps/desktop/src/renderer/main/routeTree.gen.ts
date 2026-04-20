@@ -17,7 +17,6 @@ import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcu
 import { Route as SettingsPreferencesRouteImport } from './routes/settings/preferences'
 import { Route as SettingsNotesRouteImport } from './routes/settings/notes'
 import { Route as SettingsHistoryRouteImport } from './routes/settings/history'
-import { Route as SettingsHardwareRouteImport } from './routes/settings/hardware'
 import { Route as SettingsDictationRouteImport } from './routes/settings/dictation'
 import { Route as SettingsAiModelsRouteImport } from './routes/settings/ai-models'
 import { Route as SettingsAdvancedRouteImport } from './routes/settings/advanced'
@@ -65,11 +64,6 @@ const SettingsHistoryRoute = SettingsHistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
-const SettingsHardwareRoute = SettingsHardwareRouteImport.update({
-  id: '/hardware',
-  path: '/hardware',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
 const SettingsDictationRoute = SettingsDictationRouteImport.update({
   id: '/dictation',
   path: '/dictation',
@@ -108,7 +102,6 @@ export interface FileRoutesByFullPath {
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/ai-models': typeof SettingsAiModelsRoute
   '/settings/dictation': typeof SettingsDictationRoute
-  '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/history': typeof SettingsHistoryRoute
   '/settings/notes': typeof SettingsNotesRouteWithChildren
   '/settings/preferences': typeof SettingsPreferencesRoute
@@ -124,7 +117,6 @@ export interface FileRoutesByTo {
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/ai-models': typeof SettingsAiModelsRoute
   '/settings/dictation': typeof SettingsDictationRoute
-  '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/history': typeof SettingsHistoryRoute
   '/settings/preferences': typeof SettingsPreferencesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
@@ -141,7 +133,6 @@ export interface FileRoutesById {
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/ai-models': typeof SettingsAiModelsRoute
   '/settings/dictation': typeof SettingsDictationRoute
-  '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/history': typeof SettingsHistoryRoute
   '/settings/notes': typeof SettingsNotesRouteWithChildren
   '/settings/preferences': typeof SettingsPreferencesRoute
@@ -160,7 +151,6 @@ export interface FileRouteTypes {
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
-    | '/settings/hardware'
     | '/settings/history'
     | '/settings/notes'
     | '/settings/preferences'
@@ -176,7 +166,6 @@ export interface FileRouteTypes {
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
-    | '/settings/hardware'
     | '/settings/history'
     | '/settings/preferences'
     | '/settings/shortcuts'
@@ -192,7 +181,6 @@ export interface FileRouteTypes {
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
-    | '/settings/hardware'
     | '/settings/history'
     | '/settings/notes'
     | '/settings/preferences'
@@ -266,13 +254,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsHistoryRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
-    '/settings/hardware': {
-      id: '/settings/hardware'
-      path: '/hardware'
-      fullPath: '/settings/hardware'
-      preLoaderRoute: typeof SettingsHardwareRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
     '/settings/dictation': {
       id: '/settings/dictation'
       path: '/dictation'
@@ -337,7 +318,6 @@ interface SettingsRouteRouteChildren {
   SettingsAdvancedRoute: typeof SettingsAdvancedRoute
   SettingsAiModelsRoute: typeof SettingsAiModelsRoute
   SettingsDictationRoute: typeof SettingsDictationRoute
-  SettingsHardwareRoute: typeof SettingsHardwareRoute
   SettingsHistoryRoute: typeof SettingsHistoryRoute
   SettingsNotesRoute: typeof SettingsNotesRouteWithChildren
   SettingsPreferencesRoute: typeof SettingsPreferencesRoute
@@ -351,7 +331,6 @@ const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsAdvancedRoute: SettingsAdvancedRoute,
   SettingsAiModelsRoute: SettingsAiModelsRoute,
   SettingsDictationRoute: SettingsDictationRoute,
-  SettingsHardwareRoute: SettingsHardwareRoute,
   SettingsHistoryRoute: SettingsHistoryRoute,
   SettingsNotesRoute: SettingsNotesRouteWithChildren,
   SettingsPreferencesRoute: SettingsPreferencesRoute,
