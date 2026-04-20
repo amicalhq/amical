@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -266,9 +267,31 @@ Napi::Value init_model(const Napi::CallbackInfo& info) {
     flash_attn = options.Get("flash_attn").As<Napi::Boolean>();
   }
 
+  int gpu_device = 0;
+  bool gpu_device_set = false;
+  if (options.Has("gpu_device")) {
+    gpu_device = options.Get("gpu_device").As<Napi::Number>().Int32Value();
+    gpu_device_set = true;
+  }
+
   whisper_context_params cparams = whisper_context_default_params();
   cparams.use_gpu = use_gpu;
   cparams.flash_attn = flash_attn;
+  if (gpu_device_set) {
+    // Sanity-check the requested device index. A negative value is never
+    // valid and usually indicates a bug upstream; fall back to the
+    // whisper.cpp default (device 0) instead of silently passing it down
+    // to the backend.
+    if (gpu_device < 0) {
+      std::fprintf(
+          stderr,
+          "[whisper-addon] Ignoring invalid gpu_device=%d (must be >= 0); "
+          "using whisper.cpp default.\n",
+          gpu_device);
+    } else {
+      cparams.gpu_device = gpu_device;
+    }
+  }
 
   whisper_context* ctx = whisper_init_from_file_with_params(model.c_str(), cparams);
   if (ctx == nullptr) {

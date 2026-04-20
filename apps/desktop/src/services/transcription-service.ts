@@ -66,7 +66,7 @@ export class TranscriptionService {
     private nativeBridge: NativeBridge | null,
     private onboardingService: OnboardingService | null,
   ) {
-    this.whisperProvider = new WhisperProvider(modelService);
+    this.whisperProvider = new WhisperProvider(modelService, settingsService);
     this.cloudProvider = new AmicalCloudProvider();
     this.vadService = vadService;
     this.settingsService = settingsService;
@@ -75,6 +75,28 @@ export class TranscriptionService {
     this.modelLoadMutex = new Mutex();
     this.telemetryService = telemetryService;
     this.modelService = modelService;
+
+    // Tear the worker down when compute settings change so the next call
+    // rebuilds it with the new backend/device. We take modelLoadMutex *and*
+    // transcriptionMutex (in that order) so the reset cannot interleave
+    // with a startup preload, a model-change preload, or an in-flight
+    // transcription chunk. All other WhisperProvider lifecycle call-sites
+    // use the same order to avoid deadlocks.
+    this.settingsService.on("compute-changed", () => {
+      void this.modelLoadMutex
+        .runExclusive(() =>
+          this.transcriptionMutex.runExclusive(async () => {
+            this.whisperProvider.reset();
+            await this.whisperProvider.dispose();
+          }),
+        )
+        .catch((error) => {
+          logger.transcription.warn(
+            "Failed to dispose worker on compute-changed:",
+            error,
+          );
+        });
+    });
   }
 
   /**
@@ -159,17 +181,19 @@ export class TranscriptionService {
   }
 
   /**
-   * Preload Whisper model into memory
+   * Preload Whisper model into memory. Runs under modelLoadMutex so it
+   * cannot race a compute-changed teardown.
    */
   async preloadWhisperModel(): Promise<void> {
-    try {
-      // This will trigger the model initialization in WhisperProvider
-      await this.whisperProvider.preloadModel();
-      logger.transcription.info("Whisper model preloaded successfully");
-    } catch (error) {
-      logger.transcription.error("Failed to preload Whisper model:", error);
-      throw error;
-    }
+    await this.modelLoadMutex.runExclusive(async () => {
+      try {
+        await this.whisperProvider.preloadModel();
+        logger.transcription.info("Whisper model preloaded successfully");
+      } catch (error) {
+        logger.transcription.error("Failed to preload Whisper model:", error);
+        throw error;
+      }
+    });
   }
 
   /**

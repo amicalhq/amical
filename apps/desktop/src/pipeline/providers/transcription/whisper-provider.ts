@@ -6,16 +6,19 @@ import {
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { ModelService } from "../../../services/model-service";
+import { SettingsService } from "../../../services/settings-service";
 import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
 import { AppError, ErrorCodes } from "../../../types/error";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
+import type { WhisperInitOptions } from "./whisper-worker-fork";
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
 
   private modelService: ModelService;
+  private settingsService: SettingsService | null;
   private workerWrapper: SimpleForkWrapper | null = null;
 
   // Frame aggregation state
@@ -49,8 +52,33 @@ export class WhisperProvider implements TranscriptionProvider {
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
 
-  constructor(modelService: ModelService) {
+  constructor(modelService: ModelService, settingsService?: SettingsService) {
     this.modelService = modelService;
+    this.settingsService = settingsService ?? null;
+  }
+
+  private async resolveInitOptions(): Promise<WhisperInitOptions> {
+    if (!this.settingsService) return {};
+    try {
+      const compute = await this.settingsService.getComputeSettings();
+      if (compute.device === "cpu") {
+        return { preferredBackend: "cpu", gpu: false, threads: compute.threads };
+      }
+      if (compute.device === "gpu") {
+        return {
+          gpu: true,
+          gpuDevice: compute.gpuDevice,
+          threads: compute.threads,
+        };
+      }
+      return { threads: compute.threads };
+    } catch (error) {
+      logger.transcription.warn(
+        "Failed to load compute settings; falling back to auto:",
+        error,
+      );
+      return {};
+    }
   }
 
   /**
@@ -325,7 +353,8 @@ export class WhisperProvider implements TranscriptionProvider {
     }
 
     try {
-      await this.workerWrapper.exec("initializeModel", [modelPath]);
+      const initOptions = await this.resolveInitOptions();
+      await this.workerWrapper.exec("initializeModel", [modelPath, initOptions]);
     } catch (error) {
       logger.transcription.error(`Failed to initialize:`, error);
       // Re-throw AppError as-is, wrap other errors
