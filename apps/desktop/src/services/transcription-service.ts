@@ -75,6 +75,23 @@ export class TranscriptionService {
     this.modelLoadMutex = new Mutex();
     this.telemetryService = telemetryService;
     this.modelService = modelService;
+
+    // Tear the worker down when compute settings change so the next call
+    // rebuilds it with the new backend/device. Serialised via
+    // transcriptionMutex so it cannot interleave with an in-flight chunk.
+    this.settingsService.on("compute-changed", () => {
+      void this.transcriptionMutex
+        .runExclusive(async () => {
+          this.whisperProvider.reset();
+          await this.whisperProvider.dispose();
+        })
+        .catch((error) => {
+          logger.transcription.warn(
+            "Failed to dispose worker on compute-changed:",
+            error,
+          );
+        });
+    });
   }
 
   /**

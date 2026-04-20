@@ -53,11 +53,14 @@ function isLoadableError(error: unknown): boolean {
   );
 }
 
+let warnedAboutUnknownEnvBackend = false;
+
 function resolvePreferredBackend(
   opts?: LoadBindingOptions,
 ): WhisperBackend {
   if (opts?.preferredBackend) return opts.preferredBackend;
-  const envValue = process.env.WHISPER_NATIVE_BACKEND?.toLowerCase();
+  const rawEnv = process.env.WHISPER_NATIVE_BACKEND;
+  const envValue = rawEnv?.toLowerCase();
   if (
     envValue === "auto" ||
     envValue === "cpu" ||
@@ -67,6 +70,12 @@ function resolvePreferredBackend(
     envValue === "vulkan"
   ) {
     return envValue;
+  }
+  if (rawEnv && !warnedAboutUnknownEnvBackend) {
+    warnedAboutUnknownEnvBackend = true;
+    console.warn(
+      `[whisper-wrapper] Ignoring WHISPER_NATIVE_BACKEND="${rawEnv}" (expected one of auto|cpu|metal|openblas|cuda|vulkan). Falling back to "auto".`,
+    );
   }
   return "auto";
 }

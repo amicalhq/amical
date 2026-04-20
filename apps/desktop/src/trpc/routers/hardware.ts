@@ -13,7 +13,6 @@ const BACKENDS = ["metal", "openblas", "cuda", "vulkan"] as const;
 function detectAvailableBackends(): string[] {
   // Mirror the loader's search logic so the UI can show which native binaries
   // are actually shipped with this build.
-  const { platform, arch } = process;
   const available: string[] = [];
   for (const tag of BACKENDS) {
     try {
@@ -31,9 +30,6 @@ function detectAvailableBackends(): string[] {
   available.push("cpu");
   // De-duplicate while preserving order.
   return Array.from(new Set(available));
-  // `arch` intentionally unused here — kept as reference if we extend this later.
-  void arch;
-  void platform;
 }
 
 export const hardwareRouter = createRouter({

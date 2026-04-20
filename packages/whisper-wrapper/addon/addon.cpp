@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -277,7 +278,19 @@ Napi::Value init_model(const Napi::CallbackInfo& info) {
   cparams.use_gpu = use_gpu;
   cparams.flash_attn = flash_attn;
   if (gpu_device_set) {
-    cparams.gpu_device = gpu_device;
+    // Sanity-check the requested device index. A negative value is never
+    // valid and usually indicates a bug upstream; fall back to the
+    // whisper.cpp default (device 0) instead of silently passing it down
+    // to the backend.
+    if (gpu_device < 0) {
+      std::fprintf(
+          stderr,
+          "[whisper-addon] Ignoring invalid gpu_device=%d (must be >= 0); "
+          "using whisper.cpp default.\n",
+          gpu_device);
+    } else {
+      cparams.gpu_device = gpu_device;
+    }
   }
 
   whisper_context* ctx = whisper_init_from_file_with_params(model.c_str(), cparams);

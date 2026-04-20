@@ -45,7 +45,7 @@ popd
 
 If everything went well you end up with:
 
-```
+```text
 packages/whisper-wrapper/native/win32-x64-cuda/whisper.node
 packages/whisper-wrapper/native/win32-x64/whisper.node         (CPU fallback)
 ```
@@ -56,7 +56,7 @@ packages/whisper-wrapper/native/win32-x64/whisper.node         (CPU fallback)
 
 Without `/Zc:preprocessor`, the build dies on `mean.cu` with:
 
-```
+```text
 cccl/std/__cccl/preprocessor.h(23): fatal error C1189: #error:
 MSVC/cl.exe with traditional preprocessor is used.
 ```

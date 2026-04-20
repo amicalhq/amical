@@ -55,19 +55,6 @@ export class WhisperProvider implements TranscriptionProvider {
   constructor(modelService: ModelService, settingsService?: SettingsService) {
     this.modelService = modelService;
     this.settingsService = settingsService ?? null;
-
-    // When compute settings change, tear the worker down so the next call
-    // rebuilds it with the new backend/device. The transcription service
-    // already serialises model loads with a mutex, so this is safe.
-    this.settingsService?.on("compute-changed", () => {
-      void this.reset();
-      void this.dispose().catch((error) => {
-        logger.transcription.warn(
-          "Failed to dispose worker on compute-changed:",
-          error,
-        );
-      });
-    });
   }
 
   private async resolveInitOptions(): Promise<WhisperInitOptions> {

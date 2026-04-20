@@ -42,13 +42,24 @@ export class HardwareDetectionService {
         const [graphics, cpu] = await Promise.all([si.graphics(), si.cpu()]);
         const gpus: DetectedGpu[] = graphics.controllers.map((c, idx) => {
           const vendor = c.vendor || "Unknown";
+          const vendorCategory = categorizeVendor(vendor);
+          const vramMB = typeof c.vram === "number" ? c.vram : undefined;
+          // Intel and Apple GPUs report VRAM even though they share system
+          // memory with the CPU, so the old `vram >= 2048` heuristic
+          // misclassified them as dedicated. Treat only non-integrated
+          // vendors as dedicated.
+          const dedicated =
+            vramMB !== undefined &&
+            vramMB >= 2048 &&
+            vendorCategory !== "intel" &&
+            vendorCategory !== "apple";
           return {
             index: idx,
             model: c.model || "Unknown GPU",
             vendor,
-            vramMB: typeof c.vram === "number" ? c.vram : undefined,
-            vendorCategory: categorizeVendor(vendor),
-            dedicated: typeof c.vram === "number" ? c.vram >= 2048 : false,
+            vramMB,
+            vendorCategory,
+            dedicated,
           };
         });
         this.snapshot = {
@@ -59,8 +70,17 @@ export class HardwareDetectionService {
         return this.snapshot;
       } catch (error) {
         logger.main.error("Hardware detection failed", error);
-        this.snapshot = { gpus: [], cpuThreads: 0, cpuModel: "Unknown" };
-        return this.snapshot;
+        // Do NOT overwrite this.snapshot with an empty result — a transient
+        // `systeminformation` failure would then stick around forever and
+        // short-circuit all future detect() calls. Return the previous
+        // snapshot if we have one, otherwise a transient empty view.
+        return (
+          this.snapshot ?? {
+            gpus: [],
+            cpuThreads: 0,
+            cpuModel: "Unknown",
+          }
+        );
       } finally {
         this.inFlight = null;
       }
