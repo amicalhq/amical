@@ -38,16 +38,29 @@ export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
  * - `errorCode`: Used to look up user-facing strings from ERROR_CODE_CONFIG
  * - `uiTitle`/`uiMessage`: Optional overrides for user-facing display
  */
+export interface AppErrorOptions {
+  statusCode?: number;
+  uiTitle?: string;
+  uiMessage?: string;
+  traceId?: string;
+}
+
 export class AppError extends Error {
+  public statusCode?: number;
+  public uiTitle?: string;
+  public uiMessage?: string;
+  public traceId?: string;
+
   constructor(
     message: string,
     public errorCode: ErrorCode,
-    public statusCode?: number,
-    public uiTitle?: string,
-    public uiMessage?: string,
-    public traceId?: string,
+    options: AppErrorOptions = {},
   ) {
     super(message);
     this.name = "AppError";
+    this.statusCode = options.statusCode;
+    this.uiTitle = options.uiTitle;
+    this.uiMessage = options.uiMessage;
+    this.traceId = options.traceId;
   }
 }

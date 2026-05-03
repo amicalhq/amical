@@ -15,6 +15,15 @@ import {
   type ErrorCode,
   type CloudErrorResponse,
 } from "../../../types/error";
+import {
+  CloudDictationGrpcStream,
+  GrpcDictationError,
+  GRPC_STATUS_PERMISSION_DENIED,
+  GRPC_STATUS_RESOURCE_EXHAUSTED,
+  GRPC_STATUS_UNAUTHENTICATED,
+  type GrpcStreamContext,
+  float32ToPcmS16lePacket,
+} from "./grpc-dictation-client";
 
 // Type guard to validate error codes from server
 const isValidErrorCode = (code: string | undefined): code is ErrorCode =>
@@ -43,6 +52,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   private authService: AuthService;
   private apiEndpoint: string;
+  private grpcEndpoint: string;
+  private transport: "grpc" | "http";
 
   // Frame aggregation state (similar to WhisperProvider)
   private frameBuffer: Float32Array[] = [];
@@ -56,6 +67,13 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private currentVocabulary: string[] = [];
   private currentSessionId: string | undefined;
 
+  // gRPC stream state. Audio is packetized as fixed 32ms PCM_S16LE frames
+  // because the Axis streaming API validates every packet size.
+  private grpcStream: CloudDictationGrpcStream | null = null;
+  private grpcPendingFrames: Float32Array[] = [];
+  private grpcPendingSampleCount = 0;
+  private grpcNextSeq = 1n;
+
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
   private readonly MIN_AUDIO_DURATION_MS = 500; // Minimum buffered audio duration before silence-based transcription
@@ -68,9 +86,17 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
     // Configure endpoint based on environment
     this.apiEndpoint = process.env.API_ENDPOINT || __BUNDLED_API_ENDPOINT;
+    this.grpcEndpoint = this.apiEndpoint;
+    // Runtime-only escape hatch; the bundled default is intentionally gRPC.
+    // eslint-disable-next-line turbo/no-undeclared-env-vars
+    const configuredTransport = process.env.CLOUD_DICTATION_TRANSPORT || "";
+    this.transport =
+      configuredTransport.trim().toLowerCase() === "http" ? "http" : "grpc";
 
     logger.transcription.info("AmicalCloudProvider initialized", {
       endpoint: this.apiEndpoint,
+      grpcEndpoint: this.grpcEndpoint,
+      transport: this.transport,
     });
   }
 
@@ -94,6 +120,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           "Authentication required for cloud transcription",
           ErrorCodes.AUTH_REQUIRED,
         );
+      }
+
+      if (this.transport === "grpc") {
+        return await this.transcribeGrpc(audioData, context);
       }
 
       // Add frame to buffer with speech probability
@@ -146,6 +176,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       }
 
       const enableFormatting = context.formattingEnabled ?? false;
+      if (this.transport === "grpc") {
+        return await this.flushGrpc(enableFormatting);
+      }
+
       // flush() is called at session end, so this is the final call
       return this.doTranscription(enableFormatting, true);
     } catch (error) {
@@ -205,6 +239,235 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     this.currentAccessibilityContext = null;
     this.currentAggregatedTranscription = undefined;
     this.currentSessionId = undefined;
+    this.currentVocabulary = [];
+    this.resetGrpcStream();
+  }
+
+  private async transcribeGrpc(
+    audioData: Float32Array,
+    context: TranscribeContext,
+  ): Promise<TranscriptionOutput> {
+    if (audioData.length === 0) {
+      return { text: "" };
+    }
+
+    try {
+      this.enqueueGrpcAudio(audioData);
+      await this.ensureGrpcStream(context.formattingEnabled ?? false);
+      await this.sendReadyGrpcPackets(false);
+      return { text: "" };
+    } catch (error) {
+      this.resetGrpcStream();
+      throw this.toAppError(error);
+    }
+  }
+
+  private async flushGrpc(
+    enableFormatting: boolean,
+  ): Promise<TranscriptionOutput> {
+    if (!this.grpcStream && this.grpcPendingSampleCount === 0) {
+      return { text: "" };
+    }
+
+    try {
+      const result = await this.finalizeGrpcStream(enableFormatting);
+      return {
+        text: result.formattedTranscript || result.rawTranscript,
+      };
+    } catch (error) {
+      throw this.toAppError(error);
+    } finally {
+      this.clearGrpcAudioState();
+    }
+  }
+
+  private async finalizeGrpcStream(enableFormatting: boolean) {
+    const stream = await this.ensureGrpcStream(enableFormatting);
+    await this.sendReadyGrpcPackets(true);
+
+    return await stream.finalize();
+  }
+
+  private async ensureGrpcStream(
+    enableFormatting: boolean,
+  ): Promise<CloudDictationGrpcStream> {
+    if (this.grpcStream) {
+      return this.grpcStream;
+    }
+
+    const idToken = await this.authService.getIdToken();
+    if (!idToken) {
+      throw new AppError(
+        "No authentication token available",
+        ErrorCodes.AUTH_REQUIRED,
+      );
+    }
+
+    const sessionId =
+      this.currentSessionId || `cloud-${Date.now().toString(36)}`;
+    const openOptions = {
+      endpoint: this.grpcEndpoint,
+      token: idToken,
+      userAgent: getUserAgent(),
+      sessionId,
+      language: this.currentLanguage,
+      vocabulary: this.currentVocabulary,
+      formatting: enableFormatting,
+      context: this.buildGrpcStreamContext(),
+    };
+
+    this.grpcStream = new CloudDictationGrpcStream(openOptions);
+
+    logger.transcription.info("Cloud gRPC stream opened", {
+      endpoint: this.grpcEndpoint,
+      sessionId,
+      language: this.currentLanguage,
+      vocabularySize: this.currentVocabulary.length,
+      formatting: enableFormatting,
+    });
+
+    return this.grpcStream;
+  }
+
+  private enqueueGrpcAudio(audioData: Float32Array): void {
+    if (audioData.length === 0) {
+      return;
+    }
+
+    this.grpcPendingFrames.push(audioData);
+    this.grpcPendingSampleCount += audioData.length;
+  }
+
+  private takeGrpcPacket(padFinalPacket: boolean): Float32Array | null {
+    const packetSamples = CloudDictationGrpcStream.PACKET_SAMPLES;
+    if (
+      this.grpcPendingSampleCount < packetSamples &&
+      !(padFinalPacket && this.grpcPendingSampleCount > 0)
+    ) {
+      return null;
+    }
+
+    const packet = new Float32Array(packetSamples);
+    let written = 0;
+
+    while (written < packetSamples && this.grpcPendingFrames.length > 0) {
+      const frame = this.grpcPendingFrames[0];
+      const samplesNeeded = packetSamples - written;
+      const samplesToCopy = Math.min(frame.length, samplesNeeded);
+
+      packet.set(frame.subarray(0, samplesToCopy), written);
+      written += samplesToCopy;
+
+      if (samplesToCopy === frame.length) {
+        this.grpcPendingFrames.shift();
+      } else {
+        this.grpcPendingFrames[0] = frame.subarray(samplesToCopy);
+      }
+
+      this.grpcPendingSampleCount -= samplesToCopy;
+    }
+
+    return packet;
+  }
+
+  private async sendReadyGrpcPackets(padFinalPacket: boolean): Promise<void> {
+    while (true) {
+      const packet = this.takeGrpcPacket(padFinalPacket);
+      if (!packet) {
+        return;
+      }
+
+      await this.sendGrpcPacket(float32ToPcmS16lePacket(packet));
+    }
+  }
+
+  private async sendGrpcPacket(packet: Uint8Array): Promise<void> {
+    const stream = await this.ensureGrpcStream(false);
+    const seq = this.grpcNextSeq;
+    await stream.sendAudioBatch(seq, [packet]);
+    this.grpcNextSeq += 1n;
+  }
+
+  private buildGrpcStreamContext(): GrpcStreamContext | undefined {
+    if (!this.currentAccessibilityContext) {
+      return undefined;
+    }
+
+    return {
+      selectedText:
+        this.currentAccessibilityContext.context?.textSelection?.selectedText ??
+        undefined,
+      beforeText:
+        this.currentAccessibilityContext.context?.textSelection
+          ?.preSelectionText ?? undefined,
+      afterText:
+        this.currentAccessibilityContext.context?.textSelection
+          ?.postSelectionText ?? undefined,
+      appType: detectApplicationType(this.currentAccessibilityContext),
+      appBundleId:
+        this.currentAccessibilityContext.context?.application
+          ?.bundleIdentifier ?? undefined,
+      appName:
+        this.currentAccessibilityContext.context?.application?.name ??
+        undefined,
+      appUrl:
+        this.currentAccessibilityContext.context?.windowInfo?.url ?? undefined,
+    };
+  }
+
+  private resetGrpcStream(): void {
+    this.grpcStream?.cancel();
+    this.clearGrpcAudioState();
+  }
+
+  private clearGrpcAudioState(): void {
+    this.grpcStream = null;
+    this.grpcPendingFrames = [];
+    this.grpcPendingSampleCount = 0;
+    this.grpcNextSeq = 1n;
+  }
+
+  private toAppError(error: unknown): AppError {
+    if (error instanceof AppError) {
+      return error;
+    }
+
+    if (error instanceof GrpcDictationError) {
+      const build = (code: ErrorCode, status: number | undefined) =>
+        new AppError(error.message, code, {
+          statusCode: status,
+          traceId: error.traceId,
+        });
+
+      switch (error.grpcStatus) {
+        case GRPC_STATUS_UNAUTHENTICATED:
+          return build(ErrorCodes.AUTH_REQUIRED, 401);
+        case GRPC_STATUS_RESOURCE_EXHAUSTED:
+          return build(ErrorCodes.RATE_LIMIT_EXCEEDED, 429);
+        case GRPC_STATUS_PERMISSION_DENIED:
+          return build(ErrorCodes.AUTH_REQUIRED, 403);
+      }
+
+      switch (error.httpStatus) {
+        case 401:
+          return build(ErrorCodes.AUTH_REQUIRED, 401);
+        case 403:
+          return build(ErrorCodes.AUTH_REQUIRED, 403);
+        case 429:
+          return build(ErrorCodes.RATE_LIMIT_EXCEEDED, 429);
+      }
+
+      if (error.httpStatus && error.httpStatus >= 500) {
+        return build(ErrorCodes.INTERNAL_SERVER_ERROR, error.httpStatus);
+      }
+
+      return build(ErrorCodes.UNKNOWN, error.httpStatus);
+    }
+
+    return new AppError(
+      error instanceof Error ? error.message : "Network error",
+      ErrorCodes.NETWORK_ERROR,
+    );
   }
 
   private shouldTranscribe(): boolean {
@@ -333,10 +596,12 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         throw new AppError(
           "Cloud auth failed after retry",
           ErrorCodes.AUTH_REQUIRED,
-          401,
-          errorData?.ui?.title,
-          errorData?.message,
-          errorData?.id,
+          {
+            statusCode: 401,
+            uiTitle: errorData?.ui?.title,
+            uiMessage: errorData?.message,
+            traceId: errorData?.id,
+          },
         );
       }
 
@@ -361,7 +626,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         throw new AppError(
           "Authentication failed - please log in again",
           ErrorCodes.AUTH_REQUIRED,
-          401,
+          { statusCode: 401 },
         );
       }
     }
@@ -404,10 +669,12 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       throw new AppError(
         `Cloud API error: ${response.status} ${response.statusText}`,
         errorCode,
-        response.status,
-        errorData?.ui?.title,
-        errorData?.message,
-        errorData?.id,
+        {
+          statusCode: response.status,
+          uiTitle: errorData?.ui?.title,
+          uiMessage: errorData?.message,
+          traceId: errorData?.id,
+        },
       );
     }
 

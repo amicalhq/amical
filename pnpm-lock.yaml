@@ -286,6 +286,9 @@ importers:
       posthog-node:
         specifier: 5.29.2
         version: 5.29.2(rxjs@7.8.2)
+      protobufjs:
+        specifier: 7.5.5
+        version: 7.5.5
       react:
         specifier: ^19.1.1
         version: 19.1.1

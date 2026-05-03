@@ -291,6 +291,14 @@ export class TranscriptionService {
           isFinal: false,
           accumulatedTranscription: [],
         };
+        const formatterConfig = await this.settingsService.getFormatterConfig();
+        streamingContext.metadata.set(
+          "cloudFormattingEnabled",
+          !!(
+            formatterConfig?.enabled &&
+            isAmicalCloudSelectionValue(formatterConfig.modelId)
+          ),
+        );
 
         // Get accessibility context from NativeBridge
         streamingContext.sharedData.accessibilityContext =
@@ -333,6 +341,8 @@ export class TranscriptionService {
           previousChunk,
           aggregatedTranscription: aggregatedTranscription || undefined,
           language: session.context.sharedData.userPreferences?.language,
+          formattingEnabled:
+            session.context.metadata.get("cloudFormattingEnabled") === true,
         },
       });
       session.detectedLanguage = this.mergeDetectedLanguage(
@@ -995,6 +1005,7 @@ export class TranscriptionService {
             language,
             previousChunk,
             aggregatedTranscription: aggregatedTranscription || undefined,
+            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
           },
         });
         detectedLanguage = this.mergeDetectedLanguage(
