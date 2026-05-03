@@ -40,6 +40,7 @@ export class ShortcutManager extends EventEmitter {
   private recheckInFlight = false;
   private recheckInterval: NodeJS.Timeout | null = null;
   private exactMatchState = {
+    escape: false,
     toggleRecording: false,
     pasteLastTranscript: false,
     newNote: false,
@@ -183,6 +184,7 @@ export class ShortcutManager extends EventEmitter {
   setIsRecordingShortcut(isRecording: boolean) {
     this.isRecordingShortcut = isRecording;
     if (isRecording) {
+      this.exactMatchState.escape = false;
       this.exactMatchState.toggleRecording = false;
       this.exactMatchState.pasteLastTranscript = false;
       this.exactMatchState.newNote = false;
@@ -276,6 +278,12 @@ export class ShortcutManager extends EventEmitter {
       return;
     }
 
+    const escapeMatch = this.isEscapePressed();
+    if (escapeMatch && !this.exactMatchState.escape) {
+      this.emit("escape-triggered");
+    }
+    this.exactMatchState.escape = escapeMatch;
+
     // Check PTT shortcut
     const isPTTPressed = this.isPTTShortcutPressed();
     this.emit("ptt-state-changed", isPTTPressed);
@@ -300,6 +308,14 @@ export class ShortcutManager extends EventEmitter {
       this.emit("open-notes-window-triggered");
     }
     this.exactMatchState.newNote = newNoteMatch;
+  }
+
+  private isEscapePressed(): boolean {
+    const activeKeysList = this.getActiveKeys();
+    return (
+      activeKeysList.length === 1 &&
+      getKeyFromKeycode(activeKeysList[0]!) === "Escape"
+    );
   }
 
   private isPTTShortcutPressed(): boolean {
