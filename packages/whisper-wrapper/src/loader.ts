@@ -1,9 +1,38 @@
 import path from "node:path";
 import fs from "node:fs";
 
+export type WhisperBackend =
+  | "auto"
+  | "cpu"
+  | "metal"
+  | "openblas"
+  | "cuda"
+  | "vulkan";
+
+export interface LoadBindingOptions {
+  /**
+   * Preferred native backend.
+   * - "auto" (default): try GPU binaries first, then plain platform build, then cpu-fallback.
+   * - "cpu": skip GPU binaries entirely and load a CPU-only build.
+   * - "metal" | "openblas" | "cuda" | "vulkan": require that specific GPU backend;
+   *   throws if its binary is missing or fails to load.
+   */
+  preferredBackend?: WhisperBackend;
+}
+
 const GPU_FIRST_CANDIDATES = ["metal", "openblas", "cuda", "vulkan"] as const;
 
-function candidateDirs(platform: string, arch: string): string[] {
+function candidateDirs(
+  platform: string,
+  arch: string,
+  preferredBackend: WhisperBackend,
+): string[] {
+  if (preferredBackend === "cpu") {
+    return [`${platform}-${arch}`, "cpu-fallback"];
+  }
+  if (preferredBackend !== "auto") {
+    return [`${platform}-${arch}-${preferredBackend}`];
+  }
   return [
     ...GPU_FIRST_CANDIDATES.map((tag) => `${platform}-${arch}-${tag}`),
     `${platform}-${arch}`,
@@ -24,35 +53,78 @@ function isLoadableError(error: unknown): boolean {
   );
 }
 
-export function resolveBinding(): string {
+let warnedAboutUnknownEnvBackend = false;
+
+function resolvePreferredBackend(
+  opts?: LoadBindingOptions,
+): WhisperBackend {
+  if (opts?.preferredBackend) return opts.preferredBackend;
+  const rawEnv = process.env.WHISPER_NATIVE_BACKEND;
+  const envValue = rawEnv?.toLowerCase();
+  if (
+    envValue === "auto" ||
+    envValue === "cpu" ||
+    envValue === "metal" ||
+    envValue === "openblas" ||
+    envValue === "cuda" ||
+    envValue === "vulkan"
+  ) {
+    return envValue;
+  }
+  if (rawEnv && !warnedAboutUnknownEnvBackend) {
+    warnedAboutUnknownEnvBackend = true;
+    console.warn(
+      `[whisper-wrapper] Ignoring WHISPER_NATIVE_BACKEND="${rawEnv}" (expected one of auto|cpu|metal|openblas|cuda|vulkan). Falling back to "auto".`,
+    );
+  }
+  return "auto";
+}
+
+export function resolveBinding(opts?: LoadBindingOptions): string {
   const { platform, arch } = process;
-  for (const dir of candidateDirs(platform, arch)) {
+  const preferredBackend = resolvePreferredBackend(opts);
+  for (const dir of candidateDirs(platform, arch, preferredBackend)) {
     const candidate = bindingPathFor(dir);
     if (fs.existsSync(candidate)) {
       return candidate;
     }
   }
   throw new Error(
-    `No suitable whisper.node binary found for ${platform}-${arch}`,
+    `No suitable whisper.node binary found for ${platform}-${arch} (preferred: ${preferredBackend})`,
   );
 }
 
 let loadedBindingInfo: { path: string; type: string } | null = null;
+let loadedBackend: WhisperBackend | null = null;
+let cachedBinding: unknown = null;
 
 export function getLoadedBindingInfo(): { path: string; type: string } | null {
   return loadedBindingInfo;
 }
 
-export function loadBinding(): any {
+function bindingTypeFromDir(dir: string): string {
+  if (dir.includes("-cuda")) return "cuda";
+  if (dir.includes("-vulkan")) return "vulkan";
+  if (dir.includes("-metal")) return "metal";
+  if (dir.includes("-openblas")) return "openblas";
+  if (dir === "cpu-fallback") return "cpu-fallback";
+  return "cpu";
+}
+
+export function loadBinding(opts?: LoadBindingOptions): any {
+  const preferredBackend = resolvePreferredBackend(opts);
+
+  if (cachedBinding && loadedBackend === preferredBackend) {
+    return cachedBinding;
+  }
+
   const { platform, arch } = process;
   const attempted: string[] = [];
   let lastLoadError: unknown = null;
 
-  for (const dir of candidateDirs(platform, arch)) {
+  for (const dir of candidateDirs(platform, arch, preferredBackend)) {
     const candidate = bindingPathFor(dir);
-    if (!fs.existsSync(candidate)) {
-      continue;
-    }
+    if (!fs.existsSync(candidate)) continue;
 
     attempted.push(candidate);
     try {
@@ -63,23 +135,9 @@ export function loadBinding(): any {
         );
       }
 
-      // Store the loaded binding info
-      const bindingType = dir.includes("-cuda")
-        ? "cuda"
-        : dir.includes("-vulkan")
-          ? "vulkan"
-          : dir.includes("-metal")
-            ? "metal"
-            : dir.includes("-openblas")
-              ? "openblas"
-              : dir === "cpu-fallback"
-                ? "cpu-fallback"
-                : "cpu";
-      loadedBindingInfo = {
-        path: candidate,
-        type: bindingType,
-      };
-
+      loadedBindingInfo = { path: candidate, type: bindingTypeFromDir(dir) };
+      loadedBackend = preferredBackend;
+      cachedBinding = mod;
       return mod;
     } catch (error) {
       if (isLoadableError(error)) {
@@ -89,20 +147,18 @@ export function loadBinding(): any {
         lastLoadError = error;
         continue;
       }
-
       throw error;
     }
   }
 
   if (lastLoadError) {
-    const error = new Error(
-      `Unable to load whisper.node for ${platform}-${arch}. Attempted: ${attempted.join(", ")}`,
+    throw new Error(
+      `Unable to load whisper.node for ${platform}-${arch} (preferred: ${preferredBackend}). Attempted: ${attempted.join(", ")}`,
       { cause: lastLoadError },
     );
-    throw error;
   }
 
   throw new Error(
-    `No suitable whisper.node binary found for ${platform}-${arch}`,
+    `No suitable whisper.node binary found for ${platform}-${arch} (preferred: ${preferredBackend})`,
   );
 }

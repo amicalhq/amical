@@ -84,6 +84,12 @@ const UILocaleSchema = z.object({
   locale: z.string().nullable(),
 });
 
+const ComputeSettingsSchema = z.object({
+  device: z.enum(["auto", "cpu", "gpu"]),
+  gpuDevice: z.number().int().nonnegative().optional(),
+  threads: z.number().int().positive().max(256).optional(),
+});
+
 const RecordingSettingsSchema = z.object({
   defaultFormat: z.enum(["wav", "mp3", "flac"]).optional(),
   sampleRate: z
@@ -897,5 +903,27 @@ export const settingsRouter = createRouter({
       throw new Error("Failed to reset app");
     }
   }),
+
+  // Get compute-device settings (CPU/GPU selection for local whisper).
+  getComputeSettings: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+    return await settingsService.getComputeSettings();
+  }),
+
+  // Update compute-device settings.
+  setComputeSettings: procedure
+    .input(ComputeSettingsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      await settingsService.setComputeSettings(input);
+      ctx.serviceManager.getLogger()?.main.info("Compute settings updated", input);
+      return { success: true };
+    }),
 });
 // This comment prevents prettier from removing the trailing newline

@@ -103,6 +103,7 @@ function resolveLibExecutable(env, arch) {
   probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC");
   probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC");
   probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Professional/VC/Tools/MSVC");
+  probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Preview/VC/Tools/MSVC");
   probeVersionedDir("C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC");
 
   return candidates[0] || null;

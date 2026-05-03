@@ -1,6 +1,18 @@
 // Worker process entry point for fork
-import { Whisper, getLoadedBindingInfo } from "@amical/whisper-wrapper";
+import {
+  Whisper,
+  getLoadedBindingInfo,
+  type WhisperBackend,
+} from "@amical/whisper-wrapper";
 import { shouldDropSegment } from "../../utils/segment-filter";
+
+export interface WhisperInitOptions {
+  preferredBackend?: WhisperBackend;
+  gpu?: boolean;
+  gpuDevice?: number;
+  flashAttn?: boolean;
+  threads?: number;
+}
 
 // Type definitions for IPC communication
 interface WorkerMessage {
@@ -51,29 +63,80 @@ const logger = {
 
 let whisperInstance: Whisper | null = null;
 let currentModelPath: string | null = null;
+let currentInitOptions: WhisperInitOptions | null = null;
+
+function sameInitOptions(
+  a: WhisperInitOptions | null,
+  b: WhisperInitOptions | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.preferredBackend === b.preferredBackend &&
+    a.gpu === b.gpu &&
+    a.gpuDevice === b.gpuDevice &&
+    a.flashAttn === b.flashAttn &&
+    a.threads === b.threads
+  );
+}
 
 // Worker methods
 const methods = {
-  async initializeModel(modelPath: string): Promise<void> {
-    if (whisperInstance && currentModelPath === modelPath) {
-      return; // Already initialized with same model
+  async initializeModel(
+    modelPath: string,
+    initOptions?: WhisperInitOptions,
+  ): Promise<void> {
+    const opts: WhisperInitOptions = initOptions ?? {};
+    if (
+      whisperInstance &&
+      currentModelPath === modelPath &&
+      sameInitOptions(currentInitOptions, opts)
+    ) {
+      return; // Already initialized with same model and options
     }
 
-    // Cleanup existing instance
+    // Dispose the previous instance first. Keep the globals consistent even
+    // if this fails (e.g. free() throws) so a later init starts from scratch.
     if (whisperInstance) {
-      await whisperInstance.free();
+      const stale = whisperInstance;
       whisperInstance = null;
+      currentModelPath = null;
+      currentInitOptions = null;
+      try {
+        await stale.free();
+      } catch (e) {
+        logger.transcription.warn(
+          "Failed to free previous Whisper instance:",
+          e,
+        );
+      }
     }
 
-    whisperInstance = new Whisper(modelPath, { gpu: true });
+    const candidate = new Whisper(modelPath, {
+      gpu: opts.gpu,
+      gpuDevice: opts.gpuDevice,
+      flashAttn: opts.flashAttn,
+      threads: opts.threads,
+      preferredBackend: opts.preferredBackend,
+    });
     try {
-      await whisperInstance.load();
+      await candidate.load();
     } catch (e) {
+      // Release the native context we just allocated so we do not leak it.
+      try {
+        await candidate.free();
+      } catch {
+        /* best-effort cleanup */
+      }
       logger.transcription.error("Failed to load Whisper model:", e);
       throw e;
     }
+
+    // Commit state only after a successful load.
+    whisperInstance = candidate;
     currentModelPath = modelPath;
-    logger.transcription.info(`Initialized with model: ${modelPath}`);
+    currentInitOptions = opts;
+    logger.transcription.info(`Initialized with model: ${modelPath}`, opts);
   },
 
   async transcribeAudio(
@@ -142,6 +205,7 @@ const methods = {
       await whisperInstance.free();
       whisperInstance = null;
       currentModelPath = null;
+      currentInitOptions = null;
     }
   },
 

@@ -215,6 +215,19 @@ export interface AppSettingsData {
       followed: boolean; // Whether user followed recommendation
     };
   };
+  compute?: {
+    /**
+     * Compute device preference for local speech models.
+     * - "auto" (default): the native loader picks the best available backend.
+     * - "cpu": force the CPU-only build even if a GPU binary is shipped.
+     * - "gpu": use the GPU backend compiled for the host. `gpuDevice` selects
+     *   which adapter inside that backend (0-based; CUDA/Vulkan/Metal index).
+     */
+    device: "auto" | "cpu" | "gpu";
+    gpuDevice?: number;
+    /** Optional thread count for CPU inference; undefined = whisper.cpp default. */
+    threads?: number;
+  };
   updateChannel?: "stable" | "beta";
   featureFlags?: {
     flags?: Record<string, string | boolean>;
