@@ -13,7 +13,6 @@ import {
 
 const log = logger.main;
 const PRESSED_KEYS_RECHECK_INTERVAL_MS = 10000;
-const ESCAPE_KEY_CODES = new Set([53, 0x1b]);
 
 interface KeyInfo {
   keyCode: number;
@@ -314,7 +313,8 @@ export class ShortcutManager extends EventEmitter {
   private isEscapePressed(): boolean {
     const activeKeysList = this.getActiveKeys();
     return (
-      activeKeysList.length === 1 && ESCAPE_KEY_CODES.has(activeKeysList[0]!)
+      activeKeysList.length === 1 &&
+      getKeyFromKeycode(activeKeysList[0]!) === "Escape"
     );
   }
 
