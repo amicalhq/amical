@@ -16,6 +16,7 @@ export type RecordingMode = "idle" | "ptt" | "hands-free";
 export type TerminationCode =
   | "dismissed"
   | "quick_release"
+  | "escape"
   | "no_audio"
   | "error";
 
@@ -110,6 +111,10 @@ export class RecordingManager extends EventEmitter {
     shortcutManager.on("paste-last-transcript-triggered", async () => {
       await this.pasteLatestTranscription();
     });
+
+    shortcutManager.on("escape-triggered", async () => {
+      await this.cancelHandsFreeRecording();
+    });
   }
 
   private setState(newState: RecordingState): void {
@@ -199,6 +204,16 @@ export class RecordingManager extends EventEmitter {
     } else {
       // Normal release - stop and transcribe
       await this.endRecording();
+    }
+  }
+
+  public async cancelHandsFreeRecording() {
+    if (
+      this.recordingState === "recording" &&
+      this.recordingMode === "hands-free"
+    ) {
+      logger.audio.info("Escape pressed in hands-free mode, cancelling");
+      await this.endRecording("escape");
     }
   }
 
