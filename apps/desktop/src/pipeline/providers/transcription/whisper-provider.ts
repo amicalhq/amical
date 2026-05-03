@@ -11,6 +11,7 @@ import * as path from "path";
 import { app } from "electron";
 import { AppError, ErrorCodes } from "../../../types/error";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
+import { buildWhisperPrompt } from "./whisper-prompt";
 
 export class WhisperProvider implements TranscriptionProvider {
   readonly name = "whisper-local";
@@ -169,6 +170,7 @@ export class WhisperProvider implements TranscriptionProvider {
 
       // Generate initial prompt from recent context only (align with cloud)
       const initialPrompt = this.generateInitialPrompt(
+        context.vocabulary,
         aggregatedTranscription,
         context.accessibilityContext,
       );
@@ -273,24 +275,20 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   private generateInitialPrompt(
+    vocabulary?: readonly string[],
     aggregatedTranscription?: string,
     accessibilityContext?: TranscribeContext["accessibilityContext"],
   ): string {
-    if (aggregatedTranscription) {
-      // Pass full transcription - whisper.cpp auto-truncates to last ~224 tokens
-      logger.transcription.debug(
-        `Generated initial prompt from aggregated transcription: "${aggregatedTranscription}"`,
-      );
-      return aggregatedTranscription;
-    }
+    const prompt = buildWhisperPrompt({
+      vocabulary,
+      previousTranscription: aggregatedTranscription,
+      beforeText:
+        accessibilityContext?.context?.textSelection?.preSelectionText,
+    });
 
-    const beforeText =
-      accessibilityContext?.context?.textSelection?.preSelectionText;
-    if (beforeText && beforeText.trim().length > 0) {
-      logger.transcription.debug(
-        `Generated initial prompt from before text: "${beforeText}"`,
-      );
-      return beforeText;
+    if (prompt) {
+      logger.transcription.debug(`Generated initial prompt: "${prompt}"`);
+      return prompt;
     }
 
     logger.transcription.debug("Generated initial prompt: empty");
