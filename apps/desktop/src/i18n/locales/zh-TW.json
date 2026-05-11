@@ -303,6 +303,10 @@
           "title": "伺服器錯誤",
           "description": "請稍後再試"
         },
+        "idleTimeout": {
+          "title": "轉錄已停滯",
+          "description": "一段時間未收到音訊。請再試一次。"
+        },
         "unknown": {
           "title": "轉錄失敗",
           "description": "發生了某些問題"

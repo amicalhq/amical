@@ -78,6 +78,16 @@ export class TranscriptionService {
   }
 
   /**
+   * Warm the active provider in advance of a session so first-chunk latency
+   * doesn't include model load (whisper) or token refresh (cloud).
+   * Idempotent and cheap when already warm. Safe to fire-and-forget.
+   */
+  async warmupActiveProvider(): Promise<void> {
+    const provider = await this.selectProvider();
+    await provider.warmup?.();
+  }
+
+  /**
    * Select the appropriate transcription provider based on the selected model
    */
   private async selectProvider(): Promise<TranscriptionProvider> {
@@ -150,9 +160,16 @@ export class TranscriptionService {
         logger.transcription.info("Whisper model preloading disabled");
       }
     } else {
-      logger.transcription.info(
-        "Using cloud model - skipping local model preload",
-      );
+      // Cloud model selected: warm auth so the first dictation's first chunk
+      // doesn't block on a token-refresh roundtrip.
+      try {
+        await this.cloudProvider.warmup?.();
+        logger.transcription.info("Cloud auth warmed up");
+      } catch (error) {
+        logger.transcription.warn("Cloud auth warmup failed (non-fatal)", {
+          error,
+        });
+      }
     }
 
     logger.transcription.info("Transcription service initialized");
@@ -1187,6 +1204,7 @@ export class TranscriptionService {
    */
   async dispose(): Promise<void> {
     await this.whisperProvider.dispose();
+    await this.cloudProvider.dispose();
     // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }

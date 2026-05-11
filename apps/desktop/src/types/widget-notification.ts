@@ -126,6 +126,22 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
       navigateTo: "/history",
     },
   },
+  [ErrorCodes.IDLE_TIMEOUT]: {
+    title: { key: "widget.notifications.errorCode.idleTimeout.title" },
+    description: {
+      key: "widget.notifications.errorCode.idleTimeout.description",
+    },
+    subDescription: { key: "widget.notifications.recordingSaved" },
+    primaryAction: {
+      label: { key: "widget.notifications.action.viewHistory" },
+      navigateTo: "/history",
+    },
+    secondaryAction: {
+      label: { key: "widget.notifications.action.support" },
+      icon: "discord",
+      externalUrl: DISCORD_SUPPORT_URL,
+    },
+  },
   [ErrorCodes.UNKNOWN]: {
     title: { key: "widget.notifications.errorCode.unknown.title" },
     description: { key: "widget.notifications.errorCode.unknown.description" },

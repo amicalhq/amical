@@ -303,6 +303,10 @@
           "title": "Error del servidor",
           "description": "Por favor inténtalo más tarde"
         },
+        "idleTimeout": {
+          "title": "Transcripción estancada",
+          "description": "No se recibió audio durante un tiempo. Inténtalo de nuevo."
+        },
         "unknown": {
           "title": "La transcripción falló",
           "description": "Algo salió mal"

@@ -303,6 +303,10 @@
           "title": "Server error",
           "description": "Please try again later"
         },
+        "idleTimeout": {
+          "title": "Transcription stalled",
+          "description": "No audio was received for a while. Please try again."
+        },
         "unknown": {
           "title": "Transcription failed",
           "description": "Something went wrong"

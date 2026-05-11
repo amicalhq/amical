@@ -1,8 +1,14 @@
 import {
-  connect,
-  type ClientHttp2Session,
-  type ClientHttp2Stream,
-} from "node:http2";
+  ChannelCredentials,
+  Client,
+  Metadata,
+  status as grpcStatusCode,
+  type ChannelOptions,
+  type ClientDuplexStream,
+  type ServiceError,
+  type StatusObject,
+} from "@grpc/grpc-js";
+import { Deferred, Effect, Either, Ref } from "effect";
 import {
   AudioEncoding,
   Language,
@@ -45,6 +51,7 @@ export class GrpcDictationError extends Error {
     public readonly grpcStatus?: number,
     public readonly httpStatus?: number,
     public readonly traceId?: string,
+    public readonly isIdleTimeout?: boolean,
   ) {
     super(message);
     this.name = "GrpcDictationError";
@@ -52,104 +59,54 @@ export class GrpcDictationError extends Error {
 }
 
 const TRACE_ID_HEADER = "x-trace-id";
+const AUTHORIZATION_HEADER = "authorization";
+const PLATFORM_HEADER = "x-platform";
+// Desktop recordings auto-stop at 6 minutes; keep the RPC deadline above that
+// ceiling so the server, not the transport, handles normal session completion.
+const STREAM_DEADLINE_MS = 7 * 60 * 1000;
+const KEEPALIVE_TIME_MS = 30 * 1000;
+const KEEPALIVE_TIMEOUT_MS = 10 * 1000;
+const MAX_GRPC_MESSAGE_BYTES = 4 * 1024 * 1024;
+const CANCEL_FRAME_FLUSH_TIMEOUT_MS = 1000;
+const CLOSE_STATUS_GRACE_MS = 100;
+// Defense-in-depth: if no audio batch is sent for this long, the orchestrator
+// is presumed stuck. Close the stream so the server can release resources.
+// Audio chunks normally arrive every ~32ms while recording, so any gap of
+// this magnitude indicates a bug elsewhere, not normal pause behavior.
+const IDLE_TIMEOUT_MS = 30 * 1000;
+const GRPC_JS_HTTP_STATUS_DETAILS_PATTERN =
+  /\bReceived HTTP status code (?<status>\d{3})\b/i;
 
-const extractTraceId = (
-  headers: NodeJS.Dict<unknown> | undefined,
+
+const getFirstMetadataString = (
+  metadata: Metadata | undefined,
+  key: string,
 ): string | undefined => {
-  if (!headers) {
-    return undefined;
+  const first = metadata?.get(key)[0];
+  // grpc-js returns Buffer values for binary metadata keys and string values
+  // for ordinary headers; trace IDs should be ordinary strings.
+  if (Buffer.isBuffer(first)) {
+    return first.toString("utf8");
   }
-  const raw = headers[TRACE_ID_HEADER] as string | string[] | undefined;
-  return getFirstHeader(raw);
+  return typeof first === "string" ? first : undefined;
 };
 
-export const GRPC_STATUS_PERMISSION_DENIED = 7;
-export const GRPC_STATUS_RESOURCE_EXHAUSTED = 8;
-export const GRPC_STATUS_UNAUTHENTICATED = 16;
-
-const getFirstHeader = (
-  value: number | string | string[] | undefined,
-): string | undefined => {
-  if (Array.isArray(value)) {
-    return value[0];
+const runEffectPromise = async <A>(
+  effect: Effect.Effect<A, Error>,
+): Promise<A> => {
+  const result = await Effect.runPromise(Effect.either(effect));
+  if (Either.isLeft(result)) {
+    throw result.left;
   }
-  return typeof value === "undefined" ? undefined : String(value);
+  return result.right;
 };
 
-const decodeGrpcMessage = (message: string | undefined): string => {
-  if (!message) {
-    return "";
+const runEffectSync = <A>(effect: Effect.Effect<A, Error>): A => {
+  const result = Effect.runSync(Effect.either(effect));
+  if (Either.isLeft(result)) {
+    throw result.left;
   }
-
-  try {
-    return decodeURIComponent(message);
-  } catch {
-    return message;
-  }
-};
-
-const httpStatusToGrpcStatus = (httpStatus: number): number | undefined => {
-  switch (httpStatus) {
-    case 401:
-      return GRPC_STATUS_UNAUTHENTICATED;
-    case 403:
-      return GRPC_STATUS_PERMISSION_DENIED;
-    case 429:
-      return GRPC_STATUS_RESOURCE_EXHAUSTED;
-    default:
-      return undefined;
-  }
-};
-
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (reason: unknown) => void;
-}
-
-const createDeferred = <T>(): Deferred<T> => {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return { promise, resolve, reject };
-};
-
-class GrpcFrameDecoder {
-  private buffer = Buffer.alloc(0);
-
-  push(chunk: Buffer): Uint8Array[] {
-    this.buffer = Buffer.concat([this.buffer, chunk]);
-    const messages: Uint8Array[] = [];
-
-    while (this.buffer.length >= 5) {
-      const compressed = this.buffer[0];
-      const length = this.buffer.readUInt32BE(1);
-      if (this.buffer.length < 5 + length) {
-        break;
-      }
-
-      if (compressed !== 0) {
-        throw new Error("Compressed gRPC messages are not supported");
-      }
-
-      messages.push(this.buffer.subarray(5, 5 + length));
-      this.buffer = this.buffer.subarray(5 + length);
-    }
-
-    return messages;
-  }
-}
-
-const encodeGrpcFrame = (message: Uint8Array): Buffer => {
-  const frame = Buffer.alloc(5 + message.length);
-  frame[0] = 0;
-  frame.writeUInt32BE(message.length, 1);
-  Buffer.from(message).copy(frame, 5);
-  return frame;
+  return result.right;
 };
 
 type UInt64Value =
@@ -283,12 +240,26 @@ const encodeCancelRequest = (): Buffer => {
   });
 };
 
-const decodeStreamTranscribeEvent = (
-  data: Uint8Array,
+const serializeStreamTranscribeRequest = (data: Buffer): Buffer => data;
+
+const deserializeStreamTranscribeEvent = (
+  data: Buffer,
+): StreamTranscribeEventMessage => {
+  try {
+    return StreamTranscribeEvent.decode(data) as StreamTranscribeEventMessage;
+  } catch (error) {
+    throw new GrpcDictationError(
+      `Failed to decode StreamTranscribeEvent: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      grpcStatusCode.INTERNAL,
+    );
+  }
+};
+
+const finalTranscriptFromEvent = (
+  event: StreamTranscribeEventMessage,
 ): GrpcFinalTranscript | null => {
-  const event = StreamTranscribeEvent.decode(
-    data,
-  ) as StreamTranscribeEventMessage;
   if (!event.final) {
     return null;
   }
@@ -307,285 +278,717 @@ const resolveRpcPath = (endpoint: URL): string => {
   return `${basePath}${STREAM_TRANSCRIBE_PATH}`;
 };
 
+const channelTargetForEndpoint = (endpoint: URL): string => {
+  if (endpoint.protocol !== "https:" && endpoint.protocol !== "http:") {
+    throw new Error(`Unsupported gRPC endpoint protocol: ${endpoint.protocol}`);
+  }
+
+  if (endpoint.protocol === "http:" && !endpoint.port) {
+    return `${endpoint.hostname}:80`;
+  }
+
+  return endpoint.host;
+};
+
+const channelCredentialsForEndpoint = (endpoint: URL): ChannelCredentials =>
+  endpoint.protocol === "https:"
+    ? ChannelCredentials.createSsl()
+    : ChannelCredentials.createInsecure();
+
+const buildChannelOptions = (userAgent: string): ChannelOptions => ({
+  "grpc.primary_user_agent": userAgent,
+  "grpc.keepalive_time_ms": KEEPALIVE_TIME_MS,
+  "grpc.keepalive_timeout_ms": KEEPALIVE_TIMEOUT_MS,
+  "grpc.keepalive_permit_without_calls": 1,
+  "grpc.max_send_message_length": MAX_GRPC_MESSAGE_BYTES,
+  "grpc.max_receive_message_length": MAX_GRPC_MESSAGE_BYTES,
+  "grpc.initial_reconnect_backoff_ms": 1000,
+  "grpc.max_reconnect_backoff_ms": 10000,
+});
+
+const buildCallMetadata = (options: GrpcDictationStreamOptions): Metadata => {
+  const metadata = new Metadata();
+  metadata.set(AUTHORIZATION_HEADER, `Bearer ${options.token}`);
+  metadata.set(PLATFORM_HEADER, process.platform);
+  return metadata;
+};
+
+const isServiceError = (error: unknown): error is ServiceError =>
+  error instanceof Error && typeof (error as ServiceError).code === "number";
+
+const extractHttpStatusFromGrpcJsDetails = (
+  details: string | undefined,
+): number | undefined => {
+  const status = details?.match(GRPC_JS_HTTP_STATUS_DETAILS_PATTERN)?.groups
+    ?.status;
+  if (!status) {
+    return undefined;
+  }
+
+  const httpStatus = Number(status);
+  return Number.isInteger(httpStatus) ? httpStatus : undefined;
+};
+
+interface GrpcStreamState {
+  settled: boolean;
+  cancelled: boolean;
+  finalizeSent: boolean;
+  terminalError: Error | null;
+  grpcStatus: number | undefined;
+  grpcMessage: string | undefined;
+  traceId: string | undefined;
+  pendingFinalTranscript: GrpcFinalTranscript | null;
+  responseEnded: boolean;
+  clientClosed: boolean;
+}
+
+type CancelDecision =
+  | { shouldCancel: false }
+  | { shouldCancel: true; error: GrpcDictationError };
+
+const createInitialGrpcStreamState = (): GrpcStreamState => ({
+  settled: false,
+  cancelled: false,
+  finalizeSent: false,
+  terminalError: null,
+  grpcStatus: undefined,
+  grpcMessage: undefined,
+  traceId: undefined,
+  pendingFinalTranscript: null,
+  responseEnded: false,
+  clientClosed: false,
+});
+
 export class CloudDictationGrpcStream {
   static readonly PACKET_SAMPLES = 512;
   static readonly PACKET_DURATION_MS = 32;
 
-  private readonly client: ClientHttp2Session;
-  private readonly stream: ClientHttp2Stream;
-  private readonly frameDecoder = new GrpcFrameDecoder();
-  private readonly finalDeferred = createDeferred<GrpcFinalTranscript>();
-  private settled = false;
-  private cancelled = false;
-  private terminalError: Error | null = null;
-  private grpcStatus: number | undefined;
-  private grpcMessage: string | undefined;
-  private traceId: string | undefined;
-  private pendingFinalTranscript: GrpcFinalTranscript | null = null;
+  private readonly client: Client;
+  private readonly stream: ClientDuplexStream<
+    Buffer,
+    StreamTranscribeEventMessage
+  >;
+  private readonly finalDeferred: Deferred.Deferred<GrpcFinalTranscript, Error>;
+  private readonly stateRef: Ref.Ref<GrpcStreamState>;
+  private backgroundTail: Promise<void> = Promise.resolve();
+  private idleTimer: NodeJS.Timeout | null = null;
 
-  readonly finalTranscript = this.finalDeferred.promise;
+  readonly finalTranscript: Promise<GrpcFinalTranscript>;
 
   constructor(options: GrpcDictationStreamOptions) {
+    this.finalDeferred = Effect.runSync(
+      Deferred.make<GrpcFinalTranscript, Error>(),
+    );
+    this.stateRef = Effect.runSync(Ref.make(createInitialGrpcStreamState()));
+    this.finalTranscript = runEffectPromise(Deferred.await(this.finalDeferred));
     this.finalTranscript.catch(() => undefined);
 
     const endpoint = new URL(options.endpoint);
-    const origin = `${endpoint.protocol}//${endpoint.host}`;
 
-    this.client = connect(origin);
-    this.client.on("error", (error) => this.fail(error));
+    this.client = new Client(
+      channelTargetForEndpoint(endpoint),
+      channelCredentialsForEndpoint(endpoint),
+      buildChannelOptions(options.userAgent),
+    );
 
-    this.stream = this.client.request({
-      ":method": "POST",
-      ":path": resolveRpcPath(endpoint),
-      "content-type": "application/grpc+proto",
-      te: "trailers",
-      authorization: `Bearer ${options.token}`,
-      "user-agent": options.userAgent,
-      "x-platform": process.platform,
+    this.stream = this.client.makeBidiStreamRequest<
+      Buffer,
+      StreamTranscribeEventMessage
+    >(
+      resolveRpcPath(endpoint),
+      serializeStreamTranscribeRequest,
+      deserializeStreamTranscribeEvent,
+      buildCallMetadata(options),
+      {
+        deadline: new Date(Date.now() + STREAM_DEADLINE_MS),
+      },
+    );
+
+    this.stream.on("metadata", (metadata) =>
+      this.runBackground(this.updateTraceIdEffect(metadata)),
+    );
+    this.stream.on("data", (event) =>
+      this.runBackground(this.handleDataEffect(event)),
+    );
+    this.stream.on("end", () =>
+      this.runBackground(this.handleResponseEndEffect()),
+    );
+    this.stream.on("status", (streamStatus) =>
+      this.runBackground(this.handleGrpcStatusEffect(streamStatus)),
+    );
+    this.stream.on("error", (error) => {
+      this.runBackground(this.handleErrorEffect(error));
     });
+    this.stream.on("close", () => this.runBackground(this.handleCloseEffect()));
 
-    this.stream.on("response", (headers) => {
-      const traceId = extractTraceId(headers);
-      if (traceId) {
-        this.traceId = traceId;
-      }
-
-      const httpStatus = Number(getFirstHeader(headers[":status"]));
-      const grpcStatus = getFirstHeader(headers["grpc-status"]);
-      if (Number.isFinite(httpStatus) && httpStatus >= 400) {
-        this.fail(
-          new GrpcDictationError(
-            `gRPC HTTP error: ${httpStatus}`,
-            httpStatusToGrpcStatus(httpStatus),
-            httpStatus,
-            this.traceId,
-          ),
-        );
-        return;
-      }
-
-      if (typeof grpcStatus !== "undefined") {
-        this.handleGrpcStatus(headers);
-      }
-    });
-    this.stream.on("trailers", (headers) => this.handleGrpcStatus(headers));
-    this.stream.on("data", (chunk: Buffer) => this.handleData(chunk));
-    this.stream.on("error", (error) => this.fail(error));
-    this.stream.on("close", () => {
-      if (!this.cancelled && !this.settled && !this.terminalError) {
-        const message = this.grpcMessage
-          ? this.grpcMessage
-          : this.pendingFinalTranscript
-            ? "gRPC stream closed before OK status"
-            : "gRPC stream closed before final transcript";
-        this.fail(
-          new GrpcDictationError(
-            message,
-            this.grpcStatus,
-            undefined,
-            this.traceId,
-          ),
-        );
-      }
-      this.client.close();
-    });
-
-    this.writeFrameSync(encodeOpenRequest(options));
+    runEffectSync(this.writeRequestNowEffect(encodeOpenRequest(options)));
     if (options.context) {
-      this.writeFrameSync(encodeContextUpdateRequest(options.context));
+      runEffectSync(
+        this.writeRequestNowEffect(encodeContextUpdateRequest(options.context)),
+      );
     }
+
+    this.scheduleIdleTimeout();
   }
 
   async sendAudioBatch(firstSeq: bigint, chunks: Uint8Array[]): Promise<void> {
-    await this.writeFrame(encodeAudioBatchRequest(firstSeq, chunks));
+    this.scheduleIdleTimeout();
+    await runEffectPromise(
+      this.writeRequestEffect(encodeAudioBatchRequest(firstSeq, chunks)),
+    );
   }
 
   async finalize(): Promise<GrpcFinalTranscript> {
-    await this.writeFrame(encodeFinalizeRequest());
-    this.stream.end();
-    return this.finalTranscript;
+    this.clearIdleTimeout();
+    return await runEffectPromise(
+      Effect.gen(this, function* () {
+        const alreadyFinalized = yield* Ref.modify(this.stateRef, (state) =>
+          state.finalizeSent
+            ? ([true, state] as const)
+            : ([false, { ...state, finalizeSent: true }] as const),
+        );
+        if (alreadyFinalized) {
+          return yield* Deferred.await(this.finalDeferred);
+        }
+
+        yield* this.writeRequestEffect(encodeFinalizeRequest());
+        yield* Effect.sync(() => this.stream.end());
+        return yield* Deferred.await(this.finalDeferred);
+      }),
+    );
   }
 
   cancel(): void {
-    if (this.cancelled || this.settled) {
-      return;
-    }
-
-    this.cancelled = true;
-    try {
-      if (!this.stream.destroyed && !this.stream.closed) {
-        this.writeFrameSync(encodeCancelRequest());
-        this.stream.close();
-      }
-    } catch {
-      this.stream.destroy();
-    } finally {
-      this.client.close();
-    }
+    this.clearIdleTimeout();
+    this.runBackground(this.cancelEffect());
   }
 
-  private writeFrameSync(message: Uint8Array): void {
-    if (this.terminalError) {
-      throw this.terminalError;
-    }
-    if (this.stream.destroyed || this.stream.closed) {
-      throw new GrpcDictationError("gRPC stream is closed");
-    }
-
-    this.stream.write(encodeGrpcFrame(message));
-  }
-
-  private async writeFrame(message: Uint8Array): Promise<void> {
-    if (this.terminalError) {
-      throw this.terminalError;
-    }
-    if (this.stream.destroyed || this.stream.closed) {
-      throw new GrpcDictationError("gRPC stream is closed");
-    }
-
-    const didFlush = this.stream.write(encodeGrpcFrame(message));
-    if (!didFlush) {
-      await this.waitForDrain();
-    }
-
-    if (this.terminalError) {
-      throw this.terminalError;
-    }
-  }
-
-  private waitForDrain(): Promise<void> {
-    if (this.terminalError) {
-      return Promise.reject(this.terminalError);
-    }
-    if (this.stream.destroyed || this.stream.closed) {
-      return Promise.reject(
-        this.terminalError ??
+  private scheduleIdleTimeout(): void {
+    this.clearIdleTimeout();
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      this.runBackground(
+        this.failEffect(
           new GrpcDictationError(
-            "gRPC stream closed before write drained",
-            this.grpcStatus,
+            `gRPC stream idle for ${IDLE_TIMEOUT_MS}ms; closing as defense-in-depth`,
+            grpcStatusCode.CANCELLED,
             undefined,
-            this.traceId,
+            undefined,
+            true,
           ),
+          true,
+        ),
       );
+    }, IDLE_TIMEOUT_MS);
+    this.idleTimer.unref?.();
+  }
+
+  private clearIdleTimeout(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
     }
+  }
 
-    return new Promise((resolve, reject) => {
-      const cleanup = () => {
-        this.stream.off("drain", onDrain);
-        this.stream.off("close", onClose);
-        this.stream.off("error", onError);
-      };
-      const onDrain = () => {
-        cleanup();
-        resolve();
-      };
-      const onClose = () => {
-        cleanup();
-        reject(
-          this.terminalError ??
-            new GrpcDictationError(
-              "gRPC stream closed before write drained",
-              this.grpcStatus,
-              undefined,
-              this.traceId,
-            ),
-        );
-      };
-      const onError = (error: Error) => {
-        cleanup();
-        reject(error);
-      };
+  private runBackground(effect: Effect.Effect<void, Error>): void {
+    const run = async () => {
+      try {
+        await runEffectPromise(effect);
+      } catch (error) {
+        await runEffectPromise(this.failEffect(error)).catch(() => undefined);
+      }
+    };
 
-      this.stream.once("drain", onDrain);
-      this.stream.once("close", onClose);
-      this.stream.once("error", onError);
+    this.backgroundTail = this.backgroundTail.then(run, run);
+    void this.backgroundTail.catch(() => undefined);
+  }
+
+  private writeRequestNowEffect(message: Buffer): Effect.Effect<void, Error> {
+    return Effect.gen(this, function* () {
+      yield* this.ensureWritableEffect();
+      yield* Effect.try({
+        try: () => {
+          this.stream.write(message);
+        },
+        catch: (error) =>
+          error instanceof Error ? error : new Error(String(error)),
+      });
+      yield* this.failIfTerminalErrorEffect();
     });
   }
 
-  private handleData(chunk: Buffer): void {
-    try {
-      for (const message of this.frameDecoder.push(chunk)) {
-        const finalTranscript = decodeStreamTranscribeEvent(message);
-        if (finalTranscript) {
-          this.pendingFinalTranscript = finalTranscript;
-          this.resolveFinalIfOk();
+  private writeRequestEffect(message: Buffer): Effect.Effect<void, Error> {
+    return Effect.gen(this, function* () {
+      yield* this.ensureWritableEffect();
+      yield* Effect.async<void, Error>((resume) => {
+        let completed = false;
+
+        const cleanup = () => {
+          this.stream.off("close", onClose);
+          this.stream.off("error", onError);
+        };
+
+        const finishWithEffect = (effect: Effect.Effect<void, Error>) => {
+          if (completed) {
+            return;
+          }
+
+          completed = true;
+          cleanup();
+          resume(effect);
+        };
+
+        const failWith = (errorEffect: Effect.Effect<Error>) =>
+          finishWithEffect(errorEffect.pipe(Effect.flatMap(Effect.fail)));
+
+        const onClose = () => {
+          failWith(this.writeClosedErrorEffect());
+        };
+        const onError = (error: Error) => {
+          failWith(this.normalizeGrpcErrorEffect(error));
+        };
+
+        this.stream.once("close", onClose);
+        this.stream.once("error", onError);
+
+        try {
+          this.stream.write(message, (error?: Error | null) => {
+            if (error) {
+              failWith(this.normalizeGrpcErrorEffect(error));
+              return;
+            }
+            finishWithEffect(Effect.void);
+          });
+        } catch (error) {
+          failWith(this.normalizeGrpcErrorEffect(error));
         }
-      }
-    } catch (error) {
-      this.fail(error);
-    }
+
+        return Effect.sync(cleanup);
+      });
+      yield* this.failIfTerminalErrorEffect();
+    });
   }
 
-  private handleGrpcStatus(headers: NodeJS.Dict<unknown>): void {
-    const traceId = extractTraceId(headers);
-    if (traceId) {
-      this.traceId = traceId;
-    }
+  private cancelEffect(): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const decision = yield* Ref.modify(
+        this.stateRef,
+        (state): readonly [CancelDecision, GrpcStreamState] => {
+          if (state.cancelled || state.settled) {
+            return [{ shouldCancel: false }, state] as const;
+          }
 
-    const grpcStatusHeader = getFirstHeader(
-      headers["grpc-status"] as string | string[] | undefined,
-    );
-    if (typeof grpcStatusHeader === "undefined") {
-      return;
-    }
+          const error = new GrpcDictationError(
+            "gRPC stream cancelled",
+            grpcStatusCode.CANCELLED,
+            undefined,
+            state.traceId,
+          );
 
-    const grpcStatus = Number(grpcStatusHeader);
-    this.grpcStatus = grpcStatus;
-    this.grpcMessage = decodeGrpcMessage(
-      getFirstHeader(headers["grpc-message"] as string | string[] | undefined),
-    );
-
-    if (grpcStatus !== 0) {
-      this.fail(
-        new GrpcDictationError(
-          this.grpcMessage || `gRPC stream failed with status ${grpcStatus}`,
-          grpcStatus,
-          undefined,
-          this.traceId,
-        ),
+          return [
+            { shouldCancel: true, error },
+            {
+              ...state,
+              cancelled: true,
+              settled: true,
+              terminalError: error,
+            },
+          ] as const;
+        },
       );
-      return;
-    }
 
-    this.resolveFinalIfOk();
+      if (!decision.shouldCancel) {
+        return;
+      }
+
+      yield* Deferred.fail(this.finalDeferred, decision.error);
+      yield* this.writeCancelFrameEffect();
+      yield* this.scheduleCloseAfterCancelEffect();
+    });
   }
 
-  private resolveFinalIfOk(): void {
-    if (
-      this.settled ||
-      this.terminalError ||
-      this.grpcStatus !== 0 ||
-      !this.pendingFinalTranscript
-    ) {
-      return;
-    }
+  private writeCancelFrameEffect(): Effect.Effect<void> {
+    return Effect.async<void>((resume) => {
+      let completed = false;
+      const finish = () => {
+        if (completed) {
+          return;
+        }
 
-    this.settled = true;
-    this.finalDeferred.resolve(this.pendingFinalTranscript);
+        completed = true;
+        clearTimeout(timeout);
+        resume(Effect.void);
+      };
+
+      const endStream = () => {
+        try {
+          if (this.isStreamWritable()) {
+            this.stream.end();
+          }
+        } catch {
+          if (!this.stream.destroyed) {
+            this.stream.cancel();
+          }
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        endStream();
+        finish();
+      }, CANCEL_FRAME_FLUSH_TIMEOUT_MS);
+      timeout.unref?.();
+
+      try {
+        if (this.isStreamWritable()) {
+          this.stream.write(encodeCancelRequest(), (error?: Error | null) => {
+            if (error && !this.stream.destroyed) {
+              this.stream.cancel();
+            } else {
+              endStream();
+            }
+            finish();
+          });
+        } else if (!this.stream.destroyed) {
+          this.stream.cancel();
+          finish();
+        } else {
+          finish();
+        }
+      } catch {
+        if (!this.stream.destroyed) {
+          this.stream.cancel();
+        }
+        finish();
+      }
+
+      return Effect.sync(() => {
+        clearTimeout(timeout);
+      });
+    });
   }
 
-  private fail(error: unknown): void {
-    if (this.settled && this.terminalError) {
-      return;
+  private scheduleCloseAfterCancelEffect(): Effect.Effect<void> {
+    return Effect.sync(() => {
+      // After the cancel frame has been written or timed out, leave a short
+      // grace period for the half-close to reach the server before closing the
+      // channel. This is best-effort because grpc-js exposes no drain signal.
+      const closeTimer = setTimeout(() => {
+        this.runBackground(this.closeClientEffect());
+      }, CANCEL_FRAME_FLUSH_TIMEOUT_MS);
+      closeTimer.unref?.();
+    });
+  }
+
+  private handleDataEffect(
+    event: StreamTranscribeEventMessage,
+  ): Effect.Effect<void, Error> {
+    return Effect.gen(this, function* () {
+      const finalTranscript = yield* Effect.try({
+        try: () => finalTranscriptFromEvent(event),
+        catch: (error) =>
+          error instanceof Error ? error : new Error(String(error)),
+      });
+
+      if (finalTranscript) {
+        yield* Ref.update(this.stateRef, (state) => ({
+          ...state,
+          pendingFinalTranscript: finalTranscript,
+        }));
+        yield* this.resolveFinalIfOkEffect();
+      }
+    });
+  }
+
+  private handleResponseEndEffect(): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      yield* Ref.update(this.stateRef, (state) => ({
+        ...state,
+        responseEnded: true,
+      }));
+      yield* this.resolveFinalIfOkEffect();
+      yield* this.failIfFinishedWithoutTranscriptEffect();
+    });
+  }
+
+  private handleGrpcStatusEffect(
+    streamStatus: StatusObject,
+  ): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      yield* this.updateTraceIdEffect(streamStatus.metadata);
+      yield* Ref.update(this.stateRef, (state) => ({
+        ...state,
+        grpcStatus: streamStatus.code,
+        grpcMessage: streamStatus.details,
+      }));
+
+      if (streamStatus.code !== grpcStatusCode.OK) {
+        const state = yield* Ref.get(this.stateRef);
+        if (!state.cancelled) {
+          const httpStatus = extractHttpStatusFromGrpcJsDetails(
+            streamStatus.details,
+          );
+          yield* this.failEffect(
+            new GrpcDictationError(
+              streamStatus.details ||
+                `gRPC stream failed with status ${streamStatus.code}`,
+              streamStatus.code,
+              httpStatus,
+              state.traceId,
+            ),
+            false,
+          );
+        }
+        return;
+      }
+
+      yield* this.resolveFinalIfOkEffect();
+      yield* this.failIfFinishedWithoutTranscriptEffect();
+    });
+  }
+
+  private failIfFinishedWithoutTranscriptEffect(): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const state = yield* Ref.get(this.stateRef);
+      if (
+        !state.responseEnded ||
+        state.grpcStatus !== grpcStatusCode.OK ||
+        state.pendingFinalTranscript ||
+        state.settled ||
+        state.terminalError
+      ) {
+        return;
+      }
+
+      yield* this.failEffect(
+        new GrpcDictationError(
+          "gRPC stream closed before final transcript",
+          state.grpcStatus,
+          undefined,
+          state.traceId,
+        ),
+        false,
+      );
+    });
+  }
+
+  private handleErrorEffect(error: Error): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const state = yield* Ref.get(this.stateRef);
+      if (!state.cancelled) {
+        yield* this.failEffect(error, false);
+      }
+    });
+  }
+
+  private handleCloseEffect(): Effect.Effect<void> {
+    return Effect.sync(() => {
+      // grpc-js can emit close before status. Wait briefly so a delayed status
+      // event can settle the stream before we synthesize a missing-status error.
+      const closeStatusTimer = setTimeout(() => {
+        this.runBackground(this.failIfClosedBeforeStatusEffect());
+      }, CLOSE_STATUS_GRACE_MS);
+      closeStatusTimer.unref?.();
+    });
+  }
+
+  private failIfClosedBeforeStatusEffect(): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const state = yield* Ref.get(this.stateRef);
+      if (state.cancelled || state.settled || state.terminalError) {
+        return;
+      }
+
+      const message = state.grpcMessage
+        ? state.grpcMessage
+        : state.pendingFinalTranscript
+          ? "gRPC stream closed before OK status"
+          : "gRPC stream closed before final transcript";
+
+      yield* this.failEffect(
+        new GrpcDictationError(
+          message,
+          state.grpcStatus,
+          undefined,
+          state.traceId,
+        ),
+        false,
+      );
+    });
+  }
+
+  private updateTraceIdEffect(
+    metadata: Metadata | undefined,
+  ): Effect.Effect<void> {
+    const traceId = getFirstMetadataString(metadata, TRACE_ID_HEADER);
+    if (!traceId) {
+      return Effect.void;
     }
 
-    const normalized =
-      error instanceof Error ? error : new Error(String(error));
-    this.terminalError = normalized;
+    return Ref.update(this.stateRef, (state) => ({
+      ...state,
+      traceId,
+    }));
+  }
 
-    if (!this.settled) {
-      this.settled = true;
-      this.finalDeferred.reject(normalized);
+  private isStreamWritable(): boolean {
+    return !this.stream.destroyed && !this.stream.writableEnded;
+  }
+
+  private ensureWritableEffect(): Effect.Effect<void, Error> {
+    return Effect.gen(this, function* () {
+      const state = yield* Ref.get(this.stateRef);
+      if (state.terminalError) {
+        return yield* Effect.fail(state.terminalError);
+      }
+
+      if (state.settled || !this.isStreamWritable()) {
+        return yield* Effect.fail(
+          new GrpcDictationError(
+            "gRPC stream is closed",
+            state.grpcStatus,
+            undefined,
+            state.traceId,
+          ),
+        );
+      }
+    });
+  }
+
+  private failIfTerminalErrorEffect(): Effect.Effect<void, Error> {
+    return Effect.gen(this, function* () {
+      const state = yield* Ref.get(this.stateRef);
+      if (state.terminalError) {
+        return yield* Effect.fail(state.terminalError);
+      }
+    });
+  }
+
+  private writeClosedErrorEffect(): Effect.Effect<Error> {
+    return Effect.gen(this, function* () {
+      const state = yield* Ref.get(this.stateRef);
+      return (
+        state.terminalError ??
+        new GrpcDictationError(
+          "gRPC stream closed before write completed",
+          state.grpcStatus,
+          undefined,
+          state.traceId,
+        )
+      );
+    });
+  }
+
+  private normalizeGrpcErrorEffect(error: unknown): Effect.Effect<Error> {
+    if (error instanceof GrpcDictationError) {
+      return Effect.succeed(error);
     }
 
-    if (!this.stream.destroyed) {
-      this.stream.destroy();
+    if (isServiceError(error)) {
+      return Effect.gen(this, function* () {
+        yield* this.updateTraceIdEffect(error.metadata);
+        const state = yield* Ref.get(this.stateRef);
+        const httpStatus =
+          extractHttpStatusFromGrpcJsDetails(error.details) ??
+          extractHttpStatusFromGrpcJsDetails(error.message);
+        return new GrpcDictationError(
+          error.details ||
+            error.message ||
+            `gRPC stream failed with status ${error.code}`,
+          error.code,
+          httpStatus,
+          state.traceId,
+        );
+      });
     }
-    this.client.close();
+
+    return Effect.succeed(
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
+
+  private resolveFinalIfOkEffect(): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const finalTranscript = yield* Ref.modify(this.stateRef, (state) => {
+        if (
+          state.settled ||
+          state.terminalError ||
+          state.grpcStatus !== grpcStatusCode.OK ||
+          !state.pendingFinalTranscript
+        ) {
+          return [null, state] as const;
+        }
+
+        return [
+          state.pendingFinalTranscript,
+          {
+            ...state,
+            settled: true,
+          },
+        ] as const;
+      });
+
+      if (!finalTranscript) {
+        return;
+      }
+
+      yield* Deferred.succeed(this.finalDeferred, finalTranscript);
+      yield* this.closeClientEffect();
+    });
+  }
+
+  private failEffect(error: unknown, cancelStream = true): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const normalized = yield* this.normalizeGrpcErrorEffect(error);
+      const didSettle = yield* Ref.modify(this.stateRef, (state) => {
+        if (state.settled || state.terminalError) {
+          return [false, state] as const;
+        }
+
+        return [
+          true,
+          {
+            ...state,
+            settled: true,
+            terminalError: normalized,
+          },
+        ] as const;
+      });
+
+      if (!didSettle) {
+        return;
+      }
+
+      yield* Deferred.fail(this.finalDeferred, normalized);
+
+      if (cancelStream && !this.stream.destroyed) {
+        yield* Effect.sync(() => this.stream.cancel());
+      }
+
+      yield* this.closeClientEffect();
+    });
+  }
+
+  private closeClientEffect(): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const shouldClose = yield* Ref.modify(this.stateRef, (state) => {
+        if (state.clientClosed) {
+          return [false, state] as const;
+        }
+
+        return [true, { ...state, clientClosed: true }] as const;
+      });
+
+      if (shouldClose) {
+        yield* Effect.sync(() => {
+          this.clearIdleTimeout();
+          this.client.close();
+        });
+      }
+    });
   }
 }
 
-export const float32ToPcmS16lePacket = (samples: Float32Array): Uint8Array => {
+export const float32ToPcmS16le = (samples: Float32Array): Uint8Array => {
   const buffer = Buffer.alloc(samples.length * 2);
 
   for (let index = 0; index < samples.length; index++) {
@@ -602,3 +1005,4 @@ export const float32ToPcmS16lePacket = (samples: Float32Array): Uint8Array => {
 
   return buffer;
 };
+

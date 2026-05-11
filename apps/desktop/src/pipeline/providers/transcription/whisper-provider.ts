@@ -61,6 +61,10 @@ export class WhisperProvider implements TranscriptionProvider {
     await this.initializeWhisper();
   }
 
+  async warmup(): Promise<void> {
+    await this.initializeWhisper();
+  }
+
   async getBindingInfo(): Promise<{ path: string; type: string } | null> {
     if (!this.workerWrapper) {
       return null;

@@ -48,6 +48,16 @@ export interface TranscriptionProvider {
   transcribe(params: TranscribeParams): Promise<TranscriptionOutput>;
   flush(context: TranscribeContext): Promise<TranscriptionOutput>;
   reset(): void; // Clear internal buffers without transcribing
+  /**
+   * Prepare the provider for upcoming work. Called at app boot and on each
+   * recording start. Must be idempotent and cheap when already warm.
+   *
+   * Local providers: load model weights into memory if not already loaded.
+   * Cloud providers: refresh auth tokens if expiring (do NOT open transport
+   * connections — those should stay lazy on first chunk so cancelled-before-
+   * first-chunk sessions don't waste a connection).
+   */
+  warmup?(): Promise<void>;
 }
 
 // Formatting provider interface
