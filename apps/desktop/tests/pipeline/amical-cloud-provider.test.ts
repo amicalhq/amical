@@ -144,6 +144,19 @@ vi.mock("../../src/services/auth-service", () => ({
 }));
 
 vi.mock("../../src/utils/http-client", () => ({
+  AMICAL_CLIENT_HEADER: "amical-client",
+  AMICAL_VERSION_HEADER: "amical-version",
+  AMICAL_PLATFORM_HEADER: "amical-platform",
+  getAmicalClientHeaders: () => ({
+    "amical-client": "desktop",
+    "amical-version": "0.0.0-test",
+    "amical-platform": "test-platform",
+  }),
+  getAmicalClientInfo: () => ({
+    client: "desktop",
+    version: "0.0.0-test",
+    platform: "test-platform",
+  }),
   getUserAgent: () => "test-agent",
 }));
 
@@ -293,7 +306,7 @@ describe("AmicalCloudProvider", () => {
   });
 
   describe("HTTP path body shape", () => {
-    it("sends pcm_s16le base64 with audioFormat=\"pcm_s16le\"", async () => {
+    it('sends pcm_s16le base64 with audioFormat="pcm_s16le"', async () => {
       const provider = constructProviderWithTransport("http");
       mockFetchOnce({
         status: 200,
@@ -336,6 +349,29 @@ describe("AmicalCloudProvider", () => {
       const body = JSON.parse(init.body as string);
       expect(body.audioData).toBe("");
       expect(body.audioFormat).toBeUndefined();
+    });
+
+    it("sends explicit Amical client headers", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "hi" },
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await provider.flush(baseContext());
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(init.headers).toMatchObject({
+        "User-Agent": "test-agent",
+        "amical-client": "desktop",
+        "amical-version": "0.0.0-test",
+        "amical-platform": "test-platform",
+      });
     });
   });
 
@@ -610,12 +646,12 @@ describe("AmicalCloudProvider", () => {
 
       // Inject the same GrpcDictationError the leaf's idle timer would
       // synthesize. Going through the leaf's real timer would require
-      // vi.useFakeTimers and 30s of advancement; the leaf already has
+      // vi.useFakeTimers and 10s of advancement; the leaf already has
       // dedicated tests for that path.
       stream.emit(
         "error",
         new GrpcDictationError(
-          "gRPC stream idle for 30000ms",
+          "gRPC stream idle for 10000ms",
           grpcMock.status.CANCELLED,
           undefined,
           undefined,

@@ -17,6 +17,12 @@ import {
   StreamTranscribeEvent,
   StreamTranscribeRequest,
 } from "./gen/amical/dictation/v1/dictation";
+import {
+  AMICAL_CLIENT_HEADER,
+  AMICAL_PLATFORM_HEADER,
+  AMICAL_VERSION_HEADER,
+  type AmicalClientInfo,
+} from "../../../utils/http-client";
 
 export interface GrpcStreamContext {
   selectedText?: string;
@@ -32,6 +38,7 @@ export interface GrpcDictationStreamOptions {
   endpoint: string;
   token: string;
   userAgent: string;
+  clientInfo: AmicalClientInfo;
   sessionId: string;
   language?: string;
   vocabulary: string[];
@@ -60,12 +67,11 @@ export class GrpcDictationError extends Error {
 
 const TRACE_ID_HEADER = "x-trace-id";
 const AUTHORIZATION_HEADER = "authorization";
-const PLATFORM_HEADER = "x-platform";
 // Desktop recordings auto-stop at 6 minutes; keep the RPC deadline above that
 // ceiling so the server, not the transport, handles normal session completion.
 const STREAM_DEADLINE_MS = 7 * 60 * 1000;
-const KEEPALIVE_TIME_MS = 30 * 1000;
-const KEEPALIVE_TIMEOUT_MS = 10 * 1000;
+const KEEPALIVE_TIME_MS = 5 * 1000;
+const KEEPALIVE_TIMEOUT_MS = 3 * 1000;
 const MAX_GRPC_MESSAGE_BYTES = 4 * 1024 * 1024;
 const CANCEL_FRAME_FLUSH_TIMEOUT_MS = 1000;
 const CLOSE_STATUS_GRACE_MS = 100;
@@ -73,10 +79,9 @@ const CLOSE_STATUS_GRACE_MS = 100;
 // is presumed stuck. Close the stream so the server can release resources.
 // Audio chunks normally arrive every ~32ms while recording, so any gap of
 // this magnitude indicates a bug elsewhere, not normal pause behavior.
-const IDLE_TIMEOUT_MS = 30 * 1000;
+const IDLE_TIMEOUT_MS = 10 * 1000;
 const GRPC_JS_HTTP_STATUS_DETAILS_PATTERN =
   /\bReceived HTTP status code (?<status>\d{3})\b/i;
-
 
 const getFirstMetadataString = (
   metadata: Metadata | undefined,
@@ -300,6 +305,11 @@ const buildChannelOptions = (userAgent: string): ChannelOptions => ({
   "grpc.keepalive_time_ms": KEEPALIVE_TIME_MS,
   "grpc.keepalive_timeout_ms": KEEPALIVE_TIMEOUT_MS,
   "grpc.keepalive_permit_without_calls": 1,
+  // grpc-js 1.14.x does not currently read these grpc.http2.* Core channel
+  // args; keep them as no-op parity/documentation for Core-based clients.
+  "grpc.http2.max_pings_without_data": 0,
+  "grpc.http2.min_time_between_pings_ms": 5000,
+  "grpc.http2.min_ping_interval_without_data_ms": 5000,
   "grpc.max_send_message_length": MAX_GRPC_MESSAGE_BYTES,
   "grpc.max_receive_message_length": MAX_GRPC_MESSAGE_BYTES,
   "grpc.initial_reconnect_backoff_ms": 1000,
@@ -309,7 +319,9 @@ const buildChannelOptions = (userAgent: string): ChannelOptions => ({
 const buildCallMetadata = (options: GrpcDictationStreamOptions): Metadata => {
   const metadata = new Metadata();
   metadata.set(AUTHORIZATION_HEADER, `Bearer ${options.token}`);
-  metadata.set(PLATFORM_HEADER, process.platform);
+  metadata.set(AMICAL_CLIENT_HEADER, options.clientInfo.client);
+  metadata.set(AMICAL_VERSION_HEADER, options.clientInfo.version);
+  metadata.set(AMICAL_PLATFORM_HEADER, options.clientInfo.platform);
   return metadata;
 };
 
@@ -1005,4 +1017,3 @@ export const float32ToPcmS16le = (samples: Float32Array): Uint8Array => {
 
   return buffer;
 };
-

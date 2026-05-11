@@ -132,6 +132,11 @@ const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
     endpoint: "https://dictation.test",
     token: "token",
     userAgent: "test-agent",
+    clientInfo: {
+      client: "desktop",
+      version: "0.0.0-test",
+      platform: "darwin",
+    },
     sessionId: "session-1",
     vocabulary: [],
     formatting: false,
@@ -191,6 +196,41 @@ describe("CloudDictationGrpcStream", () => {
       target: "dictation.test:4317",
       credentials: { secure: false },
     });
+  });
+
+  it("configures aggressive gRPC keepalive options", () => {
+    createStream();
+
+    expect(grpcMock.getLastClientArgs()?.options).toMatchObject({
+      "grpc.keepalive_time_ms": 5000,
+      "grpc.keepalive_timeout_ms": 3000,
+      "grpc.keepalive_permit_without_calls": 1,
+      "grpc.http2.max_pings_without_data": 0,
+      "grpc.http2.min_time_between_pings_ms": 5000,
+      "grpc.http2.min_ping_interval_without_data_ms": 5000,
+    });
+  });
+
+  it("sends explicit Amical client metadata", () => {
+    const clientStream = createStream({
+      clientInfo: {
+        client: "desktop",
+        version: "1.2.3",
+        platform: "darwin",
+      },
+    });
+    const client = grpcMock.getLastClient()!;
+    const metadata = client.makeBidiStreamRequest.mock.calls[0]?.[3] as {
+      get(key: string): unknown[];
+    };
+
+    expect(metadata.get("authorization")).toEqual(["Bearer token"]);
+    expect(metadata.get("amical-client")).toEqual(["desktop"]);
+    expect(metadata.get("amical-version")).toEqual(["1.2.3"]);
+    expect(metadata.get("amical-platform")).toEqual(["darwin"]);
+    expect(metadata.get("x-platform")).toEqual([]);
+
+    clientStream.cancel();
   });
 
   it("resolves when OK status arrives before the final transcript", async () => {
@@ -406,9 +446,9 @@ describe("CloudDictationGrpcStream", () => {
     vi.useFakeTimers();
     try {
       const clientStream = createStream();
-      // Advance past the 30s idle window. unref()'d timers still fire under
+      // Advance past the 10s idle window. unref()'d timers still fire under
       // fake timers when explicitly advanced.
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(10_000);
       // Drain any background effects scheduled by the timer's failEffect,
       // then restore real timers so flushEffects()'s setImmediate fires.
       await vi.runAllTimersAsync();
@@ -430,11 +470,11 @@ describe("CloudDictationGrpcStream", () => {
     try {
       const clientStream = createStream();
 
-      // Send a packet at t=20s (within idle window) → resets the timer.
-      await vi.advanceTimersByTimeAsync(20_000);
+      // Send a packet at t=5s (within idle window) → resets the timer.
+      await vi.advanceTimersByTimeAsync(5_000);
       void clientStream.sendAudioBatch(1n, [new Uint8Array([1, 2])]);
-      // Advance another 20s (40s total, but only 20s since last send).
-      await vi.advanceTimersByTimeAsync(20_000);
+      // Advance another 5s (10s total, but only 5s since last send).
+      await vi.advanceTimersByTimeAsync(5_000);
       // No timer should have fired yet — settle the stream cleanly so the
       // assertion below distinguishes "no idle fire" from "still pending."
       const stream = grpcMock.getLastStream()!;

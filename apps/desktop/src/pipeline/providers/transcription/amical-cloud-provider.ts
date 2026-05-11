@@ -6,7 +6,11 @@ import {
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { AuthService as AuthServiceImpl } from "../../../services/auth-service";
-import { getUserAgent } from "../../../utils/http-client";
+import {
+  getAmicalClientHeaders,
+  getAmicalClientInfo,
+  getUserAgent,
+} from "../../../utils/http-client";
 import { detectApplicationType } from "../formatting/formatter-prompt";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import {
@@ -632,6 +636,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         endpoint: config.apiEndpoint,
         token: idToken,
         userAgent: getUserAgent(),
+        clientInfo: getAmicalClientInfo(),
         sessionId,
         language: snapshot.currentLanguage,
         vocabulary: snapshot.currentVocabulary,
@@ -928,6 +933,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               "Content-Type": "application/json",
               Authorization: `Bearer ${idToken}`,
               "User-Agent": getUserAgent(),
+              ...getAmicalClientHeaders(),
             },
             body: JSON.stringify({
               sessionId: snapshot.currentSessionId,
