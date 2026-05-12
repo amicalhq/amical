@@ -16,7 +16,7 @@ import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { api } from "@/trpc/react";
 import { FileTextIcon } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
+import { APP_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
 // Detect platform for keyboard shortcuts
 const isMac = window.electronAPI.platform === "darwin";
@@ -29,7 +29,7 @@ export function CommandSearchButton() {
 
   const localizedSettings = React.useMemo(
     () =>
-      SETTINGS_NAV_ITEMS.map((page) => ({
+      [...APP_NAV_ITEMS, ...SETTINGS_NAV_ITEMS].map((page) => ({
         ...page,
         title: t(page.titleKey),
         description: t(page.descriptionKey),
@@ -37,7 +37,7 @@ export function CommandSearchButton() {
     [t, i18n.language],
   );
 
-  // Client-side filtering for settings
+  // Client-side filtering for app and settings routes
   const settingsResults = React.useMemo(() => {
     const query = search.toLowerCase().trim();
     if (!query) {
@@ -62,7 +62,7 @@ export function CommandSearchButton() {
       ...settingsResults,
       ...noteResults.map((n) => ({
         ...n,
-        url: `/settings/notes/${n.id}`,
+        url: `/notes/${n.id}`,
         description: formatDate(new Date(n.createdAt)),
         type: "note" as const,
         icon: n.icon || "file-text",
@@ -113,12 +113,39 @@ export function CommandSearchButton() {
             const noteResults = searchResults.filter(
               (item) => item.type === "note",
             );
+            const appResults = searchResults.filter(
+              (item) => item.type === "app",
+            );
             const settingsResults = searchResults.filter(
               (item) => item.type === "settings",
             );
 
             return (
               <>
+                {appResults.length > 0 && (
+                  <CommandGroup heading={t("settings.search.appHeading")}>
+                    {appResults.map((page) => (
+                      <CommandItem
+                        key={page.url}
+                        value={page.title}
+                        onSelect={() => handleSelect(page.url)}
+                        className="cursor-pointer"
+                      >
+                        {typeof page.icon === "string" ? (
+                          <span className="mr-2 text-xl">{page.icon}</span>
+                        ) : (
+                          <page.icon className="mr-2 h-4 w-4" />
+                        )}
+                        <div className="flex flex-col">
+                          <span className="font-medium">{page.title}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {page.description}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
                 {settingsResults.length > 0 && (
                   <CommandGroup heading={t("settings.search.settingsHeading")}>
                     {settingsResults.map((page) => (

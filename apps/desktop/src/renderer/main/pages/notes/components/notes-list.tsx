@@ -16,7 +16,7 @@ export function NotesList() {
 
   const onNoteClick = (noteId: number) => {
     navigate({
-      to: "/settings/notes/$noteId",
+      to: "/notes/$noteId",
       params: { noteId: String(noteId) },
       search: {}, // Clear search params to prevent autoRecord from persisting
     });

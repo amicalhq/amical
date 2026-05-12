@@ -378,13 +378,15 @@
       "community": "社群",
       "discordAlt": "Discord",
       "logoAlt": "Amical 標誌",
-      "brand": "Amical"
+      "brand": "Amical",
+      "backToApp": "返回應用程式"
     },
     "search": {
       "buttonLabel": "搜尋",
       "buttonPlaceholder": "搜尋...",
       "inputPlaceholder": "搜尋設定與筆記...",
       "noResults": "找不到結果。",
+      "appHeading": "應用程式",
       "settingsHeading": "設定",
       "notesHeading": "筆記"
     },

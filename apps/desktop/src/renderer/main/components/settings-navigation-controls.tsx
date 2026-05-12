@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { useSettingsHeaderActions } from "../routes/settings/header-actions-context";
+import { useSettingsHeaderActions } from "./settings-header-actions-context";
 
 interface SettingsNavigationControlsProps {
   className?: string;

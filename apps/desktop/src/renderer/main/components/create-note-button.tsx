@@ -27,7 +27,7 @@ export function CreateNoteButton() {
         }
       }
       navigate({
-        to: "/settings/notes/$noteId",
+        to: "/notes/$noteId",
         params: { noteId: String(newNote.id) },
         search: autoRecord ? { autoRecord: true } : {},
       });

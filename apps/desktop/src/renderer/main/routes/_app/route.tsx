@@ -1,27 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SettingsSidebar } from "../../components/settings-sidebar";
 import { SiteHeader } from "@/components/site-header";
-import { useLocation } from "@tanstack/react-router";
 import {
   SettingsHeaderProvider,
   useSettingsHeaderActions,
-} from "./header-actions-context";
+} from "../../components/settings-header-actions-context";
 
-export const Route = createFileRoute("/settings")({
-  component: SettingsLayout,
+export const Route = createFileRoute("/_app")({
+  component: AppLayout,
 });
 
-function SettingsLayout() {
+function AppLayout() {
   return (
     <SettingsHeaderProvider>
-      <SettingsLayoutContent />
+      <AppLayoutContent />
     </SettingsHeaderProvider>
   );
 }
 
-function SettingsLayoutContent() {
+function AppLayoutContent() {
   const location = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -47,10 +46,13 @@ function SettingsLayoutContent() {
     return () => observer.disconnect();
   }, [location.pathname]);
 
-  const getSettingsPageTitle = (pathname: string): string => {
-    // Check for dynamic routes first
-    if (pathname.startsWith("/settings/notes")) {
+  const getPageTitle = (pathname: string): string => {
+    if (pathname.startsWith("/notes")) {
       return "Notes";
+    }
+
+    if (pathname.startsWith("/history")) {
+      return "History";
     }
 
     const routes: Record<string, string> = {
@@ -59,7 +61,6 @@ function SettingsLayoutContent() {
       "/settings/vocabulary": "Vocabulary",
       "/settings/shortcuts": "Shortcuts",
       "/settings/ai-models": "AI Models",
-      "/settings/history": "History",
       "/settings/advanced": "Advanced",
       "/settings/about": "About",
     };
@@ -79,7 +80,7 @@ function SettingsLayoutContent() {
         <SettingsSidebar variant="inset" />
         <SidebarInset className="!mt-0">
           <SiteHeader
-            currentView={`${getSettingsPageTitle(location.pathname)}`}
+            currentView={`${getPageTitle(location.pathname)}`}
             showTitle={isScrolled}
             actions={headerActions ?? undefined}
           />

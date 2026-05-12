@@ -9,24 +9,23 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteRouteImport } from './routes/settings/route'
+import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SettingsIndexRouteImport } from './routes/settings/index'
-import { Route as SettingsVocabularyRouteImport } from './routes/settings/vocabulary'
-import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
-import { Route as SettingsPreferencesRouteImport } from './routes/settings/preferences'
-import { Route as SettingsNotesRouteImport } from './routes/settings/notes'
-import { Route as SettingsHistoryRouteImport } from './routes/settings/history'
-import { Route as SettingsDictationRouteImport } from './routes/settings/dictation'
-import { Route as SettingsAiModelsRouteImport } from './routes/settings/ai-models'
-import { Route as SettingsAdvancedRouteImport } from './routes/settings/advanced'
-import { Route as SettingsAboutRouteImport } from './routes/settings/about'
-import { Route as SettingsNotesIndexRouteImport } from './routes/settings/notes.index'
-import { Route as SettingsNotesNoteIdRouteImport } from './routes/settings/notes.$noteId'
+import { Route as AppNotesRouteImport } from './routes/_app/notes'
+import { Route as AppHistoryRouteImport } from './routes/_app/history'
+import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
+import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
+import { Route as AppSettingsVocabularyRouteImport } from './routes/_app/settings/vocabulary'
+import { Route as AppSettingsShortcutsRouteImport } from './routes/_app/settings/shortcuts'
+import { Route as AppSettingsPreferencesRouteImport } from './routes/_app/settings/preferences'
+import { Route as AppSettingsDictationRouteImport } from './routes/_app/settings/dictation'
+import { Route as AppSettingsAiModelsRouteImport } from './routes/_app/settings/ai-models'
+import { Route as AppSettingsAdvancedRouteImport } from './routes/_app/settings/advanced'
+import { Route as AppSettingsAboutRouteImport } from './routes/_app/settings/about'
+import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes.$noteId'
 
-const SettingsRouteRoute = SettingsRouteRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -34,175 +33,173 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsVocabularyRoute = SettingsVocabularyRouteImport.update({
-  id: '/vocabulary',
-  path: '/vocabulary',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsShortcutsRoute = SettingsShortcutsRouteImport.update({
-  id: '/shortcuts',
-  path: '/shortcuts',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsPreferencesRoute = SettingsPreferencesRouteImport.update({
-  id: '/preferences',
-  path: '/preferences',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsNotesRoute = SettingsNotesRouteImport.update({
+const AppNotesRoute = AppNotesRouteImport.update({
   id: '/notes',
   path: '/notes',
-  getParentRoute: () => SettingsRouteRoute,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const SettingsHistoryRoute = SettingsHistoryRouteImport.update({
+const AppHistoryRoute = AppHistoryRouteImport.update({
   id: '/history',
   path: '/history',
-  getParentRoute: () => SettingsRouteRoute,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const SettingsDictationRoute = SettingsDictationRouteImport.update({
-  id: '/dictation',
-  path: '/dictation',
-  getParentRoute: () => SettingsRouteRoute,
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const SettingsAiModelsRoute = SettingsAiModelsRouteImport.update({
-  id: '/ai-models',
-  path: '/ai-models',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsAdvancedRoute = SettingsAdvancedRouteImport.update({
-  id: '/advanced',
-  path: '/advanced',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsAboutRoute = SettingsAboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => SettingsRouteRoute,
-} as any)
-const SettingsNotesIndexRoute = SettingsNotesIndexRouteImport.update({
+const AppNotesIndexRoute = AppNotesIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => SettingsNotesRoute,
+  getParentRoute: () => AppNotesRoute,
 } as any)
-const SettingsNotesNoteIdRoute = SettingsNotesNoteIdRouteImport.update({
+const AppSettingsVocabularyRoute = AppSettingsVocabularyRouteImport.update({
+  id: '/settings/vocabulary',
+  path: '/settings/vocabulary',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsShortcutsRoute = AppSettingsShortcutsRouteImport.update({
+  id: '/settings/shortcuts',
+  path: '/settings/shortcuts',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsPreferencesRoute = AppSettingsPreferencesRouteImport.update({
+  id: '/settings/preferences',
+  path: '/settings/preferences',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsDictationRoute = AppSettingsDictationRouteImport.update({
+  id: '/settings/dictation',
+  path: '/settings/dictation',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsAiModelsRoute = AppSettingsAiModelsRouteImport.update({
+  id: '/settings/ai-models',
+  path: '/settings/ai-models',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsAdvancedRoute = AppSettingsAdvancedRouteImport.update({
+  id: '/settings/advanced',
+  path: '/settings/advanced',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsAboutRoute = AppSettingsAboutRouteImport.update({
+  id: '/settings/about',
+  path: '/settings/about',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
   id: '/$noteId',
   path: '/$noteId',
-  getParentRoute: () => SettingsNotesRoute,
+  getParentRoute: () => AppNotesRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRouteRouteWithChildren
-  '/settings/about': typeof SettingsAboutRoute
-  '/settings/advanced': typeof SettingsAdvancedRoute
-  '/settings/ai-models': typeof SettingsAiModelsRoute
-  '/settings/dictation': typeof SettingsDictationRoute
-  '/settings/history': typeof SettingsHistoryRoute
-  '/settings/notes': typeof SettingsNotesRouteWithChildren
-  '/settings/preferences': typeof SettingsPreferencesRoute
-  '/settings/shortcuts': typeof SettingsShortcutsRoute
-  '/settings/vocabulary': typeof SettingsVocabularyRoute
-  '/settings/': typeof SettingsIndexRoute
-  '/settings/notes/$noteId': typeof SettingsNotesNoteIdRoute
-  '/settings/notes/': typeof SettingsNotesIndexRoute
+  '/history': typeof AppHistoryRoute
+  '/notes': typeof AppNotesRouteWithChildren
+  '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/settings/about': typeof AppSettingsAboutRoute
+  '/settings/advanced': typeof AppSettingsAdvancedRoute
+  '/settings/ai-models': typeof AppSettingsAiModelsRoute
+  '/settings/dictation': typeof AppSettingsDictationRoute
+  '/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/settings/shortcuts': typeof AppSettingsShortcutsRoute
+  '/settings/vocabulary': typeof AppSettingsVocabularyRoute
+  '/notes/': typeof AppNotesIndexRoute
+  '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/settings/about': typeof SettingsAboutRoute
-  '/settings/advanced': typeof SettingsAdvancedRoute
-  '/settings/ai-models': typeof SettingsAiModelsRoute
-  '/settings/dictation': typeof SettingsDictationRoute
-  '/settings/history': typeof SettingsHistoryRoute
-  '/settings/preferences': typeof SettingsPreferencesRoute
-  '/settings/shortcuts': typeof SettingsShortcutsRoute
-  '/settings/vocabulary': typeof SettingsVocabularyRoute
-  '/settings': typeof SettingsIndexRoute
-  '/settings/notes/$noteId': typeof SettingsNotesNoteIdRoute
-  '/settings/notes': typeof SettingsNotesIndexRoute
+  '/history': typeof AppHistoryRoute
+  '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/settings/about': typeof AppSettingsAboutRoute
+  '/settings/advanced': typeof AppSettingsAdvancedRoute
+  '/settings/ai-models': typeof AppSettingsAiModelsRoute
+  '/settings/dictation': typeof AppSettingsDictationRoute
+  '/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/settings/shortcuts': typeof AppSettingsShortcutsRoute
+  '/settings/vocabulary': typeof AppSettingsVocabularyRoute
+  '/notes': typeof AppNotesIndexRoute
+  '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRouteRouteWithChildren
-  '/settings/about': typeof SettingsAboutRoute
-  '/settings/advanced': typeof SettingsAdvancedRoute
-  '/settings/ai-models': typeof SettingsAiModelsRoute
-  '/settings/dictation': typeof SettingsDictationRoute
-  '/settings/history': typeof SettingsHistoryRoute
-  '/settings/notes': typeof SettingsNotesRouteWithChildren
-  '/settings/preferences': typeof SettingsPreferencesRoute
-  '/settings/shortcuts': typeof SettingsShortcutsRoute
-  '/settings/vocabulary': typeof SettingsVocabularyRoute
-  '/settings/': typeof SettingsIndexRoute
-  '/settings/notes/$noteId': typeof SettingsNotesNoteIdRoute
-  '/settings/notes/': typeof SettingsNotesIndexRoute
+  '/_app': typeof AppRouteRouteWithChildren
+  '/_app/history': typeof AppHistoryRoute
+  '/_app/notes': typeof AppNotesRouteWithChildren
+  '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/_app/settings/about': typeof AppSettingsAboutRoute
+  '/_app/settings/advanced': typeof AppSettingsAdvancedRoute
+  '/_app/settings/ai-models': typeof AppSettingsAiModelsRoute
+  '/_app/settings/dictation': typeof AppSettingsDictationRoute
+  '/_app/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/_app/settings/shortcuts': typeof AppSettingsShortcutsRoute
+  '/_app/settings/vocabulary': typeof AppSettingsVocabularyRoute
+  '/_app/notes/': typeof AppNotesIndexRoute
+  '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/settings'
+    | '/history'
+    | '/notes'
+    | '/notes/$noteId'
     | '/settings/about'
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
-    | '/settings/history'
-    | '/settings/notes'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/vocabulary'
-    | '/settings/'
-    | '/settings/notes/$noteId'
-    | '/settings/notes/'
+    | '/notes/'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/history'
+    | '/notes/$noteId'
     | '/settings/about'
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
-    | '/settings/history'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/vocabulary'
+    | '/notes'
     | '/settings'
-    | '/settings/notes/$noteId'
-    | '/settings/notes'
   id:
     | '__root__'
     | '/'
-    | '/settings'
-    | '/settings/about'
-    | '/settings/advanced'
-    | '/settings/ai-models'
-    | '/settings/dictation'
-    | '/settings/history'
-    | '/settings/notes'
-    | '/settings/preferences'
-    | '/settings/shortcuts'
-    | '/settings/vocabulary'
-    | '/settings/'
-    | '/settings/notes/$noteId'
-    | '/settings/notes/'
+    | '/_app'
+    | '/_app/history'
+    | '/_app/notes'
+    | '/_app/notes/$noteId'
+    | '/_app/settings/about'
+    | '/_app/settings/advanced'
+    | '/_app/settings/ai-models'
+    | '/_app/settings/dictation'
+    | '/_app/settings/preferences'
+    | '/_app/settings/shortcuts'
+    | '/_app/settings/vocabulary'
+    | '/_app/notes/'
+    | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
+  AppRouteRoute: typeof AppRouteRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteRouteImport
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: ''
+      preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -212,140 +209,140 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/': {
-      id: '/settings/'
-      path: '/'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/vocabulary': {
-      id: '/settings/vocabulary'
-      path: '/vocabulary'
-      fullPath: '/settings/vocabulary'
-      preLoaderRoute: typeof SettingsVocabularyRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/shortcuts': {
-      id: '/settings/shortcuts'
-      path: '/shortcuts'
-      fullPath: '/settings/shortcuts'
-      preLoaderRoute: typeof SettingsShortcutsRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/preferences': {
-      id: '/settings/preferences'
-      path: '/preferences'
-      fullPath: '/settings/preferences'
-      preLoaderRoute: typeof SettingsPreferencesRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/notes': {
-      id: '/settings/notes'
+    '/_app/notes': {
+      id: '/_app/notes'
       path: '/notes'
-      fullPath: '/settings/notes'
-      preLoaderRoute: typeof SettingsNotesRouteImport
-      parentRoute: typeof SettingsRouteRoute
+      fullPath: '/notes'
+      preLoaderRoute: typeof AppNotesRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/settings/history': {
-      id: '/settings/history'
+    '/_app/history': {
+      id: '/_app/history'
       path: '/history'
-      fullPath: '/settings/history'
-      preLoaderRoute: typeof SettingsHistoryRouteImport
-      parentRoute: typeof SettingsRouteRoute
+      fullPath: '/history'
+      preLoaderRoute: typeof AppHistoryRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/settings/dictation': {
-      id: '/settings/dictation'
-      path: '/dictation'
-      fullPath: '/settings/dictation'
-      preLoaderRoute: typeof SettingsDictationRouteImport
-      parentRoute: typeof SettingsRouteRoute
+    '/_app/settings/': {
+      id: '/_app/settings/'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/settings/ai-models': {
-      id: '/settings/ai-models'
-      path: '/ai-models'
-      fullPath: '/settings/ai-models'
-      preLoaderRoute: typeof SettingsAiModelsRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/advanced': {
-      id: '/settings/advanced'
-      path: '/advanced'
-      fullPath: '/settings/advanced'
-      preLoaderRoute: typeof SettingsAdvancedRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/about': {
-      id: '/settings/about'
-      path: '/about'
-      fullPath: '/settings/about'
-      preLoaderRoute: typeof SettingsAboutRouteImport
-      parentRoute: typeof SettingsRouteRoute
-    }
-    '/settings/notes/': {
-      id: '/settings/notes/'
+    '/_app/notes/': {
+      id: '/_app/notes/'
       path: '/'
-      fullPath: '/settings/notes/'
-      preLoaderRoute: typeof SettingsNotesIndexRouteImport
-      parentRoute: typeof SettingsNotesRoute
+      fullPath: '/notes/'
+      preLoaderRoute: typeof AppNotesIndexRouteImport
+      parentRoute: typeof AppNotesRoute
     }
-    '/settings/notes/$noteId': {
-      id: '/settings/notes/$noteId'
+    '/_app/settings/vocabulary': {
+      id: '/_app/settings/vocabulary'
+      path: '/settings/vocabulary'
+      fullPath: '/settings/vocabulary'
+      preLoaderRoute: typeof AppSettingsVocabularyRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/shortcuts': {
+      id: '/_app/settings/shortcuts'
+      path: '/settings/shortcuts'
+      fullPath: '/settings/shortcuts'
+      preLoaderRoute: typeof AppSettingsShortcutsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/preferences': {
+      id: '/_app/settings/preferences'
+      path: '/settings/preferences'
+      fullPath: '/settings/preferences'
+      preLoaderRoute: typeof AppSettingsPreferencesRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/dictation': {
+      id: '/_app/settings/dictation'
+      path: '/settings/dictation'
+      fullPath: '/settings/dictation'
+      preLoaderRoute: typeof AppSettingsDictationRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/ai-models': {
+      id: '/_app/settings/ai-models'
+      path: '/settings/ai-models'
+      fullPath: '/settings/ai-models'
+      preLoaderRoute: typeof AppSettingsAiModelsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/advanced': {
+      id: '/_app/settings/advanced'
+      path: '/settings/advanced'
+      fullPath: '/settings/advanced'
+      preLoaderRoute: typeof AppSettingsAdvancedRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/about': {
+      id: '/_app/settings/about'
+      path: '/settings/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof AppSettingsAboutRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/notes/$noteId': {
+      id: '/_app/notes/$noteId'
       path: '/$noteId'
-      fullPath: '/settings/notes/$noteId'
-      preLoaderRoute: typeof SettingsNotesNoteIdRouteImport
-      parentRoute: typeof SettingsNotesRoute
+      fullPath: '/notes/$noteId'
+      preLoaderRoute: typeof AppNotesNoteIdRouteImport
+      parentRoute: typeof AppNotesRoute
     }
   }
 }
 
-interface SettingsNotesRouteChildren {
-  SettingsNotesNoteIdRoute: typeof SettingsNotesNoteIdRoute
-  SettingsNotesIndexRoute: typeof SettingsNotesIndexRoute
+interface AppNotesRouteChildren {
+  AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
+  AppNotesIndexRoute: typeof AppNotesIndexRoute
 }
 
-const SettingsNotesRouteChildren: SettingsNotesRouteChildren = {
-  SettingsNotesNoteIdRoute: SettingsNotesNoteIdRoute,
-  SettingsNotesIndexRoute: SettingsNotesIndexRoute,
+const AppNotesRouteChildren: AppNotesRouteChildren = {
+  AppNotesNoteIdRoute: AppNotesNoteIdRoute,
+  AppNotesIndexRoute: AppNotesIndexRoute,
 }
 
-const SettingsNotesRouteWithChildren = SettingsNotesRoute._addFileChildren(
-  SettingsNotesRouteChildren,
+const AppNotesRouteWithChildren = AppNotesRoute._addFileChildren(
+  AppNotesRouteChildren,
 )
 
-interface SettingsRouteRouteChildren {
-  SettingsAboutRoute: typeof SettingsAboutRoute
-  SettingsAdvancedRoute: typeof SettingsAdvancedRoute
-  SettingsAiModelsRoute: typeof SettingsAiModelsRoute
-  SettingsDictationRoute: typeof SettingsDictationRoute
-  SettingsHistoryRoute: typeof SettingsHistoryRoute
-  SettingsNotesRoute: typeof SettingsNotesRouteWithChildren
-  SettingsPreferencesRoute: typeof SettingsPreferencesRoute
-  SettingsShortcutsRoute: typeof SettingsShortcutsRoute
-  SettingsVocabularyRoute: typeof SettingsVocabularyRoute
-  SettingsIndexRoute: typeof SettingsIndexRoute
+interface AppRouteRouteChildren {
+  AppHistoryRoute: typeof AppHistoryRoute
+  AppNotesRoute: typeof AppNotesRouteWithChildren
+  AppSettingsAboutRoute: typeof AppSettingsAboutRoute
+  AppSettingsAdvancedRoute: typeof AppSettingsAdvancedRoute
+  AppSettingsAiModelsRoute: typeof AppSettingsAiModelsRoute
+  AppSettingsDictationRoute: typeof AppSettingsDictationRoute
+  AppSettingsPreferencesRoute: typeof AppSettingsPreferencesRoute
+  AppSettingsShortcutsRoute: typeof AppSettingsShortcutsRoute
+  AppSettingsVocabularyRoute: typeof AppSettingsVocabularyRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
-const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
-  SettingsAboutRoute: SettingsAboutRoute,
-  SettingsAdvancedRoute: SettingsAdvancedRoute,
-  SettingsAiModelsRoute: SettingsAiModelsRoute,
-  SettingsDictationRoute: SettingsDictationRoute,
-  SettingsHistoryRoute: SettingsHistoryRoute,
-  SettingsNotesRoute: SettingsNotesRouteWithChildren,
-  SettingsPreferencesRoute: SettingsPreferencesRoute,
-  SettingsShortcutsRoute: SettingsShortcutsRoute,
-  SettingsVocabularyRoute: SettingsVocabularyRoute,
-  SettingsIndexRoute: SettingsIndexRoute,
+const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppHistoryRoute: AppHistoryRoute,
+  AppNotesRoute: AppNotesRouteWithChildren,
+  AppSettingsAboutRoute: AppSettingsAboutRoute,
+  AppSettingsAdvancedRoute: AppSettingsAdvancedRoute,
+  AppSettingsAiModelsRoute: AppSettingsAiModelsRoute,
+  AppSettingsDictationRoute: AppSettingsDictationRoute,
+  AppSettingsPreferencesRoute: AppSettingsPreferencesRoute,
+  AppSettingsShortcutsRoute: AppSettingsShortcutsRoute,
+  AppSettingsVocabularyRoute: AppSettingsVocabularyRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 
-const SettingsRouteRouteWithChildren = SettingsRouteRoute._addFileChildren(
-  SettingsRouteRouteChildren,
+const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
+  AppRouteRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SettingsRouteRoute: SettingsRouteRouteWithChildren,
+  AppRouteRoute: AppRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

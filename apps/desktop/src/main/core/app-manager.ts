@@ -397,7 +397,9 @@ export class AppManager {
     const uiSettings = await settingsService.getUISettings();
     const locale = uiSettings.locale ?? app.getLocale();
     await setupApplicationMenu(
-      () => this.windowManager.createOrShowMainWindow(),
+      () => {
+        void this.windowManager.navigateMainWindow("/settings/preferences");
+      },
       () => {
         const autoUpdaterService =
           this.serviceManager.getService("autoUpdaterService");

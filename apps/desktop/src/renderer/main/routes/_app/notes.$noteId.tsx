@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { z } from "zod";
 import NotePage from "../../pages/notes/components/note-wrapper";
-import { useSettingsHeaderActions } from "./header-actions-context";
-import { NotesPopoutHeaderAction } from "./notes-popout-header-action";
+import { useSettingsHeaderActions } from "../../components/settings-header-actions-context";
+import { NotesPopoutHeaderAction } from "../../components/notes-popout-header-action";
 
 const noteSearchSchema = z.object({
   autoRecord: z.preprocess((value) => {
@@ -14,7 +14,7 @@ const noteSearchSchema = z.object({
   }, z.boolean().optional()),
 });
 
-export const Route = createFileRoute("/settings/notes/$noteId")({
+export const Route = createFileRoute("/_app/notes/$noteId")({
   component: NotePageWrapper,
   validateSearch: noteSearchSchema,
 });

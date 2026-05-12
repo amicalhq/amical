@@ -378,13 +378,15 @@
       "community": "Comunidad",
       "discordAlt": "Discord",
       "logoAlt": "Logo de Amical",
-      "brand": "Amical"
+      "brand": "Amical",
+      "backToApp": "Volver a la app"
     },
     "search": {
       "buttonLabel": "Buscar",
       "buttonPlaceholder": "Buscar...",
       "inputPlaceholder": "Buscar en configuración y notas...",
       "noResults": "No se encontraron resultados.",
+      "appHeading": "Aplicación",
       "settingsHeading": "Configuración",
       "notesHeading": "Notas"
     },

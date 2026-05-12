@@ -378,13 +378,15 @@
       "community": "コミュニティ",
       "discordAlt": "Discord",
       "logoAlt": "Amical ロゴ",
-      "brand": "Amical"
+      "brand": "Amical",
+      "backToApp": "アプリに戻る"
     },
     "search": {
       "buttonLabel": "検索",
       "buttonPlaceholder": "検索...",
       "inputPlaceholder": "設定とノートを検索...",
       "noResults": "結果が見つかりません。",
+      "appHeading": "アプリ",
       "settingsHeading": "設定",
       "notesHeading": "ノート"
     },
