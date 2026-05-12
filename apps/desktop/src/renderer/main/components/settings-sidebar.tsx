@@ -2,8 +2,11 @@ import * as React from "react";
 import {
   IconBookFilled,
   IconBrandDiscordFilled,
+  IconChevronLeft,
   IconInfoCircle,
+  IconSettings,
 } from "@tabler/icons-react";
+import { Link, useLocation } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { NavMain } from "@/components/nav-main";
@@ -14,6 +17,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -28,7 +32,7 @@ import {
 import { CommandSearchButton } from "./command-search-button";
 import { CreateNoteButton } from "./create-note-button";
 import { SettingsNavigationControls } from "./settings-navigation-controls";
-import { SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
+import { APP_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
 const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const noDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
@@ -37,18 +41,35 @@ export function SettingsSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
   const { t } = useTranslation();
+  const location = useLocation();
   const { isMobile } = useSidebar();
   const sidebarCtaFlag = useFeatureFlag(SIDEBAR_CTA_FEATURE_FLAG);
+  const isSettingsSidebar = location.pathname.startsWith("/settings");
 
   const sidebarCtaPayload = sidebarCtaFlag.enabled
     ? parseSidebarCtaPayload(sidebarCtaFlag.payload)
     : null;
 
-  const navMain = SETTINGS_NAV_ITEMS.map(({ titleKey, url, icon }) => ({
+  const appNavItems = APP_NAV_ITEMS.map(({ titleKey, url, icon }) => ({
     title: t(titleKey),
     url,
     icon: typeof icon === "string" ? undefined : icon,
   }));
+  const settingsEntryItem = {
+    title: t("menu.settings"),
+    url: "/settings/preferences",
+    icon: IconSettings,
+  };
+  const settingsNavItems = SETTINGS_NAV_ITEMS.map(
+    ({ titleKey, url, icon }) => ({
+      title: t(titleKey),
+      url,
+      icon: typeof icon === "string" ? undefined : icon,
+    }),
+  );
+  const navMain = isSettingsSidebar
+    ? settingsNavItems
+    : [...appNavItems, settingsEntryItem];
 
   const baseNavSecondary: NavSecondaryItem[] = [
     {
@@ -83,6 +104,62 @@ export function SettingsSidebar({
     ? [navSecondaryCta, ...baseNavSecondary]
     : baseNavSecondary;
 
+  const appHeader = (
+    <SidebarHeader className="py-0 -mb-1">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            asChild
+            className="data-[slot=sidebar-menu-button]:!p-1.5"
+          >
+            <div className="inline-flex items-center gap-2.5 font-semibold w-full">
+              <img
+                src="assets/logo.svg"
+                alt={t("settings.sidebar.logoAlt")}
+                className="!size-7"
+              />
+              <span className="font-semibold">
+                {t("settings.sidebar.brand")}
+              </span>
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <CreateNoteButton />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <CommandSearchButton />
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarHeader>
+  );
+
+  const settingsHeader = (
+    <SidebarHeader className="py-0 -mb-1">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            asChild
+            className="data-[slot=sidebar-menu-button]:!p-1.5"
+          >
+            <Link to="/history" aria-label={t("settings.sidebar.backToApp")}>
+              <IconChevronLeft />
+              <span>{t("settings.sidebar.backToApp")}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <div className="inline-flex items-center gap-2.5 w-full px-2 py-1.5 font-semibold">
+            {t("menu.settings")}
+          </div>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <CommandSearchButton />
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarHeader>
+  );
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <div
@@ -97,37 +174,13 @@ export function SettingsSidebar({
           />
         ) : null}
       </div>
-      <SidebarHeader className="py-0 -mb-1">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <div className="inline-flex items-center gap-2.5 font-semibold w-full">
-                <img
-                  src="assets/logo.svg"
-                  alt={t("settings.sidebar.logoAlt")}
-                  className="!size-7"
-                />
-                <span className="font-semibold">
-                  {t("settings.sidebar.brand")}
-                </span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <CreateNoteButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <CommandSearchButton />
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+      {isSettingsSidebar ? settingsHeader : appHeader}
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
+      <SidebarFooter className="p-0">
+        <NavSecondary items={navSecondary} />
+      </SidebarFooter>
     </Sidebar>
   );
 }

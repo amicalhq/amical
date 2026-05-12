@@ -7,7 +7,7 @@ import EmbeddingTab from "./tabs/EmbeddingTab";
 import { useNavigate, getRouteApi } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-const routeApi = getRouteApi("/settings/ai-models");
+const routeApi = getRouteApi("/_app/settings/ai-models");
 
 export default function AIModelsSettingsPage() {
   const { t } = useTranslation();

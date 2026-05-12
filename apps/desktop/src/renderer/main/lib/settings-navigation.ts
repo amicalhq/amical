@@ -16,17 +16,27 @@ export interface SettingsNavItem {
   url: string;
   descriptionKey: string;
   icon: Icon | string;
-  type: "settings";
+  type: "app" | "settings";
 }
 
-export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
+export const APP_NAV_ITEMS: SettingsNavItem[] = [
   {
     titleKey: "settings.nav.notes.title",
-    url: "/settings/notes",
+    url: "/notes",
     descriptionKey: "settings.nav.notes.description",
     icon: IconNotes,
-    type: "settings",
+    type: "app",
   },
+  {
+    titleKey: "settings.nav.history.title",
+    url: "/history",
+    descriptionKey: "settings.nav.history.description",
+    icon: IconHistory,
+    type: "app",
+  },
+];
+
+export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
     titleKey: "settings.nav.preferences.title",
     url: "/settings/preferences",
@@ -60,13 +70,6 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/ai-models",
     descriptionKey: "settings.nav.aiModels.description",
     icon: IconBrain,
-    type: "settings",
-  },
-  {
-    titleKey: "settings.nav.history.title",
-    url: "/settings/history",
-    descriptionKey: "settings.nav.history.description",
-    icon: IconHistory,
     type: "settings",
   },
   {

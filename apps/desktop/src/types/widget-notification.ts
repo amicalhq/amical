@@ -86,7 +86,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.logIn" },
-      navigateTo: "/settings/account",
+      navigateTo: "/settings/ai-models",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },
@@ -102,7 +102,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.viewUsage" },
-      navigateTo: "/settings/account",
+      navigateTo: "/settings/ai-models",
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },

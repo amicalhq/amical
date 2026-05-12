@@ -100,26 +100,10 @@ export const widgetRouter = createRouter({
         return false;
       }
 
-      // Check if window already exists before creating
-      const windowExisted = windowManager.getMainWindow() !== null;
-
-      // Create or show main window, passing route for new window case
-      // If window is being created fresh, the route is baked into the URL hash
-      // to avoid race condition where renderer isn't ready for IPC events
-      await windowManager.createOrShowMainWindow(input.route);
-
-      // If window already existed, send navigation event via IPC
-      // (renderer is already loaded and listening)
-      if (windowExisted) {
-        const mainWindow = windowManager.getMainWindow();
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("navigate", input.route);
-        }
-      }
+      await windowManager.navigateMainWindow(input.route);
 
       logger.main.info("Navigated main window", {
         route: input.route,
-        windowExisted,
       });
       return true;
     }),

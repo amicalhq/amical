@@ -633,6 +633,21 @@ export class WindowManager {
     this.notesWindowController.open(noteId);
   }
 
+  async navigateMainWindow(route: string): Promise<void> {
+    const existingWindow = this.getMainWindow();
+    const windowExisted =
+      existingWindow !== null && !existingWindow.isDestroyed();
+
+    await this.createOrShowMainWindow(route);
+
+    if (windowExisted) {
+      const mainWindow = this.getMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("navigate", route);
+      }
+    }
+  }
+
   getMainWindow(): BrowserWindow | null {
     return this.mainWindow;
   }
