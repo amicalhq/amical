@@ -307,6 +307,14 @@ export class RecordingManager extends EventEmitter {
       );
       await transcriptionService.resetVadForNewSession();
 
+      // Warm the active provider in parallel with native startRecording so
+      // first-chunk latency doesn't include token refresh (cloud) or model
+      // load (whisper, if not preloaded). Errors are non-fatal — the actual
+      // transcribe() call still has its own auth/load paths.
+      void transcriptionService.warmupActiveProvider().catch((error) => {
+        logger.audio.warn("Provider warmup failed (non-fatal)", { error });
+      });
+
       // Refresh accessibility context (TextMarker API for Electron support)
       // Fire and forget - context will be ready by the time first audio chunk arrives
       const nativeBridge = this.serviceManager.getService("nativeBridge");

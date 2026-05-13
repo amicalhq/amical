@@ -1,0 +1,710 @@
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from "vitest";
+
+// ---- @grpc/grpc-js mock --------------------------------------------------
+
+const grpcMock = vi.hoisted(() => {
+  type Handler = (...args: unknown[]) => void;
+
+  class FakeMetadata {
+    private readonly values = new Map<string, unknown[]>();
+    set(key: string, value: unknown): void {
+      this.values.set(key, [value]);
+    }
+    get(key: string): unknown[] {
+      return this.values.get(key) ?? [];
+    }
+  }
+
+  class FakeStream {
+    private readonly handlers = new Map<string, Set<Handler>>();
+    destroyed = false;
+    writableEnded = false;
+    write = vi.fn(
+      (_message: Buffer, callback?: (error?: Error | null) => void) => {
+        callback?.();
+        return true;
+      },
+    );
+    end = vi.fn(() => {
+      this.writableEnded = true;
+    });
+    cancel = vi.fn(() => {
+      this.destroyed = true;
+      this.emit("close");
+    });
+
+    on(event: string, handler: Handler): this {
+      const set = this.handlers.get(event) ?? new Set<Handler>();
+      set.add(handler);
+      this.handlers.set(event, set);
+      return this;
+    }
+    once(event: string, handler: Handler): this {
+      const wrapped: Handler = (...args) => {
+        this.off(event, wrapped);
+        handler(...args);
+      };
+      return this.on(event, wrapped);
+    }
+    off(event: string, handler: Handler): this {
+      this.handlers.get(event)?.delete(handler);
+      return this;
+    }
+    emit(event: string, ...args: unknown[]): boolean {
+      const list = [...(this.handlers.get(event) ?? [])];
+      for (const h of list) {
+        h(...args);
+      }
+      return list.length > 0;
+    }
+  }
+
+  let lastStream: FakeStream | null = null;
+  let lastClient: FakeClient | null = null;
+
+  class FakeClient {
+    close = vi.fn();
+    constructor() {
+      lastClient = this;
+    }
+    makeBidiStreamRequest = vi.fn(() => {
+      lastStream = new FakeStream();
+      return lastStream;
+    });
+  }
+
+  const status = {
+    OK: 0,
+    CANCELLED: 1,
+    UNKNOWN: 2,
+    INVALID_ARGUMENT: 3,
+    DEADLINE_EXCEEDED: 4,
+    NOT_FOUND: 5,
+    ALREADY_EXISTS: 6,
+    PERMISSION_DENIED: 7,
+    RESOURCE_EXHAUSTED: 8,
+    FAILED_PRECONDITION: 9,
+    INTERNAL: 13,
+    UNAVAILABLE: 14,
+    UNAUTHENTICATED: 16,
+  };
+
+  return {
+    module: {
+      ChannelCredentials: {
+        createSsl: vi.fn(() => ({ secure: true })),
+        createInsecure: vi.fn(() => ({ secure: false })),
+      },
+      Client: FakeClient,
+      Metadata: FakeMetadata,
+      status,
+    },
+    metadata: () => new FakeMetadata(),
+    status,
+    getLastStream: () => lastStream,
+    getLastClient: () => lastClient,
+    reset: () => {
+      lastStream = null;
+      lastClient = null;
+    },
+  };
+});
+
+vi.mock("@grpc/grpc-js", () => grpcMock.module);
+
+// ---- AuthService mock ----------------------------------------------------
+
+const authMock = vi.hoisted(() => {
+  const isAuthenticated = vi.fn(async () => true);
+  const getIdToken = vi.fn(async () => "test-id-token");
+  const refreshTokenIfNeeded = vi.fn(async () => undefined);
+  return {
+    instance: { isAuthenticated, getIdToken, refreshTokenIfNeeded },
+    reset: () => {
+      isAuthenticated.mockReset();
+      isAuthenticated.mockResolvedValue(true);
+      getIdToken.mockReset();
+      getIdToken.mockResolvedValue("test-id-token");
+      refreshTokenIfNeeded.mockReset();
+      refreshTokenIfNeeded.mockResolvedValue(undefined);
+    },
+  };
+});
+
+vi.mock("../../src/services/auth-service", () => ({
+  AuthService: { getInstance: () => authMock.instance },
+}));
+
+vi.mock("../../src/utils/http-client", () => ({
+  AMICAL_CLIENT_HEADER: "amical-client",
+  AMICAL_VERSION_HEADER: "amical-version",
+  AMICAL_PLATFORM_HEADER: "amical-platform",
+  getAmicalClientHeaders: () => ({
+    "amical-client": "desktop",
+    "amical-version": "0.0.0-test",
+    "amical-platform": "test-platform",
+  }),
+  getAmicalClientInfo: () => ({
+    client: "desktop",
+    version: "0.0.0-test",
+    platform: "test-platform",
+  }),
+  getUserAgent: () => "test-agent",
+}));
+
+vi.mock("../../src/main/logger", () => ({
+  logger: {
+    transcription: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+  },
+}));
+
+// ---- Imports come AFTER mocks -------------------------------------------
+
+import { AmicalCloudProvider } from "../../src/pipeline/providers/transcription/amical-cloud-provider";
+import { GrpcDictationError } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
+import { AppError, ErrorCodes } from "../../src/types/error";
+import type { TranscribeContext } from "../../src/pipeline/core/pipeline-types";
+
+// ---- Helpers ------------------------------------------------------------
+
+const flush = () => new Promise((r) => setImmediate(r));
+
+const constructProviderWithTransport = (transport: "grpc" | "http") => {
+  process.env.CLOUD_DICTATION_TRANSPORT = transport;
+  return new AmicalCloudProvider();
+};
+
+const baseContext = (
+  overrides: Partial<TranscribeContext> = {},
+): TranscribeContext => ({
+  sessionId: "session-1",
+  vocabulary: [],
+  accessibilityContext: null,
+  previousChunk: undefined,
+  aggregatedTranscription: undefined,
+  language: undefined,
+  formattingEnabled: false,
+  ...overrides,
+});
+
+const audioFrame = (samples = 512, fill = 0.1): Float32Array => {
+  const a = new Float32Array(samples);
+  a.fill(fill);
+  return a;
+};
+
+const settleGrpcOk = (
+  rawTranscript: string,
+  formattedTranscript = rawTranscript,
+  throughSeq = "1",
+) => {
+  const stream = grpcMock.getLastStream();
+  if (!stream) throw new Error("No grpc stream constructed");
+  stream.emit("data", {
+    final: { rawTranscript, formattedTranscript, throughSeq },
+  });
+  stream.emit("status", {
+    code: grpcMock.status.OK,
+    details: "OK",
+    metadata: grpcMock.metadata(),
+  });
+};
+
+const settleGrpcError = (code: number, details = "") => {
+  const stream = grpcMock.getLastStream();
+  if (!stream) throw new Error("No grpc stream constructed");
+  stream.emit("status", {
+    code,
+    details,
+    metadata: grpcMock.metadata(),
+  });
+};
+
+const mockFetchOnce = (response: {
+  status: number;
+  ok?: boolean;
+  json?: unknown;
+}) => {
+  const fetchMock = global.fetch as Mock;
+  fetchMock.mockImplementationOnce(async () => ({
+    status: response.status,
+    ok: response.ok ?? response.status < 400,
+    statusText: `HTTP ${response.status}`,
+    json: async () => response.json,
+  }));
+};
+
+let fetchMock: Mock;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  grpcMock.reset();
+  authMock.reset();
+  fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("__BUNDLED_API_ENDPOINT", "https://cloud.test");
+  delete process.env.API_ENDPOINT;
+  delete process.env.CLOUD_DICTATION_TRANSPORT;
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+// ---- Tests ---------------------------------------------------------------
+
+describe("AmicalCloudProvider", () => {
+  describe("transport selection", () => {
+    it("defaults to gRPC and constructs a grpc client on first transcribe", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const transcribe = provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await flush();
+      expect(grpcMock.getLastClient()).not.toBeNull();
+      // No HTTP fallback engaged → fetch never called.
+      expect(fetchMock).not.toHaveBeenCalled();
+      // Settle the deferred so the Promise resolves cleanly.
+      // (Stream is opened and an audio packet was queued; settle to OK with empty transcript via flush)
+      grpcMock.getLastStream()?.emit("end");
+      const result = await transcribe;
+      expect(result).toEqual({ text: "" });
+    });
+
+    it("uses HTTP path when CLOUD_DICTATION_TRANSPORT=http", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "hello world" },
+      });
+      // Buffer some audio so flush has something to send.
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const result = await provider.flush(baseContext());
+      expect(result.text).toBe("hello world");
+      expect(grpcMock.getLastClient()).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("HTTP path body shape", () => {
+    it('sends pcm_s16le base64 with audioFormat="pcm_s16le"', async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "hi" },
+      });
+
+      // Buffer enough audio so flush includes it.
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await provider.flush(baseContext());
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      const body = JSON.parse(init.body as string);
+      expect(body.audioFormat).toBe("pcm_s16le");
+      expect(typeof body.audioData).toBe("string");
+      // base64 of N int16 samples → ceil(2N / 3) * 4 chars.
+      // Frame had 512 samples → 1024 bytes → 1368 chars (with padding).
+      expect((body.audioData as string).length).toBeGreaterThan(1000);
+    });
+
+    it("omits audioFormat and sends empty audioData on format-only flush", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "Formatted!" },
+      });
+
+      // No transcribe() calls; flush with formatting + previous transcription forces the format-only path.
+      await provider.flush(
+        baseContext({
+          formattingEnabled: true,
+          aggregatedTranscription: "raw text",
+        }),
+      );
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      const body = JSON.parse(init.body as string);
+      expect(body.audioData).toBe("");
+      expect(body.audioFormat).toBeUndefined();
+    });
+
+    it("sends explicit Amical client headers", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "hi" },
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await provider.flush(baseContext());
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(init.headers).toMatchObject({
+        "User-Agent": "test-agent",
+        "amical-client": "desktop",
+        "amical-version": "0.0.0-test",
+        "amical-platform": "test-platform",
+      });
+    });
+  });
+
+  describe("HTTP error surfacing", () => {
+    it("surfaces 500 as INTERNAL_SERVER_ERROR", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 500,
+        json: { error: { code: undefined, message: "boom" } },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
+        statusCode: 500,
+      });
+    });
+
+    it("surfaces a thrown network error as NETWORK_ERROR", async () => {
+      const provider = constructProviderWithTransport("http");
+      fetchMock.mockImplementationOnce(async () => {
+        throw new Error("ECONNREFUSED");
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+    });
+
+    it("retries once on 401 with a refreshed token, then succeeds", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({ status: 401, json: { error: {} } });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "ok" },
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const result = await provider.flush(baseContext());
+
+      expect(result.text).toBe("ok");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalled();
+    });
+
+    it("surfaces AUTH_REQUIRED when token refresh fails after 401", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({ status: 401, json: { error: {} } });
+      authMock.instance.refreshTokenIfNeeded.mockRejectedValueOnce(
+        new Error("refresh failed"),
+      );
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.AUTH_REQUIRED,
+        statusCode: 401,
+      });
+    });
+  });
+
+  describe("gRPC error categorization (no fallback)", () => {
+    const driveGrpcThenSettleError = async (errorCode: number) => {
+      const provider = constructProviderWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+      settleGrpcError(errorCode, "");
+      return { provider, flushPromise };
+    };
+
+    it("surfaces UNAUTHENTICATED as AUTH_REQUIRED without falling back", async () => {
+      const { flushPromise } = await driveGrpcThenSettleError(
+        grpcMock.status.UNAUTHENTICATED,
+      );
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: ErrorCodes.AUTH_REQUIRED,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("surfaces RESOURCE_EXHAUSTED as RATE_LIMIT_EXCEEDED without falling back", async () => {
+      const { flushPromise } = await driveGrpcThenSettleError(
+        grpcMock.status.RESOURCE_EXHAUSTED,
+      );
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: ErrorCodes.RATE_LIMIT_EXCEEDED,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not fall back on CANCELLED (user-initiated, e.g. reset during flush)", async () => {
+      const { flushPromise } = await driveGrpcThenSettleError(
+        grpcMock.status.CANCELLED,
+      );
+      // Should surface the cancellation as a NETWORK_ERROR, not trigger an HTTP transcription.
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+        statusCode: 499,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("gRPC → HTTP fallback", () => {
+    const driveGrpcAndFallback = async (
+      errorCode: number,
+      httpResponse: { status: number; json: unknown },
+    ) => {
+      const provider = constructProviderWithTransport("grpc");
+      mockFetchOnce(httpResponse);
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(
+        baseContext({
+          formattingEnabled: true,
+          aggregatedTranscription: "earlier text",
+        }),
+      );
+      await flush();
+      settleGrpcError(errorCode, "");
+      return { provider, result: await flushPromise };
+    };
+
+    it("falls back to HTTP on INTERNAL (server-side bug, may be gRPC-handler-specific)", async () => {
+      const { result } = await driveGrpcAndFallback(grpcMock.status.INTERNAL, {
+        status: 200,
+        json: { success: true, transcription: "fallback worked" },
+      });
+      expect(result.text).toBe("fallback worked");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to HTTP on INVALID_ARGUMENT (proto/schema mismatch)", async () => {
+      const { result } = await driveGrpcAndFallback(
+        grpcMock.status.INVALID_ARGUMENT,
+        {
+          status: 200,
+          json: { success: true, transcription: "via http" },
+        },
+      );
+      expect(result.text).toBe("via http");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to HTTP on UNAVAILABLE: HTTP fetch is invoked for the formatting-only path", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      // Mock the HTTP request that the fallback path will make.
+      // Using formattingEnabled + aggregatedTranscription so makeTranscriptionRequest
+      // calls fetch even with empty buffered audio (post-fallback).
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "fallback formatted" },
+      });
+
+      // Open a gRPC stream by transcribing once.
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      const flushPromise = provider.flush(
+        baseContext({
+          formattingEnabled: true,
+          aggregatedTranscription: "earlier text",
+        }),
+      );
+      await flush();
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+      const result = await flushPromise;
+
+      expect(result.text).toBe("fallback formatted");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("transport switch is sticky: subsequent calls go via HTTP without a new gRPC client", async () => {
+      const provider = constructProviderWithTransport("grpc");
+
+      // Open a gRPC stream then trigger fallback on flush.
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "first" },
+      });
+      const firstFlush = provider.flush(
+        baseContext({
+          formattingEnabled: true,
+          aggregatedTranscription: "earlier text",
+        }),
+      );
+      await flush();
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+      await firstFlush;
+
+      // After fallback engaged, no new gRPC client should be constructed.
+      const clientAfterFirst = grpcMock.getLastClient();
+
+      // Second call must now go via HTTP. Buffer audio + flush.
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "second" },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const second = await provider.flush(baseContext());
+
+      expect(second.text).toBe("second");
+      expect(grpcMock.getLastClient()).toBe(clientAfterFirst);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("AppError passthrough", () => {
+    it("AppError thrown internally is not double-wrapped", async () => {
+      const provider = constructProviderWithTransport("http");
+      authMock.instance.isAuthenticated.mockResolvedValueOnce(false);
+      const promise = provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await expect(promise).rejects.toBeInstanceOf(AppError);
+      await expect(promise).rejects.toMatchObject({
+        errorCode: ErrorCodes.AUTH_REQUIRED,
+      });
+    });
+  });
+
+  describe("idle timeout", () => {
+    it("surfaces leaf idle-timeout as IDLE_TIMEOUT (not NETWORK_ERROR) and does not fall back to HTTP", async () => {
+      const provider = constructProviderWithTransport("grpc");
+
+      // Open a gRPC stream by transcribing once.
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      const stream = grpcMock.getLastStream()!;
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+
+      // Inject the same GrpcDictationError the leaf's idle timer would
+      // synthesize. Going through the leaf's real timer would require
+      // vi.useFakeTimers and 10s of advancement; the leaf already has
+      // dedicated tests for that path.
+      stream.emit(
+        "error",
+        new GrpcDictationError(
+          "gRPC stream idle for 10000ms",
+          grpcMock.status.CANCELLED,
+          undefined,
+          undefined,
+          true,
+        ),
+      );
+
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: "IDLE_TIMEOUT",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("warmup", () => {
+    it("warmup() calls refreshTokenIfNeeded but does NOT open a gRPC stream", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      await provider.warmup();
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalledTimes(1);
+      expect(grpcMock.getLastClient()).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("reset / dispose", () => {
+    it("reset() clears state and tears down the in-flight gRPC stream", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const stream = grpcMock.getLastStream()!;
+      const writesBefore = stream.write.mock.calls.length;
+      provider.reset();
+      // CloudDictationGrpcStream.cancel() is fire-and-forget — the cancel frame
+      // and end() run on the next microtask via runBackground.
+      await flush();
+      expect(stream.write.mock.calls.length).toBeGreaterThan(writesBefore);
+      expect(stream.end).toHaveBeenCalled();
+    });
+
+    it("dispose() makes the runtime unusable for further calls", async () => {
+      const provider = constructProviderWithTransport("http");
+      await provider.dispose();
+      // Any subsequent use should throw or reject.
+      await expect(
+        provider.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        }),
+      ).rejects.toBeDefined();
+    });
+  });
+});

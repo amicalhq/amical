@@ -100,6 +100,16 @@ export class TranscriptionService {
   }
 
   /**
+   * Warm the active provider in advance of a session so first-chunk latency
+   * doesn't include model load (whisper) or token refresh (cloud).
+   * Idempotent and cheap when already warm. Safe to fire-and-forget.
+   */
+  async warmupActiveProvider(): Promise<void> {
+    const provider = await this.selectProvider();
+    await provider.warmup?.();
+  }
+
+  /**
    * Select the appropriate transcription provider based on the selected model
    */
   private async selectProvider(): Promise<TranscriptionProvider> {
@@ -172,9 +182,16 @@ export class TranscriptionService {
         logger.transcription.info("Whisper model preloading disabled");
       }
     } else {
-      logger.transcription.info(
-        "Using cloud model - skipping local model preload",
-      );
+      // Cloud model selected: warm auth so the first dictation's first chunk
+      // doesn't block on a token-refresh roundtrip.
+      try {
+        await this.cloudProvider.warmup?.();
+        logger.transcription.info("Cloud auth warmed up");
+      } catch (error) {
+        logger.transcription.warn("Cloud auth warmup failed (non-fatal)", {
+          error,
+        });
+      }
     }
 
     logger.transcription.info("Transcription service initialized");
@@ -315,6 +332,14 @@ export class TranscriptionService {
           isFinal: false,
           accumulatedTranscription: [],
         };
+        const formatterConfig = await this.settingsService.getFormatterConfig();
+        streamingContext.metadata.set(
+          "cloudFormattingEnabled",
+          !!(
+            formatterConfig?.enabled &&
+            isAmicalCloudSelectionValue(formatterConfig.modelId)
+          ),
+        );
 
         // Get accessibility context from NativeBridge
         streamingContext.sharedData.accessibilityContext =
@@ -357,6 +382,8 @@ export class TranscriptionService {
           previousChunk,
           aggregatedTranscription: aggregatedTranscription || undefined,
           language: session.context.sharedData.userPreferences?.language,
+          formattingEnabled:
+            session.context.metadata.get("cloudFormattingEnabled") === true,
         },
       });
       session.detectedLanguage = this.mergeDetectedLanguage(
@@ -1019,6 +1046,7 @@ export class TranscriptionService {
             language,
             previousChunk,
             aggregatedTranscription: aggregatedTranscription || undefined,
+            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
           },
         });
         detectedLanguage = this.mergeDetectedLanguage(
@@ -1200,6 +1228,7 @@ export class TranscriptionService {
    */
   async dispose(): Promise<void> {
     await this.whisperProvider.dispose();
+    await this.cloudProvider.dispose();
     // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }
