@@ -17,7 +17,7 @@ const StopButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
 }) => (
   <button
     onClick={onClick}
-    className="flex items-center justify-center w-[20px] h-[20px]rounded transition-colors"
+    className="flex items-center justify-center w-[20px] h-[20px] rounded transition-colors"
     aria-label="Stop recording"
   >
     <Square className="w-[12px] h-[12px] text-red-500 fill-red-500" />
@@ -89,6 +89,8 @@ export const FloatingButton: React.FC = () => {
 
   const { recordingStatus, stopRecording, voiceDetected, startRecording } =
     useRecording();
+  // STARTING is a brief handshake before renderer capture begins; keep the
+  // widget expanded and waveform-shaped like the pre-FSM flow.
   const isRecording =
     recordingStatus.state === "recording" ||
     recordingStatus.state === "starting";
@@ -199,7 +201,7 @@ export const FloatingButton: React.FC = () => {
   const renderWidgetContent = () => {
     if (!isWidgetActive) return null;
 
-    // Show processing indicator when stopping
+    // Show processing indicator when stopping.
     if (isStopping) {
       return <ProcessingIndicator />;
     }
