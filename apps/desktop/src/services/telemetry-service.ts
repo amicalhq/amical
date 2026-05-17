@@ -80,26 +80,27 @@ export class TelemetryService {
       },
     };
 
+    const authState = (await this.settingsService.getAllSettings()).auth;
+    if (authState?.isAuthenticated && authState.userInfo?.sub) {
+      this.client.setIdentifiedUser(
+        authState.userInfo.sub,
+        authState.userInfo.email,
+        authState.userInfo.name,
+      );
+    }
+
     this.enabled = userTelemetryEnabled;
     this.initialized = true;
+
+    this.sendIdentifyForCurrentUser();
+
     logger.main.info("Telemetry service initialized successfully", {
       enabled: this.enabled,
     });
   }
 
   trackTranscriptionCompleted(metrics: TranscriptionMetrics): void {
-    if (!this.client.posthog || !this.enabled) {
-      return;
-    }
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "transcription_completed",
-      properties: {
-        ...metrics,
-        ...this.persistedProperties,
-      },
-    });
+    this.captureEvent("transcription_completed", metrics);
 
     logger.main.debug("Tracked transcription completion", {
       session_id: metrics.session_id,
@@ -114,17 +115,15 @@ export class TelemetryService {
     error: unknown,
     additionalProperties: Record<string, unknown> = {},
   ): void {
-    if (!this.client.posthog || !this.enabled) {
+    const distinctId = this.client.distinctId;
+    if (!this.client.posthog || !this.enabled || !distinctId) {
       return;
     }
 
     this.client.posthog.captureException(
       error,
-      this.client.machineId || undefined,
-      {
-        ...this.persistedProperties,
-        ...additionalProperties,
-      },
+      distinctId,
+      this.buildEventProperties(additionalProperties),
     );
   }
 
@@ -132,7 +131,8 @@ export class TelemetryService {
     error: unknown,
     additionalProperties: Record<string, unknown> = {},
   ): Promise<void> {
-    if (!this.client.posthog || !this.enabled) {
+    const distinctId = this.client.distinctId;
+    if (!this.client.posthog || !this.enabled || !distinctId) {
       return;
     }
 
@@ -140,11 +140,8 @@ export class TelemetryService {
     // For fatal flows where we call this method, ensure events are sent before continuing by shutting down.
     this.client.posthog.captureExceptionImmediate(
       error,
-      this.client.machineId || undefined,
-      {
-        ...this.persistedProperties,
-        ...additionalProperties,
-      },
+      distinctId,
+      this.buildEventProperties(additionalProperties),
     );
 
     await this.client.shutdown(5000);
@@ -160,12 +157,14 @@ export class TelemetryService {
 
   async optIn(): Promise<void> {
     await this.settingsService.setTelemetrySettings({ enabled: true });
-    this.enabled = true;
     if (!this.client.posthog) {
+      this.enabled = true;
       return;
     }
 
     await this.client.posthog.optIn();
+    this.enabled = true;
+    this.sendIdentifyForCurrentUser();
 
     logger.main.info("Telemetry opt-in successful");
   }
@@ -196,36 +195,65 @@ export class TelemetryService {
 
   /**
    * Identify user in telemetry after login.
-   * Also creates an alias to link machine ID with user ID.
+   * The machine ID remains the anonymous ID and is linked via $anon_distinct_id.
    */
   identifyUser(userId: string, email?: string, name?: string): void {
-    if (!this.client.posthog || !this.enabled) return;
+    this.client.setIdentifiedUser(userId, email, name);
+    this.sendIdentifyForCurrentUser();
+  }
 
-    // Identify with user ID
+  /**
+   * Return future telemetry to the anonymous machine ID after logout.
+   */
+  resetUser(): void {
+    this.client.clearIdentifiedUser();
+  }
+
+  isUserIdentified(): boolean {
+    return this.client.isIdentified;
+  }
+
+  private sendIdentifyForCurrentUser(): void {
+    const user = this.client.identifiedUser;
+    if (!this.client.posthog || !this.enabled || !user) return;
+
     this.client.posthog.identify({
-      distinctId: userId,
+      distinctId: user.userId,
       properties: {
         ...this.persistedProperties,
-        email,
-        name,
+        ...(user.email && { email: user.email }),
+        ...(user.name && { name: user.name }),
+        ...(this.client.machineId && {
+          $anon_distinct_id: this.client.machineId,
+        }),
       },
     });
+  }
 
-    // Alias machine ID to user ID so previous anonymous events are linked
-    this.client.posthog.alias({
-      distinctId: userId,
-      alias: this.client.machineId,
+  private buildEventProperties(
+    properties: object = {},
+  ): Record<string, unknown> {
+    return {
+      ...properties,
+      // Stable app and identity context should not be overridden by event callers.
+      ...this.persistedProperties,
+      ...this.client.eventIdentityProperties,
+    };
+  }
+
+  private captureEvent(event: string, properties: object = {}): void {
+    const distinctId = this.client.distinctId;
+    if (!this.client.posthog || !this.enabled || !distinctId) return;
+
+    this.client.posthog.capture({
+      distinctId,
+      event,
+      properties: this.buildEventProperties(properties),
     });
   }
 
   trackAppLaunch(): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "app_launch",
-      properties: { ...this.persistedProperties },
-    });
+    this.captureEvent("app_launch");
 
     logger.main.debug("Tracked app launch");
   }
@@ -235,25 +263,13 @@ export class TelemetryService {
   // ============================================================================
 
   trackOnboardingStarted(props: OnboardingStartedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "onboarding_started",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("onboarding_started", props);
 
     logger.main.debug("Tracked onboarding started", props);
   }
 
   trackOnboardingScreenViewed(props: OnboardingScreenViewedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "onboarding_screen_viewed",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("onboarding_screen_viewed", props);
 
     logger.main.debug("Tracked onboarding screen viewed", props);
   }
@@ -261,13 +277,7 @@ export class TelemetryService {
   trackOnboardingFeaturesSelected(
     props: OnboardingFeaturesSelectedEvent,
   ): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "onboarding_features_selected",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("onboarding_features_selected", props);
 
     logger.main.debug("Tracked onboarding features selected", props);
   }
@@ -275,49 +285,25 @@ export class TelemetryService {
   trackOnboardingDiscoverySelected(
     props: OnboardingDiscoverySelectedEvent,
   ): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "onboarding_discovery_selected",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("onboarding_discovery_selected", props);
 
     logger.main.debug("Tracked onboarding discovery selected", props);
   }
 
   trackOnboardingModelSelected(props: OnboardingModelSelectedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "onboarding_model_selected",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("onboarding_model_selected", props);
 
     logger.main.debug("Tracked onboarding model selected", props);
   }
 
   trackOnboardingCompleted(props: OnboardingCompletedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "onboarding_completed",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("onboarding_completed", props);
 
     logger.main.debug("Tracked onboarding completed", props);
   }
 
   trackOnboardingAbandoned(props: OnboardingAbandonedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "onboarding_abandoned",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("onboarding_abandoned", props);
 
     logger.main.debug("Tracked onboarding abandoned", props);
   }
@@ -327,13 +313,7 @@ export class TelemetryService {
   // ============================================================================
 
   trackNativeHelperCrashed(props: NativeHelperCrashedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "native_helper_crashed",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("native_helper_crashed", props);
 
     logger.main.debug("Tracked native helper crash", props);
   }
@@ -343,13 +323,7 @@ export class TelemetryService {
   // ============================================================================
 
   trackNoteCreated(props: NoteCreatedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "note_created",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("note_created", props);
 
     logger.main.debug("Tracked note created", props);
   }
@@ -359,13 +333,7 @@ export class TelemetryService {
   // ============================================================================
 
   trackTranscriptionReported(props: TranscriptionReportedEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "transcription_reported",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("transcription_reported", props);
 
     logger.main.debug("Tracked transcription reported", props);
   }
@@ -375,13 +343,7 @@ export class TelemetryService {
   // ============================================================================
 
   trackWidgetNotificationShown(props: WidgetNotificationShownEvent): void {
-    if (!this.client.posthog || !this.enabled) return;
-
-    this.client.posthog.capture({
-      distinctId: this.client.machineId,
-      event: "widget_notification_shown",
-      properties: { ...props, ...this.persistedProperties },
-    });
+    this.captureEvent("widget_notification_shown", props);
 
     logger.main.debug("Tracked widget notification shown", props);
   }

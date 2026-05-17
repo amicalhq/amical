@@ -591,7 +591,8 @@ export const settingsRouter = createRouter({
     return telemetryService?.getMachineId() ?? "";
   }),
 
-  // Get telemetry config for renderer (PostHog surveys)
+  // Get telemetry config for renderer (PostHog surveys).
+  // Identity is delivered separately via api.auth.onAuthStateChange so this stays cheap to poll.
   getTelemetryConfig: procedure.query(async ({ ctx }) => {
     const telemetryService = ctx.serviceManager.getService("telemetryService");
     return {

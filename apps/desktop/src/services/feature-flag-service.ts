@@ -53,7 +53,7 @@ export class FeatureFlagService {
    * Does NOT depend on telemetry opt-in — flags work regardless.
    */
   async refresh(): Promise<void> {
-    if (!this.client.posthog || !this.client.machineId) {
+    if (!this.client.posthog || !this.client.distinctId) {
       return;
     }
 
@@ -73,7 +73,7 @@ export class FeatureFlagService {
   private async doRefresh(): Promise<void> {
     try {
       const result = await this.client.posthog!.getAllFlagsAndPayloads(
-        this.client.machineId,
+        this.client.distinctId,
         {
           personProperties: this.client.personProperties,
         },

@@ -211,6 +211,7 @@ export class AuthService extends EventEmitter {
           authState.userInfo.email,
           authState.userInfo.name,
         );
+        this.refreshFeatureFlagsAfterIdentityChange();
       }
 
       // Clear pending auth
@@ -283,6 +284,16 @@ export class AuthService extends EventEmitter {
    */
   async logout(): Promise<void> {
     await updateSettingsSection("auth", undefined);
+    try {
+      const telemetryService =
+        ServiceManager.getInstance().getService("telemetryService");
+      if (telemetryService.isUserIdentified()) {
+        telemetryService.resetUser();
+        this.refreshFeatureFlagsAfterIdentityChange();
+      }
+    } catch {
+      // Logout can happen during startup token validation before services are ready.
+    }
     this.emit("logged-out");
     logger.main.info("User logged out");
   }
@@ -300,6 +311,20 @@ export class AuthService extends EventEmitter {
     }
 
     return true;
+  }
+
+  private refreshFeatureFlagsAfterIdentityChange(): void {
+    try {
+      const featureFlagService =
+        ServiceManager.getInstance().getService("featureFlagService");
+      featureFlagService.refresh().catch((error) => {
+        logger.main.warn("Feature flag refresh after auth change failed", {
+          error,
+        });
+      });
+    } catch {
+      // Auth can change before feature flag services are ready.
+    }
   }
 
   /**
