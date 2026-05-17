@@ -405,7 +405,7 @@ const config: ForgeConfig = {
     name: "Amical",
     executableName: "Amical",
     icon: "./assets/logo", // Path to your icon file
-    appBundleId: "com.amical.desktop", // Proper bundle ID
+    appBundleId: "ai.amical.desktop", // Proper bundle ID
     extraResource: [
       `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
@@ -422,7 +422,7 @@ const config: ForgeConfig = {
       CFBundleURLTypes: [
         {
           CFBundleURLSchemes: ["amical"],
-          CFBundleURLName: "com.amical.desktop",
+          CFBundleURLName: "ai.amical.desktop",
         },
       ],
     },

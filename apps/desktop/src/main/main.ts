@@ -28,7 +28,7 @@ if (started) {
 
 // Set App User Model ID for Windows (required for Squirrel.Windows)
 if (isWindows()) {
-  app.setAppUserModelId("com.amical.desktop");
+  app.setAppUserModelId("ai.amical.desktop");
 }
 
 // Register the amical:// protocol
