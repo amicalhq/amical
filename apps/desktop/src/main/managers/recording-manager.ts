@@ -8,21 +8,25 @@ import type { ShortcutManager } from "./shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
 import { AppError, ErrorCodes, type ErrorCode } from "../../types/error";
 import { getLatestTranscription } from "../../db/transcriptions";
+import {
+  RecordingMachineInterpreter,
+  RECORDING_STOP_RECOVERY_TIMEOUT,
+} from "./recording-machine-interpreter";
+import type {
+  ActiveRecordingMode,
+  RecordingMachineEvent,
+  RecordingMode,
+  TerminationCode,
+} from "./recording-state-machine";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { v4 as uuid } from "uuid";
 
-export type RecordingMode = "idle" | "ptt" | "hands-free";
-export type TerminationCode =
-  | "dismissed"
-  | "quick_release"
-  | "no_audio"
-  | "error";
+export type { RecordingMode } from "./recording-state-machine";
 
 // Timing thresholds (ms)
 const QUICK_PRESS_THRESHOLD = 500;
 const NO_AUDIO_TIMEOUT = 5000;
-const STUCK_STATE_TIMEOUT = 10000;
 const CLEANUP_STOPPING_WAIT_TIMEOUT = 1000;
 
 // Recording duration limits (ms)
@@ -33,20 +37,23 @@ const RECORDING_MAX_DURATION = 6 * 60 * 1000; // 6 minutes - auto-stop
  * Manages recording state and coordinates audio recording across the application
  * Acts as the single source of truth for recording status
  *
- * State Machine:
- *   IDLE -> STARTING -> RECORDING -> STOPPING -> IDLE
+ * The pure FSM state lives in RecordingMachineInterpreter; this manager owns the
+ * side effects and session resources around it.
+ *
+ * Public state is derived from the recording FSM. STARTING is a real transient
+ * FSM tag, so getState() agrees with state-changed subscribers.
  *
  * Key design decisions:
- * - Mutex serializes lifecycle operations (doStart, endRecording)
+ * - Mutex serializes native lifecycle work started by FSM commands
  * - Audio chunks accumulated in memory, file written only at the end
- * - Single terminationCode field determines final action in handleFinalChunk
+ * - Stop intent is applied before public stopping notifications so final chunks
+ *   finalize with the correct action
  */
 export class RecordingManager extends EventEmitter {
   // Core state
-  private recordingState: RecordingState = "idle";
-  private recordingMode: RecordingMode = "idle";
+  private readonly machine: RecordingMachineInterpreter;
 
-  // Lifecycle mutex - serializes doStart and endRecording
+  // Lifecycle mutex - serializes doStart and performEndRecording
   private lifecycleMutex = new Mutex();
 
   // Timing
@@ -60,13 +67,13 @@ export class RecordingManager extends EventEmitter {
   // Session state
   private currentSessionId: string | null = null;
   private initPromise: Promise<void> | null = null;
-  private firstChunkReceived: boolean = false;
+  private forceIdlePromise: Promise<void> | null = null;
 
   // In-memory audio buffer - written to file only in handleFinalChunk
   private audioChunks: Float32Array[] = [];
 
   // Termination code - set during stopping to determine final action
-  // null = normal (transcribe + paste), "dismissed" = save file only, others = discard
+  // null = normal (transcribe + paste), quick_release/no_audio/interrupted_start = discard
   private terminationCode: TerminationCode | null = null;
 
   // Performance tracking
@@ -80,6 +87,28 @@ export class RecordingManager extends EventEmitter {
 
   constructor(private serviceManager: ServiceManager) {
     super();
+    this.machine = new RecordingMachineInterpreter({
+      getSessionId: () => this.currentSessionId,
+      emitStateChange: (newState, oldState) =>
+        this.emitStateChange(newState, oldState),
+      emitModeChange: (newMode, oldMode) =>
+        this.emitModeChange(newMode, oldMode),
+      setStopIntent: (code, stoppedAt) => {
+        this.terminationCode = code;
+        this.recordingStoppedAt = stoppedAt;
+      },
+      logInvariant: (message, metadata) =>
+        this.logRecordingInvariant(message, metadata),
+      notifyMissingSpeechModel: () => this.notifyMissingSpeechModel(),
+      startQuickReleaseTimer: () => this.startQuickReleaseTimer(),
+      clearQuickReleaseTimer: () => this.clearQuickReleaseTimer(),
+      markFirstAudioReceived: () => this.markFirstAudioReceived(),
+      notifyNoAudio: () => this.notifyNoAudio(),
+      notifyDurationWarning: () => this.notifyDurationWarning(),
+      notifyRecordingAutoStopped: () => this.notifyRecordingAutoStopped(),
+      startSession: (mode) => this.performStartSession(mode),
+      stopSession: (code) => this.performEndRecording(code),
+    });
     this.setupIPCHandlers();
   }
 
@@ -112,38 +141,56 @@ export class RecordingManager extends EventEmitter {
     });
   }
 
-  private setState(newState: RecordingState): void {
-    const oldState = this.recordingState;
-    this.recordingState = newState;
-
+  private emitStateChange(
+    newState: RecordingState,
+    oldState: RecordingState,
+  ): void {
     logger.audio.info("Recording state changed", {
       oldState,
       newState,
       sessionId: this.currentSessionId,
     });
 
-    // Broadcast state change to all windows
-    this.emit("state-changed", this.getState());
+    // Broadcast the already-derived next public state. Do not re-read here:
+    // listeners should receive the exact boundary that changed.
+    this.emit("state-changed", newState);
   }
 
-  private setMode(newMode: RecordingMode): void {
-    const oldMode = this.recordingMode;
-    this.recordingMode = newMode;
+  private emitModeChange(newMode: RecordingMode, oldMode: RecordingMode): void {
     logger.audio.info("Recording mode changed", {
       oldMode,
       newMode,
     });
 
     // Broadcast mode change to all windows
-    this.emit("mode-changed", this.getRecordingMode());
+    this.emit("mode-changed", newMode);
   }
 
   public getState(): RecordingState {
-    return this.recordingState;
+    return this.machine.getPublicState();
   }
 
   public getRecordingMode(): RecordingMode {
-    return this.recordingMode;
+    return this.machine.getPublicMode();
+  }
+
+  private finalizeWithoutFinalChunk(
+    code: TerminationCode,
+    sessionId: string,
+  ): void {
+    logger.audio.info("Recording cancelled before audio capture started", {
+      code,
+      chunksDiscarded: this.audioChunks.length,
+    });
+    this.emit("recording-cancelled", { sessionId, code });
+    this.resetSessionState();
+  }
+
+  private logRecordingInvariant(
+    message: string,
+    metadata: Record<string, unknown>,
+  ): void {
+    logger.audio.error(message, { invariant: true, ...metadata });
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -152,93 +199,38 @@ export class RecordingManager extends EventEmitter {
 
   // PTT key pressed
   public async onPTTPress() {
-    // Double-tap detection: timer pending means quick release happened
-    if (this.cancelTimer) {
-      clearTimeout(this.cancelTimer);
-      this.cancelTimer = null;
-      this.setMode("hands-free");
-      logger.audio.info("Double-tap PTT detected, switching to hands-free");
-      return;
-    }
-
-    // Not recording? Start PTT recording
-    if (this.recordingState === "idle") {
+    if (this.getState() === "idle") {
       this.recordingInitiatedAt = Date.now();
       await this.doStart("ptt");
       return;
     }
 
-    // Already recording in hands-free mode - handle based on timing
-    if (
-      this.recordingState === "recording" &&
-      this.recordingMode === "hands-free"
-    ) {
-      if (this.isQuickAction()) {
-        logger.audio.info("Quick PTT in hands-free mode, cancelling");
-        await this.endRecording("quick_release");
-      } else {
-        logger.audio.info("PTT in hands-free mode, stopping recording");
-        await this.endRecording();
-      }
-    }
+    await this.machine.handleEvent({
+      type: "pttPress",
+      quick: this.isQuickAction(),
+    });
   }
 
   // PTT key released
   public async onPTTRelease() {
-    // Hands-free mode ignores PTT release
-    if (this.recordingMode !== "ptt") return;
-    if (this.recordingState !== "recording") return;
-
-    if (this.isQuickAction()) {
-      // Quick release - wait for potential double-tap before cancelling
-      this.cancelTimer = setTimeout(() => {
-        this.cancelTimer = null;
-        logger.audio.info("Quick release timeout, cancelling");
-        this.endRecording("quick_release");
-      }, QUICK_PRESS_THRESHOLD);
-    } else {
-      // Normal release - stop and transcribe
-      await this.endRecording();
-    }
+    await this.machine.handleEvent({
+      type: "pttRelease",
+      quick: this.isQuickAction(),
+    });
   }
 
   // Toggle shortcut pressed
   public async toggleHandsFree() {
-    // Double-tap detection: timer pending means quick release happened
-    if (this.cancelTimer) {
-      clearTimeout(this.cancelTimer);
-      this.cancelTimer = null;
-      this.setMode("hands-free");
-      logger.audio.info("Double-tap toggle detected, switching to hands-free");
-      return;
-    }
-
-    // Not recording? Start hands-free recording
-    if (this.recordingState === "idle") {
+    if (this.getState() === "idle") {
       this.recordingInitiatedAt = Date.now();
       await this.doStart("hands-free");
       return;
     }
 
-    // Already recording
-    if (this.recordingState === "recording") {
-      // In PTT mode? Switch to hands-free
-      if (this.recordingMode === "ptt") {
-        logger.audio.info("Toggle in PTT mode, switching to hands-free");
-        this.setMode("hands-free");
-        return;
-      }
-
-      // In hands-free mode - stop or cancel based on timing
-      if (this.recordingMode === "hands-free") {
-        if (this.isQuickAction()) {
-          logger.audio.info("Quick toggle in hands-free mode, cancelling");
-          await this.endRecording("quick_release");
-        } else {
-          await this.endRecording();
-        }
-      }
-    }
+    await this.machine.handleEvent({
+      type: "toggle",
+      quick: this.isQuickAction(),
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -248,49 +240,116 @@ export class RecordingManager extends EventEmitter {
   /**
    * Start recording with mutex protection
    */
-  private async doStart(mode: "ptt" | "hands-free") {
+  private async doStart(mode: ActiveRecordingMode) {
     await this.lifecycleMutex.runExclusive(async () => {
-      if (this.recordingState !== "idle") {
+      if (this.getState() !== "idle") {
         logger.audio.warn("Cannot start recording - not idle", {
-          currentState: this.recordingState,
+          currentState: this.getState(),
         });
         this.recordingInitiatedAt = null;
         return;
       }
 
-      const hasSelectedSpeechModel = await this.ensureSpeechModelSelected();
-      if (!hasSelectedSpeechModel) {
-        this.recordingInitiatedAt = null;
-        return;
+      const hasSpeechModel = await this.hasSpeechModelSelected();
+      if (hasSpeechModel) {
+        // Missing-model starts stay IDLE; STARTING means we have a model and
+        // have allocated the session identity used by the interpreter.
+        this.currentSessionId = uuid();
       }
 
-      const startTime = performance.now();
-      logger.audio.info("RecordingManager: doStart called", { mode });
+      const commands = this.machine.transition({
+        type: "start",
+        mode,
+        hasSpeechModel,
+      });
 
-      // Sync state broadcast
-      this.setState("starting");
-      this.setMode(mode);
-      this.terminationCode = null;
-      this.firstChunkReceived = false;
-      this.recordingStartedAt = performance.now();
-      this.recordingStoppedAt = null;
+      if (!hasSpeechModel) {
+        this.recordingInitiatedAt = null;
+      }
+
+      await this.machine.runCommands(commands);
+    });
+  }
+
+  private async performStartSession(mode: ActiveRecordingMode): Promise<void> {
+    const startTime = performance.now();
+    logger.audio.info("RecordingManager: performStartSession called", { mode });
+    const stateAtStart = this.machine.currentState;
+
+    if (
+      stateAtStart.tag !== "STARTING" &&
+      !this.machine.isStoppingState(stateAtStart)
+    ) {
+      this.logRecordingInvariant(
+        "Recording start session command received outside STARTING",
+        {
+          mode,
+          machineState: this.machine.describeState(stateAtStart),
+        },
+      );
+      return;
+    }
+
+    // doStart allocates the session ID before emitting startSession; if absent,
+    // the renderer/transcription session identity cannot be kept consistent.
+    if (!this.currentSessionId) {
+      this.logRecordingInvariant(
+        "Recording start reached interpreter without a session ID",
+        {
+          mode,
+          machineState: this.machine.describeCurrentState(),
+        },
+      );
+      this.resetSessionState({ force: true });
+      return;
+    }
+
+    if (stateAtStart.tag !== "STARTING") {
+      // A synchronous state-changed listener requested stop while handling
+      // STARTING. Complete native start so the queued stop command can tear
+      // down a real native session. Native start/stop must tolerate this
+      // immediate handshake during interrupted starts.
+      logger.audio.info("Recording stop requested before start session ready", {
+        mode,
+        machineState: this.machine.describeState(stateAtStart),
+      });
+
       this.audioChunks = [];
-
-      this.currentSessionId = uuid();
-      this.setState("recording");
-
-      this.startNoAudioTimer();
-      this.startDurationTimers();
-
-      // Async init inside mutex
       this.initPromise = this.initializeSession();
       await this.initPromise;
+      this.initPromise = null;
 
       const totalDuration = performance.now() - startTime;
-      logger.audio.info("Recording started", {
+      logger.audio.info("Recording session initialized after stop requested", {
         sessionId: this.currentSessionId,
         duration: `${totalDuration.toFixed(2)}ms`,
+        machineState: this.machine.describeCurrentState(),
       });
+      return;
+    }
+
+    const sessionStartTime = performance.now();
+    this.terminationCode = null;
+    this.recordingStartedAt = sessionStartTime;
+    this.recordingStoppedAt = null;
+    this.audioChunks = [];
+
+    this.machine.runSyncCommands(
+      this.machine.handleSyncEvent({ type: "startSessionReady" }),
+    );
+
+    this.startNoAudioTimer();
+    this.startDurationTimers();
+
+    // Async init inside mutex
+    this.initPromise = this.initializeSession();
+    await this.initPromise;
+    this.initPromise = null;
+
+    const totalDuration = performance.now() - startTime;
+    logger.audio.info("Recording started", {
+      sessionId: this.currentSessionId,
+      duration: `${totalDuration.toFixed(2)}ms`,
     });
   }
 
@@ -341,71 +400,130 @@ export class RecordingManager extends EventEmitter {
    * End recording - unified method for stop and cancel
    * @param code - null for normal stop, or cancellation code
    */
-  private async endRecording(
+  private async performEndRecording(
     code: TerminationCode | null = null,
   ): Promise<void> {
+    // transition() creates this synchronously before the stopSession command is
+    // dispatched, so final chunks can wait for the native stop command below.
+    // If a later stop replaces it before the mutex runs, resolving this stale
+    // handle is intentionally idempotent in the interpreter.
+    const pendingStopSession = this.machine.currentPendingStopSession;
+    if (!pendingStopSession) {
+      this.logRecordingInvariant(
+        "Recording stop command reached interpreter without a pending stop session",
+        {
+          code,
+          machineState: this.machine.describeCurrentState(),
+        },
+      );
+    }
+
     await this.lifecycleMutex.runExclusive(async () => {
-      if (this.recordingState !== "recording") {
-        logger.audio.warn("Cannot end recording - not recording", {
-          currentState: this.recordingState,
-        });
-        return;
-      }
-
-      // Wait for init to complete
-      if (this.initPromise) {
-        await this.initPromise;
-        this.initPromise = null;
-      }
-
-      const sessionId = this.currentSessionId;
-
-      logger.audio.info("Ending recording", { sessionId, code });
-
-      // Set termination code and timestamps
-      this.terminationCode = code;
-      this.recordingStoppedAt = performance.now();
-
-      // State transition first - signals worklet to stop and send final chunk
-      this.setState("stopping");
-      this.clearTimers();
-      this.recordingInitiatedAt = null;
-      this.setMode("idle");
-
-      // Always call stopRecording, conditionally restore system audio and play sounds
       try {
-        const nativeBridge = this.serviceManager.getService("nativeBridge");
-        await nativeBridge.call("stopRecording", {
-          wasMuted: this.systemAudioMuted,
-          muteSounds: this.soundsMuted,
-        });
-        this.systemAudioMuted = false;
-      } catch (error) {
-        this.systemAudioMuted = false;
-        logger.main.warn("Failed to stop recording via native bridge", {
-          error,
-        });
-      }
-
-      // Cancel streaming for cancel codes (not null, not dismissed)
-      if (code && code !== "dismissed" && sessionId) {
-        try {
-          const transcriptionService = this.serviceManager.getService(
-            "transcriptionService",
+        const stopState = this.machine.currentState;
+        if (!this.machine.isStoppingState(stopState)) {
+          this.logRecordingInvariant(
+            "Cannot end recording - FSM is not stopping",
+            {
+              machineState: this.machine.describeState(stopState),
+              recordingState: this.getState(),
+              code,
+            },
           );
-          await transcriptionService.cancelStreamingSession(sessionId);
-        } catch (error) {
-          logger.audio.warn("Failed to cancel streaming session", { error });
+          return;
         }
-      }
 
-      // Safety timeout for stuck state
-      this.stuckStateTimer = setTimeout(() => {
-        if (this.recordingState === "stopping") {
-          logger.audio.warn("No final chunk received, forcing idle");
-          this.forceIdle();
+        const effectiveCode = this.machine.effectiveStopCodeForState(
+          stopState,
+          code,
+        );
+        const shouldCancelStreamingEarly = effectiveCode !== null;
+
+        // Wait for init to complete
+        if (this.initPromise) {
+          await this.initPromise;
+          this.initPromise = null;
         }
-      }, STUCK_STATE_TIMEOUT);
+
+        const sessionId = this.currentSessionId;
+
+        logger.audio.info("Ending recording", {
+          sessionId,
+          code: effectiveCode,
+        });
+
+        // Reinforce the synchronous stop intent before any final chunk can
+        // finalize; this may already be set by prepareStopSessionIntent.
+        this.terminationCode = effectiveCode;
+
+        // The FSM has already entered STOP_*. This native stop asks the worklet
+        // to send the final chunk that drives finalization back to IDLE.
+        this.clearTimers();
+        this.recordingInitiatedAt = null;
+
+        // Always call stopRecording, conditionally restore system audio and play sounds
+        try {
+          const nativeBridge = this.serviceManager.getService("nativeBridge");
+          await nativeBridge.call("stopRecording", {
+            wasMuted: this.systemAudioMuted,
+            muteSounds: this.soundsMuted,
+          });
+          this.systemAudioMuted = false;
+        } catch (error) {
+          this.systemAudioMuted = false;
+          logger.main.warn("Failed to stop recording via native bridge", {
+            error,
+          });
+        }
+
+        // Cancel streaming immediately for true cancellations.
+        if (shouldCancelStreamingEarly && sessionId) {
+          try {
+            const transcriptionService = this.serviceManager.getService(
+              "transcriptionService",
+            );
+            await transcriptionService.cancelStreamingSession(sessionId);
+          } catch (error) {
+            logger.audio.warn("Failed to cancel streaming session", { error });
+          }
+        }
+
+        if (this.machine.shouldFinalizeWithoutFinalChunk(stopState)) {
+          if (!sessionId) {
+            this.logRecordingInvariant(
+              "Cannot finalize interrupted start without a session ID",
+              {
+                machineState: this.machine.describeState(stopState),
+                code: effectiveCode,
+              },
+            );
+            await this.forceIdle();
+            return;
+          }
+
+          this.machine.resolvePendingStopSession(pendingStopSession);
+          this.finalizeWithoutFinalChunk("interrupted_start", sessionId);
+          return;
+        }
+
+        // Safety timeout for stuck state
+        this.stuckStateTimer = setTimeout(() => {
+          if (this.getState() === "stopping") {
+            logger.audio.warn("No final chunk received, forcing idle");
+            void this.forceIdle().catch((error) => {
+              logger.audio.error(
+                "Failed to force idle from stuck state timer",
+                {
+                  error,
+                  machineState: this.machine.describeCurrentState(),
+                },
+              );
+            });
+          }
+        }, RECORDING_STOP_RECOVERY_TIMEOUT);
+      } finally {
+        this.machine.resolvePendingStopSession(pendingStopSession);
+      }
     });
   }
 
@@ -417,13 +535,12 @@ export class RecordingManager extends EventEmitter {
     chunk: Float32Array,
     isFinalChunk: boolean,
   ): Promise<void> {
+    const recordingState = this.getState();
+
     // Only process if recording or stopping
-    if (
-      this.recordingState !== "recording" &&
-      this.recordingState !== "stopping"
-    ) {
+    if (recordingState !== "recording" && recordingState !== "stopping") {
       logger.audio.debug("Discarding audio chunk - not in active state", {
-        state: this.recordingState,
+        state: recordingState,
         isFinalChunk,
       });
       return;
@@ -434,11 +551,20 @@ export class RecordingManager extends EventEmitter {
       await this.initPromise;
     }
 
-    // Track first chunk for no-audio detection
-    if (!this.firstChunkReceived && chunk.length > 0) {
-      this.firstChunkReceived = true;
-      this.clearNoAudioTimer();
-      logger.audio.info("First audio chunk received");
+    const stateAfterInit = this.getState();
+    if (stateAfterInit !== "recording" && stateAfterInit !== "stopping") {
+      logger.audio.debug("Discarding audio chunk - inactive after init", {
+        state: stateAfterInit,
+        isFinalChunk,
+      });
+      return;
+    }
+
+    // Hot path: every chunk hits this. Only enter the FSM when the audioChunk
+    // event could actually transition state (first audio chunk into a recording
+    // state). Subsequent chunks would be a self-transition that just allocates.
+    if (this.machine.shouldTransitionOnAudioChunk(chunk.length > 0)) {
+      await this.machine.handleEvent({ type: "audioChunk", hasAudio: true });
     }
 
     // Handle final chunk
@@ -468,7 +594,7 @@ export class RecordingManager extends EventEmitter {
     }
 
     // Only accumulate during recording (not stopping)
-    if (this.recordingState !== "recording") {
+    if (this.getState() !== "recording") {
       return;
     }
 
@@ -507,9 +633,24 @@ export class RecordingManager extends EventEmitter {
       this.stuckStateTimer = null;
     }
 
-    if (this.recordingState !== "stopping") {
+    if (this.getState() !== "stopping") {
       logger.audio.debug("Unexpected state in handleFinalChunk", {
-        state: this.recordingState,
+        state: this.getState(),
+      });
+      return;
+    }
+
+    const pendingStopResult = await this.machine.waitForPendingStopSession();
+    if (pendingStopResult === "timeout") {
+      await this.forceIdle();
+      return;
+    }
+
+    if (this.getState() !== "stopping") {
+      // Interrupted-start can finalize synchronously in performEndRecording
+      // while a renderer final chunk is waiting on the pending stop command.
+      logger.audio.debug("Recording finalized while waiting for stop command", {
+        state: this.getState(),
       });
       return;
     }
@@ -518,21 +659,19 @@ export class RecordingManager extends EventEmitter {
     const chunks = this.audioChunks;
     const code = this.terminationCode;
 
-    // CANCELLED (quick_release, no_audio, error) - discard buffer
-    if (code && code !== "dismissed") {
+    // CANCELLED (quick_release, no_audio) - discard buffer
+    if (code) {
       logger.audio.info("Recording cancelled", {
         code,
         chunksDiscarded: chunks.length,
       });
 
       this.emit("recording-cancelled", { sessionId, code });
-      this.audioChunks = [];
       this.resetSessionState();
-      this.setState("idle");
       return;
     }
 
-    // Write audio file (for NORMAL and DISMISSED)
+    // Write audio file for normal recordings.
     let audioFilePath: string | null = null;
 
     if (chunks.length > 0) {
@@ -556,27 +695,6 @@ export class RecordingManager extends EventEmitter {
       }
     }
     this.audioChunks = [];
-
-    // DISMISSED - just save file, skip transcription
-    if (code === "dismissed") {
-      // Cancel streaming session to prevent memory leak and audio bleed
-      try {
-        const transcriptionService = this.serviceManager.getService(
-          "transcriptionService",
-        );
-        await transcriptionService.cancelStreamingSession(sessionId);
-      } catch (error) {
-        logger.audio.warn("Failed to cancel streaming session", { error });
-      }
-
-      this.emit("transcription-dismissed", { sessionId, audioFilePath });
-      logger.audio.info("Recording dismissed, file saved for potential undo", {
-        audioFilePath,
-      });
-      this.resetSessionState();
-      this.setState("idle");
-      return;
-    }
 
     // NORMAL - get transcription and paste
     let result = "";
@@ -623,7 +741,6 @@ export class RecordingManager extends EventEmitter {
       });
 
       this.resetSessionState();
-      this.setState("idle");
       return;
     }
 
@@ -649,22 +766,6 @@ export class RecordingManager extends EventEmitter {
     }
 
     this.resetSessionState();
-    this.setState("idle");
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  // DISMISS SUPPORT
-  // ═══════════════════════════════════════════════════════════════════
-
-  /**
-   * Dismiss the current recording (called during stopping state)
-   * Saves audio file but skips transcription
-   */
-  public dismiss(): void {
-    if (this.recordingState === "stopping") {
-      this.terminationCode = "dismissed";
-      logger.audio.info("Recording dismissed");
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -676,14 +777,12 @@ export class RecordingManager extends EventEmitter {
     return Date.now() - this.recordingInitiatedAt < QUICK_PRESS_THRESHOLD;
   }
 
-  private async ensureSpeechModelSelected(): Promise<boolean> {
+  private async hasSpeechModelSelected(): Promise<boolean> {
     const modelService = this.serviceManager.getService("modelService");
-    const selectedSpeechModel = await modelService.getSelectedModel();
+    return Boolean(await modelService.getSelectedModel());
+  }
 
-    if (selectedSpeechModel) {
-      return true;
-    }
-
+  private notifyMissingSpeechModel(): void {
     logger.audio.warn("Cannot start recording - no speech model selected");
     this.emit("widget-notification", {
       type: "transcription_failed",
@@ -694,8 +793,65 @@ export class RecordingManager extends EventEmitter {
       errorCode: ErrorCodes.MODEL_MISSING,
       reason: "no_speech_model_selected",
     });
+  }
 
-    return false;
+  private startQuickReleaseTimer(): void {
+    this.cancelTimer = setTimeout(() => {
+      this.cancelTimer = null;
+      logger.audio.info("Quick release timeout, cancelling");
+      this.handleTimerMachineEvent(
+        { type: "quickReleaseTimeout" },
+        "quick-release timeout",
+      );
+    }, QUICK_PRESS_THRESHOLD);
+  }
+
+  private clearQuickReleaseTimer(): void {
+    if (this.cancelTimer) {
+      clearTimeout(this.cancelTimer);
+      this.cancelTimer = null;
+    }
+  }
+
+  private markFirstAudioReceived(): void {
+    this.clearNoAudioTimer();
+    logger.audio.info("First audio chunk received", {
+      sessionId: this.currentSessionId,
+    });
+  }
+
+  private notifyNoAudio(): void {
+    logger.audio.warn("No audio detected for 5 seconds");
+    this.emit("no-audio-detected");
+    this.emit("widget-notification", { type: "no_audio" });
+    logger.audio.info("Emitted widget notification", { type: "no_audio" });
+  }
+
+  private notifyDurationWarning(): void {
+    const remainingMinutes = Math.round(
+      (RECORDING_MAX_DURATION - RECORDING_WARNING_TIMEOUT) / 60_000,
+    );
+
+    logger.audio.warn("Recording duration warning", {
+      sessionId: this.currentSessionId,
+      remainingMinutes,
+    });
+    this.emit("widget-notification", {
+      type: "recording_duration_warning",
+      params: {
+        minutes: remainingMinutes,
+        maxMinutes: Math.round(RECORDING_MAX_DURATION / 60_000),
+      },
+    });
+  }
+
+  private notifyRecordingAutoStopped(): void {
+    logger.audio.warn("Recording auto-stopped at max duration", {
+      sessionId: this.currentSessionId,
+    });
+    this.emit("widget-notification", {
+      type: "recording_auto_stopped",
+    });
   }
 
   private clearTimers(): void {
@@ -729,7 +885,7 @@ export class RecordingManager extends EventEmitter {
   }
 
   private async waitForIdleOrTimeout(timeoutMs: number): Promise<void> {
-    if (this.recordingState === "idle") {
+    if (this.getState() === "idle") {
       return;
     }
 
@@ -757,14 +913,14 @@ export class RecordingManager extends EventEmitter {
       const timeoutHandle = setTimeout(() => {
         logger.audio.info("Cleanup wait for idle timed out", {
           timeoutMs,
-          state: this.recordingState,
+          state: this.getState(),
         });
         finish();
       }, timeoutMs);
 
       this.on("state-changed", onStateChanged);
 
-      if (this.recordingState === "idle") {
+      if (this.getState() === "idle") {
         finish();
       }
     });
@@ -772,51 +928,84 @@ export class RecordingManager extends EventEmitter {
 
   private startNoAudioTimer(): void {
     this.noAudioTimer = setTimeout(() => {
-      if (this.recordingState === "recording" && !this.firstChunkReceived) {
-        logger.audio.warn("No audio detected for 5 seconds");
-        this.emit("no-audio-detected");
-        this.emit("widget-notification", { type: "no_audio" });
-        logger.audio.info("Emitted widget notification", { type: "no_audio" });
-        this.endRecording("no_audio");
-      }
+      this.handleTimerMachineEvent(
+        { type: "noAudioTimeout" },
+        "no-audio timeout",
+      );
     }, NO_AUDIO_TIMEOUT);
   }
 
   private startDurationTimers(): void {
-    const remainingMinutes = Math.round(
-      (RECORDING_MAX_DURATION - RECORDING_WARNING_TIMEOUT) / 60_000,
-    );
-
     this.warningTimer = setTimeout(() => {
-      if (this.recordingState === "recording") {
-        logger.audio.warn("Recording duration warning", {
-          sessionId: this.currentSessionId,
-          remainingMinutes,
-        });
-        this.emit("widget-notification", {
-          type: "recording_duration_warning",
-          params: {
-            minutes: remainingMinutes,
-            maxMinutes: Math.round(RECORDING_MAX_DURATION / 60_000),
-          },
-        });
-      }
+      this.handleTimerMachineEvent(
+        { type: "durationWarningTimeout" },
+        "duration warning timeout",
+      );
     }, RECORDING_WARNING_TIMEOUT);
 
     this.maxDurationTimer = setTimeout(() => {
-      if (this.recordingState === "recording") {
-        logger.audio.warn("Recording auto-stopped at max duration", {
-          sessionId: this.currentSessionId,
-        });
-        this.emit("widget-notification", {
-          type: "recording_auto_stopped",
-        });
-        this.endRecording();
-      }
+      this.handleTimerMachineEvent(
+        { type: "maxDurationTimeout" },
+        "max duration timeout",
+      );
     }, RECORDING_MAX_DURATION);
   }
 
+  private handleTimerMachineEvent(
+    event: RecordingMachineEvent,
+    label: string,
+  ): void {
+    void this.machine.handleEvent(event).catch((error) => {
+      logger.audio.error("Failed to handle recording timer event", {
+        error,
+        label,
+        event,
+        machineState: this.machine.describeCurrentState(),
+      });
+
+      if (
+        !this.shouldRecoverFailedTimerEvent(event) ||
+        this.getState() === "idle"
+      ) {
+        return;
+      }
+
+      // Stop-emitting timer failures can happen before performEndRecording arms
+      // its stuck-state timer, so recover directly while leaving notification
+      // timers as log-only failures.
+      void this.forceIdle().catch((forceIdleError) => {
+        logger.audio.error("Failed to recover recording timer event", {
+          error: forceIdleError,
+          label,
+          event,
+          machineState: this.machine.describeCurrentState(),
+        });
+      });
+    });
+  }
+
+  private shouldRecoverFailedTimerEvent(event: RecordingMachineEvent): boolean {
+    return (
+      event.type === "quickReleaseTimeout" ||
+      event.type === "noAudioTimeout" ||
+      event.type === "maxDurationTimeout"
+    );
+  }
+
   private async forceIdle(): Promise<void> {
+    if (this.forceIdlePromise) {
+      return this.forceIdlePromise;
+    }
+
+    this.forceIdlePromise = this.performForceIdle();
+    try {
+      await this.forceIdlePromise;
+    } finally {
+      this.forceIdlePromise = null;
+    }
+  }
+
+  private async performForceIdle(): Promise<void> {
     logger.audio.warn("Forcing idle due to stuck state");
 
     // Cancel streaming session if one exists to prevent memory leak and audio bleed
@@ -851,17 +1040,16 @@ export class RecordingManager extends EventEmitter {
       this.systemAudioMuted = false;
     }
 
-    this.audioChunks = [];
-    this.resetSessionState();
-    this.setState("idle");
+    this.resetSessionState({ force: true });
   }
 
-  private resetSessionState(): void {
+  private resetSessionState(options: { force?: boolean } = {}): void {
+    if (!this.machine.resetSession(options)) {
+      return;
+    }
     this.currentSessionId = null;
     this.initPromise = null;
-    this.firstChunkReceived = false;
     this.recordingInitiatedAt = null;
-    this.recordingMode = "idle";
     this.audioChunks = [];
     this.terminationCode = null;
     this.systemAudioMuted = false;
@@ -979,7 +1167,7 @@ export class RecordingManager extends EventEmitter {
    * Signal to start recording (called from tRPC)
    */
   public async signalStart(): Promise<void> {
-    if (this.recordingState === "idle") {
+    if (this.getState() === "idle") {
       this.recordingInitiatedAt = Date.now();
       await this.doStart("hands-free");
     }
@@ -989,27 +1177,59 @@ export class RecordingManager extends EventEmitter {
    * Signal to stop recording (called from tRPC)
    */
   public async signalStop(): Promise<void> {
-    if (this.recordingState === "recording") {
-      await this.endRecording();
+    const state = this.getState();
+    if (state !== "recording" && state !== "starting") {
+      return;
     }
+
+    await this.machine.handleEvent({ type: "signalStop" });
   }
 
   // Clean up resources
   async cleanup(): Promise<void> {
     this.clearTimers();
 
-    // Stop recording if active (endRecording handles stopRecording RPC)
-    if (this.recordingState === "recording") {
-      await this.endRecording();
+    // Stop recording if active (performEndRecording handles stopRecording RPC)
+    const state = this.getState();
+    if (state === "recording" || state === "starting") {
+      const commands = this.machine.transition({ type: "signalStop" });
+      if (commands.length > 0) {
+        await this.machine.runCommands(commands);
+      } else {
+        // A public active state with no stop command means the derived public
+        // state and the FSM predicate have diverged. Force cleanup instead of
+        // calling native stop directly and hiding the bug.
+        this.logRecordingInvariant(
+          "Recording FSM invariant violated during cleanup",
+          {
+            machineState: this.machine.describeCurrentState(),
+            recordingState: this.getState(),
+            recordingMode: this.getRecordingMode(),
+          },
+        );
+        await this.forceIdle();
+        return;
+      }
     }
 
-    // If shutdown catches us mid-stop, briefly wait for natural transition to idle.
-    if (this.recordingState === "stopping") {
+    // If shutdown catches us mid-stop, wait until native stop has either run or
+    // been force-cleaned before any terminal FSM reset.
+    if (this.getState() === "stopping") {
+      const pendingStopResult = await this.machine.waitForPendingStopSession();
+
+      if (pendingStopResult === "timeout") {
+        await this.forceIdle();
+        return;
+      }
+
       await this.waitForIdleOrTimeout(CLEANUP_STOPPING_WAIT_TIMEOUT);
+      if (this.getState() === "stopping") {
+        await this.forceIdle();
+        return;
+      }
     }
 
     // Clear any active session
     this.resetSessionState();
-    this.setState("idle");
   }
 }
