@@ -147,8 +147,15 @@ export const mockSystemInformation = {
 export const mockPostHog = {
   PostHog: vi.fn().mockImplementation(() => ({
     capture: vi.fn(),
+    captureException: vi.fn(),
+    captureExceptionImmediate: vi.fn(),
     identify: vi.fn(),
     alias: vi.fn(),
+    optIn: vi.fn(() => Promise.resolve()),
+    optOut: vi.fn(() => Promise.resolve()),
+    getAllFlagsAndPayloads: vi.fn(() =>
+      Promise.resolve({ featureFlags: {}, featureFlagPayloads: {} }),
+    ),
     shutdown: vi.fn(() => Promise.resolve()),
   })),
 };

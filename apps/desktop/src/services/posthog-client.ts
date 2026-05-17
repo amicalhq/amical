@@ -27,11 +27,18 @@ export interface SystemInfo {
   model: string;
 }
 
+export interface IdentifiedUser {
+  userId: string;
+  email?: string;
+  name?: string;
+}
+
 export class PostHogClient {
   readonly posthog: PostHog | null = null;
   private _machineId: string = "";
   private _systemInfo: SystemInfo | null = null;
   private _personProperties: Record<string, string> = {};
+  private _identifiedUser: IdentifiedUser | null = null;
 
   constructor() {
     const host = process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST;
@@ -96,12 +103,43 @@ export class PostHogClient {
     return this._machineId;
   }
 
+  get distinctId(): string {
+    return this._identifiedUser?.userId || this._machineId;
+  }
+
+  get isIdentified(): boolean {
+    return !!this._identifiedUser?.userId;
+  }
+
+  get identifiedUser(): IdentifiedUser | null {
+    return this._identifiedUser;
+  }
+
   get systemInfo(): SystemInfo | null {
     return this._systemInfo;
   }
 
   get personProperties(): Record<string, string> {
-    return this._personProperties;
+    return {
+      ...this._personProperties,
+      ...(this._machineId && { $device_id: this._machineId }),
+    };
+  }
+
+  get eventIdentityProperties(): Record<string, string | boolean> {
+    return {
+      ...(this._machineId && { $device_id: this._machineId }),
+      $process_person_profile: this.isIdentified,
+      $is_identified: this.isIdentified,
+    };
+  }
+
+  setIdentifiedUser(userId: string, email?: string, name?: string): void {
+    this._identifiedUser = { userId, email, name };
+  }
+
+  clearIdentifiedUser(): void {
+    this._identifiedUser = null;
   }
 
   private async collectSystemInfo(): Promise<SystemInfo> {

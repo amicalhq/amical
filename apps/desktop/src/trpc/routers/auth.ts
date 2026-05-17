@@ -13,6 +13,7 @@ export const authRouter = createRouter({
 
     return {
       isAuthenticated,
+      userId: authState?.userInfo?.sub || null,
       userEmail: authState?.userInfo?.email || null,
       userName: authState?.userInfo?.name || null,
     };
@@ -50,6 +51,7 @@ export const authRouter = createRouter({
     return observable<{
       eventType: "initial" | "authenticated" | "signed-out" | "auth-error";
       isAuthenticated: boolean;
+      userId: string | null;
       userEmail: string | null;
       userName: string | null;
       error?: string;
@@ -62,6 +64,7 @@ export const authRouter = createRouter({
         emit.next({
           eventType: "authenticated",
           isAuthenticated: true,
+          userId: authState.userInfo?.sub || null,
           userEmail: authState.userInfo?.email || null,
           userName: authState.userInfo?.name || null,
         });
@@ -72,6 +75,7 @@ export const authRouter = createRouter({
         emit.next({
           eventType: "signed-out",
           isAuthenticated: false,
+          userId: null,
           userEmail: null,
           userName: null,
         });
@@ -82,6 +86,7 @@ export const authRouter = createRouter({
         emit.next({
           eventType: "auth-error",
           isAuthenticated: false,
+          userId: null,
           userEmail: null,
           userName: null,
           error: error.message,
@@ -98,6 +103,7 @@ export const authRouter = createRouter({
         emit.next({
           eventType: "initial",
           isAuthenticated: state?.isAuthenticated || false,
+          userId: state?.userInfo?.sub || null,
           userEmail: state?.userInfo?.email || null,
           userName: state?.userInfo?.name || null,
         });

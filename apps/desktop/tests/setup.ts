@@ -165,8 +165,19 @@ vi.mock("posthog-node", () => ({
   PostHog: vi.fn().mockImplementation(function () {
     return {
       capture: vi.fn(),
+      captureException: vi.fn(),
+      captureExceptionImmediate: vi.fn(),
       identify: vi.fn(),
       alias: vi.fn(),
+      optIn: vi.fn(function () {
+        return Promise.resolve();
+      }),
+      optOut: vi.fn(function () {
+        return Promise.resolve();
+      }),
+      getAllFlagsAndPayloads: vi.fn(function () {
+        return Promise.resolve({ featureFlags: {}, featureFlagPayloads: {} });
+      }),
       shutdown: vi.fn(function () {
         return Promise.resolve();
       }),
