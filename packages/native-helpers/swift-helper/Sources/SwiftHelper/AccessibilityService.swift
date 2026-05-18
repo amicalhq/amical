@@ -478,16 +478,19 @@ class AccessibilityService {
             return false
         }
 
-        // Simulate Cmd+V using virtual key codes from Constants.swift
+        // Resolve "v" under the active layout so Cmd+V doesn't land as Cmd+K
+        // on Dvorak/Colemak. VK_V is the QWERTY fallback.
+        let pasteKey = KeyboardLayoutResolver.keycode(for: "v") ?? VK_V
+
         let source = CGEventSource(stateID: .hidSystemState)
 
         let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: true)
         cmdDown?.flags = .maskCommand
 
-        let vDown = CGEvent(keyboardEventSource: source, virtualKey: VK_V, keyDown: true)
-        vDown?.flags = .maskCommand  // Keep command flag for the V press as well
+        let vDown = CGEvent(keyboardEventSource: source, virtualKey: pasteKey, keyDown: true)
+        vDown?.flags = .maskCommand
 
-        let vUp = CGEvent(keyboardEventSource: source, virtualKey: VK_V, keyDown: false)
+        let vUp = CGEvent(keyboardEventSource: source, virtualKey: pasteKey, keyDown: false)
         vUp?.flags = .maskCommand
 
         let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: false)
