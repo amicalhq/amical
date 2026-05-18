@@ -75,6 +75,7 @@ export const getNotificationDescription = (
 
 // Discord support server URL (same as sidebar Community link)
 export const DISCORD_SUPPORT_URL = "https://amical.ai/community";
+export const APP_PLAN_URL = "https://app.amical.ai/plan";
 
 // Config keyed directly by error code
 export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
@@ -103,6 +104,22 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     primaryAction: {
       label: { key: "widget.notifications.action.viewUsage" },
       navigateTo: "/settings/ai-models",
+    },
+    secondaryAction: {
+      label: { key: "widget.notifications.action.support" },
+      icon: "discord",
+      externalUrl: DISCORD_SUPPORT_URL,
+    },
+  },
+  [ErrorCodes.QUOTA_EXCEEDED]: {
+    title: { key: "widget.notifications.errorCode.quotaExceeded.title" },
+    description: {
+      key: "widget.notifications.errorCode.quotaExceeded.description",
+    },
+    subDescription: { key: "widget.notifications.recordingSaved" },
+    primaryAction: {
+      label: { key: "widget.notifications.action.upgradePlan" },
+      externalUrl: APP_PLAN_URL,
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },

@@ -270,7 +270,8 @@
         "viewHistory": "查看歷史紀錄",
         "settings": "設定",
         "aiModels": "AI 模型",
-        "configureMicrophone": "設定麥克風"
+        "configureMicrophone": "設定麥克風",
+        "upgradePlan": "升級方案"
       },
       "type": {
         "noAudio": {
@@ -298,6 +299,10 @@
         "rateLimitExceeded": {
           "title": "超過使用限制",
           "description": "您已達到轉錄限制"
+        },
+        "quotaExceeded": {
+          "title": "方案額度已用盡",
+          "description": "您已用完目前方案的轉錄額度，升級方案即可繼續使用。"
         },
         "internalServerError": {
           "title": "伺服器錯誤",

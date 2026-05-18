@@ -270,7 +270,8 @@
         "viewHistory": "View History",
         "settings": "Settings",
         "aiModels": "AI Models",
-        "configureMicrophone": "Configure Microphone"
+        "configureMicrophone": "Configure Microphone",
+        "upgradePlan": "Upgrade plan"
       },
       "type": {
         "noAudio": {
@@ -298,6 +299,10 @@
         "rateLimitExceeded": {
           "title": "Rate limit exceeded",
           "description": "You've reached your transcription limit"
+        },
+        "quotaExceeded": {
+          "title": "Plan limit reached",
+          "description": "You've used all the transcription minutes on your current plan. Upgrade to keep dictating."
         },
         "internalServerError": {
           "title": "Server error",

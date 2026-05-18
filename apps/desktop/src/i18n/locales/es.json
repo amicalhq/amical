@@ -270,7 +270,8 @@
         "viewHistory": "Ver historial",
         "settings": "Configuración",
         "aiModels": "Modelos de IA",
-        "configureMicrophone": "Configurar micrófono"
+        "configureMicrophone": "Configurar micrófono",
+        "upgradePlan": "Mejorar plan"
       },
       "type": {
         "noAudio": {
@@ -298,6 +299,10 @@
         "rateLimitExceeded": {
           "title": "Límite de uso excedido",
           "description": "Has alcanzado tu límite de transcripciones"
+        },
+        "quotaExceeded": {
+          "title": "Límite del plan alcanzado",
+          "description": "Has usado todos los minutos de transcripción de tu plan actual. Mejora tu plan para seguir dictando."
         },
         "internalServerError": {
           "title": "Error del servidor",

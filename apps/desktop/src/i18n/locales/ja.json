@@ -270,7 +270,8 @@
         "viewHistory": "履歴を表示",
         "settings": "設定",
         "aiModels": "AIモデル",
-        "configureMicrophone": "マイクを設定"
+        "configureMicrophone": "マイクを設定",
+        "upgradePlan": "プランをアップグレード"
       },
       "type": {
         "noAudio": {
@@ -298,6 +299,10 @@
         "rateLimitExceeded": {
           "title": "レート制限を超えました",
           "description": "文字起こしの上限に達しました"
+        },
+        "quotaExceeded": {
+          "title": "プラン上限に達しました",
+          "description": "現在のプランの文字起こし枠を使い切りました。続けるにはプランをアップグレードしてください。"
         },
         "internalServerError": {
           "title": "サーバーエラー",

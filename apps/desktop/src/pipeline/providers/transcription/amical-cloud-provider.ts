@@ -188,21 +188,21 @@ const createInitialProviderState = (): ProviderState => ({
  * Carve-outs that surface instead:
  *   - AUTH_REQUIRED (401/403): HTTP would surface the same auth failure.
  *   - RATE_LIMIT_EXCEEDED (429): account-level throttle, same backend.
+ *   - QUOTA_EXCEEDED (402): plan/word-limit cap, same backend — retry won't help.
  *   - IDLE_TIMEOUT: orchestrator stopped feeding chunks; HTTP would also be starved.
  *   - CANCELLED (499): user-initiated (e.g., reset() during flush) — falling
  *     back would trigger a phantom HTTP transcription right after the user
  *     tried to stop.
  */
+const NO_HTTP_FALLBACK_CODES: ReadonlySet<ErrorCode> = new Set([
+  ErrorCodes.AUTH_REQUIRED,
+  ErrorCodes.RATE_LIMIT_EXCEEDED,
+  ErrorCodes.QUOTA_EXCEEDED,
+  ErrorCodes.IDLE_TIMEOUT,
+]);
+
 const shouldFallbackToHttp = (error: AppError): boolean => {
-  if (error.errorCode === ErrorCodes.AUTH_REQUIRED) {
-    return false;
-  }
-  if (error.errorCode === ErrorCodes.RATE_LIMIT_EXCEEDED) {
-    return false;
-  }
-  // Idle timeout means the orchestrator stopped feeding chunks; HTTP would
-  // be just as starved, so falling back wastes a roundtrip.
-  if (error.errorCode === ErrorCodes.IDLE_TIMEOUT) {
+  if (NO_HTTP_FALLBACK_CODES.has(error.errorCode)) {
     return false;
   }
   if (error.statusCode === 499) {
@@ -806,8 +806,11 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       switch (error.grpcStatus) {
         case GrpcStatus.UNAUTHENTICATED:
           return build(ErrorCodes.AUTH_REQUIRED, 401);
+        // The server's only RESOURCE_EXHAUSTED case today is a plan/word-limit
+        // cap, not a per-second throttle — surface as QUOTA_EXCEEDED so the
+        // user sees an Upgrade CTA instead of a generic rate-limit message.
         case GrpcStatus.RESOURCE_EXHAUSTED:
-          return build(ErrorCodes.RATE_LIMIT_EXCEEDED, 429);
+          return build(ErrorCodes.QUOTA_EXCEEDED, 402);
         case GrpcStatus.PERMISSION_DENIED:
           return build(ErrorCodes.AUTH_REQUIRED, 403);
       }
@@ -815,6 +818,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       switch (error.httpStatus) {
         case 401:
           return build(ErrorCodes.AUTH_REQUIRED, 401);
+        case 402:
+          return build(ErrorCodes.QUOTA_EXCEEDED, 402);
         case 403:
           return build(ErrorCodes.AUTH_REQUIRED, 403);
         case 429:
@@ -1005,6 +1010,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   ): ErrorCode {
     if (isValidErrorCode(errorData?.code)) {
       return errorData.code;
+    }
+    if (response.status === 402) {
+      return ErrorCodes.QUOTA_EXCEEDED;
     }
     if (response.status === 403) {
       return ErrorCodes.AUTH_REQUIRED;
