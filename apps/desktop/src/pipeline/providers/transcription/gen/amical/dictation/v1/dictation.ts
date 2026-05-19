@@ -205,11 +205,9 @@ const descriptor = {
                   },
                 },
                 StreamOpen: {
-                  oneofs: {
-                    _formatting: {
-                      oneof: ["formatting"],
-                    },
-                  },
+                  // Tag 5 (`formatting`) is reserved in the proto file;
+                  // protobufjs runtime doesn't track reservations, so the
+                  // hint stays in dictation.proto only.
                   fields: {
                     sessionId: {
                       type: "string",
@@ -228,12 +226,49 @@ const descriptor = {
                       type: "string",
                       id: 4,
                     },
-                    formatting: {
-                      type: "bool",
-                      id: 5,
-                      options: {
-                        proto3_optional: true,
-                      },
+                  },
+                },
+                StreamSkillsUpdate: {
+                  fields: {
+                    resolvedSkills: {
+                      rule: "repeated",
+                      type: "Skill",
+                      id: 1,
+                    },
+                  },
+                },
+                Skill: {
+                  oneofs: {
+                    body: {
+                      oneof: ["preset", "customPrompt"],
+                    },
+                  },
+                  fields: {
+                    preset: {
+                      type: "string",
+                      id: 1,
+                    },
+                    customPrompt: {
+                      type: "string",
+                      id: 2,
+                    },
+                    args: {
+                      keyType: "string",
+                      type: "StringList",
+                      id: 3,
+                    },
+                    clientRuleId: {
+                      type: "string",
+                      id: 4,
+                    },
+                  },
+                },
+                StringList: {
+                  fields: {
+                    values: {
+                      rule: "repeated",
+                      type: "string",
+                      id: 1,
                     },
                   },
                 },
@@ -292,6 +327,7 @@ const descriptor = {
                         "audio",
                         "finalize",
                         "cancel",
+                        "skillsUpdate",
                       ],
                     },
                   },
@@ -315,6 +351,10 @@ const descriptor = {
                     cancel: {
                       type: "StreamCancel",
                       id: 5,
+                    },
+                    skillsUpdate: {
+                      type: "StreamSkillsUpdate",
+                      id: 6,
                     },
                   },
                 },
@@ -394,6 +434,11 @@ export const StreamAudioBatch = lookupType(
 );
 export const StreamFinalize = lookupType("amical.dictation.v1.StreamFinalize");
 export const StreamCancel = lookupType("amical.dictation.v1.StreamCancel");
+export const StreamSkillsUpdate = lookupType(
+  "amical.dictation.v1.StreamSkillsUpdate",
+);
+export const Skill = lookupType("amical.dictation.v1.Skill");
+export const StringList = lookupType("amical.dictation.v1.StringList");
 export const StreamTranscribeRequest = lookupType(
   "amical.dictation.v1.StreamTranscribeRequest",
 );

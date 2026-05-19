@@ -9,6 +9,7 @@ import {
   IconKeyboard,
   IconAdjustments,
   IconNotes,
+  IconSparkles,
   type Icon,
 } from "@tabler/icons-react";
 
@@ -71,6 +72,13 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/snippets",
     descriptionKey: "settings.nav.snippets.description",
     icon: IconScissors,
+    type: "settings",
+  },
+  {
+    titleKey: "settings.nav.formatting.title",
+    url: "/settings/formatting",
+    descriptionKey: "settings.nav.formatting.description",
+    icon: IconSparkles,
     type: "settings",
   },
   {

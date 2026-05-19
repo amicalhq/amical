@@ -750,7 +750,23 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         sessionId,
         languages: snapshot.currentLanguages,
         vocabulary: snapshot.currentVocabulary,
-        formatting: enableFormatting,
+        // Temporary bridge: until the Formatting UI is wired into the
+        // pipeline, send a single "default" preset skill when formatting
+        // is enabled, and an empty array (= raw transcript) otherwise.
+        // Future work resolves an actual rule from settings + foreground
+        // app and replaces this with the matched Skill(s).
+        resolvedSkills: enableFormatting
+          ? [
+              {
+                preset: "default",
+                args: {
+                  polishing: ["normal"],
+                  tone: ["casual"],
+                },
+                clientRuleId: "default",
+              },
+            ]
+          : [],
         context: this.buildGrpcStreamContext(snapshot),
       };
 

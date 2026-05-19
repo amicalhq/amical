@@ -365,6 +365,10 @@
         "title": "Snippets",
         "description": "Expand short triggers into longer text while dictating"
       },
+      "formatting": {
+        "title": "Personalization",
+        "description": "Per-app personalization rules for your dictation"
+      },
       "aiModels": {
         "title": "AI Models",
         "description": "Configure AI models and providers"

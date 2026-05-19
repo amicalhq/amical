@@ -149,17 +149,79 @@ message StreamLanguageConfig {
 }
 
 message StreamOpen {
+  // Tag 5 was `optional bool formatting`. Skills now flow via
+  // StreamSkillsUpdate, mirroring how StreamContextUpdate handles
+  // app/selection context.
+  reserved 5;
+  reserved "formatting";
+
   // Required client-side dictation session id used for stream correlation.
   string session_id = 1;
   AudioConfig audio_config = 2;
   StreamLanguageConfig language = 3;
   repeated string vocabulary = 4;
-  optional bool formatting = 5;
 }
 
 message StreamContextUpdate {
   // Full snapshot replacement.
   StreamContext context = 1;
+}
+
+// Full snapshot replacement of the active skill set. Sent whenever the
+// client (re)resolves which skills apply to the in-flight session — e.g.
+// after foreground app detection completes, after the user alt-tabs
+// mid-dictation, or after the user toggles a rule in settings during an
+// open stream.
+//
+// Skills are applied in declared order. Empty array → server returns
+// the raw transcript with no formatting pass. Last write wins; the
+// server uses the skill set current at finalize time when formatting
+// the transcript.
+//
+// If StreamSkillsUpdate is never sent for a session, the server treats
+// the stream as if an empty array had been sent (no formatting).
+message StreamSkillsUpdate {
+  repeated Skill resolved_skills = 1;
+}
+
+message Skill {
+  // What the skill IS. Exactly one is set.
+  oneof body {
+    // Server-defined preset identifier. Intentionally a string (not an
+    // enum) so the server can add new presets ("code_review",
+    // "meeting_notes", …) without forcing a desktop update. Unknown
+    // ids → server falls back to "default".
+    // Known today: "default", "personal_chat", "work_chat", "email".
+    string preset = 1;
+
+    // User-supplied custom prompt, sent verbatim. Used in place of any
+    // preset ruleset. Reserved for the custom-skills follow-up — v1
+    // desktops do not send.
+    string custom_prompt = 2;
+  }
+
+  // Per-skill knobs. Values are always lists so future multi-value args
+  // (e.g. "examples", "banned_words") ship as a no-op wire change.
+  // Scalars travel as length-1 lists.
+  //
+  // Known v1 keys:
+  //   "polishing"  ∈ ["none"] | ["low"] | ["normal"] | ["high"]
+  //   "tone"       ∈ ["casual"] | ["formal"]
+  //
+  // Reserved namespaces:
+  //   "x-amical.*"   server-side experiments / A-B
+  //   "x-client.*"   client telemetry passthrough
+  map<string, StringList> args = 3;
+
+  // Opaque client-side rule id (e.g. "personal", "rule_a8f3b2"). Pure
+  // telemetry — server logs it to trace which local rule produced
+  // which transcript. Per skill so composition stays traceable.
+  string client_rule_id = 4;
+}
+
+// Wrapper because proto3 map values cannot themselves be `repeated`.
+message StringList {
+  repeated string values = 1;
 }
 
 message StreamAudioBatch {
@@ -187,6 +249,7 @@ message StreamTranscribeRequest {
     StreamAudioBatch audio = 3;
     StreamFinalize finalize = 4;
     StreamCancel cancel = 5;
+    StreamSkillsUpdate skills_update = 6;
   }
 }
 

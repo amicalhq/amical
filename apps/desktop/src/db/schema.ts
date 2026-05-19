@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   primaryKey,
   blob,
+  check,
 } from "drizzle-orm/sqlite-core";
 import type { HistoryRetentionPeriod } from "../constants/history-retention";
 
@@ -295,6 +296,74 @@ export const dailyStats = sqliteTable(
   (table) => [uniqueIndex("daily_stats_date_unique_idx").on(table.date)],
 );
 
+// Skills = personalization rules that the desktop resolves at dictation
+// time into the wire-format `Skill` proto message. Each row is one
+// preset/custom-prompt configuration the user can apply to dictation
+// output. Seeded rows ship with the app and cannot be deleted (v1);
+// user-added rows are deletable.
+//
+// Matching has two channels:
+//   includedApps  — native app identifiers (bundle id on macOS,
+//                   exe basename / AUMID on Windows). The "default"
+//                   row leaves this empty and acts as the fallback.
+//   includedSites — website hostnames matched against the foreground
+//                   browser tab. Lets the same Email skill fire for
+//                   Apple Mail (native) and mail.google.com (web).
+// Both lists are JSON-encoded string arrays. v1 uses exact-hostname
+// match; subdomain wildcards (e.g. "*.google.com") are a future v1.1.
+//
+// Mode mirrors the proto's `oneof body { preset, custom_prompt }`:
+//   mode = "preset"  → preset is set, prompt is null
+//   mode = "custom"  → prompt is set, preset is null
+// Enforced by a CHECK constraint below in addition to zod validation at
+// the API boundary, so direct DB inserts can't create inconsistent rows.
+// polishing/tone are nullable knobs: when null, the server uses its
+// default/inherits-from-preset behavior.
+export const skills = sqliteTable(
+  "skills",
+  {
+    id: text("id").notNull().primaryKey(),
+    name: text("name").notNull(),
+    mode: text("mode", { enum: ["preset", "custom"] })
+      .notNull()
+      .default("preset"),
+    preset: text("preset"),
+    prompt: text("prompt"),
+    polishing: text("polishing", {
+      enum: ["none", "low", "normal", "high"],
+    }),
+    tone: text("tone", { enum: ["casual", "formal"] }),
+    // Nullable: NULL means "inherit the app-defined defaults for this
+    // seeded skill" (see SEED_APP_DEFAULTS / SEED_SITE_DEFAULTS in
+    // catalog.ts). Once the user edits the list (or adds a custom
+    // entry), the column goes non-null and future default-list updates
+    // shipped in JS no longer propagate. A Reset-to-defaults action
+    // writes null back to re-enable inheritance.
+    includedApps: text("included_apps", { mode: "json" }).$type<string[]>(),
+    includedSites: text("included_sites", { mode: "json" }).$type<string[]>(),
+    isDefault: integer("is_default", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    isBuiltIn: integer("is_built_in", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    check(
+      "skills_mode_consistency",
+      sql`(${table.mode} = 'preset' AND ${table.preset} IS NOT NULL AND ${table.prompt} IS NULL)
+         OR (${table.mode} = 'custom' AND ${table.prompt} IS NOT NULL AND ${table.preset} IS NULL)`,
+    ),
+  ],
+);
+
 // Export types for TypeScript
 export type Transcription = typeof transcriptions.$inferSelect;
 export type NewTranscription = typeof transcriptions.$inferInsert;
@@ -312,3 +381,5 @@ export type YjsUpdate = typeof yjsUpdates.$inferSelect;
 export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;
 export type DailyStat = typeof dailyStats.$inferSelect;
 export type NewDailyStat = typeof dailyStats.$inferInsert;
+export type Skill = typeof skills.$inferSelect;
+export type NewSkill = typeof skills.$inferInsert;
