@@ -133,13 +133,19 @@ export function findModelBySelectionValue<
 }
 
 export function getSpeechModelSelectionKey(modelId: string): string {
-  return getModelSelectionKey(
-    modelId === "amical-cloud"
-      ? getSystemProviderInstanceId(PROVIDER_TYPES.amical)
-      : getSystemProviderInstanceId(PROVIDER_TYPES.localWhisper),
-    "speech",
-    modelId,
-  );
+  let providerInstanceId: string;
+  if (modelId === "amical-cloud") {
+    providerInstanceId = getSystemProviderInstanceId(PROVIDER_TYPES.amical);
+  } else if (modelId === "openai-whisper") {
+    providerInstanceId = getSystemProviderInstanceId(
+      PROVIDER_TYPES.openAIWhisper,
+    );
+  } else {
+    providerInstanceId = getSystemProviderInstanceId(
+      PROVIDER_TYPES.localWhisper,
+    );
+  }
+  return getModelSelectionKey(providerInstanceId, "speech", modelId);
 }
 
 export function getSpeechModelIdFromStoredSelection(

@@ -328,6 +328,16 @@ export const modelsRouter = createRouter({
       );
     }),
 
+  validateOpenAIWhisperConnection: procedure
+    .input(z.object({ apiKey: z.string() }))
+    .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
+      const modelService = ctx.serviceManager.getService("modelService");
+      if (!modelService) {
+        throw new Error("Model manager service not initialized");
+      }
+      return await modelService.validateOpenAIWhisperConnection(input.apiKey);
+    }),
+
   // Provider model fetching
   fetchOpenRouterModels: procedure
     .input(z.object({ apiKey: z.string() }))
