@@ -11,6 +11,7 @@ import { authRouter } from "./routers/auth";
 import { onboardingRouter } from "./routers/onboarding";
 import { featureFlagsRouter } from "./routers/feature-flags";
 import { telemetryRouter } from "./routers/telemetry";
+import { hardwareRouter } from "./routers/hardware";
 import { createRouter, procedure } from "./trpc";
 
 export const router = createRouter({
@@ -73,6 +74,9 @@ export const router = createRouter({
 
   // Telemetry router
   telemetry: telemetryRouter,
+
+  // Hardware router — enumerates GPUs and available native backends.
+  hardware: hardwareRouter,
 });
 
 export type AppRouter = typeof router;

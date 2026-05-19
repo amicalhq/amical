@@ -11,6 +11,15 @@ endif()
 
 add_definitions(-DNAPI_VERSION=8)
 
+# CUDA 13.x CCCL requires MSVC's conformant preprocessor — whisper.cpp does not
+# enable it by default, so set it here before pulling in the whisper.cpp subtree.
+if (MSVC)
+  add_compile_options(
+    "$<$<COMPILE_LANGUAGE:C,CXX>:/Zc:preprocessor>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>"
+  )
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../whisper.cpp/cmake")
 
 set(WHISPER_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../whisper.cpp")
@@ -48,23 +57,13 @@ set_target_properties(whisper_node PROPERTIES
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN ON)
 
-# CMake-js variables
+# CMake-js variables — CMAKE_JS_INC / CMAKE_JS_LIB are already semicolon-
+# delimited CMake lists. Iterate them directly; the previous REPLACE+
+# separate_arguments approach broke paths that contain spaces.
 if (DEFINED CMAKE_JS_INC)
-  string(REPLACE ";" " " TMP_CMAKE_JS_INC "${CMAKE_JS_INC}")
-endif()
-if (DEFINED CMAKE_JS_LIB)
-  string(REPLACE ";" " " TMP_CMAKE_JS_LIB "${CMAKE_JS_LIB}")
-endif()
-
-if (DEFINED TMP_CMAKE_JS_INC)
-  separate_arguments(TMP_CMAKE_JS_INC)
-  foreach(INC ${TMP_CMAKE_JS_INC})
+  foreach(INC IN LISTS CMAKE_JS_INC)
     target_include_directories(whisper_node PRIVATE "${INC}")
   endforeach()
-endif()
-
-if (DEFINED TMP_CMAKE_JS_LIB)
-  separate_arguments(TMP_CMAKE_JS_LIB)
 endif()
 
 # Include directories
@@ -76,8 +75,8 @@ target_include_directories(whisper_node PRIVATE
 )
 
 # Link libraries
-if (DEFINED TMP_CMAKE_JS_LIB)
-  target_link_libraries(whisper_node PRIVATE ${TMP_CMAKE_JS_LIB})
+if (DEFINED CMAKE_JS_LIB)
+  target_link_libraries(whisper_node PRIVATE ${CMAKE_JS_LIB})
 endif()
 
 target_link_libraries(whisper_node PRIVATE whisper Threads::Threads)

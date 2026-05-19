@@ -115,6 +115,25 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
+   * Get compute-device settings (CPU/GPU selection for local whisper).
+   */
+  async getComputeSettings(): Promise<NonNullable<AppSettingsData["compute"]>> {
+    const compute = await getSettingsSection("compute");
+    return compute ?? { device: "auto" };
+  }
+
+  /**
+   * Update compute-device settings. Emits "compute-changed" so that services
+   * holding a cached whisper context can dispose and rebuild it.
+   */
+  async setComputeSettings(
+    compute: NonNullable<AppSettingsData["compute"]>,
+  ): Promise<void> {
+    await updateSettingsSection("compute", compute);
+    this.emit("compute-changed", compute);
+  }
+
+  /**
    * Get recording settings
    */
   async getRecordingSettings(): Promise<AppSettingsData["recording"]> {

@@ -32,6 +32,7 @@ import { DEFAULT_HISTORY_RETENTION_PERIOD } from "@/constants/history-retention"
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { HardwareSection } from "./hardware-section";
 
 export default function AdvancedSettingsPage() {
   const { t } = useTranslation();
@@ -396,6 +397,18 @@ export default function AdvancedSettingsPage() {
               </Button>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>{t("settings.hardware.title")}</CardTitle>
+          <CardDescription>
+            {t("settings.hardware.description")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <HardwareSection />
         </CardContent>
       </Card>
 
