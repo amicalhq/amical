@@ -34,6 +34,16 @@ export interface GrpcStreamContext {
   appUrl?: string;
 }
 
+// Mirrors amical.dictation.v1.Skill. `args` is flattened — callers pass
+// scalar values as length-1 arrays directly; the encoder wraps each
+// value in a StringList for the wire.
+export interface GrpcSkill {
+  preset?: string;
+  customPrompt?: string;
+  args?: Record<string, string[]>;
+  clientRuleId?: string;
+}
+
 export interface GrpcDictationStreamOptions {
   endpoint: string;
   token: string;
@@ -42,7 +52,10 @@ export interface GrpcDictationStreamOptions {
   sessionId: string;
   language?: string;
   vocabulary: string[];
-  formatting: boolean;
+  // Initial set of resolved skills sent immediately after StreamOpen.
+  // Empty/undefined → server applies its baseline ("default" preset).
+  // Use sendSkillsUpdate() on the stream to replace this set mid-flight.
+  resolvedSkills?: GrpcSkill[];
   context?: GrpcStreamContext;
 }
 
@@ -203,7 +216,6 @@ const encodeOpenRequest = (options: GrpcDictationStreamOptions): Buffer => {
       },
       language: buildLanguageConfig(options.language),
       vocabulary: options.vocabulary,
-      formatting: options.formatting,
     },
   });
 };
@@ -212,6 +224,35 @@ const encodeContextUpdateRequest = (context: GrpcStreamContext): Buffer => {
   return encodeStreamTranscribeRequest({
     contextUpdate: {
       context: buildStreamContext(context),
+    },
+  });
+};
+
+const buildSkill = (skill: GrpcSkill) => {
+  const args: Record<string, { values: string[] }> = {};
+  if (skill.args) {
+    for (const [key, values] of Object.entries(skill.args)) {
+      args[key] = { values };
+    }
+  }
+  const out: Record<string, unknown> = {
+    args,
+    clientRuleId: skill.clientRuleId ?? "",
+  };
+  if (skill.customPrompt !== undefined) {
+    out.customPrompt = skill.customPrompt;
+  } else {
+    // Default arm of the body oneof. `preset` is empty-string when callers
+    // pass neither preset nor customPrompt — server falls back to default.
+    out.preset = skill.preset ?? "";
+  }
+  return out;
+};
+
+const encodeSkillsUpdateRequest = (skills: GrpcSkill[]): Buffer => {
+  return encodeStreamTranscribeRequest({
+    skillsUpdate: {
+      resolvedSkills: skills.map(buildSkill),
     },
   });
 };
@@ -439,6 +480,13 @@ export class CloudDictationGrpcStream {
         this.writeRequestNowEffect(encodeContextUpdateRequest(options.context)),
       );
     }
+    if (options.resolvedSkills && options.resolvedSkills.length > 0) {
+      runEffectSync(
+        this.writeRequestNowEffect(
+          encodeSkillsUpdateRequest(options.resolvedSkills),
+        ),
+      );
+    }
 
     this.scheduleIdleTimeout();
   }
@@ -447,6 +495,14 @@ export class CloudDictationGrpcStream {
     this.scheduleIdleTimeout();
     await runEffectPromise(
       this.writeRequestEffect(encodeAudioBatchRequest(firstSeq, chunks)),
+    );
+  }
+
+  // Full snapshot replacement of the active skill set. Pass `[]` to fall
+  // back to the server's baseline. Safe to call any time before finalize.
+  async sendSkillsUpdate(skills: GrpcSkill[]): Promise<void> {
+    await runEffectPromise(
+      this.writeRequestEffect(encodeSkillsUpdateRequest(skills)),
     );
   }
 

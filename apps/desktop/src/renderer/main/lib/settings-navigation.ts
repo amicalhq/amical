@@ -8,6 +8,7 @@ import {
   IconKeyboard,
   IconAdjustments,
   IconNotes,
+  IconSparkles,
   type Icon,
 } from "@tabler/icons-react";
 
@@ -63,6 +64,13 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/vocabulary",
     descriptionKey: "settings.nav.vocabulary.description",
     icon: IconBook,
+    type: "settings",
+  },
+  {
+    titleKey: "settings.nav.formatting.title",
+    url: "/settings/formatting",
+    descriptionKey: "settings.nav.formatting.description",
+    icon: IconSparkles,
     type: "settings",
   },
   {

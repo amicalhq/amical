@@ -63,6 +63,12 @@ export async function initializeDatabase() {
       migrationsFolder: migrationsPath,
     });
 
+    // Ensure seeded baseline skill rows exist. Idempotent (INSERT ...
+    // ON CONFLICT DO NOTHING) — new seeded ids added in future
+    // releases get planted on next launch; existing rows untouched.
+    const { ensureSeededSkills } = await import("./skills");
+    await ensureSeededSkills();
+
     logger.db.info(
       "Database initialized and migrations completed successfully",
     );

@@ -361,6 +361,10 @@
         "title": "Vocabulary",
         "description": "Manage custom vocabulary and word recognition"
       },
+      "formatting": {
+        "title": "Personalization",
+        "description": "Per-app personalization rules for your dictation"
+      },
       "aiModels": {
         "title": "AI Models",
         "description": "Configure AI models and providers"
