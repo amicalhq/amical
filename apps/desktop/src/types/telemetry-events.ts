@@ -126,6 +126,22 @@ export interface TranscriptionReportedEvent {
   report_channel: "history";
 }
 
+export type CloudFallbackStage = "transcribe" | "flush";
+
+/**
+ * Fired when a cloud-transcription gRPC stream fails and the provider
+ * engages the HTTP fallback. The fallback is cleared on the next session,
+ * so a single event covers exactly one dropped stream.
+ */
+export interface CloudGrpcFallbackEvent {
+  error_code: ErrorCode;
+  status_code?: number;
+  message: string;
+  trace_id?: string;
+  session_id?: string;
+  fallback_stage: CloudFallbackStage;
+}
+
 // ============================================================================
 // Widget Notification Events
 // ============================================================================

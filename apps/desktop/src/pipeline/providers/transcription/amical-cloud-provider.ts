@@ -6,6 +6,8 @@ import {
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { AuthService as AuthServiceImpl } from "../../../services/auth-service";
+import type { TelemetryService } from "../../../services/telemetry-service";
+import type { CloudFallbackStage } from "../../../types/telemetry-events";
 import {
   getAmicalClientHeaders,
   getAmicalClientInfo,
@@ -88,9 +90,11 @@ interface ProviderState {
   grpcPendingFrames: Float32Array[];
   grpcPendingSampleCount: number;
   grpcNextSeq: bigint;
-  // Sticky override: once gRPC fails with a transport-level error, every
-  // subsequent transcribe()/flush() in the session takes the HTTP path.
-  // Cleared on reset()/dispose().
+  // Sticky-within-session override: once gRPC fails with a transport-level
+  // error, every subsequent transcribe()/flush() in the *same* dictation
+  // session takes the HTTP path. Cleared when storeContextEffect sees a new
+  // sessionId, and on reset()/dispose() — so a transient drop does not stick
+  // for the rest of the app run.
   transportOverride: "http" | null;
 }
 
@@ -256,6 +260,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   private readonly runtime: CloudRuntime;
   private readonly state: Ref.Ref<ProviderState>;
+  private readonly telemetryService: TelemetryService | null;
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -264,10 +269,11 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
 
-  constructor() {
+  constructor(telemetryService: TelemetryService | null = null) {
     const config = cloudConfigFromEnvironment();
     this.runtime = createCloudRuntime(config);
     this.state = Effect.runSync(Ref.make(createInitialProviderState()));
+    this.telemetryService = telemetryService;
 
     logger.transcription.info("AmicalCloudProvider initialized", {
       endpoint: config.apiEndpoint,
@@ -301,6 +307,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         return yield* this.withHttpFallbackEffect(
           this.transcribeGrpcEffect(audioData, context),
           () => this.transcribeViaHttpEffect(audioData, speechProbability),
+          "transcribe",
         );
       }
 
@@ -315,12 +322,13 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private withHttpFallbackEffect<A>(
     grpcEffect: CloudProviderEffect<A>,
     httpRoute: () => CloudProviderEffect<A>,
+    stage: CloudFallbackStage,
   ): CloudProviderEffect<A> {
     return grpcEffect.pipe(
       Effect.catchAll((error) =>
         shouldFallbackToHttp(error)
           ? Effect.gen(this, function* () {
-              yield* this.engageHttpFallbackEffect(error);
+              yield* this.engageHttpFallbackEffect(error, stage);
               return yield* httpRoute();
             })
           : Effect.fail(error),
@@ -396,6 +404,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         return yield* this.withHttpFallbackEffect(
           this.flushGrpcEffect(enableFormatting),
           () => this.doTranscriptionEffect(enableFormatting, true),
+          "flush",
         );
       }
 
@@ -411,28 +420,38 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
-  private engageHttpFallbackEffect(error: AppError): Effect.Effect<void> {
-    return this.resetGrpcStreamEffect().pipe(
-      Effect.zipRight(
-        Ref.update(this.state, (state) => ({
-          ...state,
-          transportOverride: "http" as const,
-        })),
-      ),
-      Effect.zipRight(
-        Effect.sync(() =>
-          logger.transcription.warn(
-            "Cloud transcription falling back to HTTP after gRPC failure",
-            {
-              errorCode: error.errorCode,
-              statusCode: error.statusCode,
-              message: error.message,
-              traceId: error.traceId,
-            },
-          ),
-        ),
-      ),
-    );
+  private engageHttpFallbackEffect(
+    error: AppError,
+    stage: CloudFallbackStage,
+  ): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      yield* this.resetGrpcStreamEffect();
+      const sessionId = yield* Ref.modify(this.state, (state) => [
+        state.currentSessionId,
+        { ...state, transportOverride: "http" as const },
+      ]);
+      yield* Effect.sync(() => {
+        logger.transcription.warn(
+          "Cloud transcription falling back to HTTP after gRPC failure",
+          {
+            errorCode: error.errorCode,
+            statusCode: error.statusCode,
+            message: error.message,
+            traceId: error.traceId,
+            stage,
+            sessionId,
+          },
+        );
+        this.telemetryService?.trackCloudGrpcFallback({
+          error_code: error.errorCode,
+          status_code: error.statusCode,
+          message: error.message,
+          trace_id: error.traceId,
+          session_id: sessionId,
+          fallback_stage: stage,
+        });
+      });
+    });
   }
 
   /**
@@ -489,14 +508,23 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private storeContextEffect(
     context: TranscribeContext,
   ): CloudProviderEffect<void> {
-    return Ref.update(this.state, (state) => ({
-      ...state,
-      currentLanguage: context.language,
-      currentAccessibilityContext: context.accessibilityContext ?? null,
-      currentAggregatedTranscription: context.aggregatedTranscription,
-      currentVocabulary: context.vocabulary ?? [],
-      currentSessionId: context.sessionId,
-    }));
+    return Ref.update(this.state, (state) => {
+      // Each new session is a fresh chance to retry gRPC; clear any sticky
+      // HTTP override left over from a drop in the previous session.
+      const isNewSession =
+        context.sessionId !== undefined &&
+        context.sessionId !== state.currentSessionId;
+
+      return {
+        ...state,
+        currentLanguage: context.language,
+        currentAccessibilityContext: context.accessibilityContext ?? null,
+        currentAggregatedTranscription: context.aggregatedTranscription,
+        currentVocabulary: context.vocabulary ?? [],
+        currentSessionId: context.sessionId,
+        transportOverride: isNewSession ? null : state.transportOverride,
+      };
+    });
   }
 
   private ensureAuthenticatedEffect(): CloudProviderEffect<void> {

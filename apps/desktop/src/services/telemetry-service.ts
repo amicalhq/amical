@@ -14,6 +14,7 @@ import type {
   NoteCreatedEvent,
   TranscriptionReportedEvent,
   WidgetNotificationShownEvent,
+  CloudGrpcFallbackEvent,
 } from "../types/telemetry-events";
 
 // Re-export from posthog-client for backwards compatibility
@@ -336,6 +337,12 @@ export class TelemetryService {
     this.captureEvent("transcription_reported", props);
 
     logger.main.debug("Tracked transcription reported", props);
+  }
+
+  trackCloudGrpcFallback(props: CloudGrpcFallbackEvent): void {
+    this.captureEvent("cloud_grpc_fallback", props);
+
+    logger.main.debug("Tracked cloud gRPC fallback", props);
   }
 
   // ============================================================================

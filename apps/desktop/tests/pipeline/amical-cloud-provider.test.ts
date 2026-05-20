@@ -177,6 +177,7 @@ import { AmicalCloudProvider } from "../../src/pipeline/providers/transcription/
 import { GrpcDictationError } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
 import { AppError, ErrorCodes } from "../../src/types/error";
 import type { TranscribeContext } from "../../src/pipeline/core/pipeline-types";
+import type { TelemetryService } from "../../src/services/telemetry-service";
 
 // ---- Helpers ------------------------------------------------------------
 
@@ -470,12 +471,17 @@ describe("AmicalCloudProvider", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("surfaces RESOURCE_EXHAUSTED as RATE_LIMIT_EXCEEDED without falling back", async () => {
+    // RESOURCE_EXHAUSTED maps to QUOTA_EXCEEDED today (Upgrade CTA, 402).
+    // The wire doesn't yet disambiguate plan-cap rejections from other
+    // resource-exhausted causes; revisit once server-side trailers carry a
+    // reason and split this test per-reason.
+    it("surfaces RESOURCE_EXHAUSTED as QUOTA_EXCEEDED without falling back", async () => {
       const { flushPromise } = await driveGrpcThenSettleError(
         grpcMock.status.RESOURCE_EXHAUSTED,
       );
       await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.RATE_LIMIT_EXCEEDED,
+        errorCode: ErrorCodes.QUOTA_EXCEEDED,
+        statusCode: 402,
       });
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -497,23 +503,32 @@ describe("AmicalCloudProvider", () => {
     const driveGrpcAndFallback = async (
       errorCode: number,
       httpResponse: { status: number; json: unknown },
+      options: {
+        provider?: AmicalCloudProvider;
+        sessionId?: string;
+      } = {},
     ) => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = options.provider ?? constructProviderWithTransport("grpc");
+      const sessionOverride = options.sessionId
+        ? { sessionId: options.sessionId }
+        : {};
       mockFetchOnce(httpResponse);
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
-        context: baseContext(),
+        context: baseContext(sessionOverride),
       });
+      const grpcClient = grpcMock.getLastClient();
       const flushPromise = provider.flush(
         baseContext({
+          ...sessionOverride,
           formattingEnabled: true,
           aggregatedTranscription: "earlier text",
         }),
       );
       await flush();
       settleGrpcError(errorCode, "");
-      return { provider, result: await flushPromise };
+      return { provider, result: await flushPromise, grpcClient };
     };
 
     it("falls back to HTTP on INTERNAL (server-side bug, may be gRPC-handler-specific)", async () => {
@@ -566,6 +581,51 @@ describe("AmicalCloudProvider", () => {
 
       expect(result.text).toBe("fallback formatted");
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("a new session re-attempts gRPC after a previous session fell back to HTTP", async () => {
+      const { provider, grpcClient: clientForSessionA } =
+        await driveGrpcAndFallback(
+          grpcMock.status.UNAVAILABLE,
+          { status: 200, json: { success: true, transcription: "session-A http" } },
+          { sessionId: "session-A" },
+        );
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "session-B" }),
+      });
+
+      expect(grpcMock.getLastClient()).not.toBe(clientForSessionA);
+      expect(grpcMock.getLastClient()).not.toBeNull();
+      // Drain session B's gRPC deferred so the test doesn't leave it dangling.
+      settleGrpcOk("");
+      await provider.flush(baseContext({ sessionId: "session-B" }));
+    });
+
+    it("emits a cloud_grpc_fallback telemetry event when gRPC drops", async () => {
+      const trackCloudGrpcFallback = vi.fn();
+      const telemetryStub = {
+        trackCloudGrpcFallback,
+      } as unknown as TelemetryService;
+      process.env.CLOUD_DICTATION_TRANSPORT = "grpc";
+
+      await driveGrpcAndFallback(
+        grpcMock.status.UNAVAILABLE,
+        { status: 200, json: { success: true, transcription: "fallback worked" } },
+        { provider: new AmicalCloudProvider(telemetryStub) },
+      );
+
+      expect(trackCloudGrpcFallback).toHaveBeenCalledTimes(1);
+      expect(trackCloudGrpcFallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error_code: ErrorCodes.NETWORK_ERROR,
+          status_code: 503,
+          session_id: "session-1",
+          fallback_stage: "flush",
+        }),
+      );
     });
 
     it("transport switch is sticky: subsequent calls go via HTTP without a new gRPC client", async () => {

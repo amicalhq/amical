@@ -67,7 +67,7 @@ export class TranscriptionService {
     private onboardingService: OnboardingService | null,
   ) {
     this.whisperProvider = new WhisperProvider(modelService);
-    this.cloudProvider = new AmicalCloudProvider();
+    this.cloudProvider = new AmicalCloudProvider(telemetryService);
     this.vadService = vadService;
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
