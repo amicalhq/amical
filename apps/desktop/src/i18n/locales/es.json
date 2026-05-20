@@ -34,6 +34,17 @@
     "restartAndUpdate": "Reiniciar y actualizar",
     "later": "Más tarde"
   },
+  "forceUpdate": {
+    "title": "Actualiza Amical manualmente",
+    "message": "Hay una nueva versión de Amical disponible.",
+    "detail": "Esta versión no puede actualizarse automáticamente en macOS. Descarga la última versión desde amical.ai para seguir recibiendo actualizaciones.",
+    "downloadNow": "Descargar ahora",
+    "later": "Más tarde",
+    "banner": {
+      "title": "Actualización manual requerida",
+      "cta": "Descargar"
+    }
+  },
   "onboarding": {
     "app": {
       "loading": "Cargando configuración inicial...",

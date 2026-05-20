@@ -3,6 +3,7 @@ import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SettingsSidebar } from "../../components/settings-sidebar";
 import { SiteHeader } from "@/components/site-header";
+import { ForceUpdateBanner } from "@/components/force-update-banner";
 import {
   SettingsHeaderProvider,
   useSettingsHeaderActions,
@@ -84,6 +85,7 @@ function AppLayoutContent() {
             showTitle={isScrolled}
             actions={headerActions ?? undefined}
           />
+          <ForceUpdateBanner />
           <div className="flex flex-1 flex-col min-h-0">
             <div className="@container/settings flex flex-1 flex-col min-h-0 overflow-hidden">
               <div ref={scrollRef} className="flex-1 overflow-y-auto">

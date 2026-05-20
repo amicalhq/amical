@@ -128,6 +128,9 @@ export class AppManager {
     // Subscribe to auto-updater events for update dialogs
     await this.setupAutoUpdaterEventListeners(locale);
 
+    // Nudge macOS users to manually download the new build (bundle id changed in v1.5)
+    await this.setupForceUpdateDialog(locale);
+
     // Setup IPC handlers
     ipcMain.handle("open-external", async (_event, url: string) => {
       await shell.openExternal(url);
@@ -290,6 +293,55 @@ export class AppManager {
     });
 
     logger.main.info("Auto-updater event listeners set up");
+  }
+
+  private async setupForceUpdateDialog(
+    locale?: string | null,
+  ): Promise<void> {
+    if (process.platform !== "darwin") return;
+
+    const downloadUrl = "https://amical.ai/download";
+    const i18n = await initMainI18n(locale);
+    const t = i18n.t.bind(i18n);
+
+    let shown = false;
+
+    app.on("browser-window-focus", (_event, window) => {
+      if (shown) return;
+
+      const mainWindow = this.windowManager.getMainWindow();
+      if (!mainWindow || mainWindow.isDestroyed() || window !== mainWindow) {
+        return;
+      }
+
+      shown = true;
+
+      dialog
+        .showMessageBox(mainWindow, {
+          type: "warning",
+          title: t("forceUpdate.title"),
+          message: t("forceUpdate.message"),
+          detail: t("forceUpdate.detail"),
+          buttons: [t("forceUpdate.downloadNow"), t("forceUpdate.later")],
+          defaultId: 0,
+          cancelId: 1,
+          noLink: true,
+        })
+        .then(({ response }) => {
+          if (response === 0) {
+            shell.openExternal(downloadUrl).catch((error) => {
+              logger.main.warn("Failed to open download URL", { error });
+            });
+          }
+        })
+        .catch((error) => {
+          logger.main.warn("Force-update dialog dismissed unexpectedly", {
+            error,
+          });
+        });
+    });
+
+    logger.main.info("Force-update dialog listener set up");
   }
 
   private async handleOpenNotesWindowShortcut(): Promise<void> {

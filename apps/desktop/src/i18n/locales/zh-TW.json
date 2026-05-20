@@ -34,6 +34,17 @@
     "restartAndUpdate": "重新啟動並更新",
     "later": "稍後"
   },
+  "forceUpdate": {
+    "title": "手動更新 Amical",
+    "message": "Amical 有新版本可用。",
+    "detail": "此版本無法在 macOS 上自動更新。請從 amical.ai 下載最新版本以繼續取得更新。",
+    "downloadNow": "立即下載",
+    "later": "稍後",
+    "banner": {
+      "title": "需要手動更新",
+      "cta": "下載"
+    }
+  },
   "onboarding": {
     "app": {
       "loading": "載入引導程序中...",
