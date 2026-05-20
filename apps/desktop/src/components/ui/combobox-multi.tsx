@@ -60,7 +60,10 @@ export function ComboboxMulti({
           <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[250px] p-0">
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] min-w-[250px] p-0"
+        align="start"
+      >
         <Command>
           <CommandInput placeholder={placeholder || "Search..."} />
           <CommandList>
@@ -70,6 +73,7 @@ export function ComboboxMulti({
                 <CommandItem
                   key={option.value}
                   value={option.value}
+                  keywords={[option.label]}
                   onSelect={() => {
                     if (value.includes(option.value)) {
                       onChange(value.filter((v) => v !== option.value));

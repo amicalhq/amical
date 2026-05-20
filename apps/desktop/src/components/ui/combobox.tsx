@@ -56,7 +56,10 @@ export function Combobox({
           <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0">
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] min-w-[200px] p-0"
+        align="start"
+      >
         <Command>
           <CommandInput placeholder={placeholder} />
           <CommandList>
@@ -66,13 +69,11 @@ export function Combobox({
                 <div key={option.value}>
                   <CommandItem
                     value={option.value}
+                    keywords={[option.label]}
                     disabled={option.disabled}
-                    onSelect={(currentValue) => {
-                      if (option.disabled) {
-                        return;
-                      }
+                    onSelect={() => {
                       setOpen(false);
-                      onChange(currentValue === value ? "" : currentValue);
+                      onChange(option.value === value ? "" : option.value);
                     }}
                   >
                     <CheckIcon
