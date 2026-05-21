@@ -3,7 +3,7 @@ import { randomBytes, createHash } from "crypto";
 import { logger } from "../main/logger";
 import { EventEmitter } from "events";
 import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
-import { getUserAgent } from "../utils/http-client";
+import { getAmicalClientHeaders, getUserAgent } from "../utils/http-client";
 import { ServiceManager } from "../main/managers/service-manager";
 
 interface AuthConfig {
@@ -344,6 +344,65 @@ export class AuthService extends EventEmitter {
 
     const authState = await this.getAuthState();
     return authState?.idToken || null;
+  }
+
+  /**
+   * `returnPath` must be a relative path; absolute and protocol-relative
+   * values are rejected server-side.
+   */
+  async openWebSession(returnPath: string): Promise<void> {
+    const idToken = await this.getIdToken();
+    if (!idToken) {
+      throw new Error("Not signed in");
+    }
+
+    // Better-Auth plugin endpoint, mounted under /api/auth/* on the same
+    // host as the OAuth token endpoint.
+    const handoffUrl = new URL(
+      "/api/auth/handoff/web-session",
+      this.config.tokenEndpoint,
+    ).toString();
+
+    const response = await fetch(handoffUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+        "User-Agent": getUserAgent(),
+        ...getAmicalClientHeaders(),
+      },
+      body: JSON.stringify({ return: returnPath }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      logger.main.error("Handoff request failed", {
+        status: response.status,
+        detail,
+      });
+      throw new Error(`Handoff failed: ${response.status}`);
+    }
+
+    const { url } = (await response.json()) as { url?: string };
+    if (!url) {
+      throw new Error("Handoff response missing url");
+    }
+
+    // Server compromise is a remote risk, but `shell.openExternal` honors
+    // any scheme/host the URL specifies (file://, vbscript:, etc.) and
+    // can't be undone. Constrain to https on the amical.ai family.
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    const hostAllowed = host === "amical.ai" || host.endsWith(".amical.ai");
+    if (parsed.protocol !== "https:" || !hostAllowed) {
+      logger.main.error("Handoff URL rejected", {
+        protocol: parsed.protocol,
+        host,
+      });
+      throw new Error(`Handoff URL not allowed: ${parsed.protocol}//${host}`);
+    }
+
+    await shell.openExternal(url);
   }
 
   /**

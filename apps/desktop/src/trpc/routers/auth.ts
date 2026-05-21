@@ -1,4 +1,5 @@
 import { observable } from "@trpc/server/observable";
+import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
 import { logger } from "../../main/logger";
 import { AuthState } from "../../services/auth-service";
@@ -31,6 +32,14 @@ export const authRouter = createRouter({
       message: "Login initiated - please complete in your browser",
     };
   }),
+
+  openWebSession: procedure
+    .input(z.object({ returnPath: z.string().optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+      const authService = ctx.serviceManager.getService("authService");
+      await authService.openWebSession(input?.returnPath ?? "/");
+      return { success: true };
+    }),
 
   // Logout
   logout: procedure.mutation(async ({ ctx }) => {

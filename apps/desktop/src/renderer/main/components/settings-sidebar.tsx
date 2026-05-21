@@ -31,6 +31,7 @@ import {
 } from "@/utils/feature-flags";
 import { CommandSearchButton } from "./command-search-button";
 import { CreateNoteButton } from "./create-note-button";
+import { NavCloud } from "./nav-cloud";
 import { SettingsNavigationControls } from "./settings-navigation-controls";
 import { APP_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
@@ -179,7 +180,10 @@ export function SettingsSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter className="p-0">
-        <NavSecondary items={navSecondary} />
+        <NavSecondary
+          items={navSecondary}
+          prefix={isSettingsSidebar ? null : <NavCloud />}
+        />
       </SidebarFooter>
     </Sidebar>
   );

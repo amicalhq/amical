@@ -20,16 +20,23 @@ export type { NavSecondaryItem } from "@/components/nav-secondary-item-button";
 
 export function NavSecondary({
   items,
+  prefix,
   ...props
 }: {
   items: NavSecondaryItem[];
-} & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  // Items rendered inside the same SidebarMenu, above `items` — keeps
+  // spacing uniform (no 8px gap from a separate SidebarGroup).
+  prefix?: React.ReactNode;
+  // Omit HTML's `prefix` (RDFa) so our React-node `prefix` wins — the
+  // intersection would otherwise narrow it to `string | undefined`.
+} & Omit<React.ComponentPropsWithoutRef<typeof SidebarGroup>, "prefix">) {
   const location = useLocation();
 
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
         <SidebarMenu>
+          {prefix}
           {items.map((item) => {
             return (
               <SidebarMenuItem key={item.id}>
