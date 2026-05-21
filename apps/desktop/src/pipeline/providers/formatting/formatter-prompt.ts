@@ -299,6 +299,7 @@ const BUNDLE_TO_TYPE: Record<string, AppType> = {
   "com.readdle.smartemail": "email",
   "com.google.Gmail": "email",
   "com.superhuman.electron": "email",
+  "MailClient.exe": "email", // eM Client (Windows) — bundleIdentifier is the exe path, matched via partial-include below
   "com.tinyspeck.slackmacgap": "chat",
   "com.microsoft.teams": "chat",
   "com.facebook.archon": "chat", // Messenger
