@@ -878,19 +878,19 @@
           "removeProvider": "Anbieter entfernen"
         },
         "removeDialog": {
-          "title": "Anbieter-Verbindung entfernen",
-          "description": "Möchtest du deine {{provider}}-Verbindung wirklich entfernen? Dies trennt die Verbindung und entfernt alle synchronisierten Modelle dieses Anbieters. Diese Aktion kann nicht rückgängig gemacht werden.",
+          "title": "Verbindung zum Anbieter entfernen",
+          "description": "Möchtest du die Verbindung zu {{provider}} wirklich entfernen? Dadurch wird die Verbindung getrennt und alle synchronisierten Modelle dieses Anbieters werden entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
           "cancel": "Abbrechen",
           "confirm": "Anbieter entfernen"
         },
         "toast": {
-          "configSaved": "{{provider}}-Konfiguration erfolgreich gespeichert!",
-          "configSaveFailed": "{{provider}}-Konfiguration konnte nicht gespeichert werden. Bitte versuche es erneut.",
-          "validated": "{{provider}}-Verbindung erfolgreich validiert!",
-          "validationFailed": "{{provider}}-Validierung fehlgeschlagen: {{message}}",
-          "validationError": "{{provider}}-Validierungsfehler: {{message}}",
-          "removed": "{{provider}}-Anbieter erfolgreich entfernt!",
-          "removeFailed": "{{provider}}-Anbieter konnte nicht entfernt werden. Bitte versuche es erneut."
+          "configSaved": "Konfiguration für {{provider}} erfolgreich gespeichert!",
+          "configSaveFailed": "Konfiguration für {{provider}} konnte nicht gespeichert werden. Bitte versuche es erneut.",
+          "validated": "Verbindung zu {{provider}} erfolgreich validiert!",
+          "validationFailed": "Validierung von {{provider}} fehlgeschlagen: {{message}}",
+          "validationError": "Validierungsfehler bei {{provider}}: {{message}}",
+          "removed": "Anbieter {{provider}} erfolgreich entfernt!",
+          "removeFailed": "Anbieter {{provider}} konnte nicht entfernt werden. Bitte versuche es erneut."
         },
         "validationFailed": "Validierung fehlgeschlagen"
       },
