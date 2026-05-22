@@ -432,6 +432,7 @@
         "options": {
           "system": "Sistema",
           "en": "English",
+          "de": "Deutsch",
           "ja": "日本語",
           "es": "Español",
           "zh-TW": "繁體中文"
@@ -909,8 +910,8 @@
         }
       },
       "syncDialog": {
-        "title": "Seleccionar modelos {{modelType}}de {{provider}}",
-        "description": "Elige qué modelos {{modelType}}quieres sincronizar de {{provider}}.",
+        "title": "Seleccionar modelos de {{modelType}} de {{provider}}",
+        "description": "Elige qué modelos de {{modelType}} quieres sincronizar de {{provider}}.",
         "fetching": "Obteniendo modelos{{available}}...",
         "available": " disponibles",
         "fetchFailed": "No se pudieron obtener los modelos",

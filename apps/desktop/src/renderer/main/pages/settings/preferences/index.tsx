@@ -315,6 +315,9 @@ export default function PreferencesSettingsPage() {
                   <SelectItem value="en">
                     {t("settings.preferences.language.options.en")}
                   </SelectItem>
+                  <SelectItem value="de">
+                    {t("settings.preferences.language.options.de")}
+                  </SelectItem>
                   <SelectItem value="es">
                     {t("settings.preferences.language.options.es")}
                   </SelectItem>

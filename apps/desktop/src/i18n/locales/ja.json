@@ -432,6 +432,7 @@
         "options": {
           "system": "システム",
           "en": "English",
+          "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
           "zh-TW": "繁體中文"

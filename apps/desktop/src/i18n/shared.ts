@@ -1,4 +1,5 @@
 import type { InitOptions } from "i18next";
+import de from "./locales/de.json";
 import en from "./locales/en.json";
 import es from "./locales/es.json";
 import ja from "./locales/ja.json";
@@ -7,6 +8,9 @@ import zhTW from "./locales/zh-TW.json";
 export const resources = {
   en: {
     translation: en,
+  },
+  de: {
+    translation: de,
   },
   es: {
     translation: es,
@@ -19,7 +23,7 @@ export const resources = {
   },
 } as const;
 
-export const supportedLocales = ["en", "es", "ja", "zh-TW"] as const;
+export const supportedLocales = ["en", "de", "es", "ja", "zh-TW"] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
 export const defaultLocale: SupportedLocale = "en";
 

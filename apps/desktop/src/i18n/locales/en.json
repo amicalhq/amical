@@ -432,6 +432,7 @@
         "options": {
           "system": "System",
           "en": "English",
+          "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
           "zh-TW": "繁體中文"
@@ -931,8 +932,8 @@
         }
       },
       "syncDialog": {
-        "title": "Select {{provider}} {{modelType}}Models",
-        "description": "Choose which {{modelType}}models you want to sync from {{provider}}.",
+        "title": "Select {{provider}} {{modelType}} models",
+        "description": "Choose which {{modelType}} models you want to sync from {{provider}}.",
         "fetching": "Fetching {{available}}models...",
         "available": "available ",
         "fetchFailed": "Failed to fetch models",

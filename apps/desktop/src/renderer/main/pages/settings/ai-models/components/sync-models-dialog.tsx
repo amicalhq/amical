@@ -47,10 +47,7 @@ export default function SyncModelsDialog({
       : provider === REMOTE_PROVIDERS.ollama
         ? t("settings.aiModels.providers.ollama")
         : t("settings.aiModels.providers.openAICompatible");
-  const modelTypePrefix =
-    modelType === "embedding"
-      ? `${t("settings.aiModels.modelTypes.embedding")} `
-      : "";
+  const modelTypeLabel = t(`settings.aiModels.modelTypes.${modelType}`);
 
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -247,13 +244,13 @@ export default function SyncModelsDialog({
           <DialogTitle>
             {t("settings.aiModels.syncDialog.title", {
               provider: providerLabel,
-              modelType: modelTypePrefix,
+              modelType: modelTypeLabel,
             })}
           </DialogTitle>
           <DialogDescription>
             {t("settings.aiModels.syncDialog.description", {
               provider: providerLabel,
-              modelType: modelTypePrefix,
+              modelType: modelTypeLabel,
             })}
           </DialogDescription>
         </DialogHeader>
