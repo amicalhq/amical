@@ -56,9 +56,9 @@ export const useAudioCapture = ({
         const audioConstraints: MediaTrackConstraints = {
           channelCount: 1,
           sampleRate: SAMPLE_RATE,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
         };
 
         // Add deviceId if user has a preference
