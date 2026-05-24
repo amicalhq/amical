@@ -415,7 +415,7 @@ export default function HistorySettingsPage() {
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
     {
-      limit: 100, // Get more records for history view
+      limit: 200,
       offset: 0,
       sortBy: "timestamp",
       sortOrder: "desc",

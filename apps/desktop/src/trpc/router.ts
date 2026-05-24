@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { vocabularyRouter } from "./routers/vocabulary";
+import { snippetsRouter } from "./routers/snippets";
 import { transcriptionsRouter } from "./routers/transcriptions";
 import { modelsRouter } from "./routers/models";
 import { settingsRouter } from "./routers/settings";
@@ -40,6 +41,9 @@ export const router = createRouter({
 
   // Vocabulary router
   vocabulary: vocabularyRouter,
+
+  // Snippets router
+  snippets: snippetsRouter,
 
   // Transcriptions router
   transcriptions: transcriptionsRouter,

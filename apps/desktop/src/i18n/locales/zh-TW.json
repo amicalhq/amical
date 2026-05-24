@@ -361,6 +361,10 @@
         "title": "詞彙",
         "description": "自訂詞彙和字詞辨識管理"
       },
+      "snippets": {
+        "title": "片段",
+        "description": "在聽寫時將簡短的觸發詞展開為更長的文字"
+      },
       "aiModels": {
         "title": "AI 模型",
         "description": "AI 模型與提供者設定"
@@ -796,6 +800,46 @@
       "delete": {
         "title": "刪除詞彙項目",
         "description": "確定要刪除「{{item}}」嗎？此動作無法復原。",
+        "cancel": "取消",
+        "deleting": "刪除中...",
+        "confirm": "確認刪除"
+      }
+    },
+    "snippets": {
+      "title": "片段",
+      "description": "建立在聽寫時可展開為較長文字的簡短觸發詞。",
+      "addButton": "新增",
+      "loading": "正在載入片段...",
+      "empty": "尚無片段。新增您的第一個片段以開始使用。",
+      "noResults": "找不到符合「{{query}}」的片段。",
+      "search": {
+        "placeholder": "搜尋片段"
+      },
+      "toast": {
+        "added": "已新增片段",
+        "similarToExisting": "與現有「{{trigger}}」類似",
+        "addFailed": "新增片段失敗：{{message}}",
+        "updated": "片段已更新",
+        "updateFailed": "更新片段失敗：{{message}}",
+        "deleted": "片段已刪除",
+        "deleteFailed": "刪除片段失敗：{{message}}",
+        "duplicateTrigger": "「{{trigger}}」已存在"
+      },
+      "dialog": {
+        "addTitle": "新增片段",
+        "editTitle": "編輯片段",
+        "triggerLabel": "觸發詞",
+        "triggerPlaceholder": "我的會議連結",
+        "contentLabel": "展開內容",
+        "contentPlaceholder": "https://meet.example.com/abc-defg-hij",
+        "cancel": "取消",
+        "saving": "儲存中...",
+        "addSnippet": "新增片段",
+        "saveChanges": "儲存變更"
+      },
+      "delete": {
+        "title": "刪除片段",
+        "description": "確定要刪除片段「{{trigger}}」嗎？此動作無法復原。",
         "cancel": "取消",
         "deleting": "刪除中...",
         "confirm": "確認刪除"

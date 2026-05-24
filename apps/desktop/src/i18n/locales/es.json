@@ -361,6 +361,10 @@
         "title": "Vocabulario",
         "description": "Administra el vocabulario personalizado y el reconocimiento de palabras"
       },
+      "snippets": {
+        "title": "Fragmentos",
+        "description": "Expande disparadores cortos en texto más largo al dictar"
+      },
       "aiModels": {
         "title": "Modelos de IA",
         "description": "Configura modelos y proveedores de IA"
@@ -796,6 +800,46 @@
       "delete": {
         "title": "Eliminar elemento del vocabulario",
         "description": "¿Estás seguro de que quieres eliminar \"{{item}}\"? Esta acción no se puede deshacer.",
+        "cancel": "Cancelar",
+        "deleting": "Eliminando...",
+        "confirm": "Eliminar"
+      }
+    },
+    "snippets": {
+      "title": "Fragmentos",
+      "description": "Crea disparadores cortos que se expanden en texto más largo mientras dictas.",
+      "addButton": "Agregar",
+      "loading": "Cargando fragmentos...",
+      "empty": "Todavía no hay fragmentos. Agrega tu primer fragmento para comenzar.",
+      "noResults": "Ningún fragmento coincide con \"{{query}}\".",
+      "search": {
+        "placeholder": "Buscar fragmentos"
+      },
+      "toast": {
+        "added": "Fragmento agregado",
+        "similarToExisting": "Similar al existente \"{{trigger}}\"",
+        "addFailed": "No se pudo agregar el fragmento: {{message}}",
+        "updated": "Fragmento actualizado",
+        "updateFailed": "No se pudo actualizar el fragmento: {{message}}",
+        "deleted": "Fragmento eliminado",
+        "deleteFailed": "No se pudo eliminar el fragmento: {{message}}",
+        "duplicateTrigger": "\"{{trigger}}\" ya existe"
+      },
+      "dialog": {
+        "addTitle": "Agregar fragmento",
+        "editTitle": "Editar fragmento",
+        "triggerLabel": "Disparador",
+        "triggerPlaceholder": "mi enlace de reunión",
+        "contentLabel": "Expansión",
+        "contentPlaceholder": "https://meet.example.com/abc-defg-hij",
+        "cancel": "Cancelar",
+        "saving": "Guardando...",
+        "addSnippet": "Agregar fragmento",
+        "saveChanges": "Guardar cambios"
+      },
+      "delete": {
+        "title": "Eliminar fragmento",
+        "description": "¿Estás seguro de que quieres eliminar el fragmento \"{{trigger}}\"? Esta acción no se puede deshacer.",
         "cancel": "Cancelar",
         "deleting": "Eliminando...",
         "confirm": "Eliminar"

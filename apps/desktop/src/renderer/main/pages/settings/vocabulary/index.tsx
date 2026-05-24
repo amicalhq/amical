@@ -212,7 +212,7 @@ export default function VocabularySettingsPage() {
   });
 
   const vocabularyQuery = api.vocabulary.getVocabulary.useQuery({
-    limit: 100,
+    limit: 200,
     offset: 0,
     sortBy: "dateAdded",
     sortOrder: "desc",

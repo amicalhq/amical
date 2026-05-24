@@ -361,6 +361,10 @@
         "title": "Vocabulary",
         "description": "Manage custom vocabulary and word recognition"
       },
+      "snippets": {
+        "title": "Snippets",
+        "description": "Expand short triggers into longer text while dictating"
+      },
       "aiModels": {
         "title": "AI Models",
         "description": "Configure AI models and providers"
@@ -818,6 +822,46 @@
       "delete": {
         "title": "Delete vocabulary item",
         "description": "Are you sure you want to delete \"{{item}}\"? This action cannot be undone.",
+        "cancel": "Cancel",
+        "deleting": "Deleting...",
+        "confirm": "Delete"
+      }
+    },
+    "snippets": {
+      "title": "Snippets",
+      "description": "Create short triggers that expand into longer text while you dictate.",
+      "addButton": "Add new",
+      "loading": "Loading snippets...",
+      "empty": "No snippets yet. Add your first snippet to get started.",
+      "noResults": "No snippets match \"{{query}}\".",
+      "search": {
+        "placeholder": "Search snippets"
+      },
+      "toast": {
+        "added": "Snippet added",
+        "similarToExisting": "Similar to existing \"{{trigger}}\"",
+        "addFailed": "Failed to add snippet: {{message}}",
+        "updated": "Snippet updated",
+        "updateFailed": "Failed to update snippet: {{message}}",
+        "deleted": "Snippet deleted",
+        "deleteFailed": "Failed to delete snippet: {{message}}",
+        "duplicateTrigger": "\"{{trigger}}\" already exists"
+      },
+      "dialog": {
+        "addTitle": "Add snippet",
+        "editTitle": "Edit snippet",
+        "triggerLabel": "Trigger",
+        "triggerPlaceholder": "my meeting link",
+        "contentLabel": "Expansion",
+        "contentPlaceholder": "https://meet.example.com/abc-defg-hij",
+        "cancel": "Cancel",
+        "saving": "Saving...",
+        "addSnippet": "Add snippet",
+        "saveChanges": "Save changes"
+      },
+      "delete": {
+        "title": "Delete snippet",
+        "description": "Are you sure you want to delete the snippet \"{{trigger}}\"? This action cannot be undone.",
         "cancel": "Cancel",
         "deleting": "Deleting...",
         "confirm": "Delete"

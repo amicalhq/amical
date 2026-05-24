@@ -139,4 +139,86 @@ describe("applyTextReplacements", () => {
       expect(result).toBe("Hello 世界");
     });
   });
+
+  describe("Longest-match-wins for overlapping triggers", () => {
+    it("applies the longer multi-word trigger even when the shorter one is inserted first", () => {
+      // Map iteration is insertion-order. Without longest-first sorting, `link`
+      // would consume the word inside `meeting link` and the longer entry would
+      // never fire. This pins the fix for the snippets-feature regression.
+      const replacements = new Map([
+        ["link", "https://example.com"],
+        ["meeting link", "https://zoom.us/123"],
+      ]);
+      const result = applyTextReplacements(
+        "share the meeting link with the team",
+        replacements,
+      );
+      expect(result).toBe("share the https://zoom.us/123 with the team");
+    });
+
+    it("applies the longer trigger regardless of Map insertion order (reverse case)", () => {
+      const replacements = new Map([
+        ["meeting link", "https://zoom.us/123"],
+        ["link", "https://example.com"],
+      ]);
+      const result = applyTextReplacements(
+        "share the meeting link with the team",
+        replacements,
+      );
+      expect(result).toBe("share the https://zoom.us/123 with the team");
+    });
+
+    it("still applies the shorter trigger when no longer overlap matches", () => {
+      const replacements = new Map([
+        ["link", "https://example.com"],
+        ["meeting link", "https://zoom.us/123"],
+      ]);
+      const result = applyTextReplacements(
+        "click the link please",
+        replacements,
+      );
+      expect(result).toBe("click the https://example.com please");
+    });
+
+    it("handles three-tier overlap by always picking the longest match", () => {
+      const replacements = new Map([
+        ["art", "arts"],
+        ["state of the art", "cutting edge"],
+        ["the art", "the masterpiece"],
+      ]);
+      const result = applyTextReplacements(
+        "this is state of the art equipment",
+        replacements,
+      );
+      expect(result).toBe("this is cutting edge equipment");
+    });
+  });
+
+  describe("Literal `$` in replacement (no backreference interpretation)", () => {
+    it("treats $& as literal, not the matched substring", () => {
+      const replacements = new Map([["sig", "Sent via $& - signed"]]);
+      const result = applyTextReplacements("sig", replacements);
+      expect(result).toBe("Sent via $& - signed");
+    });
+
+    it("treats $1 as literal, not a capture-group reference", () => {
+      const replacements = new Map([
+        ["awksum", "awk '{ sum += $1 } END { print sum }'"],
+      ]);
+      const result = applyTextReplacements("run awksum now", replacements);
+      expect(result).toBe("run awk '{ sum += $1 } END { print sum }' now");
+    });
+
+    it("treats $$ as two literal dollars, not one", () => {
+      const replacements = new Map([["price", "$$99"]]);
+      const result = applyTextReplacements("price", replacements);
+      expect(result).toBe("$$99");
+    });
+
+    it("treats $` and $' as literal", () => {
+      const replacements = new Map([["foo", "a $` b $' c"]]);
+      const result = applyTextReplacements("foo", replacements);
+      expect(result).toBe("a $` b $' c");
+    });
+  });
 });

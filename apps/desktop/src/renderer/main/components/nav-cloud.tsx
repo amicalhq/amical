@@ -1,10 +1,7 @@
 import { IconCreditCard, IconUserPlus, type Icon } from "@tabler/icons-react";
 import { toast } from "sonner";
 
-import {
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { api } from "@/trpc/react";
 
 type CloudItem = { title: string; icon: Icon; returnPath: string };

@@ -20,16 +20,26 @@ export function applyTextReplacements(
   const cjkPattern =
     /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
-  for (const [word, replacement] of replacements) {
+  // Apply longest triggers first so a shorter trigger doesn't consume a substring
+  // of a longer one (e.g. `link` must not fire before `meeting link`). Map iterates
+  // in insertion order, so without this sort, behavior would depend on creation order.
+  const sortedEntries = [...replacements].sort(
+    ([a], [b]) => b.length - a.length,
+  );
+
+  for (const [word, replacement] of sortedEntries) {
     // Escape special regex characters in the word
     const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Escape `$` in the replacement so $& / $1 / $$ / $` / $' aren't
+    // interpreted as backreferences by String.prototype.replace.
+    const literalReplacement = replacement.replace(/\$/g, "$$$$");
     const hasCJK = cjkPattern.test(word);
 
     if (hasCJK) {
       // CJK: Simple case-insensitive replacement (no word boundaries)
       // Japanese/Chinese/Korean text has no spaces between words
       const regex = new RegExp(escapedWord, "giu");
-      result = result.replace(regex, replacement);
+      result = result.replace(regex, literalReplacement);
     } else {
       // Alphabetic languages: Use Unicode-aware word boundary matching
       // Negative lookbehind/lookahead ensures word is not part of a larger word
@@ -37,7 +47,7 @@ export function applyTextReplacements(
         `(?<![\\p{L}\\p{N}])${escapedWord}(?![\\p{L}\\p{N}])`,
         "giu",
       );
-      result = result.replace(regex, replacement);
+      result = result.replace(regex, literalReplacement);
     }
   }
 

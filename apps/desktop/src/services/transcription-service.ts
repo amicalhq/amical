@@ -21,7 +21,8 @@ import {
   updateTranscription,
 } from "../db/transcriptions";
 import { incrementDailyStats } from "../db/daily-stats";
-import { getVocabulary } from "../db/vocabulary";
+import { getAllVocabulary } from "../db/vocabulary";
+import { getAllSnippets } from "../db/snippets";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
@@ -30,6 +31,7 @@ import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
+import { selectVocabularyHints } from "../utils/vocabulary-hints";
 import * as fs from "node:fs";
 import { PROVIDER_TYPES } from "../constants/provider-types";
 import {
@@ -692,17 +694,26 @@ export class TranscriptionService {
         ? undefined
         : dictationSettings.selectedLanguage;
 
-    // Load vocabulary and replacements
-    const vocabEntries = await getVocabulary({ limit: 50 });
+    // Load vocabulary — every entry the user has authored should participate
+    // in replacement; caps belong on the create path, not here.
+    const vocabEntries = await getAllVocabulary();
     for (const entry of vocabEntries) {
       if (entry.isReplacement) {
         context.sharedData.replacements.set(
           entry.word,
           entry.replacementWord || "",
         );
-      } else {
-        context.sharedData.vocabulary.push(entry.word);
       }
+    }
+    // Non-replacement vocabulary is sent to the LLM formatter as hints; the
+    // hint list is capped separately from storage so the prompt stays bounded.
+    context.sharedData.vocabulary.push(...selectVocabularyHints(vocabEntries));
+
+    // Load snippets — trigger phrases that expand into longer content.
+    // Snippets piggy-back on the same replacement pipeline as vocabulary replacements.
+    const snippetEntries = await getAllSnippets();
+    for (const snippet of snippetEntries) {
+      context.sharedData.replacements.set(snippet.trigger, snippet.content);
     }
 
     // TODO: Load formatter config from settings

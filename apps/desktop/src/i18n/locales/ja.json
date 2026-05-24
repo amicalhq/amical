@@ -361,6 +361,10 @@
         "title": "カスタム辞書",
         "description": "カスタム辞書と単語認識を管理"
       },
+      "snippets": {
+        "title": "スニペット",
+        "description": "音声入力中に短いトリガーを長いテキストに展開"
+      },
       "aiModels": {
         "title": "AIモデル",
         "description": "AIモデルとプロバイダーを設定"
@@ -796,6 +800,46 @@
       "delete": {
         "title": "カスタム辞書を削除",
         "description": "「{{item}}」を削除してもよろしいですか？この操作は元に戻せません。",
+        "cancel": "キャンセル",
+        "deleting": "削除中...",
+        "confirm": "削除"
+      }
+    },
+    "snippets": {
+      "title": "スニペット",
+      "description": "音声入力中に長いテキストに展開される短いトリガーを作成します。",
+      "addButton": "新規追加",
+      "loading": "スニペットを読み込み中...",
+      "empty": "スニペットがまだありません。最初のスニペットを追加して始めましょう。",
+      "noResults": "「{{query}}」に一致するスニペットはありません。",
+      "search": {
+        "placeholder": "スニペットを検索"
+      },
+      "toast": {
+        "added": "スニペットを追加しました",
+        "similarToExisting": "既存の「{{trigger}}」に類似しています",
+        "addFailed": "スニペットの追加に失敗しました: {{message}}",
+        "updated": "スニペットを更新しました",
+        "updateFailed": "スニペットの更新に失敗しました: {{message}}",
+        "deleted": "スニペットを削除しました",
+        "deleteFailed": "スニペットの削除に失敗しました: {{message}}",
+        "duplicateTrigger": "「{{trigger}}」は既に存在します"
+      },
+      "dialog": {
+        "addTitle": "スニペットを追加",
+        "editTitle": "スニペットを編集",
+        "triggerLabel": "トリガー",
+        "triggerPlaceholder": "私のミーティングリンク",
+        "contentLabel": "展開内容",
+        "contentPlaceholder": "https://meet.example.com/abc-defg-hij",
+        "cancel": "キャンセル",
+        "saving": "保存中...",
+        "addSnippet": "スニペットを追加",
+        "saveChanges": "変更を保存"
+      },
+      "delete": {
+        "title": "スニペットを削除",
+        "description": "スニペット「{{trigger}}」を削除してもよろしいですか？この操作は元に戻せません。",
         "cancel": "キャンセル",
         "deleting": "削除中...",
         "confirm": "削除"

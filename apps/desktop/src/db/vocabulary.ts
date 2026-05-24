@@ -19,6 +19,15 @@ export async function createVocabularyWord(
   return result[0];
 }
 
+/**
+ * Load every vocabulary row. Used by the transcription pipeline so that every
+ * entry the user has authored participates in expansion / hints — no silent
+ * cap. The settings UI uses `getVocabulary` which is capped/sortable/searchable.
+ */
+export async function getAllVocabulary(): Promise<Vocabulary[]> {
+  return await db.select().from(vocabulary);
+}
+
 // Get all vocabulary words with pagination and sorting
 export async function getVocabulary(
   options: {

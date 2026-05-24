@@ -361,6 +361,10 @@
         "title": "Vokabular",
         "description": "Benutzerdefiniertes Vokabular und Worterkennung verwalten"
       },
+      "snippets": {
+        "title": "Textbausteine",
+        "description": "Kurze Auslöser beim Diktieren in längeren Text umwandeln"
+      },
       "aiModels": {
         "title": "KI-Modelle",
         "description": "KI-Modelle und Anbieter konfigurieren"
@@ -818,6 +822,46 @@
       "delete": {
         "title": "Vokabulareintrag löschen",
         "description": "Möchtest du \"{{item}}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+        "cancel": "Abbrechen",
+        "deleting": "Wird gelöscht...",
+        "confirm": "Löschen"
+      }
+    },
+    "snippets": {
+      "title": "Textbausteine",
+      "description": "Erstelle kurze Auslöser, die sich beim Diktieren zu längerem Text ausweiten.",
+      "addButton": "Hinzufügen",
+      "loading": "Textbausteine werden geladen...",
+      "empty": "Noch keine Textbausteine. Füge deinen ersten Textbaustein hinzu, um zu beginnen.",
+      "noResults": "Keine Textbausteine stimmen mit \"{{query}}\" überein.",
+      "search": {
+        "placeholder": "Textbausteine durchsuchen"
+      },
+      "toast": {
+        "added": "Textbaustein hinzugefügt",
+        "similarToExisting": "Ähnelt vorhandenem \"{{trigger}}\"",
+        "addFailed": "Textbaustein konnte nicht hinzugefügt werden: {{message}}",
+        "updated": "Textbaustein aktualisiert",
+        "updateFailed": "Textbaustein konnte nicht aktualisiert werden: {{message}}",
+        "deleted": "Textbaustein gelöscht",
+        "deleteFailed": "Textbaustein konnte nicht gelöscht werden: {{message}}",
+        "duplicateTrigger": "\"{{trigger}}\" existiert bereits"
+      },
+      "dialog": {
+        "addTitle": "Textbaustein hinzufügen",
+        "editTitle": "Textbaustein bearbeiten",
+        "triggerLabel": "Auslöser",
+        "triggerPlaceholder": "mein Meeting-Link",
+        "contentLabel": "Erweiterung",
+        "contentPlaceholder": "https://meet.example.com/abc-defg-hij",
+        "cancel": "Abbrechen",
+        "saving": "Wird gespeichert...",
+        "addSnippet": "Textbaustein hinzufügen",
+        "saveChanges": "Änderungen speichern"
+      },
+      "delete": {
+        "title": "Textbaustein löschen",
+        "description": "Möchtest du den Textbaustein \"{{trigger}}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
         "cancel": "Abbrechen",
         "deleting": "Wird gelöscht...",
         "confirm": "Löschen"

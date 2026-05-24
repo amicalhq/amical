@@ -16,6 +16,7 @@ import { Route as AppHistoryRouteImport } from './routes/_app/history'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
 import { Route as AppSettingsVocabularyRouteImport } from './routes/_app/settings/vocabulary'
+import { Route as AppSettingsSnippetsRouteImport } from './routes/_app/settings/snippets'
 import { Route as AppSettingsShortcutsRouteImport } from './routes/_app/settings/shortcuts'
 import { Route as AppSettingsPreferencesRouteImport } from './routes/_app/settings/preferences'
 import { Route as AppSettingsDictationRouteImport } from './routes/_app/settings/dictation'
@@ -56,6 +57,11 @@ const AppNotesIndexRoute = AppNotesIndexRouteImport.update({
 const AppSettingsVocabularyRoute = AppSettingsVocabularyRouteImport.update({
   id: '/settings/vocabulary',
   path: '/settings/vocabulary',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsSnippetsRoute = AppSettingsSnippetsRouteImport.update({
+  id: '/settings/snippets',
+  path: '/settings/snippets',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppSettingsShortcutsRoute = AppSettingsShortcutsRouteImport.update({
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/settings/dictation': typeof AppSettingsDictationRoute
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/shortcuts': typeof AppSettingsShortcutsRoute
+  '/settings/snippets': typeof AppSettingsSnippetsRoute
   '/settings/vocabulary': typeof AppSettingsVocabularyRoute
   '/notes/': typeof AppNotesIndexRoute
   '/settings': typeof AppSettingsIndexRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/settings/dictation': typeof AppSettingsDictationRoute
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/shortcuts': typeof AppSettingsShortcutsRoute
+  '/settings/snippets': typeof AppSettingsSnippetsRoute
   '/settings/vocabulary': typeof AppSettingsVocabularyRoute
   '/notes': typeof AppNotesIndexRoute
   '/settings': typeof AppSettingsIndexRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/_app/settings/dictation': typeof AppSettingsDictationRoute
   '/_app/settings/preferences': typeof AppSettingsPreferencesRoute
   '/_app/settings/shortcuts': typeof AppSettingsShortcutsRoute
+  '/_app/settings/snippets': typeof AppSettingsSnippetsRoute
   '/_app/settings/vocabulary': typeof AppSettingsVocabularyRoute
   '/_app/notes/': typeof AppNotesIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
@@ -153,6 +162,7 @@ export interface FileRouteTypes {
     | '/settings/dictation'
     | '/settings/preferences'
     | '/settings/shortcuts'
+    | '/settings/snippets'
     | '/settings/vocabulary'
     | '/notes/'
     | '/settings'
@@ -167,6 +177,7 @@ export interface FileRouteTypes {
     | '/settings/dictation'
     | '/settings/preferences'
     | '/settings/shortcuts'
+    | '/settings/snippets'
     | '/settings/vocabulary'
     | '/notes'
     | '/settings'
@@ -183,6 +194,7 @@ export interface FileRouteTypes {
     | '/_app/settings/dictation'
     | '/_app/settings/preferences'
     | '/_app/settings/shortcuts'
+    | '/_app/settings/snippets'
     | '/_app/settings/vocabulary'
     | '/_app/notes/'
     | '/_app/settings/'
@@ -242,6 +254,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/vocabulary'
       fullPath: '/settings/vocabulary'
       preLoaderRoute: typeof AppSettingsVocabularyRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/snippets': {
+      id: '/_app/settings/snippets'
+      path: '/settings/snippets'
+      fullPath: '/settings/snippets'
+      preLoaderRoute: typeof AppSettingsSnippetsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/settings/shortcuts': {
@@ -319,6 +338,7 @@ interface AppRouteRouteChildren {
   AppSettingsDictationRoute: typeof AppSettingsDictationRoute
   AppSettingsPreferencesRoute: typeof AppSettingsPreferencesRoute
   AppSettingsShortcutsRoute: typeof AppSettingsShortcutsRoute
+  AppSettingsSnippetsRoute: typeof AppSettingsSnippetsRoute
   AppSettingsVocabularyRoute: typeof AppSettingsVocabularyRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
@@ -332,6 +352,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSettingsDictationRoute: AppSettingsDictationRoute,
   AppSettingsPreferencesRoute: AppSettingsPreferencesRoute,
   AppSettingsShortcutsRoute: AppSettingsShortcutsRoute,
+  AppSettingsSnippetsRoute: AppSettingsSnippetsRoute,
   AppSettingsVocabularyRoute: AppSettingsVocabularyRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }

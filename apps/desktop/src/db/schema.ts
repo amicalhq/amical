@@ -52,6 +52,19 @@ export const vocabulary = sqliteTable("vocabulary", {
     .default(sql`(unixepoch())`),
 });
 
+// Snippets table — short trigger phrases that expand into longer text during dictation
+export const snippets = sqliteTable("snippets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  trigger: text("trigger").notNull().unique(),
+  content: text("content").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 // App settings table with typed JSON
 export const appSettings = sqliteTable("app_settings", {
   id: integer("id").primaryKey(),
@@ -278,6 +291,8 @@ export type Transcription = typeof transcriptions.$inferSelect;
 export type NewTranscription = typeof transcriptions.$inferInsert;
 export type Vocabulary = typeof vocabulary.$inferSelect;
 export type NewVocabulary = typeof vocabulary.$inferInsert;
+export type Snippet = typeof snippets.$inferSelect;
+export type NewSnippet = typeof snippets.$inferInsert;
 export type Model = typeof models.$inferSelect;
 export type NewModel = typeof models.$inferInsert;
 export type AppSettings = typeof appSettings.$inferSelect;

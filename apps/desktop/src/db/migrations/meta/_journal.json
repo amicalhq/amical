@@ -36,6 +36,13 @@
       "when": 1774744286877,
       "tag": "0004_simple_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1779621178923,
+      "tag": "0005_neat_emma_frost",
+      "breakpoints": true
     }
   ]
 }

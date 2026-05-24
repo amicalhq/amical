@@ -508,7 +508,8 @@ describe("AmicalCloudProvider", () => {
         sessionId?: string;
       } = {},
     ) => {
-      const provider = options.provider ?? constructProviderWithTransport("grpc");
+      const provider =
+        options.provider ?? constructProviderWithTransport("grpc");
       const sessionOverride = options.sessionId
         ? { sessionId: options.sessionId }
         : {};
@@ -587,7 +588,10 @@ describe("AmicalCloudProvider", () => {
       const { provider, grpcClient: clientForSessionA } =
         await driveGrpcAndFallback(
           grpcMock.status.UNAVAILABLE,
-          { status: 200, json: { success: true, transcription: "session-A http" } },
+          {
+            status: 200,
+            json: { success: true, transcription: "session-A http" },
+          },
           { sessionId: "session-A" },
         );
 
@@ -613,7 +617,10 @@ describe("AmicalCloudProvider", () => {
 
       await driveGrpcAndFallback(
         grpcMock.status.UNAVAILABLE,
-        { status: 200, json: { success: true, transcription: "fallback worked" } },
+        {
+          status: 200,
+          json: { success: true, transcription: "fallback worked" },
+        },
         { provider: new AmicalCloudProvider(telemetryStub) },
       );
 
