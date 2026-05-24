@@ -361,6 +361,7 @@ const config: ForgeConfig = {
       //
       // DLLs needed by onnxruntime_binding.node:
       // - msvcp140.dll      : VC++ Standard Library (C++ runtime)
+      // - msvcp140_1.dll    : VC++ Standard Library extension used by onnxruntime.dll
       // - vcruntime140.dll  : VC++ Runtime (core C runtime)
       // - vcruntime140_1.dll: VC++ Runtime extension (C++17+ features)
       //
@@ -370,6 +371,7 @@ const config: ForgeConfig = {
       if (platform === "win32") {
         const vcRuntimeDlls = [
           "msvcp140.dll",
+          "msvcp140_1.dll",
           "vcruntime140.dll",
           "vcruntime140_1.dll",
         ];
