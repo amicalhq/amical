@@ -431,8 +431,8 @@
         "description": "Diktat automatisch starten, wenn eine neue Notiz erstellt wird"
       },
       "language": {
-        "label": "Sprache",
-        "description": "Wähle die Sprache, die in der App verwendet wird",
+        "label": "Anzeigesprache",
+        "description": "Amicals Oberflächensprache, nicht deine Diktiersprache.",
         "options": {
           "system": "System",
           "en": "English",

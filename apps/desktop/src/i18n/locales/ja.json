@@ -431,8 +431,8 @@
         "description": "新しいノートを作成した時に自動的に音声入力を開始"
       },
       "language": {
-        "label": "言語",
-        "description": "アプリ全体で使用する言語を選択",
+        "label": "表示言語",
+        "description": "Amical のインターフェースの言語です。ディクテーションの言語ではありません。",
         "options": {
           "system": "システム",
           "en": "English",

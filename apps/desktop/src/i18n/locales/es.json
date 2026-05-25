@@ -431,8 +431,8 @@
         "description": "Iniciar el dictado automáticamente al crear una nueva nota"
       },
       "language": {
-        "label": "Idioma",
-        "description": "Elige el idioma que se usa en toda la aplicación",
+        "label": "Idioma de visualización",
+        "description": "El idioma de la interfaz de Amical, no el del dictado.",
         "options": {
           "system": "Sistema",
           "en": "English",

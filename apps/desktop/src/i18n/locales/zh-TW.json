@@ -431,8 +431,8 @@
         "description": "建立新筆記時自動開始聽寫"
       },
       "language": {
-        "label": "語言",
-        "description": "選擇應用程式內使用的語言",
+        "label": "顯示語言",
+        "description": "Amical 介面的語言，而非您的聽寫語言。",
         "options": {
           "system": "系統預設",
           "en": "English",

@@ -431,8 +431,8 @@
         "description": "Automatically start dictation when creating a new note"
       },
       "language": {
-        "label": "Language",
-        "description": "Choose the language used throughout the app",
+        "label": "Display language",
+        "description": "Amical's interface language, not your dictation language.",
         "options": {
           "system": "System",
           "en": "English",
