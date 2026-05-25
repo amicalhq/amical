@@ -15,8 +15,11 @@ type RecordingManagerInternals = {
   recordingStartedAt: number | null;
   systemAudioMuted: boolean;
   soundsMuted: boolean;
+  audioChunks: Float32Array[];
+  initPromise: Promise<void> | null;
   performStartSession(mode: ActiveRecordingMode): Promise<void>;
   performEndRecording(code?: TerminationCode | null): Promise<void>;
+  handleAudioChunk(chunk: Float32Array, isFinalChunk: boolean): Promise<void>;
   handleFinalChunk(): Promise<void>;
   forceIdle(): Promise<void>;
 };
@@ -72,6 +75,78 @@ describe("recording manager FSM interpreter", () => {
         hasPendingStop: true,
       },
     ]);
+  });
+
+  it("drops audio captured during the start-sound window so the beep isn't recorded", async () => {
+    const processStreamingChunk = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      transcriptionService: { processStreamingChunk },
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
+    internals.recordingStartedAt = 1;
+    internals.terminationCode = null;
+    internals.soundsMuted = false;
+    internals.audioChunks = [];
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+
+    // Native start (beep + system-audio mute) still in flight: a chunk arriving
+    // now is captured while the start sound is playing.
+    let resolveInit: () => void = () => {};
+    internals.initPromise = new Promise<void>((resolve) => {
+      resolveInit = resolve;
+    });
+
+    const beepWindowChunk = new Float32Array([0.1, 0.2]);
+    const pending = internals.handleAudioChunk(beepWindowChunk, false);
+    resolveInit();
+    await pending;
+
+    // The beep-window chunk is discarded: not buffered, not streamed.
+    expect(internals.audioChunks.length).toBe(0);
+    expect(processStreamingChunk).not.toHaveBeenCalled();
+
+    // A chunk captured after native start completed (initPromise cleared) is kept.
+    internals.initPromise = null;
+    const postBeepChunk = new Float32Array([0.3, 0.4]);
+    await internals.handleAudioChunk(postBeepChunk, false);
+
+    expect(internals.audioChunks.length).toBe(1);
+    expect(processStreamingChunk).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps start-window audio when dictation sounds are muted (no beep to exclude)", async () => {
+    const processStreamingChunk = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      transcriptionService: { processStreamingChunk },
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
+    internals.recordingStartedAt = 1;
+    internals.terminationCode = null;
+    internals.soundsMuted = true;
+    internals.audioChunks = [];
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+
+    let resolveInit: () => void = () => {};
+    internals.initPromise = new Promise<void>((resolve) => {
+      resolveInit = resolve;
+    });
+
+    const chunk = new Float32Array([0.1, 0.2]);
+    const pending = internals.handleAudioChunk(chunk, false);
+    resolveInit();
+    await pending;
+
+    // No beep played, so the start-window audio is real user audio — keep it.
+    expect(internals.audioChunks.length).toBe(1);
+    expect(processStreamingChunk).toHaveBeenCalledTimes(1);
   });
 
   it("waits for a pending stop command before finalizing a final chunk", async () => {

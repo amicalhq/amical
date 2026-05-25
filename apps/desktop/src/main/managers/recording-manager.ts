@@ -546,7 +546,11 @@ export class RecordingManager extends EventEmitter {
       return;
     }
 
-    // Wait for async init to complete
+    // Wait for async init to complete. A chunk that finds init still pending was
+    // captured during native start — which only resolves after the start sound
+    // finishes playing and system audio is muted — i.e. while the start beep was
+    // audible to the microphone.
+    const capturedDuringStartSound = this.initPromise !== null;
     if (this.initPromise) {
       await this.initPromise;
     }
@@ -557,6 +561,16 @@ export class RecordingManager extends EventEmitter {
         state: stateAfterInit,
         isFinalChunk,
       });
+      return;
+    }
+
+    // Drop frames captured during the start-sound window so the dictation beep
+    // isn't recorded. Capture is already live (no added start latency); only the
+    // beep-window frames are discarded. Skipped when sounds are muted (no beep,
+    // so that audio is real speech worth keeping) and for the final chunk (so a
+    // recording that stops mid-beep still finalizes).
+    if (capturedDuringStartSound && !this.soundsMuted && !isFinalChunk) {
+      logger.audio.debug("Dropping start-sound-window chunk");
       return;
     }
 
