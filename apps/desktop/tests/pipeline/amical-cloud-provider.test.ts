@@ -69,6 +69,7 @@ const grpcMock = vi.hoisted(() => {
 
   let lastStream: FakeStream | null = null;
   let lastClient: FakeClient | null = null;
+  let failNextBidiStream = false;
 
   class FakeClient {
     close = vi.fn();
@@ -76,6 +77,10 @@ const grpcMock = vi.hoisted(() => {
       lastClient = this;
     }
     makeBidiStreamRequest = vi.fn(() => {
+      if (failNextBidiStream) {
+        failNextBidiStream = false;
+        throw new Error("stream construction failed");
+      }
       lastStream = new FakeStream();
       return lastStream;
     });
@@ -110,10 +115,14 @@ const grpcMock = vi.hoisted(() => {
     metadata: () => new FakeMetadata(),
     status,
     getLastStream: () => lastStream,
+    failNextStreamConstruction: () => {
+      failNextBidiStream = true;
+    },
     getLastClient: () => lastClient,
     reset: () => {
       lastStream = null;
       lastClient = null;
+      failNextBidiStream = false;
     },
   };
 });
@@ -249,6 +258,14 @@ const mockFetchOnce = (response: {
 };
 
 let fetchMock: Mock;
+
+// Decode the number of audio samples sent in an HTTP transcription request.
+// Body audioData is base64 pcm_s16le → 2 bytes per sample.
+const httpRequestSampleCount = (callIndex = 0): number => {
+  const [, init] = fetchMock.mock.calls[callIndex]!;
+  const body = JSON.parse(init.body as string);
+  return Buffer.from(body.audioData as string, "base64").length / 2;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -553,17 +570,14 @@ describe("AmicalCloudProvider", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it("falls back to HTTP on UNAVAILABLE: HTTP fetch is invoked for the formatting-only path", async () => {
+    it("falls back to HTTP on UNAVAILABLE and includes the audio streamed before the failure", async () => {
       const provider = constructProviderWithTransport("grpc");
-      // Mock the HTTP request that the fallback path will make.
-      // Using formattingEnabled + aggregatedTranscription so makeTranscriptionRequest
-      // calls fetch even with empty buffered audio (post-fallback).
       mockFetchOnce({
         status: 200,
-        json: { success: true, transcription: "fallback formatted" },
+        json: { success: true, transcription: "fallback with audio" },
       });
 
-      // Open a gRPC stream by transcribing once.
+      // One chunk streamed over gRPC opens the stream and seeds the mirror.
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -580,8 +594,12 @@ describe("AmicalCloudProvider", () => {
       settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
       const result = await flushPromise;
 
-      expect(result.text).toBe("fallback formatted");
+      expect(result.text).toBe("fallback with audio");
       expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Post-fix: the single pre-failure frame is recovered, not dropped.
+      const sampleCount = httpRequestSampleCount();
+      expect(sampleCount).toBe(512);
     });
 
     it("a new session re-attempts gRPC after a previous session fell back to HTTP", async () => {
@@ -677,6 +695,134 @@ describe("AmicalCloudProvider", () => {
       expect(second.text).toBe("second");
       expect(grpcMock.getLastClient()).toBe(clientAfterFirst);
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("HTTP fallback re-transcribes the full session audio buffered during gRPC", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "full audio" },
+      });
+
+      // Three chunks streamed over gRPC: opens the stream and accumulates
+      // the session mirror. Each transcribe returns "" (gRPC streams silently).
+      for (let i = 0; i < 3; i++) {
+        await provider.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        });
+      }
+
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+      const result = await flushPromise;
+
+      expect(result.text).toBe("full audio");
+
+      // The HTTP request must carry all three frames, not zero (pre-fix) or one.
+      const sampleCount = httpRequestSampleCount();
+      expect(sampleCount).toBe(3 * 512);
+    });
+
+    it("transcribe-stage fallback buffers the current chunk exactly once", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      // Force gRPC stream construction to throw → fallback during transcribe().
+      grpcMock.failNextStreamConstruction();
+
+      // One short frame: below MIN_AUDIO_DURATION_MS, so the fallback route
+      // does not transcribe yet (no HTTP request during transcribe).
+      const chunk = await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      expect(chunk.text).toBe("");
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // Flush now runs over the HTTP transport and sends the buffered audio.
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "once" },
+      });
+      const result = await provider.flush(baseContext());
+
+      expect(result.text).toBe("once");
+      const sampleCount = httpRequestSampleCount();
+      // Exactly one frame — not duplicated by the fallback route re-buffering.
+      expect(sampleCount).toBe(512);
+    });
+
+    it("does not bleed a prior session's audio into a later fallback", async () => {
+      const provider = constructProviderWithTransport("grpc");
+
+      // Session A: stream two frames over gRPC and finish successfully.
+      for (let i = 0; i < 2; i++) {
+        await provider.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext({ sessionId: "session-A" }),
+        });
+      }
+      const flushA = provider.flush(baseContext({ sessionId: "session-A" }));
+      await flush();
+      settleGrpcOk("session A text");
+      await flushA;
+
+      // Session B: stream one frame, then fall back to HTTP at flush.
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "session B http" },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "session-B" }),
+      });
+      const flushB = provider.flush(baseContext({ sessionId: "session-B" }));
+      await flush();
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+      const result = await flushB;
+
+      expect(result.text).toBe("session B http");
+      // Only session B's single frame — session A's two frames must be gone.
+      const sampleCount = httpRequestSampleCount();
+      expect(sampleCount).toBe(512);
+    });
+
+    it("reset() discards mirrored audio so it cannot leak into a later fallback", async () => {
+      const provider = constructProviderWithTransport("grpc");
+
+      // Stream two frames over gRPC, then cancel via reset().
+      for (let i = 0; i < 2; i++) {
+        await provider.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        });
+      }
+      provider.reset();
+
+      // A fresh frame, then fall back to HTTP at flush.
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "after reset" },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+      const result = await flushPromise;
+
+      expect(result.text).toBe("after reset");
+      const sampleCount = httpRequestSampleCount();
+      // Only the post-reset frame; the two pre-reset frames are discarded.
+      expect(sampleCount).toBe(512);
     });
   });
 

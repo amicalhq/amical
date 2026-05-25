@@ -79,6 +79,12 @@ type CloudProviderEffect<A> = Effect.Effect<A, AppError, CloudProviderEnv>;
 interface ProviderState {
   frameBuffer: Float32Array[];
   frameBufferSpeechProbabilities: number[];
+  // Mirror of all audio fed during the gRPC path, so an HTTP fallback can
+  // re-transcribe the full utterance (gRPC-streamed audio is otherwise lost
+  // when the stream fails). Independent of frameBuffer; seeded into it on
+  // fallback. Bounded to one session — see storeContextEffect / reset.
+  sessionAudioBuffer: Float32Array[];
+  sessionAudioVadProbs: number[];
   currentSilenceFrameCount: number;
   lastSpeechTimestamp: number;
   currentLanguage: string | undefined;
@@ -168,6 +174,8 @@ const CloudAuthLive = Layer.sync(CloudAuth, () => {
 const createInitialProviderState = (): ProviderState => ({
   frameBuffer: [],
   frameBufferSpeechProbabilities: [],
+  sessionAudioBuffer: [],
+  sessionAudioVadProbs: [],
   currentSilenceFrameCount: 0,
   lastSpeechTimestamp: 0,
   currentLanguage: undefined,
@@ -304,9 +312,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const transport = yield* this.effectiveTransportEffect();
 
       if (transport === "grpc") {
+        yield* this.mirrorSessionAudioEffect(audioData, speechProbability);
         return yield* this.withHttpFallbackEffect(
           this.transcribeGrpcEffect(audioData, context),
-          () => this.transcribeViaHttpEffect(audioData, speechProbability),
+          () => this.transcribeFromBufferEffect(),
           "transcribe",
         );
       }
@@ -352,6 +361,18 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   ): CloudProviderEffect<TranscriptionOutput> {
     return Effect.gen(this, function* () {
       yield* this.bufferHttpFrameEffect(audioData, speechProbability);
+      return yield* this.transcribeFromBufferEffect();
+    });
+  }
+
+  /**
+   * Transcribe whatever is already in frameBuffer, without buffering a new
+   * chunk. Used as the transcribe-stage HTTP fallback route: the current chunk
+   * was already captured by the session mirror and seeded into frameBuffer by
+   * engageHttpFallbackEffect, so re-buffering it here would duplicate audio.
+   */
+  private transcribeFromBufferEffect(): CloudProviderEffect<TranscriptionOutput> {
+    return Effect.gen(this, function* () {
       const shouldTranscribe = yield* this.shouldTranscribeEffect();
       if (!shouldTranscribe) {
         return { text: "" };
@@ -428,7 +449,19 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       yield* this.resetGrpcStreamEffect();
       const sessionId = yield* Ref.modify(this.state, (state) => [
         state.currentSessionId,
-        { ...state, transportOverride: "http" as const },
+        {
+          ...state,
+          transportOverride: "http" as const,
+          // Recover the full utterance: prepend everything streamed over the
+          // (now failed) gRPC stream ahead of any HTTP-buffered audio.
+          frameBuffer: [...state.sessionAudioBuffer, ...state.frameBuffer],
+          frameBufferSpeechProbabilities: [
+            ...state.sessionAudioVadProbs,
+            ...state.frameBufferSpeechProbabilities,
+          ],
+          sessionAudioBuffer: [],
+          sessionAudioVadProbs: [],
+        },
       ]);
       yield* Effect.sync(() => {
         logger.transcription.warn(
@@ -523,6 +556,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         currentVocabulary: context.vocabulary ?? [],
         currentSessionId: context.sessionId,
         transportOverride: isNewSession ? null : state.transportOverride,
+        sessionAudioBuffer: isNewSession ? [] : state.sessionAudioBuffer,
+        sessionAudioVadProbs: isNewSession ? [] : state.sessionAudioVadProbs,
       };
     });
   }
@@ -541,6 +576,25 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         );
       }
     });
+  }
+
+  /**
+   * Append a chunk to the session-wide audio mirror used to reconstruct the
+   * full utterance if gRPC fails and we fall back to HTTP. Only invoked while
+   * gRPC is the active transport; the HTTP path owns frameBuffer afterwards.
+   */
+  private mirrorSessionAudioEffect(
+    audioData: Float32Array,
+    speechProbability: number,
+  ): CloudProviderEffect<void> {
+    if (audioData.length === 0) {
+      return Effect.void;
+    }
+    return Ref.update(this.state, (state) => ({
+      ...state,
+      sessionAudioBuffer: [...state.sessionAudioBuffer, audioData],
+      sessionAudioVadProbs: [...state.sessionAudioVadProbs, speechProbability],
+    }));
   }
 
   private bufferHttpFrameEffect(
