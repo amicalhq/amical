@@ -29,8 +29,6 @@
     "requiredUpdate": "Required Update",
     "versionAvailable": "Version {{version}} is available.",
     "versionRequired": "Version {{version}} is required.",
-    "updateAvailableGeneric": "An update is available.",
-    "updateRequiredGeneric": "An update is required.",
     "restartAndUpdate": "Restart & Update",
     "later": "Later"
   },

@@ -1,59 +1,46 @@
 import { z } from "zod";
+import { observable } from "@trpc/server/observable";
 import { createRouter, procedure } from "../trpc";
+import type { UpdatePrompt } from "../../main/services/update-prompt";
 
 export const updaterRouter = createRouter({
-  // Check for updates (manual trigger)
-  checkForUpdates: procedure
-    .input(
-      z
-        .object({ userInitiated: z.boolean().optional().default(false) })
-        .optional(),
-    )
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const autoUpdaterService =
-          ctx.serviceManager.getService("autoUpdaterService");
-        if (!autoUpdaterService) {
-          throw new Error("Auto-updater service not available");
-        }
-
-        const userInitiated = input?.userInitiated ?? false;
-        await autoUpdaterService.checkForUpdates(userInitiated);
-        const logger = ctx.serviceManager.getLogger();
-        logger?.updater.info("Update check initiated via tRPC", {
-          userInitiated,
-        });
-
-        return { success: true };
-      } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
-        logger?.updater.error("Error checking for updates via tRPC", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      }
-    }),
-
-  // Quit and install update
-  quitAndInstall: procedure.mutation(async ({ ctx }) => {
-    try {
-      const autoUpdaterService =
-        ctx.serviceManager.getService("autoUpdaterService");
-      if (!autoUpdaterService) {
+  // Pushes the current pending update prompt (or null) to the renderer.
+  // eslint-disable-next-line deprecation/deprecation
+  updatePrompt: procedure.subscription(({ ctx }) => {
+    return observable<UpdatePrompt | null>((emit) => {
+      const service = ctx.serviceManager.getService("autoUpdaterService");
+      if (!service) {
         throw new Error("Auto-updater service not available");
       }
+      emit.next(service.getUpdatePrompt());
+      const handler = () => emit.next(service.getUpdatePrompt());
+      service.on("update-prompt-changed", handler);
+      return () => {
+        service.off("update-prompt-changed", handler);
+      };
+    });
+  }),
 
-      const logger = ctx.serviceManager.getLogger();
-      logger?.updater.info("Quit and install initiated via tRPC");
-      autoUpdaterService.quitAndInstall();
+  dismissUpdatePrompt: procedure.mutation(({ ctx }) => {
+    ctx.serviceManager.getService("autoUpdaterService")?.dismissUpdatePrompt();
+    return { success: true };
+  }),
 
+  checkForUpdates: procedure
+    .input(
+      z.object({ userInitiated: z.boolean().optional().default(false) }).optional(),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const service = ctx.serviceManager.getService("autoUpdaterService");
+      if (!service) throw new Error("Auto-updater service not available");
+      await service.checkForUpdates(input?.userInitiated ?? false);
       return { success: true };
-    } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
-      logger?.updater.error("Error quitting and installing via tRPC", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
+    }),
+
+  quitAndInstall: procedure.mutation(({ ctx }) => {
+    const service = ctx.serviceManager.getService("autoUpdaterService");
+    if (!service) throw new Error("Auto-updater service not available");
+    service.quitAndInstall();
+    return { success: true };
   }),
 });

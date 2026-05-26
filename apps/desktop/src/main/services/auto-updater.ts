@@ -4,6 +4,7 @@ import { logger } from "../logger";
 import { getUserAgent } from "../../utils/http-client";
 import type { SettingsService } from "../../services/settings-service";
 import type { TelemetryService } from "../../services/telemetry-service";
+import { computeUpdatePrompt, type UpdatePrompt } from "./update-prompt";
 
 const UPDATE_SERVER = "https://update.amical.ai";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
@@ -57,6 +58,7 @@ export class AutoUpdaterService extends EventEmitter {
   private isChecking = false;
   private lastMetadata: UpdateMetadata | null = null;
   private updateDownloaded = false;
+  private dismissedVersion: string | undefined = undefined;
 
   constructor() {
     super();
@@ -94,6 +96,8 @@ export class AutoUpdaterService extends EventEmitter {
         this.effectiveVersion = app.getVersion();
         this.updateDownloaded = false;
         this.lastMetadata = null;
+        this.dismissedVersion = undefined;
+        this.emit("update-prompt-changed");
         this.setFeedURL(channel);
         logger.updater.info("Update channel changed, checking for updates", {
           channel,
@@ -182,11 +186,27 @@ export class AutoUpdaterService extends EventEmitter {
         this.setFeedURL(this.currentChannel);
       }
       this.emit("update-downloaded", { releaseNotes, releaseName });
+      this.emit("update-prompt-changed");
     });
   }
 
   getLastMetadata(): UpdateMetadata | null {
     return this.lastMetadata;
+  }
+
+  getUpdatePrompt(): UpdatePrompt | null {
+    return computeUpdatePrompt(
+      this.lastMetadata,
+      this.updateDownloaded,
+      this.dismissedVersion,
+    );
+  }
+
+  dismissUpdatePrompt(): void {
+    // Force updates cannot be dismissed.
+    if (this.lastMetadata?.action === "force") return;
+    this.dismissedVersion = this.lastMetadata?.version;
+    this.emit("update-prompt-changed");
   }
 
   isDownloaded(): boolean {
@@ -269,6 +289,7 @@ export class AutoUpdaterService extends EventEmitter {
       const metadata = await this.fetchUpdateMetadata();
       if (metadata) {
         this.lastMetadata = metadata;
+        this.emit("update-prompt-changed");
 
         // Only skip Squirrel check on a fresh "none" response. If the fetch
         // failed, always proceed so stale cached "none" can't suppress

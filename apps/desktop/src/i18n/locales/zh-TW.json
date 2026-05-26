@@ -29,8 +29,6 @@
     "requiredUpdate": "需要更新",
     "versionAvailable": "有新版本 {{version}}",
     "versionRequired": "需要版本 {{version}}",
-    "updateAvailableGeneric": "有可用的更新",
-    "updateRequiredGeneric": "需要更新版本",
     "restartAndUpdate": "重新啟動並更新",
     "later": "稍後"
   },

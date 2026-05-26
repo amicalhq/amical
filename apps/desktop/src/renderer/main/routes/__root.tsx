@@ -3,6 +3,7 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api, trpcClient } from "@/trpc/react";
 import { usePostHog } from "../lib/posthog";
+import { UpdatePrompt } from "../components/update-prompt/update-prompt";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -25,6 +26,7 @@ function AppShell() {
   return (
     <>
       <Outlet />
+      <UpdatePrompt />
       {process.env.NODE_ENV === "development" && (
         <TanStackRouterDevtools position="bottom-right" />
       )}
