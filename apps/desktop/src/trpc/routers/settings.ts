@@ -52,12 +52,14 @@ const ModelProvidersConfigSchema = z.object({
 
 const DictationSettingsSchema = z.object({
   autoDetectEnabled: z.boolean(),
-  selectedLanguage: z
-    .string()
-    .min(1)
-    .refine((value) => value !== "auto", {
-      message: "Selected language must be a concrete language",
-    }),
+  languages: z.array(
+    z
+      .string()
+      .min(1)
+      .refine((v) => v !== "auto", {
+        message: "Language entries must be concrete languages",
+      }),
+  ),
 });
 
 const AppPreferencesSchema = z.object({
@@ -409,7 +411,7 @@ export const settingsRouter = createRouter({
       }
       return {
         autoDetectEnabled: true,
-        selectedLanguage: "en",
+        languages: ["en"],
       };
     }
   }),
@@ -427,7 +429,7 @@ export const settingsRouter = createRouter({
 
         const dictationSettings = {
           autoDetectEnabled: input.autoDetectEnabled,
-          selectedLanguage: input.selectedLanguage,
+          languages: input.languages,
         };
 
         await settingsService.setDictationSettings(dictationSettings);

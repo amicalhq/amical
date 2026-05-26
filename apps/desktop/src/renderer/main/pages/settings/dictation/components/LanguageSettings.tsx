@@ -1,87 +1,80 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { AVAILABLE_LANGUAGES } from "@/constants/languages";
+  Combobox as ComboboxBase,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "@/components/ui/combobox-base";
+import {
+  AVAILABLE_LANGUAGES,
+  labelForLanguage as labelFor,
+} from "@/constants/languages";
 import { useState, useEffect } from "react";
-import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/trpc/react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 
 export function LanguageSettings() {
   const { t } = useTranslation();
-  // Get dictation settings from tRPC
+  const utils = api.useUtils();
+
   const { data: dictationSettings, isLoading } =
     api.settings.getDictationSettings.useQuery();
 
-  // Mutation for updating settings
-  const updateDictationSettings = api.settings.setDictationSettings.useMutation(
-    {
-      onSuccess: () => {
-        // Refetch to ensure UI is in sync
-        utils.settings.getDictationSettings.invalidate();
-      },
-    },
-  );
+  const updateDictationSettings = api.settings.setDictationSettings.useMutation({
+    onSuccess: () => utils.settings.getDictationSettings.invalidate(),
+  });
 
-  const utils = api.useUtils();
-
-  // Local state for immediate UI updates
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("en");
+  const [languages, setLanguages] = useState<string[]>(["en"]);
   const [autoDetect, setAutoDetect] = useState(true);
 
-  // Sync local state with server data
   useEffect(() => {
     if (dictationSettings) {
-      setSelectedLanguage(dictationSettings.selectedLanguage || "en");
+      setLanguages(dictationSettings.languages);
       setAutoDetect(dictationSettings.autoDetectEnabled);
     }
   }, [dictationSettings]);
 
-  // Handle auto-detect toggle
+  const persist = async (next: {
+    autoDetectEnabled: boolean;
+    languages: string[];
+  }) => {
+    try {
+      await updateDictationSettings.mutateAsync(next);
+    } catch (error) {
+      setLanguages(dictationSettings?.languages ?? []);
+      setAutoDetect(dictationSettings?.autoDetectEnabled ?? true);
+      console.error("Failed to update dictation settings:", error);
+    }
+  };
+
   const handleAutoDetectChange = async (enabled: boolean) => {
     setAutoDetect(enabled);
-
-    const resolvedLanguage = selectedLanguage || "en";
-
-    const newSettings = {
-      autoDetectEnabled: enabled,
-      selectedLanguage: resolvedLanguage,
-    };
-
-    try {
-      await updateDictationSettings.mutateAsync(newSettings);
-    } catch (error) {
-      // Revert local state on error
-      setAutoDetect(!enabled);
-      console.error("Failed to update auto-detect setting:", error);
-    }
+    await persist({ autoDetectEnabled: enabled, languages });
   };
 
-  // Handle language selection
-  const handleLanguageChange = async (language: string) => {
-    setSelectedLanguage(language);
-
-    const newSettings = {
-      autoDetectEnabled: autoDetect,
-      selectedLanguage: language,
-    };
-
-    try {
-      await updateDictationSettings.mutateAsync(newSettings);
-    } catch (error) {
-      // Revert local state on error
-      setSelectedLanguage(dictationSettings?.selectedLanguage || "en");
-      console.error("Failed to update language setting:", error);
-    }
+  const handleLanguagesChange = async (next: string[]) => {
+    setLanguages(next);
+    await persist({ autoDetectEnabled: autoDetect, languages: next });
   };
+
+  const disabled = autoDetect || isLoading || updateDictationSettings.isPending;
+  const busy = isLoading || updateDictationSettings.isPending;
+
+  const anchor = useComboboxAnchor();
+  const languageCodes = AVAILABLE_LANGUAGES.filter(
+    (l) => l.value !== "auto",
+  ).map((l) => l.value);
 
   return (
-    <div className="">
+    <div>
       <div className="flex items-center justify-between mb-2">
         <div>
           <Label className="text-base font-semibold text-foreground">
@@ -94,43 +87,60 @@ export function LanguageSettings() {
         <Switch
           checked={autoDetect}
           onCheckedChange={handleAutoDetectChange}
-          disabled={isLoading || updateDictationSettings.isPending}
+          disabled={busy}
         />
       </div>
 
-      <div className="flex justify-between items-start mt-6 border-border border rounded-md p-4">
-        <div
-          className={cn(
-            "flex items-start gap-2 flex-col",
-            autoDetect && "opacity-50 pointer-events-none",
-          )}
-        >
-          <Label className="text-sm font-medium text-foreground">
+      <div className="mt-6 border-border border rounded-md p-4">
+        <div className="flex items-start justify-between gap-16">
+          <Label className="text-sm font-medium text-foreground shrink-0">
             {t("settings.dictation.language.languagesLabel")}
           </Label>
+          <div
+            className={cn(
+              "min-w-0 flex-1 flex justify-end",
+              disabled && "opacity-50",
+            )}
+          >
+            <ComboboxBase
+              multiple
+              items={languageCodes}
+              value={languages}
+              onValueChange={handleLanguagesChange}
+              itemToStringLabel={(code: string) => labelFor(code)}
+              disabled={disabled}
+            >
+              <ComboboxChips ref={anchor} className="w-fit max-w-full min-w-0">
+                <ComboboxValue>
+                  {(values: string[]) => (
+                    <>
+                      {values.map((code) => (
+                        <ComboboxChip key={code}>{labelFor(code)}</ComboboxChip>
+                      ))}
+                      <ComboboxChipsInput
+                        placeholder={t(
+                          "settings.dictation.language.languagesPlaceholder",
+                        )}
+                      />
+                    </>
+                  )}
+                </ComboboxValue>
+              </ComboboxChips>
+              <ComboboxContent anchor={anchor}>
+                <ComboboxEmpty>
+                  {t("settings.dictation.language.noResults")}
+                </ComboboxEmpty>
+                <ComboboxList>
+                  {(code: string) => (
+                    <ComboboxItem key={code} value={code}>
+                      {labelFor(code)}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </ComboboxBase>
+          </div>
         </div>
-        <Tooltip delayDuration={100}>
-          <TooltipTrigger asChild>
-            <div>
-              <Combobox
-                options={AVAILABLE_LANGUAGES.filter((l) => l.value !== "auto")}
-                value={selectedLanguage}
-                onChange={handleLanguageChange}
-                placeholder={t(
-                  "settings.dictation.language.languagesPlaceholder",
-                )}
-                disabled={
-                  autoDetect || isLoading || updateDictationSettings.isPending
-                }
-              />
-            </div>
-          </TooltipTrigger>
-          {autoDetect && (
-            <TooltipContent className="max-w-sm text-center">
-              {t("settings.dictation.language.autoDetect.tooltip")}
-            </TooltipContent>
-          )}
-        </Tooltip>
       </div>
     </div>
   );

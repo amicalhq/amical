@@ -95,7 +95,7 @@ const defaultSettings: AppSettingsData = {
   },
   dictation: {
     autoDetectEnabled: true,
-    selectedLanguage: "en",
+    languages: ["en"],
   },
   recording: {
     defaultFormat: "wav",

@@ -43,6 +43,10 @@ struct FullParamConfig {
   whisper_full_params params;
   std::string initial_prompt;
   std::string language;
+  // Candidate languages for constrained auto-detection. When more than one is
+  // given, the language is auto-detected but restricted to this set instead of
+  // all ~99 languages; a single entry forces that language.
+  std::vector<std::string> languages;
   bool detailed = false;
   bool token_timestamps = false;
 };
@@ -135,6 +139,16 @@ FullParamConfig parse_full_params(const Napi::Env env, const Napi::Object& optio
     cfg.language = options.Get("language").As<Napi::String>();
   } else {
     cfg.language = "auto";
+  }
+
+  if (options.Has("languages") && options.Get("languages").IsArray()) {
+    Napi::Array arr = options.Get("languages").As<Napi::Array>();
+    for (uint32_t i = 0; i < arr.Length(); ++i) {
+      Napi::Value v = arr.Get(i);
+      if (v.IsString()) {
+        cfg.languages.push_back(v.As<Napi::String>());
+      }
+    }
   }
 
   if (options.Has("suppress_blank")) {
@@ -417,6 +431,36 @@ Napi::Value full_transcribe(const Napi::CallbackInfo& info) {
   }
 
   FullParamConfig cfg = parse_full_params(env, options);
+
+  // Constrained auto-detection: when several candidate languages are given,
+  // detect among that set only and force the winner, instead of letting whisper
+  // pick from all ~99. A single candidate is just forced directly.
+  if (cfg.languages.size() == 1) {
+    cfg.language = cfg.languages[0];
+  } else if (cfg.languages.size() > 1 && !pcmf32.empty()) {
+    std::lock_guard<std::mutex> detect_guard(handle->mutex);
+    if (whisper_pcm_to_mel(handle->ctx, pcmf32.data(),
+                           static_cast<int>(pcmf32.size()),
+                           cfg.params.n_threads) == 0) {
+      std::vector<float> probs(whisper_lang_max_id() + 1);
+      if (whisper_lang_auto_detect(handle->ctx, 0, cfg.params.n_threads,
+                                   probs.data()) >= 0) {
+        int best_id = -1;
+        float best_p = -1.0f;
+        for (const auto& code : cfg.languages) {
+          const int id = whisper_lang_id(code.c_str());
+          if (id >= 0 && id < static_cast<int>(probs.size()) &&
+              probs[id] > best_p) {
+            best_p = probs[id];
+            best_id = id;
+          }
+        }
+        if (best_id >= 0) {
+          cfg.language = whisper_lang_str(best_id);
+        }
+      }
+    }
+  }
 
   if (cfg.language.empty()) {
     cfg.language = "auto";

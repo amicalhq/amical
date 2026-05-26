@@ -37,7 +37,7 @@ export interface TranscriptionMetrics {
   formatting_duration_ms?: number;
   vad_enabled?: boolean;
   is_retry?: boolean;
-  language?: string;
+  languages?: string[]; // Selected dictation languages; [] = auto-detect
   vocabulary_size?: number;
 }
 

@@ -14,7 +14,7 @@ export interface TranscribeContext {
   accessibilityContext?: GetAccessibilityContextResult | null;
   previousChunk?: string;
   aggregatedTranscription?: string;
-  language?: string;
+  languages?: string[]; // Selected dictation languages; providers consume this
   formattingEnabled?: boolean;
 }
 

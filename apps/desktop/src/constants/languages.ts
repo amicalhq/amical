@@ -100,3 +100,6 @@ export const AVAILABLE_LANGUAGES = [
   { value: "yi", label: "🇮🇱 Yiddish" },
   { value: "yo", label: "🇳🇬 Yoruba" },
 ];
+
+export const labelForLanguage = (code: string) =>
+  AVAILABLE_LANGUAGES.find((l) => l.value === code)?.label ?? code;

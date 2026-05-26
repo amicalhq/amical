@@ -656,11 +656,11 @@
       "language": {
         "autoDetect": {
           "label": "Auto detect language",
-          "description": "Automatically detect spoken language. Turn off to select specific languages.",
-          "tooltip": "Disable auto detection to select languages. Selecting specific languages may increase accuracy."
+          "description": "Automatically detect spoken language. Turn off to select specific languages."
         },
         "languagesLabel": "Languages",
-        "languagesPlaceholder": "Select languages..."
+        "languagesPlaceholder": "Select languages...",
+        "noResults": "No languages found."
       },
       "microphone": {
         "label": "Microphone",

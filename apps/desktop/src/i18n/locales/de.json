@@ -656,11 +656,11 @@
       "language": {
         "autoDetect": {
           "label": "Sprache automatisch erkennen",
-          "description": "Gesprochene Sprache automatisch erkennen. Deaktiviere die Option, um bestimmte Sprachen auszuwählen.",
-          "tooltip": "Deaktiviere die automatische Erkennung, um Sprachen auszuwählen. Die Auswahl bestimmter Sprachen kann die Genauigkeit erhöhen."
+          "description": "Gesprochene Sprache automatisch erkennen. Deaktiviere die Option, um bestimmte Sprachen auszuwählen."
         },
         "languagesLabel": "Sprachen",
-        "languagesPlaceholder": "Sprachen auswählen..."
+        "languagesPlaceholder": "Sprachen auswählen...",
+        "noResults": "Keine Sprachen gefunden."
       },
       "microphone": {
         "label": "Mikrofon",

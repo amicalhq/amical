@@ -634,11 +634,11 @@
       "language": {
         "autoDetect": {
           "label": "Detectar idioma automáticamente",
-          "description": "Detectar automáticamente el idioma hablado. Desactiva esta opción para seleccionar idiomas específicos.",
-          "tooltip": "Desactiva la detección automática para seleccionar idiomas. Seleccionar idiomas específicos puede mejorar la precisión."
+          "description": "Detectar automáticamente el idioma hablado. Desactiva esta opción para seleccionar idiomas específicos."
         },
         "languagesLabel": "Idiomas",
-        "languagesPlaceholder": "Seleccionar idiomas..."
+        "languagesPlaceholder": "Seleccionar idiomas...",
+        "noResults": "No se encontraron idiomas."
       },
       "microphone": {
         "label": "Micrófono",

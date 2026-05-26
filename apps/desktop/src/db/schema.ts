@@ -184,7 +184,7 @@ export interface AppSettingsData {
 
   dictation?: {
     autoDetectEnabled: boolean;
-    selectedLanguage: string; // Concrete language used when auto-detect is disabled
+    languages: string[]; // Selected dictation languages; empty = auto-detect
   };
   preferences?: {
     launchAtLogin?: boolean;

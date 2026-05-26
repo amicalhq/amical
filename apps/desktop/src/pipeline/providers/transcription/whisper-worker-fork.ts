@@ -79,7 +79,7 @@ const methods = {
   async transcribeAudio(
     aggregatedAudio: Float32Array,
     options: {
-      language: string;
+      languages?: string[];
       initial_prompt: string;
       suppress_blank: boolean;
       suppress_non_speech_tokens: boolean;

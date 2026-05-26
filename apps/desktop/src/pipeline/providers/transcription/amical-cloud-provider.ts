@@ -87,7 +87,7 @@ interface ProviderState {
   sessionAudioVadProbs: number[];
   currentSilenceFrameCount: number;
   lastSpeechTimestamp: number;
-  currentLanguage: string | undefined;
+  currentLanguages: string[];
   currentAccessibilityContext: GetAccessibilityContextResult | null;
   currentAggregatedTranscription: string | undefined;
   currentVocabulary: string[];
@@ -114,7 +114,7 @@ interface TranscriptionRequest {
 }
 
 interface ProviderRequestSnapshot {
-  currentLanguage: string | undefined;
+  currentLanguages: string[];
   currentAccessibilityContext: GetAccessibilityContextResult | null;
   currentAggregatedTranscription: string | undefined;
   currentVocabulary: string[];
@@ -178,7 +178,7 @@ const createInitialProviderState = (): ProviderState => ({
   sessionAudioVadProbs: [],
   currentSilenceFrameCount: 0,
   lastSpeechTimestamp: 0,
-  currentLanguage: undefined,
+  currentLanguages: [],
   currentAccessibilityContext: null,
   currentAggregatedTranscription: undefined,
   currentVocabulary: [],
@@ -226,7 +226,7 @@ const shouldFallbackToHttp = (error: AppError): boolean => {
 const requestSnapshotFromState = (
   state: ProviderState,
 ): ProviderRequestSnapshot => ({
-  currentLanguage: state.currentLanguage,
+  currentLanguages: state.currentLanguages,
   currentAccessibilityContext: state.currentAccessibilityContext,
   currentAggregatedTranscription: state.currentAggregatedTranscription,
   currentVocabulary: state.currentVocabulary,
@@ -550,7 +550,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
       return {
         ...state,
-        currentLanguage: context.language,
+        currentLanguages: context.languages ?? [],
         currentAccessibilityContext: context.accessibilityContext ?? null,
         currentAggregatedTranscription: context.aggregatedTranscription,
         currentVocabulary: context.vocabulary ?? [],
@@ -720,7 +720,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         userAgent: getUserAgent(),
         clientInfo: getAmicalClientInfo(),
         sessionId,
-        language: snapshot.currentLanguage,
+        languages: snapshot.currentLanguages,
         vocabulary: snapshot.currentVocabulary,
         formatting: enableFormatting,
         context: this.buildGrpcStreamContext(snapshot),
@@ -746,7 +746,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         logger.transcription.info("Cloud gRPC stream opened", {
           endpoint: config.apiEndpoint,
           sessionId,
-          language: snapshot.currentLanguage,
+          languages: snapshot.currentLanguages,
           vocabularySize: snapshot.currentVocabulary.length,
           formatting: enableFormatting,
         });
@@ -1028,7 +1028,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               audioData: audioPayload,
               audioFormat: hasAudio ? "pcm_s16le" : undefined,
               vadProbs,
-              language: snapshot.currentLanguage,
+              languages: snapshot.currentLanguages,
               vocabulary: snapshot.currentVocabulary,
               previousTranscription: snapshot.currentAggregatedTranscription,
               formatting: {

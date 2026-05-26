@@ -359,7 +359,7 @@ export class TranscriptionService {
           accessibilityContext: session.context.sharedData.accessibilityContext,
           previousChunk,
           aggregatedTranscription: aggregatedTranscription || undefined,
-          language: session.context.sharedData.userPreferences?.language,
+          languages: session.context.sharedData.userPreferences?.languages,
           formattingEnabled:
             session.context.metadata.get("cloudFormattingEnabled") === true,
         },
@@ -469,7 +469,7 @@ export class TranscriptionService {
           accessibilityContext: session.context.sharedData.accessibilityContext,
           previousChunk,
           aggregatedTranscription: aggregatedTranscription || undefined,
-          language: session.context.sharedData.userPreferences?.language,
+          languages: session.context.sharedData.userPreferences?.languages,
           formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
         });
         session.detectedLanguage = this.mergeDetectedLanguage(
@@ -512,8 +512,9 @@ export class TranscriptionService {
         chunkCount: session.transcriptionResults.length,
       });
 
-      const requestedLanguage =
-        session.context.sharedData.userPreferences?.language || "auto";
+      const requestedLanguage = this.singleRequestedLanguage(
+        session.context.sharedData.userPreferences?.languages,
+      );
       const detectedLanguage = this.sanitizeDetectedLanguage(
         session.detectedLanguage,
       );
@@ -625,7 +626,7 @@ export class TranscriptionService {
         formatting_model: formattingModel,
         formatting_duration_ms: formattingDuration,
         vad_enabled: !!this.vadService,
-        language: requestedLanguage,
+        languages: session.context.sharedData.userPreferences?.languages ?? [],
         vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
       });
 
@@ -643,8 +644,9 @@ export class TranscriptionService {
       await createTranscription({
         text: "",
         audioFile: audioFilePath || undefined,
-        language:
-          session.context.sharedData.userPreferences?.language || "auto",
+        language: this.singleRequestedLanguage(
+          session.context.sharedData.userPreferences?.languages,
+        ),
         detectedLanguage: this.sanitizeDetectedLanguage(
           session.detectedLanguage,
         ),
@@ -687,12 +689,14 @@ export class TranscriptionService {
     // Create default context
     const context = createDefaultContext(uuid());
 
-    // Load dictation settings to get language preference
+    // Load dictation settings. Auto-detect (or no languages selected) means no
+    // language constraint; otherwise pass the selected languages through.
     const dictationSettings = await this.settingsService.getDictationSettings();
-    context.sharedData.userPreferences.language =
-      dictationSettings.autoDetectEnabled
+    const languages = dictationSettings.languages ?? [];
+    context.sharedData.userPreferences.languages =
+      dictationSettings.autoDetectEnabled || languages.length === 0
         ? undefined
-        : dictationSettings.selectedLanguage;
+        : languages;
 
     // Load vocabulary — every entry the user has authored should participate
     // in replacement; caps belong on the create path, not here.
@@ -960,7 +964,8 @@ export class TranscriptionService {
     const context = await this.buildContext();
     const retrySessionId = context.sessionId;
     const vocabulary = context.sharedData.vocabulary;
-    const language = context.sharedData.userPreferences?.language;
+    const languages = context.sharedData.userPreferences?.languages;
+    const language = this.singleRequestedLanguage(languages);
 
     // Determine formatting config before acquiring mutex
     const selectedModelId = await this.modelService.getSelectedModel();
@@ -1030,7 +1035,7 @@ export class TranscriptionService {
           context: {
             sessionId: retrySessionId,
             vocabulary,
-            language,
+            languages,
             previousChunk,
             aggregatedTranscription: aggregatedTranscription || undefined,
             formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
@@ -1053,7 +1058,7 @@ export class TranscriptionService {
       const finalResult = await provider.flush({
         sessionId: retrySessionId,
         vocabulary,
-        language,
+        languages,
         aggregatedTranscription: aggregatedTranscription || undefined,
         formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
       });
@@ -1154,7 +1159,7 @@ export class TranscriptionService {
       formatting_duration_ms: formatResult.formattingDuration,
       vad_enabled: !!this.vadService,
       is_retry: true,
-      language: language || "auto",
+      languages: languages ?? [],
       vocabulary_size: vocabulary.length,
     });
 
@@ -1189,6 +1194,15 @@ export class TranscriptionService {
   ): string | undefined {
     const trimmed = detectedLanguage?.trim();
     return trimmed ? trimmed : undefined;
+  }
+
+  // The user can select several dictation languages with no ordering or
+  // "primary". A single requested language only exists when exactly one is
+  // selected; multi-select and auto-detect both mean "no single language" →
+  // "auto". Used for the single-language sinks (transcription record column,
+  // word-count segmentation, telemetry).
+  private singleRequestedLanguage(languages: string[] | undefined): string {
+    return languages?.length === 1 ? languages[0] : "auto";
   }
 
   private mergeDetectedLanguage(

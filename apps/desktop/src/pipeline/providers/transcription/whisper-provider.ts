@@ -135,7 +135,7 @@ export class WhisperProvider implements TranscriptionProvider {
     context: TranscribeContext,
   ): Promise<TranscriptionOutput> {
     try {
-      const { aggregatedTranscription, language } = context;
+      const { aggregatedTranscription, languages } = context;
 
       // Capture speech probabilities before reset
       const vadProbs = [...this.frameBufferSpeechProbabilities];
@@ -184,7 +184,9 @@ export class WhisperProvider implements TranscriptionProvider {
         [
           aggregatedAudio,
           {
-            language: language || "auto",
+            // One language forces it; multiple drives constrained
+            // auto-detection in the addon; empty/undefined → auto-detect.
+            languages,
             initial_prompt: initialPrompt,
             suppress_blank: true,
             suppress_non_speech_tokens: true,

@@ -40,7 +40,7 @@ export interface GrpcDictationStreamOptions {
   userAgent: string;
   clientInfo: AmicalClientInfo;
   sessionId: string;
-  language?: string;
+  languages?: string[];
   vocabulary: string[];
   formatting: boolean;
   context?: GrpcStreamContext;
@@ -167,17 +167,17 @@ const toBigInt = (value: UInt64Value): bigint => {
   return BigInt(value.toString());
 };
 
-const buildLanguageConfig = (language?: string) => {
-  const languageEnum = languageEnumForCode(language);
+export const buildLanguageConfig = (languages?: string[]) => {
+  const items = (languages ?? [])
+    .map((code) => languageEnumForCode(code))
+    .filter((enumValue): enumValue is number => typeof enumValue === "number");
 
-  if (!languageEnum) {
+  if (items.length === 0) {
     return { auto: {} };
   }
 
   return {
-    languages: {
-      items: [languageEnum],
-    },
+    languages: { items },
   };
 };
 
@@ -201,7 +201,7 @@ const encodeOpenRequest = (options: GrpcDictationStreamOptions): Buffer => {
         encoding: enumValue(AudioEncoding.values, "AUDIO_ENCODING_PCM_S16LE"),
         packetDurationMs: CloudDictationGrpcStream.PACKET_DURATION_MS,
       },
-      language: buildLanguageConfig(options.language),
+      language: buildLanguageConfig(options.languages),
       vocabulary: options.vocabulary,
       formatting: options.formatting,
     },

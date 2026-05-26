@@ -15,7 +15,7 @@ export interface SharedPipelineData {
   vocabulary: string[]; // Custom vocab
   replacements: Map<string, string>; // Custom replacements
   userPreferences: {
-    language?: string; // Optional - undefined means auto-detect
+    languages?: string[]; // Selected dictation languages; empty/undefined = auto-detect
     formattingStyle: "formal" | "casual" | "technical";
   };
   audioMetadata: {
@@ -35,7 +35,7 @@ export function createDefaultContext(sessionId: string): PipelineContext {
       vocabulary: [],
       replacements: new Map(),
       userPreferences: {
-        language: undefined,
+        languages: undefined,
         formattingStyle: "formal",
       },
       audioMetadata: {

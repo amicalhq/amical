@@ -634,11 +634,11 @@
       "language": {
         "autoDetect": {
           "label": "自動偵測語言",
-          "description": "自動偵測您的語言。關閉此選項以選擇特定語言。",
-          "tooltip": "停用自動偵測以選擇語言。選擇特定語言可能會提高準確度。"
+          "description": "自動偵測您的語言。關閉此選項以選擇特定語言。"
         },
         "languagesLabel": "語言",
-        "languagesPlaceholder": "選擇語言..."
+        "languagesPlaceholder": "選擇語言...",
+        "noResults": "找不到語言。"
       },
       "microphone": {
         "label": "麥克風",

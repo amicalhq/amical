@@ -205,7 +205,7 @@ const baseContext = (
   accessibilityContext: null,
   previousChunk: undefined,
   aggregatedTranscription: undefined,
-  language: undefined,
+  languages: [],
   formattingEnabled: false,
   ...overrides,
 });

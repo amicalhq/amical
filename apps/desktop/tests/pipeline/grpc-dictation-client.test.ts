@@ -119,6 +119,7 @@ const grpcMock = vi.hoisted(() => {
 vi.mock("@grpc/grpc-js", () => grpcMock.module);
 
 import {
+  buildLanguageConfig,
   CloudDictationGrpcStream,
   GrpcDictationError,
   type GrpcDictationStreamOptions,
@@ -142,6 +143,27 @@ const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
     formatting: false,
     ...overrides,
   });
+
+describe("buildLanguageConfig", () => {
+  it("returns auto when the list is empty", () => {
+    expect(buildLanguageConfig([])).toEqual({ auto: {} });
+    expect(buildLanguageConfig(undefined)).toEqual({ auto: {} });
+  });
+
+  it("maps multiple language codes to enum items in order", () => {
+    const result = buildLanguageConfig(["en", "es"]) as {
+      languages: { items: number[] };
+    };
+    expect(result.languages.items).toEqual([1, 3]);
+  });
+
+  it("drops codes that have no enum mapping", () => {
+    const result = buildLanguageConfig(["en", "zz-not-real"]) as {
+      languages: { items: number[] };
+    };
+    expect(result.languages.items).toEqual([1]);
+  });
+});
 
 describe("CloudDictationGrpcStream", () => {
   beforeEach(() => {
