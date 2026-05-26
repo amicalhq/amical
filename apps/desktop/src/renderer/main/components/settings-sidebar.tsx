@@ -180,10 +180,7 @@ export function SettingsSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter className="p-0">
-        <NavSecondary
-          items={navSecondary}
-          prefix={isSettingsSidebar ? null : <NavCloud />}
-        />
+        <NavSecondary items={navSecondary} prefix={<NavCloud />} />
       </SidebarFooter>
     </Sidebar>
   );
