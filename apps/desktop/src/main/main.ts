@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import tls from "node:tls";
 import { app, ipcMain } from "electron";
 import { logger } from "./logger";
 
@@ -8,6 +9,21 @@ import started from "electron-squirrel-startup";
 import { AppManager } from "./core/app-manager";
 import { isWindows } from "../utils/platform";
 import { ServiceManager } from "./managers/service-manager";
+
+// Trust the OS certificate store on top of Node's bundled CA list. Corporate
+// TLS-inspection proxies (e.g. Zscaler) re-sign HTTPS with a root that lives in
+// the OS store but not in Node's bundled list; without this, every request the
+// app makes via undici (fetch) and grpc-js fails with a cert error. The catch
+// matters: setDefaultCACertificates validates each cert and throws on a bad one
+// in the OS store, and this runs before app launch — never block startup.
+try {
+  tls.setDefaultCACertificates([
+    ...tls.getCACertificates("default"),
+    ...tls.getCACertificates("system"),
+  ]);
+} catch (error) {
+  logger.main.warn("Failed to load system CA certificates", { error });
+}
 
 // Setup renderer logging relay (allows renderer to send logs to main process)
 ipcMain.handle(
