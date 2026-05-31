@@ -760,10 +760,8 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               {
                 preset: "default",
                 args: {
-                  polishing: ["normal"],
                   tone: ["casual"],
                 },
-                clientRuleId: "default",
               },
             ]
           : [],

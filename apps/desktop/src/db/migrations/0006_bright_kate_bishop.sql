@@ -4,7 +4,6 @@ CREATE TABLE `skills` (
 	`mode` text DEFAULT 'preset' NOT NULL,
 	`preset` text,
 	`prompt` text,
-	`polishing` text,
 	`tone` text,
 	`included_apps` text,
 	`included_sites` text,

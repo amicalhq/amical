@@ -28,26 +28,11 @@ export const SEED_SITE_DEFAULTS: Record<string, string[]> = {
 // JS-side SEED_*_DEFAULTS maps above.
 const SEED_SKILLS: NewSkill[] = [
   {
-    id: "default",
-    name: "Default",
-    mode: "preset",
-    preset: "default",
-    prompt: null,
-    polishing: "normal",
-    tone: "casual",
-    includedApps: null,
-    includedSites: null,
-    isDefault: true,
-    isBuiltIn: true,
-    sortOrder: 0,
-  },
-  {
     id: "personal",
     name: "Personal messages",
     mode: "preset",
-    preset: "personal_chat",
+    preset: "personal_messages",
     prompt: null,
-    polishing: "low",
     tone: "casual",
     includedApps: null,
     includedSites: null,
@@ -58,9 +43,8 @@ const SEED_SKILLS: NewSkill[] = [
     id: "work",
     name: "Work messages",
     mode: "preset",
-    preset: "work_chat",
+    preset: "work_messages",
     prompt: null,
-    polishing: "normal",
     tone: "casual",
     includedApps: null,
     includedSites: null,
@@ -73,12 +57,27 @@ const SEED_SKILLS: NewSkill[] = [
     mode: "preset",
     preset: "email",
     prompt: null,
-    polishing: "high",
     tone: "formal",
     includedApps: null,
     includedSites: null,
     isBuiltIn: true,
     sortOrder: 3,
+  },
+  // Catch-all fallback — applies when no other skill matches the foreground
+  // app. Rendered last and labelled "Others". Keeps id "default" (referenced
+  // as the fallback preset and by SEED_APP_DEFAULTS).
+  {
+    id: "default",
+    name: "Others",
+    mode: "preset",
+    preset: "default",
+    prompt: null,
+    tone: "casual",
+    includedApps: null,
+    includedSites: null,
+    isDefault: true,
+    isBuiltIn: true,
+    sortOrder: 4,
   },
 ];
 

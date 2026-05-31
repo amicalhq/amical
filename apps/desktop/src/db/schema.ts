@@ -317,7 +317,7 @@ export const dailyStats = sqliteTable(
 //   mode = "custom"  → prompt is set, preset is null
 // Enforced by a CHECK constraint below in addition to zod validation at
 // the API boundary, so direct DB inserts can't create inconsistent rows.
-// polishing/tone are nullable knobs: when null, the server uses its
+// tone is a nullable knob: when null, the server uses its
 // default/inherits-from-preset behavior.
 export const skills = sqliteTable(
   "skills",
@@ -329,10 +329,9 @@ export const skills = sqliteTable(
       .default("preset"),
     preset: text("preset"),
     prompt: text("prompt"),
-    polishing: text("polishing", {
-      enum: ["none", "low", "normal", "high"],
+    tone: text("tone", {
+      enum: ["formal", "casual", "excited", "very_casual"],
     }),
-    tone: text("tone", { enum: ["casual", "formal"] }),
     // Nullable: NULL means "inherit the app-defined defaults for this
     // seeded skill" (see SEED_APP_DEFAULTS / SEED_SITE_DEFAULTS in
     // catalog.ts). Once the user edits the list (or adds a custom

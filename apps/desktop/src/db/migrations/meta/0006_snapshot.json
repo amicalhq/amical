@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c260ddd8-c1e5-473b-ac12-db7a004a365a",
+  "id": "69f968f0-da34-4160-ac6d-11576119dd71",
   "prevId": "9ad2a733-800a-4af5-bd14-ce7ac1e97b48",
   "tables": {
     "app_settings": {
@@ -372,13 +372,6 @@
         },
         "prompt": {
           "name": "prompt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "polishing": {
-          "name": "polishing",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

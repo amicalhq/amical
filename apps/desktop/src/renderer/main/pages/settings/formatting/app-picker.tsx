@@ -132,7 +132,9 @@ export function TargetPicker({
                     }}
                     className="gap-2"
                   >
-                    <span aria-hidden>{target.emoji}</span>
+                    <span aria-hidden>
+                      {target.emoji ?? (target.id.includes(".") ? "🌐" : "📦")}
+                    </span>
                     <span>{target.name}</span>
                   </CommandItem>
                 ))}

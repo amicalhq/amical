@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { TonePicker } from "./tone-picker";
 import {
   Tooltip,
   TooltipContent,
@@ -20,12 +21,12 @@ import {
 import { TargetAvatarStack, TargetPicker } from "./app-picker";
 import {
   APP_CATALOG,
-  POLISHING_OPTIONS,
   PRESET_OPTIONS,
   SITE_CATALOG,
-  TONE_OPTIONS,
+  TONE_META,
+  DEFAULT_TONE,
+  tonesForPreset,
   normalizeHostname,
-  type Polishing,
   type SkillEdit,
   type SkillSnapshot,
   type Tone,
@@ -37,7 +38,6 @@ const toDraft = (skill: SkillSnapshot): SkillEdit => ({
   mode: skill.mode,
   preset: skill.preset,
   prompt: skill.prompt,
-  polishing: skill.polishing as Polishing | null,
   tone: skill.tone as Tone | null,
   includedApps: skill.includedApps,
   includedSites: skill.includedSites,
@@ -72,12 +72,8 @@ export function SkillRow({
     ? (PRESET_OPTIONS.find((p) => p.value === skill.preset)?.label ??
       skill.preset)
     : null;
-  const polishingLabel = skill.polishing
-    ? (POLISHING_OPTIONS.find((p) => p.value === skill.polishing)?.label ??
-      skill.polishing)
-    : null;
   const toneLabel = skill.tone
-    ? (TONE_OPTIONS.find((t) => t.value === skill.tone)?.label ?? skill.tone)
+    ? (TONE_META[skill.tone as Tone]?.label ?? skill.tone)
     : null;
 
   return (
@@ -102,18 +98,12 @@ export function SkillRow({
                 Custom prompt
               </Badge>
             )}
-            {polishingLabel && (
-              <ConfigChip label="Polishing" value={polishingLabel} />
-            )}
             {toneLabel && <ConfigChip label="Tone" value={toneLabel} />}
           </div>
-          {skill.isDefault && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              Applies everywhere unless customized below
-            </div>
-          )}
         </div>
-        {!skill.isDefault &&
+        {/* App/site avatars only for user-created skills — built-in presets
+            route via the central app → preset mapping, not per-skill lists. */}
+        {!skill.isBuiltIn &&
           (skill.includedApps.length > 0 ||
             skill.includedSites.length > 0) && (
             <TargetAvatarStack
@@ -140,42 +130,43 @@ export function SkillRow({
             </FieldRow>
           )}
 
-          {/* Mode toggle — always shown. Custom is disabled with a
-              tooltip until AMIC-13 lands. Built-in skills can't switch
-              modes; user-created skills also can't yet (Custom locked).
-              The actual mode value stays "preset" because the disabled
-              item never fires onValueChange. */}
-          <FieldRow label="Mode">
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              value={draft.mode}
-              onValueChange={(v) => {
-                if (v === "preset") setDraft({ ...draft, mode: "preset" });
-              }}
-              className="max-w-[16rem]"
-            >
-              <ToggleGroupItem value="preset">Preset</ToggleGroupItem>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex" tabIndex={0}>
-                    <ToggleGroupItem
-                      value="custom"
-                      disabled
-                      aria-disabled="true"
-                      className="pointer-events-none opacity-50"
-                    >
-                      Custom
-                    </ToggleGroupItem>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Custom instructions for the styling. Coming soon.
-                </TooltipContent>
-              </Tooltip>
-            </ToggleGroup>
-          </FieldRow>
+          {/* Mode toggle — user-created skills only. Built-in presets are
+              fixed: only their tone is configurable (no Custom, no preset
+              swap, no app/site editing). Custom is disabled with a tooltip
+              until AMIC-13 lands. */}
+          {!skill.isBuiltIn && (
+            <FieldRow label="Mode">
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                value={draft.mode}
+                onValueChange={(v) => {
+                  if (v === "preset") setDraft({ ...draft, mode: "preset" });
+                }}
+                className="max-w-[16rem]"
+              >
+                <ToggleGroupItem value="preset">Preset</ToggleGroupItem>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex" tabIndex={0}>
+                      <ToggleGroupItem
+                        value="custom"
+                        disabled
+                        aria-disabled="true"
+                        className="pointer-events-none opacity-50"
+                      >
+                        Custom
+                      </ToggleGroupItem>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Custom instructions for the styling. Coming soon.
+                  </TooltipContent>
+                </Tooltip>
+              </ToggleGroup>
+            </FieldRow>
+          )}
 
           {/* Preset picker only for user-created preset-mode skills.
               Built-in skills lock their preset; custom-mode skills
@@ -190,7 +181,17 @@ export function SkillRow({
             <FieldRow label="Preset">
               <Select
                 value={draft.preset ?? ""}
-                onValueChange={(v) => setDraft({ ...draft, preset: v })}
+                onValueChange={(v) =>
+                  setDraft({
+                    ...draft,
+                    preset: v,
+                    // Clamp tone to the new preset's available set.
+                    tone:
+                      draft.tone && tonesForPreset(v).includes(draft.tone)
+                        ? draft.tone
+                        : DEFAULT_TONE,
+                  })
+                }
               >
                 <SelectTrigger className="max-w-sm">
                   <SelectValue />
@@ -206,48 +207,23 @@ export function SkillRow({
             </FieldRow>
           ) : null}
 
-          <FieldRow label="Polishing">
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              value={draft.polishing ?? ""}
-              onValueChange={(v) => {
-                setDraft({
-                  ...draft,
-                  polishing: v ? (v as Polishing) : null,
-                });
-              }}
-              className="max-w-sm"
-            >
-              {POLISHING_OPTIONS.map((opt) => (
-                <ToggleGroupItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </FieldRow>
+          {/* Tone uses a label-above, full-width layout (not FieldRow) so the
+              preview cards have room to render. */}
+          <div className="space-y-2">
+            <Label className="text-sm text-muted-foreground">Tone</Label>
+            <TonePicker
+              preset={draft.preset}
+              value={draft.tone}
+              onChange={(tone) => setDraft({ ...draft, tone })}
+              idPrefix={`tone-${skill.id}`}
+            />
+          </div>
 
-          <FieldRow label="Tone">
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              value={draft.tone ?? ""}
-              onValueChange={(v) => {
-                setDraft({ ...draft, tone: v ? (v as Tone) : null });
-              }}
-              className="max-w-[16rem]"
-            >
-              {TONE_OPTIONS.map((opt) => (
-                <ToggleGroupItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </FieldRow>
-
-          {!skill.isDefault && (
+          {/* Apps / Websites are configurable only for user-created skills.
+              Built-in presets use the central foreground-app → preset
+              mapping (PRESET_APP_DEFAULTS), so their targets aren't editable
+              here — only their tone is. */}
+          {!skill.isBuiltIn && (
             <>
               <FieldRow
                 label="Apps"

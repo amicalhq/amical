@@ -10,8 +10,7 @@ import {
 } from "../../db/skills";
 
 const ModeSchema = z.enum(["preset", "custom"]);
-const PolishingSchema = z.enum(["none", "low", "normal", "high"]);
-const ToneSchema = z.enum(["casual", "formal"]);
+const ToneSchema = z.enum(["formal", "casual", "excited", "very_casual"]);
 
 // Preset is intentionally a free-form string to mirror the wire format —
 // the server defines presets and the desktop just passes the identifier.
@@ -23,7 +22,6 @@ const BaseFields = z.object({
   mode: ModeSchema,
   preset: PresetSchema.nullable().optional(),
   prompt: z.string().min(1).nullable().optional(),
-  polishing: PolishingSchema.nullable().optional(),
   tone: ToneSchema.nullable().optional(),
   // null means "reset to defaults" (the seeder/resolver merges JS
   // defaults at read time). Array means "user-customized list".
@@ -63,7 +61,6 @@ export const skillsRouter = createRouter({
       mode: input.mode,
       preset: input.preset ?? null,
       prompt: input.prompt ?? null,
-      polishing: input.polishing ?? null,
       tone: input.tone ?? null,
       // User-created skills always own their list — start with empty
       // arrays (not null), since there are no app-side defaults to

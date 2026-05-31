@@ -257,10 +257,6 @@ const descriptor = {
                       type: "StringList",
                       id: 3,
                     },
-                    clientRuleId: {
-                      type: "string",
-                      id: 4,
-                    },
                   },
                 },
                 StringList: {

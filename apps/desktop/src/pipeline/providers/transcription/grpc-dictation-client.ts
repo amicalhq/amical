@@ -42,7 +42,6 @@ export interface GrpcSkill {
   preset?: string;
   customPrompt?: string;
   args?: Record<string, string[]>;
-  clientRuleId?: string;
 }
 
 export interface GrpcDictationStreamOptions {
@@ -238,7 +237,6 @@ const buildSkill = (skill: GrpcSkill) => {
   }
   const out: Record<string, unknown> = {
     args,
-    clientRuleId: skill.clientRuleId ?? "",
   };
   if (skill.customPrompt !== undefined) {
     out.customPrompt = skill.customPrompt;
@@ -266,7 +264,6 @@ const summarizeSkillsForLog = (skills: GrpcSkill[]) =>
     preset: skill.customPrompt !== undefined ? undefined : (skill.preset ?? ""),
     customPromptLength: skill.customPrompt?.length,
     args: skill.args,
-    clientRuleId: skill.clientRuleId ?? "",
   }));
 
 const encodeAudioBatchRequest = (
