@@ -109,9 +109,9 @@ namespace WindowsHelper.Utils
                 var (current, depth) = queue.Dequeue();
                 if (depth >= PLACEHOLDER_DESCENDANT_MAX_DEPTH) continue;
 
-                var child = TryGetFirstChild(walker, current);
-                while (child != null && visited < PLACEHOLDER_DESCENDANT_MAX_NODES)
+                foreach (var child in EnumerateChildren(walker, current))
                 {
+                    if (visited >= PLACEHOLDER_DESCENDANT_MAX_NODES) break;
                     visited++;
 
                     if (HasClass(child, "placeholder") &&
@@ -124,8 +124,6 @@ namespace WindowsHelper.Utils
                     {
                         queue.Enqueue((child, depth + 1));
                     }
-
-                    child = TryGetNextSibling(walker, child);
                 }
             }
 
@@ -152,21 +150,30 @@ namespace WindowsHelper.Utils
 
                 if (depth >= PLACEHOLDER_TEXT_MAX_DEPTH) continue;
 
-                var child = TryGetFirstChild(walker, current);
-                while (child != null && visited + queue.Count < PLACEHOLDER_TEXT_MAX_NODES)
+                foreach (var child in EnumerateChildren(walker, current))
                 {
+                    if (visited + queue.Count >= PLACEHOLDER_TEXT_MAX_NODES) break;
                     queue.Enqueue((child, depth + 1));
-
-                    if (visited + queue.Count >= PLACEHOLDER_TEXT_MAX_NODES)
-                    {
-                        break;
-                    }
-
-                    child = TryGetNextSibling(walker, child);
                 }
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Yields an element's children (first child, then its siblings) using the
+        /// given walker. COM failures terminate enumeration via the Try* wrappers.
+        /// </summary>
+        private static IEnumerable<IUIAutomationElement> EnumerateChildren(
+            IUIAutomationTreeWalker walker,
+            IUIAutomationElement element)
+        {
+            var child = TryGetFirstChild(walker, element);
+            while (child != null)
+            {
+                yield return child;
+                child = TryGetNextSibling(walker, child);
+            }
         }
 
         private static IUIAutomationElement? TryGetFirstChild(
