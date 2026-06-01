@@ -51,6 +51,20 @@ let FIND_WEB_AREAS_MAX_DEPTH = 10
 /// Maximum elements to visit when finding WebAreas
 let FIND_WEB_AREAS_MAX_ELEMENTS = 200
 
+// MARK: - Placeholder Detection (web editors)
+
+/// Max BFS depth when searching for a `.placeholder` descendant marker
+let PLACEHOLDER_DESCENDANT_MAX_DEPTH = 3
+
+/// Max nodes to visit when searching for a `.placeholder` descendant marker
+let PLACEHOLDER_DESCENDANT_MAX_NODES = 32
+
+/// Max BFS depth when matching placeholder marker text to the leaked value
+let PLACEHOLDER_TEXT_MAX_DEPTH = 2
+
+/// Max nodes to visit when matching placeholder marker text
+let PLACEHOLDER_TEXT_MAX_NODES = 16
+
 // MARK: - Browser-Specific Depths
 
 /// Depth for Chromium browser URL search (deeper due to complex DOM)

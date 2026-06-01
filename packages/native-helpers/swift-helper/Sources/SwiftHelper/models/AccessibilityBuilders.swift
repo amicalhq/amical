@@ -72,6 +72,25 @@ class TextSelectionBuilder {
     var fullContentTruncated: Bool = false
 
     func build() -> TextSelection {
+        // When only placeholder text is showing (and this isn't a secure field),
+        // suppress all content so the leaked placeholder never reaches the
+        // insertion context consumed downstream. Mirrors the Windows helper.
+        if isPlaceholder && !isSecure {
+            return TextSelection(
+                extractionMethod: extractionMethod,
+                fullContent: "",
+                fullContentTruncated: false,
+                hasMultipleRanges: hasMultipleRanges,
+                isEditable: isEditable,
+                isPlaceholder: true,
+                isSecure: false,
+                postSelectionText: "",
+                preSelectionText: "",
+                selectedText: "",
+                selectionRange: SelectionRange(length: 0, location: 0)
+            )
+        }
+
         return TextSelection(
             extractionMethod: extractionMethod,
             fullContent: fullContent,
