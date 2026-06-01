@@ -180,9 +180,14 @@ class SelectionExtractor {
                 selectionLength = cfRange.length
             }
         }
-        // OR logic: check placeholder on BOTH elements
+        // OR logic: check placeholder on BOTH elements.
+        // focusedElement and extractionElement are the same element except on the
+        // WebArea / deep-text retry paths, so skip a redundant (and now BFS-backed)
+        // scan when they're identical — the OR result equals focusedIsPlaceholder there.
         let focusedIsPlaceholder = AXHelpers.isPlaceholderShowing(focusedElement, selectionLength: nil)
-        let extractionIsPlaceholder = AXHelpers.isPlaceholderShowing(extractionElement, selectionLength: selectionLength)
+        let extractionIsPlaceholder = CFEqual(focusedElement, extractionElement)
+            ? focusedIsPlaceholder
+            : AXHelpers.isPlaceholderShowing(extractionElement, selectionLength: selectionLength)
         builder.isPlaceholder = focusedIsPlaceholder || extractionIsPlaceholder
 
         // OR logic for isEditable: editable if EITHER element is editable

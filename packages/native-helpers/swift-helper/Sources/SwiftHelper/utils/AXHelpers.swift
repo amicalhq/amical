@@ -43,6 +43,21 @@ enum AXHelpers {
         return nil
     }
 
+    /// Get a string-array attribute value from an AXUIElement (e.g. AXDOMClassList)
+    static func getStringArrayAttribute(_ element: AXUIElement, _ attribute: String) -> [String]? {
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+
+        guard error == .success else { return nil }
+
+        if let array = value as? [String] {
+            return array
+        } else if let single = value as? String {
+            return [single]
+        }
+        return nil
+    }
+
     /// Get a boolean attribute value from an AXUIElement
     static func getBoolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool? {
         var value: CFTypeRef?
@@ -154,24 +169,132 @@ enum AXHelpers {
         return false
     }
 
-    /// Check if an element is showing placeholder text
+    /// Check if an element is showing placeholder text.
+    ///
+    /// Covers three cases:
+    ///   1. Native fields (and `aria-placeholder` contenteditables, which
+    ///      Chromium/WebKit surface through this attribute): a non-empty
+    ///      AXPlaceholderValue with an empty or matching AXValue.
+    ///   2. Quill editors: an empty editor carries the `ql-blank` DOM class while
+    ///      Chromium leaks the visible placeholder in as the AXValue.
+    ///   3. ProseMirror-style editors: the placeholder lives in a `.placeholder`
+    ///      descendant subtree whose text matches the leaked AXValue.
     static func isPlaceholderShowing(_ element: AXUIElement, selectionLength: Int?) -> Bool {
-        let placeholderValue = getStringAttribute(element, "AXPlaceholderValue")
+        // A real (non-zero) selection means the user has actual content selected,
+        // so this is never a placeholder-only state.
+        let selectionIsZeroOrUnknown = selectionLength == nil || selectionLength == 0
+        guard selectionIsZeroOrUnknown else { return false }
+
         let currentValue = getStringAttribute(element, kAXValueAttribute)
 
-        guard let placeholder = placeholderValue, !placeholder.isEmpty else {
-            return false
+        // 1. Native placeholder via AXPlaceholderValue (also covers
+        //    aria-placeholder, which Chromium/WebKit map to this attribute).
+        if let placeholder = getStringAttribute(element, "AXPlaceholderValue"), !placeholder.isEmpty {
+            let valueIsEmpty = currentValue == nil || currentValue!.isEmpty
+            let valueMatchesPlaceholder = currentValue == placeholder
+            if valueIsEmpty || valueMatchesPlaceholder {
+                return true
+            }
         }
 
-        // Placeholder is showing if:
-        // 1. Placeholder exists AND is non-empty
-        // 2. AND one of: currentValue is nil/empty OR matches placeholder
-        // 3. AND (selectionLength == 0 OR selectionLength is unknown)
-        let valueIsEmpty = currentValue == nil || currentValue!.isEmpty
-        let valueMatchesPlaceholder = currentValue == placeholder
-        let selectionIsZeroOrUnknown = selectionLength == nil || selectionLength == 0
+        // The remaining heuristics target web editors that leak their visible
+        // placeholder in as the AXValue, so they only apply when a value is present.
+        guard let value = currentValue, !value.isEmpty else { return false }
 
-        return (valueIsEmpty || valueMatchesPlaceholder) && selectionIsZeroOrUnknown
+        // 2. Quill marks an empty editor with the `ql-blank` class.
+        if hasDOMClass(element, "ql-blank") {
+            return true
+        }
+
+        // 3. ProseMirror & friends expose the placeholder as a `.placeholder`
+        //    descendant whose text matches the leaked value.
+        if matchesDescendantPlaceholder(element, value: value) {
+            return true
+        }
+
+        return false
+    }
+
+    // MARK: - Placeholder Detection Helpers
+
+    /// True if the element's AXDOMClassList contains the given class token.
+    private static func hasDOMClass(_ element: AXUIElement, _ className: String) -> Bool {
+        guard let classes = getStringArrayAttribute(element, "AXDOMClassList") else { return false }
+        return classes.contains { $0.caseInsensitiveCompare(className) == .orderedSame }
+    }
+
+    /// Bounded BFS for a `.placeholder` descendant whose text matches `value`.
+    /// Kept narrow (exact class token + matching text) to avoid false positives.
+    private static func matchesDescendantPlaceholder(_ element: AXUIElement, value: String) -> Bool {
+        let normalizedValue = normalizeForComparison(value)
+        guard !normalizedValue.isEmpty else { return false }
+
+        var queue: [(element: AXUIElement, depth: Int)] = [(element, 0)]
+        var visited = 0
+
+        while !queue.isEmpty && visited < PLACEHOLDER_DESCENDANT_MAX_NODES {
+            let (current, depth) = queue.removeFirst()
+            if depth >= PLACEHOLDER_DESCENDANT_MAX_DEPTH { continue }
+
+            for child in getChildren(current) {
+                if visited >= PLACEHOLDER_DESCENDANT_MAX_NODES { break }
+                visited += 1
+
+                if hasDOMClass(child, "placeholder") &&
+                    elementOrDescendantTextMatches(child, normalizedValue: normalizedValue) {
+                    return true
+                }
+
+                if depth + 1 < PLACEHOLDER_DESCENDANT_MAX_DEPTH {
+                    queue.append((child, depth + 1))
+                }
+            }
+        }
+
+        return false
+    }
+
+    /// Bounded BFS checking whether `element` or a near descendant has text equal
+    /// (ignoring case and whitespace) to `normalizedValue`.
+    private static func elementOrDescendantTextMatches(_ element: AXUIElement, normalizedValue: String) -> Bool {
+        var queue: [(element: AXUIElement, depth: Int)] = [(element, 0)]
+        var visited = 0
+
+        while !queue.isEmpty && visited < PLACEHOLDER_TEXT_MAX_NODES {
+            let (current, depth) = queue.removeFirst()
+            visited += 1
+
+            if let text = nodeText(current),
+                normalizeForComparison(text).caseInsensitiveCompare(normalizedValue) == .orderedSame {
+                return true
+            }
+
+            if depth >= PLACEHOLDER_TEXT_MAX_DEPTH { continue }
+
+            for child in getChildren(current) {
+                if visited + queue.count >= PLACEHOLDER_TEXT_MAX_NODES { break }
+                queue.append((child, depth + 1))
+            }
+        }
+
+        return false
+    }
+
+    /// Best-effort visible text for a node (AXValue → AXTitle → AXDescription).
+    private static func nodeText(_ element: AXUIElement) -> String? {
+        for attribute in [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute] {
+            if let text = getStringAttribute(element, attribute as String),
+                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return text
+            }
+        }
+        return nil
+    }
+
+    /// Collapse all whitespace runs to single spaces and trim, for tolerant
+    /// text comparison (mirrors the Windows NormalizeForComparison helper).
+    private static func normalizeForComparison(_ value: String) -> String {
+        return value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 
     /// Check if element is text-capable (can contain text selection)
