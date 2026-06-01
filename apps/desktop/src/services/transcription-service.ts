@@ -31,6 +31,7 @@ import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
+import { normalizeTranscriptionBoundaries } from "../utils/boundary-spacing";
 import { selectVocabularyHints } from "../utils/vocabulary-hints";
 import * as fs from "node:fs";
 import { PROVIDER_TYPES } from "../constants/provider-types";
@@ -493,18 +494,7 @@ export class TranscriptionService {
         this.transcriptionMutex.release();
       }
 
-      let rawTranscription = session.transcriptionResults.join("");
-
-      // Apply simple pre-formatting for local models (handles Whisper leading space artifact)
-      if (!usedCloudProvider) {
-        const preSelectionText =
-          session.context.sharedData.accessibilityContext?.context
-            ?.textSelection?.preSelectionText;
-        rawTranscription = this.preFormatLocalTranscription(
-          rawTranscription,
-          preSelectionText,
-        );
-      }
+      const rawTranscription = session.transcriptionResults.join("");
 
       logger.transcription.info("Finalizing streaming session", {
         sessionId,
@@ -528,7 +518,19 @@ export class TranscriptionService {
         formattingStyle:
           session.context.sharedData.userPreferences?.formattingStyle,
       });
-      const completeTranscription = formatResult.text;
+      // Final post-format pass: normalize boundary whitespace based on the
+      // insertion context. Runs after formatting + replacements so the emitted
+      // text (raw or formatted) is normalized, matching the cloud server's
+      // server-side handling. Cloud transcripts are already normalized there.
+      const textSelection =
+        session.context.sharedData.accessibilityContext?.context?.textSelection;
+      const completeTranscription = usedCloudProvider
+        ? formatResult.text
+        : normalizeTranscriptionBoundaries(
+            formatResult.text,
+            textSelection?.preSelectionText,
+            textSelection?.postSelectionText,
+          );
       const transcriptionWordCount = countWords(
         formatResult.textBeforeReplacements,
         detectedLanguage ?? requestedLanguage,
@@ -723,29 +725,6 @@ export class TranscriptionService {
     // TODO: Load formatter config from settings
 
     return context;
-  }
-
-  /**
-   * Simple pre-formatter for local Transcription models.
-   * Handles leading space based on insertion context to avoid double spaces or unwanted leading whitespace.
-   * Runs before LLM formatter (if configured) to ensure clean input.
-   */
-  private preFormatLocalTranscription(
-    transcription: string,
-    preSelectionText: string | null | undefined,
-  ): string {
-    if (!transcription.startsWith(" ")) {
-      return transcription;
-    }
-
-    // Strip leading space only if previous text exists and ends with ASCII whitespace.
-    // When there's no previous text (null/undefined/""), keep the leading space.
-    const shouldStripLeadingSpace =
-      preSelectionText !== undefined &&
-      preSelectionText !== null &&
-      (preSelectionText.length === 0 || /[ \t\r\n]$/.test(preSelectionText));
-
-    return shouldStripLeadingSpace ? transcription.slice(1) : transcription;
   }
 
   private async formatWithProvider(
@@ -1076,14 +1055,7 @@ export class TranscriptionService {
       this.transcriptionMutex.release();
     }
 
-    let rawTranscription = transcriptionResults.join("");
-
-    if (!usedCloudProvider) {
-      rawTranscription = this.preFormatLocalTranscription(
-        rawTranscription,
-        null,
-      );
-    }
+    const rawTranscription = transcriptionResults.join("");
 
     // Apply formatting and vocabulary replacements
     const formatResult = await this.applyFormattingAndReplacements({
@@ -1093,6 +1065,14 @@ export class TranscriptionService {
       replacements: context.sharedData.replacements,
       formattingStyle: context.sharedData.userPreferences?.formattingStyle,
     });
+
+    // Final post-format pass, mirroring finalizeSession. Re-transcription has no
+    // insertion context (accessibility context is not threaded through here), so
+    // normalize without surrounding text. Cloud transcripts are already
+    // normalized server-side.
+    const completeTranscription = usedCloudProvider
+      ? formatResult.text
+      : normalizeTranscriptionBoundaries(formatResult.text, undefined, undefined);
 
     const speechModelId = usedCloudProvider
       ? "amical-cloud"
@@ -1108,7 +1088,7 @@ export class TranscriptionService {
 
     // Update the existing record in-place
     await updateTranscription(transcriptionId, {
-      text: formatResult.text,
+      text: completeTranscription,
       detectedLanguage: this.sanitizeDetectedLanguage(detectedLanguage),
       speechModel: speechModelId,
       formattingModel: formatResult.formattingModel,
@@ -1152,7 +1132,7 @@ export class TranscriptionService {
         audioDurationSeconds && processingDuration
           ? audioDurationSeconds / (processingDuration / 1000)
           : undefined,
-      text_length: formatResult.text.length,
+      text_length: completeTranscription.length,
       word_count: nextWordCount,
       formatting_enabled: formatResult.formattingUsed,
       formatting_model: formatResult.formattingModel,
@@ -1166,11 +1146,11 @@ export class TranscriptionService {
     logger.transcription.info("Transcription retry completed", {
       transcriptionId,
       sessionId: retrySessionId,
-      textLength: formatResult.text.length,
+      textLength: completeTranscription.length,
       formattingUsed: formatResult.formattingUsed,
     });
 
-    return formatResult.text;
+    return completeTranscription;
   }
 
   /**

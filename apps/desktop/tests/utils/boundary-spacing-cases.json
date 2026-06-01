@@ -1,0 +1,315 @@
+[
+  {
+    "id": "latin-unknown-after",
+    "name": "Latin unknown after",
+    "note": "Space-separated script gets final boundary space.",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world",
+    "afterText": null,
+    "expected": "Hello world "
+  },
+  {
+    "id": "latin-punctuation-retained",
+    "name": "Latin punctuation retained",
+    "note": "Sentence punctuation plus one trailing space.",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world.",
+    "afterText": null,
+    "expected": "Hello world. "
+  },
+  {
+    "id": "cyrillic-unknown-after",
+    "name": "Cyrillic unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "Привет мир.",
+    "afterText": null,
+    "expected": "Привет мир. "
+  },
+  {
+    "id": "arabic-unknown-after",
+    "name": "Arabic unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "مرحبا بالعالم.",
+    "afterText": null,
+    "expected": "مرحبا بالعالم. "
+  },
+  {
+    "id": "devanagari-unknown-after",
+    "name": "Devanagari unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "नमस्ते दुनिया।",
+    "afterText": null,
+    "expected": "नमस्ते दुनिया। "
+  },
+  {
+    "id": "korean-unknown-after",
+    "name": "Korean unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "안녕하세요.",
+    "afterText": null,
+    "expected": "안녕하세요. "
+  },
+  {
+    "id": "chinese-unknown-after",
+    "name": "Chinese unknown after",
+    "note": "No default trailing space for CJK.",
+    "beforeText": "prefix ",
+    "formatterText": "你好世界。",
+    "afterText": null,
+    "expected": "你好世界。"
+  },
+  {
+    "id": "japanese-unknown-after",
+    "name": "Japanese unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "今日はよろしくお願いします。",
+    "afterText": null,
+    "expected": "今日はよろしくお願いします。"
+  },
+  {
+    "id": "thai-unknown-after",
+    "name": "Thai unknown after",
+    "note": "No default trailing space for Thai.",
+    "beforeText": "prefix ",
+    "formatterText": "สวัสดีครับ",
+    "afterText": null,
+    "expected": "สวัสดีครับ"
+  },
+  {
+    "id": "lao-unknown-after",
+    "name": "Lao unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "ສະບາຍດີ",
+    "afterText": null,
+    "expected": "ສະບາຍດີ"
+  },
+  {
+    "id": "khmer-unknown-after",
+    "name": "Khmer unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "សួស្តី",
+    "afterText": null,
+    "expected": "សួស្តី"
+  },
+  {
+    "id": "myanmar-unknown-after",
+    "name": "Myanmar unknown after",
+    "beforeText": "prefix ",
+    "formatterText": "မင်္ဂလာပါ",
+    "afterText": null,
+    "expected": "မင်္ဂလာပါ"
+  },
+  {
+    "id": "known-after-word",
+    "name": "Known after word",
+    "note": "Formatter omitted space before next word.",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world.",
+    "afterText": "Next sentence",
+    "expected": "Hello world. "
+  },
+  {
+    "id": "known-after-whitespace",
+    "name": "Known after whitespace",
+    "note": "Avoid double space.",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world.   ",
+    "afterText": " next sentence",
+    "expected": "Hello world."
+  },
+  {
+    "id": "known-after-ascii-punctuation",
+    "name": "Known after ASCII punctuation",
+    "note": "Avoid word-space-punctuation.",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world   ",
+    "afterText": ". next sentence",
+    "expected": "Hello world"
+  },
+  {
+    "id": "known-after-cjk-punctuation",
+    "name": "Known after CJK punctuation",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world   ",
+    "afterText": "。次の文",
+    "expected": "Hello world"
+  },
+  {
+    "id": "known-after-fullwidth-full-stop",
+    "name": "Known after fullwidth full stop",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world   ",
+    "afterText": "．次の文",
+    "expected": "Hello world"
+  },
+  {
+    "id": "known-after-halfwidth-ideographic-full-stop",
+    "name": "Known after halfwidth ideographic full stop",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world   ",
+    "afterText": "｡次の文",
+    "expected": "Hello world"
+  },
+  {
+    "id": "known-after-devanagari-danda",
+    "name": "Known after Devanagari danda",
+    "beforeText": "prefix ",
+    "formatterText": "नमस्ते",
+    "afterText": "।",
+    "expected": "नमस्ते"
+  },
+  {
+    "id": "known-after-devanagari-double-danda",
+    "name": "Known after Devanagari double danda",
+    "beforeText": "prefix ",
+    "formatterText": "नमस्ते",
+    "afterText": "॥",
+    "expected": "नमस्ते"
+  },
+  {
+    "id": "known-after-arabic-question-mark",
+    "name": "Known after Arabic question mark",
+    "beforeText": "prefix ",
+    "formatterText": "مرحبا",
+    "afterText": "؟",
+    "expected": "مرحبا"
+  },
+  {
+    "id": "known-after-arabic-semicolon",
+    "name": "Known after Arabic semicolon",
+    "beforeText": "prefix ",
+    "formatterText": "مرحبا",
+    "afterText": "؛",
+    "expected": "مرحبا"
+  },
+  {
+    "id": "known-after-arabic-comma",
+    "name": "Known after Arabic comma",
+    "beforeText": "prefix ",
+    "formatterText": "مرحبا",
+    "afterText": "،",
+    "expected": "مرحبا"
+  },
+  {
+    "id": "known-after-chinese",
+    "name": "Known after Chinese",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world   ",
+    "afterText": "世界",
+    "expected": "Hello world"
+  },
+  {
+    "id": "known-after-thai",
+    "name": "Known after Thai",
+    "beforeText": "prefix ",
+    "formatterText": "Hello world   ",
+    "afterText": "ครับ",
+    "expected": "Hello world"
+  },
+  {
+    "id": "known-after-hebrew-sof-pasuq",
+    "name": "Known after Hebrew sof pasuq",
+    "beforeText": "prefix ",
+    "formatterText": "שלום",
+    "afterText": "׃",
+    "expected": "שלום"
+  },
+  {
+    "id": "known-after-hebrew-geresh",
+    "name": "Known after Hebrew geresh",
+    "beforeText": "prefix ",
+    "formatterText": "שלום",
+    "afterText": "׳",
+    "expected": "שלום"
+  },
+  {
+    "id": "known-after-hebrew-gershayim",
+    "name": "Known after Hebrew gershayim",
+    "beforeText": "prefix ",
+    "formatterText": "שלום",
+    "afterText": "״",
+    "expected": "שלום"
+  },
+  {
+    "id": "known-after-hebrew-modern-period",
+    "name": "Known after Hebrew modern period",
+    "beforeText": "prefix ",
+    "formatterText": "שלום",
+    "afterText": ".",
+    "expected": "שלום"
+  },
+  {
+    "id": "devanagari-punctuation-before-next-word",
+    "name": "Devanagari punctuation before next word",
+    "beforeText": "prefix ",
+    "formatterText": "नमस्ते।",
+    "afterText": "अगला",
+    "expected": "नमस्ते। "
+  },
+  {
+    "id": "arabic-punctuation-before-next-word",
+    "name": "Arabic punctuation before next word",
+    "beforeText": "prefix ",
+    "formatterText": "مرحبا؟",
+    "afterText": "كيف",
+    "expected": "مرحبا؟ "
+  },
+  {
+    "id": "hebrew-punctuation-before-next-word",
+    "name": "Hebrew punctuation before next word",
+    "beforeText": "prefix ",
+    "formatterText": "שלום׃",
+    "afterText": "הבא",
+    "expected": "שלום׃ "
+  },
+  {
+    "id": "missing-leading-space",
+    "name": "Missing leading space",
+    "note": "Known beforeText and formatter omitted leading space.",
+    "beforeText": "hello",
+    "formatterText": "world",
+    "afterText": "",
+    "expected": " world "
+  },
+  {
+    "id": "known-before-whitespace",
+    "name": "Known before whitespace",
+    "beforeText": "hello ",
+    "formatterText": " world",
+    "afterText": "",
+    "expected": "world "
+  },
+  {
+    "id": "unknown-before-preserves-leading",
+    "name": "Unknown before preserves leading",
+    "beforeText": null,
+    "formatterText": " Hello world.",
+    "afterText": null,
+    "expected": " Hello world. "
+  },
+  {
+    "id": "known-empty-before-strips-leading",
+    "name": "Known empty before strips leading",
+    "beforeText": "",
+    "formatterText": " Hello world.",
+    "afterText": null,
+    "expected": "Hello world. "
+  },
+  {
+    "id": "cjk-boundaries",
+    "name": "CJK boundaries",
+    "note": "Strip accidental spaces around no-space-script boundaries.",
+    "beforeText": "你好",
+    "formatterText": " 世界 ",
+    "afterText": "今天",
+    "expected": "世界"
+  },
+  {
+    "id": "before-punctuation",
+    "name": "Before punctuation",
+    "beforeText": "prefix ",
+    "formatterText": "Hello ",
+    "afterText": ", world",
+    "expected": "Hello"
+  }
+]
