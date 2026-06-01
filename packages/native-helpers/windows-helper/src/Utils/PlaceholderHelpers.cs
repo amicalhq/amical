@@ -34,6 +34,13 @@ namespace WindowsHelper.Utils
                     return true;
                 }
 
+                // Quill editors mark an empty editor with ql-blank. Chromium exposes
+                // the visible placeholder as ValuePattern/TextPattern text in that state.
+                if (HasClass(element, "ql-blank"))
+                {
+                    return true;
+                }
+
                 return false;
             }
             catch
@@ -66,6 +73,28 @@ namespace WindowsHelper.Utils
                 {
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        private static bool HasClass(IUIAutomationElement element, string className)
+        {
+            try
+            {
+                var currentClassName = element.CurrentClassName;
+                if (string.IsNullOrWhiteSpace(currentClassName)) return false;
+
+                foreach (var token in currentClassName.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (token.Equals(className, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
             }
 
             return false;
