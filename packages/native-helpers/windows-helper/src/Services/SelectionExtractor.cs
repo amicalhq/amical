@@ -401,28 +401,7 @@ namespace WindowsHelper.Services
         /// </summary>
         private static bool IsPlaceholderShowing(IUIAutomationElement element)
         {
-            if (element == null) return false;
-
-            try
-            {
-                // Check if value is empty but name has content (common placeholder pattern)
-                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
-                var valuePattern = pattern as IUIAutomationValuePattern;
-                if (valuePattern != null)
-                {
-                    var value = valuePattern.CurrentValue;
-                    if (string.IsNullOrEmpty(value))
-                    {
-                        var name = element.CurrentName;
-                        return !string.IsNullOrEmpty(name);
-                    }
-                }
-            }
-            catch
-            {
-            }
-
-            return false;
+            return PlaceholderHelpers.IsPlaceholderShowing(element);
         }
 
         /// <summary>

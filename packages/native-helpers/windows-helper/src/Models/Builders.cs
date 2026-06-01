@@ -28,6 +28,28 @@ namespace WindowsHelper.Models
         /// </summary>
         public TextSelection Build()
         {
+            if (IsPlaceholder && !IsSecure)
+            {
+                return new TextSelection
+                {
+                    ExtractionMethod = ExtractionMethod,
+                    FullContent = "",
+                    FullContentTruncated = false,
+                    HasMultipleRanges = HasMultipleRanges,
+                    IsEditable = IsEditable,
+                    IsPlaceholder = true,
+                    IsSecure = false,
+                    PostSelectionText = "",
+                    PreSelectionText = "",
+                    SelectedText = "",
+                    SelectionRange = new SelectionRange
+                    {
+                        Location = 0,
+                        Length = 0
+                    }
+                };
+            }
+
             return new TextSelection
             {
                 ExtractionMethod = ExtractionMethod,

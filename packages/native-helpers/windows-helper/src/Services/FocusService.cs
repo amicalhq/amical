@@ -259,24 +259,7 @@ namespace WindowsHelper.Services
         /// </summary>
         private static bool IsPlaceholderShowing(IUIAutomationElement element)
         {
-            if (element == null) return false;
-
-            try
-            {
-                var pattern = element.GetCurrentPattern(Constants.UIA_ValuePatternId);
-                var valuePattern = pattern as IUIAutomationValuePattern;
-                if (valuePattern != null)
-                {
-                    var value = valuePattern.CurrentValue;
-                    if (string.IsNullOrEmpty(value))
-                    {
-                        return !string.IsNullOrEmpty(element.CurrentName);
-                    }
-                }
-            }
-            catch { }
-
-            return false;
+            return PlaceholderHelpers.IsPlaceholderShowing(element);
         }
 
         /// <summary>

@@ -82,5 +82,11 @@ namespace WindowsHelper.Utils
 
         public const int UIA_ValuePatternId = 10002;
         public const int UIA_TextPatternId = 10014;
+
+        // =============================================================================
+        // UIA Property IDs
+        // =============================================================================
+
+        public const int UIA_AriaPropertiesPropertyId = 30102;
     }
 }
