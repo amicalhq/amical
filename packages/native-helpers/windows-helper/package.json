@@ -3,8 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "pnpm --filter @amical/types generate:all && dotnet publish -c Release -r win-x64 --self-contained true -o bin",
-    "build:native": "dotnet publish -c Release -r win-x64 --self-contained true -o bin",
+    "clean:bin": "node -e \"require('fs').rmSync('bin', { recursive: true, force: true })\"",
+    "clean:publish-artifacts": "node -e \"const fs=require('fs'); for (const dir of ['bin/Debug', 'bin/Release']) fs.rmSync(dir, { recursive: true, force: true })\"",
+    "build": "pnpm --filter @amical/types generate:all && pnpm clean:bin && dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o bin && pnpm clean:publish-artifacts",
+    "build:native": "pnpm clean:bin && dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o bin && pnpm clean:publish-artifacts",
     "clean": "rm -rf bin obj"
   },
   "os": [

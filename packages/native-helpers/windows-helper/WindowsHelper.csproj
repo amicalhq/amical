@@ -6,11 +6,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>true</PublishReadyToRun>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
     <AssemblyName>WindowsHelper</AssemblyName>
     <RootNamespace>WindowsHelper</RootNamespace>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -21,7 +20,7 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
   </ItemGroup>
-  
+
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(RuntimeIdentifier)' == 'win-x64'">
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
   </ItemGroup>
