@@ -227,7 +227,6 @@ export class ShortcutManager extends EventEmitter {
       return;
     }
     this.addActiveKey(keyCode);
-    this.checkShortcuts();
   }
 
   private handleKeyUp(payload: KeyEventPayload) {
@@ -236,17 +235,22 @@ export class ShortcutManager extends EventEmitter {
       return;
     }
     this.removeActiveKey(keyCode);
-    this.checkShortcuts();
   }
 
   private addActiveKey(keyCode: number) {
+    const wasActive = this.activeKeys.has(keyCode);
     this.activeKeys.set(keyCode, { keyCode, timestamp: Date.now() });
-    this.emitActiveKeysChanged();
+    if (!wasActive) {
+      this.emitActiveKeysChanged();
+      this.checkShortcuts();
+    }
   }
 
   private removeActiveKey(keyCode: number) {
-    this.activeKeys.delete(keyCode);
-    this.emitActiveKeysChanged();
+    if (this.activeKeys.delete(keyCode)) {
+      this.emitActiveKeysChanged();
+      this.checkShortcuts();
+    }
   }
 
   private removeActiveKeys(keyCodes: number[]) {
