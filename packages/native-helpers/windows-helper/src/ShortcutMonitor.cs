@@ -135,6 +135,12 @@ namespace WindowsHelper
                     {
                         var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
+                        // Skip our own injected events (tagged dwExtraInfo) to avoid feedback loops.
+                        if (kbStruct.dwExtraInfo == KeycodeConstants.SelfInjectedEventTag)
+                        {
+                            return CallNextHookEx(hookId, nCode, wParam, lParam);
+                        }
+
                         var vkCode = (int)kbStruct.vkCode;
                         var isModifier = IsModifierKey(kbStruct.vkCode);
 
@@ -142,13 +148,19 @@ namespace WindowsHelper
                         {
                             var wasDown = ShortcutManager.Instance.IsModifierPressed(vkCode);
                             var isDown = isKeyDown;
+                            var isShortcutKey = ShortcutManager.Instance.IsShortcutKey(vkCode);
 
                             if (wasDown == isDown)
                             {
+                                if (isShortcutKey)
+                                {
+                                    EmitKeyEvent(isDown ? HelperEventType.KeyDown : HelperEventType.KeyUp, vkCode);
+                                }
+
                                 return CallNextHookEx(hookId, nCode, wParam, lParam);
                             }
 
-                            if (ShortcutManager.Instance.IsShortcutKey(vkCode))
+                            if (isShortcutKey)
                             {
                                 var resyncResult = ShortcutManager.Instance.ValidateAndResyncKeyState(vkCode);
                                 EmitResyncKeyEvents(resyncResult, vkCode);

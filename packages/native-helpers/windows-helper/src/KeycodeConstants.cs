@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace WindowsHelper
@@ -27,5 +28,14 @@ namespace WindowsHelper
         };
 
         internal static readonly HashSet<int> ModifierKeyCodeSet = new(ModifierKeyCodes);
+
+        /// <summary>
+        /// Sentinel stamped into dwExtraInfo on keyboard events the helper injects itself
+        /// (the Ctrl+V paste chord and modifier-masking releases in AccessibilityService).
+        /// The low-level keyboard hook skips any event carrying this tag, so our own
+        /// synthetic input never feeds back into shortcut matching or pressed-key tracking.
+        /// Mirrors the macOS helper's SELF_GENERATED_EVENT_TAG (0x414D4943414C5048 = "AMICALPH").
+        /// </summary>
+        internal static readonly IntPtr SelfInjectedEventTag = unchecked((IntPtr)0x414D4943414C5048L);
     }
 }

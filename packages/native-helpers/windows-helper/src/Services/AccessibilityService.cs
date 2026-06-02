@@ -149,7 +149,7 @@ namespace WindowsHelper.Services
                         wScan = 0,
                         dwFlags = flags,
                         time = 0,
-                        dwExtraInfo = IntPtr.Zero,
+                        dwExtraInfo = KeycodeConstants.SelfInjectedEventTag,
                     }
                 }
             };
