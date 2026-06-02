@@ -3,6 +3,10 @@ name: Release
 on:
   pull_request:
   push:
+    branches:
+      # TEMP: build/sign a test release off this branch (does not publish a
+      # GitHub Release — that job is gated to tags/dispatch). Drop before merge.
+      - release-test/win-shortcuts
     tags:
       - "v*"
   workflow_dispatch:
