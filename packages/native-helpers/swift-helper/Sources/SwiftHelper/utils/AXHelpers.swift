@@ -521,7 +521,9 @@ enum AXHelpers {
         guard let bundleId = bundleId, appsRequiringManualAX.contains(bundleId) else { return }
 
         AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-        AXUIElementSetAttributeValue(application, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        // NOTE: intentionally NOT setting "AXEnhancedUserInterface" — the heavy legacy AppKit
+        // flag destabilizes Chromium/Electron on heavy pages; AXManualAccessibility alone is
+        // enough. Re-adding it was linked to a Chrome main-thread stall report (2026-06).
     }
 
     // MARK: - Permission Helpers
