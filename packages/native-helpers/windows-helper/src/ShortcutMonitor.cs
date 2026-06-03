@@ -152,6 +152,9 @@ namespace WindowsHelper
 
                             if (wasDown == isDown)
                             {
+                                // No modifier state change (e.g. key auto-repeat): re-emit shortcut
+                                // keys so the main process keeps the held key tracked, then bail
+                                // before the resync/SetModifierKey path below.
                                 if (isShortcutKey)
                                 {
                                     EmitKeyEvent(isDown ? HelperEventType.KeyDown : HelperEventType.KeyUp, vkCode);
@@ -168,6 +171,38 @@ namespace WindowsHelper
 
                             ShortcutManager.Instance.SetModifierKey(vkCode, isDown);
                             EmitKeyEvent(isDown ? HelperEventType.KeyDown : HelperEventType.KeyUp, vkCode);
+
+                            // The ShouldConsumeKey/arm path below runs only for non-modifier keys,
+                            // so a shortcut completed by a modifier key-down (a modifier-only combo
+                            // like the Ctrl+Win PTT, or a regular-key combo finished by the modifier
+                            // such as Alt last in Alt+Shift+Z) never gets armed there. Arm here, on
+                            // the modifier key-down that completes the chord, so the eventual lone
+                            // Alt/Win release is still masked.
+                            if (isKeyDown)
+                            {
+                                ShortcutManager.Instance.ArmIfShortcutExactlyHeld();
+                            }
+
+                            // Mask a risky Alt/Win release: inject [LCtrl down, mod up, LCtrl up]
+                            // so the OS never sees a lone Alt/Win release (menu bar / Start menu)
+                            // that steals focus, then suppress the real release. The desktop has
+                            // already received the KeyUp above, so dictation-stop still fires.
+                            // ConsumeMaskOnRelease disarms the key. Neither SetModifierKey nor the
+                            // ValidateAndResyncKeyState scrub above can disarm the in-flight key first
+                            // (the scrub excludes excludingKeyCode), so checking it here is race-free.
+                            if (isKeyUp && ShortcutManager.Instance.ConsumeMaskOnRelease(vkCode))
+                            {
+                                var injected = Utils.KeyboardInjector.InjectMaskedRelease(vkCode);
+                                LogToStderr($"[mask] masked modifier release vk=0x{vkCode:X2} injected={injected}");
+
+                                // Only swallow the real release once the masked release is on its
+                                // way. If SendInput failed, let the physical key-up through so the
+                                // modifier can't get stuck — a brief focus steal beats a stuck key.
+                                if (injected)
+                                {
+                                    return (IntPtr)1;
+                                }
+                            }
                         }
                         else
                         {
@@ -196,6 +231,9 @@ namespace WindowsHelper
                             // Check if this key event should be consumed (prevent default behavior)
                             if (ShortcutManager.Instance.ShouldConsumeKey(vkCode))
                             {
+                                // A configured shortcut matched: arm its held Alt/Win keys so
+                                // their release is masked (prevents menu bar / Start menu steal).
+                                ShortcutManager.Instance.ArmMaskableModifierKeys();
                                 // Consume - prevent default behavior (e.g., cursor movement for arrow keys)
                                 return (IntPtr)1;
                             }

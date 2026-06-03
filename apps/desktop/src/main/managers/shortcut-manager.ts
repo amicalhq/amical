@@ -45,6 +45,12 @@ export class ShortcutManager extends EventEmitter {
     newNote: false,
   };
 
+  // PTT activates on an exact match but stays active while every PTT key remains
+  // held (subset). This hysteresis keeps a transient extra key — e.g. the Space
+  // that upgrades PTT→toggle — from dropping and re-asserting PTT, which would
+  // fire a phantom press and stop a hands-free session.
+  private pttActive = false;
+
   constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
     super();
     this.settingsService = settingsService;
@@ -186,6 +192,7 @@ export class ShortcutManager extends EventEmitter {
       this.exactMatchState.toggleRecording = false;
       this.exactMatchState.pasteLastTranscript = false;
       this.exactMatchState.newNote = false;
+      this.pttActive = false;
     }
     log.info("Shortcut recording state changed", { isRecording });
   }
@@ -242,14 +249,14 @@ export class ShortcutManager extends EventEmitter {
     this.activeKeys.set(keyCode, { keyCode, timestamp: Date.now() });
     if (!wasActive) {
       this.emitActiveKeysChanged();
-      this.checkShortcuts();
+      this.checkShortcuts(true);
     }
   }
 
   private removeActiveKey(keyCode: number) {
     if (this.activeKeys.delete(keyCode)) {
       this.emitActiveKeysChanged();
-      this.checkShortcuts();
+      this.checkShortcuts(false);
     }
   }
 
@@ -262,7 +269,7 @@ export class ShortcutManager extends EventEmitter {
     }
     if (changed) {
       this.emitActiveKeysChanged();
-      this.checkShortcuts();
+      this.checkShortcuts(false);
     }
   }
 
@@ -274,93 +281,98 @@ export class ShortcutManager extends EventEmitter {
     return Array.from(this.activeKeys.keys());
   }
 
-  private checkShortcuts() {
+  private checkShortcuts(isKeyDown: boolean) {
     // Skip shortcut detection when recording shortcuts
     if (this.isRecordingShortcut) {
       return;
     }
 
+    // Snapshot the active keys once; every matcher below reads the same set.
+    const activeKeys = this.getActiveKeys();
+
     // Check PTT shortcut
-    const isPTTPressed = this.isPTTShortcutPressed();
+    const isPTTPressed = this.isPTTShortcutPressed(isKeyDown, activeKeys);
     this.emit("ptt-state-changed", isPTTPressed);
 
+    // Toggle/paste/newNote are edge shortcuts (one-shot on the exact-match rising
+    // edge); they deliberately don't take isKeyDown — a stray edge there is rare and
+    // harmless, unlike PTT where a phantom press stops an active session.
+
     // Check toggle recording shortcut
-    const toggleMatch = this.isToggleRecordingShortcutPressed();
+    const toggleMatch = this.isToggleRecordingShortcutPressed(activeKeys);
     if (toggleMatch && !this.exactMatchState.toggleRecording) {
       this.emit("toggle-recording-triggered");
     }
     this.exactMatchState.toggleRecording = toggleMatch;
 
     // Check paste last transcript shortcut
-    const pasteMatch = this.isPasteLastTranscriptShortcutPressed();
+    const pasteMatch = this.isPasteLastTranscriptShortcutPressed(activeKeys);
     if (pasteMatch && !this.exactMatchState.pasteLastTranscript) {
       this.emit("paste-last-transcript-triggered");
     }
     this.exactMatchState.pasteLastTranscript = pasteMatch;
 
     // Check open notes window shortcut
-    const newNoteMatch = this.isNewNoteShortcutPressed();
+    const newNoteMatch = this.isNewNoteShortcutPressed(activeKeys);
     if (newNoteMatch && !this.exactMatchState.newNote) {
       this.emit("open-notes-window-triggered");
     }
     this.exactMatchState.newNote = newNoteMatch;
   }
 
-  private isPTTShortcutPressed(): boolean {
+  // True when every shortcut key is currently held (extra keys allowed).
+  private allHeld(keys: number[], activeKeys: number[]): boolean {
+    return keys.every((keyCode) => activeKeys.includes(keyCode));
+  }
+
+  // True when exactly the shortcut keys are held — no extra keys.
+  private isExactMatch(keys: number[], activeKeys: number[]): boolean {
+    return keys.length === activeKeys.length && this.allHeld(keys, activeKeys);
+  }
+
+  private isPTTShortcutPressed(isKeyDown: boolean, activeKeys: number[]): boolean {
     const pttKeys = this.shortcuts.pushToTalk;
     if (!pttKeys || pttKeys.length === 0) {
+      this.pttActive = false;
       return false;
     }
 
-    const activeKeysList = this.getActiveKeys();
+    // Start only on an exact match and only on a key-down: never latch active on a
+    // key-up that collapses a larger chord down to the PTT set (e.g. releasing Space
+    // after Fn+Space started hands-free), which would fire a phantom press and stop
+    // the session. Sustain (the other branch) is explained on pttActive.
+    this.pttActive = this.pttActive
+      ? this.allHeld(pttKeys, activeKeys)
+      : isKeyDown && this.isExactMatch(pttKeys, activeKeys);
 
-    // PTT: subset match - all PTT keys must be pressed (can have extra keys)
-    return pttKeys.every((keyCode) => activeKeysList.includes(keyCode));
+    return this.pttActive;
   }
 
-  private isToggleRecordingShortcutPressed(): boolean {
+  private isToggleRecordingShortcutPressed(activeKeys: number[]): boolean {
     const toggleKeys = this.shortcuts.toggleRecording;
     if (!toggleKeys || toggleKeys.length === 0) {
       return false;
     }
 
-    const activeKeysList = this.getActiveKeys();
-
-    // Toggle: exact match - only these keys pressed, no extra keys
-    return (
-      toggleKeys.length === activeKeysList.length &&
-      toggleKeys.every((keyCode) => activeKeysList.includes(keyCode))
-    );
+    return this.isExactMatch(toggleKeys, activeKeys);
   }
 
-  private isPasteLastTranscriptShortcutPressed(): boolean {
+  private isPasteLastTranscriptShortcutPressed(activeKeys: number[]): boolean {
     const pasteKeys = this.shortcuts.pasteLastTranscript;
     if (!pasteKeys || pasteKeys.length === 0) {
       return false;
     }
 
-    const activeKeysList = this.getActiveKeys();
-
-    // Exact match - only these keys pressed, no extra keys
-    return (
-      pasteKeys.length === activeKeysList.length &&
-      pasteKeys.every((keyCode) => activeKeysList.includes(keyCode))
-    );
+    return this.isExactMatch(pasteKeys, activeKeys);
   }
 
-  private isNewNoteShortcutPressed(): boolean {
+  private isNewNoteShortcutPressed(activeKeys: number[]): boolean {
     const newNoteKeys = this.shortcuts.newNote;
     if (!newNoteKeys || newNoteKeys.length === 0) {
       return false;
     }
 
-    const activeKeysList = this.getActiveKeys();
-
-    // Exact match - only these keys pressed, no extra keys
-    return (
-      newNoteKeys.length === activeKeysList.length &&
-      newNoteKeys.every((keyCode) => activeKeysList.includes(keyCode))
-    );
+    return this.isExactMatch(newNoteKeys, activeKeys);
   }
 
   private getKeycodeFromPayload(payload: KeyEventPayload): number {

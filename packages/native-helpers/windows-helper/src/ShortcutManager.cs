@@ -19,12 +19,23 @@ namespace WindowsHelper
         private static readonly Lazy<ShortcutManager> _instance = new(() => new ShortcutManager());
         public static ShortcutManager Instance => _instance.Value;
 
+        // Modifiers whose lone release steals focus: Alt → menu bar, Win → Start menu.
+        // Ctrl/Shift are intentionally excluded — their lone release is harmless.
+        private static readonly HashSet<int> MaskableModifierVks = new()
+        {
+            KeycodeConstants.VkLMenu,
+            KeycodeConstants.VkRMenu,
+            KeycodeConstants.VkLWin,
+            KeycodeConstants.VkRWin,
+        };
+
         private readonly object _lock = new();
         private int[] _pushToTalkKeys = Array.Empty<int>();
         private int[] _toggleRecordingKeys = Array.Empty<int>();
         private int[] _pasteLastTranscriptKeys = Array.Empty<int>();
         private int[] _newNoteKeys = Array.Empty<int>();
         private HashSet<int> _shortcutKeysSet = new();
+        private readonly HashSet<int> _activatedMaskKeys = new();
 
         // Track currently pressed modifier keys (left/right distinct).
         private readonly HashSet<int> _pressedModifierKeys = new();
@@ -62,6 +73,7 @@ namespace WindowsHelper
                     .Concat(_toggleRecordingKeys)
                     .Concat(_pasteLastTranscriptKeys)
                     .Concat(_newNoteKeys));
+                _activatedMaskKeys.Clear();
                 LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}], Paste: [{string.Join(", ", _pasteLastTranscriptKeys)}], NewNote: [{string.Join(", ", _newNoteKeys)}]");
             }
         }
@@ -74,6 +86,88 @@ namespace WindowsHelper
             lock (_lock)
             {
                 return _shortcutKeysSet.Contains(keyCode);
+            }
+        }
+
+        /// <summary>
+        /// Arm the currently-held Alt/Win keys for release-masking. Called from the hook
+        /// when a configured shortcut has matched (ShouldConsumeKey returned true): any
+        /// Alt/Win key held at that moment is part of that shortcut, so its eventual
+        /// release should be masked rather than reach the OS as a lone modifier.
+        /// </summary>
+        public void ArmMaskableModifierKeys()
+        {
+            lock (_lock)
+            {
+                ArmHeldMaskableModifiers();
+            }
+        }
+
+        /// <summary>
+        /// Arm the held maskable Alt/Win keys when the full set of currently-held keys
+        /// (modifiers + tracked regular keys) exactly matches a configured shortcut. Called
+        /// from the hook on a key-down that may complete a shortcut.
+        ///
+        /// This covers what the non-modifier ShouldConsumeKey/ArmMaskableModifierKeys path
+        /// misses: a shortcut completed by pressing a modifier last (e.g. Z, Shift, then Alt
+        /// for the default Alt+Shift+Z paste), plus modifier-only shortcuts (e.g. the Ctrl+Win
+        /// PTT) that never reach that path at all. Matches the held set exactly, mirroring the
+        /// desktop matcher (apps/desktop ShortcutManager), which only starts a shortcut from an
+        /// exact key set — so masking covers a real gesture but not an extra-key combo like
+        /// Shift+Ctrl+Win that never activates the shortcut. Arming is sticky, so it survives
+        /// the rest of the hold.
+        /// </summary>
+        public void ArmIfShortcutExactlyHeld()
+        {
+            lock (_lock)
+            {
+                // Nothing to mask unless a maskable modifier is currently held.
+                if (!_pressedModifierKeys.Overlaps(MaskableModifierVks))
+                {
+                    return;
+                }
+
+                var heldKeys = new HashSet<int>(_pressedModifierKeys);
+                heldKeys.UnionWith(_pressedRegularKeys);
+
+                if (IsExactlyHeld(_pushToTalkKeys, heldKeys)
+                    || IsExactlyHeld(_toggleRecordingKeys, heldKeys)
+                    || IsExactlyHeld(_pasteLastTranscriptKeys, heldKeys)
+                    || IsExactlyHeld(_newNoteKeys, heldKeys))
+                {
+                    ArmHeldMaskableModifiers();
+                }
+            }
+        }
+
+        // Add every currently-held maskable modifier to the armed set. Caller holds _lock.
+        private void ArmHeldMaskableModifiers()
+        {
+            foreach (var vk in _pressedModifierKeys)
+            {
+                if (MaskableModifierVks.Contains(vk))
+                {
+                    _activatedMaskKeys.Add(vk);
+                }
+            }
+        }
+
+        // True if the shortcut is non-empty and exactly equals the held key set.
+        private static bool IsExactlyHeld(int[] shortcutKeys, HashSet<int> heldKeys)
+        {
+            return shortcutKeys.Length > 0 && heldKeys.SetEquals(shortcutKeys);
+        }
+
+        /// <summary>
+        /// True (once) if this key was armed for masking; disarms it as a side effect so
+        /// each armed release is masked exactly once. Called from the hook on a modifier
+        /// key-up.
+        /// </summary>
+        public bool ConsumeMaskOnRelease(int vkCode)
+        {
+            lock (_lock)
+            {
+                return _activatedMaskKeys.Remove(vkCode);
             }
         }
 
@@ -231,6 +325,9 @@ namespace WindowsHelper
                 {
                     LogToStderr($"Resync: Regular keys were stuck, cleared: [{string.Join(", ", result.ClearedRegularKeys)}]");
                 }
+
+                _activatedMaskKeys.RemoveWhere(vk =>
+                    vk != excludingKeyCode && !IsKeyActuallyPressed(vk));
             }
 
             return result;
