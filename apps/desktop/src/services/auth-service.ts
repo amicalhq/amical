@@ -256,6 +256,7 @@ export class AuthService extends EventEmitter {
         headers: {
           "Content-Type": "application/json",
           "User-Agent": getUserAgent(),
+          ...getAmicalClientHeaders(),
         },
         body: JSON.stringify(body),
       });
@@ -469,6 +470,7 @@ export class AuthService extends EventEmitter {
         headers: {
           "Content-Type": "application/json",
           "User-Agent": getUserAgent(),
+          ...getAmicalClientHeaders(),
         },
         body: JSON.stringify(body),
       });

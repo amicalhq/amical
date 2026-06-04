@@ -1,13 +1,14 @@
 import { app, autoUpdater, net } from "electron";
 import { EventEmitter } from "events";
 import { logger } from "../logger";
-import { getUserAgent } from "../../utils/http-client";
+import { getAmicalClientHeaders, getUserAgent } from "../../utils/http-client";
 import type { SettingsService } from "../../services/settings-service";
 import type { TelemetryService } from "../../services/telemetry-service";
 import { computeUpdatePrompt, type UpdatePrompt } from "./update-prompt";
 
 const UPDATE_SERVER = "https://update.amical.ai";
-const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
+const CHECK_INTERVAL_AFTER_DOWNLOAD_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 export type UpdateAction = "none" | "silent" | "prompt" | "force";
 
@@ -110,10 +111,7 @@ export class AutoUpdaterService extends EventEmitter {
     const initialDelay = process.platform === "darwin" ? 10_000 : 60_000;
     setTimeout(() => {
       this.checkForUpdates();
-      this.checkInterval = setInterval(
-        () => this.checkForUpdates(),
-        CHECK_INTERVAL_MS,
-      );
+      this.scheduleAutomaticChecks();
     }, initialDelay);
 
     logger.updater.info("Auto-updater initialized", {
@@ -132,6 +130,21 @@ export class AutoUpdaterService extends EventEmitter {
     } catch (error) {
       logger.updater.error("Failed to set feed URL", { error });
     }
+  }
+
+  private scheduleAutomaticChecks(): void {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+    }
+
+    const intervalMs = this.updateDownloaded
+      ? CHECK_INTERVAL_AFTER_DOWNLOAD_MS
+      : CHECK_INTERVAL_MS;
+    this.checkInterval = setInterval(() => this.checkForUpdates(), intervalMs);
+    logger.updater.info("Automatic update checks scheduled", {
+      intervalMs,
+      updateDownloaded: this.updateDownloaded,
+    });
   }
 
   private registerEventHandlers(): void {
@@ -185,6 +198,7 @@ export class AutoUpdaterService extends EventEmitter {
         this.effectiveVersion = releaseName;
         this.setFeedURL(this.currentChannel);
       }
+      this.scheduleAutomaticChecks();
       this.emit("update-downloaded", { releaseNotes, releaseName });
       this.emit("update-prompt-changed");
     });
@@ -222,7 +236,10 @@ export class AutoUpdaterService extends EventEmitter {
 
     try {
       const response = await net.fetch(url, {
-        headers: { "User-Agent": getUserAgent() },
+        headers: {
+          "User-Agent": getUserAgent(),
+          ...getAmicalClientHeaders(),
+        },
       });
 
       if (!response.ok) {
