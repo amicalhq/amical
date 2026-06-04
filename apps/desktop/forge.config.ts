@@ -340,20 +340,22 @@ const config: ForgeConfig = {
       }
     },
     postPackage: async (_forgeConfig, options) => {
-      const { outputPaths, platform } = options;
+      const { outputPaths, platform, arch } = options;
       // =====================================================================
-      // Bundle VC++ Runtime DLLs for Windows
+      // Bundle Windows DLLs for ONNX Runtime
       // =====================================================================
       //
       // WHY: onnxruntime-node (used by VAD service for voice activity detection)
-      // depends on Visual C++ runtime DLLs. These are NOT bundled by onnxruntime-node
-      // and are expected to be installed on the user's system.
+      // depends on onnxruntime.dll and Visual C++ runtime DLLs.
       //
-      // PROBLEM: Some Windows machines don't have VC++ Redistributable installed,
-      // causing "DLL initialization routine failed" errors on app startup.
+      // PROBLEM: Some machines have an older C:\Windows\System32\onnxruntime.dll.
+      // If Windows finds that before our bundled copy, the native binding fails with
+      // a version mismatch. Some machines also don't have VC++ Redistributable
+      // installed, causing "DLL initialization routine failed" errors on app startup.
       //
-      // SOLUTION: Bundle the required DLLs from the build machine's System32.
-      // Windows DLL search order finds them in the app directory first.
+      // SOLUTION: Copy the ONNX Runtime DLLs from our package and the required VC++
+      // runtime DLLs from the build machine's System32 into the app directory.
+      // Windows DLL search order finds the app directory before System32.
       //
       // REQUIREMENTS:
       // - Build machine must have VC++ runtime (GitHub Actions windows-2025 has VS2022)
@@ -369,6 +371,68 @@ const config: ForgeConfig = {
       // is set in packagerConfig, which disables the packageAfterPrune hook.
       // =====================================================================
       if (platform === "win32") {
+        const projectRoot = normalize(__dirname);
+        const monorepoRoot = join(projectRoot, "../../");
+
+        const findOnnxRuntimeDllDir = (binRoot: string): string | null => {
+          if (!existsSync(binRoot)) return null;
+
+          for (const napiVersionDir of readdirSync(binRoot)) {
+            const candidate = join(binRoot, napiVersionDir, "win32", arch);
+            if (existsSync(join(candidate, "onnxruntime.dll"))) {
+              return candidate;
+            }
+          }
+
+          return null;
+        };
+
+        const copyOnnxRuntimeDlls = (outputPath: string) => {
+          const onnxBinRoots = [
+            join(
+              outputPath,
+              "resources",
+              "app.asar.unpacked",
+              "node_modules",
+              "onnxruntime-node",
+              "bin",
+            ),
+            join(
+              outputPath,
+              "resources",
+              "app",
+              "node_modules",
+              "onnxruntime-node",
+              "bin",
+            ),
+            join(projectRoot, "node_modules", "onnxruntime-node", "bin"),
+            join(monorepoRoot, "node_modules", "onnxruntime-node", "bin"),
+          ];
+
+          const onnxDllDir = onnxBinRoots
+            .map(findOnnxRuntimeDllDir)
+            .find((dir): dir is string => dir !== null);
+
+          if (!onnxDllDir) {
+            throw new Error(
+              `Failed to find bundled onnxruntime-node DLLs for win32/${arch}.`,
+            );
+          }
+
+          console.log(
+            `[postPackage] Copying ONNX Runtime DLLs from ${onnxDllDir} to ${outputPath}...`,
+          );
+
+          const onnxRuntimeDlls = readdirSync(onnxDllDir).filter((file) =>
+            file.toLowerCase().endsWith(".dll"),
+          );
+
+          for (const dll of onnxRuntimeDlls) {
+            copyFileSync(join(onnxDllDir, dll), join(outputPath, dll));
+            console.log(`  ✓ Copied ${dll}`);
+          }
+        };
+
         const vcRuntimeDlls = [
           "msvcp140.dll",
           "msvcp140_1.dll",
@@ -377,6 +441,8 @@ const config: ForgeConfig = {
         ];
 
         for (const outputPath of outputPaths) {
+          copyOnnxRuntimeDlls(outputPath);
+
           console.log(
             `[postPackage] Bundling VC++ runtime DLLs for Windows at ${outputPath}...`,
           );
