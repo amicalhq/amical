@@ -23,7 +23,8 @@ let package = Package(
             dependencies: ["ObjCExceptionCatcher"],
             resources: [
                 .embedInCode("Resources/rec-start.mp3"),
-                .embedInCode("Resources/rec-stop.mp3")
+                .embedInCode("Resources/rec-stop.mp3"),
+                .embedInCode("Resources/error-chime.mp3")
             ]
         )
     ]
