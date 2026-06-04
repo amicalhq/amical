@@ -128,6 +128,10 @@ export class SettingsService extends EventEmitter {
     recordingSettings: AppSettingsData["recording"],
   ): Promise<void> {
     await updateSettingsSection("recording", recordingSettings);
+
+    // Notify other windows (e.g. the widget) so they refresh the microphone
+    // and other recording preferences instead of using stale cached values.
+    this.emit("recording-settings-changed", recordingSettings);
   }
 
   /**

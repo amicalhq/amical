@@ -345,6 +345,43 @@ export const settingsRouter = createRouter({
     });
   }),
 
+  // Recording settings subscription (e.g. preferred microphone changes).
+  // Lets other windows such as the widget refresh their cached settings when
+  // recording preferences change from anywhere in the app.
+  // eslint-disable-next-line deprecation/deprecation
+  recordingSettingsUpdates: procedure.subscription(({ ctx }) => {
+    return observable<AppSettingsData["recording"]>((emit) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      const logger = ctx.serviceManager.getLogger();
+
+      if (!settingsService) {
+        logger?.main.warn(
+          "SettingsService not available for recordingSettings subscription",
+        );
+        return () => {};
+      }
+
+      // No initial emit — this is purely a change trigger for getSettings.
+      const handleRecordingSettingsChanged = (
+        recordingSettings: AppSettingsData["recording"],
+      ) => {
+        emit.next(recordingSettings);
+      };
+
+      settingsService.on(
+        "recording-settings-changed",
+        handleRecordingSettingsChanged,
+      );
+
+      return () => {
+        settingsService.off(
+          "recording-settings-changed",
+          handleRecordingSettingsChanged,
+        );
+      };
+    });
+  }),
+
   // Set preferred microphone
   setPreferredMicrophone: procedure
     .input(
