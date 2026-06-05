@@ -30,7 +30,10 @@ import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
-import { applyTextReplacements } from "../utils/text-replacement";
+import {
+  applySwissGermanSpelling,
+  applyTextReplacements,
+} from "../utils/text-replacement";
 import { normalizeTranscriptionBoundaries } from "../utils/boundary-spacing";
 import { selectVocabularyHints } from "../utils/vocabulary-hints";
 import * as fs from "node:fs";
@@ -517,6 +520,8 @@ export class TranscriptionService {
         replacements: session.context.sharedData.replacements,
         formattingStyle:
           session.context.sharedData.userPreferences?.formattingStyle,
+        swissGermanSpelling:
+          session.context.sharedData.userPreferences?.swissGermanSpelling,
       });
       // Final post-format pass: normalize boundary whitespace based on the
       // insertion context. Runs after formatting + replacements so the emitted
@@ -699,6 +704,8 @@ export class TranscriptionService {
       dictationSettings.autoDetectEnabled || languages.length === 0
         ? undefined
         : languages;
+    context.sharedData.userPreferences.swissGermanSpelling =
+      dictationSettings.swissGermanSpelling ?? false;
 
     // Load vocabulary — every entry the user has authored should participate
     // in replacement; caps belong on the create path, not here.
@@ -777,6 +784,7 @@ export class TranscriptionService {
     accessibilityContext?: StreamingSession["context"]["sharedData"]["accessibilityContext"];
     replacements: Map<string, string>;
     formattingStyle?: string;
+    swissGermanSpelling?: boolean;
   }): Promise<{
     text: string;
     textBeforeReplacements: string;
@@ -865,6 +873,13 @@ export class TranscriptionService {
           );
         }
       }
+    }
+
+    // Swiss Standard German orthography: replace \u00df with ss. Runs after
+    // formatting (the language model may emit \u00df) and before vocabulary
+    // replacements so user replacements match the normalized text.
+    if (options.swissGermanSpelling) {
+      text = applySwissGermanSpelling(text);
     }
 
     const textBeforeReplacements = text;
@@ -1064,6 +1079,8 @@ export class TranscriptionService {
       vocabulary,
       replacements: context.sharedData.replacements,
       formattingStyle: context.sharedData.userPreferences?.formattingStyle,
+      swissGermanSpelling:
+        context.sharedData.userPreferences?.swissGermanSpelling,
     });
 
     // Final post-format pass, mirroring finalizeSession. Re-transcription has no
