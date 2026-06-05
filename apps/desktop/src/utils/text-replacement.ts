@@ -53,3 +53,18 @@ export function applyTextReplacements(
 
   return result;
 }
+
+/**
+ * Replace the German sharp s with its Swiss Standard German spelling.
+ *
+ * Swiss Standard German (Switzerland and Liechtenstein) does not use the
+ * sharp s at all: every ß is written ss. Because the sharp s only ever
+ * appears inside words, the word-boundary matching in applyTextReplacements
+ * cannot express this rule, so it gets its own character-level pass.
+ */
+export function applySwissGermanSpelling(text: string): string {
+  if (!text) {
+    return text;
+  }
+  return text.replace(/\u00df/gu, "ss").replace(/\u1e9e/gu, "SS");
+}
