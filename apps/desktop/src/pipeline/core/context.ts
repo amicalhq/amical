@@ -16,6 +16,7 @@ export interface SharedPipelineData {
   replacements: Map<string, string>; // Custom replacements
   userPreferences: {
     languages?: string[]; // Selected dictation languages; empty/undefined = auto-detect
+    swissGermanSpelling?: boolean; // Replace \u00df with ss (Swiss Standard German)
     formattingStyle: "formal" | "casual" | "technical";
   };
   audioMetadata: {
@@ -36,6 +37,7 @@ export function createDefaultContext(sessionId: string): PipelineContext {
       replacements: new Map(),
       userPreferences: {
         languages: undefined,
+        swissGermanSpelling: false,
         formattingStyle: "formal",
       },
       audioMetadata: {
