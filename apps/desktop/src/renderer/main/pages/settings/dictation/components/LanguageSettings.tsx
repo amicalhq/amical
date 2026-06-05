@@ -34,16 +34,19 @@ export function LanguageSettings() {
 
   const [languages, setLanguages] = useState<string[]>(["en"]);
   const [autoDetect, setAutoDetect] = useState(true);
+  const [swissGerman, setSwissGerman] = useState(false);
 
   useEffect(() => {
     if (dictationSettings) {
       setLanguages(dictationSettings.languages);
       setAutoDetect(dictationSettings.autoDetectEnabled);
+      setSwissGerman(dictationSettings.swissGermanSpelling ?? false);
     }
   }, [dictationSettings]);
 
   const persist = async (next: {
     autoDetectEnabled: boolean;
+    swissGermanSpelling: boolean;
     languages: string[];
   }) => {
     try {
@@ -51,18 +54,36 @@ export function LanguageSettings() {
     } catch (error) {
       setLanguages(dictationSettings?.languages ?? []);
       setAutoDetect(dictationSettings?.autoDetectEnabled ?? true);
+      setSwissGerman(dictationSettings?.swissGermanSpelling ?? false);
       console.error("Failed to update dictation settings:", error);
     }
   };
 
   const handleAutoDetectChange = async (enabled: boolean) => {
     setAutoDetect(enabled);
-    await persist({ autoDetectEnabled: enabled, languages });
+    await persist({
+      autoDetectEnabled: enabled,
+      swissGermanSpelling: swissGerman,
+      languages,
+    });
   };
 
   const handleLanguagesChange = async (next: string[]) => {
     setLanguages(next);
-    await persist({ autoDetectEnabled: autoDetect, languages: next });
+    await persist({
+      autoDetectEnabled: autoDetect,
+      swissGermanSpelling: swissGerman,
+      languages: next,
+    });
+  };
+
+  const handleSwissGermanChange = async (enabled: boolean) => {
+    setSwissGerman(enabled);
+    await persist({
+      autoDetectEnabled: autoDetect,
+      swissGermanSpelling: enabled,
+      languages,
+    });
   };
 
   const disabled = autoDetect || isLoading || updateDictationSettings.isPending;
@@ -141,6 +162,22 @@ export function LanguageSettings() {
             </ComboboxBase>
           </div>
         </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between">
+        <div>
+          <Label className="text-sm font-medium text-foreground">
+            {t("settings.dictation.language.swissGerman.label")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t("settings.dictation.language.swissGerman.description")}
+          </p>
+        </div>
+        <Switch
+          checked={swissGerman}
+          onCheckedChange={handleSwissGermanChange}
+          disabled={busy}
+        />
       </div>
     </div>
   );
