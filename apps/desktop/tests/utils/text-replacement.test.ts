@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { applyTextReplacements } from "../../src/utils/text-replacement";
+import {
+  applySwissGermanSpelling,
+  applyTextReplacements,
+} from "../../src/utils/text-replacement";
 
 describe("applyTextReplacements", () => {
   describe("English (alphabetic languages)", () => {
@@ -220,5 +223,33 @@ describe("applyTextReplacements", () => {
       const result = applyTextReplacements("foo", replacements);
       expect(result).toBe("a $` b $' c");
     });
+  });
+});
+
+describe("applySwissGermanSpelling", () => {
+  it("should replace \u00df with ss inside words", () => {
+    expect(applySwissGermanSpelling("Die Stra\u00dfe ist gro\u00df")).toBe(
+      "Die Strasse ist gross",
+    );
+  });
+
+  it("should replace capital \u1e9e with SS", () => {
+    expect(applySwissGermanSpelling("STRA\u1e9eE")).toBe("STRASSE");
+  });
+
+  it("should replace multiple occurrences", () => {
+    expect(
+      applySwissGermanSpelling("Au\u00dferdem hei\u00dft das Ma\u00dfnahme"),
+    ).toBe("Ausserdem heisst das Massnahme");
+  });
+
+  it("should leave text without sharp s untouched", () => {
+    expect(applySwissGermanSpelling("Das ist schon Schweizer Text")).toBe(
+      "Das ist schon Schweizer Text",
+    );
+  });
+
+  it("should handle empty strings", () => {
+    expect(applySwissGermanSpelling("")).toBe("");
   });
 });
