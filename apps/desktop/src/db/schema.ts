@@ -185,6 +185,7 @@ export interface AppSettingsData {
   dictation?: {
     autoDetectEnabled: boolean;
     languages: string[]; // Selected dictation languages; empty = auto-detect
+    swissGermanSpelling?: boolean; // Replace \u00df with ss (Swiss Standard German)
   };
   preferences?: {
     launchAtLogin?: boolean;
