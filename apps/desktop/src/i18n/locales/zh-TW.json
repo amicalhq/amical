@@ -636,7 +636,11 @@
         },
         "languagesLabel": "語言",
         "languagesPlaceholder": "選擇語言...",
-        "noResults": "找不到語言。"
+        "noResults": "找不到語言。",
+        "swissGerman": {
+          "label": "瑞士德語拼寫（ß → ss）",
+          "description": "將德語字母 ß 替換為瑞士和列支敦斯登使用的 ss。"
+        }
       },
       "microphone": {
         "label": "麥克風",

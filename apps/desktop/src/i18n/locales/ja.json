@@ -636,7 +636,11 @@
         },
         "languagesLabel": "言語",
         "languagesPlaceholder": "言語を選択...",
-        "noResults": "言語が見つかりません。"
+        "noResults": "言語が見つかりません。",
+        "swissGerman": {
+          "label": "スイス式ドイツ語表記（ß → ss）",
+          "description": "ドイツ語のエスツェット（ß）を、スイスとリヒテンシュタインで使われる ss に置き換えます。"
+        }
       },
       "microphone": {
         "label": "マイク",
