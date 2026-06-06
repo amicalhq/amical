@@ -540,8 +540,14 @@
     "about": {
       "title": "關於",
       "description": "版本資訊、資源與支援連結",
-      "toast": {
-        "upToDate": "版本已是最新狀態"
+      "update": {
+        "checking": "正在檢查更新…",
+        "downloading": "正在下載更新…",
+        "upToDate": "已是最新版本",
+        "ready": "更新已就緒 — 重新啟動以安裝",
+        "error": "更新時發生錯誤，請重新啟動並重試",
+        "checkButton": "檢查更新",
+        "restartButton": "重新啟動並安裝"
       },
       "currentVersion": "目前版本",
       "resources": {

@@ -374,6 +374,20 @@ const mockNativeImage = {
   createFromDataURL: vi.fn(() => ({})),
 };
 
+// Mock autoUpdater (Squirrel) as an EventEmitter so tests can drive its
+// lifecycle events; the imperative methods are spies.
+class FakeAutoUpdater extends EventEmitter {
+  setFeedURL = vi.fn();
+  checkForUpdates = vi.fn();
+  quitAndInstall = vi.fn();
+}
+const mockAutoUpdater = new FakeAutoUpdater();
+
+// Mock net — AutoUpdaterService.fetchUpdateMetadata() uses net.fetch.
+const mockNet = {
+  fetch: vi.fn(),
+};
+
 export function createElectronMocks() {
   return {
     app: mockApp,
@@ -389,6 +403,8 @@ export function createElectronMocks() {
     globalShortcut: mockGlobalShortcut,
     clipboard: mockClipboard,
     nativeImage: mockNativeImage,
+    autoUpdater: mockAutoUpdater as any,
+    net: mockNet as any,
   };
 }
 

@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { observable } from "@trpc/server/observable";
 import { createRouter, procedure } from "../trpc";
+import type { UpdateState } from "../../main/services/auto-updater";
 import type { UpdatePrompt } from "../../main/services/update-prompt";
+
+interface UpdateStateUpdate {
+  state: UpdateState;
+}
 
 export const updaterRouter = createRouter({
   // Pushes the current pending update prompt (or null) to the renderer.
@@ -28,7 +33,9 @@ export const updaterRouter = createRouter({
 
   checkForUpdates: procedure
     .input(
-      z.object({ userInitiated: z.boolean().optional().default(false) }).optional(),
+      z
+        .object({ userInitiated: z.boolean().optional().default(false) })
+        .optional(),
     )
     .mutation(async ({ input, ctx }) => {
       const service = ctx.serviceManager.getService("autoUpdaterService");
@@ -36,6 +43,23 @@ export const updaterRouter = createRouter({
       await service.checkForUpdates(input?.userInitiated ?? false);
       return { success: true };
     }),
+
+  onUpdateStateChange: procedure.subscription(({ ctx }) => {
+    return observable<UpdateStateUpdate>((emit) => {
+      const service = ctx.serviceManager.getService("autoUpdaterService");
+      if (!service) {
+        emit.next({ state: "not-available" });
+        return () => {};
+      }
+
+      const push = () => emit.next({ state: service.getUpdateState() });
+      push();
+      service.on("state-changed", push);
+      return () => {
+        service.off("state-changed", push);
+      };
+    });
+  }),
 
   quitAndInstall: procedure.mutation(({ ctx }) => {
     const service = ctx.serviceManager.getService("autoUpdaterService");

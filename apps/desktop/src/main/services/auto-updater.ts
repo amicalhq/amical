@@ -10,11 +10,26 @@ const UPDATE_SERVER = "https://update.amical.ai";
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
 const CHECK_INTERVAL_AFTER_DOWNLOAD_MS = 3 * 60 * 60 * 1000; // 3 hours
 
+// Dev-only test mode — opt in with `UPDATER_DEV_TEST=true pnpm start`. In an
+// unpackaged build it runs the real update-meta round-trip and drives the real
+// state machine, stubbing the macOS-signed Squirrel download/install (which
+// can't run unsigned). Off in packaged builds and in normal dev runs; remove
+// when the updater UI is no longer being tested.
+const UPDATER_DEV_TEST =
+  !app.isPackaged && process.env.UPDATER_DEV_TEST === "true";
+
 export type UpdateAction = "none" | "silent" | "prompt" | "force";
 
 const VALID_ACTIONS = new Set<string>(["none", "silent", "prompt", "force"]);
 
 type UpdaterErrorClassification = "read_only_volume" | "generic";
+
+export type UpdateState =
+  | "not-available"
+  | "checking"
+  | "available"
+  | "downloaded"
+  | "error";
 
 export interface UpdateMetadata {
   action: UpdateAction;
@@ -59,7 +74,10 @@ export class AutoUpdaterService extends EventEmitter {
   private isChecking = false;
   private lastMetadata: UpdateMetadata | null = null;
   private updateDownloaded = false;
+  private updateState: UpdateState = "not-available";
   private dismissedVersion: string | undefined = undefined;
+  private mockCheckTimeout: ReturnType<typeof setTimeout> | null = null;
+  private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super();
@@ -69,9 +87,15 @@ export class AutoUpdaterService extends EventEmitter {
     settingsService: SettingsService,
     telemetryService: TelemetryService,
   ): Promise<void> {
-    if (!app.isPackaged) {
+    if (!app.isPackaged && !UPDATER_DEV_TEST) {
       logger.updater.info("Skipping auto-updater: app is not packaged");
       return;
+    }
+
+    if (UPDATER_DEV_TEST) {
+      logger.updater.info(
+        "[updater-dev-test] ACTIVE — real update-meta fetch + simulated download (no real install)",
+      );
     }
 
     if (process.argv.includes("--squirrel-firstrun")) {
@@ -96,6 +120,7 @@ export class AutoUpdaterService extends EventEmitter {
         // Reset to running version — the new channel's version space is different
         this.effectiveVersion = app.getVersion();
         this.updateDownloaded = false;
+        this.setUpdateState("not-available");
         this.lastMetadata = null;
         this.dismissedVersion = undefined;
         this.emit("update-prompt-changed");
@@ -109,7 +134,8 @@ export class AutoUpdaterService extends EventEmitter {
 
     // Start periodic checks with platform-appropriate initial delay
     const initialDelay = process.platform === "darwin" ? 10_000 : 60_000;
-    setTimeout(() => {
+    this.initialCheckTimeout = setTimeout(() => {
+      this.initialCheckTimeout = null;
       this.checkForUpdates();
       this.scheduleAutomaticChecks();
     }, initialDelay);
@@ -147,6 +173,32 @@ export class AutoUpdaterService extends EventEmitter {
     });
   }
 
+  private setUpdateState(state: UpdateState): void {
+    if (state === this.updateState) return;
+
+    this.updateState = state;
+    logger.updater.info("Update state changed", { state });
+    this.emit("state-changed");
+  }
+
+  /** Settle to the resting state once an in-flight check resolves. */
+  private setSettledState(): void {
+    this.setUpdateState(this.updateDownloaded ? "downloaded" : "not-available");
+  }
+
+  private clearDownloadedUpdate(reason: string): void {
+    if (!this.updateDownloaded && this.effectiveVersion === app.getVersion()) {
+      return;
+    }
+
+    logger.updater.info("Clearing downloaded update state", { reason });
+    this.updateDownloaded = false;
+    this.effectiveVersion = app.getVersion();
+    this.setFeedURL(this.currentChannel);
+    this.scheduleAutomaticChecks();
+    this.emit("update-prompt-changed");
+  }
+
   private registerEventHandlers(): void {
     autoUpdater.on("error", (error) => {
       this.isChecking = false;
@@ -158,6 +210,7 @@ export class AutoUpdaterService extends EventEmitter {
           error: message,
           classification,
         });
+        this.setSettledState();
         return;
       }
 
@@ -167,10 +220,13 @@ export class AutoUpdaterService extends EventEmitter {
         channel: this.currentChannel,
         classification,
       });
+      this.clearDownloadedUpdate(classification);
+      this.setUpdateState("error");
     });
 
     autoUpdater.on("checking-for-update", () => {
       logger.updater.info("Checking for update...");
+      this.setUpdateState("checking");
       this.emit("checking-for-update");
     });
 
@@ -178,18 +234,21 @@ export class AutoUpdaterService extends EventEmitter {
       logger.updater.info("Update available, downloading...");
       // Reset so isDownloaded() only reflects the current download
       this.updateDownloaded = false;
+      this.setUpdateState("available");
       this.emit("update-available");
     });
 
     autoUpdater.on("update-not-available", () => {
       this.isChecking = false;
       logger.updater.info("No update available");
+      this.setSettledState();
       this.emit("update-not-available");
     });
 
     autoUpdater.on("update-downloaded", (_event, releaseNotes, releaseName) => {
       this.isChecking = false;
       this.updateDownloaded = true;
+      this.setUpdateState("downloaded");
       logger.updater.info("Update downloaded", { releaseName });
       // Advance effective version so subsequent checks use the downloaded
       // version in the feed URL, avoiding re-downloads of the same release
@@ -206,6 +265,10 @@ export class AutoUpdaterService extends EventEmitter {
 
   getLastMetadata(): UpdateMetadata | null {
     return this.lastMetadata;
+  }
+
+  getUpdateState(): UpdateState {
+    return this.updateState;
   }
 
   getUpdatePrompt(): UpdatePrompt | null {
@@ -286,8 +349,16 @@ export class AutoUpdaterService extends EventEmitter {
   }
 
   async checkForUpdates(userInitiated = false): Promise<void> {
-    if (!app.isPackaged) {
+    if (!app.isPackaged && !UPDATER_DEV_TEST) {
       logger.updater.info("Skipping update check: app is not packaged");
+      if (userInitiated) {
+        this.setUpdateState("checking");
+        if (this.mockCheckTimeout) clearTimeout(this.mockCheckTimeout);
+        this.mockCheckTimeout = setTimeout(() => {
+          this.setUpdateState("not-available");
+          this.mockCheckTimeout = null;
+        }, 1500);
+      }
       return;
     }
 
@@ -296,8 +367,23 @@ export class AutoUpdaterService extends EventEmitter {
       return;
     }
 
+    if (this.updateState === "available") {
+      logger.updater.info("Update download already in progress, skipping");
+      return;
+    }
+
+    // Manual checks should keep the visible action on "Restart to Install"
+    // once an update is staged. Background checks may still run to discover
+    // newer releases.
+    if (userInitiated && this.updateDownloaded) {
+      logger.updater.info("Update already downloaded, skipping manual check");
+      this.setUpdateState("downloaded");
+      return;
+    }
+
     try {
       this.isChecking = true;
+      this.setUpdateState("checking");
       logger.updater.info("Checking for updates", { userInitiated });
 
       // Fetch metadata to determine UI behavior. Only update lastMetadata
@@ -313,6 +399,7 @@ export class AutoUpdaterService extends EventEmitter {
         // discovery of newly published releases.
         if (metadata.action === "none") {
           this.isChecking = false;
+          this.setSettledState();
           this.emit("update-not-available");
           return;
         }
@@ -320,22 +407,67 @@ export class AutoUpdaterService extends EventEmitter {
 
       // Proceed with native update check (uses effectiveVersion in feed URL,
       // so it discovers newer releases even if one is already downloaded).
+      if (UPDATER_DEV_TEST) {
+        this.simulateDownloadForDevTest();
+        return;
+      }
       autoUpdater.checkForUpdates();
     } catch (error) {
       this.isChecking = false;
       logger.updater.error("Failed to check for updates", { error });
+      this.clearDownloadedUpdate("check_failed");
+      this.setUpdateState("error");
     }
   }
 
   quitAndInstall(): void {
+    if (!this.updateDownloaded) {
+      logger.updater.warn("Skipping install: update is not downloaded", {
+        state: this.updateState,
+      });
+      return;
+    }
+
+    if (UPDATER_DEV_TEST) {
+      logger.updater.info(
+        "[updater-dev-test] Skipping real quitAndInstall (unsigned dev build)",
+      );
+      return;
+    }
+
     logger.updater.info("Quitting and installing update");
     autoUpdater.quitAndInstall();
+  }
+
+  // Dev-test only: stand in for the Squirrel download (which can't run in an
+  // unpackaged/unsigned build) by walking the real state transitions.
+  private simulateDownloadForDevTest(): void {
+    this.isChecking = false;
+    this.updateDownloaded = false;
+    this.setUpdateState("available");
+    if (this.mockCheckTimeout) clearTimeout(this.mockCheckTimeout);
+    this.mockCheckTimeout = setTimeout(() => {
+      this.updateDownloaded = true;
+      this.effectiveVersion =
+        this.lastMetadata?.version ?? this.effectiveVersion;
+      this.setUpdateState("downloaded");
+      this.emit("update-prompt-changed");
+      this.mockCheckTimeout = null;
+    }, 2000);
   }
 
   cleanup(): void {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
+    }
+    if (this.mockCheckTimeout) {
+      clearTimeout(this.mockCheckTimeout);
+      this.mockCheckTimeout = null;
+    }
+    if (this.initialCheckTimeout) {
+      clearTimeout(this.initialCheckTimeout);
+      this.initialCheckTimeout = null;
     }
     if (this.settingsService) {
       this.settingsService.removeAllListeners("update-channel-changed");

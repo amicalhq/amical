@@ -540,8 +540,14 @@
     "about": {
       "title": "Amicalについて",
       "description": "バージョン情報、リソース、サポートリンク",
-      "toast": {
-        "upToDate": "最新バージョンです"
+      "update": {
+        "checking": "アップデートを確認中…",
+        "downloading": "アップデートをダウンロード中…",
+        "upToDate": "最新です",
+        "ready": "アップデートの準備完了 — 再起動してインストール",
+        "error": "更新エラー。再起動して再試行してください",
+        "checkButton": "アップデートを確認",
+        "restartButton": "再起動してインストール"
       },
       "currentVersion": "現在のバージョン",
       "resources": {

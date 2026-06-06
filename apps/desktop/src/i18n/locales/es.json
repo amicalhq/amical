@@ -540,8 +540,14 @@
     "about": {
       "title": "Acerca de",
       "description": "Información de versión, recursos y enlaces de soporte",
-      "toast": {
-        "upToDate": "La versión está actualizada"
+      "update": {
+        "checking": "Buscando actualizaciones…",
+        "downloading": "Descargando actualización…",
+        "upToDate": "Al día",
+        "ready": "Actualización lista — reinicia para instalar",
+        "error": "Error al actualizar, reinicia e inténtalo de nuevo",
+        "checkButton": "Buscar actualizaciones",
+        "restartButton": "Reiniciar e instalar"
       },
       "currentVersion": "Versión actual",
       "resources": {

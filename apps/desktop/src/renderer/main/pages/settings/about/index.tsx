@@ -2,27 +2,101 @@ import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, BookOpen } from "lucide-react";
-import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import {
+  RefreshCw,
+  BookOpen,
+  CheckCircle2,
+  AlertCircle,
+  Download,
+  type LucideIcon,
+} from "lucide-react";
 import { api } from "@/trpc/react";
 import { useTranslation } from "react-i18next";
+import type { UpdateState } from "@/main/services/auto-updater";
 
 const CHANGELOG_URL = "https://github.com/amicalhq/amical/releases";
 const GITHUB_URL = "https://github.com/amicalhq/amical";
 const DISCORD_URL = "https://amical.ai/community";
 const CONTACT_EMAIL = "contact@amical.ai";
 
+const UPDATE_STATUS: Record<
+  UpdateState,
+  {
+    Icon: LucideIcon;
+    iconClassName: string;
+    textClassName?: string;
+    labelKey: string;
+  }
+> = {
+  checking: {
+    Icon: RefreshCw,
+    iconClassName: "w-3.5 h-3.5 animate-spin",
+    labelKey: "settings.about.update.checking",
+  },
+  available: {
+    Icon: Download,
+    iconClassName: "w-3.5 h-3.5 animate-pulse",
+    labelKey: "settings.about.update.downloading",
+  },
+  downloaded: {
+    Icon: CheckCircle2,
+    iconClassName: "w-3.5 h-3.5",
+    textClassName: "text-foreground",
+    labelKey: "settings.about.update.ready",
+  },
+  error: {
+    Icon: AlertCircle,
+    iconClassName: "w-3.5 h-3.5",
+    textClassName: "text-destructive",
+    labelKey: "settings.about.update.error",
+  },
+  "not-available": {
+    Icon: CheckCircle2,
+    iconClassName: "w-3.5 h-3.5",
+    labelKey: "settings.about.update.upToDate",
+  },
+};
+
 export default function AboutSettingsPage() {
   const { t } = useTranslation();
-  const [checking, setChecking] = useState(false);
   const { data: version } = api.settings.getAppVersion.useQuery();
+  const [updateState, setUpdateState] = useState<UpdateState>("not-available");
 
-  function handleCheckUpdates() {
-    setChecking(true);
-    setTimeout(() => {
-      setChecking(false);
-      toast.success(t("settings.about.toast.upToDate"));
-    }, 2000);
+  api.updater.onUpdateStateChange.useSubscription(undefined, {
+    onData: ({ state }) => setUpdateState(state),
+    onError: (error) =>
+      console.error("Update state subscription error:", error),
+  });
+
+  const checkForUpdates = api.updater.checkForUpdates.useMutation();
+  const quitAndInstall = api.updater.quitAndInstall.useMutation();
+
+  const isReady = updateState === "downloaded";
+  const buttonBusy =
+    updateState === "checking" ||
+    updateState === "available" ||
+    checkForUpdates.isPending ||
+    quitAndInstall.isPending;
+
+  function handleUpdateClick() {
+    if (isReady) {
+      quitAndInstall.mutate();
+      return;
+    }
+
+    checkForUpdates.mutate({ userInitiated: true });
+  }
+
+  function renderStatus() {
+    const { Icon, iconClassName, textClassName, labelKey } =
+      UPDATE_STATUS[updateState];
+    return (
+      <span className={cn("flex items-center gap-1.5", textClassName)}>
+        <Icon className={iconClassName} />
+        {t(labelKey)}
+      </span>
+    );
   }
 
   return (
@@ -42,21 +116,26 @@ export default function AboutSettingsPage() {
               <div className="text-lg font-semibold">
                 {t("settings.about.currentVersion")}
               </div>
-              <Badge variant="secondary" className="mt-1">
-                v{version || "..."}
-              </Badge>
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant="secondary">v{version || "..."}</Badge>
+                <span className="text-xs text-muted-foreground">
+                  {renderStatus()}
+                </span>
+              </div>
             </div>
-            {/* <Button
-              variant="outline"
+            <Button
+              variant={isReady ? "default" : "outline"}
               className="mt-4 md:mt-0 flex items-center gap-2"
-              onClick={handleCheckUpdates}
-              disabled={checking}
+              onClick={handleUpdateClick}
+              disabled={buttonBusy}
             >
               <RefreshCw
-                className={"w-4 h-4 " + (checking ? "animate-spin" : "")}
+                className={cn("w-4 h-4", buttonBusy && "animate-spin")}
               />
-              {checking ? "Checking..." : "Check for Updates"}
-            </Button> */}
+              {isReady
+                ? t("settings.about.update.restartButton")
+                : t("settings.about.update.checkButton")}
+            </Button>
           </CardContent>
         </Card>
 

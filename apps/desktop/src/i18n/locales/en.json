@@ -551,8 +551,14 @@
     "about": {
       "title": "About",
       "description": "Version information, resources, and support links",
-      "toast": {
-        "upToDate": "Version is up to date"
+      "update": {
+        "checking": "Checking for updates…",
+        "downloading": "Downloading update…",
+        "upToDate": "Up to date",
+        "ready": "Update ready — restart to install",
+        "error": "Error updating, please restart and retry",
+        "checkButton": "Check for Updates",
+        "restartButton": "Restart to Install"
       },
       "currentVersion": "Current Version",
       "resources": {
