@@ -3,7 +3,7 @@ import { z } from "zod";
 import AIModelsSettingsPage from "../../../pages/settings/ai-models";
 
 const aiModelsSearchSchema = z.object({
-  tab: z.enum(["speech", "language", "embedding"]).optional().default("speech"),
+  tab: z.enum(["speech", "language"]).optional().default("speech"),
 });
 
 export const Route = createFileRoute("/_app/settings/ai-models")({

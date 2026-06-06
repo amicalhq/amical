@@ -3,7 +3,6 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import SpeechTab from "./tabs/SpeechTab";
 import LanguageTab from "./tabs/LanguageTab";
-import EmbeddingTab from "./tabs/EmbeddingTab";
 import { useNavigate, getRouteApi } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -22,7 +21,7 @@ export default function AIModelsSettingsPage() {
         onValueChange={(newTab) => {
           navigate({
             to: "/settings/ai-models",
-            search: { tab: newTab as "speech" | "language" | "embedding" },
+            search: { tab: newTab as "speech" | "language" },
           });
         }}
         className="w-full"
@@ -34,18 +33,12 @@ export default function AIModelsSettingsPage() {
           <TabsTrigger value="language" className="text-base">
             {t("settings.aiModels.tabs.language")}
           </TabsTrigger>
-          <TabsTrigger value="embedding" className="text-base">
-            {t("settings.aiModels.tabs.embedding")}
-          </TabsTrigger>
         </TabsList>
         <TabsContent value="speech">
           <SpeechTab />
         </TabsContent>
         <TabsContent value="language">
           <LanguageTab />
-        </TabsContent>
-        <TabsContent value="embedding">
-          <EmbeddingTab />
         </TabsContent>
       </Tabs>
     </div>
