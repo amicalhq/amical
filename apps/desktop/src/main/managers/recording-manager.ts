@@ -771,7 +771,7 @@ export class RecordingManager extends EventEmitter {
         this.recordingStoppedAt && this.recordingStartedAt
           ? this.recordingStoppedAt - this.recordingStartedAt
           : 0;
-      if (sessionDurationMs > 5000) {
+      if (sessionDurationMs > 3500) {
         this.emit("widget-notification", { type: "empty_transcript" });
         logger.audio.info("Emitted widget notification", {
           type: "empty_transcript",
