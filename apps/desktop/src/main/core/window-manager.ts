@@ -376,9 +376,15 @@ export class WindowManager {
     });
 
     if (process.platform === "darwin") {
-      this.widgetWindow.setAlwaysOnTop(true, "floating", 1);
+      // Third-party macOS taskbars can sit above Electron's "floating" level.
+      // Use a higher panel level so the widget stays visible above them.
+      this.widgetWindow.setAlwaysOnTop(true, "screen-saver", 1);
       this.widgetWindow.setVisibleOnAllWorkspaces(true, {
         visibleOnFullScreen: true,
+        // Skip Electron's default UIElement<->Foreground process-type
+        // transform, which otherwise briefly hides the window and Dock icon
+        // on every call.
+        skipTransformProcessType: true,
       });
       this.widgetWindow.setHiddenInMissionControl(true);
     } else if (process.platform === "win32") {
