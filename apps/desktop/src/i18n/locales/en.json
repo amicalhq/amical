@@ -557,6 +557,7 @@
         "upToDate": "Up to date",
         "ready": "Update ready — restart to install",
         "error": "Error updating, please restart and retry",
+        "sidebarCta": "Update Ready",
         "checkButton": "Check for Updates",
         "restartButton": "Restart to Install"
       },

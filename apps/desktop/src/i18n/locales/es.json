@@ -546,6 +546,7 @@
         "upToDate": "Al día",
         "ready": "Actualización lista — reinicia para instalar",
         "error": "Error al actualizar, reinicia e inténtalo de nuevo",
+        "sidebarCta": "Actualización lista",
         "checkButton": "Buscar actualizaciones",
         "restartButton": "Reiniciar e instalar"
       },

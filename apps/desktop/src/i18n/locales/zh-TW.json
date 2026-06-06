@@ -546,6 +546,7 @@
         "upToDate": "已是最新版本",
         "ready": "更新已就緒 — 重新啟動以安裝",
         "error": "更新時發生錯誤，請重新啟動並重試",
+        "sidebarCta": "更新已就緒",
         "checkButton": "檢查更新",
         "restartButton": "重新啟動並安裝"
       },

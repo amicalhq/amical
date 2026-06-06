@@ -3,6 +3,7 @@ import {
   IconBookFilled,
   IconBrandDiscordFilled,
   IconChevronLeft,
+  IconDownload,
   IconInfoCircle,
   IconSettings,
 } from "@tabler/icons-react";
@@ -25,6 +26,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useUpdateState } from "@/hooks/useUpdateState";
 import {
   parseSidebarCtaPayload,
   SIDEBAR_CTA_FEATURE_FLAG,
@@ -46,6 +48,7 @@ export function SettingsSidebar({
   const { isMobile } = useSidebar();
   const sidebarCtaFlag = useFeatureFlag(SIDEBAR_CTA_FEATURE_FLAG);
   const isSettingsSidebar = location.pathname.startsWith("/settings");
+  const updateState = useUpdateState();
 
   const sidebarCtaPayload = sidebarCtaFlag.enabled
     ? parseSidebarCtaPayload(sidebarCtaFlag.payload)
@@ -104,6 +107,24 @@ export function SettingsSidebar({
   const navSecondary: NavSecondaryItem[] = navSecondaryCta
     ? [navSecondaryCta, ...baseNavSecondary]
     : baseNavSecondary;
+  const updateReadyButton =
+    updateState === "downloaded" ? (
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          asChild
+          className="bg-indigo-500 text-white hover:bg-indigo-600 hover:text-white active:bg-indigo-600 active:text-white data-[active=true]:bg-indigo-600 data-[active=true]:text-white"
+        >
+          <Link
+            to="/settings/about"
+            search={{ focusUpdate: true }}
+            aria-label={t("settings.about.update.ready")}
+          >
+            <IconDownload />
+            <span>{t("settings.about.update.sidebarCta")}</span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    ) : null;
 
   const appHeader = (
     <SidebarHeader className="py-0 -mb-1">
@@ -180,7 +201,11 @@ export function SettingsSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter className="p-0">
-        <NavSecondary items={navSecondary} prefix={<NavCloud />} />
+        <NavSecondary
+          items={navSecondary}
+          prefix={<NavCloud />}
+          beforeAuth={updateReadyButton}
+        />
       </SidebarFooter>
     </Sidebar>
   );

@@ -10,14 +10,6 @@ const UPDATE_SERVER = "https://update.amical.ai";
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
 const CHECK_INTERVAL_AFTER_DOWNLOAD_MS = 3 * 60 * 60 * 1000; // 3 hours
 
-// Dev-only test mode — opt in with `UPDATER_DEV_TEST=true pnpm start`. In an
-// unpackaged build it runs the real update-meta round-trip and drives the real
-// state machine, stubbing the macOS-signed Squirrel download/install (which
-// can't run unsigned). Off in packaged builds and in normal dev runs; remove
-// when the updater UI is no longer being tested.
-const UPDATER_DEV_TEST =
-  !app.isPackaged && process.env.UPDATER_DEV_TEST === "true";
-
 export type UpdateAction = "none" | "silent" | "prompt" | "force";
 
 const VALID_ACTIONS = new Set<string>(["none", "silent", "prompt", "force"]);
@@ -30,6 +22,12 @@ export type UpdateState =
   | "available"
   | "downloaded"
   | "error";
+
+// Internal lifecycle phase. The public UpdateState is derived from this plus
+// `staged` (see deriveUpdateState) — keeping them separate means out-of-band
+// resets (e.g. a channel change) can never desync the in-flight guard from the
+// UI label.
+type UpdatePhase = "idle" | "checking" | "downloading" | "error";
 
 export interface UpdateMetadata {
   action: UpdateAction;
@@ -71,12 +69,20 @@ export class AutoUpdaterService extends EventEmitter {
   // feed URL always reflects the newest version we have, preventing
   // re-downloads of the same release while still discovering newer ones.
   private effectiveVersion: string = app.getVersion();
-  private isChecking = false;
   private lastMetadata: UpdateMetadata | null = null;
-  private updateDownloaded = false;
-  private updateState: UpdateState = "not-available";
+  // Two orthogonal axes: `phase` is the transient activity (idle/checking/
+  // downloading/error); `staged` is whether a downloaded install is waiting.
+  // A staged install survives background re-checks, so these genuinely differ.
+  // The public UpdateState is derived from both via deriveUpdateState().
+  private phase: UpdatePhase = "idle";
+  private staged = false;
+  private publicState: UpdateState = "not-available";
   private dismissedVersion: string | undefined = undefined;
-  private mockCheckTimeout: ReturnType<typeof setTimeout> | null = null;
+  // Electron's native autoUpdater does not scope lifecycle events to a request.
+  // While it is checking/downloading, keep its feed URL stable and remember the
+  // latest requested channel here. Once the current cycle settles, apply this
+  // channel and let the next manual or scheduled check fetch fresh metadata.
+  private pendingChannel: "stable" | "beta" | null = null;
   private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -87,15 +93,9 @@ export class AutoUpdaterService extends EventEmitter {
     settingsService: SettingsService,
     telemetryService: TelemetryService,
   ): Promise<void> {
-    if (!app.isPackaged && !UPDATER_DEV_TEST) {
+    if (!app.isPackaged) {
       logger.updater.info("Skipping auto-updater: app is not packaged");
       return;
-    }
-
-    if (UPDATER_DEV_TEST) {
-      logger.updater.info(
-        "[updater-dev-test] ACTIVE — real update-meta fetch + simulated download (no real install)",
-      );
     }
 
     if (process.argv.includes("--squirrel-firstrun")) {
@@ -116,18 +116,13 @@ export class AutoUpdaterService extends EventEmitter {
     settingsService.on(
       "update-channel-changed",
       (channel: "stable" | "beta") => {
-        this.currentChannel = channel;
-        // Reset to running version — the new channel's version space is different
-        this.effectiveVersion = app.getVersion();
-        this.updateDownloaded = false;
-        this.setUpdateState("not-available");
-        this.lastMetadata = null;
-        this.dismissedVersion = undefined;
-        this.emit("update-prompt-changed");
-        this.setFeedURL(channel);
-        logger.updater.info("Update channel changed, checking for updates", {
-          channel,
-        });
+        if (this.isCheckingOrDownloading) {
+          // Can't safely switch while a native cycle is in flight — queue it.
+          this.deferChannelChange(channel);
+          return;
+        }
+        this.pendingChannel = null;
+        this.applyChannel(channel);
         this.checkForUpdates();
       },
     );
@@ -163,36 +158,102 @@ export class AutoUpdaterService extends EventEmitter {
       clearInterval(this.checkInterval);
     }
 
-    const intervalMs = this.updateDownloaded
+    const intervalMs = this.staged
       ? CHECK_INTERVAL_AFTER_DOWNLOAD_MS
       : CHECK_INTERVAL_MS;
     this.checkInterval = setInterval(() => this.checkForUpdates(), intervalMs);
     logger.updater.info("Automatic update checks scheduled", {
       intervalMs,
-      updateDownloaded: this.updateDownloaded,
+      staged: this.staged,
     });
   }
 
-  private setUpdateState(state: UpdateState): void {
-    if (state === this.updateState) return;
+  // A check/download cycle is in flight ("available"/downloading included).
+  // Reads `phase` only, so resetting the public/UI state elsewhere (e.g. on a
+  // channel change) can never clear it.
+  private get isCheckingOrDownloading(): boolean {
+    return this.phase === "checking" || this.phase === "downloading";
+  }
 
-    this.updateState = state;
-    logger.updater.info("Update state changed", { state });
+  // The public UI state is a projection of (phase, staged): an in-flight phase
+  // shows directly, otherwise we rest on "downloaded" if an install is staged.
+  private deriveUpdateState(): UpdateState {
+    if (this.phase === "checking") return "checking";
+    if (this.phase === "downloading") return "available";
+    if (this.phase === "error") return "error";
+    return this.staged ? "downloaded" : "not-available";
+  }
+
+  // Single writer for the public state: recompute from (phase, staged) and emit
+  // only when the derived value actually changes.
+  private publishState(): void {
+    const next = this.deriveUpdateState();
+    if (next === this.publicState) return;
+
+    this.publicState = next;
+    logger.updater.info("Update state changed", { state: next });
     this.emit("state-changed");
   }
 
-  /** Settle to the resting state once an in-flight check resolves. */
-  private setSettledState(): void {
-    this.setUpdateState(this.updateDownloaded ? "downloaded" : "not-available");
+  // The only way `phase` is mutated: set it and publish in one step, so the
+  // public state can never lag the phase it's derived from.
+  private setPhase(phase: UpdatePhase): void {
+    this.phase = phase;
+    this.publishState();
+  }
+
+  // Clear the per-channel prompt/staged state and notify the UI. The feed URL
+  // and effectiveVersion are intentionally NOT reset here — deferChannelChange
+  // must keep them pinned to the in-flight cycle's channel.
+  private resetPromptState(): void {
+    this.staged = false;
+    this.lastMetadata = null;
+    this.dismissedVersion = undefined;
+    this.emit("update-prompt-changed");
+  }
+
+  private applyChannel(channel: "stable" | "beta"): void {
+    this.currentChannel = channel;
+    // Reset to running version — each channel has its own version space.
+    this.effectiveVersion = app.getVersion();
+    this.resetPromptState();
+    this.setFeedURL(channel);
+    // setPhase last so it's the single publish for this whole reset, and the
+    // only-mutator-of-phase invariant holds with no exceptions.
+    this.setPhase("idle");
+    logger.updater.info("Update channel applied", { channel });
+  }
+
+  private deferChannelChange(channel: "stable" | "beta"): void {
+    this.pendingChannel = channel;
+    // Don't touch currentChannel/feed URL while a native cycle is running; the
+    // requested channel is applied once it settles (applyPendingChannelIfNeeded).
+    // Clearing the prompt is safe and gives immediate UI feedback; the in-flight
+    // phase still drives the status label, so no state-changed emit is needed.
+    this.resetPromptState();
+    logger.updater.info("Update channel change deferred", {
+      channel,
+      currentChannel: this.currentChannel,
+    });
+  }
+
+  private applyPendingChannelIfNeeded(reason: string): boolean {
+    if (!this.pendingChannel) return false;
+
+    const channel = this.pendingChannel;
+    this.pendingChannel = null;
+    this.applyChannel(channel);
+    logger.updater.info("Deferred update channel applied", { channel, reason });
+    return true;
   }
 
   private clearDownloadedUpdate(reason: string): void {
-    if (!this.updateDownloaded && this.effectiveVersion === app.getVersion()) {
+    if (!this.staged && this.effectiveVersion === app.getVersion()) {
       return;
     }
 
     logger.updater.info("Clearing downloaded update state", { reason });
-    this.updateDownloaded = false;
+    this.staged = false;
     this.effectiveVersion = app.getVersion();
     this.setFeedURL(this.currentChannel);
     this.scheduleAutomaticChecks();
@@ -201,16 +262,23 @@ export class AutoUpdaterService extends EventEmitter {
 
   private registerEventHandlers(): void {
     autoUpdater.on("error", (error) => {
-      this.isChecking = false;
       const classification = classifyUpdaterError(error);
       const message = getErrorMessage(error);
+
+      if (this.applyPendingChannelIfNeeded("native_error")) {
+        logger.updater.warn("Ignoring updater error from deferred channel", {
+          error: message,
+          classification,
+        });
+        return;
+      }
 
       if (classification === "read_only_volume") {
         logger.updater.warn("Auto-updater warning", {
           error: message,
           classification,
         });
-        this.setSettledState();
+        this.setPhase("idle");
         return;
       }
 
@@ -221,34 +289,44 @@ export class AutoUpdaterService extends EventEmitter {
         classification,
       });
       this.clearDownloadedUpdate(classification);
-      this.setUpdateState("error");
+      this.setPhase("error");
     });
 
     autoUpdater.on("checking-for-update", () => {
       logger.updater.info("Checking for update...");
-      this.setUpdateState("checking");
+      this.setPhase("checking");
       this.emit("checking-for-update");
     });
 
     autoUpdater.on("update-available", () => {
       logger.updater.info("Update available, downloading...");
       // Reset so isDownloaded() only reflects the current download
-      this.updateDownloaded = false;
-      this.setUpdateState("available");
+      this.staged = false;
+      this.setPhase("downloading");
       this.emit("update-available");
     });
 
     autoUpdater.on("update-not-available", () => {
-      this.isChecking = false;
       logger.updater.info("No update available");
-      this.setSettledState();
+      if (this.applyPendingChannelIfNeeded("native_not_available")) {
+        return;
+      }
+      this.setPhase("idle");
       this.emit("update-not-available");
     });
 
     autoUpdater.on("update-downloaded", (_event, releaseNotes, releaseName) => {
-      this.isChecking = false;
-      this.updateDownloaded = true;
-      this.setUpdateState("downloaded");
+      if (this.applyPendingChannelIfNeeded("native_downloaded")) {
+        logger.updater.info(
+          "Ignoring downloaded update from deferred channel",
+          {
+            releaseName,
+          },
+        );
+        return;
+      }
+      this.staged = true;
+      this.setPhase("idle");
       logger.updater.info("Update downloaded", { releaseName });
       // Advance effective version so subsequent checks use the downloaded
       // version in the feed URL, avoiding re-downloads of the same release
@@ -268,13 +346,13 @@ export class AutoUpdaterService extends EventEmitter {
   }
 
   getUpdateState(): UpdateState {
-    return this.updateState;
+    return this.publicState;
   }
 
   getUpdatePrompt(): UpdatePrompt | null {
     return computeUpdatePrompt(
       this.lastMetadata,
-      this.updateDownloaded,
+      this.staged,
       this.dismissedVersion,
     );
   }
@@ -287,7 +365,7 @@ export class AutoUpdaterService extends EventEmitter {
   }
 
   isDownloaded(): boolean {
-    return this.updateDownloaded;
+    return this.staged;
   }
 
   private async fetchUpdateMetadata(): Promise<UpdateMetadata | null> {
@@ -349,47 +427,39 @@ export class AutoUpdaterService extends EventEmitter {
   }
 
   async checkForUpdates(userInitiated = false): Promise<void> {
-    if (!app.isPackaged && !UPDATER_DEV_TEST) {
+    if (!app.isPackaged) {
       logger.updater.info("Skipping update check: app is not packaged");
-      if (userInitiated) {
-        this.setUpdateState("checking");
-        if (this.mockCheckTimeout) clearTimeout(this.mockCheckTimeout);
-        this.mockCheckTimeout = setTimeout(() => {
-          this.setUpdateState("not-available");
-          this.mockCheckTimeout = null;
-        }, 1500);
-      }
       return;
     }
 
-    if (this.isChecking) {
+    if (this.isCheckingOrDownloading) {
       logger.updater.info("Update check already in progress, skipping");
-      return;
-    }
-
-    if (this.updateState === "available") {
-      logger.updater.info("Update download already in progress, skipping");
       return;
     }
 
     // Manual checks should keep the visible action on "Restart to Install"
     // once an update is staged. Background checks may still run to discover
     // newer releases.
-    if (userInitiated && this.updateDownloaded) {
+    if (userInitiated && this.staged) {
       logger.updater.info("Update already downloaded, skipping manual check");
-      this.setUpdateState("downloaded");
+      this.setPhase("idle");
       return;
     }
 
     try {
-      this.isChecking = true;
-      this.setUpdateState("checking");
+      this.setPhase("checking");
       logger.updater.info("Checking for updates", { userInitiated });
 
       // Fetch metadata to determine UI behavior. Only update lastMetadata
       // on success — transient failures preserve the previous policy so a
       // pending prompt/force isn't silently dropped.
       const metadata = await this.fetchUpdateMetadata();
+      // A channel change during the fetch supersedes this result. Apply the
+      // pending channel and let the next manual or scheduled check use it.
+      if (this.applyPendingChannelIfNeeded("metadata_superseded")) {
+        logger.updater.info("Update check superseded, discarding stale result");
+        return;
+      }
       if (metadata) {
         this.lastMetadata = metadata;
         this.emit("update-prompt-changed");
@@ -398,8 +468,7 @@ export class AutoUpdaterService extends EventEmitter {
         // failed, always proceed so stale cached "none" can't suppress
         // discovery of newly published releases.
         if (metadata.action === "none") {
-          this.isChecking = false;
-          this.setSettledState();
+          this.setPhase("idle");
           this.emit("update-not-available");
           return;
         }
@@ -407,31 +476,19 @@ export class AutoUpdaterService extends EventEmitter {
 
       // Proceed with native update check (uses effectiveVersion in feed URL,
       // so it discovers newer releases even if one is already downloaded).
-      if (UPDATER_DEV_TEST) {
-        this.simulateDownloadForDevTest();
-        return;
-      }
       autoUpdater.checkForUpdates();
     } catch (error) {
-      this.isChecking = false;
       logger.updater.error("Failed to check for updates", { error });
       this.clearDownloadedUpdate("check_failed");
-      this.setUpdateState("error");
+      this.setPhase("error");
     }
   }
 
   quitAndInstall(): void {
-    if (!this.updateDownloaded) {
+    if (!this.staged) {
       logger.updater.warn("Skipping install: update is not downloaded", {
-        state: this.updateState,
+        state: this.publicState,
       });
-      return;
-    }
-
-    if (UPDATER_DEV_TEST) {
-      logger.updater.info(
-        "[updater-dev-test] Skipping real quitAndInstall (unsigned dev build)",
-      );
       return;
     }
 
@@ -439,31 +496,10 @@ export class AutoUpdaterService extends EventEmitter {
     autoUpdater.quitAndInstall();
   }
 
-  // Dev-test only: stand in for the Squirrel download (which can't run in an
-  // unpackaged/unsigned build) by walking the real state transitions.
-  private simulateDownloadForDevTest(): void {
-    this.isChecking = false;
-    this.updateDownloaded = false;
-    this.setUpdateState("available");
-    if (this.mockCheckTimeout) clearTimeout(this.mockCheckTimeout);
-    this.mockCheckTimeout = setTimeout(() => {
-      this.updateDownloaded = true;
-      this.effectiveVersion =
-        this.lastMetadata?.version ?? this.effectiveVersion;
-      this.setUpdateState("downloaded");
-      this.emit("update-prompt-changed");
-      this.mockCheckTimeout = null;
-    }, 2000);
-  }
-
   cleanup(): void {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
-    }
-    if (this.mockCheckTimeout) {
-      clearTimeout(this.mockCheckTimeout);
-      this.mockCheckTimeout = null;
     }
     if (this.initialCheckTimeout) {
       clearTimeout(this.initialCheckTimeout);

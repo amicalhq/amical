@@ -21,12 +21,14 @@ export type { NavSecondaryItem } from "@/components/nav-secondary-item-button";
 export function NavSecondary({
   items,
   prefix,
+  beforeAuth,
   ...props
 }: {
   items: NavSecondaryItem[];
   // Items rendered inside the same SidebarMenu, above `items` — keeps
   // spacing uniform (no 8px gap from a separate SidebarGroup).
   prefix?: React.ReactNode;
+  beforeAuth?: React.ReactNode;
   // Omit HTML's `prefix` (RDFa) so our React-node `prefix` wins — the
   // intersection would otherwise narrow it to `string | undefined`.
 } & Omit<React.ComponentPropsWithoutRef<typeof SidebarGroup>, "prefix">) {
@@ -57,6 +59,7 @@ export function NavSecondary({
             </>
           )}
           <FeedbackButton />
+          {beforeAuth}
           <AuthButton />
         </SidebarMenu>
       </SidebarGroupContent>

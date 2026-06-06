@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,11 @@ import {
 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { useTranslation } from "react-i18next";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { useUpdateState } from "@/hooks/useUpdateState";
 import type { UpdateState } from "@/main/services/auto-updater";
+
+const routeApi = getRouteApi("/_app/settings/about");
 
 const CHANGELOG_URL = "https://github.com/amicalhq/amical/releases";
 const GITHUB_URL = "https://github.com/amicalhq/amical";
@@ -61,18 +65,20 @@ const UPDATE_STATUS: Record<
 export default function AboutSettingsPage() {
   const { t } = useTranslation();
   const { data: version } = api.settings.getAppVersion.useQuery();
-  const [updateState, setUpdateState] = useState<UpdateState>("not-available");
-
-  api.updater.onUpdateStateChange.useSubscription(undefined, {
-    onData: ({ state }) => setUpdateState(state),
-    onError: (error) =>
-      console.error("Update state subscription error:", error),
-  });
+  const updateCardRef = React.useRef<HTMLDivElement>(null);
+  const highlightTimeoutRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const [isUpdateCardHighlighted, setIsUpdateCardHighlighted] =
+    React.useState(false);
+  const updateState = useUpdateState();
+  const navigate = useNavigate();
+  const { focusUpdate } = routeApi.useSearch();
 
   const checkForUpdates = api.updater.checkForUpdates.useMutation();
   const quitAndInstall = api.updater.quitAndInstall.useMutation();
-
   const isReady = updateState === "downloaded";
+
   const buttonBusy =
     updateState === "checking" ||
     updateState === "available" ||
@@ -87,6 +93,38 @@ export default function AboutSettingsPage() {
 
     checkForUpdates.mutate({ userInitiated: true });
   }
+
+  const focusUpdateCard = React.useCallback(() => {
+    const card = updateCardRef.current;
+    if (!card) return;
+
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.focus({ preventScroll: true });
+    setIsUpdateCardHighlighted(true);
+
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+    highlightTimeoutRef.current = setTimeout(() => {
+      setIsUpdateCardHighlighted(false);
+      highlightTimeoutRef.current = null;
+    }, 1600);
+  }, []);
+
+  React.useEffect(() => {
+    if (!focusUpdate) return;
+    focusUpdateCard();
+    // Clear the flag so a repeat click on the sidebar CTA re-triggers focus.
+    navigate({ to: "/settings/about", search: {}, replace: true });
+  }, [focusUpdate, focusUpdateCard, navigate]);
+
+  React.useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function renderStatus() {
     const { Icon, iconClassName, textClassName, labelKey } =
@@ -110,7 +148,15 @@ export default function AboutSettingsPage() {
       </div>
 
       <div className="space-y-6">
-        <Card>
+        <Card
+          ref={updateCardRef}
+          tabIndex={-1}
+          className={cn(
+            "outline-none transition-[border-color,box-shadow] duration-300",
+            isUpdateCardHighlighted &&
+              "border-indigo-500 ring-2 ring-indigo-500/50",
+          )}
+        >
           <CardContent className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <div className="text-lg font-semibold">

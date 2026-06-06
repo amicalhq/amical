@@ -557,6 +557,7 @@
         "upToDate": "Aktuell",
         "ready": "Update bereit — zum Installieren neu starten",
         "error": "Fehler beim Aktualisieren, bitte neu starten und erneut versuchen",
+        "sidebarCta": "Update bereit",
         "checkButton": "Nach Updates suchen",
         "restartButton": "Neu starten und installieren"
       },
