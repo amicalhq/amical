@@ -1,7 +1,11 @@
 import { app, autoUpdater, net } from "electron";
 import { EventEmitter } from "events";
 import { logger } from "../logger";
-import { getAmicalClientHeaders, getUserAgent } from "../../utils/http-client";
+import {
+  AMICAL_DEVICE_ID_HEADER,
+  getAmicalClientHeaders,
+  getUserAgent,
+} from "../../utils/http-client";
 import type { SettingsService } from "../../services/settings-service";
 import type { TelemetryService } from "../../services/telemetry-service";
 import { computeUpdatePrompt, type UpdatePrompt } from "./update-prompt";
@@ -375,11 +379,18 @@ export class AutoUpdaterService extends EventEmitter {
     // policy against what the user is actually running, not what's downloaded.
     const url = `${UPDATE_SERVER}/update-meta/${this.currentChannel}/${platform}-${arch}/${app.getVersion()}`;
 
+    // Anonymous, stable per-install id so the server can bucket this install
+    // for staged rollouts. Omit the header entirely if the id isn't ready yet
+    // (telemetry initializes machineId asynchronously) — the server then treats
+    // the install as unbucketed and applies default policy.
+    const deviceId = this.telemetryService?.getMachineId();
+
     try {
       const response = await net.fetch(url, {
         headers: {
           "User-Agent": getUserAgent(),
           ...getAmicalClientHeaders(),
+          ...(deviceId ? { [AMICAL_DEVICE_ID_HEADER]: deviceId } : {}),
         },
       });
 

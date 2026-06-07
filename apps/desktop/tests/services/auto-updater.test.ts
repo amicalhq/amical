@@ -38,7 +38,10 @@ describe("classifyUpdaterError", () => {
 // far in the future and are cleared by cleanup() in afterEach.
 describe("AutoUpdaterService", () => {
   let service: AutoUpdaterService;
-  let telemetry: { captureException: ReturnType<typeof vi.fn> };
+  let telemetry: {
+    captureException: ReturnType<typeof vi.fn>;
+    getMachineId: ReturnType<typeof vi.fn>;
+  };
   let emitUpdateChannelChanged: ((channel: "stable" | "beta") => void) | null;
 
   beforeEach(async () => {
@@ -47,7 +50,10 @@ describe("AutoUpdaterService", () => {
     vi.clearAllMocks();
 
     emitUpdateChannelChanged = null;
-    telemetry = { captureException: vi.fn() };
+    telemetry = {
+      captureException: vi.fn(),
+      getMachineId: vi.fn().mockReturnValue("machine-xyz"),
+    };
     service = new AutoUpdaterService();
     await service.initialize(
       {
@@ -417,6 +423,40 @@ describe("AutoUpdaterService", () => {
       expect(vi.mocked(autoUpdater.setFeedURL)).toHaveBeenLastCalledWith({
         url: expect.stringContaining("/0.1.0-test"),
       });
+    });
+  });
+
+  describe("metadata request", () => {
+    function headersOfLastFetch(): Record<string, string> {
+      const calls = vi.mocked(net.fetch).mock.calls;
+      return (calls[calls.length - 1]?.[1]?.headers ?? {}) as Record<
+        string,
+        string
+      >;
+    }
+
+    it("attaches the anonymous device id header from telemetry", async () => {
+      telemetry.getMachineId.mockReturnValue("device-123");
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "none" }),
+      } as any);
+
+      await service.checkForUpdates(true);
+
+      expect(headersOfLastFetch()["amical-device-id"]).toBe("device-123");
+    });
+
+    it("omits the device id header when the machine id is not ready", async () => {
+      telemetry.getMachineId.mockReturnValue("");
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "none" }),
+      } as any);
+
+      await service.checkForUpdates(true);
+
+      expect(headersOfLastFetch()).not.toHaveProperty("amical-device-id");
     });
   });
 

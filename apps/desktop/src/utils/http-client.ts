@@ -10,6 +10,10 @@ export interface AmicalClientInfo {
 export const AMICAL_CLIENT_HEADER = "amical-client";
 export const AMICAL_VERSION_HEADER = "amical-version";
 export const AMICAL_PLATFORM_HEADER = "amical-platform";
+// Anonymous, stable per-install id (the telemetry machineId) used by the update
+// server to bucket installs for staged rollouts. Added per request, not part of
+// the frozen client headers above, because it depends on the runtime machineId.
+export const AMICAL_DEVICE_ID_HEADER = "amical-device-id";
 
 const AMICAL_CLIENT_INFO: AmicalClientInfo = {
   client: "desktop",
