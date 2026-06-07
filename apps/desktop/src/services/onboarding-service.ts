@@ -549,10 +549,7 @@ export class OnboardingService extends EventEmitter {
       suggested: "cloud" as ModelType,
       reason:
         "Your system may experience slow performance with local models. Cloud processing is recommended for optimal speed.",
-      systemSpecs: {
-        cpu_cores: systemInfo.cpu_cores,
-        memory_total_gb: systemInfo.memory_total_gb,
-      },
+      systemSpecs,
     };
   }
 

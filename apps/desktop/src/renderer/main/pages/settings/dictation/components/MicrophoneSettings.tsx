@@ -8,6 +8,10 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/trpc/react";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
+import {
+  resolveMicrophoneSelectionValue,
+  toMicrophonePreference,
+} from "@/utils/audio-devices";
 import { toast } from "sonner";
 import { Mic } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -21,26 +25,22 @@ export function MicrophoneSettings() {
   const { devices: audioDevices } = useAudioDevices();
 
   const currentMicrophoneName = settings?.recording?.preferredMicrophoneName;
+  const currentMicrophoneDeviceId =
+    settings?.recording?.preferredMicrophoneDeviceId;
 
   const handleMicrophoneChange = async (deviceId: string) => {
     try {
-      const selected = audioDevices.find(
-        (device) => device.deviceId === deviceId,
-      );
-      const actualDeviceName =
-        deviceId === "default" ? null : (selected?.label ?? null);
+      const preference = toMicrophonePreference(deviceId, audioDevices);
 
-      await setPreferredMicrophone.mutateAsync({
-        deviceName: actualDeviceName,
-      });
+      await setPreferredMicrophone.mutateAsync(preference);
 
       // Refetch settings to update UI
       await refetchSettings();
 
       toast.success(
-        actualDeviceName
+        preference.deviceName
           ? t("settings.dictation.microphone.toast.changed", {
-              deviceName: actualDeviceName,
+              deviceName: preference.deviceName,
             })
           : t("settings.dictation.microphone.toast.systemDefault"),
       );
@@ -50,11 +50,11 @@ export function MicrophoneSettings() {
     }
   };
 
-  // Find the current selection value
-  const currentSelectionValue = currentMicrophoneName
-    ? (audioDevices.find((device) => device.label === currentMicrophoneName)
-        ?.deviceId ?? "default")
-    : "default";
+  const currentSelectionValue = resolveMicrophoneSelectionValue(
+    audioDevices,
+    currentMicrophoneDeviceId,
+    currentMicrophoneName,
+  );
 
   return (
     <div className="flex items-center justify-between">

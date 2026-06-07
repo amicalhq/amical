@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-
-export interface AudioDevice {
-  deviceId: string;
-  label: string;
-  isDefault?: boolean;
-}
+import { type AudioDevice, DEFAULT_DEVICE_ID } from "@/utils/audio-devices";
 
 export function useAudioDevices() {
   const { t } = useTranslation();
@@ -36,7 +31,8 @@ export function useAudioDevices() {
       let foundDefaultName = "";
       const defaultDevice = allDevices.find(
         (device) =>
-          device.kind === "audioinput" && device.deviceId === "default",
+          device.kind === "audioinput" &&
+          device.deviceId === DEFAULT_DEVICE_ID,
       );
 
       if (defaultDevice) {
@@ -76,7 +72,7 @@ export function useAudioDevices() {
 
           // Skip special entries entirely - we'll add our own.
           if (
-            device.deviceId === "default" ||
+            device.deviceId === DEFAULT_DEVICE_ID ||
             device.deviceId === "communications"
           ) {
             return false;
@@ -98,7 +94,7 @@ export function useAudioDevices() {
       // Add system default as first option
       const devicesWithDefault: AudioDevice[] = [
         {
-          deviceId: "default",
+          deviceId: DEFAULT_DEVICE_ID,
           label: foundDefaultName
             ? t("settings.dictation.microphone.systemDefaultWithName", {
                 deviceName: foundDefaultName,

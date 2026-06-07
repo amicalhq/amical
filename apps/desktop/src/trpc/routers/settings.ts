@@ -99,6 +99,7 @@ const RecordingSettingsSchema = z.object({
   autoStopSilence: z.boolean().optional(),
   silenceThreshold: z.number().optional(),
   maxRecordingDuration: z.number().optional(),
+  preferredMicrophoneDeviceId: z.string().optional(),
   preferredMicrophoneName: z.string().optional(),
 });
 
@@ -386,6 +387,7 @@ export const settingsRouter = createRouter({
   setPreferredMicrophone: procedure
     .input(
       z.object({
+        deviceId: z.string().nullable().optional(),
         deviceName: z.string().nullable(),
       }),
     )
@@ -408,6 +410,7 @@ export const settingsRouter = createRouter({
           silenceThreshold: 0.1,
           maxRecordingDuration: 300,
           ...currentSettings,
+          preferredMicrophoneDeviceId: input.deviceId || undefined,
           preferredMicrophoneName: input.deviceName || undefined,
         };
 
@@ -415,7 +418,10 @@ export const settingsRouter = createRouter({
 
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
-          logger.main.info("Preferred microphone updated:", input.deviceName);
+          logger.main.info("Preferred microphone updated:", {
+            deviceId: input.deviceId,
+            deviceName: input.deviceName,
+          });
         }
 
         return true;

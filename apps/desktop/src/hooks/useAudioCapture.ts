@@ -2,9 +2,12 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import audioWorkletUrl from "@/assets/audio-recorder-processor.js?url";
 import { api } from "@/trpc/react";
 import { Mutex } from "async-mutex";
+import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
+import {
+  DEFAULT_DEVICE_ID,
+  resolvePreferredAudioDevice,
+} from "@/utils/audio-devices";
 
-// Audio configuration
-const FRAME_SIZE = 512; // 32ms at 16kHz
 const SAMPLE_RATE = 16000;
 
 export interface UseAudioCaptureParams {
@@ -29,6 +32,7 @@ export const useAudioCapture = ({
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const trackDiagnosticsCleanupRef = useRef<(() => void) | null>(null);
   const mutexRef = useRef(new Mutex());
 
   // Subscribe to voice detection updates via tRPC
@@ -44,6 +48,8 @@ export const useAudioCapture = ({
 
   // Get user's preferred microphone from settings
   const { data: settings } = api.settings.getSettings.useQuery();
+  const preferredMicrophoneDeviceId =
+    settings?.recording?.preferredMicrophoneDeviceId;
   const preferredMicrophoneName = settings?.recording?.preferredMicrophoneName;
 
   const startCapture = useCallback(async () => {
@@ -61,38 +67,64 @@ export const useAudioCapture = ({
           autoGainControl: false,
         };
 
-        // Add deviceId if user has a preference
-        if (preferredMicrophoneName) {
+        let preferredDevice: MediaDeviceInfo | undefined;
+        if (preferredMicrophoneDeviceId || preferredMicrophoneName) {
           const enumerateStartTime = performance.now();
           const devices = await navigator.mediaDevices.enumerateDevices();
           const enumerateDuration = performance.now() - enumerateStartTime;
-          console.log(
-            `AudioCapture: enumerateDevices took ${enumerateDuration.toFixed(2)}ms`,
+          const audioInputDevices = devices.filter(
+            (device) => device.kind === "audioinput",
+          );
+          audioCaptureDiagnostics.logEnumerateDevicesTiming(enumerateDuration);
+          audioCaptureDiagnostics.logAudioInputDevices(
+            "Available audio input devices",
+            devices,
           );
 
-          const preferredDevice = devices.find(
-            (device) =>
-              device.kind === "audioinput" &&
-              device.label === preferredMicrophoneName,
+          const resolution = resolvePreferredAudioDevice(
+            audioInputDevices,
+            preferredMicrophoneDeviceId,
+            preferredMicrophoneName,
           );
-          if (preferredDevice) {
-            audioConstraints.deviceId = { exact: preferredDevice.deviceId };
-            console.log(
-              "AudioCapture: Using preferred microphone:",
-              preferredMicrophoneName,
-            );
-          }
+          preferredDevice = resolution.device;
+          audioCaptureDiagnostics.logPreferredDeviceResolution({
+            matchedBy: resolution.matchedBy,
+            device: preferredDevice,
+            preferredDeviceId: preferredMicrophoneDeviceId,
+            preferredName: preferredMicrophoneName,
+          });
         }
 
-        // Get microphone stream
+        const captureSource: "preferred" | "default" = preferredDevice
+          ? "preferred"
+          : "default";
+        audioConstraints.deviceId = {
+          exact: preferredDevice ? preferredDevice.deviceId : DEFAULT_DEVICE_ID,
+        };
+        if (captureSource === "default") {
+          console.log("AudioCapture: Using Chromium default microphone alias", {
+            deviceId: DEFAULT_DEVICE_ID,
+          });
+        }
+
         const getUserMediaStartTime = performance.now();
         streamRef.current = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
         });
-        const getUserMediaDuration = performance.now() - getUserMediaStartTime;
         console.log(
-          `AudioCapture: getUserMedia took ${getUserMediaDuration.toFixed(2)}ms`,
+          `AudioCapture: getUserMedia (${captureSource}) took ${(
+            performance.now() - getUserMediaStartTime
+          ).toFixed(2)}ms`,
         );
+
+        const audioTrack = streamRef.current.getAudioTracks()[0];
+        if (!audioTrack) {
+          throw new Error("No audio tracks available from microphone");
+        }
+        audioCaptureDiagnostics.logTrackState(audioTrack);
+        trackDiagnosticsCleanupRef.current?.();
+        trackDiagnosticsCleanupRef.current =
+          audioCaptureDiagnostics.registerTrack(audioTrack);
 
         // Create or resume audio context
         const audioContextStartTime = performance.now();
@@ -188,10 +220,61 @@ export const useAudioCapture = ({
         console.log("AudioCapture: Audio capture started successfully");
       } catch (error) {
         console.error("AudioCapture: Failed to start capture:", error);
+
+        // Release whatever was acquired before the failure so the mic doesn't
+        // stay open. We can't call stopCapture() here — it re-enters the same
+        // mutex this block already holds (deadlock) — so tear down inline.
+        trackDiagnosticsCleanupRef.current?.();
+        trackDiagnosticsCleanupRef.current = null;
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        audioContextRef.current?.close().catch(() => {});
+        sourceRef.current = null;
+        workletNodeRef.current = null;
+        audioContextRef.current = null;
+        streamRef.current = null;
+
         throw error;
       }
     });
-  }, [onAudioChunk, preferredMicrophoneName]);
+  }, [onAudioChunk, preferredMicrophoneDeviceId, preferredMicrophoneName]);
+
+  // Device-change diagnostics are only attached while dictation is active, so
+  // they don't enumerate/log in the background when not recording.
+  useEffect(() => {
+    if (!enabled || !navigator.mediaDevices?.addEventListener) {
+      return;
+    }
+
+    const handleDeviceChange = async () => {
+      const audioTrack = streamRef.current?.getAudioTracks()[0];
+      audioCaptureDiagnostics.logDeviceChange(
+        Boolean(streamRef.current),
+        audioTrack,
+      );
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        audioCaptureDiagnostics.logAudioInputDevices(
+          "Audio input devices after devicechange",
+          devices,
+        );
+      } catch (error) {
+        audioCaptureDiagnostics.logDeviceEnumerationFailure(
+          "Failed to enumerate devices after devicechange",
+          error,
+        );
+      }
+    };
+
+    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+
+    return () => {
+      navigator.mediaDevices.removeEventListener(
+        "devicechange",
+        handleDeviceChange,
+      );
+    };
+  }, [enabled]);
 
   const stopCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
@@ -217,6 +300,9 @@ export const useAudioCapture = ({
           await audioContextRef.current.suspend();
           console.log("AudioCapture: AudioContext suspended (ready for reuse)");
         }
+
+        trackDiagnosticsCleanupRef.current?.();
+        trackDiagnosticsCleanupRef.current = null;
 
         // Stop media stream
         if (streamRef.current) {

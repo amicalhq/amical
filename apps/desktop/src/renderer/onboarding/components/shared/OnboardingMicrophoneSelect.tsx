@@ -9,6 +9,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { api } from "@/trpc/react";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
+import {
+  resolveMicrophoneSelectionValue,
+  toMicrophonePreference,
+} from "@/utils/audio-devices";
 import { useTranslation } from "react-i18next";
 
 /**
@@ -22,28 +26,24 @@ export function OnboardingMicrophoneSelect() {
   const { devices: audioDevices } = useAudioDevices();
 
   const currentMicrophoneName = settings?.recording?.preferredMicrophoneName;
+  const currentMicrophoneDeviceId =
+    settings?.recording?.preferredMicrophoneDeviceId;
 
   const handleMicrophoneChange = async (deviceId: string) => {
     try {
-      const selected = audioDevices.find(
-        (device) => device.deviceId === deviceId,
+      await setPreferredMicrophone.mutateAsync(
+        toMicrophonePreference(deviceId, audioDevices),
       );
-      const actualDeviceName =
-        deviceId === "default" ? null : (selected?.label ?? null);
-
-      await setPreferredMicrophone.mutateAsync({
-        deviceName: actualDeviceName,
-      });
     } catch (error) {
       console.error("Failed to set preferred microphone:", error);
     }
   };
 
-  // Find the current selection value
-  const currentSelectionValue = currentMicrophoneName
-    ? (audioDevices.find((device) => device.label === currentMicrophoneName)
-        ?.deviceId ?? "default")
-    : "default";
+  const currentSelectionValue = resolveMicrophoneSelectionValue(
+    audioDevices,
+    currentMicrophoneDeviceId,
+    currentMicrophoneName,
+  );
 
   return (
     <div className="flex items-center justify-between">
