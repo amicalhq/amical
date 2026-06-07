@@ -354,8 +354,10 @@ const config: ForgeConfig = {
       // installed, causing "DLL initialization routine failed" errors on app startup.
       //
       // SOLUTION: Copy the ONNX Runtime DLLs from our package and the required VC++
-      // runtime DLLs from the build machine's System32 into the app directory.
-      // Windows DLL search order finds the app directory before System32.
+      // runtime DLLs from the build machine's System32 into the packaged
+      // onnxruntime-node binary directory. Node loads .node files with an altered
+      // DLL search path that starts from the .node directory, so app-root DLLs do
+      // not reliably beat System32 for native binding dependencies.
       //
       // REQUIREMENTS:
       // - Build machine must have VC++ runtime (GitHub Actions windows-2025 has VS2022)
@@ -387,7 +389,88 @@ const config: ForgeConfig = {
           return null;
         };
 
-        const copyOnnxRuntimeDlls = (outputPath: string) => {
+        const getOnnxRuntimeDllDirs = (binRoot: string): string[] => {
+          if (!existsSync(binRoot)) return [];
+
+          return readdirSync(binRoot)
+            .map((napiVersionDir) =>
+              join(binRoot, napiVersionDir, "win32", arch),
+            )
+            .filter((candidate) => {
+              try {
+                return statSync(candidate).isDirectory();
+              } catch {
+                return false;
+              }
+            });
+        };
+
+        const uniqueDirs = (dirs: string[]): string[] => {
+          const seen = new Set<string>();
+          return dirs.filter((dir) => {
+            const key = normalize(dir).toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        };
+
+        const getDllCopyTargets = (outputPath: string): string[] => {
+          const packagedOnnxBinRoots = [
+            join(
+              outputPath,
+              "resources",
+              "app.asar.unpacked",
+              "node_modules",
+              "onnxruntime-node",
+              "bin",
+            ),
+            join(
+              outputPath,
+              "resources",
+              "app",
+              "node_modules",
+              "onnxruntime-node",
+              "bin",
+            ),
+          ];
+
+          const targets = uniqueDirs(
+            packagedOnnxBinRoots.flatMap(getOnnxRuntimeDllDirs),
+          );
+
+          if (targets.length === 0) {
+            throw new Error(
+              `Failed to find packaged onnxruntime-node binary directories for win32/${arch}.`,
+            );
+          }
+
+          return targets;
+        };
+
+        const copyDllToTargets = (
+          sourceDir: string,
+          dll: string,
+          targets: string[],
+        ) => {
+          const source = join(sourceDir, dll);
+          for (const target of targets) {
+            const destination = join(target, dll);
+            if (
+              normalize(source).toLowerCase() ===
+              normalize(destination).toLowerCase()
+            ) {
+              continue;
+            }
+            copyFileSync(source, destination);
+            console.log(`  Copied ${dll} to ${target}`);
+          }
+        };
+
+        const copyOnnxRuntimeDlls = (
+          outputPath: string,
+          dllTargets: string[],
+        ) => {
           const onnxBinRoots = [
             join(
               outputPath,
@@ -420,7 +503,7 @@ const config: ForgeConfig = {
           }
 
           console.log(
-            `[postPackage] Copying ONNX Runtime DLLs from ${onnxDllDir} to ${outputPath}...`,
+            `[postPackage] Copying ONNX Runtime DLLs from ${onnxDllDir}...`,
           );
 
           const onnxRuntimeDlls = readdirSync(onnxDllDir).filter((file) =>
@@ -428,8 +511,7 @@ const config: ForgeConfig = {
           );
 
           for (const dll of onnxRuntimeDlls) {
-            copyFileSync(join(onnxDllDir, dll), join(outputPath, dll));
-            console.log(`  ✓ Copied ${dll}`);
+            copyDllToTargets(onnxDllDir, dll, dllTargets);
           }
         };
 
@@ -441,17 +523,19 @@ const config: ForgeConfig = {
         ];
 
         for (const outputPath of outputPaths) {
-          copyOnnxRuntimeDlls(outputPath);
+          const dllTargets = getDllCopyTargets(outputPath);
+          copyOnnxRuntimeDlls(outputPath, dllTargets);
 
           console.log(
-            `[postPackage] Bundling VC++ runtime DLLs for Windows at ${outputPath}...`,
+            `[postPackage] Bundling VC++ runtime DLLs for Windows...`,
           );
           for (const dll of vcRuntimeDlls) {
             const src = `C:\\Windows\\System32\\${dll}`;
-            const dest = join(outputPath, dll);
             try {
-              copyFileSync(src, dest);
-              console.log(`  ✓ Copied ${dll}`);
+              for (const target of dllTargets) {
+                copyFileSync(src, join(target, dll));
+                console.log(`  Copied ${dll} to ${target}`);
+              }
             } catch (error) {
               console.error(`  ✗ Failed to copy ${dll}:`, error);
               throw new Error(
