@@ -59,17 +59,6 @@ export function useAudioDevices() {
       const audioInputs = allDevices
         .filter((device) => device.kind === "audioinput")
         .filter((device) => {
-          // Skip virtual devices
-          const lowerLabel = device.label.toLowerCase();
-          if (
-            lowerLabel.includes("virtual") ||
-            lowerLabel.includes("teams") ||
-            lowerLabel.includes("zoom") ||
-            lowerLabel.includes("discord")
-          ) {
-            return false;
-          }
-
           // Skip special entries entirely - we'll add our own.
           if (
             device.deviceId === DEFAULT_DEVICE_ID ||
