@@ -153,6 +153,7 @@
       "subtitle": "Select how you want Amical to process your audio",
       "completeSetupToContinue": "Complete setup to continue",
       "recommended": "Recommended",
+      "localUnsupported": "Requires macOS 15 or later",
       "prosLabel": "Pros:",
       "consLabel": "Cons:",
       "note": "You can change your model later in Settings - nothing is permanent.",
@@ -333,6 +334,10 @@
         "localTranscriptionFailed": {
           "title": "Local transcription failed",
           "description": "Whisper audio processing failed"
+        },
+        "localTranscriptionUnsupported": {
+          "title": "Local transcription unavailable",
+          "description": "On-device models require macOS 15 or later. Switch to Amical Cloud."
         }
       }
     }
@@ -1003,6 +1008,7 @@
       "speech": {
         "loading": "Loading models...",
         "availableModels": "Available Models",
+        "localUnsupported": "Requires macOS 15 or later",
         "table": {
           "model": "Model",
           "features": "Features",

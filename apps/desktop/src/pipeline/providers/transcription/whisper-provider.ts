@@ -10,6 +10,7 @@ import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
 import { AppError, ErrorCodes } from "../../../types/error";
+import { isLocalTranscriptionSupported } from "../../../utils/os-version";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
 import { buildWhisperPrompt } from "./whisper-prompt";
 
@@ -302,6 +303,16 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   async initializeWhisper(): Promise<void> {
+    // On-device transcription requires macOS 15+ (the bundled bindings only
+    // load there). Refuse before forking the worker so the native binding is
+    // never loaded on an unsupported OS.
+    if (!isLocalTranscriptionSupported()) {
+      throw new AppError(
+        "Local transcription requires macOS 15 or later.",
+        ErrorCodes.LOCAL_TRANSCRIPTION_UNSUPPORTED,
+      );
+    }
+
     if (!this.workerWrapper) {
       // Determine the correct path for the worker script
       const workerPath = app.isPackaged

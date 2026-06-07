@@ -8,6 +8,7 @@ import type {
 } from "../../constants/models";
 import type { AppSettingsData, Model } from "../../db/schema";
 import type { ValidationResult } from "../../types/providers";
+import { isLocalTranscriptionSupported } from "../../utils/os-version";
 import { removeModel } from "../../db/models";
 import {
   REMOTE_PROVIDERS,
@@ -230,6 +231,12 @@ export const modelsRouter = createRouter({
     const modelService = ctx.serviceManager.getService("modelService");
     return modelService ? await modelService.isAvailable() : false;
   }),
+
+  // Whether on-device (local whisper) transcription is supported on this OS.
+  // false on macOS < 15 (bindings are built for macOS 15+); true elsewhere.
+  isLocalTranscriptionSupported: procedure.query(
+    async (): Promise<boolean> => isLocalTranscriptionSupported(),
+  ),
 
   getTranscriptionModels: procedure.query(async ({ ctx }) => {
     const modelService = ctx.serviceManager.getService("modelService");

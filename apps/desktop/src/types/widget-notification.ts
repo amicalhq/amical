@@ -248,6 +248,24 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  [ErrorCodes.LOCAL_TRANSCRIPTION_UNSUPPORTED]: {
+    title: {
+      key: "widget.notifications.errorCode.localTranscriptionUnsupported.title",
+    },
+    description: {
+      key: "widget.notifications.errorCode.localTranscriptionUnsupported.description",
+    },
+    subDescription: { key: "widget.notifications.recordingSaved" },
+    primaryAction: {
+      label: { key: "widget.notifications.action.aiModels" },
+      navigateTo: "/settings/ai-models",
+    },
+    secondaryAction: {
+      label: { key: "widget.notifications.action.support" },
+      icon: "discord",
+      externalUrl: DISCORD_SUPPORT_URL,
+    },
+  },
 };
 
 export const WIDGET_NOTIFICATION_CONFIG: Record<

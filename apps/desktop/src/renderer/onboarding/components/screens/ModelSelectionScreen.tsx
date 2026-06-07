@@ -6,6 +6,7 @@ import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
 import { ModelSetupModal } from "./ModelSetupModal";
 import { useSystemRecommendation } from "../../hooks/useSystemRecommendation";
+import { useLocalTranscriptionSupported } from "@/hooks/useLocalTranscriptionSupported";
 import { ModelType } from "../../../../types/onboarding";
 import { Cloud, Laptop, Sparkles, Check, X, Star } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ export function ModelSelectionScreen({
 }: ModelSelectionScreenProps) {
   const { t } = useTranslation();
   const { recommendation, isLoading } = useSystemRecommendation();
+  const { localSupported } = useLocalTranscriptionSupported();
   const [selectedModel, setSelectedModel] = useState<ModelType | null>(
     initialSelection || null,
   );
@@ -73,6 +75,10 @@ export function ModelSelectionScreen({
   ];
 
   const handleModelSelect = (modelType: ModelType) => {
+    // Local models aren't available on macOS < 15.
+    if (modelType === ModelType.Local && !localSupported) {
+      return;
+    }
     setSelectedModel(modelType);
     setShowSetupModal(true);
   };
@@ -151,15 +157,23 @@ export function ModelSelectionScreen({
             const isSelected = selectedModel === model.id;
             const isRecommended = recommendation?.suggested === model.id;
             const isComplete = setupComplete[model.id];
+            const isUnsupported = model.id === ModelType.Local && !localSupported;
+
+            let stateClassName: string;
+            if (isUnsupported) {
+              stateClassName = "cursor-not-allowed opacity-60";
+            } else if (isSelected) {
+              stateClassName = "cursor-pointer border-primary bg-primary/5";
+            } else {
+              stateClassName =
+                "cursor-pointer hover:border-muted-foreground/50";
+            }
 
             return (
               <Card
                 key={model.id}
-                className={`cursor-pointer transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "hover:border-muted-foreground/50"
-                }`}
+                className={`transition-colors ${stateClassName}`}
+                aria-disabled={isUnsupported}
                 onClick={() => handleModelSelect(model.id)}
               >
                 <div className="flex items-start gap-4 px-4">
@@ -180,6 +194,11 @@ export function ModelSelectionScreen({
                             )}
                           </div>
                           <p className="text-sm">{model.subtitle}</p>
+                          {isUnsupported && (
+                            <p className="text-xs font-medium text-destructive">
+                              {t("onboarding.modelSelection.localUnsupported")}
+                            </p>
+                          )}
                         </div>
                       </div>
                       {isComplete && (

@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/dialog";
 import { DownloadProgress } from "@/constants/models";
 import { api } from "@/trpc/react";
+import { useLocalTranscriptionSupported } from "@/hooks/useLocalTranscriptionSupported";
 import { useTranslation } from "react-i18next";
 
 const SpeedRating = ({ rating }: { rating: number }) => {
@@ -135,6 +136,8 @@ export default function SpeechTab() {
   const isTranscriptionAvailableQuery =
     api.models.isTranscriptionAvailable.useQuery();
   const selectedModelQuery = api.models.getSelectedModel.useQuery();
+  const { localSupported, isLoading: localSupportedLoading } =
+    useLocalTranscriptionSupported();
 
   const utils = api.useUtils();
 
@@ -387,7 +390,8 @@ export default function SpeechTab() {
     availableModelsQuery.isLoading ||
     downloadedModelsQuery.isLoading ||
     isTranscriptionAvailableQuery.isLoading ||
-    selectedModelQuery.isLoading;
+    selectedModelQuery.isLoading ||
+    localSupportedLoading;
 
   // Data from queries
   const availableModels = availableModelsQuery.data || [];
@@ -448,10 +452,13 @@ export default function SpeechTab() {
                           progress?.status === "downloading";
                         const isCloudModel = model.provider === "Amical Cloud";
 
-                        // Cloud models can be selected if authenticated, local models need to be downloaded
+                        // Cloud models can be selected if authenticated, local models need to be
+                        // downloaded — and local requires macOS 15+.
                         const canSelect = isCloudModel
                           ? (isAuthenticated ?? false)
-                          : isDownloaded && isTranscriptionAvailable;
+                          : isDownloaded &&
+                            isTranscriptionAvailable &&
+                            localSupported;
 
                         return (
                           <TableRow
@@ -571,7 +578,8 @@ export default function SpeechTab() {
                                 {/* Local models show download/delete buttons */}
                                 {!isCloudModel &&
                                   !isDownloaded &&
-                                  !isDownloading && (
+                                  !isDownloading &&
+                                  localSupported && (
                                     <button
                                       onClick={(e) =>
                                         handleDownload(model.id, e)
@@ -655,6 +663,14 @@ export default function SpeechTab() {
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
+                                )}
+
+                                {!isCloudModel && !localSupported && (
+                                  <span className="text-[10px] text-destructive text-center">
+                                    {t(
+                                      "settings.aiModels.speech.localUnsupported",
+                                    )}
+                                  </span>
                                 )}
 
                                 <div className="text-xs text-muted-foreground text-center">

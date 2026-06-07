@@ -10,6 +10,7 @@ import {
   findModelBySelectionValue,
   getModelSelectionKey,
 } from "@/utils/model-selection";
+import { useLocalTranscriptionSupported } from "@/hooks/useLocalTranscriptionSupported";
 
 interface DefaultModelComboboxProps {
   modelType: "speech" | "language" | "embedding";
@@ -40,6 +41,11 @@ export default function DefaultModelCombobox({
   const defaultModelQuery = api.models.getDefaultModel.useQuery({
     type: modelType,
   });
+
+  // Local (on-device) speech models require macOS 15+. Only relevant for the
+  // speech picker, so the check is skipped for language/embedding.
+  const { localSupported, isLoading: localSupportedLoading } =
+    useLocalTranscriptionSupported({ enabled: modelType === "speech" });
 
   // Subscribe to model selection changes
   api.models.onSelectionChanged.useSubscription(undefined, {
@@ -98,11 +104,20 @@ export default function DefaultModelCombobox({
     if (!modelsQuery.data) return [];
 
     if (modelType === "speech") {
-      // Speech models from local whisper
-      return modelsQuery.data.map((m) => ({
-        value: m.id,
-        label: m.name,
-      }));
+      // Speech models: cloud (Amical Cloud) + local whisper. Local requires
+      // macOS 15+, so disable local entries when unsupported.
+      return modelsQuery.data.map((m) => {
+        const isLocal = m.provider !== "Amical Cloud";
+        const disabled = isLocal && !localSupported;
+        return {
+          value: m.id,
+          label: m.name,
+          disabled,
+          disabledReason: disabled
+            ? t("settings.aiModels.speech.localUnsupported")
+            : undefined,
+        };
+      });
     } else {
       // Provider models for language/embedding
       return modelsQuery.data.map((m) => ({
@@ -110,7 +125,7 @@ export default function DefaultModelCombobox({
         label: m.name,
       }));
     }
-  }, [modelsQuery.data, modelType]);
+  }, [modelsQuery.data, modelType, localSupported, t]);
 
   const handleModelChange = (modelId: string) => {
     if (!modelId || modelId === defaultModelQuery.data) return;
@@ -146,7 +161,11 @@ export default function DefaultModelCombobox({
   }, [modelType, pendingModelId, modelsQuery.data]);
 
   // Loading state
-  if (modelsQuery.isLoading || defaultModelQuery.isLoading) {
+  if (
+    modelsQuery.isLoading ||
+    defaultModelQuery.isLoading ||
+    localSupportedLoading
+  ) {
     return (
       <div>
         <Label className="text-lg font-semibold">{resolvedTitle}</Label>

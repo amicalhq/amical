@@ -5,6 +5,7 @@ import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
 import type { ModelService } from "./model-service";
 import type { AppSettingsData } from "../db/schema";
+import { isLocalTranscriptionSupported } from "../utils/os-version";
 import {
   OnboardingScreen,
   FeatureInterest,
@@ -511,6 +512,22 @@ export class OnboardingService extends EventEmitter {
    * Calculate model recommendation based on system specs
    */
   calculateModelRecommendation(systemInfo: SystemSpecs): ModelRecommendation {
+    const systemSpecs = {
+      cpu_cores: systemInfo.cpu_cores,
+      memory_total_gb: systemInfo.memory_total_gb,
+    };
+
+    // Local (on-device) models can't run on macOS < 15 — never recommend them
+    // there, so the "Recommended" badge doesn't land on a disabled option.
+    if (!isLocalTranscriptionSupported()) {
+      return {
+        suggested: "cloud" as ModelType,
+        reason:
+          "On-device models require macOS 15 or later. Cloud transcription is recommended.",
+        systemSpecs,
+      };
+    }
+
     const gpuModel = systemInfo.gpu_model || "";
     const cpuModel = systemInfo.cpu_model || "";
 
@@ -523,10 +540,7 @@ export class OnboardingService extends EventEmitter {
         suggested: "local" as ModelType,
         reason:
           "Your system has sufficient resources for local models, offering better privacy and offline capability.",
-        systemSpecs: {
-          cpu_cores: systemInfo.cpu_cores,
-          memory_total_gb: systemInfo.memory_total_gb,
-        },
+        systemSpecs,
       };
     }
 
