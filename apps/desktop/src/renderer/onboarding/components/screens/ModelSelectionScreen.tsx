@@ -195,7 +195,7 @@ export function ModelSelectionScreen({
                           </div>
                           <p className="text-sm">{model.subtitle}</p>
                           {isUnsupported && (
-                            <p className="text-xs font-medium text-destructive">
+                            <p className="text-xs font-medium text-destructive-foreground">
                               {t("onboarding.modelSelection.localUnsupported")}
                             </p>
                           )}
