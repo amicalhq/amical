@@ -52,6 +52,7 @@ const ModelProvidersConfigSchema = z.object({
 
 const DictationSettingsSchema = z.object({
   autoDetectEnabled: z.boolean(),
+  swissGermanSpelling: z.boolean().optional().default(false),
   languages: z.array(
     z
       .string()
@@ -454,6 +455,7 @@ export const settingsRouter = createRouter({
       }
       return {
         autoDetectEnabled: true,
+        swissGermanSpelling: false,
         languages: ["en"],
       };
     }
@@ -472,6 +474,7 @@ export const settingsRouter = createRouter({
 
         const dictationSettings = {
           autoDetectEnabled: input.autoDetectEnabled,
+          swissGermanSpelling: input.swissGermanSpelling,
           languages: input.languages,
         };
 

@@ -670,7 +670,11 @@
         },
         "languagesLabel": "Languages",
         "languagesPlaceholder": "Select languages...",
-        "noResults": "No languages found."
+        "noResults": "No languages found.",
+        "swissGerman": {
+          "label": "Swiss German spelling (ß → ss)",
+          "description": "Replace the German sharp s (ß) with ss, as written in Switzerland and Liechtenstein."
+        }
       },
       "microphone": {
         "label": "Microphone",

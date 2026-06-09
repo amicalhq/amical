@@ -643,7 +643,11 @@
         },
         "languagesLabel": "Idiomas",
         "languagesPlaceholder": "Seleccionar idiomas...",
-        "noResults": "No se encontraron idiomas."
+        "noResults": "No se encontraron idiomas.",
+        "swissGerman": {
+          "label": "Ortografía suiza (ß → ss)",
+          "description": "Reemplaza la eszett alemana (ß) por ss, como se escribe en Suiza y Liechtenstein."
+        }
       },
       "microphone": {
         "label": "Micrófono",
