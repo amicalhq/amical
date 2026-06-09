@@ -309,8 +309,11 @@ export class AppManager {
         if (autoUpdaterService) {
           autoUpdaterService.checkForUpdates(true);
         }
-        // Show the inline updater status for user-initiated menu checks.
-        void this.windowManager.navigateMainWindow("/settings/about");
+        // Open About and highlight the update card so the user sees the
+        // inline status update for their menu-initiated check.
+        void this.windowManager.navigateMainWindow(
+          "/settings/about?focusUpdate=true",
+        );
       },
       () => this.windowManager.openAllDevTools(),
       locale,

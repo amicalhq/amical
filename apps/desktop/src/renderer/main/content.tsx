@@ -3,6 +3,7 @@ import {
   RouterProvider,
   createRouter,
   createHashHistory,
+  defaultParseSearch,
 } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
@@ -27,7 +28,19 @@ const App: React.FC = () => {
   // Listen for navigation events from main process (e.g., from widget)
   useEffect(() => {
     const handleNavigate = (route: string) => {
-      router.navigate({ to: route });
+      // The main process sends one path string that may include search params
+      // (e.g. "/settings/about?focusUpdate=true"). router.navigate takes search
+      // as a separate object and won't parse a query out of `to`, so split the
+      // string and parse the search the way the router does for URLs.
+      const queryIndex = route.indexOf("?");
+      if (queryIndex === -1) {
+        router.navigate({ to: route });
+        return;
+      }
+      router.navigate({
+        to: route.slice(0, queryIndex),
+        search: defaultParseSearch(route.slice(queryIndex)),
+      });
     };
 
     window.electronAPI?.on?.("navigate", handleNavigate);
