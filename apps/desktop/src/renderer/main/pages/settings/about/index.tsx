@@ -1,7 +1,6 @@
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   RefreshCw,
@@ -154,34 +153,43 @@ export default function AboutSettingsPage() {
           className={cn(
             "outline-none transition-[border-color,box-shadow] duration-300",
             isUpdateCardHighlighted &&
-              "border-indigo-500 ring-2 ring-indigo-500/50",
+            "border-indigo-500 ring-2 ring-indigo-500/50",
           )}
         >
-          <CardContent className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <div className="text-lg font-semibold">
+          <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            {/* Left: version identity */}
+            <div className="min-w-0 space-y-1">
+              <div className="text-sm font-medium text-muted-foreground">
                 {t("settings.about.currentVersion")}
               </div>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="secondary">v{version || "..."}</Badge>
-                <span className="text-xs text-muted-foreground">
-                  {renderStatus()}
-                </span>
+              <div className="text-xl font-semibold tabular-nums text-foreground">
+                v{version || "..."}
               </div>
             </div>
-            <Button
-              variant={isReady ? "default" : "outline"}
-              className="mt-4 md:mt-0 flex items-center gap-2"
-              onClick={handleUpdateClick}
-              disabled={buttonBusy}
-            >
-              <RefreshCw
-                className={cn("w-4 h-4", buttonBusy && "animate-spin")}
-              />
-              {isReady
-                ? t("settings.about.update.restartButton")
-                : t("settings.about.update.checkButton")}
-            </Button>
+
+            {/* Right: action + co-located status */}
+            <div className="flex w-full flex-col items-stretch gap-2 md:w-auto md:items-end">
+              <Button
+                variant={isReady ? "default" : "outline"}
+                className="flex w-full items-center justify-center gap-2 md:w-auto"
+                onClick={handleUpdateClick}
+                disabled={buttonBusy}
+              >
+                <RefreshCw
+                  className={cn("w-4 h-4", buttonBusy && "animate-spin")}
+                />
+                {isReady
+                  ? t("settings.about.update.restartButton")
+                  : t("settings.about.update.checkButton")}
+              </Button>
+              <div
+                role="status"
+                aria-live="polite"
+                className="min-h-5 text-xs text-muted-foreground md:text-right"
+              >
+                {renderStatus()}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
