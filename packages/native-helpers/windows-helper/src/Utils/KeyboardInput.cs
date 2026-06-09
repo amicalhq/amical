@@ -6,10 +6,10 @@ namespace WindowsHelper.Utils
     /// <summary>
     /// Shared SendInput interop for synthesizing keyboard events. Used by
     /// KeyboardInjector (the masked Alt/Win release) and AccessibilityService (the
-    /// Ctrl+V paste chord). Every event built here carries
-    /// KeycodeConstants.SelfInjectedEventTag in dwExtraInfo, which the helper's own
-    /// low-level keyboard hook skips, so synthetic input never feeds back into
-    /// shortcut matching or pressed-key tracking.
+    /// Ctrl+V paste chord). The helper's own low-level keyboard hook skips every
+    /// injected event (via LLKHF_INJECTED), so synthetic input never feeds back into
+    /// shortcut matching or pressed-key tracking. Every event built here also carries
+    /// KeycodeConstants.SelfInjectedEventTag in dwExtraInfo to mark it as ours.
     /// </summary>
     internal static class KeyboardInput
     {

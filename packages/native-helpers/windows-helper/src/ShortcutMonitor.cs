@@ -18,6 +18,10 @@ namespace WindowsHelper
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
 
+        // KBDLLHOOKSTRUCT.flags bit set by Windows on any event injected via
+        // SendInput/keybd_event (from any process, including ours).
+        private const uint LLKHF_INJECTED = 0x10;
+
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
@@ -135,8 +139,13 @@ namespace WindowsHelper
                     {
                         var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
-                        // Skip our own injected events (tagged dwExtraInfo) to avoid feedback loops.
-                        if (kbStruct.dwExtraInfo == KeycodeConstants.SelfInjectedEventTag)
+                        // Skip every injected event, not just our own. Any synthetic
+                        // keystroke (from us or any other software) carries the
+                        // LLKHF_INJECTED flag; only physical key presses should drive
+                        // shortcut matching and pressed-key tracking. This also covers
+                        // our own SendInput events (the paste chord and masked modifier
+                        // release), so no feedback loop forms.
+                        if ((kbStruct.flags & LLKHF_INJECTED) != 0)
                         {
                             return CallNextHookEx(hookId, nCode, wParam, lParam);
                         }
