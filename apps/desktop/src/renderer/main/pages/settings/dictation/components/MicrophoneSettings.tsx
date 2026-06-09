@@ -1,64 +1,30 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { api } from "@/trpc/react";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
-import {
-  resolveMicrophoneSelectionValue,
-  toMicrophonePreference,
-} from "@/utils/audio-devices";
-import { toast } from "sonner";
+import { resolveActiveMicrophone } from "@/utils/audio-devices";
 import { Mic } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { MicrophoneDialog } from "./MicrophoneDialog";
 
 export function MicrophoneSettings() {
   const { t } = useTranslation();
-  const { data: settings, refetch: refetchSettings } =
-    api.settings.getSettings.useQuery();
-  const setPreferredMicrophone =
-    api.settings.setPreferredMicrophone.useMutation();
+  const { data: settings } = api.settings.getSettings.useQuery();
   const { devices: audioDevices } = useAudioDevices();
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const currentMicrophoneName = settings?.recording?.preferredMicrophoneName;
-  const currentMicrophoneDeviceId =
-    settings?.recording?.preferredMicrophoneDeviceId;
-
-  const handleMicrophoneChange = async (deviceId: string) => {
-    try {
-      const preference = toMicrophonePreference(deviceId, audioDevices);
-
-      await setPreferredMicrophone.mutateAsync(preference);
-
-      // Refetch settings to update UI
-      await refetchSettings();
-
-      toast.success(
-        preference.deviceName
-          ? t("settings.dictation.microphone.toast.changed", {
-              deviceName: preference.deviceName,
-            })
-          : t("settings.dictation.microphone.toast.systemDefault"),
-      );
-    } catch (error) {
-      console.error("Failed to set preferred microphone:", error);
-      toast.error(t("settings.dictation.microphone.toast.changeFailed"));
-    }
-  };
-
-  const currentSelectionValue = resolveMicrophoneSelectionValue(
+  const activeDeviceId = resolveActiveMicrophone(
+    settings?.recording?.microphonePriority,
     audioDevices,
-    currentMicrophoneDeviceId,
-    currentMicrophoneName,
   );
+  const currentLabel =
+    audioDevices.find((device) => device.deviceId === activeDeviceId)?.label ??
+    t("settings.dictation.microphone.systemDefault");
 
   return (
-    <div className="flex items-center justify-between">
-      <div>
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0">
         <Label className="text-base font-semibold text-foreground">
           {t("settings.dictation.microphone.label")}
         </Label>
@@ -66,39 +32,15 @@ export function MicrophoneSettings() {
           {t("settings.dictation.microphone.description")}
         </p>
       </div>
-      <div className="min-w-[200px]">
-        <Select
-          value={currentSelectionValue}
-          onValueChange={handleMicrophoneChange}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue
-              placeholder={t("settings.dictation.microphone.placeholder")}
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {audioDevices.length === 0 ? (
-              <SelectItem value="no-devices" disabled>
-                {t("settings.dictation.microphone.noDevices")}
-              </SelectItem>
-            ) : (
-              audioDevices.map((device) => (
-                <SelectItem key={device.deviceId} value={device.deviceId}>
-                  <div className="flex items-center gap-2">
-                    <Mic className="h-4 w-4" />
-                    <span>{device.label}</span>
-                  </div>
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
-        {audioDevices.length === 0 && (
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("settings.dictation.microphone.noDevicesHelp")}
-          </p>
-        )}
-      </div>
+      <Button
+        variant="outline"
+        onClick={() => setDialogOpen(true)}
+        className="min-w-[200px] max-w-[60%] justify-start gap-2"
+      >
+        <Mic className="h-4 w-4 shrink-0" />
+        <span className="truncate">{currentLabel}</span>
+      </Button>
+      <MicrophoneDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </div>
   );
 }

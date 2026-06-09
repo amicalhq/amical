@@ -675,6 +675,17 @@
         "systemDefaultWithName": "Systemstandard ({{deviceName}})",
         "noDevices": "Keine Mikrofone verfügbar",
         "noDevicesHelp": "Keine Mikrofone erkannt. Bitte überprüfe deine Audiogeräte.",
+        "systemDefaultSubtitle": "Verwendet das Standardmikrofon des Systems",
+        "disconnected": "Nicht verbunden",
+        "priorityOrder": "Prioritätsreihenfolge",
+        "reorder": "Neu anordnen",
+        "reorderDone": "Fertig",
+        "reorderHandle": "Zum Neuanordnen ziehen",
+        "reorderHint": "Ziehen, um die Ausweichreihenfolge festzulegen, die Amical verwendet.",
+        "dialog": {
+          "title": "Mikrofon konfigurieren",
+          "description": "Amical nimmt mit dem verbundenen Mikrofon mit der höchsten Priorität auf."
+        },
         "toast": {
           "changed": "Mikrofon zu {{deviceName}} gewechselt",
           "systemDefault": "Standardmikrofon des Systems wird verwendet",

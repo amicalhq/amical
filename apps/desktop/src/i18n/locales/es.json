@@ -653,6 +653,17 @@
         "systemDefaultWithName": "Predeterminado del sistema ({{deviceName}})",
         "noDevices": "No hay micrófonos disponibles",
         "noDevicesHelp": "No se detectaron micrófonos. Por favor verifica tus dispositivos de audio.",
+        "systemDefaultSubtitle": "Usa el micrófono predeterminado del sistema",
+        "disconnected": "Desconectado",
+        "priorityOrder": "Orden de prioridad",
+        "reorder": "Reordenar",
+        "reorderDone": "Listo",
+        "reorderHandle": "Arrastrar para reordenar",
+        "reorderHint": "Arrastra para establecer el orden de respaldo que usa Amical.",
+        "dialog": {
+          "title": "Configurar micrófono",
+          "description": "Amical graba con el micrófono de mayor prioridad que esté conectado."
+        },
         "toast": {
           "changed": "Micrófono cambiado a {{deviceName}}",
           "systemDefault": "Usando micrófono predeterminado del sistema",

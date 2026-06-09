@@ -157,8 +157,16 @@ export interface AppSettingsData {
     autoStopSilence: boolean;
     silenceThreshold: number;
     maxRecordingDuration: number;
-    preferredMicrophoneDeviceId?: string;
-    preferredMicrophoneName?: string;
+    /** Ordered microphone fallback chain (index 0 = highest priority). Every
+     * entry always has a real deviceId; Amical records with the highest-ranked
+     * entry that is currently connected. An empty/absent chain means "use the
+     * system default". */
+    microphonePriority?: { deviceId: string; name: string }[];
+    /** TEMPORARY (v13 heal): an old name-only preference that couldn't be
+     * resolved to a deviceId during migration (main process, no device access).
+     * A renderer fills it into `microphonePriority` once the device connects,
+     * then clears it. Remove with the heal hook once it has aged out. */
+    pendingMicrophoneName?: string;
   };
   shortcuts?: {
     pushToTalk?: number[];

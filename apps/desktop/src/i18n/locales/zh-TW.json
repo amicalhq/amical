@@ -653,6 +653,17 @@
         "systemDefaultWithName": "系統預設 ({{deviceName}})",
         "noDevices": "沒有可用的麥克風",
         "noDevicesHelp": "未偵測到麥克風，請檢查您的音訊設備。",
+        "systemDefaultSubtitle": "使用系統預設麥克風",
+        "disconnected": "未連接",
+        "priorityOrder": "優先順序",
+        "reorder": "重新排序",
+        "reorderDone": "完成",
+        "reorderHandle": "拖曳以重新排序",
+        "reorderHint": "拖曳以設定 Amical 依序使用的備援順序。",
+        "dialog": {
+          "title": "設定麥克風",
+          "description": "Amical 會使用已連接且優先順序最高的麥克風進行錄音。"
+        },
         "toast": {
           "changed": "麥克風變更為 {{deviceName}}",
           "systemDefault": "使用系統預設麥克風",

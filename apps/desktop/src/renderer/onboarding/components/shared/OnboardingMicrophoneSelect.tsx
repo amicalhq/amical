@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Select,
   SelectContent,
@@ -10,39 +9,38 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/trpc/react";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
 import {
-  resolveMicrophoneSelectionValue,
-  toMicrophonePreference,
+  DEFAULT_DEVICE_ID,
+  resolveActiveMicrophone,
 } from "@/utils/audio-devices";
 import { useTranslation } from "react-i18next";
 
 /**
- * Simplified microphone selection component for onboarding
+ * Simplified microphone selection component for onboarding. Picking a mic seeds
+ * a single-entry priority chain (the full fallback ordering lives in settings).
  */
 export function OnboardingMicrophoneSelect() {
   const { t } = useTranslation();
   const { data: settings } = api.settings.getSettings.useQuery();
-  const setPreferredMicrophone =
-    api.settings.setPreferredMicrophone.useMutation();
+  const setMicrophonePriority =
+    api.settings.setMicrophonePriority.useMutation();
   const { devices: audioDevices } = useAudioDevices();
 
-  const currentMicrophoneName = settings?.recording?.preferredMicrophoneName;
-  const currentMicrophoneDeviceId =
-    settings?.recording?.preferredMicrophoneDeviceId;
-
   const handleMicrophoneChange = async (deviceId: string) => {
+    const device = audioDevices.find((d) => d.deviceId === deviceId);
+    const priority =
+      deviceId === DEFAULT_DEVICE_ID || !device
+        ? []
+        : [{ deviceId, name: device.label }];
     try {
-      await setPreferredMicrophone.mutateAsync(
-        toMicrophonePreference(deviceId, audioDevices),
-      );
+      await setMicrophonePriority.mutateAsync({ priority });
     } catch (error) {
       console.error("Failed to set preferred microphone:", error);
     }
   };
 
-  const currentSelectionValue = resolveMicrophoneSelectionValue(
+  const currentSelectionValue = resolveActiveMicrophone(
+    settings?.recording?.microphonePriority,
     audioDevices,
-    currentMicrophoneDeviceId,
-    currentMicrophoneName,
   );
 
   return (

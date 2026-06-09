@@ -3,6 +3,10 @@ import { toast } from "sonner";
 import { api } from "@/trpc/react";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
 import {
+  DEFAULT_DEVICE_ID,
+  resolveActiveMicrophone,
+} from "@/utils/audio-devices";
+import {
   WIDGET_NOTIFICATION_TIMEOUT,
   getNotificationDescription,
   type WidgetNotificationAction,
@@ -19,12 +23,21 @@ export const useWidgetNotifications = () => {
   const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
   const trackEvent = api.telemetry.trackEvent.useMutation();
   const { data: settings } = api.settings.getSettings.useQuery();
-  const { defaultDeviceName } = useAudioDevices();
+  const { devices: audioDevices, defaultDeviceName } = useAudioDevices();
   const activeToastIdsRef = useRef<Set<string | number>>(new Set());
 
-  // Get effective mic name: preferred from settings, or system default
+  // Name the active mic: the highest-ranked connected entry in the fallback
+  // chain, or the system default when the chain is empty / nothing matches.
   const getEffectiveMicName = () => {
-    return settings?.recording?.preferredMicrophoneName || defaultDeviceName;
+    const activeDeviceId = resolveActiveMicrophone(
+      settings?.recording?.microphonePriority,
+      audioDevices,
+    );
+    if (activeDeviceId === DEFAULT_DEVICE_ID) return defaultDeviceName;
+    return (
+      audioDevices.find((d) => d.deviceId === activeDeviceId)?.label ||
+      defaultDeviceName
+    );
   };
 
   const syncPassThroughWithToastState = () => {

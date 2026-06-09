@@ -680,6 +680,17 @@
         "systemDefaultWithName": "System Default ({{deviceName}})",
         "noDevices": "No microphones available",
         "noDevicesHelp": "No microphones detected. Please check your audio devices.",
+        "systemDefaultSubtitle": "Uses system default microphone",
+        "disconnected": "Disconnected",
+        "priorityOrder": "Priority order",
+        "reorder": "Reorder",
+        "reorderDone": "Done",
+        "reorderHandle": "Drag to reorder",
+        "reorderHint": "Drag to set the order Amical falls back through.",
+        "dialog": {
+          "title": "Configure microphone",
+          "description": "Amical records with the highest-ranked microphone that's connected."
+        },
         "toast": {
           "changed": "Microphone changed to {{deviceName}}",
           "systemDefault": "Using system default microphone",

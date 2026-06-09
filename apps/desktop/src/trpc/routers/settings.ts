@@ -99,8 +99,6 @@ const RecordingSettingsSchema = z.object({
   autoStopSilence: z.boolean().optional(),
   silenceThreshold: z.number().optional(),
   maxRecordingDuration: z.number().optional(),
-  preferredMicrophoneDeviceId: z.string().optional(),
-  preferredMicrophoneName: z.string().optional(),
 });
 
 export const settingsRouter = createRouter({
@@ -383,12 +381,11 @@ export const settingsRouter = createRouter({
     });
   }),
 
-  // Set preferred microphone
-  setPreferredMicrophone: procedure
+  // Set the ordered microphone fallback chain (index 0 = highest priority)
+  setMicrophonePriority: procedure
     .input(
       z.object({
-        deviceId: z.string().nullable().optional(),
-        deviceName: z.string().nullable(),
+        priority: z.array(z.object({ deviceId: z.string(), name: z.string() })),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -399,28 +396,30 @@ export const settingsRouter = createRouter({
           throw new Error("SettingsService not available");
         }
 
-        // Get current recording settings
         const currentSettings = await settingsService.getRecordingSettings();
 
-        // Merge with new microphone preference
         const updatedSettings = {
+          // Defaults match the canonical recording settings (app-settings.ts);
+          // only used to backfill required fields on a first-ever write.
           defaultFormat: "wav" as const,
           sampleRate: 16000 as const,
-          autoStopSilence: false,
-          silenceThreshold: 0.1,
-          maxRecordingDuration: 300,
+          autoStopSilence: true,
+          silenceThreshold: 3,
+          maxRecordingDuration: 60,
           ...currentSettings,
-          preferredMicrophoneDeviceId: input.deviceId || undefined,
-          preferredMicrophoneName: input.deviceName || undefined,
+          microphonePriority: input.priority,
+          // Any explicit chain write supersedes a pending legacy-heal value.
+          // TEMPORARY (v13 heal): remove with `pendingMicrophoneName` — see
+          // useHealPendingMicrophone.
+          pendingMicrophoneName: undefined,
         };
 
         await settingsService.setRecordingSettings(updatedSettings);
 
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
-          logger.main.info("Preferred microphone updated:", {
-            deviceId: input.deviceId,
-            deviceName: input.deviceName,
+          logger.main.info("Microphone priority updated:", {
+            priority: input.priority.map((entry) => entry.deviceId),
           });
         }
 
@@ -428,7 +427,7 @@ export const settingsRouter = createRouter({
       } catch (error) {
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
-          logger.main.error("Error setting preferred microphone:", error);
+          logger.main.error("Error setting microphone priority:", error);
         }
         throw error;
       }

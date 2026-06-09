@@ -2,7 +2,17 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { type AudioDevice, DEFAULT_DEVICE_ID } from "@/utils/audio-devices";
 
-export function useAudioDevices() {
+/**
+ * Enumerate the available audio input devices.
+ *
+ * @param enabled When false, the hook does no device I/O at all — no
+ *   getUserMedia/enumerateDevices and no `devicechange` listener — and `devices`
+ *   stays empty. Use this to avoid the permission/enumeration cost when a caller
+ *   only conditionally needs the device list (e.g. the legacy-mic heal, which
+ *   only needs devices when there's a pending value to resolve). Defaults to
+ *   true, so callers that always want devices can omit it.
+ */
+export function useAudioDevices(enabled = true) {
   const { t } = useTranslation();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [defaultDeviceName, setDefaultDeviceName] = useState<string>("");
@@ -31,8 +41,7 @@ export function useAudioDevices() {
       let foundDefaultName = "";
       const defaultDevice = allDevices.find(
         (device) =>
-          device.kind === "audioinput" &&
-          device.deviceId === DEFAULT_DEVICE_ID,
+          device.kind === "audioinput" && device.deviceId === DEFAULT_DEVICE_ID,
       );
 
       if (defaultDevice) {
@@ -102,6 +111,8 @@ export function useAudioDevices() {
   }, [t]);
 
   useEffect(() => {
+    if (!enabled) return;
+
     fetchDevices();
 
     // Set up device change listener
@@ -118,7 +129,7 @@ export function useAudioDevices() {
         handleDeviceChange,
       );
     };
-  }, [fetchDevices]);
+  }, [fetchDevices, enabled]);
 
   return { devices, defaultDeviceName, refetch: fetchDevices };
 }

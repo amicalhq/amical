@@ -653,6 +653,17 @@
         "systemDefaultWithName": "システムデフォルト（{{deviceName}}）",
         "noDevices": "マイクがありません",
         "noDevicesHelp": "マイクが検出されませんでした。オーディオデバイスを確認してください。",
+        "systemDefaultSubtitle": "システムデフォルトのマイクを使用します",
+        "disconnected": "未接続",
+        "priorityOrder": "優先順位",
+        "reorder": "並べ替え",
+        "reorderDone": "完了",
+        "reorderHandle": "ドラッグして並べ替え",
+        "reorderHint": "ドラッグして、Amical が代替として使用する順序を設定します。",
+        "dialog": {
+          "title": "マイクの設定",
+          "description": "Amical は、接続されている中で最も優先順位の高いマイクで録音します。"
+        },
         "toast": {
           "changed": "マイクを{{deviceName}}に変更しました",
           "systemDefault": "システムデフォルトのマイクを使用します",

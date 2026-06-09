@@ -22,7 +22,7 @@ describe("SettingsService", () => {
       autoStopSilence: false,
       silenceThreshold: 0.1,
       maxRecordingDuration: 300,
-      preferredMicrophoneName: "USB Microphone",
+      microphonePriority: [{ deviceId: "usb-mic", name: "USB Microphone" }],
     };
 
     await service.setRecordingSettings(recordingSettings);

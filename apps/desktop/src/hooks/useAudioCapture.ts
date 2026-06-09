@@ -5,7 +5,7 @@ import { Mutex } from "async-mutex";
 import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
 import {
   DEFAULT_DEVICE_ID,
-  resolvePreferredAudioDevice,
+  resolveActiveMicrophone,
 } from "@/utils/audio-devices";
 
 const SAMPLE_RATE = 16000;
@@ -46,11 +46,12 @@ export const useAudioCapture = ({
     },
   });
 
-  // Get user's preferred microphone from settings
+  // Get the user's microphone fallback chain from settings.
   const { data: settings } = api.settings.getSettings.useQuery();
-  const preferredMicrophoneDeviceId =
-    settings?.recording?.preferredMicrophoneDeviceId;
-  const preferredMicrophoneName = settings?.recording?.preferredMicrophoneName;
+  const microphonePriority = settings?.recording?.microphonePriority;
+  // Stable key so the memoized startCapture re-creates on any chain change
+  // (incl. reorders that keep the top entry), not on every settings refetch.
+  const microphonePriorityKey = JSON.stringify(microphonePriority ?? []);
 
   const startCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
@@ -68,7 +69,7 @@ export const useAudioCapture = ({
         };
 
         let preferredDevice: MediaDeviceInfo | undefined;
-        if (preferredMicrophoneDeviceId || preferredMicrophoneName) {
+        if (microphonePriority?.length) {
           const enumerateStartTime = performance.now();
           const devices = await navigator.mediaDevices.enumerateDevices();
           const enumerateDuration = performance.now() - enumerateStartTime;
@@ -81,17 +82,23 @@ export const useAudioCapture = ({
             devices,
           );
 
-          const resolution = resolvePreferredAudioDevice(
+          // Use the highest-ranked microphone that is currently connected,
+          // falling back down the chain (and finally to the system default).
+          const activeDeviceId = resolveActiveMicrophone(
+            microphonePriority,
             audioInputDevices,
-            preferredMicrophoneDeviceId,
-            preferredMicrophoneName,
           );
-          preferredDevice = resolution.device;
+          preferredDevice =
+            activeDeviceId === DEFAULT_DEVICE_ID
+              ? undefined
+              : audioInputDevices.find(
+                  (device) => device.deviceId === activeDeviceId,
+                );
           audioCaptureDiagnostics.logPreferredDeviceResolution({
-            matchedBy: resolution.matchedBy,
+            matchedBy: preferredDevice ? "deviceId" : "none",
             device: preferredDevice,
-            preferredDeviceId: preferredMicrophoneDeviceId,
-            preferredName: preferredMicrophoneName,
+            preferredDeviceId: activeDeviceId,
+            preferredName: preferredDevice?.label ?? undefined,
           });
         }
 
@@ -236,7 +243,7 @@ export const useAudioCapture = ({
         throw error;
       }
     });
-  }, [onAudioChunk, preferredMicrophoneDeviceId, preferredMicrophoneName]);
+  }, [onAudioChunk, microphonePriorityKey]);
 
   // Device-change diagnostics are only attached while dictation is active, so
   // they don't enumerate/log in the background when not recording.
