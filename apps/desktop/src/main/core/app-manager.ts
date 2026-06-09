@@ -368,32 +368,22 @@ export class AppManager {
       return;
     }
 
-    // Normal activation logic for main app
-    const allWindows = this.windowManager.getAllWindows();
-
-    if (allWindows.every((w) => !w || w.isDestroyed())) {
-      // All windows destroyed - recreate widget with proper visibility
+    // Recreate the widget only if it was destroyed; otherwise reuse it.
+    const widgetWindow = this.windowManager.getWidgetWindow();
+    if (!widgetWindow || widgetWindow.isDestroyed()) {
       await this.windowManager.createWidgetWindow();
-      const settingsService = this.serviceManager.getService("settingsService");
-      const preferences = await settingsService.getPreferences();
-      if (preferences.showWidgetWhileInactive) {
-        this.windowManager.showWidget();
-      }
-    } else {
-      const widgetWindow = this.windowManager.getWidgetWindow();
-      if (!widgetWindow || widgetWindow.isDestroyed()) {
-        // Widget destroyed - recreate with proper visibility
-        await this.windowManager.createWidgetWindow();
-        const settingsService =
-          this.serviceManager.getService("settingsService");
-        const preferences = await settingsService.getPreferences();
-        if (preferences.showWidgetWhileInactive) {
-          this.windowManager.showWidget();
-        }
-      } else {
-        widgetWindow.show();
-      }
-      this.windowManager.createOrShowMainWindow();
     }
+
+    // Show the widget only when the user wants it visible while inactive,
+    // instead of showing unconditionally. Honors the "hide when idle"
+    // preference; recording state is already handled by the state-changed
+    // listener.
+    const settingsService = this.serviceManager.getService("settingsService");
+    const preferences = await settingsService.getPreferences();
+    if (preferences.showWidgetWhileInactive) {
+      this.windowManager.showWidget();
+    }
+
+    this.windowManager.createOrShowMainWindow();
   }
 }
