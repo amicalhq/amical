@@ -47,7 +47,6 @@ private func handleKeyEvent(_ helper: SwiftHelper, type: CGEventType, event: CGE
     if ShortcutManager.shared.isShortcutKey(Int(keyCode)) {
         let excludeKeyCode = Int(keyCode)
         let resyncResult = ShortcutManager.shared.validateAndResyncKeyState(
-            flags: event.flags,
             excluding: excludeKeyCode
         )
         emitResyncKeyEvents(helper, event: event, resyncResult: resyncResult, excluding: excludeKeyCode)
@@ -93,7 +92,6 @@ private func handleFlagsChangedEvent(_ helper: SwiftHelper, event: CGEvent) {
 
     if ShortcutManager.shared.isShortcutKey(keyCode) {
         let resyncResult = ShortcutManager.shared.validateAndResyncKeyState(
-            flags: event.flags,
             excluding: keyCode
         )
         emitResyncKeyEvents(helper, event: event, resyncResult: resyncResult, excluding: keyCode)

@@ -159,13 +159,25 @@ class ShortcutManager {
     /// Validate all tracked key states against actual OS state.
     /// Removes any keys that are not actually pressed (stuck keys).
     /// Returns details about any corrections performed.
+    ///
+    /// Modifiers are validated against CGEventSource.flagsState(.combinedSessionState),
+    /// NOT the triggering event's flags. Per-event flags are unreliable in both
+    /// directions: macOS sets .maskSecondaryFn on function-section keys (arrows,
+    /// nav cluster, F-keys) regardless of the physical Fn key, and synthetic or
+    /// remapper-reposted events (third-party automation tools, Karabiner's
+    /// virtual keyboard) carry whatever flags their creator set — which can
+    /// falsely OMIT a genuinely-held modifier. Trusting such an event here would
+    /// clear a held Fn and emit a phantom keyUp that stops PTT mid-speech, with
+    /// no recovery until the user physically re-presses it. .combinedSessionState
+    /// is accurate for modifiers (they pass through the event tap unconsumed)
+    /// and is the same source getStalePressedKeyCodes already trusts.
     func validateAndResyncKeyState(
-        flags: CGEventFlags,
         excluding keyCodeToExclude: Int? = nil
     ) -> KeyResyncResult {
         lock.lock()
         defer { lock.unlock() }
 
+        let flags = CGEventSource.flagsState(.combinedSessionState)
         var clearedModifiers: [Int] = []
 
         let modifierGroups: [(flag: CGEventFlags, keyCodes: [Int])] = [
