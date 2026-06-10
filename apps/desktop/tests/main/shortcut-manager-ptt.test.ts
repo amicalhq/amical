@@ -1,6 +1,5 @@
-import { EventEmitter } from "events";
 import { describe, expect, it } from "vitest";
-import { ShortcutManager } from "../../src/main/managers/shortcut-manager";
+import { createManager as createTestManager } from "./shortcut-manager-test-utils";
 
 // Abstract keycodes for the test. PTT is a strict subset of toggle (the default
 // shape: Ctrl+Win ⊂ Ctrl+Win+Space, Fn ⊂ Fn+Space).
@@ -9,44 +8,17 @@ const B = 102;
 const C = 103;
 const UNRELATED = 200;
 
-type ShortcutManagerInternals = {
-  shortcuts: {
-    pushToTalk: number[];
-    toggleRecording: number[];
-    pasteLastTranscript: number[];
-    newNote: number[];
-  };
-  addActiveKey(keyCode: number): void;
-  removeActiveKey(keyCode: number): void;
-};
-
 const createManager = () => {
-  const manager = new ShortcutManager(
-    {} as never,
-    new EventEmitter() as never,
-  );
-  const internals = manager as unknown as ShortcutManagerInternals;
-  internals.shortcuts = {
+  // No physicallyDown set: every held key is genuinely down, so a
+  // superset-triggered resync never prunes anything in these tests.
+  const ctx = createTestManager();
+  ctx.internals.shortcuts = {
     pushToTalk: [A, B],
     toggleRecording: [A, B, C],
     pasteLastTranscript: [],
     newNote: [],
   };
-
-  // Mirror how recording-manager consumes the events: PTT is edge-detected
-  // (act only on changes), toggle fires directly. The resulting timeline is the
-  // exact sequence of events that would drive the recording FSM.
-  const timeline: string[] = [];
-  let lastPtt = false;
-  manager.on("ptt-state-changed", (pressed: boolean) => {
-    if (pressed !== lastPtt) {
-      lastPtt = pressed;
-      timeline.push(pressed ? "press" : "release");
-    }
-  });
-  manager.on("toggle-recording-triggered", () => timeline.push("toggle"));
-
-  return { internals, timeline };
+  return ctx;
 };
 
 describe("ShortcutManager PTT activation (exact start, subset hold)", () => {

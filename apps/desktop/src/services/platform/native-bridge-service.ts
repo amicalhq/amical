@@ -834,11 +834,17 @@ export class NativeBridge extends EventEmitter {
 
   /**
    * Recheck pressed keys against OS truth. Returns stale keys.
+   *
+   * 700ms timeout (instead of the 5s default): the answer doubles as latch
+   * evidence for ShortcutManager's self-recovery, so it bounds how stale the
+   * OS sample can be relative to the key-down that requested it — a slower
+   * answer is worse than none and is discarded. Generous against real input
+   * latency (Bluetooth keyboards: p90 < 20ms, worst observed ~512ms).
    */
   async recheckPressedKeys(
     params: RecheckPressedKeysParams,
   ): Promise<RecheckPressedKeysResult> {
-    return this.call("recheckPressedKeys", params);
+    return this.call("recheckPressedKeys", params, 700);
   }
 
   /**

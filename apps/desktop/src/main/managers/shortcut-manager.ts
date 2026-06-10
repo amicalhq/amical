@@ -28,6 +28,11 @@ interface ShortcutConfig {
 
 export class ShortcutManager extends EventEmitter {
   private activeKeys = new Map<number, KeyInfo>();
+  // Timestamp of the last DELIVERED key-up (handleKeyUp). A resync trigger
+  // whose key-down predates this means the user released something after
+  // pressing it — the held set collapsed by release, and a resync completing
+  // that collapse must not be evaluated as a press.
+  private lastDeliveredKeyUpAt = 0;
   private shortcuts: ShortcutConfig = {
     pushToTalk: [],
     toggleRecording: [],
@@ -38,6 +43,13 @@ export class ShortcutManager extends EventEmitter {
   private nativeBridge: NativeBridge;
   private isRecordingShortcut: boolean = false;
   private recheckInFlight = false;
+  // A resync requested while another was in flight (set = request pending;
+  // triggerKeyCode set = it was driven by a real key-down, with that key-down's
+  // time captured at request time). One follow-up runs once the in-flight
+  // recheck settles, giving the queued key-down a fresh snapshot + OS sample.
+  private pendingRecheck:
+    | { triggerKeyCode?: number; triggerDownAt?: number }
+    | undefined;
   private recheckInterval: NodeJS.Timeout | null = null;
   private exactMatchState = {
     toggleRecording: false,
@@ -101,9 +113,64 @@ export class ShortcutManager extends EventEmitter {
   /**
    * Recheck currently pressed keys against OS truth.
    * Clears stale keys locally to avoid stuck states.
+   *
+   * Self-recovery: when a key-down-driven recheck prunes stale keys and the
+   * triggering key SURVIVES the prune (see triggerSurvived below), the prune
+   * is evaluated as that key-down — a PTT press that was masked by a stuck key
+   * latches as if the stuck key had never been there. The periodic sweep, or a
+   * trigger that was itself pruned, evaluates as a key-up and never latches.
+   *
+   * Known residual (deliberate trade-off): if an extra key genuinely held at
+   * the trigger key-down is released DURING this recheck and that key-up is
+   * MISSED, the prune collapses to the exact PTT set and latches a press the
+   * user produced by release. A single later OS sample cannot distinguish
+   * "already stale at press time" from "went stale just after" — the event
+   * that would tell us is missed by definition. We accept it because it needs
+   * an event miss to coincide with this sub-700ms window, the user is then
+   * physically holding the exact PTT chord having just pressed the PTT key,
+   * and the win — masked presses registering at all — is the common
+   * stuck-key support case. The RPC timeout hard-bounds the window (700ms,
+   * see NativeBridge.recheckPressedKeys); a slower answer is discarded.
+   *
+   * Single flight: at most one recheck is in flight, so at most one latch
+   * authority exists at a time and it acts on the freshest sample we have.
+   * Requests that land mid-flight queue the latest key-down trigger and
+   * refire once settled. recheckInFlight MUST be cleared in `finally`: the
+   * bridge always settles (700ms timeout, reject-on-crash, helper-unavailable
+   * short-circuit) so this cannot deadlock, but clearing only on success
+   * would wedge rechecks after a single timeout.
    */
-  async recheckPressedKeys(): Promise<void> {
+  async recheckPressedKeys(
+    triggerKeyCode?: number,
+    triggerDownAt?: number,
+  ): Promise<void> {
+    // Capture the trigger's key-down time at request time: KeyInfo.timestamp
+    // is refreshed by auto-repeat key-downs, and a refresh mid-recheck must
+    // not re-order the trigger after a later delivered key-up (which would
+    // turn a key-up collapse into a phantom press).
+    const triggerPressedAt =
+      triggerDownAt ??
+      (triggerKeyCode === undefined
+        ? undefined
+        : this.activeKeys.get(triggerKeyCode)?.timestamp);
+
     if (this.recheckInFlight) {
+      // A key-down always records its trigger, overwriting an earlier one
+      // (latest intent wins — in a clean event stream it is the final
+      // key-down of a chord that latches it, so the most recent press is the
+      // faithful attribution); a passive request never downgrades a pending
+      // key-down. Overwriting is safe because a trigger is EVIDENCE of a
+      // recent press, not an instruction to latch: a latch additionally
+      // requires the post-prune set to be exactly the PTT chord with the
+      // trigger inside it, so a slot stolen by a non-PTT key can only fail
+      // the guards and degrade to key-up semantics. The worst case is a lost
+      // recovery (the masked press needs one re-press) — never a phantom.
+      if (triggerKeyCode !== undefined || this.pendingRecheck === undefined) {
+        this.pendingRecheck = {
+          triggerKeyCode,
+          triggerDownAt: triggerPressedAt,
+        };
+      }
       return;
     }
 
@@ -120,9 +187,6 @@ export class ShortcutManager extends EventEmitter {
         pressedKeyCodes,
       });
       const staleKeyCodes = result.staleKeyCodes ?? [];
-      if (staleKeyCodes.length === 0) {
-        return;
-      }
 
       const keysToClear: number[] = [];
       for (const keyCode of staleKeyCodes) {
@@ -134,18 +198,42 @@ export class ShortcutManager extends EventEmitter {
         keysToClear.push(keyCode);
       }
 
-      if (keysToClear.length === 0) {
-        return;
-      }
+      // The trigger key-down is honored only when OS truth vouches for it:
+      // its key was in the snapshot we asked about, wasn't pruned, is still
+      // held, and no key-up was DELIVERED after it went down (per the time
+      // captured at request) — a chord collapsing via a delivered release
+      // must never read as a press.
+      const triggerSurvived =
+        triggerKeyCode !== undefined &&
+        triggerPressedAt !== undefined &&
+        this.activeKeys.has(triggerKeyCode) &&
+        pressedKeyCodes.includes(triggerKeyCode) &&
+        !keysToClear.includes(triggerKeyCode) &&
+        this.lastDeliveredKeyUpAt < triggerPressedAt;
 
-      this.removeActiveKeys(keysToClear);
-      log.info("Cleared stale pressed keys after recheck", {
-        staleKeyCodes: keysToClear,
-      });
+      if (keysToClear.length > 0) {
+        this.removeActiveKeys(keysToClear, triggerSurvived);
+        log.info("Cleared stale pressed keys after recheck", {
+          staleKeyCodes: keysToClear,
+        });
+      } else if (triggerSurvived) {
+        // Nothing to prune, but a validated key-down drove this recheck and
+        // an earlier prune may have already cleared the keys that masked it
+        // at press time — re-evaluate the clean state as that key-down.
+        this.checkShortcuts(true);
+      }
     } catch (error) {
       log.warn("Failed to recheck pressed keys", { error });
     } finally {
       this.recheckInFlight = false;
+      const pending = this.pendingRecheck;
+      this.pendingRecheck = undefined;
+      if (pending) {
+        void this.recheckPressedKeys(
+          pending.triggerKeyCode,
+          pending.triggerDownAt,
+        );
+      }
     }
   }
 
@@ -249,18 +337,26 @@ export class ShortcutManager extends EventEmitter {
     this.activeKeys.set(keyCode, { keyCode, timestamp: Date.now() });
     if (!wasActive) {
       this.emitActiveKeysChanged();
-      this.checkShortcuts(true);
+      this.checkShortcuts(true, keyCode);
     }
   }
 
   private removeActiveKey(keyCode: number) {
     if (this.activeKeys.delete(keyCode)) {
+      this.lastDeliveredKeyUpAt = Date.now();
       this.emitActiveKeysChanged();
       this.checkShortcuts(false);
     }
   }
 
-  private removeActiveKeys(keyCodes: number[]) {
+  // `triggeredByKeyDown` carries the origin of the prune through to shortcut
+  // evaluation: a prune whose triggering key-down survived it is evaluated as
+  // that key-down (self-recovery — an unmasked PTT match may latch); a passive
+  // prune — the periodic sweep, or a trigger that was itself pruned — as a
+  // key-up. A key-up prune still releases a latched PTT whose own key was
+  // pruned (rescuing a recording stuck on a missed key-up) and still fires
+  // edge shortcuts it frees.
+  private removeActiveKeys(keyCodes: number[], triggeredByKeyDown: boolean) {
     let changed = false;
     for (const keyCode of keyCodes) {
       if (this.activeKeys.delete(keyCode)) {
@@ -269,7 +365,7 @@ export class ShortcutManager extends EventEmitter {
     }
     if (changed) {
       this.emitActiveKeysChanged();
-      this.checkShortcuts(false);
+      this.checkShortcuts(triggeredByKeyDown);
     }
   }
 
@@ -281,7 +377,11 @@ export class ShortcutManager extends EventEmitter {
     return Array.from(this.activeKeys.keys());
   }
 
-  private checkShortcuts(isKeyDown: boolean) {
+  // `triggerKeyCode` is set only when this evaluation is driven by a real
+  // key-down (handleKeyDown → addActiveKey); it identifies the pressed key so
+  // a superset-triggered resync can verify the key survived the prune before
+  // treating that prune as a key-down.
+  private checkShortcuts(isKeyDown: boolean, triggerKeyCode?: number) {
     // Skip shortcut detection when recording shortcuts
     if (this.isRecordingShortcut) {
       return;
@@ -318,6 +418,36 @@ export class ShortcutManager extends EventEmitter {
       this.emit("open-notes-window-triggered");
     }
     this.exactMatchState.newNote = newNoteMatch;
+
+    // If the held set strictly contains a shortcut, the extra key(s) may be
+    // stuck from a missed key-up — which would block exact-match shortcuts from
+    // ever firing. Resync against OS truth to prune anything no longer
+    // physically held; the prune re-runs checkShortcuts, letting a freed exact
+    // match fire. Deliberately stateless — fire on EVERY real key-down in this
+    // state (edge-tracking "only when the superset newly arises" missed stale
+    // keys whenever a later key completed a different shortcut). The cost is
+    // bounded: the single-flight guard coalesces bursts to one RPC per
+    // round-trip, auto-repeats never reach here (wasActive in addActiveKey),
+    // and plain typing isn't a superset of modifier-style shortcuts. The prune
+    // path passes no triggerKeyCode, so a prune can never chain into another
+    // resync.
+    if (
+      triggerKeyCode !== undefined &&
+      this.isStrictSupersetOfAnyShortcut(activeKeys)
+    ) {
+      void this.recheckPressedKeys(triggerKeyCode);
+    }
+  }
+
+  // True when every key of some configured shortcut is held *and* at least one
+  // extra key is also down (a strict superset). Empty shortcuts are ignored.
+  private isStrictSupersetOfAnyShortcut(activeKeys: number[]): boolean {
+    return Object.values(this.shortcuts).some(
+      (keys) =>
+        keys.length > 0 &&
+        activeKeys.length > keys.length &&
+        this.allHeld(keys, activeKeys),
+    );
   }
 
   // True when every shortcut key is currently held (extra keys allowed).
