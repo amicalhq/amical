@@ -30,6 +30,13 @@ import { Walker, DepType, type Module } from "flora-colossus";
 
 let nativeModuleDependenciesToPackage: string[] = [];
 
+const isBundledNodeBinaryForSigning = (filePath: string): boolean => {
+  const normalizedPath = filePath.replace(/\\/g, "/");
+
+  // extraResource copies the selected binary into Contents/Resources/node.
+  return normalizedPath.endsWith("/Contents/Resources/node");
+};
+
 export const EXTERNAL_DEPENDENCIES = [
   "electron-squirrel-startup",
   "@libsql/client",
@@ -593,7 +600,7 @@ const config: ForgeConfig = {
             // Apply different entitlements based on file path
             optionsForFile: (filePath: string) => {
               // Apply minimal entitlements to Node binary
-              if (filePath.includes("node-binaries")) {
+              if (isBundledNodeBinaryForSigning(filePath)) {
                 return {
                   entitlements: "./entitlements.node.plist",
                   hardenedRuntime: true,
