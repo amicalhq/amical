@@ -11,7 +11,7 @@
  * the build flags as needed.
  */
 
-const { execSync } = require("child_process");
+const { execFileSync, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
@@ -97,13 +97,73 @@ function resolveLibExecutable(env, arch) {
     probeVersionedDir(toolsDir);
   };
 
+  const probeVswhere = () => {
+    const roots = [
+      env["ProgramFiles(x86)"],
+      env.ProgramFiles,
+      "C:/Program Files (x86)",
+      "C:/Program Files",
+    ].filter(Boolean);
+
+    for (const root of roots) {
+      const vswherePath = path.join(
+        root,
+        "Microsoft Visual Studio",
+        "Installer",
+        "vswhere.exe",
+      );
+      if (!fs.existsSync(vswherePath)) continue;
+
+      try {
+        const installPaths = execFileSync(
+          vswherePath,
+          [
+            "-all",
+            "-products",
+            "*",
+            "-version",
+            "[17.0,18.0)",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-property",
+            "installationPath",
+          ],
+          { env, encoding: "utf8" },
+        )
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        for (const installPath of installPaths) {
+          probeInstallDir(path.join(installPath, "VC"));
+        }
+      } catch (err) {
+        // ignore when vswhere is unavailable or no matching VC tools are installed
+      }
+    }
+  };
+
   probeInstallDir(env.VCToolsInstallDir);
   probeInstallDir(env.VCINSTALLDIR);
   probeInstallDir(env.VSINSTALLDIR && path.join(env.VSINSTALLDIR, "VC"));
-  probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC");
-  probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC");
-  probeVersionedDir("C:/Program Files/Microsoft Visual Studio/2022/Professional/VC/Tools/MSVC");
-  probeVersionedDir("C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC");
+  probeVswhere();
+
+  for (const version of ["2022"]) {
+    for (const edition of [
+      "Enterprise",
+      "Community",
+      "Professional",
+      "BuildTools",
+      "Preview",
+    ]) {
+      probeVersionedDir(
+        `C:/Program Files/Microsoft Visual Studio/${version}/${edition}/VC/Tools/MSVC`,
+      );
+      probeVersionedDir(
+        `C:/Program Files (x86)/Microsoft Visual Studio/${version}/${edition}/VC/Tools/MSVC`,
+      );
+    }
+  }
 
   return candidates[0] || null;
 }
@@ -303,6 +363,3 @@ for (const variant of variants) {
   // extremely long CMake-generated paths that break Windows packaging tools.
   fs.rmSync(buildVariantDir, { recursive: true, force: true });
 }
-
-
-

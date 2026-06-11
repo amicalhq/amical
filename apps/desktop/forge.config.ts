@@ -367,7 +367,7 @@ const config: ForgeConfig = {
       // not reliably beat System32 for native binding dependencies.
       //
       // REQUIREMENTS:
-      // - Build machine must have VC++ runtime (GitHub Actions windows-2025 has VS2022)
+      // - Build machine must have VC++ runtime (GitHub Actions windows-2022 has VS2022)
       // - Target: Windows 10+ (ucrtbase.dll is built into the OS)
       //
       // DLLs needed by onnxruntime_binding.node:

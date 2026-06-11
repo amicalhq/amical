@@ -54,7 +54,7 @@ jobs:
           - os: macos
             runner: macos-latest
           - os: windows
-            runner: windows-2025
+            runner: windows-2022
 
     steps:
       - name: Checkout
