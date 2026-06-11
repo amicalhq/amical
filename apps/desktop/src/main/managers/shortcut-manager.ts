@@ -281,6 +281,12 @@ export class ShortcutManager extends EventEmitter {
       this.exactMatchState.pasteLastTranscript = false;
       this.exactMatchState.newNote = false;
       this.pttActive = false;
+      // The shortcut recorder ignores keys held before recording started and
+      // arms only once the active set drains to empty. A stale key (missed
+      // key-up) would block arming until the periodic sweep prunes it — prune
+      // now instead. Passive (no trigger key-down), so it can never latch PTT,
+      // and checkShortcuts is skipped while recording anyway.
+      void this.recheckPressedKeys();
     }
     log.info("Shortcut recording state changed", { isRecording });
   }

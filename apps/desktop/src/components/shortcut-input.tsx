@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Pencil, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
+import {
+  handleActiveKeysEmission,
+  initialShortcutRecordingState,
+} from "@/utils/shortcut-recording";
 import { useTranslation } from "react-i18next";
 
 interface ShortcutInputProps {
@@ -160,6 +164,9 @@ export function ShortcutInput({
 }: ShortcutInputProps) {
   const { t } = useTranslation();
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
+  // Recording state lives in a ref (not closure-captured state) so rapid
+  // emissions can never read a stale snapshot between renders.
+  const recordingStateRef = useRef(initialShortcutRecordingState);
   const setRecordingStateMutation =
     api.settings.setShortcutRecordingState.useMutation();
 
@@ -174,19 +181,23 @@ export function ShortcutInput({
     setRecordingStateMutation.mutate(false);
   };
 
-  // Subscribe to key events when recording
-  // Note: activeKeys closure is fresh on each render because useSubscription
-  // updates its callback reference, so previousKeys correctly captures the
-  // previous state value when onData fires.
+  // Subscribe to key events when recording. Keys held before recording
+  // started (e.g. the previous chord still being released after a quick
+  // re-edit) are ignored until the set drains to empty — see
+  // handleActiveKeysEmission.
   api.settings.activeKeysUpdates.useSubscription(undefined, {
     enabled: isRecordingShortcut,
     onData: (keys: number[]) => {
-      const previousKeys = activeKeys;
-      setActiveKeys(keys);
+      const { state, completedKeys } = handleActiveKeysEmission(
+        recordingStateRef.current,
+        keys,
+      );
+      recordingStateRef.current = state;
+      setActiveKeys(state.activeKeys);
 
-      // When any key is released, validate the combination
-      if (previousKeys.length > 0 && keys.length < previousKeys.length) {
-        const result = validateShortcutFormat(previousKeys);
+      // A key was released: validate the combination held just before it
+      if (completedKeys) {
+        const result = validateShortcutFormat(completedKeys);
 
         if (result.valid && result.shortcut) {
           // Basic format is valid - let parent handle backend validation
@@ -211,6 +222,7 @@ export function ShortcutInput({
   // Reset state when recording starts
   useEffect(() => {
     if (isRecordingShortcut) {
+      recordingStateRef.current = initialShortcutRecordingState;
       setActiveKeys([]);
     }
   }, [isRecordingShortcut]);
