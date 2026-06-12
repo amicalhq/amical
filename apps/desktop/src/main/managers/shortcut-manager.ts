@@ -111,8 +111,42 @@ export class ShortcutManager extends EventEmitter {
   }
 
   /**
+   * Gated entry point for recheckPressedKeys (which see for the full
+   * contract): skipped entirely while the shortcut recorder is capturing.
+   * Routine callers — the periodic sweep, the superset trigger, the
+   * recorder-exit cleanup — come through here.
+   */
+  async maybeRecheckPressedKeys(
+    triggerKeyCode?: number,
+    triggerDownAt?: number,
+  ): Promise<void> {
+    // Gate: while the shortcut recorder is capturing, do not prune. The OS
+    // sample is poisonable by injected events that bypass our hook (see
+    // getEngagedChordKeys for the mechanism), so a prune can fake a release
+    // of a genuinely-held key — and the recorder consumes the raw
+    // activeKeysChanged stream while DEFINING a new chord, so there is no
+    // key set to scope an exemption to: any held key may be part of the
+    // capture, and the only safe policy is no pruning at all. The
+    // capture-time prunes that must run anyway (recorder start drain, queued
+    // refires) call recheckPressedKeys directly — they land while
+    // checkShortcuts is suppressed, so they can only prune, never fire.
+    // (The latched PTT chord is protected by a key-level filter at
+    // prune-apply time in recheckPressedKeys instead, so rechecks keep running
+    // during dictation sessions.)
+    if (this.isRecordingShortcut) {
+      return;
+    }
+
+    return this.recheckPressedKeys(triggerKeyCode, triggerDownAt);
+  }
+
+  /**
    * Recheck currently pressed keys against OS truth.
    * Clears stale keys locally to avoid stuck states.
+   *
+   * Ungated: routine callers go through maybeRecheckPressedKeys; only the
+   * prunes that must run while the capture gate is up (recorder start drain,
+   * queued refires) call this directly.
    *
    * Self-recovery: when a key-down-driven recheck prunes stale keys and the
    * triggering key SURVIVES the prune (see triggerSurvived below), the prune
@@ -140,7 +174,7 @@ export class ShortcutManager extends EventEmitter {
    * short-circuit) so this cannot deadlock, but clearing only on success
    * would wedge rechecks after a single timeout.
    */
-  async recheckPressedKeys(
+  private async recheckPressedKeys(
     triggerKeyCode?: number,
     triggerDownAt?: number,
   ): Promise<void> {
@@ -188,11 +222,25 @@ export class ShortcutManager extends EventEmitter {
       });
       const staleKeyCodes = result.staleKeyCodes ?? [];
 
+      // Never prune a key of an engaged chord. While the user holds it, the
+      // OS sample is poisonable by injected events, and pruning an engaged
+      // chord key would truncate a PTT recording (latch break) or oscillate
+      // an edge chord into a phantom re-fire (prune → auto-repeat re-add →
+      // false rising edge). Computed at apply time against CURRENT state, so
+      // a recheck in flight when the chord engaged is still filtered;
+      // protection ends the moment a delivered key-up disengages the chord.
+      // Non-chord keys stay prunable so a stale key can't block the
+      // toggle-stop exact match mid-session.
+      const engagedChordKeys = this.getEngagedChordKeys();
+
       const keysToClear: number[] = [];
       for (const keyCode of staleKeyCodes) {
         const keyInfo = this.activeKeys.get(keyCode);
         if (!keyInfo) continue;
         if (keyInfo.timestamp > requestStartedAt) {
+          continue;
+        }
+        if (engagedChordKeys.has(keyCode)) {
           continue;
         }
         keysToClear.push(keyCode);
@@ -229,12 +277,56 @@ export class ShortcutManager extends EventEmitter {
       const pending = this.pendingRecheck;
       this.pendingRecheck = undefined;
       if (pending) {
+        // Always refire ungated. When capturing, the queued request is the
+        // recorder-start drain or predates capture — both exist to prune so
+        // the recorder can arm, and checkShortcuts is suppressed, so the
+        // prune is silent (routing through the gate would drop the one
+        // start-of-capture drain whenever capture began mid-recheck). When
+        // not capturing, the gate is open and would fall through anyway.
         void this.recheckPressedKeys(
           pending.triggerKeyCode,
           pending.triggerDownAt,
         );
       }
     }
+  }
+
+  /**
+   * Keys of every chord that delivered events say is currently engaged.
+   * OS-sample prunes must never act against an engaged chord: injected
+   * events (PowerToys-class remappers, our own masking/paste SendInput)
+   * update the OS key table without ever reaching our hook, so a
+   * physically-held chord key can read as released. Each shortcut type
+   * contributes via its own engagement signal: PTT via the latch (pttActive
+   * sustains on a subset, so exact-match would drop protection the moment an
+   * extra key joins mid-hold), edge shortcuts via their exact-match state
+   * (true exactly while the full chord is held). When an edge chord is
+   * exactly held, activeKeys contains only chord keys, so this never shields
+   * a stale extra from pruning.
+   *
+   * Known residual, evaluated and ACCEPTED: mid-chord (pressing a multi-key
+   * chord slowly) nothing is engaged yet, so a poisoned sweep landing in the
+   * inter-key gap can prune a held chord key. Odds are ~gap/10s per slow
+   * press, only with an injector resident; on Windows the held modifier's
+   * auto-repeat re-adds it within one typematic delay and that repeat
+   * key-down can complete the latch itself. Worst case is a late or retried
+   * press start — never a truncated recording.
+   */
+  private getEngagedChordKeys(): Set<number> {
+    const keys = new Set<number>();
+    if (this.pttActive) {
+      for (const key of this.shortcuts.pushToTalk) keys.add(key);
+    }
+    if (this.exactMatchState.toggleRecording) {
+      for (const key of this.shortcuts.toggleRecording) keys.add(key);
+    }
+    if (this.exactMatchState.pasteLastTranscript) {
+      for (const key of this.shortcuts.pasteLastTranscript) keys.add(key);
+    }
+    if (this.exactMatchState.newNote) {
+      for (const key of this.shortcuts.newNote) keys.add(key);
+    }
+    return keys;
   }
 
   /**
@@ -285,8 +377,23 @@ export class ShortcutManager extends EventEmitter {
       // arms only once the active set drains to empty. A stale key (missed
       // key-up) would block arming until the periodic sweep prunes it — prune
       // now instead. Passive (no trigger key-down), so it can never latch PTT,
-      // and checkShortcuts is skipped while recording anyway.
+      // and checkShortcuts is skipped while recording anyway. Ungated: the
+      // capture flag is already set, and this start-of-capture drain is the
+      // one prune that must run during capture.
       void this.recheckPressedKeys();
+    } else {
+      // Capture gated the sweep; clean anything that went stale during it (a
+      // stale just-recorded key would otherwise eat its next press via the
+      // wasActive dedup in addActiveKey). The prune lands after the RPC,
+      // unsuppressed — if it collapses the held set onto an existing edge
+      // chord, that chord fires. Evaluated and ACCEPTED: same harm class,
+      // rarity (requires a mid-capture missed key-up), and one-shot shape as
+      // the accepted stale-key + chord-completion fire; preventing it took
+      // deferred flag-drop machinery (.finally + a generation token) that
+      // produced a real bug of its own (a stale finally clobbering a quickly
+      // re-opened capture session) plus two documented timing corners — the
+      // mechanism cost more than the bug.
+      void this.maybeRecheckPressedKeys();
     }
     log.info("Shortcut recording state changed", { isRecording });
   }
@@ -310,7 +417,7 @@ export class ShortcutManager extends EventEmitter {
     }
 
     this.recheckInterval = setInterval(() => {
-      void this.recheckPressedKeys();
+      void this.maybeRecheckPressedKeys();
     }, PRESSED_KEYS_RECHECK_INTERVAL_MS);
   }
 
@@ -441,7 +548,7 @@ export class ShortcutManager extends EventEmitter {
       triggerKeyCode !== undefined &&
       this.isStrictSupersetOfAnyShortcut(activeKeys)
     ) {
-      void this.recheckPressedKeys(triggerKeyCode);
+      void this.maybeRecheckPressedKeys(triggerKeyCode);
     }
   }
 
@@ -466,7 +573,10 @@ export class ShortcutManager extends EventEmitter {
     return keys.length === activeKeys.length && this.allHeld(keys, activeKeys);
   }
 
-  private isPTTShortcutPressed(isKeyDown: boolean, activeKeys: number[]): boolean {
+  private isPTTShortcutPressed(
+    isKeyDown: boolean,
+    activeKeys: number[],
+  ): boolean {
     const pttKeys = this.shortcuts.pushToTalk;
     if (!pttKeys || pttKeys.length === 0) {
       this.pttActive = false;

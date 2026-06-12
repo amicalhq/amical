@@ -197,7 +197,8 @@ namespace WindowsHelper
                             // already received the KeyUp above, so dictation-stop still fires.
                             // ConsumeMaskOnRelease disarms the key. Neither SetModifierKey nor the
                             // ValidateAndResyncKeyState scrub above can disarm the in-flight key first
-                            // (the scrub excludes excludingKeyCode), so checking it here is race-free.
+                            // (the scrub exempts the trigger key and its chord-mates), so checking it
+                            // here is race-free.
                             if (isKeyUp && ShortcutManager.Instance.ConsumeMaskOnRelease(vkCode))
                             {
                                 var injected = Utils.KeyboardInjector.InjectMaskedRelease(vkCode);

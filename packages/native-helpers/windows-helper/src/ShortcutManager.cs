@@ -35,6 +35,10 @@ namespace WindowsHelper
         private int[] _pasteLastTranscriptKeys = Array.Empty<int>();
         private int[] _newNoteKeys = Array.Empty<int>();
         private HashSet<int> _shortcutKeysSet = new();
+        // Shortcut key → that key plus every key of every configured shortcut
+        // containing it ("chord-mates"). Rebuilt in SetShortcuts; read-only on
+        // the hook path (ValidateAndResyncKeyState).
+        private Dictionary<int, HashSet<int>> _chordKeysByTrigger = new();
         private readonly HashSet<int> _activatedMaskKeys = new();
 
         // Track currently pressed modifier keys (left/right distinct).
@@ -73,6 +77,7 @@ namespace WindowsHelper
                     .Concat(_toggleRecordingKeys)
                     .Concat(_pasteLastTranscriptKeys)
                     .Concat(_newNoteKeys));
+                _chordKeysByTrigger = BuildChordKeysByTrigger();
                 _activatedMaskKeys.Clear();
                 LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}], Paste: [{string.Join(", ", _pasteLastTranscriptKeys)}], NewNote: [{string.Join(", ", _newNoteKeys)}]");
             }
@@ -278,15 +283,46 @@ namespace WindowsHelper
         /// <summary>
         /// Validate all tracked key states against actual OS state.
         /// Removes any keys that are not actually pressed (stuck keys).
+        ///
+        /// The trigger key and its chord-mates — keys of every configured
+        /// shortcut containing the trigger — are exempt from pruning. An event
+        /// from a chord member is evidence that chord may be in progress, and
+        /// GetAsyncKeyState cannot be trusted for its mates: injected events
+        /// (PowerToys-class remappers, our own masking/paste SendInput) update
+        /// the OS key table without reaching the hook, so a physically-held
+        /// chord key can read as released. Pruning it mid-chord breaks
+        /// ShouldConsumeKey (the chord's keys start leaking to the focused
+        /// app) and disarms the Alt/Win release mask.
         /// </summary>
-        public void ValidateAndResyncKeyState(int? excludingKeyCode = null)
+        /// <remarks>
+        /// Known residual, evaluated and ACCEPTED: a chord-mate whose key-up
+        /// was genuinely missed (UAC/secure desktop, sleep, hook drop) is
+        /// shielded from exactly the resyncs its own chord-mates trigger —
+        /// e.g. with paste = Alt+Shift+Z and a stale Alt, typing Shift+Z
+        /// reads as the full chord and the Z is consumed. From this hook's
+        /// event stream, "released but key-up missed" and "held but table
+        /// poisoned" are observationally identical at any instant, so any
+        /// policy picks one error; we pick the self-healing one. The stale
+        /// key clears on its own next physical press-release (chord-mates
+        /// are everyday modifiers, reused within seconds-to-minutes), so the
+        /// real exposure is a couple of eaten keystrokes, not persistence.
+        /// Rejected guards (see zeus doc 2026-06-12-windows-resync-gating):
+        /// typematic-freshness heartbeat (Windows auto-repeat is last-key-
+        /// only — chord modifiers go silent mid-hold, so freshness would
+        /// prune held-poisoned keys and re-break the original bug), and
+        /// desktop→helper prune mirroring (cross-process races to bound a
+        /// residual that already self-heals).
+        /// </remarks>
+        public void ValidateAndResyncKeyState(int? triggerKeyCode = null)
         {
             lock (_lock)
             {
+                var exemptKeys = GetTriggerChordKeys(triggerKeyCode);
+
                 var modifierKeysToCheck = _pressedModifierKeys.ToList();
                 foreach (var keyCode in modifierKeysToCheck)
                 {
-                    if (excludingKeyCode.HasValue && keyCode == excludingKeyCode.Value)
+                    if (exemptKeys.Contains(keyCode))
                     {
                         continue;
                     }
@@ -301,7 +337,7 @@ namespace WindowsHelper
                 var regularKeysToCheck = _pressedRegularKeys.ToList();
                 foreach (var keyCode in regularKeysToCheck)
                 {
-                    if (excludingKeyCode.HasValue && keyCode == excludingKeyCode.Value)
+                    if (exemptKeys.Contains(keyCode))
                     {
                         continue;
                     }
@@ -314,8 +350,55 @@ namespace WindowsHelper
                 }
 
                 _activatedMaskKeys.RemoveWhere(vk =>
-                    vk != excludingKeyCode && !IsKeyActuallyPressed(vk));
+                    !exemptKeys.Contains(vk) && !IsKeyActuallyPressed(vk));
             }
+        }
+
+        private static readonly HashSet<int> EmptyChordKeys = new();
+
+        // The trigger key plus its chord-mates (precomputed per shortcut key
+        // in SetShortcuts — this runs in the hook callback on every shortcut
+        // key event, so it must not allocate or scan). A trigger that is not
+        // part of any shortcut exempts only itself. Caller holds _lock.
+        private HashSet<int> GetTriggerChordKeys(int? triggerKeyCode)
+        {
+            if (!triggerKeyCode.HasValue)
+            {
+                return EmptyChordKeys;
+            }
+
+            if (_chordKeysByTrigger.TryGetValue(triggerKeyCode.Value, out var chordKeys))
+            {
+                return chordKeys;
+            }
+
+            return new HashSet<int> { triggerKeyCode.Value };
+        }
+
+        // Build the trigger → chord-mates map from the configured shortcut
+        // arrays. Caller holds _lock.
+        private Dictionary<int, HashSet<int>> BuildChordKeysByTrigger()
+        {
+            var map = new Dictionary<int, HashSet<int>>();
+            foreach (var shortcut in new[]
+            {
+                _pushToTalkKeys,
+                _toggleRecordingKeys,
+                _pasteLastTranscriptKeys,
+                _newNoteKeys,
+            })
+            {
+                foreach (var key in shortcut)
+                {
+                    if (!map.TryGetValue(key, out var chordKeys))
+                    {
+                        chordKeys = new HashSet<int>();
+                        map[key] = chordKeys;
+                    }
+                    chordKeys.UnionWith(shortcut);
+                }
+            }
+            return map;
         }
 
         /// <summary>

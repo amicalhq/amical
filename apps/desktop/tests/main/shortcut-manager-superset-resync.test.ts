@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createManager,
   flush,
-  type ShortcutManagerInternals,
+  usePttShortcut,
+  useToggleShortcut,
 } from "./shortcut-manager-test-utils";
 
 // Abstract keycodes. PHANTOM stands in for a key whose key-up was missed and is
@@ -11,27 +12,6 @@ const A = 101;
 const B = 102;
 const PHANTOM = 103;
 const EXTRA = 104;
-
-const useToggleShortcut = (internals: ShortcutManagerInternals) => {
-  internals.shortcuts = {
-    pushToTalk: [],
-    toggleRecording: [A, B],
-    pasteLastTranscript: [],
-    newNote: [],
-  };
-};
-
-const usePttShortcut = (
-  internals: ShortcutManagerInternals,
-  keys: number[] = [A],
-) => {
-  internals.shortcuts = {
-    pushToTalk: keys,
-    toggleRecording: [],
-    pasteLastTranscript: [],
-    newNote: [],
-  };
-};
 
 // Build a manager whose resync RPC samples OS truth on entry but holds its
 // response until `release()` is called — lets a test drive events while a
@@ -204,7 +184,7 @@ describe("ShortcutManager PTT self-recovery after a prune", () => {
     // P is now physically released but its key-up was missed; the periodic
     // sweep finds it stale.
     physicallyDown.delete(PHANTOM);
-    await manager.recheckPressedKeys(); // periodic path — no triggering key-down
+    await manager.maybeRecheckPressedKeys(); // periodic path — no triggering key-down
 
     expect(internals.getActiveKeys()).toEqual([A]); // P pruned
     expect(timeline).toEqual([]); // PTT must NOT latch from a passive prune
@@ -238,10 +218,14 @@ describe("ShortcutManager PTT self-recovery after a prune", () => {
     expect(timeline).toEqual([]);
   });
 
-  it("releases PTT when a prune removes a PTT key whose key-up was missed", async () => {
-    // The unlatch direction is deliberate: if the PTT key's own key-up is
-    // missed, no real event will ever arrive to stop the recording — the
-    // prune is the rescue.
+  it("keeps PTT latched when a prune reports the latched key stale", async () => {
+    // Deliberate trade-off: a single OS sample cannot distinguish "released
+    // but the key-up was missed" (where pruning would rescue a stuck
+    // recording) from "held but the OS key table was poisoned by injected
+    // events" (PowerToys-class remappers, our own masking SendInput — where
+    // pruning would truncate a LIVE recording mid-sentence). The latched
+    // chord is exempt from pruning; a genuinely stuck recording stops via
+    // the next delivered key event, the UI, or the max-duration auto-stop.
     const physicallyDown = new Set([A]);
     const { manager, internals, timeline } = createManager({ physicallyDown });
     usePttShortcut(internals);
@@ -249,11 +233,11 @@ describe("ShortcutManager PTT self-recovery after a prune", () => {
     internals.addActiveKey(A); // exact → press
     expect(timeline).toEqual(["press"]);
 
-    physicallyDown.delete(A); // A released, key-up missed
-    await manager.recheckPressedKeys();
+    physicallyDown.delete(A); // table says A is up; the user may still hold it
+    await manager.maybeRecheckPressedKeys();
 
-    expect(internals.getActiveKeys()).toEqual([]);
-    expect(timeline).toEqual(["press", "release"]);
+    expect(internals.getActiveKeys()).toEqual([A]);
+    expect(timeline).toEqual(["press"]);
   });
 });
 
@@ -268,7 +252,7 @@ describe("ShortcutManager resync requests during an in-flight recheck", () => {
     usePttShortcut(internals);
 
     internals.addActiveKey(PHANTOM); // {P} — stuck (not physically down)
-    const sweep = manager.recheckPressedKeys(); // periodic sweep, held in flight
+    const sweep = manager.maybeRecheckPressedKeys(); // periodic sweep, held in flight
     physicallyDown.add(A);
     internals.addActiveKey(A); // {P,A} — superset → key-down resync requested
     release();
@@ -291,7 +275,7 @@ describe("ShortcutManager resync requests during an in-flight recheck", () => {
     usePttShortcut(internals);
 
     internals.addActiveKey(PHANTOM); // {P} — stuck
-    const sweep = manager.recheckPressedKeys(); // sweep in flight over [P]
+    const sweep = manager.maybeRecheckPressedKeys(); // sweep in flight over [P]
     internals.addActiveKey(A); // the tap goes down: {P,A} — superset → resync queued
     // ...and its key-up is missed before any OS sample sees it.
     release();
@@ -375,7 +359,7 @@ describe("ShortcutManager resync requests during an in-flight recheck", () => {
     usePttShortcut(internals);
 
     internals.addActiveKey(PHANTOM); // {P}
-    const sweep = manager.recheckPressedKeys(); // samples [P] → nothing stale
+    const sweep = manager.maybeRecheckPressedKeys(); // samples [P] → nothing stale
     // During the flight: P's release is missed and the user presses A.
     physicallyDown.delete(PHANTOM);
     physicallyDown.add(A);
@@ -406,7 +390,7 @@ describe("ShortcutManager pending-trigger overwrite (latest intent wins)", () =>
     usePttShortcut(internals); // PTT = [A]
 
     internals.addActiveKey(PHANTOM); // {P}
-    const sweep = manager.recheckPressedKeys(); // held in flight over [P]
+    const sweep = manager.maybeRecheckPressedKeys(); // held in flight over [P]
     physicallyDown.add(A);
     internals.addActiveKey(A); // pending = {A} — the PTT press
     physicallyDown.add(EXTRA);
@@ -428,7 +412,7 @@ describe("ShortcutManager pending-trigger overwrite (latest intent wins)", () =>
     usePttShortcut(internals); // PTT = [A]
 
     internals.addActiveKey(PHANTOM); // {P}
-    const sweep = manager.recheckPressedKeys(); // held in flight over [P]
+    const sweep = manager.maybeRecheckPressedKeys(); // held in flight over [P]
     physicallyDown.add(A);
     internals.addActiveKey(A); // pending = {A} — the press that deserved the latch
     internals.addActiveKey(EXTRA); // pending = {EXTRA} — a tap whose key-up is missed
@@ -456,7 +440,7 @@ describe("ShortcutManager pending-trigger overwrite (latest intent wins)", () =>
     usePttShortcut(internals); // PTT = [A]
 
     internals.addActiveKey(PHANTOM); // {P}
-    const sweep = manager.recheckPressedKeys(); // held in flight over [P]
+    const sweep = manager.maybeRecheckPressedKeys(); // held in flight over [P]
     physicallyDown.add(A);
     internals.addActiveKey(A); // pending = {A}
     physicallyDown.add(EXTRA);
@@ -484,7 +468,7 @@ describe("ShortcutManager pending-trigger overwrite (latest intent wins)", () =>
     usePttShortcut(internals, [A, B]);
 
     internals.addActiveKey(PHANTOM); // {P}
-    const sweep = manager.recheckPressedKeys(); // held in flight over [P]
+    const sweep = manager.maybeRecheckPressedKeys(); // held in flight over [P]
     physicallyDown.add(A);
     internals.addActiveKey(A); // {P,A} — not a superset of [A,B]: records nothing
     physicallyDown.add(B);

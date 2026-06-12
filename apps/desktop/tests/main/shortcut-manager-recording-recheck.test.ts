@@ -21,16 +21,4 @@ describe("ShortcutManager recheck on shortcut-recording start", () => {
     expect(recheckPressedKeys).toHaveBeenCalledTimes(1);
     expect(internals.getActiveKeys()).toEqual([A]); // stale PHANTOM pruned
   });
-
-  it("does not kick a recheck when recording stops", async () => {
-    const { manager, internals, recheckPressedKeys } = createManager({
-      physicallyDown: new Set([A]),
-    });
-    internals.addActiveKey(A);
-
-    manager.setIsRecordingShortcut(false);
-    await flush();
-
-    expect(recheckPressedKeys).not.toHaveBeenCalled();
-  });
 });

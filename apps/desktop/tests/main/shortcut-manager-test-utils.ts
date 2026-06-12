@@ -16,6 +16,34 @@ export type ShortcutManagerInternals = {
 type RecheckArgs = { pressedKeyCodes: number[] };
 type RecheckResult = { staleKeyCodes: number[] };
 
+// Configure a PTT-only shortcut. The default matches the abstract `A = 101`
+// keycode the shortcut-manager test files share.
+export const usePttShortcut = (
+  internals: ShortcutManagerInternals,
+  keys: number[] = [101],
+) => {
+  internals.shortcuts = {
+    pushToTalk: keys,
+    toggleRecording: [],
+    pasteLastTranscript: [],
+    newNote: [],
+  };
+};
+
+// Configure a toggle-only shortcut. The default matches the abstract
+// `A = 101`, `B = 102` keycodes the shortcut-manager test files share.
+export const useToggleShortcut = (
+  internals: ShortcutManagerInternals,
+  keys: number[] = [101, 102],
+) => {
+  internals.shortcuts = {
+    pushToTalk: [],
+    toggleRecording: keys,
+    pasteLastTranscript: [],
+    newNote: [],
+  };
+};
+
 // setTimeout(0) is a macrotask: it runs after the resync RPC promise and its
 // follow-on prune microtasks have settled.
 export const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
