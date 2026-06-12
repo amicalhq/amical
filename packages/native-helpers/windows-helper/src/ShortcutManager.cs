@@ -278,12 +278,9 @@ namespace WindowsHelper
         /// <summary>
         /// Validate all tracked key states against actual OS state.
         /// Removes any keys that are not actually pressed (stuck keys).
-        /// Returns details about any corrections performed.
         /// </summary>
-        public KeyResyncResult ValidateAndResyncKeyState(int? excludingKeyCode = null)
+        public void ValidateAndResyncKeyState(int? excludingKeyCode = null)
         {
-            var result = new KeyResyncResult();
-
             lock (_lock)
             {
                 var modifierKeysToCheck = _pressedModifierKeys.ToList();
@@ -297,7 +294,7 @@ namespace WindowsHelper
                     if (!IsKeyActuallyPressed(keyCode))
                     {
                         _pressedModifierKeys.Remove(keyCode);
-                        result.ClearedModifiers.Add(keyCode);
+                        LogToStderr($"Resync: Modifier was stuck, cleared: {keyCode}");
                     }
                 }
 
@@ -312,25 +309,13 @@ namespace WindowsHelper
                     if (!IsKeyActuallyPressed(keyCode))
                     {
                         _pressedRegularKeys.Remove(keyCode);
-                        result.ClearedRegularKeys.Add(keyCode);
+                        LogToStderr($"Resync: Regular key was stuck, cleared: {keyCode}");
                     }
-                }
-
-                if (result.ClearedModifiers.Count > 0)
-                {
-                    LogToStderr($"Resync: Modifiers were stuck, cleared: [{string.Join(", ", result.ClearedModifiers)}]");
-                }
-
-                if (result.ClearedRegularKeys.Count > 0)
-                {
-                    LogToStderr($"Resync: Regular keys were stuck, cleared: [{string.Join(", ", result.ClearedRegularKeys)}]");
                 }
 
                 _activatedMaskKeys.RemoveWhere(vk =>
                     vk != excludingKeyCode && !IsKeyActuallyPressed(vk));
             }
-
-            return result;
         }
 
         /// <summary>
@@ -379,12 +364,6 @@ namespace WindowsHelper
 
                 return pttMatch || toggleMatch || pasteMatch || newNoteMatch;
             }
-        }
-
-        public sealed class KeyResyncResult
-        {
-            public List<int> ClearedModifiers { get; } = new();
-            public List<int> ClearedRegularKeys { get; } = new();
         }
     }
 }

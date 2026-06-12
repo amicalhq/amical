@@ -174,8 +174,7 @@ namespace WindowsHelper
 
                             if (isShortcutKey)
                             {
-                                var resyncResult = ShortcutManager.Instance.ValidateAndResyncKeyState(vkCode);
-                                EmitResyncKeyEvents(resyncResult, vkCode);
+                                ShortcutManager.Instance.ValidateAndResyncKeyState(vkCode);
                             }
 
                             ShortcutManager.Instance.SetModifierKey(vkCode, isDown);
@@ -222,8 +221,7 @@ namespace WindowsHelper
 
                             if (ShortcutManager.Instance.IsShortcutKey(vkCode))
                             {
-                                var resyncResult = ShortcutManager.Instance.ValidateAndResyncKeyState(vkCode);
-                                EmitResyncKeyEvents(resyncResult, vkCode);
+                                ShortcutManager.Instance.ValidateAndResyncKeyState(vkCode);
                             }
 
                             EmitKeyEvent(
@@ -283,22 +281,6 @@ namespace WindowsHelper
             };
 
             KeyEventOccurred?.Invoke(this, keyEvent);
-        }
-
-        private void EmitResyncKeyEvents(ShortcutManager.KeyResyncResult resyncResult, int? excludeKeyCode)
-        {
-            foreach (var keyCode in resyncResult.ClearedModifiers)
-            {
-                if (keyCode == excludeKeyCode) continue;
-                EmitKeyEvent(HelperEventType.KeyUp, keyCode);
-            }
-
-            foreach (var keyCode in resyncResult.ClearedRegularKeys)
-            {
-                if (keyCode == excludeKeyCode) continue;
-                EmitKeyEvent(HelperEventType.KeyUp, keyCode);
-            }
-
         }
 
         private void LogToStderr(string message)
