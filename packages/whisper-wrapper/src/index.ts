@@ -1,6 +1,18 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 import { loadBinding, getLoadedBindingInfo } from "./loader";
 
+function applyMetalDefaults(): void {
+  if (process.platform !== "darwin" || process.arch !== "x64") {
+    return;
+  }
+
+  // Intel Macs with discrete AMD GPUs can return degenerate transcripts when
+  // ggml Metal concurrency is enabled. Preserve explicit caller overrides.
+  process.env.GGML_METAL_CONCURRENCY_DISABLE ??= "1";
+}
+
+applyMetalDefaults();
+
 const binding = loadBinding();
 
 export interface WhisperOptions {
@@ -19,9 +31,9 @@ export class Whisper {
 
   constructor(
     private modelPath: string,
-    _opts?: WhisperOptions,
+    opts?: WhisperOptions,
   ) {
-    this.ctx = binding.init({ model: modelPath });
+    this.ctx = binding.init({ model: modelPath, ...opts });
   }
 
   async load(): Promise<void> {
