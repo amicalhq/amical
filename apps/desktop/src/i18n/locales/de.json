@@ -34,22 +34,19 @@
   },
   "onboarding": {
     "app": {
-      "loading": "Einrichtung wird geladen...",
+      "loading": "Alles wird vorbereitet…",
       "unknownScreen": "Unbekannter Bildschirm"
     },
     "navigation": {
       "back": "Zurück",
       "continue": "Weiter",
-      "complete": "Abschließen"
-    },
-    "progress": {
-      "step": "Schritt {{current}} von {{total}}",
-      "percent": "{{percent}}%"
+      "done": "Fertig",
+      "skip": "Überspringen"
     },
     "toast": {
       "loadStateFailed": "Einrichtungsstatus konnte nicht geladen werden",
       "savePreferencesFailed": "Deine Einstellungen konnten nicht gespeichert werden. Bitte versuche es erneut.",
-      "completed": "Einrichtung abgeschlossen!",
+      "completed": "Alles bereit!",
       "completeFailed": "Einrichtung konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
       "resetSuccess": "Einrichtung erfolgreich zurückgesetzt",
       "resetFailed": "Einrichtung konnte nicht zurückgesetzt werden"
@@ -59,83 +56,58 @@
       "description": "Während der Einrichtung ist ein Fehler aufgetreten. Bitte versuche es erneut.",
       "tryAgain": "Erneut versuchen",
       "restart": "Einrichtung neu starten",
-      "supportNote": "Falls das Problem weiterhin besteht, wende dich bitte an den Support oder sieh in der Dokumentation nach."
+      "supportNote": "Falls das immer wieder passiert, wende dich an den Support."
     },
     "welcome": {
-      "title": "Willkommen bei Amical",
-      "subtitle": "Wähle die Funktionen aus, die dich interessieren, um dein Erlebnis zu personalisieren",
-      "skip": "Einrichtung überspringen",
-      "comingSoon": "Demnächst verfügbar",
-      "selectAria": "{{feature}} auswählen",
-      "features": {
-        "contextualDictation": {
-          "title": "Kontextbezogenes Diktieren",
-          "description": "Schnelle Spracheingabe in jeder Anwendung für nahtlose Sprach-zu-Text-Umwandlung"
-        },
-        "noteTaking": {
-          "title": "Notizen",
-          "description": "Erfasse Gedanken und Ideen per Spracheingabe mit intelligenter Formatierung"
-        },
-        "meetingTranscriptions": {
-          "title": "Meeting-Transkriptionen",
-          "description": "Nimm Meetings und Gespräche auf und transkribiere sie mit hoher Genauigkeit"
-        },
-        "voiceCommands": {
-          "title": "Sprachbefehle",
-          "description": "Steuere deine Apps freihändig – führe Aufgaben mit natürlichen Sprachbefehlen aus"
-        }
-      },
+      "title": "Wie wirst du Amical nutzen?",
+      "subtitle": "Wähle alles Zutreffende aus.",
       "toast": {
-        "maxFeatures": "Du kannst bis zu {{max}} Funktionen auswählen",
-        "selectAtLeastOne": "Bitte wähle mindestens eine Funktion aus, um dein Erlebnis zu personalisieren"
+        "selectAtLeastOne": "Wähle mindestens eine Option aus, um fortzufahren"
       },
-      "selection": {
-        "none": "Wähle mindestens eine Funktion aus",
-        "selected": "{{count}} ausgewählt"
+      "useCases": {
+        "draftingEmails": "E-Mails verfassen",
+        "sendingMessages": "Nachrichten senden",
+        "promptingAi": "KI-Prompts schreiben",
+        "codingWithAi": "Mit KI programmieren",
+        "writingDocuments": "Dokumente schreiben",
+        "takingNotes": "Notizen machen",
+        "postsComments": "Posts und Kommentare",
+        "somethingElse": "Etwas anderes"
       },
-      "note": "Deine Auswahl hilft bei der Personalisierung der Einrichtung – alle Funktionen bleiben jederzeit verfügbar."
+      "somethingElsePlaceholder": "Erzähl uns mehr…"
     },
     "permissions": {
-      "title": "Berechtigungen einrichten",
-      "subtitle": "Amical benötigt einige Berechtigungen, um ordnungsgemäß zu funktionieren",
-      "waiting": "Warte auf Berechtigungen...",
-      "polling": "Suche nach Berechtigungsänderungen...",
-      "allGranted": {
-        "title": "Alle Berechtigungen erteilt",
-        "description": "Du bist startklar! Du kannst zum nächsten Schritt fortfahren."
-      },
+      "title": "Kernfunktionen aktivieren",
+      "subtitle": "Amical braucht ein paar Berechtigungen, um zuzuhören und zu tippen.",
       "status": {
-        "granted": "Berechtigung erteilt",
-        "denied": "Berechtigung verweigert",
-        "notRequested": "Berechtigung noch nicht angefordert",
-        "required": "Berechtigung erforderlich"
+        "granted": "Berechtigung erteilt"
       },
       "actions": {
         "request": "Berechtigung anfordern",
-        "requesting": "Wird angefordert...",
+        "requesting": "Wird angefordert…",
         "openSettings": "Einstellungen öffnen"
       },
       "microphone": {
-        "title": "Mikrofonzugriff",
-        "description": "Erforderlich für die Aufnahme und Transkription von Audio",
-        "deniedHelp": "Bitte erteile Mikrofonzugriff in den Systemeinstellungen"
+        "title": "Mikrofon",
+        "description": "Damit Amical dein Diktat hören kann"
       },
       "accessibility": {
-        "title": "Bedienungshilfen-Zugriff",
-        "description": "Erforderlich für das Einfügen von Transkriptionen und globale Tastaturkürzel (nur macOS)",
-        "deniedHelp": "Füge Amical in den Systemeinstellungen unter Bedienungshilfen hinzu"
+        "title": "Bedienungshilfen",
+        "description": "Damit Amical Text in jede App einfügen kann"
       }
     },
     "discovery": {
-      "title": "Wie hast du Amical entdeckt?",
-      "subtitle": "Das hilft uns zu verstehen, woher unsere Nutzer kommen",
+      "title": "Wie hast du von uns erfahren?",
+      "subtitle": "Das hilft Amical, mehr Menschen wie dich zu erreichen.",
       "sources": {
-        "searchEngine": "Suchmaschine (Google, Bing, etc.)",
-        "socialMedia": "Soziale Medien (Twitter, LinkedIn, etc.)",
-        "wordOfMouth": "Empfehlung durch Freunde oder Kollegen",
+        "searchEngine": "Suchmaschine (Google, Bing usw.)",
+        "reddit": "Reddit",
+        "xTwitter": "X / Twitter",
+        "socialMedia": "Soziale Medien (Instagram, LinkedIn usw.)",
+        "aiAssistant": "KI-Chat (ChatGPT, Claude usw.)",
+        "wordOfMouth": "Empfehlung von Freunden oder Kollegen",
         "blogArticle": "Blogbeitrag oder Artikel",
         "github": "GitHub",
-        "aiAssistant": "KI-Assistent (ChatGPT, Claude, etc.)",
         "other": "Sonstiges"
       },
       "toast": {
@@ -143,108 +115,136 @@
         "otherDetailsRequired": "Bitte gib Details für \"Sonstiges\" an"
       },
       "other": {
-        "label": "Bitte angeben",
-        "placeholder": "Erzähl uns mehr...",
+        "placeholder": "Erzähl uns mehr…",
         "charCount": "{{count}}/{{max}} Zeichen"
       }
     },
     "modelSelection": {
-      "title": "Wähle dein KI-Modell",
-      "subtitle": "Wähle aus, wie Amical dein Audio verarbeiten soll",
-      "completeSetupToContinue": "Schließe die Einrichtung ab, um fortzufahren",
       "recommended": "Empfohlen",
-      "prosLabel": "Vorteile:",
-      "consLabel": "Nachteile:",
-      "note": "Du kannst dein Modell später in den Einstellungen ändern – nichts ist endgültig.",
-      "recommendation": {
-        "label": "Empfehlung:",
-        "text": "Basierend auf deinen Systemspezifikationen empfehlen wir"
-      },
-      "toast": {
-        "selectModel": "Bitte wähle einen Modelltyp aus",
-        "completeSetup": "Bitte schließe die Einrichtung ab, um fortzufahren"
-      },
-      "models": {
+      "localUnsupported": "Erfordert macOS 15 oder neuer",
+      "cards": {
         "cloud": {
-          "title": "Amical Cloud",
-          "subtitle": "Schnell, besonders genau und kostenlos – keine Einrichtung erforderlich",
-          "description": "Ideal, wenn du höchste Genauigkeit möchtest oder dein Gerät keine lokalen Modelle ausführen kann.\\nSichere Verarbeitung; Audio wird niemals gespeichert.",
-          "pros": {
-            "free": "Kostenlos",
-            "fast": "Schnell",
-            "accurate": "Genauer",
-            "noSetup": "Keine Einrichtung nötig"
-          },
-          "cons": {
-            "internetLogin": "Benötigt Internet und Anmeldung"
-          }
+          "name": "Cloud",
+          "tag": "Das volle Amical-Erlebnis",
+          "bullets": [
+            "Präziseste Transkription",
+            "KI-Formatierung integriert",
+            "Nichts herunterzuladen oder einzurichten"
+          ],
+          "caveat": "Benötigt Internet und ein kostenloses Konto"
         },
         "local": {
-          "title": "Lokale Modelle",
-          "subtitle": "Privat, offline und kostenlos – läuft vollständig auf deinem Gerät.",
-          "description": "Ideal für datenschutzbewusste Nutzer mit leistungsfähiger Hardware. Keine Anmeldung erforderlich.",
-          "pros": {
-            "privacy": "Volle Privatsphäre",
-            "offline": "Funktioniert offline"
-          },
-          "cons": {
-            "resources": "Nutzt Geräteressourcen"
-          }
+          "name": "Lokal",
+          "tag": "Privat und offline",
+          "bullets": [
+            "Läuft komplett auf deinem Gerät",
+            "Kein Konto nötig"
+          ],
+          "caveats": [
+            "Geschwindigkeit und Genauigkeit hängen von deiner Hardware ab",
+            "Einmaliger Download"
+          ],
+          "caveatLead": "KI-Formatierung erfordert zusätzliche Einrichtung"
         }
-      }
+      },
+      "title": "Wähle, wie Amical läuft",
+      "subtitle": "Die meisten starten mit Cloud. Du kannst jederzeit in den Einstellungen wechseln."
     },
-    "modelSetup": {
+    "signIn": {
+      "title": "Bei Amical anmelden",
+      "subtitle": "Für Amical Cloud wird ein Konto benötigt.",
+      "button": "Anmelden",
+      "fine": "Anmeldung im Browser · Kostenloser Tarif inklusive · keine Kreditkarte nötig",
+      "waiting": "Warten auf Abschluss der Anmeldung im Browser…",
+      "verdict": "Angemeldet",
       "toast": {
         "loginInBrowser": "Schließe die Anmeldung in deinem Browser ab",
         "authenticated": "Erfolgreich angemeldet!"
       },
-      "actions": {
-        "cancel": "Abbrechen",
-        "signIn": "Anmelden",
-        "retry": "Erneut versuchen"
+      "error": {
+        "loginStartFailed": "Anmeldung konnte nicht geöffnet werden. Bitte versuche es erneut."
+      }
+    },
+    "download": {
+      "title": "Dein Modell wird vorbereitet",
+      "subtitle": "Amical lädt ein Spracherkennungsmodell herunter. Das passiert nur einmal, danach funktioniert das Diktat komplett offline.",
+      "modelTag": "Schnell, präzise, läuft auf dem Gerät",
+      "ready": "Modell bereit",
+      "alreadyInstalled": "Bereits installiert",
+      "error": "Modell konnte nicht heruntergeladen werden: {{message}}",
+      "retry": "Erneut versuchen"
+    },
+    "micTest": {
+      "title": "Teste dein Mikrofon",
+      "subtitle": "Sag ein paar Worte in normaler Lautstärke.",
+      "hint": "Kopfhörer verbunden? Die Balken folgen dem ausgewählten Mikrofon.",
+      "change": "Mikrofon ändern",
+      "caption": "Dein Mikrofon funktioniert, wenn die Balken aufleuchten"
+    },
+    "shortcut": {
+      "title": "Lege dein Diktat-Tastenkürzel fest",
+      "subtitle": "Halte dein Tastenkürzel gedrückt, um zu prüfen, ob es funktioniert.",
+      "changeHotkey": "Tastenkürzel ändern",
+      "hint": "Weitere Tastenkürzel kannst du später in den Einstellungen hinzufügen.",
+      "noShortcut": "Noch kein Tastenkürzel festgelegt. Klicke auf \"Tastenkürzel ändern\", um eines auszuwählen.",
+      "caption": "Dein Tastenkürzel funktioniert, wenn die Taste aufleuchtet"
+    },
+    "spokenLanguage": {
+      "title": "Welche Sprachen sprichst du?",
+      "subtitle": "Füge für die beste Genauigkeit die Sprachen hinzu, in denen du häufig diktierst.",
+      "change": "Sprachen ändern",
+      "hint": "Diktiere jederzeit in einer dieser Sprachen, ganz ohne Umschalten.",
+      "autoDetect": "Automatisch erkennen",
+      "none": "Noch keine Sprachen ausgewählt"
+    },
+    "dictationTest": {
+      "email": {
+        "title": "Diktiere deine erste Nachricht",
+        "subtitle": "Halte dein Tastenkürzel gedrückt, sprich ganz natürlich und lass los, wenn du fertig bist.",
+        "tip": "Sprich, als würdest du mit einem Kollegen reden. Amical kümmert sich um die Zeichensetzung.",
+        "cta": "Halte {{keys}} und sprich",
+        "mockHeader": "E-Mail",
+        "to": "An: John Doe",
+        "subject": "Betreff: Kurzer Check-in",
+        "ghost": "Hi John, ähm, wollte nur kurz nachfragen... hattest du, äh, schon Zeit, dir das Angebot anzuschauen? Keine Eile, sag einfach Bescheid."
       },
-      "cloud": {
-        "title": "Anmeldung erforderlich",
-        "description": "Cloud-Transkription erfordert eine Authentifizierung, um fortzufahren.",
-        "error": {
-          "loginStartFailed": "Anmeldung konnte nicht geöffnet werden. Bitte versuche es erneut."
-        }
+      "notes": {
+        "title": "Probiere es mit Flüstern",
+        "subtitle": "Halte dein Tastenkürzel gedrückt und flüstere. Amical versteht trotzdem jedes Wort.",
+        "tip": "Perfekt für Großraumbüros, späte Abende oder überall dort, wo du leise sein möchtest.",
+        "cta": "Halte {{keys}} und flüstere",
+        "mockHeader": "Notizen",
+        "ghost": "Ähm, ich brauche noch Folgendes... Wasser, Milch, Brot, Toast.",
+        "listTitle": "Einkaufsliste"
       },
-      "local": {
-        "downloadingTitle": "Lokales Modell wird heruntergeladen",
-        "downloadingDescription": "Lokales Modell für private Offline-Transkription wird eingerichtet",
-        "readyTitle": "Lokales Modell bereit",
-        "readyDescription": "Bereit für private Offline-Transkription.",
-        "alreadyInstalled": "Modell bereits installiert",
-        "downloadComplete": "Download abgeschlossen",
-        "using": "Verwendet: {{model}}",
-        "error": {
-          "downloadFailed": "Modell konnte nicht heruntergeladen werden: {{message}}"
-        }
+      "simple": {
+        "title": "Probiere dein erstes Diktat",
+        "subtitle": "Halte dein Tastenkürzel gedrückt, sprich ganz natürlich und lass los, wenn du fertig bist.",
+        "tip": "KI-Formatierung kannst du später einrichten, indem du in den Einstellungen ein KI-Modell verbindest oder zu Amical Cloud wechselst.",
+        "cta": "Halte {{keys}} und sprich",
+        "mockHeader": "Notizen",
+        "ghost": "Auf dem Heimweg Wasser, Milch, Brot und Toast besorgen."
       }
     },
     "completion": {
-      "title": "Einrichtung abgeschlossen!",
+      "title": "Alles bereit",
+      "subtitle": "Halte dein Tastenkürzel in jeder App gedrückt, um loszulegen. Alles davon kannst du in den Einstellungen ändern.",
       "start": "Amical jetzt verwenden",
-      "quickConfig": {
-        "title": "Schnellkonfiguration"
-      },
-      "community": {
-        "discordAlt": "Discord",
-        "title": "Tritt unserer Community bei",
-        "description": "Erhalte Hilfe, teile Feedback und vernetze dich mit anderen Nutzern",
-        "joinDiscord": "Discord beitreten"
-      },
-      "next": {
-        "title": "Du bist startklar!",
-        "items": {
-          "pushToTalk": "Verwende dein Push-to-Talk-Tastenkürzel, um mit dem Transkribieren zu beginnen",
-          "widget": "Klicke auf das schwebende Widget für schnellen Zugriff",
-          "settings": "Entdecke die Einstellungen für weitere Anpassungsmöglichkeiten"
-        }
-      },
-      "info": "Alle Einstellungen können jederzeit in den Anwendungseinstellungen geändert werden.",
-      "infoLocalModel": "Dein ausgewähltes lokales Modell ist offline einsatzbereit."
+      "summary": {
+        "speechModel": "Spracherkennungsmodell",
+        "shortcut": "Diktat-Tastenkürzel",
+        "microphone": "Mikrofon",
+        "cloudModel": "Amical Cloud",
+        "localModel": "{{model}}",
+        "shortcutValue": "{{key}} halten"
+      }
+    },
+    "phases": {
+      "getStarted": "Loslegen",
+      "setUp": "Einrichten",
+      "configure": "Konfigurieren",
+      "tryIt": "Ausprobieren",
+      "done": "Fertig"
     }
   },
   "widget": {
@@ -333,6 +333,10 @@
         "localTranscriptionFailed": {
           "title": "Lokale Transkription fehlgeschlagen",
           "description": "Whisper-Audioverarbeitung fehlgeschlagen"
+        },
+        "localTranscriptionUnsupported": {
+          "title": "Lokale Transkription nicht verfügbar",
+          "description": "On-Device-Modelle erfordern macOS 15 oder neuer. Wechsle zu Amical Cloud."
         }
       }
     }
@@ -1014,6 +1018,7 @@
       "speech": {
         "loading": "Modelle werden geladen...",
         "availableModels": "Verfügbare Modelle",
+        "localUnsupported": "Erfordert macOS 15 oder neuer",
         "table": {
           "model": "Modell",
           "features": "Funktionen",

@@ -1,25 +1,68 @@
-import React, { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useState } from "react";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
-import { ModelSetupModal } from "./ModelSetupModal";
+import { Tile } from "../shared/ui";
+import { cn } from "@/lib/utils";
 import { useSystemRecommendation } from "../../hooks/useSystemRecommendation";
 import { useLocalTranscriptionSupported } from "@/hooks/useLocalTranscriptionSupported";
-import { ModelType } from "../../../../types/onboarding";
-import { Cloud, Laptop, Sparkles, Check, X, Star } from "lucide-react";
-import { toast } from "sonner";
+import {
+  ModelType,
+  OnboardingScreen,
+  type ModelRecommendation,
+} from "../../../../types/onboarding";
+import { Cloud, Cpu, Check, Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface ModelSelectionScreenProps {
-  onNext: (modelType: ModelType, recommendationFollowed: boolean) => void;
+  onNext: (
+    modelType: ModelType,
+    recommendation?: ModelRecommendation & { followed: boolean },
+  ) => void;
   onBack: () => void;
   initialSelection?: ModelType;
 }
 
+const cardClass = (selected: boolean, locked = false) =>
+  cn(
+    "relative rounded-2xl border p-[22px] text-left transition-all duration-200",
+    locked
+      ? "cursor-not-allowed border-border bg-card opacity-55"
+      : selected
+        ? "cursor-pointer border-indigo-500/35 bg-indigo-500/10 dark:border-indigo-500/45 dark:bg-indigo-500/15"
+        : "cursor-pointer border-border bg-card hover:border-neutral-300 hover:bg-secondary/60 dark:hover:border-neutral-600",
+  );
+
+/** Benefit line (green check) — `lead` bolds the card's headline benefit. */
+function BulletLine({ text, lead = false }: { text: string; lead?: boolean }) {
+  return (
+    <li className="flex items-start gap-[9px] text-[13px] leading-snug text-muted-foreground">
+      <Check
+        size={15}
+        className="mt-px shrink-0 text-emerald-600 dark:text-emerald-400"
+      />
+      <span>
+        {lead ? <b className="font-semibold text-foreground">{text}</b> : text}
+      </span>
+    </li>
+  );
+}
+
+/** Caveat line (quiet dot) — `lead` bolds the card's headline caveat. */
+function CaveatLine({ text, lead = false }: { text: string; lead?: boolean }) {
+  return (
+    <li className="flex items-start gap-[9px] text-[13px] leading-snug text-muted-foreground/70">
+      <span className="w-[15px] shrink-0 text-center font-bold">·</span>
+      <span>
+        {lead ? <b className="font-semibold text-foreground">{text}</b> : text}
+      </span>
+    </li>
+  );
+}
+
 /**
- * Model selection screen - allows users to choose between cloud and local models
+ * Model selection screen — records the user's choice between Cloud and Local.
+ * Setup (sign-in / download) runs on a later screen, so this one only captures
+ * the choice and advances. Keeps the system recommendation + local-support gate.
  */
 export function ModelSelectionScreen({
   onNext,
@@ -27,257 +70,152 @@ export function ModelSelectionScreen({
   initialSelection,
 }: ModelSelectionScreenProps) {
   const { t } = useTranslation();
-  const { recommendation, isLoading } = useSystemRecommendation();
+  const { recommendation } = useSystemRecommendation();
   const { localSupported } = useLocalTranscriptionSupported();
-  const [selectedModel, setSelectedModel] = useState<ModelType | null>(
-    initialSelection || null,
+
+  // Product decision: the UI recommends Cloud for now regardless of hardware.
+  // The system recommendation rides along in telemetry only (suggested +
+  // followed, resolved in handleNext).
+  const [selectedModel, setSelectedModel] = useState<ModelType>(
+    initialSelection ?? ModelType.Cloud,
   );
-  const [showSetupModal, setShowSetupModal] = useState(false);
-  const [setupComplete, setSetupComplete] = useState<{
-    [ModelType.Cloud]: boolean;
-    [ModelType.Local]: boolean;
-  }>({
-    [ModelType.Cloud]: false,
-    [ModelType.Local]: false,
-  });
 
-  const models = [
-    {
-      id: ModelType.Cloud,
-      title: t("onboarding.modelSelection.models.cloud.title"),
-      subtitle: t("onboarding.modelSelection.models.cloud.subtitle"),
-      description: t("onboarding.modelSelection.models.cloud.description"),
-      pros: [
-        t("onboarding.modelSelection.models.cloud.pros.free"),
-        t("onboarding.modelSelection.models.cloud.pros.fast"),
-        t("onboarding.modelSelection.models.cloud.pros.accurate"),
-        t("onboarding.modelSelection.models.cloud.pros.noSetup"),
-      ],
-      cons: [t("onboarding.modelSelection.models.cloud.cons.internetLogin")],
-      icon: Cloud,
-      iconBg: "bg-blue-500/10",
-      iconColor: "text-blue-500",
-    },
-    {
-      id: ModelType.Local,
-      title: t("onboarding.modelSelection.models.local.title"),
-      subtitle: t("onboarding.modelSelection.models.local.subtitle"),
-      description: t("onboarding.modelSelection.models.local.description"),
-      pros: [
-        t("onboarding.modelSelection.models.local.pros.privacy"),
-        t("onboarding.modelSelection.models.local.pros.offline"),
-      ],
-      cons: [t("onboarding.modelSelection.models.local.cons.resources")],
-      icon: Laptop,
-      iconBg: "bg-slate-500/10",
-      iconColor: "text-slate-500",
-    },
-  ];
+  // i18next returns the key string (not an array) when a key is missing or
+  // when returnObjects is unsupported, so guard before iterating to avoid a
+  // render-time `.map`/`.slice` crash on locales that drift from `en`.
+  const toStringArray = (value: unknown): string[] =>
+    Array.isArray(value) ? (value as string[]) : [];
 
-  const handleModelSelect = (modelType: ModelType) => {
-    // Local models aren't available on macOS < 15.
-    if (modelType === ModelType.Local && !localSupported) {
-      return;
-    }
+  const cloudBullets = toStringArray(
+    t("onboarding.modelSelection.cards.cloud.bullets", {
+      returnObjects: true,
+    }),
+  );
+  const localBullets = toStringArray(
+    t("onboarding.modelSelection.cards.local.bullets", {
+      returnObjects: true,
+    }),
+  );
+  const localCaveats = toStringArray(
+    t("onboarding.modelSelection.cards.local.caveats", {
+      returnObjects: true,
+    }),
+  );
+
+  const handleSelect = (modelType: ModelType) => {
+    if (modelType === ModelType.Local && !localSupported) return;
     setSelectedModel(modelType);
-    setShowSetupModal(true);
   };
 
-  const handleSetupComplete = () => {
-    if (selectedModel) {
-      setSetupComplete((prev) => ({
-        ...prev,
-        [selectedModel]: true,
-      }));
-    }
+  const handleNext = () => {
+    // Pass the full recommendation so it persists with the choice — followed
+    // is meaningless in telemetry without what was suggested.
+    onNext(
+      selectedModel,
+      recommendation
+        ? {
+            ...recommendation,
+            followed: recommendation.suggested === selectedModel,
+          }
+        : undefined,
+    );
   };
-
-  const handleContinue = () => {
-    if (!selectedModel) {
-      toast.error(t("onboarding.modelSelection.toast.selectModel"));
-      return;
-    }
-
-    if (!setupComplete[selectedModel]) {
-      toast.error(t("onboarding.modelSelection.toast.completeSetup"));
-      return;
-    }
-
-    const followedRecommendation = recommendation?.suggested === selectedModel;
-    onNext(selectedModel, followedRecommendation);
-  };
-
-  // Check if any setup is complete
-  const canContinue = selectedModel && setupComplete[selectedModel];
 
   return (
     <OnboardingLayout
+      screen={OnboardingScreen.ModelSelection}
       title={t("onboarding.modelSelection.title")}
       subtitle={t("onboarding.modelSelection.subtitle")}
-      footer={
-        <NavigationButtons
-          onBack={onBack}
-          onNext={handleContinue}
-          disableNext={!canContinue}
-          nextLabel={
-            canContinue
-              ? t("onboarding.navigation.continue")
-              : t("onboarding.modelSelection.completeSetupToContinue")
-          }
-        />
-      }
+      footer={<NavigationButtons onBack={onBack} onNext={handleNext} />}
     >
-      <div className="space-y-4">
-        {/* System Recommendation */}
-        {recommendation && !isLoading && (
-          <Alert className="border-primary/50 bg-primary/5">
-            <Sparkles className="h-4 w-4" />
-            <AlertDescription>
-              <div>
-                <span className="font-medium">
-                  {t("onboarding.modelSelection.recommendation.label")}
-                </span>{" "}
-                {t("onboarding.modelSelection.recommendation.text")}{" "}
-                <span className="font-medium whitespace-nowrap">
-                  {recommendation.suggested === ModelType.Cloud
-                    ? t("onboarding.modelSelection.models.cloud.title")
-                    : t("onboarding.modelSelection.models.local.title")}
-                </span>
-                .
+      <div className="grid w-full max-w-[700px] animate-ob-rise grid-cols-2 gap-4">
+        <button
+          type="button"
+          className={cardClass(selectedModel === ModelType.Cloud)}
+          onClick={() => handleSelect(ModelType.Cloud)}
+        >
+          <span className="absolute right-[18px] top-[18px] rounded-full bg-indigo-500/10 px-[9px] py-[5px] text-[10px] font-bold uppercase tracking-wider text-indigo-500 dark:bg-indigo-500/15">
+            {t("onboarding.modelSelection.recommended")}
+          </span>
+          <div className="mb-3.5 flex items-center gap-3">
+            <Tile
+              className={cn(
+                "size-[42px]",
+                selectedModel === ModelType.Cloud &&
+                  "bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/15",
+              )}
+            >
+              <Cloud size={20} />
+            </Tile>
+            <div>
+              <h3 className="text-xl font-bold">
+                {t("onboarding.modelSelection.cards.cloud.name")}
+              </h3>
+              <div className="mt-0.5 text-[13px] text-muted-foreground">
+                {t("onboarding.modelSelection.cards.cloud.tag")}
               </div>
-              <div className="mt-1">{recommendation.reason}</div>
-            </AlertDescription>
-          </Alert>
-        )}
+            </div>
+          </div>
+          <ul className="mt-1 flex flex-col gap-[9px]">
+            {cloudBullets.map((bullet, i) => (
+              <BulletLine key={i} text={bullet} lead={i === 0} />
+            ))}
+            <CaveatLine
+              text={t("onboarding.modelSelection.cards.cloud.caveat")}
+            />
+          </ul>
+        </button>
 
-        {/* Model Options */}
-        <div className="space-y-4">
-          {models.map((model) => {
-            const Icon = model.icon;
-            const isSelected = selectedModel === model.id;
-            const isRecommended = recommendation?.suggested === model.id;
-            const isComplete = setupComplete[model.id];
-            const isUnsupported = model.id === ModelType.Local && !localSupported;
-
-            let stateClassName: string;
-            if (isUnsupported) {
-              stateClassName = "cursor-not-allowed opacity-60";
-            } else if (isSelected) {
-              stateClassName = "cursor-pointer border-primary bg-primary/5";
-            } else {
-              stateClassName =
-                "cursor-pointer hover:border-muted-foreground/50";
-            }
-
-            return (
-              <Card
-                key={model.id}
-                className={`transition-colors ${stateClassName}`}
-                aria-disabled={isUnsupported}
-                onClick={() => handleModelSelect(model.id)}
-              >
-                <div className="flex items-start gap-4 px-4">
-                  <div className="flex-1 space-y-2">
-                    {/* Header */}
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`rounded-lg p-2 ${model.iconBg}`}>
-                          <Icon className={`h-6 w-6 ${model.iconColor}`} />
-                        </div>
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium">{model.title}</h3>
-                            {isRecommended && (
-                              <Badge variant="secondary" className="text-xs">
-                                {t("onboarding.modelSelection.recommended")}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm">{model.subtitle}</p>
-                          {isUnsupported && (
-                            <p className="text-xs font-medium text-destructive-foreground">
-                              {t("onboarding.modelSelection.localUnsupported")}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      {isComplete && (
-                        <div className="rounded-full bg-green-500/10 p-1">
-                          <Check className="h-4 w-4 text-green-500" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Description */}
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">
-                      {model.description}
-                    </p>
-
-                    {/* Pros and Cons */}
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="mb-1 font-medium text-green-600 dark:text-green-400">
-                          {t("onboarding.modelSelection.prosLabel")}
-                        </p>
-                        <ul className="space-y-0.5 text-muted-foreground">
-                          {model.pros.map((pro, i) => (
-                            <li key={i} className="flex items-center gap-1.5">
-                              <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                              {pro}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="mb-1 font-medium text-orange-600 dark:text-orange-400">
-                          {t("onboarding.modelSelection.consLabel")}
-                        </p>
-                        <ul className="space-y-0.5 text-muted-foreground">
-                          {model.cons.map((con, i) => (
-                            <li key={i} className="flex items-center gap-1.5">
-                              <X className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                              {con}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
+        <button
+          type="button"
+          className={cardClass(
+            selectedModel === ModelType.Local,
+            !localSupported,
+          )}
+          disabled={!localSupported}
+          onClick={() => handleSelect(ModelType.Local)}
+        >
+          <div className="mb-3.5 flex items-center gap-3">
+            <Tile
+              className={cn(
+                "size-[42px]",
+                localSupported &&
+                  selectedModel === ModelType.Local &&
+                  "bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/15",
+              )}
+            >
+              <Cpu size={20} />
+            </Tile>
+            <div>
+              <h3 className="text-xl font-bold">
+                {t("onboarding.modelSelection.cards.local.name")}
+              </h3>
+              {localSupported ? (
+                <div className="mt-0.5 text-[13px] text-muted-foreground">
+                  {t("onboarding.modelSelection.cards.local.tag")}
                 </div>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Settings Note */}
-        <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-4">
-          <Star className="h-4 w-4 mt-0.5 text-yellow-500 shrink-0 " />
-          <p className="text-sm text-muted-foreground">
-            {t("onboarding.modelSelection.note")}
-          </p>
-        </div>
+              ) : (
+                <div className="mt-0.5 inline-flex items-center gap-[5px] text-[13px] font-medium text-amber-600 dark:text-amber-400">
+                  <Lock size={12} />
+                  {t("onboarding.modelSelection.localUnsupported")}
+                </div>
+              )}
+            </div>
+          </div>
+          <ul className="mt-1 flex flex-col gap-[9px]">
+            {localBullets.map((bullet, i) => (
+              <BulletLine key={i} text={bullet} />
+            ))}
+            <CaveatLine
+              text={t("onboarding.modelSelection.cards.local.caveatLead")}
+              lead
+            />
+            {localCaveats.map((caveat, i) => (
+              <CaveatLine key={i} text={caveat} />
+            ))}
+          </ul>
+        </button>
       </div>
-
-      {/* Setup Modal */}
-      {selectedModel && (
-        <ModelSetupModal
-          isOpen={showSetupModal}
-          onClose={(wasCompleted) => {
-            setShowSetupModal(false);
-            // Deselect if setup wasn't completed
-            if (!wasCompleted && !setupComplete[selectedModel]) {
-              setSelectedModel(null);
-            }
-          }}
-          modelType={selectedModel}
-          onContinue={() => {
-            handleSetupComplete();
-            const followedRecommendation =
-              recommendation?.suggested === selectedModel;
-            onNext(selectedModel, followedRecommendation);
-          }}
-        />
-      )}
     </OnboardingLayout>
   );
 }

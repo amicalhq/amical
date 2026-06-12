@@ -183,7 +183,14 @@ class FakeBrowserWindow extends EventEmitter {
 }
 
 // Create test directories
-const testUserDataPath = path.join(os.tmpdir(), "amical-test-" + Date.now());
+// Unique per worker process: vitest runs test files in parallel forks, and
+// Date.now() alone collides when two workers spawn in the same millisecond —
+// the first file to finish then deletes the directory out from under the
+// other (SQLITE_READONLY_DBMOVED flakes).
+const testUserDataPath = path.join(
+  os.tmpdir(),
+  `amical-test-${process.pid}-${Date.now()}`,
+);
 const testAppPath = process.cwd();
 
 // Mock app object
@@ -221,6 +228,7 @@ const mockApp = {
   getLocale: vi.fn(() => "en-US"),
   getLocaleCountryCode: vi.fn(() => "US"),
   getSystemLocale: vi.fn(() => "en-US"),
+  getPreferredSystemLanguages: vi.fn(() => ["en-US"]),
   on: vi.fn(),
   once: vi.fn(),
   removeListener: vi.fn(),

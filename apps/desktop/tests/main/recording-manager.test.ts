@@ -22,6 +22,7 @@ type RecordingManagerInternals = {
   handleAudioChunk(chunk: Float32Array, isFinalChunk: boolean): Promise<void>;
   handleFinalChunk(): Promise<void>;
   forceIdle(): Promise<void>;
+  pasteTranscription(transcription: string): Promise<void>;
 };
 
 const createRecordingManager = (
@@ -507,5 +508,32 @@ describe("recording manager FSM interpreter", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("final transcript delivery", () => {
+  it("pastes the finalized transcript through the normal path", async () => {
+    // The onboarding try-it relies on this exact behavior: the session runs
+    // the full production pipeline and the paste lands in whatever field is
+    // focused (the try-it textarea). No capture/reroute mode exists.
+    const finalizeSession = vi.fn().mockResolvedValue("hello world");
+    const manager = createRecordingManager({
+      transcriptionService: { finalizeSession },
+    });
+    const internals = internalsOf(manager);
+    const pasteSpy = vi
+      .spyOn(internals, "pasteTranscription")
+      .mockResolvedValue(undefined);
+
+    internals.currentSessionId = "s1";
+    internals.recordingStartedAt = 1;
+    internals.terminationCode = null;
+    internals.audioChunks = [];
+    internals.machine.__setStateForTesting({ tag: "STOP_N" });
+
+    await internals.handleFinalChunk();
+
+    expect(pasteSpy).toHaveBeenCalledTimes(1);
+    expect(pasteSpy).toHaveBeenCalledWith("hello world");
   });
 });

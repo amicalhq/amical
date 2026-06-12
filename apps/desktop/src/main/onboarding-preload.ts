@@ -7,7 +7,8 @@ import { exposeElectronTRPC } from "electron-trpc-experimental/preload";
  * All onboarding operations now use tRPC instead of traditional IPC
  */
 
-// Expose platform info so renderer utilities (e.g., isWindows()) work correctly
+// Expose platform info. (Audio capture during the dictation try-it happens in
+// the widget window, exactly as in production — no audio bridge needed here.)
 contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
 });

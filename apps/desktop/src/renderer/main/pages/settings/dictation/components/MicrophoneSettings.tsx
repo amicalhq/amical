@@ -1,26 +1,15 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { api } from "@/trpc/react";
-import { useAudioDevices } from "@/hooks/useAudioDevices";
-import { resolveActiveMicrophone } from "@/utils/audio-devices";
+import { useActiveMicrophone } from "@/hooks/useActiveMicrophone";
 import { Mic } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MicrophoneDialog } from "./MicrophoneDialog";
 
 export function MicrophoneSettings() {
   const { t } = useTranslation();
-  const { data: settings } = api.settings.getSettings.useQuery();
-  const { devices: audioDevices } = useAudioDevices();
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  const activeDeviceId = resolveActiveMicrophone(
-    settings?.recording?.microphonePriority,
-    audioDevices,
-  );
-  const currentLabel =
-    audioDevices.find((device) => device.deviceId === activeDeviceId)?.label ??
-    t("settings.dictation.microphone.systemDefault");
+  const { label: currentLabel } = useActiveMicrophone();
 
   return (
     <div className="flex items-center justify-between gap-4">

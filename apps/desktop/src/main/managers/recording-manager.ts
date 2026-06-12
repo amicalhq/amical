@@ -197,7 +197,9 @@ export class RecordingManager extends EventEmitter {
   // EVENT HANDLERS
   // ═══════════════════════════════════════════════════════════════════
 
-  // PTT key pressed
+  // PTT key pressed. (During onboarding the shortcut source gate drops these
+  // events entirely — see ShortcutManager.setCommandsSuppressed — so no
+  // onboarding awareness is needed here.)
   public async onPTTPress() {
     if (this.getState() === "idle") {
       this.recordingInitiatedAt = Date.now();

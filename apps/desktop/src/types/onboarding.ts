@@ -14,18 +14,32 @@ export enum OnboardingScreen {
   Permissions = "permissions",
   DiscoverySource = "discovery",
   ModelSelection = "models",
+  SignIn = "signin",
+  Download = "download",
+  MicTest = "mic_test",
+  Shortcut = "shortcut",
+  SpokenLanguage = "spoken_language",
+  DictationEmail = "dictation_email",
+  DictationNotes = "dictation_notes",
+  DictationLocal = "dictation_local",
   Completion = "completion",
 }
 
 export enum FeatureInterest {
-  ContextualDictation = "contextual_dictation",
-  NoteTaking = "note_taking",
-  MeetingTranscriptions = "meeting_transcriptions",
-  VoiceCommands = "voice_commands",
+  DraftingEmails = "drafting_emails",
+  SendingMessages = "sending_messages",
+  PromptingAi = "prompting_ai",
+  CodingWithAi = "coding_with_ai",
+  WritingDocuments = "writing_documents",
+  TakingNotes = "taking_notes",
+  PostsComments = "posts_comments",
+  SomethingElse = "something_else",
 }
 
 export enum DiscoverySource {
   SearchEngine = "search_engine",
+  Reddit = "reddit",
+  XTwitter = "x_twitter",
   SocialMedia = "social_media",
   WordOfMouth = "word_of_mouth",
   Advertisement = "advertisement",
@@ -62,6 +76,7 @@ export interface ModelRecommendation {
 
 export interface OnboardingPreferences {
   featureInterests?: FeatureInterest[];
+  featureInterestsDetails?: string;
   discoverySource?: DiscoverySource;
   discoveryDetails?: string;
   selectedModelType?: ModelType;
@@ -125,6 +140,7 @@ export const OnboardingStateSchema = z.object({
 
 export const OnboardingPreferencesSchema = z.object({
   featureInterests: z.array(FeatureInterestSchema).optional(),
+  featureInterestsDetails: z.string().max(200).optional(),
   discoverySource: DiscoverySourceSchema.optional(),
   discoveryDetails: z.string().max(200).optional(),
   selectedModelType: ModelTypeSchema.optional(),

@@ -34,218 +34,214 @@
   },
   "onboarding": {
     "app": {
-      "loading": "Loading onboarding...",
+      "loading": "Getting things ready…",
       "unknownScreen": "Unknown screen"
     },
     "navigation": {
       "back": "Back",
       "continue": "Continue",
-      "complete": "Complete"
-    },
-    "progress": {
-      "step": "Step {{current}} of {{total}}",
-      "percent": "{{percent}}%"
+      "done": "Done",
+      "skip": "Skip"
     },
     "toast": {
-      "loadStateFailed": "Failed to load onboarding state",
-      "savePreferencesFailed": "Failed to save your preferences. Please try again.",
-      "completed": "Onboarding complete!",
-      "completeFailed": "Failed to complete onboarding. Please try again.",
+      "loadStateFailed": "Couldn't load your setup progress",
+      "savePreferencesFailed": "Couldn't save your preferences. Please try again.",
+      "completed": "You're all set!",
+      "completeFailed": "Couldn't finish setup. Please try again.",
       "resetSuccess": "Onboarding reset successfully",
       "resetFailed": "Failed to reset onboarding"
     },
     "errorBoundary": {
       "title": "Something went wrong",
-      "description": "We encountered an error during the onboarding process. Please try again.",
+      "description": "An unexpected error interrupted setup. Please try again.",
       "tryAgain": "Try again",
-      "restart": "Restart onboarding",
-      "supportNote": "If this problem persists, please contact support or check the documentation for help."
+      "restart": "Restart setup",
+      "supportNote": "If this keeps happening, contact support."
     },
     "welcome": {
-      "title": "Welcome to Amical",
-      "subtitle": "Select the features you're interested in to personalize your experience",
-      "skip": "Skip onboarding",
-      "comingSoon": "Coming Soon",
-      "selectAria": "Select {{feature}}",
-      "features": {
-        "contextualDictation": {
-          "title": "Contextual Dictation",
-          "description": "Quick voice input in any application for seamless speech-to-text"
-        },
-        "noteTaking": {
-          "title": "Note Taking",
-          "description": "Capture thoughts and ideas through speech with smart formatting"
-        },
-        "meetingTranscriptions": {
-          "title": "Meeting Transcriptions",
-          "description": "Record and transcribe meetings and conversations with high accuracy"
-        },
-        "voiceCommands": {
-          "title": "Voice Commands",
-          "description": "Control your apps hands-free - act on tasks with natural voice commands"
-        }
-      },
+      "title": "How will you use Amical?",
+      "subtitle": "Select all that apply.",
       "toast": {
-        "maxFeatures": "You can select up to {{max}} features",
-        "selectAtLeastOne": "Please select at least one feature to personalize your experience"
+        "selectAtLeastOne": "Pick at least one to continue"
       },
-      "selection": {
-        "none": "Select at least one feature",
-        "selected": "{{count}} selected"
+      "useCases": {
+        "draftingEmails": "Drafting emails",
+        "sendingMessages": "Sending messages",
+        "promptingAi": "Prompting AI",
+        "codingWithAi": "Coding with AI",
+        "writingDocuments": "Writing documents",
+        "takingNotes": "Taking notes",
+        "postsComments": "Posts and comments",
+        "somethingElse": "Something else"
       },
-      "note": "Your choices help personalize setup - all features remain available anytime."
+      "somethingElsePlaceholder": "Tell us more…"
     },
     "permissions": {
-      "title": "Setup Permissions",
-      "subtitle": "Amical needs a few permissions to work properly",
-      "waiting": "Waiting for permissions...",
-      "polling": "Checking for permission changes...",
-      "allGranted": {
-        "title": "All permissions granted",
-        "description": "You're all set! You can continue to the next step."
-      },
+      "title": "Enable core features",
+      "subtitle": "Amical needs a couple of permissions to listen and type.",
       "status": {
-        "granted": "Permission granted",
-        "denied": "Permission denied",
-        "notRequested": "Permission not yet requested",
-        "required": "Permission required"
+        "granted": "Permission granted"
       },
       "actions": {
         "request": "Request permission",
-        "requesting": "Requesting...",
+        "requesting": "Requesting…",
         "openSettings": "Open settings"
       },
       "microphone": {
-        "title": "Microphone Access",
-        "description": "Required for recording and transcribing audio",
-        "deniedHelp": "Please grant microphone access in System Settings"
+        "title": "Microphone",
+        "description": "So Amical can hear your dictation"
       },
       "accessibility": {
-        "title": "Accessibility Access",
-        "description": "Required for pasting transcription and global keyboard shortcuts (macOS only)",
-        "deniedHelp": "Add Amical to Accessibility in System Settings"
+        "title": "Accessibility",
+        "description": "So Amical can paste text into any app"
       }
     },
     "discovery": {
-      "title": "How did you discover Amical?",
-      "subtitle": "This helps us understand where our users come from",
+      "title": "How did you hear about us?",
+      "subtitle": "It helps Amical reach more people like you.",
       "sources": {
         "searchEngine": "Search engine (Google, Bing, etc.)",
-        "socialMedia": "Social media (Twitter, LinkedIn, etc.)",
+        "reddit": "Reddit",
+        "xTwitter": "X / Twitter",
+        "socialMedia": "Social media (Instagram, LinkedIn, etc.)",
+        "aiAssistant": "AI chat (ChatGPT, Claude, etc.)",
         "wordOfMouth": "Friend or colleague recommendation",
         "blogArticle": "Blog post or article",
         "github": "GitHub",
-        "aiAssistant": "AI assistant (ChatGPT, Claude, etc.)",
         "other": "Other"
       },
       "toast": {
-        "selectSource": "Please select how you discovered Amical",
+        "selectSource": "Please pick how you heard about us",
         "otherDetailsRequired": "Please provide details for \"Other\""
       },
       "other": {
-        "label": "Please specify",
-        "placeholder": "Tell us more...",
+        "placeholder": "Tell us more…",
         "charCount": "{{count}}/{{max}} characters"
       }
     },
     "modelSelection": {
-      "title": "Choose Your AI Model",
-      "subtitle": "Select how you want Amical to process your audio",
-      "completeSetupToContinue": "Complete setup to continue",
       "recommended": "Recommended",
       "localUnsupported": "Requires macOS 15 or later",
-      "prosLabel": "Pros:",
-      "consLabel": "Cons:",
-      "note": "You can change your model later in Settings - nothing is permanent.",
-      "recommendation": {
-        "label": "Recommendation:",
-        "text": "Based on your system specs, we recommend"
-      },
-      "toast": {
-        "selectModel": "Please select a model type",
-        "completeSetup": "Please complete setup to continue"
-      },
-      "models": {
+      "cards": {
         "cloud": {
-          "title": "Amical Cloud",
-          "subtitle": "Fast, more accurate, and free - no setup needed",
-          "description": "Ideal if you want the best accuracy or your device can't run local models.\\nSecure processing; audio is never stored.",
-          "pros": {
-            "free": "Free",
-            "fast": "Fast",
-            "accurate": "More accurate",
-            "noSetup": "No setup needed"
-          },
-          "cons": {
-            "internetLogin": "Needs internet and login"
-          }
+          "name": "Cloud",
+          "tag": "The full Amical experience",
+          "bullets": [
+            "Most accurate transcription",
+            "AI formatting built in",
+            "Nothing to download or set up"
+          ],
+          "caveat": "Needs internet and a free account"
         },
         "local": {
-          "title": "Local Models",
-          "subtitle": "Private, offline, and free - runs fully on your device.",
-          "description": "Great for privacy-focused users with capable hardware. No login required.",
-          "pros": {
-            "privacy": "Full privacy",
-            "offline": "Works offline"
-          },
-          "cons": {
-            "resources": "Uses device resources"
-          }
+          "name": "Local",
+          "tag": "Private and offline",
+          "bullets": ["Runs entirely on your device", "No account needed"],
+          "caveats": [
+            "Speed and accuracy depend on your hardware",
+            "One-time download"
+          ],
+          "caveatLead": "AI formatting needs extra setup"
         }
+      },
+      "title": "Choose how Amical runs",
+      "subtitle": "Most people start with Cloud. You can switch anytime in Settings."
+    },
+    "signIn": {
+      "title": "Sign in to Amical",
+      "subtitle": "An account is needed to use Amical Cloud.",
+      "button": "Sign in",
+      "fine": "Sign-in opens in your browser · Free plan included · no card required",
+      "waiting": "Waiting for sign-in to finish in your browser…",
+      "verdict": "Signed in",
+      "toast": {
+        "loginInBrowser": "Continue in your browser",
+        "authenticated": "Signed in"
+      },
+      "error": {
+        "loginStartFailed": "Couldn't open the sign-in page. Please try again."
       }
     },
-    "modelSetup": {
-      "toast": {
-        "loginInBrowser": "Complete login in your browser",
-        "authenticated": "Successfully authenticated!"
+    "download": {
+      "title": "Getting your model ready",
+      "subtitle": "Amical is downloading a speech model. This happens once, then dictation runs fully offline.",
+      "modelTag": "Fast, accurate, runs on-device",
+      "ready": "Model ready",
+      "alreadyInstalled": "Already installed",
+      "error": "Failed to download model: {{message}}",
+      "retry": "Retry"
+    },
+    "micTest": {
+      "title": "Test your microphone",
+      "subtitle": "Say a few words at your normal volume.",
+      "hint": "Headphones connected? The bars follow the selected mic.",
+      "change": "Change microphone",
+      "caption": "Your mic works if the bars light up"
+    },
+    "shortcut": {
+      "title": "Set your dictation shortcut",
+      "subtitle": "Press and hold your shortcut to check that it works.",
+      "changeHotkey": "Change shortcut",
+      "hint": "You can add more shortcuts later in Settings.",
+      "noShortcut": "No shortcut set yet. Click \"Change shortcut\" to pick one.",
+      "caption": "Your shortcut works if the key lights up"
+    },
+    "spokenLanguage": {
+      "title": "Which languages do you speak?",
+      "subtitle": "For the best accuracy, add the languages you'll commonly dictate in.",
+      "change": "Change languages",
+      "hint": "Dictate in any of them at any time, nothing to switch.",
+      "autoDetect": "Auto-detect",
+      "none": "No languages selected yet"
+    },
+    "dictationTest": {
+      "email": {
+        "title": "Dictate your first message",
+        "subtitle": "Hold your shortcut, speak naturally, and release when you're done.",
+        "tip": "Speak as if you're talking to a colleague. Amical handles the punctuation.",
+        "cta": "Hold {{keys}} and speak",
+        "mockHeader": "Email",
+        "to": "To: John Doe",
+        "subject": "Subject: Quick check-in",
+        "ghost": "Hi John, umm, just checking in... did you, uh, get a chance to look at the proposal? No rush, just let me know."
       },
-      "actions": {
-        "cancel": "Cancel",
-        "signIn": "Sign in",
-        "retry": "Retry"
+      "notes": {
+        "title": "Try whispering",
+        "subtitle": "Hold your shortcut and whisper. Amical still catches every word.",
+        "tip": "Great for open offices, late nights, or anywhere you'd rather keep it quiet.",
+        "cta": "Hold {{keys}} and whisper",
+        "mockHeader": "Notes",
+        "ghost": "Umm, I need to get the following items... water, milk, bread, toast.",
+        "listTitle": "Grocery list"
       },
-      "cloud": {
-        "title": "Sign in required",
-        "description": "Cloud transcription needs authentication to continue.",
-        "error": {
-          "loginStartFailed": "Failed to open login. Please try again."
-        }
-      },
-      "local": {
-        "downloadingTitle": "Downloading Local Model",
-        "downloadingDescription": "Setting up local model for private, offline transcription",
-        "readyTitle": "Local Model Ready",
-        "readyDescription": "Ready for private, offline transcription.",
-        "alreadyInstalled": "Model Already Installed",
-        "downloadComplete": "Download Complete",
-        "using": "Using: {{model}}",
-        "error": {
-          "downloadFailed": "Failed to download model: {{message}}"
-        }
+      "simple": {
+        "title": "Try your first dictation",
+        "subtitle": "Hold your shortcut, speak naturally, and release when you're done.",
+        "tip": "You can set up AI formatting by connecting an AI model in Settings later or switching to Amical Cloud.",
+        "cta": "Hold {{keys}} and speak",
+        "mockHeader": "Notes",
+        "ghost": "Pick up water, milk, bread, and toast on the way home."
       }
     },
     "completion": {
-      "title": "Setup Complete!",
-      "start": "Start Using Amical",
-      "quickConfig": {
-        "title": "Quick Configuration"
-      },
-      "community": {
-        "discordAlt": "Discord",
-        "title": "Join our Community",
-        "description": "Get help, share feedback, and connect with other users",
-        "joinDiscord": "Join Discord"
-      },
-      "next": {
-        "title": "You're All Set!",
-        "items": {
-          "pushToTalk": "Use your push-to-talk shortcut to start transcribing",
-          "widget": "Click the floating widget for quick access",
-          "settings": "Explore Settings for more customization options"
-        }
-      },
-      "info": "All settings can be changed anytime in the application preferences.",
-      "infoLocalModel": "Your selected local model is ready to use offline."
+      "title": "You're all set",
+      "subtitle": "Hold your shortcut anywhere to start. You can change any of this in Settings.",
+      "start": "Start using Amical",
+      "summary": {
+        "speechModel": "Speech model",
+        "shortcut": "Dictation shortcut",
+        "microphone": "Microphone",
+        "cloudModel": "Amical Cloud",
+        "localModel": "{{model}}",
+        "shortcutValue": "Hold {{key}}"
+      }
+    },
+    "phases": {
+      "getStarted": "Get started",
+      "setUp": "Set up",
+      "configure": "Configure",
+      "tryIt": "Try it",
+      "done": "Done"
     }
   },
   "widget": {

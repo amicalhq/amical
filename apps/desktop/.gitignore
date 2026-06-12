@@ -97,3 +97,6 @@ bin/
 
 # VSCode
 .vscode/
+
+# Onboarding design mock (design source of truth, kept local only)
+design/onboarding-mock.html

@@ -43,7 +43,6 @@ export class OnboardingService extends EventEmitter {
   private settingsService: SettingsService;
   private telemetryService: TelemetryService;
   private modelService: ModelService;
-  private currentState: Partial<OnboardingState> = {};
   private isOnboardingInProgress = false;
 
   constructor(
@@ -174,7 +173,6 @@ export class OnboardingService extends EventEmitter {
         onboarding: stateForDb as AppSettingsData["onboarding"],
       });
 
-      this.currentState = state;
       logger.main.debug("Saved onboarding state:", stateForDb);
     } catch (error) {
       logger.main.error("Failed to save onboarding state:", error);
@@ -196,8 +194,6 @@ export class OnboardingService extends EventEmitter {
         updates.lastVisitedScreen = preferences.lastVisitedScreen;
         this.telemetryService.trackOnboardingScreenViewed({
           screen: preferences.lastVisitedScreen,
-          index: 0, // Index not available here, but screen name is sufficient
-          total: 5,
         });
       }
 
@@ -207,6 +203,7 @@ export class OnboardingService extends EventEmitter {
         this.telemetryService.trackOnboardingFeaturesSelected({
           features: preferences.featureInterests,
           count: preferences.featureInterests.length,
+          details: preferences.featureInterestsDetails,
         });
       }
 
@@ -219,7 +216,10 @@ export class OnboardingService extends EventEmitter {
         });
       }
 
-      // Track model selection and set the actual model
+      // Track model selection. The actual model is applied at completion —
+      // at selection time its prerequisites don't exist yet (cloud needs the
+      // sign-in screen's auth, local needs the download screen's model), so
+      // applying here would throw and fail the whole preference save.
       if (preferences.selectedModelType !== undefined) {
         updates.selectedModelType = preferences.selectedModelType;
         this.telemetryService.trackOnboardingModelSelected({
@@ -227,26 +227,6 @@ export class OnboardingService extends EventEmitter {
           recommendation_followed:
             preferences.modelRecommendation?.followed ?? false,
         });
-
-        // Set the actual model in ModelService
-        if (preferences.selectedModelType === "cloud") {
-          await this.modelService.setSelectedModel("amical-cloud");
-          logger.main.info("Set default speech model to amical-cloud");
-        } else if (preferences.selectedModelType === "local") {
-          // Keep existing selection if any, otherwise use first downloaded model
-          const currentModel = await this.modelService.getSelectedModel();
-          if (!currentModel) {
-            const downloadedModels =
-              await this.modelService.getDownloadedModels();
-            const downloadedIds = Object.keys(downloadedModels);
-            if (downloadedIds.length > 0) {
-              await this.modelService.setSelectedModel(downloadedIds[0]);
-              logger.main.info(
-                `Set default speech model to ${downloadedIds[0]}`,
-              );
-            }
-          }
-        }
       }
 
       if (preferences.modelRecommendation !== undefined) {
@@ -294,13 +274,53 @@ export class OnboardingService extends EventEmitter {
    */
   async completeOnboarding(finalState: OnboardingState): Promise<void> {
     try {
-      // Ensure completedAt timestamp is set
-      const completeState = {
+      // Merge over what's already persisted: after a quit-and-resume the
+      // renderer's in-memory preferences are empty, and the survey answers
+      // live only in the database — without this the completion event ships
+      // with no features/discovery/recommendation.
+      const persisted = await this.getOnboardingState();
+      const completeState: OnboardingState = {
         ...finalState,
         completedAt: finalState.completedAt || new Date().toISOString(),
+        skippedScreens: finalState.skippedScreens?.length
+          ? finalState.skippedScreens
+          : persisted?.skippedScreens,
+        featureInterests:
+          finalState.featureInterests ?? persisted?.featureInterests,
+        discoverySource:
+          finalState.discoverySource ?? persisted?.discoverySource,
+        modelRecommendation:
+          finalState.modelRecommendation ?? persisted?.modelRecommendation,
       };
 
       await this.saveOnboardingState(completeState);
+
+      // Apply the chosen speech model now that its prerequisites exist
+      // (sign-in and download are screens AFTER model selection). Never
+      // block completion on it — a failure leaves the model unset, same as
+      // skipping setup paths.
+      try {
+        if (completeState.selectedModelType === "cloud") {
+          await this.modelService.setSelectedModel("amical-cloud");
+          logger.main.info("Set default speech model to amical-cloud");
+        } else if (completeState.selectedModelType === "local") {
+          // Keep existing selection if any, otherwise use first downloaded model
+          const currentModel = await this.modelService.getSelectedModel();
+          if (!currentModel) {
+            const downloadedIds = Object.keys(
+              await this.modelService.getDownloadedModels(),
+            );
+            if (downloadedIds.length > 0) {
+              await this.modelService.setSelectedModel(downloadedIds[0]);
+              logger.main.info(
+                `Set default speech model to ${downloadedIds[0]}`,
+              );
+            }
+          }
+        }
+      } catch (error) {
+        logger.main.error("Failed to apply selected speech model:", error);
+      }
 
       // Track completion event
       this.telemetryService.trackOnboardingCompleted({
@@ -604,28 +624,38 @@ export class OnboardingService extends EventEmitter {
   }
 
   /**
-   * Get screens to skip based on feature flags
+   * Get screens to skip based on feature flags. The use-case chips live on
+   * Welcome now, so the legacy skipFeatures flag maps there too — "features"
+   * is not a screen id and must never reach skipped_screens telemetry.
    */
   getSkippedScreens(): OnboardingScreen[] {
     const flags = this.getFeatureFlags();
-    const skipped: OnboardingScreen[] = [];
+    const skipped = new Set<OnboardingScreen>();
 
-    if (flags.skipWelcome) skipped.push("welcome" as OnboardingScreen);
-    if (flags.skipFeatures) skipped.push("features" as OnboardingScreen);
-    if (flags.skipDiscovery) skipped.push("discovery" as OnboardingScreen);
-    if (flags.skipModels) skipped.push("models" as OnboardingScreen);
+    if (flags.skipWelcome || flags.skipFeatures) {
+      skipped.add(OnboardingScreen.Welcome);
+    }
+    if (flags.skipDiscovery) skipped.add(OnboardingScreen.DiscoverySource);
+    if (flags.skipModels) skipped.add(OnboardingScreen.ModelSelection);
 
-    return skipped;
+    return [...skipped];
   }
 
   /**
-   * Track onboarding started event
+   * Track onboarding started event. Resume facts come from the database —
+   * the in-memory state is empty on a fresh process, which is exactly when
+   * a resume happens. A completed run re-entering (FORCE_ONBOARDING, missing
+   * permissions) is a re-run, not a resume.
    */
-  trackOnboardingStarted(platform: string): void {
+  async trackOnboardingStarted(platform: string): Promise<void> {
+    const persisted = await this.getOnboardingState();
+    const resumedFrom = persisted?.completedVersion
+      ? undefined
+      : persisted?.lastVisitedScreen;
     this.telemetryService.trackOnboardingStarted({
       platform,
-      resumed: !!this.currentState?.lastVisitedScreen,
-      resumedFrom: this.currentState?.lastVisitedScreen,
+      resumed: !!resumedFrom,
+      resumedFrom,
     });
   }
 
@@ -640,6 +670,16 @@ export class OnboardingService extends EventEmitter {
   }
 
   /**
+   * Track how an optional step was exited (did the thing vs moved past it)
+   */
+  trackStepResult(
+    screen: OnboardingScreen,
+    outcome: "completed" | "skipped",
+  ): void {
+    this.telemetryService.trackOnboardingStepResult({ screen, outcome });
+  }
+
+  /**
    * Reset onboarding state (for testing)
    */
   async resetOnboarding(): Promise<void> {
@@ -647,7 +687,6 @@ export class OnboardingService extends EventEmitter {
       await this.settingsService.updateSettings({
         onboarding: undefined,
       });
-      this.currentState = {};
       logger.main.info("Onboarding state reset");
     } catch (error) {
       logger.main.error("Failed to reset onboarding:", error);
@@ -680,7 +719,7 @@ export class OnboardingService extends EventEmitter {
     logger.main.info("Starting onboarding flow");
 
     // Track onboarding started event
-    this.trackOnboardingStarted(process.platform);
+    await this.trackOnboardingStarted(process.platform);
   }
 
   /**
@@ -704,6 +743,16 @@ export class OnboardingService extends EventEmitter {
       logger.main.error("Error completing onboarding flow:", error);
       throw error;
     }
+  }
+
+  /**
+   * Mark a dictation try-it step active/inactive.
+   * Emits "try-it-active-changed" - AppManager handles shortcut suppression
+   * and widget bring-up
+   */
+  setTryItActive(active: boolean): void {
+    logger.main.info("Onboarding try-it active changed", { active });
+    this.emit("try-it-active-changed", active);
   }
 
   /**

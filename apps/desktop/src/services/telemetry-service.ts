@@ -5,6 +5,7 @@ import type { PostHogClient, SystemInfo } from "./posthog-client";
 import type {
   OnboardingStartedEvent,
   OnboardingScreenViewedEvent,
+  OnboardingStepResultEvent,
   OnboardingFeaturesSelectedEvent,
   OnboardingDiscoverySelectedEvent,
   OnboardingModelSelectedEvent,
@@ -307,6 +308,12 @@ export class TelemetryService {
     this.captureEvent("onboarding_abandoned", props);
 
     logger.main.debug("Tracked onboarding abandoned", props);
+  }
+
+  trackOnboardingStepResult(props: OnboardingStepResultEvent): void {
+    this.captureEvent("onboarding_step_result", props);
+
+    logger.main.debug("Tracked onboarding step result", props);
   }
 
   // ============================================================================

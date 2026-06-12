@@ -4,7 +4,7 @@ import { Pencil, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import { getKeyFromKeycode } from "@/utils/keycode-map";
+import { getKeyFromKeycode, keycodeToDisplay } from "@/utils/keycode-map";
 import {
   handleActiveKeysEmission,
   initialShortcutRecordingState,
@@ -41,10 +41,6 @@ type ValidationResult = {
     params?: Record<string, string | number>;
   };
 };
-
-function keycodeToDisplay(keycode: number): string {
-  return getKeyFromKeycode(keycode) ?? `Key${keycode}`;
-}
 
 function isModifierKeycode(keycode: number): boolean {
   const name = getKeyFromKeycode(keycode);
@@ -129,20 +125,22 @@ function ShortcutDisplay({
   value?: number[];
   onEdit: () => void;
 }) {
-  // Format array as display string (e.g., ["Fn", "Space"] -> "Fn+Space")
-  const displayValue = value?.length
-    ? value.map((key) => keycodeToDisplay(key)).join("+")
-    : undefined;
-
   return (
     <>
-      {displayValue && (
-        <kbd
+      {!!value?.length && (
+        <div
           onClick={onEdit}
-          className="inline-flex items-center px-3 py-1 bg-muted hover:bg-muted/70 rounded-md text-sm font-mono cursor-pointer transition-colors"
+          className="flex cursor-pointer items-center gap-1"
         >
-          {displayValue}
-        </kbd>
+          {value.map((key, index) => (
+            <kbd
+              key={index}
+              className="inline-flex items-center rounded-md border bg-muted px-2 py-0.5 font-mono text-sm transition-colors hover:bg-muted/70"
+            >
+              {keycodeToDisplay(key)}
+            </kbd>
+          ))}
+        </div>
       )}
       <Button
         variant="ghost"

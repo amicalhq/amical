@@ -1,90 +1,73 @@
-import React from "react";
-import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { ObButton, SkipPill } from "./ui";
 
 interface NavigationButtonsProps {
   onBack?: () => void;
   onNext?: () => void;
   onComplete?: () => void;
+  onSkip?: () => void;
   showBack?: boolean;
+  /** Passive screens show the footer Continue. Configure/try-it set this false
+   *  (their advance lives inside the instrument card). */
   showNext?: boolean;
   showComplete?: boolean;
+  showSkip?: boolean;
   disableNext?: boolean;
-  disableComplete?: boolean;
-  nextLabel?: string;
   completeLabel?: string;
-  className?: string;
 }
 
 /**
- * Navigation buttons for onboarding flow
- * Provides consistent navigation experience across all screens
+ * The bottom nav row. Back on the left; Skip (escape hatch) and the primary
+ * Continue/Complete on the right. When `showNext` is false the right side
+ * holds at most Skip — used by Configure/try-it screens whose gated advance
+ * is in the card.
  */
 export function NavigationButtons({
   onBack,
   onNext,
   onComplete,
+  onSkip,
   showBack = true,
   showNext = true,
   showComplete = false,
+  showSkip = false,
   disableNext = false,
-  disableComplete = false,
-  nextLabel,
   completeLabel,
-  className,
 }: NavigationButtonsProps) {
   const { t } = useTranslation();
-  const resolvedNextLabel = nextLabel ?? t("onboarding.navigation.continue");
   const resolvedCompleteLabel =
-    completeLabel ?? t("onboarding.navigation.complete");
+    completeLabel ?? t("onboarding.navigation.done");
 
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between pt-4",
-        !showBack && "justify-end",
-        className,
-      )}
-    >
-      {/* Back Button */}
-      {showBack && (
-        <Button
+    <div className="flex shrink-0 items-center justify-between pb-7 pt-[18px]">
+      <div className="flex items-center gap-3">
+        <ObButton
           variant="ghost"
           onClick={onBack}
-          className="gap-2"
-          type="button"
+          style={{ visibility: showBack ? "visible" : "hidden" }}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft size={16} />
           {t("onboarding.navigation.back")}
-        </Button>
-      )}
-
-      {/* Next/Complete Button */}
-      <div className="flex gap-3">
-        {showNext && !showComplete && (
-          <Button
-            onClick={onNext}
-            disabled={disableNext}
-            className="gap-2"
-            type="button"
-          >
-            {resolvedNextLabel}
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+        </ObButton>
+      </div>
+      <div className="flex items-center gap-3">
+        {showSkip && (
+          <SkipPill onClick={onSkip}>
+            {t("onboarding.navigation.skip")}
+          </SkipPill>
         )}
-
+        {showNext && !showComplete && (
+          <ObButton onClick={onNext} disabled={disableNext}>
+            {t("onboarding.navigation.continue")}
+            <ArrowRight size={16} />
+          </ObButton>
+        )}
         {showComplete && (
-          <Button
-            onClick={onComplete}
-            disabled={disableComplete}
-            className="gap-2"
-            type="button"
-          >
-            <Check className="h-4 w-4" />
+          <ObButton onClick={onComplete}>
+            <Check size={16} />
             {resolvedCompleteLabel}
-          </Button>
+          </ObButton>
         )}
       </div>
     </div>

@@ -34,22 +34,19 @@
   },
   "onboarding": {
     "app": {
-      "loading": "Cargando configuración inicial...",
+      "loading": "Preparando todo…",
       "unknownScreen": "Pantalla desconocida"
     },
     "navigation": {
       "back": "Atrás",
       "continue": "Continuar",
-      "complete": "Completar"
-    },
-    "progress": {
-      "step": "Paso {{current}} de {{total}}",
-      "percent": "{{percent}}%"
+      "done": "Listo",
+      "skip": "Omitir"
     },
     "toast": {
       "loadStateFailed": "No se pudo cargar el estado de configuración inicial",
       "savePreferencesFailed": "No se pudieron guardar tus preferencias. Por favor, inténtalo de nuevo.",
-      "completed": "¡Configuración inicial completada!",
+      "completed": "¡Todo listo!",
       "completeFailed": "No se pudo completar la configuración inicial. Por favor, inténtalo de nuevo.",
       "resetSuccess": "Configuración inicial restablecida correctamente",
       "resetFailed": "No se pudo restablecer la configuración inicial"
@@ -59,83 +56,58 @@
       "description": "Ocurrió un error durante el proceso de configuración inicial. Por favor, inténtalo de nuevo.",
       "tryAgain": "Intentar de nuevo",
       "restart": "Reiniciar configuración inicial",
-      "supportNote": "Si el problema persiste, por favor contacta a soporte o consulta la documentación para obtener ayuda."
+      "supportNote": "Si esto sigue ocurriendo, contacta a soporte."
     },
     "welcome": {
-      "title": "Bienvenido a Amical",
-      "subtitle": "Selecciona las funciones que te interesan para personalizar tu experiencia",
-      "skip": "Omitir configuración inicial",
-      "comingSoon": "Próximamente",
-      "selectAria": "Seleccionar {{feature}}",
-      "features": {
-        "contextualDictation": {
-          "title": "Dictado contextual",
-          "description": "Entrada de voz rápida en cualquier aplicación para una conversión de voz a texto fluida"
-        },
-        "noteTaking": {
-          "title": "Toma de notas",
-          "description": "Captura ideas y pensamientos por voz con formato inteligente"
-        },
-        "meetingTranscriptions": {
-          "title": "Transcripciones de reuniones",
-          "description": "Graba y transcribe reuniones y conversaciones con alta precisión"
-        },
-        "voiceCommands": {
-          "title": "Comandos de voz",
-          "description": "Controla tus apps sin usar las manos: ejecuta tareas con comandos de voz naturales"
-        }
-      },
+      "title": "¿Cómo usarás Amical?",
+      "subtitle": "Selecciona todo lo que corresponda.",
       "toast": {
-        "maxFeatures": "Puedes seleccionar hasta {{max}} funciones",
-        "selectAtLeastOne": "Por favor selecciona al menos una función para personalizar tu experiencia"
+        "selectAtLeastOne": "Selecciona al menos una opción para continuar"
       },
-      "selection": {
-        "none": "Selecciona al menos una función",
-        "selected": "{{count}} seleccionadas"
+      "useCases": {
+        "draftingEmails": "Redactar correos",
+        "sendingMessages": "Enviar mensajes",
+        "promptingAi": "Escribir prompts de IA",
+        "codingWithAi": "Programar con IA",
+        "writingDocuments": "Escribir documentos",
+        "takingNotes": "Tomar notas",
+        "postsComments": "Publicaciones y comentarios",
+        "somethingElse": "Otra cosa"
       },
-      "note": "Tus elecciones ayudan a personalizar la configuración; todas las funciones estarán disponibles en cualquier momento."
+      "somethingElsePlaceholder": "Cuéntanos más…"
     },
     "permissions": {
-      "title": "Configurar permisos",
-      "subtitle": "Amical necesita algunos permisos para funcionar correctamente",
-      "waiting": "Esperando permisos...",
-      "polling": "Verificando cambios de permisos...",
-      "allGranted": {
-        "title": "Todos los permisos concedidos",
-        "description": "¡Todo listo! Puedes continuar al siguiente paso."
-      },
+      "title": "Activa las funciones principales",
+      "subtitle": "Amical necesita un par de permisos para escuchar y escribir.",
       "status": {
-        "granted": "Permiso concedido",
-        "denied": "Permiso denegado",
-        "notRequested": "Permiso aún no solicitado",
-        "required": "Permiso requerido"
+        "granted": "Permiso concedido"
       },
       "actions": {
         "request": "Solicitar permiso",
-        "requesting": "Solicitando...",
+        "requesting": "Solicitando…",
         "openSettings": "Abrir configuración"
       },
       "microphone": {
-        "title": "Acceso al micrófono",
-        "description": "Requerido para grabar y transcribir audio",
-        "deniedHelp": "Por favor concede acceso al micrófono en Configuración del Sistema"
+        "title": "Micrófono",
+        "description": "Para que Amical pueda oír tu dictado"
       },
       "accessibility": {
-        "title": "Acceso de accesibilidad",
-        "description": "Requerido para pegar transcripciones y atajos de teclado globales (solo macOS)",
-        "deniedHelp": "Agrega Amical a Accesibilidad en Configuración del Sistema"
+        "title": "Accesibilidad",
+        "description": "Para que Amical pueda pegar texto en cualquier aplicación"
       }
     },
     "discovery": {
-      "title": "¿Cómo descubriste Amical?",
-      "subtitle": "Esto nos ayuda a entender de dónde vienen nuestros usuarios",
+      "title": "¿Cómo nos conociste?",
+      "subtitle": "Ayuda a Amical a llegar a más personas como tú.",
       "sources": {
         "searchEngine": "Motor de búsqueda (Google, Bing, etc.)",
-        "socialMedia": "Redes sociales (Twitter, LinkedIn, etc.)",
+        "reddit": "Reddit",
+        "xTwitter": "X / Twitter",
+        "socialMedia": "Redes sociales (Instagram, LinkedIn, etc.)",
+        "aiAssistant": "Chat de IA (ChatGPT, Claude, etc.)",
         "wordOfMouth": "Recomendación de un amigo o colega",
-        "blogArticle": "Publicación de blog o artículo",
+        "blogArticle": "Entrada de blog o artículo",
         "github": "GitHub",
-        "aiAssistant": "Asistente de IA (ChatGPT, Claude, etc.)",
         "other": "Otro"
       },
       "toast": {
@@ -143,108 +115,136 @@
         "otherDetailsRequired": "Por favor proporciona detalles para \"Otro\""
       },
       "other": {
-        "label": "Por favor especifica",
-        "placeholder": "Cuéntanos más...",
+        "placeholder": "Cuéntanos más…",
         "charCount": "{{count}}/{{max}} caracteres"
       }
     },
     "modelSelection": {
-      "title": "Elige tu modelo de IA",
-      "subtitle": "Selecciona cómo quieres que Amical procese tu audio",
-      "completeSetupToContinue": "Completa la configuración para continuar",
       "recommended": "Recomendado",
-      "prosLabel": "Ventajas:",
-      "consLabel": "Desventajas:",
-      "note": "Puedes cambiar tu modelo más tarde en Configuración; nada es permanente.",
-      "recommendation": {
-        "label": "Recomendación:",
-        "text": "Según las especificaciones de tu sistema, recomendamos"
-      },
-      "toast": {
-        "selectModel": "Por favor selecciona un tipo de modelo",
-        "completeSetup": "Por favor completa la configuración para continuar"
-      },
-      "models": {
+      "localUnsupported": "Requiere macOS 15 o posterior",
+      "cards": {
         "cloud": {
-          "title": "Amical Cloud",
-          "subtitle": "Rápido, más preciso y gratuito, sin configuración necesaria",
-          "description": "Ideal si quieres la mejor precisión o tu dispositivo no puede ejecutar modelos locales.\\nProcesamiento seguro; el audio nunca se almacena.",
-          "pros": {
-            "free": "Gratuito",
-            "fast": "Rápido",
-            "accurate": "Más preciso",
-            "noSetup": "Sin configuración necesaria"
-          },
-          "cons": {
-            "internetLogin": "Necesita internet e inicio de sesión"
-          }
+          "name": "Cloud",
+          "tag": "La experiencia completa de Amical",
+          "bullets": [
+            "La transcripción más precisa",
+            "Formato con IA integrado",
+            "Nada que descargar ni configurar"
+          ],
+          "caveat": "Necesita internet y una cuenta gratuita"
         },
         "local": {
-          "title": "Modelos locales",
-          "subtitle": "Privado, sin conexión y gratuito; se ejecuta completamente en tu dispositivo.",
-          "description": "Ideal para usuarios enfocados en la privacidad con hardware capaz. No requiere inicio de sesión.",
-          "pros": {
-            "privacy": "Privacidad total",
-            "offline": "Funciona sin conexión"
-          },
-          "cons": {
-            "resources": "Usa recursos del dispositivo"
-          }
+          "name": "Local",
+          "tag": "Privado y sin conexión",
+          "bullets": [
+            "Funciona completamente en tu dispositivo",
+            "No necesita cuenta"
+          ],
+          "caveats": [
+            "La velocidad y la precisión dependen de tu hardware",
+            "Descarga única"
+          ],
+          "caveatLead": "El formato con IA requiere configuración adicional"
         }
-      }
+      },
+      "title": "Elige cómo funciona Amical",
+      "subtitle": "La mayoría empieza con Cloud. Puedes cambiar cuando quieras en Configuración."
     },
-    "modelSetup": {
+    "signIn": {
+      "title": "Inicia sesión en Amical",
+      "subtitle": "Se necesita una cuenta para usar Amical Cloud.",
+      "button": "Iniciar sesión",
+      "fine": "El inicio de sesión se abre en tu navegador · Plan gratuito incluido · sin tarjeta de crédito",
+      "waiting": "Esperando a que termines de iniciar sesión en tu navegador…",
+      "verdict": "Sesión iniciada",
       "toast": {
         "loginInBrowser": "Completa el inicio de sesión en tu navegador",
         "authenticated": "¡Autenticación exitosa!"
       },
-      "actions": {
-        "cancel": "Cancelar",
-        "signIn": "Iniciar sesión",
-        "retry": "Reintentar"
+      "error": {
+        "loginStartFailed": "No se pudo abrir el inicio de sesión. Por favor, inténtalo de nuevo."
+      }
+    },
+    "download": {
+      "title": "Preparando tu modelo",
+      "subtitle": "Amical está descargando un modelo de voz. Esto ocurre una sola vez; después, el dictado funciona completamente sin conexión.",
+      "modelTag": "Rápido, preciso y funciona en tu dispositivo",
+      "ready": "Modelo listo",
+      "alreadyInstalled": "Ya instalado",
+      "error": "No se pudo descargar el modelo: {{message}}",
+      "retry": "Reintentar"
+    },
+    "micTest": {
+      "title": "Prueba tu micrófono",
+      "subtitle": "Di unas palabras a tu volumen normal.",
+      "hint": "¿Auriculares conectados? Las barras siguen al micrófono seleccionado.",
+      "change": "Cambiar micrófono",
+      "caption": "Tu micrófono funciona si las barras se iluminan"
+    },
+    "shortcut": {
+      "title": "Configura tu atajo de dictado",
+      "subtitle": "Mantén presionado tu atajo para comprobar que funciona.",
+      "changeHotkey": "Cambiar atajo",
+      "hint": "Puedes añadir más atajos después en Configuración.",
+      "noShortcut": "Aún no hay atajo configurado. Haz clic en \"Cambiar atajo\" para elegir uno.",
+      "caption": "Tu atajo funciona si la tecla se ilumina"
+    },
+    "spokenLanguage": {
+      "title": "¿Qué idiomas hablas?",
+      "subtitle": "Para la mejor precisión, añade los idiomas en los que sueles dictar.",
+      "change": "Cambiar idiomas",
+      "hint": "Dicta en cualquiera de ellos en cualquier momento, sin cambiar nada.",
+      "autoDetect": "Detección automática",
+      "none": "Aún no hay idiomas seleccionados"
+    },
+    "dictationTest": {
+      "email": {
+        "title": "Dicta tu primer mensaje",
+        "subtitle": "Mantén presionado tu atajo, habla con naturalidad y suéltalo al terminar.",
+        "tip": "Habla como si hablaras con un colega. Amical se encarga de la puntuación.",
+        "cta": "Mantén presionado {{keys}} y habla",
+        "mockHeader": "Correo",
+        "to": "Para: John Doe",
+        "subject": "Asunto: Seguimiento rápido",
+        "ghost": "Hola John, em, solo quería saber... ¿pudiste, eh, revisar la propuesta? Sin prisa, avísame cuando puedas."
       },
-      "cloud": {
-        "title": "Se requiere iniciar sesión",
-        "description": "La transcripción en la nube necesita autenticación para continuar.",
-        "error": {
-          "loginStartFailed": "No se pudo abrir el inicio de sesión. Por favor, inténtalo de nuevo."
-        }
+      "notes": {
+        "title": "Prueba a susurrar",
+        "subtitle": "Mantén presionado tu atajo y susurra. Amical sigue captando cada palabra.",
+        "tip": "Ideal en oficinas abiertas, cuando trabajas hasta tarde o en cualquier lugar donde prefieras no hacer ruido.",
+        "cta": "Mantén presionado {{keys}} y susurra",
+        "mockHeader": "Notas",
+        "ghost": "Em, necesito comprar lo siguiente... agua, leche, pan, tostadas.",
+        "listTitle": "Lista de compras"
       },
-      "local": {
-        "downloadingTitle": "Descargando modelo local",
-        "downloadingDescription": "Configurando modelo local para transcripción privada y sin conexión",
-        "readyTitle": "Modelo local listo",
-        "readyDescription": "Listo para transcripción privada y sin conexión.",
-        "alreadyInstalled": "Modelo ya instalado",
-        "downloadComplete": "Descarga completada",
-        "using": "Usando: {{model}}",
-        "error": {
-          "downloadFailed": "No se pudo descargar el modelo: {{message}}"
-        }
+      "simple": {
+        "title": "Prueba tu primer dictado",
+        "subtitle": "Mantén presionado tu atajo, habla con naturalidad y suéltalo al terminar.",
+        "tip": "Puedes configurar el formato con IA conectando un modelo de IA en Configuración más adelante o cambiando a Amical Cloud.",
+        "cta": "Mantén presionado {{keys}} y habla",
+        "mockHeader": "Notas",
+        "ghost": "Comprar agua, leche, pan y tostadas de camino a casa."
       }
     },
     "completion": {
-      "title": "¡Configuración completada!",
+      "title": "Todo listo",
+      "subtitle": "Mantén presionado tu atajo en cualquier lugar para empezar. Puedes cambiar todo esto en Configuración.",
       "start": "Comenzar a usar Amical",
-      "quickConfig": {
-        "title": "Configuración rápida"
-      },
-      "community": {
-        "discordAlt": "Discord",
-        "title": "Únete a nuestra comunidad",
-        "description": "Obtén ayuda, comparte comentarios y conéctate con otros usuarios",
-        "joinDiscord": "Unirse a Discord"
-      },
-      "next": {
-        "title": "¡Todo listo!",
-        "items": {
-          "pushToTalk": "Usa tu atajo de pulsar para hablar para comenzar a transcribir",
-          "widget": "Haz clic en el widget flotante para acceso rápido",
-          "settings": "Explora Configuración para más opciones de personalización"
-        }
-      },
-      "info": "Toda la configuración se puede cambiar en cualquier momento en las preferencias de la aplicación.",
-      "infoLocalModel": "Tu modelo local seleccionado está listo para usar sin conexión."
+      "summary": {
+        "speechModel": "Modelo de voz",
+        "shortcut": "Atajo de dictado",
+        "microphone": "Micrófono",
+        "cloudModel": "Amical Cloud",
+        "localModel": "{{model}}",
+        "shortcutValue": "Mantén presionado {{key}}"
+      }
+    },
+    "phases": {
+      "getStarted": "Empezar",
+      "setUp": "Preparar",
+      "configure": "Configurar",
+      "tryIt": "Probar",
+      "done": "Listo"
     }
   },
   "widget": {
@@ -333,6 +333,10 @@
         "localTranscriptionFailed": {
           "title": "La transcripción local falló",
           "description": "El procesamiento de audio de Whisper falló"
+        },
+        "localTranscriptionUnsupported": {
+          "title": "Transcripción local no disponible",
+          "description": "Los modelos en el dispositivo requieren macOS 15 o posterior. Cambia a Amical Cloud."
         }
       }
     }
@@ -435,8 +439,8 @@
           "system": "Sistema",
           "en": "English",
           "de": "Deutsch",
-          "ja": "日本語",
           "es": "Español",
+          "ja": "日本語",
           "zh-TW": "繁體中文"
         },
         "restartDialog": {
@@ -992,6 +996,7 @@
       "speech": {
         "loading": "Cargando modelos...",
         "availableModels": "Modelos disponibles",
+        "localUnsupported": "Requiere macOS 15 o posterior",
         "table": {
           "model": "Modelo",
           "features": "Características",

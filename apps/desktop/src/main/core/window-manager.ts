@@ -302,6 +302,22 @@ export class WindowManager {
     this.trpcHandler.attachWindow(this.mainWindow!);
   }
 
+  /**
+   * Make sure the widget window exists and apply its initial visibility:
+   * shown only when the user wants it visible while idle (recording-state
+   * changes drive visibility from there). Idempotent — callers are boot,
+   * app activation, and the onboarding try-it.
+   */
+  async ensureWidgetWindow(): Promise<void> {
+    if (!this.widgetWindow || this.widgetWindow.isDestroyed()) {
+      await this.createWidgetWindow();
+    }
+    const preferences = await this.settingsService.getPreferences();
+    if (preferences.showWidgetWhileInactive) {
+      this.showWidget();
+    }
+  }
+
   async createWidgetWindow(): Promise<void> {
     const mainScreen = screen.getPrimaryDisplay();
     const widgetBounds = this.getWidgetDefaultBounds(mainScreen.workArea);
@@ -406,6 +422,11 @@ export class WindowManager {
     );
   }
 
+  // TODO(maybe): fold onboarding into the main window as a TanStack Router
+  // route instead of a dedicated window. Open questions before doing so:
+  // chrome differences (fixed 1160 non-resizable vs resizable main), close
+  // semantics (onboarding close = quit vs main close = hide to tray), and the
+  // production relaunch on completion, which a shared window doesn't remove.
   async createOrShowOnboardingWindow(): Promise<void> {
     if (this.onboardingWindow && !this.onboardingWindow.isDestroyed()) {
       this.onboardingWindow.show();
@@ -418,15 +439,17 @@ export class WindowManager {
 
     await this.syncNativeThemeSource();
 
-    // Get theme colors before creating window
+    // Get theme colors before creating window (onboarding follows the app
+    // theme like every other window).
     const colors = await this.getThemeColors();
 
     const primaryDisplay = screen.getPrimaryDisplay();
     const windowHeight = Math.min(928, primaryDisplay.workAreaSize.height - 40);
 
     this.onboardingWindow = new BrowserWindow({
-      width: 800,
+      width: 1160,
       height: windowHeight,
+      backgroundColor: colors.backgroundColor,
       frame: true,
       titleBarStyle: "hidden",
       titleBarOverlay: {

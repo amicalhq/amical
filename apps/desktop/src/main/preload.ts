@@ -3,6 +3,7 @@
 
 import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
 import { exposeElectronTRPC } from "electron-trpc-experimental/preload";
+import { audioBridge } from "./preload-audio-bridge";
 import type { ElectronAPI } from "../types/electron-api";
 
 interface ShortcutData {
@@ -14,17 +15,7 @@ const api: ElectronAPI = {
   // Platform information
   platform: process.platform,
 
-  sendAudioChunk: (
-    chunk: Float32Array,
-    isFinalChunk: boolean = false,
-  ): Promise<void> => {
-    // Convert Float32Array to ArrayBuffer for IPC transfer
-    const buffer = chunk.buffer.slice(
-      chunk.byteOffset,
-      chunk.byteOffset + chunk.byteLength,
-    );
-    return ipcRenderer.invoke("audio-data-chunk", buffer, isFinalChunk);
-  },
+  sendAudioChunk: audioBridge.sendAudioChunk,
   // Switched to invoke/handle for request-response
   onGlobalShortcut: (callback: (data: ShortcutData) => void) => {
     const handler = (_event: IpcRendererEvent, data: ShortcutData) =>
@@ -43,13 +34,7 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener("key-event", handler);
     };
   },
-  onForceStopMediaRecorder: (callback: () => void) => {
-    const handler = () => callback();
-    ipcRenderer.on("force-stop-mediarecorder", handler);
-    return () => {
-      ipcRenderer.removeListener("force-stop-mediarecorder", handler);
-    };
-  },
+  onForceStopMediaRecorder: audioBridge.onForceStopMediaRecorder,
   // If you want a way to remove all listeners for this event from renderer:
   // removeAllGlobalShortcutListeners: () => {
   //   ipcRenderer.removeAllListeners('global-shortcut-event');

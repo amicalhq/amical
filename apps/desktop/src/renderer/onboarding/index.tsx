@@ -31,9 +31,9 @@ window.addEventListener("error", (event) => {
   // Error logged to console - main process can monitor renderer logs if needed
 });
 
-const root = ReactDOM.createRoot(
-  document.getElementById("root") as HTMLElement,
-);
+const rootElement = document.getElementById("root") as HTMLElement;
+
+const root = ReactDOM.createRoot(rootElement);
 
 const bootstrap = async () => {
   const i18n = await initializeRendererI18n();

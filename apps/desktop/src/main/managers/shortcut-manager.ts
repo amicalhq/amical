@@ -63,10 +63,24 @@ export class ShortcutManager extends EventEmitter {
   // fire a phantom press and stop a hands-free session.
   private pttActive = false;
 
+  // Generic command kill-switch (the onboarding wizard sets it: on while the
+  // wizard is open, off while a dictation try-it step is on screen). While
+  // suppressed, command emissions are dropped HERE at the source so no
+  // consumer needs its own check; raw key-state events (activeKeysChanged)
+  // keep flowing for UIs that read key state (the shortcut screen's keycaps,
+  // the shortcut recorder). PTT is masked to "not pressed" rather than
+  // skipped so the matcher's latch keeps tracking the keyboard and a mid-hold
+  // suppression flip still delivers a release on the next key event.
+  private commandsSuppressed = false;
+
   constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
     super();
     this.settingsService = settingsService;
     this.nativeBridge = nativeBridge;
+  }
+
+  setCommandsSuppressed(suppressed: boolean) {
+    this.commandsSuppressed = suppressed;
   }
 
   async initialize() {
@@ -503,31 +517,47 @@ export class ShortcutManager extends EventEmitter {
     // Snapshot the active keys once; every matcher below reads the same set.
     const activeKeys = this.getActiveKeys();
 
-    // Check PTT shortcut
+    // Check PTT shortcut. Always evaluate the matcher (it owns the pttActive
+    // latch); suppression only masks the EMITTED level to false, so a mid-hold
+    // suppression flip still delivers a release on the next key event.
     const isPTTPressed = this.isPTTShortcutPressed(isKeyDown, activeKeys);
-    this.emit("ptt-state-changed", isPTTPressed);
+    this.emit("ptt-state-changed", isPTTPressed && !this.commandsSuppressed);
 
     // Toggle/paste/newNote are edge shortcuts (one-shot on the exact-match rising
     // edge); they deliberately don't take isKeyDown — a stray edge there is rare and
     // harmless, unlike PTT where a phantom press stops an active session.
 
-    // Check toggle recording shortcut
+    // Check toggle recording shortcut. Edge state is tracked even while
+    // suppressed so lifting suppression mid-hold can't fire a stale rising
+    // edge (same for the edge shortcuts below).
     const toggleMatch = this.isToggleRecordingShortcutPressed(activeKeys);
-    if (toggleMatch && !this.exactMatchState.toggleRecording) {
+    if (
+      toggleMatch &&
+      !this.exactMatchState.toggleRecording &&
+      !this.commandsSuppressed
+    ) {
       this.emit("toggle-recording-triggered");
     }
     this.exactMatchState.toggleRecording = toggleMatch;
 
     // Check paste last transcript shortcut
     const pasteMatch = this.isPasteLastTranscriptShortcutPressed(activeKeys);
-    if (pasteMatch && !this.exactMatchState.pasteLastTranscript) {
+    if (
+      pasteMatch &&
+      !this.exactMatchState.pasteLastTranscript &&
+      !this.commandsSuppressed
+    ) {
       this.emit("paste-last-transcript-triggered");
     }
     this.exactMatchState.pasteLastTranscript = pasteMatch;
 
     // Check open notes window shortcut
     const newNoteMatch = this.isNewNoteShortcutPressed(activeKeys);
-    if (newNoteMatch && !this.exactMatchState.newNote) {
+    if (
+      newNoteMatch &&
+      !this.exactMatchState.newNote &&
+      !this.commandsSuppressed
+    ) {
       this.emit("open-notes-window-triggered");
     }
     this.exactMatchState.newNote = newNoteMatch;

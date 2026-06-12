@@ -1,5 +1,9 @@
 import { FormatParams } from "../../core/pipeline-types";
 import { GetAccessibilityContextResult } from "@amical/types";
+import {
+  ONBOARDING_WINDOW_TITLE,
+  TRY_IT_WINDOW_TITLES,
+} from "../../../constants/window-titles";
 
 // Kept in sync with Axis backend repo (~/exa9/axis), packages/prompts/src/formatting.ts.
 // Note: Prompts are intentionally treated as "code" and should be updated with care.
@@ -369,7 +373,21 @@ export function detectApplicationType(
   const bundleId = accessibilityContext.context.application.bundleIdentifier;
 
   // Amical's own app: align to Axis prompt format but preserve appType value.
-  if (bundleId === "ai.amical.desktop") {
+  // The onboarding try-it sheets emulate an email and a notes app — their
+  // window titles (constants we control end-to-end) declare which, so the
+  // demo formats like the surface it depicts instead of as Markdown notes.
+  // The rest of the setup wizard is a generic surface. On Windows the helper
+  // reports the exe path instead of a bundle id (same convention as the
+  // MailClient.exe entry below); dev runs are electron.exe and fall through
+  // to "default".
+  const isOwnApp =
+    bundleId === "ai.amical.desktop" ||
+    bundleId.toLowerCase().endsWith("\\amical.exe");
+  if (isOwnApp) {
+    const title = accessibilityContext.context?.windowInfo?.title ?? "";
+    if (title === TRY_IT_WINDOW_TITLES.email) return "email";
+    if (title === TRY_IT_WINDOW_TITLES.notes) return "notes";
+    if (title.startsWith(ONBOARDING_WINDOW_TITLE)) return "default";
     return "amical-notes";
   }
 

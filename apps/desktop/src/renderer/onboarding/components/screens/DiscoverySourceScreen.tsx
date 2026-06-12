@@ -1,10 +1,12 @@
-import React, { useState } from "react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
-import { DiscoverySource } from "../../../../types/onboarding";
+import { SelectChip } from "../shared/ui";
+import {
+  DiscoverySource,
+  OnboardingScreen,
+} from "../../../../types/onboarding";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -37,8 +39,20 @@ export function DiscoverySourceScreen({
       label: t("onboarding.discovery.sources.searchEngine"),
     },
     {
+      id: DiscoverySource.Reddit,
+      label: t("onboarding.discovery.sources.reddit"),
+    },
+    {
+      id: DiscoverySource.XTwitter,
+      label: t("onboarding.discovery.sources.xTwitter"),
+    },
+    {
       id: DiscoverySource.SocialMedia,
       label: t("onboarding.discovery.sources.socialMedia"),
+    },
+    {
+      id: DiscoverySource.AIAssistant,
+      label: t("onboarding.discovery.sources.aiAssistant"),
     },
     {
       id: DiscoverySource.WordOfMouth,
@@ -51,10 +65,6 @@ export function DiscoverySourceScreen({
     {
       id: DiscoverySource.GitHub,
       label: t("onboarding.discovery.sources.github"),
-    },
-    {
-      id: DiscoverySource.AIAssistant,
-      label: t("onboarding.discovery.sources.aiAssistant"),
     },
     {
       id: DiscoverySource.Other,
@@ -81,6 +91,7 @@ export function DiscoverySourceScreen({
 
   return (
     <OnboardingLayout
+      screen={OnboardingScreen.DiscoverySource}
       title={t("onboarding.discovery.title")}
       subtitle={t("onboarding.discovery.subtitle")}
       footer={
@@ -94,48 +105,35 @@ export function DiscoverySourceScreen({
         />
       }
     >
-      <div className="space-y-6">
-        {/* Discovery Sources */}
-        <RadioGroup
-          value={selectedSource || ""}
-          onValueChange={(value) => setSelectedSource(value as DiscoverySource)}
-          className="space-y-3"
-        >
-          {sources.map((source) => (
-            <div key={source.id} className="flex items-center space-x-3">
-              <RadioGroupItem value={source.id} id={source.id} />
-              <Label
-                htmlFor={source.id}
-                className="flex-1 cursor-pointer font-normal"
-              >
-                {source.label}
-              </Label>
-            </div>
-          ))}
-        </RadioGroup>
-
-        {/* Other Details Input */}
-        {selectedSource === DiscoverySource.Other && (
-          <div className="space-y-2">
-            <Label htmlFor="other-details">
-              {t("onboarding.discovery.other.label")}
-            </Label>
-            <Input
-              id="other-details"
-              placeholder={t("onboarding.discovery.other.placeholder")}
-              value={otherDetails}
-              onChange={(e) => setOtherDetails(e.target.value)}
-              maxLength={maxOtherDetailsLength}
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("onboarding.discovery.other.charCount", {
-                count: otherDetails.length,
-                max: maxOtherDetailsLength,
-              })}
-            </p>
-          </div>
-        )}
+      <div className="flex max-w-[560px] animate-ob-rise flex-wrap gap-[9px]">
+        {sources.map((source) => (
+          <SelectChip
+            key={source.id}
+            selected={selectedSource === source.id}
+            onClick={() => setSelectedSource(source.id)}
+          >
+            {source.label}
+          </SelectChip>
+        ))}
       </div>
+
+      {selectedSource === DiscoverySource.Other && (
+        <div className="mt-4 max-w-[560px] space-y-2">
+          <Input
+            id="other-details"
+            placeholder={t("onboarding.discovery.other.placeholder")}
+            value={otherDetails}
+            onChange={(e) => setOtherDetails(e.target.value)}
+            maxLength={maxOtherDetailsLength}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("onboarding.discovery.other.charCount", {
+              count: otherDetails.length,
+              max: maxOtherDetailsLength,
+            })}
+          </p>
+        </div>
+      )}
     </OnboardingLayout>
   );
 }

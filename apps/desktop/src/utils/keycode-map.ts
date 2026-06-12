@@ -331,6 +331,11 @@ export function getKeyFromKeycode(keycode: number): string | undefined {
   return mapping[keycode];
 }
 
+/** User-facing label for a keycode, with the `Key<code>` fallback for unmapped codes. */
+export function keycodeToDisplay(keycode: number): string {
+  return getKeyFromKeycode(keycode) ?? `Key${keycode}`;
+}
+
 function buildReverseMap(
   mapping: Record<number, string>,
 ): Record<string, number> {

@@ -31,8 +31,16 @@ export interface OnboardingStartedEvent {
  */
 export interface OnboardingScreenViewedEvent {
   screen: string;
-  index: number;
-  total: number;
+}
+
+/**
+ * Fired when an onboarding step with an optional action is exited forward —
+ * records whether the user actually did the thing (e.g. dictated in a try-it)
+ * or moved past it without doing it.
+ */
+export interface OnboardingStepResultEvent {
+  screen: string;
+  outcome: "completed" | "skipped";
 }
 
 /**
@@ -41,6 +49,7 @@ export interface OnboardingScreenViewedEvent {
 export interface OnboardingFeaturesSelectedEvent {
   features: string[];
   count: number;
+  details?: string;
 }
 
 /**

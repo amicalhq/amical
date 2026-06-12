@@ -113,8 +113,23 @@ export class AppManager {
     this.setupSettingsEventListeners(settingsService);
 
     if (onboardingCheck.needed) {
+      // Suppress global shortcut commands while onboarding is open; the
+      // dictation try-it steps lift this for their lifetime (see the
+      // try-it-active-changed listener above).
+      shortcutManager.setCommandsSuppressed(true);
       await onboardingService.startOnboardingFlow();
       await this.windowManager.createOrShowOnboardingWindow();
+
+      // Closing the wizard is the third exit (besides completed/cancelled):
+      // treat it as cancel — track abandonment and quit via the cancelled
+      // handler. Without this the app lingers headless with all shortcut
+      // commands suppressed. Completion closes this window too, but it flips
+      // isInProgress to false before doing so, so the guard skips it.
+      this.windowManager.getOnboardingWindow()?.on("closed", () => {
+        if (onboardingService.isInProgress()) {
+          void onboardingService.cancelOnboardingFlow();
+        }
+      });
     } else {
       await this.setupWindows();
     }
@@ -151,6 +166,11 @@ export class AppManager {
         shouldRelaunch,
       });
 
+      // Re-enable global shortcut commands now that onboarding is done.
+      this.serviceManager
+        .getService("shortcutManager")
+        .setCommandsSuppressed(false);
+
       this.windowManager.closeOnboardingWindow();
 
       if (shouldRelaunch) {
@@ -170,6 +190,24 @@ export class AppManager {
       logger.main.info("Onboarding cancelled event received, quitting app");
       this.windowManager.closeOnboardingWindow();
       app.quit();
+    });
+
+    // A dictation try-it step lifts the shortcut suppression for its lifetime
+    // so push-to-talk works exactly as in production, and needs the widget
+    // window up (it is also the audio-capture surface). Leaving the step
+    // re-suppresses only while the wizard is still open — completion may
+    // already have lifted suppression for good.
+    onboardingService.on("try-it-active-changed", (active: boolean) => {
+      this.serviceManager
+        .getService("shortcutManager")
+        .setCommandsSuppressed(!active && onboardingService.isInProgress());
+      if (active) {
+        // Onboarding boot skips setupWindows, so the widget window doesn't
+        // exist yet; production visibility rules take over after creation.
+        this.windowManager.ensureWidgetWindow().catch((error) => {
+          logger.main.error("Failed to bring up widget for try-it", error);
+        });
+      }
     });
 
     logger.main.info("Onboarding event listeners set up");
@@ -266,18 +304,13 @@ export class AppManager {
   }
 
   private async setupWindows(): Promise<void> {
-    await this.windowManager.createWidgetWindow();
-
-    // AppManager decides initial widget visibility based on settings
-    const settingsService = this.serviceManager.getService("settingsService");
-    const preferences = await settingsService.getPreferences();
-    if (preferences.showWidgetWhileInactive) {
-      this.windowManager.showWidget();
-    }
+    await this.windowManager.ensureWidgetWindow();
 
     this.windowManager.createOrShowMainWindow();
 
     // Apply dock visibility based on user preference (macOS only)
+    const settingsService = this.serviceManager.getService("settingsService");
+    const preferences = await settingsService.getPreferences();
     if (app.dock) {
       if (preferences.showInDock) {
         app.dock
@@ -371,21 +404,7 @@ export class AppManager {
       return;
     }
 
-    // Recreate the widget only if it was destroyed; otherwise reuse it.
-    const widgetWindow = this.windowManager.getWidgetWindow();
-    if (!widgetWindow || widgetWindow.isDestroyed()) {
-      await this.windowManager.createWidgetWindow();
-    }
-
-    // Show the widget only when the user wants it visible while inactive,
-    // instead of showing unconditionally. Honors the "hide when idle"
-    // preference; recording state is already handled by the state-changed
-    // listener.
-    const settingsService = this.serviceManager.getService("settingsService");
-    const preferences = await settingsService.getPreferences();
-    if (preferences.showWidgetWhileInactive) {
-      this.windowManager.showWidget();
-    }
+    await this.windowManager.ensureWidgetWindow();
 
     this.windowManager.createOrShowMainWindow();
   }

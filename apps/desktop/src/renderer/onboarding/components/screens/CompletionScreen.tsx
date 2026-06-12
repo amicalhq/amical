@@ -1,45 +1,94 @@
 import React from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
-import { OnboardingMicrophoneSelect } from "../shared/OnboardingMicrophoneSelect";
-import { OnboardingShortcutInput } from "../shared/OnboardingShortcutInput";
-import { CheckCircle, Settings, Info } from "lucide-react";
-import { FeatureInterest, ModelType } from "../../../../types/onboarding";
+import { InfoRow } from "../shared/ui";
+import { KeycapSentence, KEYS_SENTINEL } from "../shared/KeyCap";
+import { Sparkles, Check, Cpu, Cloud, Keyboard, Mic } from "lucide-react";
+import { ModelType, OnboardingScreen } from "../../../../types/onboarding";
+import { findInstalledLocalModel } from "@/constants/models";
 import { useTranslation } from "react-i18next";
 import { api } from "@/trpc/react";
-
-const DISCORD_URL = "https://amical.ai/community";
+import { useActiveMicrophone } from "@/hooks/useActiveMicrophone";
 
 interface CompletionScreenProps {
   onComplete: () => void;
   onBack: () => void;
-  preferences: {
-    featureInterests?: FeatureInterest[];
-    modelType?: ModelType;
-  };
+  modelType: ModelType;
 }
 
 /**
- * Completion screen - final screen showing setup is complete
+ * "Done" — celebrate mark + setup summary (speech model / shortcut / microphone)
+ * + "Start using Amical". Mic and shortcut are configured in their own earlier
+ * steps now, so this screen only reflects the final setup.
  */
 export function CompletionScreen({
   onComplete,
   onBack,
-  preferences,
+  modelType,
 }: CompletionScreenProps) {
   const { t } = useTranslation();
-  const openExternal = api.onboarding.openExternal.useMutation();
+  const { data: shortcuts } = api.settings.getShortcuts.useQuery();
+
+  const isLocal = modelType === ModelType.Local;
+  // Name the model that's actually installed rather than assuming the
+  // recommended one.
+  const { data: downloadedModels } = api.models.getDownloadedModels.useQuery(
+    undefined,
+    { enabled: isLocal },
+  );
+  const installedModel = findInstalledLocalModel(downloadedModels);
+  const speechValue = isLocal
+    ? t("onboarding.completion.summary.localModel", {
+        model: installedModel?.name || installedModel?.id || "Whisper",
+      })
+    : t("onboarding.completion.summary.cloudModel");
+  const SpeechIcon = isLocal ? Cpu : Cloud;
+
+  const shortcutValue = (
+    <KeycapSentence
+      className="gap-1"
+      sentence={t("onboarding.completion.summary.shortcutValue", {
+        key: KEYS_SENTINEL,
+      })}
+      codes={shortcuts?.pushToTalk ?? []}
+      kbdClassName="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs"
+    />
+  );
+
+  const { label: micValue } = useActiveMicrophone();
+
+  const rows: { icon: typeof Mic; label: string; value: React.ReactNode }[] = [
+    {
+      icon: SpeechIcon,
+      label: t("onboarding.completion.summary.speechModel"),
+      value: speechValue,
+    },
+    {
+      icon: Keyboard,
+      label: t("onboarding.completion.summary.shortcut"),
+      value: shortcutValue,
+    },
+    {
+      icon: Mic,
+      label: t("onboarding.completion.summary.microphone"),
+      value: micValue,
+    },
+  ];
+
   return (
     <OnboardingLayout
+      badge={
+        <div className="mb-3 grid size-[52px] place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-400 text-white shadow-lg shadow-indigo-500/40">
+          <Sparkles size={26} />
+        </div>
+      }
+      screen={OnboardingScreen.Completion}
       title={t("onboarding.completion.title")}
-      titleIcon={<CheckCircle className="h-7 w-7 text-green-500" />}
+      subtitle={t("onboarding.completion.subtitle")}
       footer={
         <NavigationButtons
-          onComplete={onComplete}
           onBack={onBack}
+          onComplete={onComplete}
           showBack={true}
           showNext={false}
           showComplete={true}
@@ -47,84 +96,23 @@ export function CompletionScreen({
         />
       }
     >
-      <div className="space-y-6">
-        {/* Quick Configuration */}
-        <Card className="p-6">
-          <h3 className="mb-4 font-medium flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            {t("onboarding.completion.quickConfig.title")}
-          </h3>
-          <div className="space-y-4">
-            <OnboardingMicrophoneSelect />
-            <Separator />
-            <OnboardingShortcutInput />
-          </div>
-        </Card>
-
-        {/* Community */}
-        <Card className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-full bg-[#5865F2]/10 p-3">
-              <img
-                src="icons/integrations/discord.svg"
-                alt={t("onboarding.completion.community.discordAlt")}
-                className="h-6 w-6"
+      <div className="flex w-full max-w-[500px] animate-ob-rise flex-col gap-[9px]">
+        {rows.map(({ icon: Icon, label, value }) => (
+          <InfoRow
+            key={label}
+            className="gap-[13px] px-[17px] py-3.5"
+            tileClassName="size-[34px]"
+            icon={<Icon size={20} />}
+            title={label}
+            description={value}
+            trailing={
+              <Check
+                size={17}
+                className="text-emerald-600 dark:text-emerald-400"
               />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-medium">
-                {t("onboarding.completion.community.title")}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {t("onboarding.completion.community.description")}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => openExternal.mutate({ url: DISCORD_URL })}
-            >
-              {t("onboarding.completion.community.joinDiscord")}
-            </Button>
-          </div>
-        </Card>
-
-        {/* Next Steps */}
-        <Card className="border-primary/20 bg-primary/5 px-6 gap-2">
-          <h3 className="font-medium">
-            {t("onboarding.completion.next.title")}
-          </h3>
-          <div>
-            <div className="flex items-start gap-2">
-              <span className="text-sm font-medium text-primary">•</span>
-              <p className="text-sm">
-                {t("onboarding.completion.next.items.pushToTalk")}
-              </p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-sm font-medium text-primary">•</span>
-              <p className="text-sm">
-                {t("onboarding.completion.next.items.widget")}
-              </p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-sm font-medium text-primary">•</span>
-              <p className="text-sm">
-                {t("onboarding.completion.next.items.settings")}
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Info Note */}
-        <div className="flex items-start gap-3 rounded-lg bg-muted/50 p-4">
-          <Info className="mt-0.5 h-4 w-4 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            {t("onboarding.completion.info")}
-            {preferences.modelType === ModelType.Local
-              ? ` ${t("onboarding.completion.infoLocalModel")}`
-              : ""}
-          </p>
-        </div>
+            }
+          />
+        ))}
       </div>
     </OnboardingLayout>
   );

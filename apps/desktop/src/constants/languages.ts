@@ -103,3 +103,27 @@ export const AVAILABLE_LANGUAGES = [
 
 export const labelForLanguage = (code: string) =>
   AVAILABLE_LANGUAGES.find((l) => l.value === code)?.label ?? code;
+
+// Primary subtags the OS reports differently than whisper names them.
+const LOCALE_ALIASES: Record<string, string> = {
+  nb: "no", // Norwegian Bokmål
+  fil: "tl", // Filipino → Tagalog
+  iw: "he", // legacy Hebrew tag
+  in: "id", // legacy Indonesian tag
+};
+
+/**
+ * Map a BCP-47 locale tag (e.g. "fr-FR", "zh-Hant-TW", "nb-NO") to a
+ * supported dictation language code, or undefined when whisper doesn't
+ * cover that language.
+ */
+export const dictationLanguageForLocale = (
+  locale: string,
+): string | undefined => {
+  const primary = locale.toLowerCase().split("-")[0];
+  const code = LOCALE_ALIASES[primary] ?? primary;
+  // "auto" is a list entry, not a language — never a valid mapping target.
+  return code !== "auto" && AVAILABLE_LANGUAGES.some((l) => l.value === code)
+    ? code
+    : undefined;
+};

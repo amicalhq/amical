@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/trpc/react";
 import { useOnboardingState } from "./hooks/useOnboardingState";
-import { ProgressIndicator } from "./components/shared/ProgressIndicator";
+import { PhaseProgress } from "./components/shared/PhaseProgress";
 import { OnboardingErrorBoundary } from "./components/ErrorBoundary";
 import { useTranslation } from "react-i18next";
 
@@ -10,7 +10,20 @@ import { WelcomeScreen } from "./components/screens/WelcomeScreen";
 import { PermissionsScreen } from "./components/screens/PermissionsScreen";
 import { DiscoverySourceScreen } from "./components/screens/DiscoverySourceScreen";
 import { ModelSelectionScreen } from "./components/screens/ModelSelectionScreen";
+import { SignInScreen } from "./components/screens/SignInScreen";
+import { DownloadScreen } from "./components/screens/DownloadScreen";
+import { MicTestScreen } from "./components/screens/MicTestScreen";
+import { ShortcutScreen } from "./components/screens/ShortcutScreen";
+import { SpokenLanguageScreen } from "./components/screens/SpokenLanguageScreen";
+import { DictationTestScreen } from "./components/screens/DictationTestScreen";
 import { CompletionScreen } from "./components/screens/CompletionScreen";
+
+// Screen-ordering helpers
+import {
+  getActiveOnboardingScreens,
+  phasesForScreens,
+  SCREEN_PHASE,
+} from "../../utils/onboarding-screens";
 
 // Types
 import {
@@ -45,7 +58,6 @@ export function App() {
   const [preferences, setPreferences] = useState<
     Partial<OnboardingPreferences>
   >({});
-  const [discoveryDetails, setDiscoveryDetails] = useState<string>("");
 
   // Hooks
   const { state, isLoading, savePreferences, completeOnboarding } =
@@ -63,48 +75,33 @@ export function App() {
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
   const utils = api.useUtils();
 
-  // Screen order - can be modified based on feature flags
-  const screenOrder: OnboardingScreen[] = [
-    OnboardingScreen.Welcome,
-    OnboardingScreen.Permissions,
-    OnboardingScreen.DiscoverySource,
-    OnboardingScreen.ModelSelection,
-    OnboardingScreen.Completion,
-  ];
+  // Effective model type: the in-progress selection, falling back to persisted
+  // state so a mid-flow resume still resolves the cloud-only steps. Defaults to
+  // Cloud (the longer, recommended path) until the user explicitly picks Local,
+  // so the progress bar's denominator stays stable across the model-selection
+  // boundary (it advances rather than regressing when Cloud is chosen).
+  const resolveModelType = (selected: ModelType | undefined) =>
+    selected ?? state?.selectedModelType ?? ModelType.Cloud;
+  const effectiveModelType = resolveModelType(preferences.selectedModelType);
 
-  // Get active screens (excluding skipped ones)
-  const getActiveScreens = useCallback(() => {
-    const skipped = new Set(skippedScreensQuery.data || []);
-    const flags = featureFlagsQuery.data;
+  // Helper so navigation can compute screens from a freshly-merged model type
+  // (React state from setPreferences is not visible synchronously).
+  const computeActiveScreens = useCallback(
+    (modelType: ModelType) =>
+      getActiveOnboardingScreens({
+        modelType,
+        flags: featureFlagsQuery.data,
+        skipped: (skippedScreensQuery.data as OnboardingScreen[]) || [],
+      }),
+    [featureFlagsQuery.data, skippedScreensQuery.data],
+  );
 
-    // Filter out skipped screens based on feature flags
-    return screenOrder.filter((screen) => {
-      if (skipped.has(screen)) return false;
-
-      // Check feature flags
-      if (flags) {
-        if (screen === OnboardingScreen.Welcome && flags.skipWelcome)
-          return false;
-        if (screen === OnboardingScreen.DiscoverySource && flags.skipDiscovery)
-          return false;
-        if (screen === OnboardingScreen.ModelSelection && flags.skipModels)
-          return false;
-      }
-
-      return true;
-    });
-  }, [skippedScreensQuery.data, featureFlagsQuery.data]);
-
-  // Get current screen index
-  const getCurrentScreenIndex = useCallback(() => {
-    const activeScreens = getActiveScreens();
-    return activeScreens.indexOf(currentScreen);
-  }, [currentScreen, getActiveScreens]);
-
-  // Get total number of screens
-  const getTotalScreens = useCallback(() => {
-    return getActiveScreens().length;
-  }, [getActiveScreens]);
+  // Get active screens. The cloud-only dictation steps are inserted only when
+  // the cloud model is (or has been) selected.
+  const getActiveScreens = useCallback(
+    () => computeActiveScreens(effectiveModelType),
+    [computeActiveScreens, effectiveModelType],
+  );
 
   // Check permissions and return fresh values (for internal use during initialization)
   const checkPermissionsWithResult = useCallback(async () => {
@@ -177,8 +174,13 @@ export function App() {
             setCurrentScreen(activeScreens[permissionsIndex + 1]);
           }
         } else {
-          // Resume from last visited screen
-          setCurrentScreen(state.lastVisitedScreen as OnboardingScreen);
+          // Resume from the last visited screen — but only if it's still part
+          // of the active flow (the model branch or feature flags may have
+          // changed since it was saved). Otherwise stay on Welcome.
+          const resumeScreen = state.lastVisitedScreen as OnboardingScreen;
+          if (getActiveScreens().includes(resumeScreen)) {
+            setCurrentScreen(resumeScreen);
+          }
         }
       }
     };
@@ -213,15 +215,21 @@ export function App() {
     }
   }, [currentScreen, getActiveScreens]);
 
-  // Navigate to next screen (T027 - Screen sequence logic)
-  const navigateNext = useCallback(() => {
-    const activeScreens = getActiveScreens();
-    const currentIndex = activeScreens.indexOf(currentScreen);
+  // The single advance implementation (T027 - Screen sequence logic).
+  const advance = useCallback(
+    (activeScreens: OnboardingScreen[]) => {
+      const currentIndex = activeScreens.indexOf(currentScreen);
+      if (currentIndex !== -1 && currentIndex < activeScreens.length - 1) {
+        setCurrentScreen(activeScreens[currentIndex + 1]);
+      }
+    },
+    [currentScreen],
+  );
 
-    if (currentIndex < activeScreens.length - 1) {
-      setCurrentScreen(activeScreens[currentIndex + 1]);
-    }
-  }, [currentScreen, getActiveScreens]);
+  const navigateNext = useCallback(
+    () => advance(getActiveScreens()),
+    [advance, getActiveScreens],
+  );
 
   // Save preferences and navigate
   const handleSaveAndContinue = (
@@ -231,8 +239,15 @@ export function App() {
     const updatedPreferences = { ...preferences, ...newPreferences };
     setPreferences(updatedPreferences);
 
-    // Navigate immediately for responsive UX
-    navigateNext();
+    // Navigate immediately for responsive UX. Compute from the freshly-merged
+    // model type — setPreferences is not visible to navigateNext synchronously,
+    // so selecting Cloud here must not be evaluated against the stale value
+    // (which would skip the cloud-only steps).
+    advance(
+      computeActiveScreens(
+        resolveModelType(updatedPreferences.selectedModelType),
+      ),
+    );
 
     // Save to backend in background (non-blocking)
     // Preferences are already in React state, final completion will persist everything
@@ -243,29 +258,33 @@ export function App() {
   };
 
   // Handle feature interests selection (telemetry tracked in backend)
-  const handleFeatureInterests = (interests: FeatureInterest[]) => {
-    handleSaveAndContinue({ featureInterests: interests });
+  const handleFeatureInterests = (
+    interests: FeatureInterest[],
+    details?: string,
+  ) => {
+    handleSaveAndContinue({
+      featureInterests: interests,
+      featureInterestsDetails: details,
+    });
   };
 
   // Handle discovery source selection (telemetry tracked in backend)
   const handleDiscoverySource = (source: DiscoverySource, details?: string) => {
-    setDiscoveryDetails(details || "");
     handleSaveAndContinue({
       discoverySource: source,
       discoveryDetails: details,
     });
   };
 
-  // Handle model selection (telemetry tracked in backend)
+  // Handle model selection (telemetry tracked in backend). The screen sends
+  // the full recommendation with `followed` resolved against the choice.
   const handleModelSelection = (
     modelType: ModelType,
-    recommendationFollowed: boolean,
+    recommendation?: OnboardingPreferences["modelRecommendation"],
   ) => {
     handleSaveAndContinue({
       selectedModelType: modelType,
-      modelRecommendation: state?.modelRecommendation
-        ? { ...state.modelRecommendation, followed: recommendationFollowed }
-        : undefined,
+      modelRecommendation: recommendation,
     });
   };
 
@@ -279,7 +298,7 @@ export function App() {
         skippedScreens: skippedScreensQuery.data || [],
         featureInterests: preferences.featureInterests,
         discoverySource: preferences.discoverySource,
-        selectedModelType: preferences.selectedModelType || ModelType.Cloud,
+        selectedModelType: effectiveModelType,
         modelRecommendation: preferences.modelRecommendation,
       };
 
@@ -336,7 +355,7 @@ export function App() {
             onNext={handleDiscoverySource}
             onBack={navigateBack}
             initialSource={preferences.discoverySource}
-            initialDetails={discoveryDetails}
+            initialDetails={preferences.discoveryDetails ?? ""}
           />
         );
 
@@ -349,12 +368,62 @@ export function App() {
           />
         );
 
+      case OnboardingScreen.SignIn:
+        return <SignInScreen onNext={navigateNext} onBack={navigateBack} />;
+
+      case OnboardingScreen.Download:
+        return <DownloadScreen onNext={navigateNext} onBack={navigateBack} />;
+
+      case OnboardingScreen.MicTest:
+        return <MicTestScreen onNext={navigateNext} onBack={navigateBack} />;
+
+      case OnboardingScreen.Shortcut:
+        return <ShortcutScreen onNext={navigateNext} onBack={navigateBack} />;
+
+      case OnboardingScreen.SpokenLanguage:
+        return (
+          <SpokenLanguageScreen onNext={navigateNext} onBack={navigateBack} />
+        );
+
+      // key forces a remount between the two try-it steps — they're the same
+      // component type at the same tree position, so without it React reuses
+      // the instance and the email transcript carries into the notes step.
+      case OnboardingScreen.DictationEmail:
+        return (
+          <DictationTestScreen
+            key="email"
+            variant="email"
+            onNext={navigateNext}
+            onBack={navigateBack}
+          />
+        );
+
+      case OnboardingScreen.DictationNotes:
+        return (
+          <DictationTestScreen
+            key="notes"
+            variant="notes"
+            onNext={navigateNext}
+            onBack={navigateBack}
+          />
+        );
+
+      case OnboardingScreen.DictationLocal:
+        return (
+          <DictationTestScreen
+            key="local"
+            variant="simple"
+            onNext={navigateNext}
+            onBack={navigateBack}
+          />
+        );
+
       case OnboardingScreen.Completion:
         return (
           <CompletionScreen
             onComplete={handleComplete}
             onBack={navigateBack}
-            preferences={preferences}
+            modelType={effectiveModelType}
           />
         );
 
@@ -363,21 +432,29 @@ export function App() {
     }
   };
 
+  // Phase-bar inputs: the active phase and how far the user is through it.
+  const activeScreens = getActiveScreens();
+  const phases = phasesForScreens(activeScreens);
+  const currentPhase = SCREEN_PHASE[currentScreen];
+  const screensInPhase = activeScreens.filter(
+    (screen) => SCREEN_PHASE[screen] === currentPhase,
+  );
+  const phaseFill =
+    screensInPhase.length === 0
+      ? 0
+      : (screensInPhase.indexOf(currentScreen) + 1) / screensInPhase.length;
+
   return (
     <OnboardingErrorBoundary>
-      <div className="h-screen w-screen bg-background text-foreground">
-        {/* Progress Indicator (T029) */}
-        <div className="fixed left-0 right-0 top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="mx-auto max-w-2xl px-8 pb-4 pt-6">
-            <ProgressIndicator
-              current={getCurrentScreenIndex() + 1}
-              total={getTotalScreens()}
-            />
-          </div>
-        </div>
-
-        {/* Screen Content */}
-        <div className="h-full overflow-auto pt-20">{renderScreen()}</div>
+      <div className="flex h-screen flex-col overflow-hidden bg-background text-sm text-foreground antialiased [background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-indigo-50)_0%,transparent_60%)] dark:[background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-neutral-800)_0%,transparent_60%)]">
+        {/* native titlebar drag region (traffic lights drawn by titleBarOverlay) */}
+        <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
+        <PhaseProgress
+          phases={phases}
+          currentPhase={currentPhase}
+          fill={phaseFill}
+        />
+        <div className="relative flex-1 overflow-hidden">{renderScreen()}</div>
       </div>
     </OnboardingErrorBoundary>
   );

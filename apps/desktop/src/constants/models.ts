@@ -342,3 +342,20 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     providerIcon: "/icons/models/local.svg",
   },
 ];
+
+/** Look up an available model's display name by id (e.g. for download UI). */
+export function getAvailableModelName(modelId: string): string | undefined {
+  return AVAILABLE_MODELS.find((model) => model.id === modelId)?.name;
+}
+
+/**
+ * The installed on-device speech model, if any. Single home for the "what
+ * counts as a local model" rule (currently the whisper-* family).
+ */
+export function findInstalledLocalModel<T extends { id?: string }>(
+  downloaded: Record<string, T> | undefined,
+): T | undefined {
+  return Object.values(downloaded ?? {}).find((model) =>
+    model.id?.startsWith("whisper-"),
+  );
+}

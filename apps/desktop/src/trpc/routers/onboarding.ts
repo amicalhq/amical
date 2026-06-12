@@ -3,6 +3,7 @@ import { systemPreferences, shell, app } from "electron";
 import { createRouter, procedure } from "../trpc";
 import {
   OnboardingPreferencesSchema,
+  OnboardingScreenSchema,
   OnboardingStateSchema,
   type ModelRecommendation,
   type OnboardingFeatureFlags,
@@ -208,6 +209,54 @@ export const onboardingRouter = createRouter({
         }
       },
     ),
+
+  /**
+   * Mark a dictation try-it step active/inactive. AppManager reacts: it lifts
+   * the global shortcut suppression so push-to-talk works exactly as in
+   * production, and brings up the real recording widget (the audio-capture
+   * surface). Output flows through the normal paste path into the onboarding
+   * window's focused field.
+   */
+  setDictationTryIt: procedure
+    .input(z.object({ active: z.boolean() }))
+    .mutation(({ input, ctx }): { success: boolean } => {
+      const { serviceManager } = ctx;
+      if (!serviceManager) {
+        throw new Error("ServiceManager not available");
+      }
+      const onboardingService = serviceManager.getOnboardingService();
+      if (!onboardingService) {
+        throw new Error("OnboardingService not available");
+      }
+
+      onboardingService.setTryItActive(input.active);
+      return { success: true };
+    }),
+
+  /**
+   * Record how a step with an optional action was exited (completed vs
+   * skipped) — the activation signal for e.g. the dictation try-its.
+   */
+  trackStepResult: procedure
+    .input(
+      z.object({
+        screen: OnboardingScreenSchema,
+        outcome: z.enum(["completed", "skipped"]),
+      }),
+    )
+    .mutation(({ input, ctx }): { success: boolean } => {
+      const { serviceManager } = ctx;
+      if (!serviceManager) {
+        throw new Error("ServiceManager not available");
+      }
+      const onboardingService = serviceManager.getOnboardingService();
+      if (!onboardingService) {
+        throw new Error("OnboardingService not available");
+      }
+
+      onboardingService.trackStepResult(input.screen, input.outcome);
+      return { success: true };
+    }),
 
   /**
    * Complete onboarding and save final state

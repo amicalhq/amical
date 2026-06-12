@@ -34,22 +34,19 @@
   },
   "onboarding": {
     "app": {
-      "loading": "載入引導程序中...",
+      "loading": "正在準備中…",
       "unknownScreen": "不明畫面"
     },
     "navigation": {
       "back": "返回",
       "continue": "繼續",
-      "complete": "完成"
-    },
-    "progress": {
-      "step": "步驟 {{current}} / {{total}}",
-      "percent": "{{percent}}%"
+      "done": "完成",
+      "skip": "略過"
     },
     "toast": {
       "loadStateFailed": "無法載入引導狀態",
       "savePreferencesFailed": "設定儲存失敗，請再試一次。",
-      "completed": "引導完成！",
+      "completed": "一切就緒！",
       "completeFailed": "無法完成引導，請再試一次。",
       "resetSuccess": "成功重設引導程序",
       "resetFailed": "無法重設引導程序"
@@ -59,83 +56,58 @@
       "description": "我們在引導過程中遇到錯誤，請再試一次。",
       "tryAgain": "重試",
       "restart": "重新啟動引導程序",
-      "supportNote": "如果問題持續發生，請聯絡支援團隊或查看說明文件。"
+      "supportNote": "如果問題持續發生，請聯絡支援團隊。"
     },
     "welcome": {
-      "title": "歡迎使用 Amical",
-      "subtitle": "選擇您感興趣的功能，打造個人化體驗",
-      "skip": "略過引導程序",
-      "comingSoon": "即將推出",
-      "selectAria": "選擇 {{feature}}",
-      "features": {
-        "contextualDictation": {
-          "title": "情境聽寫",
-          "description": "在任何應用程式中進行快速語音輸入，實現無縫的語音轉文字"
-        },
-        "noteTaking": {
-          "title": "筆記功能",
-          "description": "透過語音搭配智慧格式化功能捕捉想法與靈感"
-        },
-        "meetingTranscriptions": {
-          "title": "會議轉錄",
-          "description": "以高準確度記錄和轉錄會議與對話"
-        },
-        "voiceCommands": {
-          "title": "語音指令",
-          "description": "免持控制應用程式 - 以自然的語音指令執行任務"
-        }
-      },
+      "title": "您會如何使用 Amical？",
+      "subtitle": "請選擇所有符合的項目。",
       "toast": {
-        "maxFeatures": "您最多可以選擇 {{max}} 個功能",
-        "selectAtLeastOne": "請至少選擇一個功能以進行個人化"
+        "selectAtLeastOne": "請至少選擇一項才能繼續"
       },
-      "selection": {
-        "none": "選擇至少一個功能",
-        "selected": "已選擇 {{count}} 個"
+      "useCases": {
+        "draftingEmails": "撰寫電子郵件",
+        "sendingMessages": "傳送訊息",
+        "promptingAi": "輸入 AI 提示詞",
+        "codingWithAi": "與 AI 一起寫程式",
+        "writingDocuments": "撰寫文件",
+        "takingNotes": "做筆記",
+        "postsComments": "貼文與留言",
+        "somethingElse": "其他用途"
       },
-      "note": "您的選擇有助於簡化設定 - 所有功能日後都能隨時使用。"
+      "somethingElsePlaceholder": "告訴我們更多…"
     },
     "permissions": {
-      "title": "權限設定",
-      "subtitle": "Amical 需要一些權限才能正常運作",
-      "waiting": "正在等待授權...",
-      "polling": "正在檢查權限變更...",
-      "allGranted": {
-        "title": "已授予所有權限",
-        "description": "一切準備就緒！您可以繼續下一步。"
-      },
+      "title": "啟用核心功能",
+      "subtitle": "Amical 需要幾項權限才能聆聽與輸入文字。",
       "status": {
-        "granted": "已授權",
-        "denied": "已拒絕",
-        "notRequested": "尚未請求",
-        "required": "需要權限"
+        "granted": "已授權"
       },
       "actions": {
         "request": "要求權限",
-        "requesting": "請求中...",
+        "requesting": "請求中…",
         "openSettings": "開啟設定"
       },
       "microphone": {
-        "title": "麥克風存取",
-        "description": "錄製和轉錄音訊需要此權限",
-        "deniedHelp": "請在系統設定中允許麥克風存取"
+        "title": "麥克風",
+        "description": "讓 Amical 能接收您的聽寫語音"
       },
       "accessibility": {
-        "title": "輔助使用存取",
-        "description": "貼上轉錄內容和全域鍵盤捷徑需要此權限（僅限 macOS）",
-        "deniedHelp": "請在系統設定的輔助使用中新增 Amical"
+        "title": "輔助使用",
+        "description": "讓 Amical 能將文字貼到任何應用程式"
       }
     },
     "discovery": {
-      "title": "您是怎麼發現 Amical 的？",
-      "subtitle": "這有助於我們了解使用者的來源",
+      "title": "您是如何得知我們的？",
+      "subtitle": "這能幫助 Amical 接觸更多像您一樣的使用者。",
       "sources": {
-        "searchEngine": "搜尋引擎 (Google、Bing 等)",
-        "socialMedia": "社群媒體 (Twitter、LinkedIn 等)",
+        "searchEngine": "搜尋引擎（Google、Bing 等）",
+        "reddit": "Reddit",
+        "xTwitter": "X / Twitter",
+        "socialMedia": "社群媒體（Instagram、LinkedIn 等）",
+        "aiAssistant": "AI 聊天（ChatGPT、Claude 等）",
         "wordOfMouth": "朋友或同事推薦",
-        "blogArticle": "部落格文章或新聞",
+        "blogArticle": "部落格或文章",
         "github": "GitHub",
-        "aiAssistant": "AI 助手 (ChatGPT、Claude 等)",
         "other": "其他"
       },
       "toast": {
@@ -143,108 +115,136 @@
         "otherDetailsRequired": "請為「其他」提供詳細資訊"
       },
       "other": {
-        "label": "請說明",
-        "placeholder": "告訴我們更多...",
+        "placeholder": "告訴我們更多…",
         "charCount": "{{count}}/{{max}} 個字元"
       }
     },
     "modelSelection": {
-      "title": "選擇您的 AI 模型",
-      "subtitle": "選擇希望 Amical 如何處理您的音訊",
-      "completeSetupToContinue": "完成設定以繼續",
       "recommended": "推薦",
-      "prosLabel": "優點：",
-      "consLabel": "缺點：",
-      "note": "您可以日後在設定中更改您的模型，一切皆可調整。",
-      "recommendation": {
-        "label": "推薦：",
-        "text": "根據您的系統規格，我們推薦"
-      },
-      "toast": {
-        "selectModel": "請選擇模型類型",
-        "completeSetup": "請完成設定以繼續"
-      },
-      "models": {
+      "localUnsupported": "需要 macOS 15 或更新版本",
+      "cards": {
         "cloud": {
-          "title": "Amical 雲端模型",
-          "subtitle": "快速、高準確度且免費 - 無需設定",
-          "description": "如果您希望獲得最佳準確率，或者您的設備無法運行本機模型，這是理想的選擇。\n安全的處理過程；音訊永遠不會被儲存。",
-          "pros": {
-            "free": "免費",
-            "fast": "快速",
-            "accurate": "更高準確度",
-            "noSetup": "無需設定"
-          },
-          "cons": {
-            "internetLogin": "需要穩定的網路及登入"
-          }
+          "name": "雲端",
+          "tag": "完整的 Amical 體驗",
+          "bullets": [
+            "最準確的轉錄",
+            "內建 AI 格式化",
+            "無需下載或設定"
+          ],
+          "caveat": "需要網路連線和免費帳戶"
         },
         "local": {
-          "title": "本機模型",
-          "subtitle": "私密、離線且免費 - 完全在您的設備上運行。",
-          "description": "專為注重隱私及設備效能佳的使用者所設計。不需登入即可使用。",
-          "pros": {
-            "privacy": "完全隱私",
-            "offline": "可離線使用"
-          },
-          "cons": {
-            "resources": "需佔用較多設備資源及效能"
-          }
+          "name": "本機",
+          "tag": "私密且離線",
+          "bullets": [
+            "完全在您的裝置上運作",
+            "無需帳戶"
+          ],
+          "caveats": [
+            "速度與準確度取決於您的硬體",
+            "一次性下載"
+          ],
+          "caveatLead": "AI 格式化需要額外設定"
         }
-      }
+      },
+      "title": "選擇 Amical 的運作方式",
+      "subtitle": "大多數人從雲端開始，您隨時可以在設定中切換。"
     },
-    "modelSetup": {
+    "signIn": {
+      "title": "登入 Amical",
+      "subtitle": "使用 Amical Cloud 需要帳戶。",
+      "button": "登入",
+      "fine": "登入頁面會在您的瀏覽器中開啟 · 含免費方案 · 無需信用卡",
+      "waiting": "正在等待您在瀏覽器中完成登入…",
+      "verdict": "已登入",
       "toast": {
         "loginInBrowser": "請在您的瀏覽器中完成登入",
         "authenticated": "驗證成功！"
       },
-      "actions": {
-        "cancel": "取消",
-        "signIn": "登入",
-        "retry": "重試"
+      "error": {
+        "loginStartFailed": "登入開啟失敗，請再試一次。"
+      }
+    },
+    "download": {
+      "title": "正在準備您的模型",
+      "subtitle": "Amical 正在下載語音模型。只需下載一次，之後聽寫即可完全離線運作。",
+      "modelTag": "快速、準確、在裝置上運作",
+      "ready": "模型已就緒",
+      "alreadyInstalled": "已安裝",
+      "error": "模型下載失敗：{{message}}",
+      "retry": "重試"
+    },
+    "micTest": {
+      "title": "測試您的麥克風",
+      "subtitle": "請用平常的音量說幾句話。",
+      "hint": "您有接耳機嗎？音量條會反映目前選取的麥克風。",
+      "change": "更換麥克風",
+      "caption": "音量條亮起即表示麥克風正常"
+    },
+    "shortcut": {
+      "title": "設定您的聽寫快捷鍵",
+      "subtitle": "按住您的快捷鍵，確認它能正常運作。",
+      "changeHotkey": "更改快捷鍵",
+      "hint": "您之後可以在設定中新增更多快捷鍵。",
+      "noShortcut": "尚未設定快捷鍵。點按「更改快捷鍵」來選擇。",
+      "caption": "按鍵亮起即表示快捷鍵正常"
+    },
+    "spokenLanguage": {
+      "title": "您會說哪些語言？",
+      "subtitle": "為了最佳準確度，請新增您常用來聽寫的語言。",
+      "change": "更改語言",
+      "hint": "隨時都能用其中任一語言聽寫，無需切換。",
+      "autoDetect": "自動偵測",
+      "none": "尚未選擇語言"
+    },
+    "dictationTest": {
+      "email": {
+        "title": "聽寫您的第一則訊息",
+        "subtitle": "按住快捷鍵，自然地說話，說完後放開。",
+        "tip": "就像跟同事說話一樣自然。標點符號交給 Amical。",
+        "cta": "按住 {{keys}} 說話",
+        "mockHeader": "電子郵件",
+        "to": "收件人：John Doe",
+        "subject": "主旨：快速確認",
+        "ghost": "嗨 John，嗯，只是想確認一下…你，呃，有機會看一下那份提案嗎？不急，看完跟我說一聲就好。"
       },
-      "cloud": {
-        "title": "需要登入",
-        "description": "雲端轉錄功能需要驗證身分才能繼續。",
-        "error": {
-          "loginStartFailed": "登入開啟失敗，請再試一次。"
-        }
+      "notes": {
+        "title": "試試小聲說話",
+        "subtitle": "按住快捷鍵小聲說話，Amical 仍能聽清每個字。",
+        "tip": "適合開放式辦公室、深夜，或任何您想保持安靜的場合。",
+        "cta": "按住 {{keys}} 小聲說",
+        "mockHeader": "筆記",
+        "ghost": "嗯，我需要買這些東西…水、牛奶、麵包、吐司。",
+        "listTitle": "購物清單"
       },
-      "local": {
-        "downloadingTitle": "正在下載本機模型",
-        "downloadingDescription": "正在為私密、離線的轉錄進行本機模型設定",
-        "readyTitle": "本機模型已準備就緒",
-        "readyDescription": "隨時可開始進行私密、離線的轉錄",
-        "alreadyInstalled": "模型已安裝",
-        "downloadComplete": "下載完成",
-        "using": "正在使用：{{model}}",
-        "error": {
-          "downloadFailed": "無法下載模型：{{message}}"
-        }
+      "simple": {
+        "title": "試試您的第一次聽寫",
+        "subtitle": "按住快捷鍵，自然地說話，說完後放開。",
+        "tip": "您之後可以在設定中連接 AI 模型，或切換到 Amical Cloud，來啟用 AI 格式化。",
+        "cta": "按住 {{keys}} 說話",
+        "mockHeader": "筆記",
+        "ghost": "回家路上買水、牛奶、麵包和吐司。"
       }
     },
     "completion": {
-      "title": "設定完成！",
+      "title": "一切就緒",
+      "subtitle": "在任何地方按住快捷鍵即可開始。這些都可以在設定中更改。",
       "start": "開始使用 Amical",
-      "quickConfig": {
-        "title": "快速設定"
-      },
-      "community": {
-        "discordAlt": "Discord",
-        "title": "加入我們的社群",
-        "description": "尋求協助、分享回饋，並與其他使用者交流",
-        "joinDiscord": "加入 Discord"
-      },
-      "next": {
-        "title": "一切準備就緒！",
-        "items": {
-          "pushToTalk": "使用「按住說話」快捷鍵開始轉錄",
-          "widget": "點擊懸浮小工具以便快速存取",
-          "settings": "探索設定頁面以獲得更多自訂選項"
-        }
-      },
-      "info": "所有設定隨時都可以在偏好設定中更改。",
-      "infoLocalModel": "您選擇的本機模型已準備好離線使用。"
+      "summary": {
+        "speechModel": "語音模型",
+        "shortcut": "聽寫快捷鍵",
+        "microphone": "麥克風",
+        "cloudModel": "Amical Cloud",
+        "localModel": "{{model}}",
+        "shortcutValue": "按住 {{key}}"
+      }
+    },
+    "phases": {
+      "getStarted": "開始",
+      "setUp": "準備",
+      "configure": "調整",
+      "tryIt": "試用",
+      "done": "完成"
     }
   },
   "widget": {
@@ -333,6 +333,10 @@
         "localTranscriptionFailed": {
           "title": "本機轉錄失敗",
           "description": "Whisper 音訊處理失敗"
+        },
+        "localTranscriptionUnsupported": {
+          "title": "本機轉錄無法使用",
+          "description": "裝置端模型需要 macOS 15 或更新版本。請切換至 Amical Cloud。"
         }
       }
     }
@@ -674,22 +678,22 @@
         "label": "格式化",
         "badge": "Alpha 測試",
         "description": "為您的轉錄內容加入標點符號與結構。",
-        "cloudOptionLabel": "Amical 雲端 (Amical)",
-        "disabledTooltip": "同步語言模型或選擇 Amical 雲端轉錄以啟用格式化。",
+        "cloudOptionLabel": "Amical Cloud (Amical)",
+        "disabledTooltip": "同步語言模型或選擇 Amical Cloud 轉錄以啟用格式化。",
         "disabledReason": {
-          "cloudAndSignIn": "需要 Amical 雲端轉錄並登入",
-          "cloud": "需要 Amical 雲端轉錄",
+          "cloudAndSignIn": "需要 Amical Cloud 轉錄並登入",
+          "cloud": "需要 Amical Cloud 轉錄",
           "signIn": "需要登入"
         },
         "manageLanguageModels": "管理語言模型",
         "modelLabel": "格式化模型",
         "modelDescription": "選擇用於格式化轉錄內容的模型。",
         "modelPlaceholder": "選擇一個模型...",
-        "requiresCloudSpeech": "需要 Amical 雲端轉錄。",
+        "requiresCloudSpeech": "需要 Amical Cloud 轉錄。",
         "switchSpeechModel": "切換語音模型",
-        "signInCloud": "登入以使用 Amical 雲端格式化。",
+        "signInCloud": "登入以使用 Amical Cloud 格式化。",
         "signIn": "登入",
-        "cloudReady": "正在使用 Amical 雲端格式化。",
+        "cloudReady": "正在使用 Amical Cloud 格式化。",
         "noLanguageModels": "缺少可用的語言模型，無法進行格式化。",
         "syncLanguageModels": "同步語言模型",
         "toast": {
@@ -992,6 +996,7 @@
       "speech": {
         "loading": "載入模型中...",
         "availableModels": "可用的模型",
+        "localUnsupported": "需要 macOS 15 或更新版本",
         "table": {
           "model": "模型",
           "features": "特性",
@@ -1019,7 +1024,7 @@
         },
         "loginDialog": {
           "title": "需要登入",
-          "description": "如要體驗 Amical 雲端轉錄，需使用您的 Amical 帳號登入，才能啟用高準確度的轉錄功能。",
+          "description": "如要體驗 Amical Cloud 轉錄，需使用您的 Amical 帳號登入，才能啟用高準確度的轉錄功能。",
           "browserNotice": "點擊「登入」後，系統會將您引導至瀏覽器以完成登入程序。",
           "cloudBenefit": "快速、高準確度的雲端轉錄",
           "cancel": "取消",
@@ -1030,7 +1035,7 @@
           "downloadStartFailed": "無法開始下載",
           "downloadCancelFailed": "無法取消下載",
           "deleteFailed": "無法刪除模型",
-          "cloudSelected": "已選取 Amical 雲端模型並啟用了雲端格式化。",
+          "cloudSelected": "已選取 Amical Cloud 模型並啟用了雲端格式化。",
           "selectFailed": "選擇模型時發生錯誤",
           "loginInBrowser": "請在您的網頁中完成登入程序",
           "loginStartFailed": "啟動登入程序時發生錯誤",

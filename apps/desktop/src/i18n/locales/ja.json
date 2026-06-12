@@ -34,22 +34,19 @@
   },
   "onboarding": {
     "app": {
-      "loading": "オンボーディングを読み込み中...",
+      "loading": "準備しています…",
       "unknownScreen": "不明な画面"
     },
     "navigation": {
       "back": "戻る",
       "continue": "続ける",
-      "complete": "完了"
-    },
-    "progress": {
-      "step": "ステップ {{current}} / {{total}}",
-      "percent": "{{percent}}%"
+      "done": "完了",
+      "skip": "スキップ"
     },
     "toast": {
       "loadStateFailed": "オンボーディングの状態の読み込みに失敗しました",
       "savePreferencesFailed": "設定の保存に失敗しました。もう一度お試しください。",
-      "completed": "オンボーディング完了！",
+      "completed": "準備完了！",
       "completeFailed": "オンボーディングの完了に失敗しました。もう一度お試しください。",
       "resetSuccess": "オンボーディングをリセットしました",
       "resetFailed": "オンボーディングのリセットに失敗しました"
@@ -59,83 +56,58 @@
       "description": "オンボーディング中にエラーが発生しました。もう一度お試しください。",
       "tryAgain": "再試行",
       "restart": "オンボーディングをやり直す",
-      "supportNote": "この問題が続く場合は、サポートに連絡するか、ドキュメントを確認してください。"
+      "supportNote": "繰り返し発生する場合は、サポートにお問い合わせください。"
     },
     "welcome": {
-      "title": "Amicalへようこそ",
-      "subtitle": "興味のある機能を選択して、体験をカスタマイズしましょう",
-      "skip": "オンボーディングをスキップ",
-      "comingSoon": "近日公開",
-      "selectAria": "{{feature}}を選択",
-      "features": {
-        "contextualDictation": {
-          "title": "コンテキスト音声入力",
-          "description": "あらゆるアプリケーションでシームレスな音声テキスト変換"
-        },
-        "noteTaking": {
-          "title": "ノート",
-          "description": "音声でアイデアや考えをスマートなフォーマットで記録"
-        },
-        "meetingTranscriptions": {
-          "title": "会議の文字起こし",
-          "description": "会議や会話を高精度で録音・文字起こし"
-        },
-        "voiceCommands": {
-          "title": "音声コマンド",
-          "description": "ハンズフリーでアプリを操作 - 自然な音声でタスクを実行"
-        }
-      },
+      "title": "Amicalをどのように使いますか？",
+      "subtitle": "当てはまるものをすべて選択してください。",
       "toast": {
-        "maxFeatures": "最大{{max}}個の機能を選択できます",
-        "selectAtLeastOne": "体験をカスタマイズするために、少なくとも1つの機能を選択してください"
+        "selectAtLeastOne": "続行するには少なくとも1つ選択してください"
       },
-      "selection": {
-        "none": "少なくとも1つの機能を選択してください",
-        "selected": "{{count}}個選択中"
+      "useCases": {
+        "draftingEmails": "メールの作成",
+        "sendingMessages": "メッセージの送信",
+        "promptingAi": "AIへのプロンプト入力",
+        "codingWithAi": "AIとのコーディング",
+        "writingDocuments": "文書の作成",
+        "takingNotes": "メモを取る",
+        "postsComments": "投稿やコメント",
+        "somethingElse": "その他"
       },
-      "note": "選択内容はセットアップのカスタマイズに使用されます。すべての機能はいつでも利用できます。"
+      "somethingElsePlaceholder": "詳しく教えてください…"
     },
     "permissions": {
-      "title": "権限の設定",
-      "subtitle": "Amicalが正しく動作するためにいくつかの権限が必要です",
-      "waiting": "権限を待っています...",
-      "polling": "権限の変更を確認中...",
-      "allGranted": {
-        "title": "すべての権限が付与されました",
-        "description": "準備完了です！次のステップに進めます。"
-      },
+      "title": "主要機能を有効にする",
+      "subtitle": "音声を聞き取って入力するために、いくつかの権限が必要です。",
       "status": {
-        "granted": "権限が付与されました",
-        "denied": "権限が拒否されました",
-        "notRequested": "権限がまだリクエストされていません",
-        "required": "権限が必要です"
+        "granted": "権限が付与されました"
       },
       "actions": {
         "request": "権限をリクエスト",
-        "requesting": "リクエスト中...",
+        "requesting": "リクエスト中…",
         "openSettings": "設定を開く"
       },
       "microphone": {
-        "title": "マイクへのアクセス",
-        "description": "オーディオの録音と文字起こしに必要です",
-        "deniedHelp": "システム設定でマイクへのアクセスを許可してください"
+        "title": "マイク",
+        "description": "Amicalがディクテーションを聞き取るために必要です"
       },
       "accessibility": {
-        "title": "アクセシビリティへのアクセス",
-        "description": "文字起こしの貼り付けとグローバルキーボードショートカットに必要です（macOSのみ）",
-        "deniedHelp": "システム設定のアクセシビリティにAmicalを追加してください"
+        "title": "アクセシビリティ",
+        "description": "Amicalがどのアプリにもテキストを貼り付けられるようにするために必要です"
       }
     },
     "discovery": {
       "title": "Amicalをどこで知りましたか？",
-      "subtitle": "ユーザーの方々がどこから来ているか理解するのに役立ちます",
+      "subtitle": "あなたのような方にAmicalを届けるための参考になります。",
       "sources": {
         "searchEngine": "検索エンジン（Google、Bingなど）",
-        "socialMedia": "ソーシャルメディア（Twitter、LinkedInなど）",
+        "reddit": "Reddit",
+        "xTwitter": "X / Twitter",
+        "socialMedia": "SNS（Instagram、LinkedInなど）",
+        "aiAssistant": "AIチャット（ChatGPT、Claudeなど）",
         "wordOfMouth": "友人や同僚からの紹介",
-        "blogArticle": "ブログ記事",
+        "blogArticle": "ブログや記事",
         "github": "GitHub",
-        "aiAssistant": "AIアシスタント（ChatGPT、Claudeなど）",
         "other": "その他"
       },
       "toast": {
@@ -143,108 +115,136 @@
         "otherDetailsRequired": "「その他」の詳細を入力してください"
       },
       "other": {
-        "label": "詳細を入力してください",
-        "placeholder": "詳しく教えてください...",
+        "placeholder": "詳しく教えてください…",
         "charCount": "{{count}}/{{max}}文字"
       }
     },
     "modelSelection": {
-      "title": "AIモデルを選択",
-      "subtitle": "Amicalがオーディオを処理する方法を選択してください",
-      "completeSetupToContinue": "続行するにはセットアップを完了してください",
       "recommended": "おすすめ",
-      "prosLabel": "メリット：",
-      "consLabel": "デメリット：",
-      "note": "モデルは後から設定で変更できます。",
-      "recommendation": {
-        "label": "おすすめ：",
-        "text": "お使いのシステムのスペックに基づき、おすすめは"
-      },
-      "toast": {
-        "selectModel": "モデルタイプを選択してください",
-        "completeSetup": "続行するにはセットアップを完了してください"
-      },
-      "models": {
+      "localUnsupported": "macOS 15以降が必要です",
+      "cards": {
         "cloud": {
-          "title": "Amical Cloud",
-          "subtitle": "高速・高精度・無料 - セットアップ不要",
-          "description": "最高の精度が必要な場合や、デバイスでローカルモデルを実行できない場合に最適です。\\n安全な処理で、音声データは保存されません。",
-          "pros": {
-            "free": "無料",
-            "fast": "高速",
-            "accurate": "より高精度",
-            "noSetup": "セットアップ不要"
-          },
-          "cons": {
-            "internetLogin": "インターネット接続とログインが必要"
-          }
+          "name": "クラウド",
+          "tag": "Amicalのフル体験",
+          "bullets": [
+            "最も精度の高い文字起こし",
+            "AIフォーマット機能を内蔵",
+            "ダウンロードや設定は不要"
+          ],
+          "caveat": "インターネット接続と無料アカウントが必要"
         },
         "local": {
-          "title": "ローカルモデル",
-          "subtitle": "プライベート・オフライン・無料 - デバイス上で完全に動作",
-          "description": "プライバシーを重視する方や、高性能なハードウェアをお持ちの方に最適です。ログイン不要。",
-          "pros": {
-            "privacy": "完全なプライバシー",
-            "offline": "オフラインで動作"
-          },
-          "cons": {
-            "resources": "デバイスのリソースを使用"
-          }
+          "name": "ローカル",
+          "tag": "プライベート＆オフライン",
+          "bullets": [
+            "すべてデバイス上で動作",
+            "アカウント不要"
+          ],
+          "caveats": [
+            "速度と精度はハードウェアに依存します",
+            "初回のみダウンロードが必要"
+          ],
+          "caveatLead": "AIフォーマットには追加設定が必要"
         }
-      }
+      },
+      "title": "Amicalの動作方法を選択",
+      "subtitle": "ほとんどの方はクラウドから始めます。設定でいつでも切り替えられます。"
     },
-    "modelSetup": {
+    "signIn": {
+      "title": "Amicalにログイン",
+      "subtitle": "Amical Cloudの利用にはアカウントが必要です。",
+      "button": "ログイン",
+      "fine": "ログイン画面はブラウザで開きます · 無料プランあり · カード登録不要",
+      "waiting": "ブラウザでのログイン完了を待っています…",
+      "verdict": "ログイン済み",
       "toast": {
         "loginInBrowser": "ブラウザでログインを完了してください",
         "authenticated": "認証に成功しました！"
       },
-      "actions": {
-        "cancel": "キャンセル",
-        "signIn": "サインイン",
-        "retry": "再試行"
+      "error": {
+        "loginStartFailed": "ログインを開けませんでした。もう一度お試しください。"
+      }
+    },
+    "download": {
+      "title": "モデルを準備しています",
+      "subtitle": "Amicalが音声モデルをダウンロードしています。これは初回のみで、以降のディクテーションは完全にオフラインで動作します。",
+      "modelTag": "高速・高精度・オンデバイス動作",
+      "ready": "モデルの準備完了",
+      "alreadyInstalled": "インストール済み",
+      "error": "モデルのダウンロードに失敗しました: {{message}}",
+      "retry": "再試行"
+    },
+    "micTest": {
+      "title": "マイクをテスト",
+      "subtitle": "普段の声の大きさで少し話してみてください。",
+      "hint": "ヘッドホンを接続していますか？バーは選択中のマイクに反応します。",
+      "change": "マイクを変更",
+      "caption": "バーが光ればマイクは正常です"
+    },
+    "shortcut": {
+      "title": "ディクテーションのショートカットを設定",
+      "subtitle": "ショートカットを長押しして、動作を確認してください。",
+      "changeHotkey": "ショートカットを変更",
+      "hint": "ショートカットは後から設定で追加できます。",
+      "noShortcut": "ショートカットが未設定です。「ショートカットを変更」をクリックして選択してください。",
+      "caption": "キーが光ればショートカットは正常です"
+    },
+    "spokenLanguage": {
+      "title": "話す言語を教えてください",
+      "subtitle": "精度を高めるため、よくディクテーションで使う言語を追加してください。",
+      "change": "言語を変更",
+      "hint": "切り替え不要で、いつでもどの言語でもディクテーションできます。",
+      "autoDetect": "自動検出",
+      "none": "言語が未選択です"
+    },
+    "dictationTest": {
+      "email": {
+        "title": "最初のメッセージをディクテーションで入力",
+        "subtitle": "ショートカットを押しながら自然に話し、終わったら指を離してください。",
+        "tip": "同僚に話しかけるように話してください。句読点はAmicalにお任せください。",
+        "cta": "{{keys}} を押しながら話す",
+        "mockHeader": "メール",
+        "to": "宛先: John Doe",
+        "subject": "件名: ちょっと確認",
+        "ghost": "ジョンさん、えーと、ちょっと確認なんですが…あの、提案書って見てもらえましたか？急ぎじゃないので、見たら教えてください。"
       },
-      "cloud": {
-        "title": "サインインが必要です",
-        "description": "クラウド文字起こしを利用するには認証が必要です。",
-        "error": {
-          "loginStartFailed": "ログインを開けませんでした。もう一度お試しください。"
-        }
+      "notes": {
+        "title": "ささやき声を試す",
+        "subtitle": "ショートカットを押しながらささやいてみてください。それでもAmicalは一語一句聞き取ります。",
+        "tip": "オープンオフィスや夜遅く、静かにしたい場所にぴったりです。",
+        "cta": "{{keys}} を押しながらささやく",
+        "mockHeader": "メモ",
+        "ghost": "えーと、買うものは…水、牛乳、パン、トースト。",
+        "listTitle": "買い物リスト"
       },
-      "local": {
-        "downloadingTitle": "ローカルモデルをダウンロード中",
-        "downloadingDescription": "プライベートなオフライン文字起こし用のローカルモデルをセットアップ中",
-        "readyTitle": "ローカルモデル準備完了",
-        "readyDescription": "プライベートなオフライン文字起こしの準備ができました。",
-        "alreadyInstalled": "モデルはインストール済みです",
-        "downloadComplete": "ダウンロード完了",
-        "using": "使用中: {{model}}",
-        "error": {
-          "downloadFailed": "モデルのダウンロードに失敗しました: {{message}}"
-        }
+      "simple": {
+        "title": "はじめてのディクテーション",
+        "subtitle": "ショートカットを押しながら自然に話し、終わったら指を離してください。",
+        "tip": "AIフォーマットは、後で設定からAIモデルを接続するか、Amical Cloudに切り替えることで利用できます。",
+        "cta": "{{keys}} を押しながら話す",
+        "mockHeader": "メモ",
+        "ghost": "帰りに水、牛乳、パン、トーストを買う。"
       }
     },
     "completion": {
-      "title": "セットアップ完了！",
+      "title": "準備完了",
+      "subtitle": "どこでもショートカットを押しながら話せば始められます。これらはすべて設定で変更できます。",
       "start": "Amicalを使い始める",
-      "quickConfig": {
-        "title": "クイック設定"
-      },
-      "community": {
-        "discordAlt": "Discord",
-        "title": "コミュニティに参加",
-        "description": "ヘルプやフィードバック、他のユーザーとの交流",
-        "joinDiscord": "Discordに参加"
-      },
-      "next": {
-        "title": "準備完了！",
-        "items": {
-          "pushToTalk": "プッシュトゥトークのショートカットで文字起こしを開始",
-          "widget": "フローティングウィジェットをクリックしてクイックアクセスできます",
-          "settings": "設定でさらにカスタマイズオプションを確認できます"
-        }
-      },
-      "info": "すべての設定はアプリケーションの環境設定からいつでも変更できます。",
-      "infoLocalModel": "選択したローカルモデルはオフラインで使用できます。"
+      "summary": {
+        "speechModel": "音声モデル",
+        "shortcut": "ディクテーションショートカット",
+        "microphone": "マイク",
+        "cloudModel": "Amical Cloud",
+        "localModel": "{{model}}",
+        "shortcutValue": "{{key}} を長押し"
+      }
+    },
+    "phases": {
+      "getStarted": "はじめに",
+      "setUp": "準備",
+      "configure": "設定",
+      "tryIt": "試してみる",
+      "done": "完了"
     }
   },
   "widget": {
@@ -333,6 +333,10 @@
         "localTranscriptionFailed": {
           "title": "ローカル文字起こしに失敗しました",
           "description": "Whisperの音声処理に失敗しました"
+        },
+        "localTranscriptionUnsupported": {
+          "title": "ローカル文字起こしは利用できません",
+          "description": "オンデバイスモデルにはmacOS 15以降が必要です。Amical Cloudに切り替えてください。"
         }
       }
     }
@@ -992,6 +996,7 @@
       "speech": {
         "loading": "モデルを読み込み中...",
         "availableModels": "利用可能なモデル",
+        "localUnsupported": "macOS 15以降が必要です",
         "table": {
           "model": "モデル",
           "features": "機能",

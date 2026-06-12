@@ -1,6 +1,12 @@
 body {
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    "Inter Variable",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
     sans-serif;
   margin: auto;
   width: 100%;
@@ -10,6 +16,7 @@ body {
 
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/inter";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -175,6 +182,21 @@ html.vibrancy [data-slot="sidebar-inner"] {
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* App-wide font: Inter (bundled via @fontsource-variable, offline-safe) */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  /* Onboarding screen-entrance rise (keyframes can't be expressed as plain
+     utilities, so the animation lives here in the theme). */
+  --animate-ob-rise: ob-rise 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  @keyframes ob-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

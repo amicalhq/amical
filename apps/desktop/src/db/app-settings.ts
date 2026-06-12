@@ -17,6 +17,7 @@
  * - Migrations run automatically when loading settings with an older version
  */
 
+import { app } from "electron";
 import { eq } from "drizzle-orm";
 import { db } from ".";
 import {
@@ -24,6 +25,7 @@ import {
   type NewAppSettings,
   type AppSettingsData,
 } from "./schema";
+import { dictationLanguageForLocale } from "../constants/languages";
 import { isMacOS } from "../utils/platform";
 import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../utils/keycodes";
 import {
@@ -66,8 +68,27 @@ const getDefaultShortcuts = () => {
   };
 };
 
-// Default settings
-const defaultSettings: AppSettingsData = {
+// New installs get concrete dictation languages rather than auto-detect —
+// accuracy is better with a language constraint, and the onboarding language
+// step lets users adjust. English plus the OS language, when whisper supports
+// it and it isn't English.
+const defaultDictationSettings = (): AppSettingsData["dictation"] => {
+  try {
+    const locale =
+      app.getPreferredSystemLanguages()[0] ?? app.getSystemLocale();
+    const system = locale ? dictationLanguageForLocale(locale) : undefined;
+    if (system && system !== "en") {
+      return { autoDetectEnabled: false, languages: ["en", system] };
+    }
+  } catch {
+    // Locale APIs unavailable (e.g. before app ready); English-only is fine.
+  }
+  return { autoDetectEnabled: false, languages: ["en"] };
+};
+
+// Default settings. Built per call rather than cached at module load — the
+// dictation defaults read the OS language, which needs the app to be ready.
+const buildDefaultSettings = (): AppSettingsData => ({
   formatterConfig: {
     enabled: false,
   },
@@ -93,10 +114,7 @@ const defaultSettings: AppSettingsData = {
     enablePunctuation: true,
     enableTimestamps: false,
   },
-  dictation: {
-    autoDetectEnabled: true,
-    languages: ["en"],
-  },
+  dictation: defaultDictationSettings(),
   recording: {
     defaultFormat: "wav",
     sampleRate: 16000,
@@ -110,7 +128,7 @@ const defaultSettings: AppSettingsData = {
     defaultLanguageModel: "",
     defaultEmbeddingModel: "",
   },
-};
+});
 
 // Get all app settings (with automatic migration if needed)
 export async function getAppSettings(): Promise<AppSettingsData> {
@@ -121,8 +139,7 @@ export async function getAppSettings(): Promise<AppSettingsData> {
 
   if (result.length === 0) {
     // Create default settings if none exist
-    await createDefaultSettings();
-    return defaultSettings;
+    return await createDefaultSettings();
   }
 
   const record = result[0];
@@ -217,23 +234,22 @@ export async function updateSettingsSection<K extends keyof AppSettingsData>(
 
 // Reset settings to defaults
 export async function resetAppSettings(): Promise<AppSettingsData> {
-  return await replaceAppSettings(defaultSettings);
+  return await replaceAppSettings(buildDefaultSettings());
 }
 
 // Create default settings (internal helper)
-async function createDefaultSettings(): Promise<void> {
+async function createDefaultSettings(): Promise<AppSettingsData> {
   const now = new Date();
+  const data = buildDefaultSettings();
 
   const newSettings: NewAppSettings = {
     id: SETTINGS_ID,
-    data: defaultSettings,
+    data,
     version: CURRENT_SETTINGS_VERSION,
     createdAt: now,
     updatedAt: now,
   };
 
   await db.insert(appSettings).values(newSettings);
+  return data;
 }
-
-// Export default settings for reference
-export { defaultSettings };

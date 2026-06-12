@@ -56,6 +56,14 @@ export class TrayManager {
         click: async () => {
           logger.main.info("Open console requested from tray");
           if (this.windowManager) {
+            // During onboarding, focus the wizard instead of opening the main
+            // window beside it (same guard as activate / second-instance).
+            const onboardingWindow = this.windowManager.getOnboardingWindow();
+            if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+              onboardingWindow.show();
+              onboardingWindow.focus();
+              return;
+            }
             await this.windowManager.createOrShowMainWindow();
           }
         },
