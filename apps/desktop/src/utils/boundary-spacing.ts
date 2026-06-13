@@ -5,6 +5,22 @@ const TRAILING_NEWLINE_RE = /[\r\n]+$/;
 const BOUNDARY_WHITESPACE_RE = /[ \t\r\n]$/;
 const STARTS_WITH_BOUNDARY_WHITESPACE_RE = /^[ \t\r\n]/;
 
+// Zero-width and invisible format characters. Some apps (e.g. Google Docs)
+// inject these as accessibility placeholders, so the captured before/after
+// context can be a lone zero-width space even when the cursor is effectively
+// at an empty boundary. They have no visible width and never represent real
+// content, so they must not drive a spacing decision.
+//   U+00AD soft hyphen, U+061C Arabic letter mark, U+180E Mongolian vowel
+//   separator, U+200B-U+200F zero-width space/joiners + LRM/RLM, U+202A-U+202E
+//   bidi embeddings/overrides, U+2060-U+206F word joiner/invisible operators/
+//   bidi isolates/deprecated format chars, U+FEFF BOM (zero-width no-break space).
+const IGNORABLE_FORMAT_CHARS_RE =
+  /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
+
+function stripIgnorableFormatChars(text: string): string {
+  return text.replace(IGNORABLE_FORMAT_CHARS_RE, "");
+}
+
 const ASCII_PUNCTUATION = new Set(
   Array.from('!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'),
 );
@@ -254,24 +270,36 @@ export function normalizeTranscriptionBoundaries(
     return result;
   }
 
-  if (beforeText !== null && beforeText !== undefined) {
-    if (beforeText === "" || BOUNDARY_WHITESPACE_RE.test(beforeText)) {
+  // Drop zero-width/invisible format characters so an app-injected placeholder
+  // (e.g. Google Docs' lone zero-width space) collapses to an empty boundary
+  // rather than reading as real preceding/following content.
+  const before =
+    beforeText === null || beforeText === undefined
+      ? beforeText
+      : stripIgnorableFormatChars(beforeText);
+  const after =
+    afterText === null || afterText === undefined
+      ? afterText
+      : stripIgnorableFormatChars(afterText);
+
+  if (before !== null && before !== undefined) {
+    if (before === "" || BOUNDARY_WHITESPACE_RE.test(before)) {
       result = stripLeadingSpaces(result);
-    } else if (shouldSeparateWithSpace(beforeText, result)) {
+    } else if (shouldSeparateWithSpace(before, result)) {
       result = ensureLeadingSpace(result);
     } else {
       result = stripLeadingSpaces(result);
     }
   }
 
-  if (afterText !== null && afterText !== undefined) {
-    if (afterText === "") {
+  if (after !== null && after !== undefined) {
+    if (after === "") {
       result = shouldDefaultTrailingSpace(result)
         ? ensureTrailingSpace(result)
         : stripTrailingSpaces(result);
-    } else if (STARTS_WITH_BOUNDARY_WHITESPACE_RE.test(afterText)) {
+    } else if (STARTS_WITH_BOUNDARY_WHITESPACE_RE.test(after)) {
       result = stripTrailingSpaces(result);
-    } else if (shouldSeparateWithSpace(result, afterText)) {
+    } else if (shouldSeparateWithSpace(result, after)) {
       result = ensureTrailingSpace(result);
     } else {
       result = stripTrailingSpaces(result);

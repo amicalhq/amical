@@ -311,5 +311,39 @@
     "formatterText": "Hello ",
     "afterText": ", world",
     "expected": "Hello"
+  },
+  {
+    "id": "gdocs-zwsp-before-no-leading-space",
+    "name": "Google Docs zero-width-space before adds no leading space",
+    "note": "Docs injects a lone ZWSP placeholder; it must collapse to an empty boundary.",
+    "beforeText": "\u200b",
+    "formatterText": "Hello",
+    "afterText": "",
+    "expected": "Hello "
+  },
+  {
+    "id": "gdocs-zwsp-both-sides",
+    "name": "Google Docs zero-width-space on both sides",
+    "beforeText": "\u200b",
+    "formatterText": "Hello world.",
+    "afterText": "\u200b",
+    "expected": "Hello world. "
+  },
+  {
+    "id": "bom-before-no-leading-space",
+    "name": "BOM/zero-width no-break space before adds no leading space",
+    "beforeText": "\uFEFF",
+    "formatterText": "World",
+    "afterText": null,
+    "expected": "World "
+  },
+  {
+    "id": "invisible-after-word-still-spaces",
+    "name": "Invisible char after real word still gets a separating space",
+    "note": "Stripping the ZWSP exposes the real content char so a needed space is added.",
+    "beforeText": "hi\u200b",
+    "formatterText": "world",
+    "afterText": "",
+    "expected": " world "
   }
 ]
