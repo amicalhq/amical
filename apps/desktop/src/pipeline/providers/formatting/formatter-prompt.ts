@@ -1,17 +1,12 @@
 import { FormatParams } from "../../core/pipeline-types";
-import { GetAccessibilityContextResult } from "@amical/types";
-import {
-  ONBOARDING_WINDOW_TITLE,
-  TRY_IT_WINDOW_TITLES,
-} from "../../../constants/window-titles";
+import { ONBOARDING_WINDOW_TITLE } from "../../../constants/window-titles";
+import type {
+  AppType,
+  AccessibilityContextWithOverride,
+} from "../../../types/app-type";
 
 // Kept in sync with Axis backend repo (~/exa9/axis), packages/prompts/src/formatting.ts.
 // Note: Prompts are intentionally treated as "code" and should be updated with care.
-
-/**
- * Application type for formatting context
- */
-export type AppType = "email" | "chat" | "notes" | "amical-notes" | "default";
 
 /**
  * App-type specific formatting rules inserted into the system prompt
@@ -364,7 +359,7 @@ const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
 };
 
 export function detectApplicationType(
-  accessibilityContext: GetAccessibilityContextResult | null | undefined,
+  accessibilityContext: AccessibilityContextWithOverride | null | undefined,
 ): AppType {
   if (!accessibilityContext?.context?.application?.bundleIdentifier) {
     return "default";
@@ -384,9 +379,12 @@ export function detectApplicationType(
     bundleId === "ai.amical.desktop" ||
     bundleId.toLowerCase().endsWith("\\amical.exe");
   if (isOwnApp) {
+    // Onboarding try-it surfaces declare their app-type directly: the native
+    // helper can't read our own window's title on Windows, so we can't infer it
+    // from windowInfo. See AppContextWithOverride.
+    const override = accessibilityContext.context?.appTypeOverride;
+    if (override) return override;
     const title = accessibilityContext.context?.windowInfo?.title ?? "";
-    if (title === TRY_IT_WINDOW_TITLES.email) return "email";
-    if (title === TRY_IT_WINDOW_TITLES.notes) return "notes";
     if (title.startsWith(ONBOARDING_WINDOW_TITLE)) return "default";
     return "amical-notes";
   }

@@ -6,6 +6,7 @@ import type { TelemetryService } from "./telemetry-service";
 import type { ModelService } from "./model-service";
 import type { AppSettingsData } from "../db/schema";
 import { isLocalTranscriptionSupported } from "../utils/os-version";
+import type { TryItSurface } from "../types/app-type";
 import {
   OnboardingScreen,
   FeatureInterest,
@@ -44,6 +45,7 @@ export class OnboardingService extends EventEmitter {
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private isOnboardingInProgress = false;
+  private activeTryItSurface: TryItSurface | null = null;
 
   constructor(
     settingsService: SettingsService,
@@ -270,6 +272,41 @@ export class OnboardingService extends EventEmitter {
   }
 
   /**
+   * Apply the chosen speech model once its prerequisite exists — cloud needs the
+   * sign-in screen's auth, local needs the download screen's model. Called when
+   * each prerequisite completes (so the try-it segment has a usable model rather
+   * than firing "no model selected"), and again at completion as a safety net.
+   * Idempotent and best-effort: never throws, and leaves an existing selection
+   * untouched.
+   */
+  async applySelectedModel(): Promise<void> {
+    try {
+      const state = await this.getOnboardingState();
+      const modelType = state?.selectedModelType;
+
+      if (modelType === "cloud") {
+        const current = await this.modelService.getSelectedModel();
+        if (current === "amical-cloud") return;
+        await this.modelService.setSelectedModel("amical-cloud");
+        logger.main.info("Set default speech model to amical-cloud");
+      } else if (modelType === "local") {
+        // Keep an existing selection if any, otherwise use first downloaded model
+        const current = await this.modelService.getSelectedModel();
+        if (current) return;
+        const downloadedIds = Object.keys(
+          await this.modelService.getDownloadedModels(),
+        );
+        if (downloadedIds.length > 0) {
+          await this.modelService.setSelectedModel(downloadedIds[0]);
+          logger.main.info(`Set default speech model to ${downloadedIds[0]}`);
+        }
+      }
+    } catch (error) {
+      logger.main.error("Failed to apply selected speech model:", error);
+    }
+  }
+
+  /**
    * Complete the onboarding process
    */
   async completeOnboarding(finalState: OnboardingState): Promise<void> {
@@ -295,32 +332,10 @@ export class OnboardingService extends EventEmitter {
 
       await this.saveOnboardingState(completeState);
 
-      // Apply the chosen speech model now that its prerequisites exist
-      // (sign-in and download are screens AFTER model selection). Never
-      // block completion on it — a failure leaves the model unset, same as
-      // skipping setup paths.
-      try {
-        if (completeState.selectedModelType === "cloud") {
-          await this.modelService.setSelectedModel("amical-cloud");
-          logger.main.info("Set default speech model to amical-cloud");
-        } else if (completeState.selectedModelType === "local") {
-          // Keep existing selection if any, otherwise use first downloaded model
-          const currentModel = await this.modelService.getSelectedModel();
-          if (!currentModel) {
-            const downloadedIds = Object.keys(
-              await this.modelService.getDownloadedModels(),
-            );
-            if (downloadedIds.length > 0) {
-              await this.modelService.setSelectedModel(downloadedIds[0]);
-              logger.main.info(
-                `Set default speech model to ${downloadedIds[0]}`,
-              );
-            }
-          }
-        }
-      } catch (error) {
-        logger.main.error("Failed to apply selected speech model:", error);
-      }
+      // Apply the chosen speech model as a safety net — normally already done
+      // when the sign-in/download prerequisite completed. Best-effort; never
+      // blocks completion.
+      await this.applySelectedModel();
 
       // Track completion event
       this.telemetryService.trackOnboardingCompleted({
@@ -750,9 +765,19 @@ export class OnboardingService extends EventEmitter {
    * Emits "try-it-active-changed" - AppManager handles shortcut suppression
    * and widget bring-up
    */
-  setTryItActive(active: boolean): void {
-    logger.main.info("Onboarding try-it active changed", { active });
+  setTryItActive(active: boolean, surface?: TryItSurface): void {
+    this.activeTryItSurface = active ? (surface ?? null) : null;
+    logger.main.info("Onboarding try-it active changed", { active, surface });
     this.emit("try-it-active-changed", active);
+  }
+
+  /**
+   * The emulated surface (email/notes) of the in-flight try-it step, if any.
+   * Lets the transcription pipeline stamp the app-type signal that the native
+   * helper can't read off our own window's title on Windows.
+   */
+  getActiveTryItSurface(): TryItSurface | null {
+    return this.activeTryItSurface;
   }
 
   /**

@@ -218,7 +218,12 @@ export const onboardingRouter = createRouter({
    * window's focused field.
    */
   setDictationTryIt: procedure
-    .input(z.object({ active: z.boolean() }))
+    .input(
+      z.object({
+        active: z.boolean(),
+        surface: z.enum(["email", "notes"]).optional(),
+      }),
+    )
     .mutation(({ input, ctx }): { success: boolean } => {
       const { serviceManager } = ctx;
       if (!serviceManager) {
@@ -229,9 +234,30 @@ export const onboardingRouter = createRouter({
         throw new Error("OnboardingService not available");
       }
 
-      onboardingService.setTryItActive(input.active);
+      onboardingService.setTryItActive(input.active, input.surface);
       return { success: true };
     }),
+
+  /**
+   * Apply the chosen speech model once its prerequisite is met — called when the
+   * sign-in (cloud) or download (local) step completes, so the model is selected
+   * before the try-it segment instead of only at completion. Idempotent.
+   */
+  applySelectedModel: procedure.mutation(
+    async ({ ctx }): Promise<{ success: boolean }> => {
+      const { serviceManager } = ctx;
+      if (!serviceManager) {
+        throw new Error("ServiceManager not available");
+      }
+      const onboardingService = serviceManager.getOnboardingService();
+      if (!onboardingService) {
+        throw new Error("OnboardingService not available");
+      }
+
+      await onboardingService.applySelectedModel();
+      return { success: true };
+    },
+  ),
 
   /**
    * Record how a step with an optional action was exited (completed vs

@@ -6,6 +6,7 @@ import { ExternalLink, Loader2, Check } from "lucide-react";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
 import { ObButton } from "../shared/ui";
+import { useApplyOnboardingModel } from "../shared/useApplyOnboardingModel";
 import { OnboardingScreen } from "../../../../types/onboarding";
 
 interface SignInScreenProps {
@@ -68,6 +69,9 @@ export function SignInScreen({ onNext, onBack }: SignInScreenProps) {
     },
     onError: (err) => console.error("Auth state subscription error:", err),
   });
+
+  // Cloud model is selected the moment auth lands, before the try-it segment.
+  useApplyOnboardingModel(authed);
 
   return (
     <OnboardingLayout

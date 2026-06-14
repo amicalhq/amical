@@ -47,6 +47,10 @@ import {
   RecheckPressedKeysResultSchema,
   AppContext,
 } from "@amical/types";
+import type {
+  AppType,
+  AccessibilityContextWithOverride,
+} from "../../types/app-type";
 
 // Define the interface for RPC methods
 interface RPCMethods {
@@ -215,6 +219,7 @@ export class NativeBridge extends EventEmitter {
   private helperPath: string;
   private logger = createScopedLogger("native-bridge");
   private accessibilityContext: AppContext | null = null;
+  private appTypeOverride: AppType | null = null;
 
   // Auto-restart configuration
   private static readonly MAX_RESTARTS = 3;
@@ -798,14 +803,33 @@ export class NativeBridge extends EventEmitter {
   }
 
   /**
+   * Force the app-type reported in the accessibility context, or pass null to
+   * clear. The native helper can't read the title off our own (Electron) window
+   * on Windows (windowInfo comes back null), so higher layers — e.g. the
+   * onboarding try-it — declare the surface's app-type here, and
+   * detectApplicationType honors it for our own windows.
+   */
+  setAppTypeOverride(appType: AppType | null): void {
+    this.appTypeOverride = appType;
+  }
+
+  /**
    * Get the cached accessibility context.
    * Returns in the result wrapper format for API consistency.
    */
-  getAccessibilityContext(): GetAccessibilityContextResult | null {
+  getAccessibilityContext(): AccessibilityContextWithOverride | null {
     if (this.accessibilityContext === null) {
       return null;
     }
-    return { context: this.accessibilityContext };
+    if (this.appTypeOverride === null) {
+      return { context: this.accessibilityContext };
+    }
+    return {
+      context: {
+        ...this.accessibilityContext,
+        appTypeOverride: this.appTypeOverride,
+      },
+    };
   }
 
   /**

@@ -5,6 +5,7 @@ import { Cpu, AlertCircle } from "lucide-react";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
 import { NavigationButtons } from "../shared/NavigationButtons";
 import { Tile, SkipPill } from "../shared/ui";
+import { useApplyOnboardingModel } from "../shared/useApplyOnboardingModel";
 import {
   findInstalledLocalModel,
   getAvailableModelName,
@@ -84,6 +85,9 @@ export function DownloadScreen({ onNext, onBack }: DownloadScreenProps) {
   }, [downloadedModels, recommendedModelId, startDownload]);
 
   const pct = Math.round(progress);
+
+  // Local model is selected once the download is ready, before the try-it segment.
+  useApplyOnboardingModel(ready);
 
   return (
     <OnboardingLayout
