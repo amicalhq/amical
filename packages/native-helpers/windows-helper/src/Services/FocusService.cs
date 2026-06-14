@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using Interop.UIAutomationClient;
 using WindowsHelper.Models;
 using WindowsHelper.Utils;
@@ -265,23 +266,22 @@ namespace WindowsHelper.Services
         /// <summary>
         /// Get window information.
         /// </summary>
-        public static WindowInfo? GetWindowInfo(IUIAutomationElement? element)
+        public static WindowInfo? GetWindowInfo(IntPtr windowHandle)
         {
-            var windowElement = GetWindowElement(element);
-            if (windowElement == null) return null;
+            if (windowHandle == IntPtr.Zero) return null;
 
-            try
+            var title = GetWindowTitle(windowHandle);
+            if (string.IsNullOrEmpty(title))
             {
-                return new WindowInfo
-                {
-                    Title = windowElement.CurrentName,
-                    Url = null
-                };
-            }
-            catch
-            {
+                LogToStderr("Resolved window has an empty caption");
                 return null;
             }
+
+            return new WindowInfo
+            {
+                Title = title,
+                Url = null
+            };
         }
 
         /// <summary>
@@ -328,42 +328,125 @@ namespace WindowsHelper.Services
         }
 
         /// <summary>
-        /// Get the window element containing the given element.
+        /// Resolve the top-level native window handle for an element. The handle
+        /// from <see cref="ResolveWindowHandle"/> may belong to a child window
+        /// (e.g. Chromium's render-widget "Chrome Legacy Window"), so climb to the
+        /// root. Returns IntPtr.Zero when no window can be resolved. Shared by the
+        /// window title and the browser-URL omnibox lookup so both agree on the
+        /// window.
         /// </summary>
-        private static IUIAutomationElement? GetWindowElement(IUIAutomationElement? element)
+        public static IntPtr GetTopLevelWindowHandle(IUIAutomationElement? element)
         {
-            if (element == null) return null;
+            var hwnd = ResolveWindowHandle(element);
+            if (hwnd == IntPtr.Zero) return IntPtr.Zero;
 
+            var root = GetAncestor(hwnd, GA_ROOT);
+            return root != IntPtr.Zero ? root : hwnd;
+        }
+
+        /// <summary>
+        /// Resolve the native window handle for an element: its own handle, then
+        /// the nearest ancestor that has one, then the foreground window. We key
+        /// off the HWND rather than a UIA Window ancestor because UIA window
+        /// navigation is unreliable for windows that expose accessibility via the
+        /// legacy bridge — notably our own Electron windows, where the walk finds
+        /// no Window node and the window goes unresolved.
+        /// </summary>
+        private static IntPtr ResolveWindowHandle(IUIAutomationElement? element)
+        {
+            if (element == null)
+            {
+                LogToStderr("element is null");
+            }
+            else
+            {
+                var handle = GetNativeWindowHandle(element);
+                if (handle != IntPtr.Zero)
+                {
+                    LogToStderr("Resolved window handle from focused element");
+                    return handle;
+                }
+
+                try
+                {
+                    var walker = UIAutomationService.ControlViewWalker;
+                    var current = element;
+
+                    for (int i = 0; i < Constants.WINDOW_SEARCH_MAX_DEPTH; i++)
+                    {
+                        var parent = walker.GetParentElement(current);
+                        if (parent == null)
+                        {
+                            LogToStderr($"Parent is null at depth {i}; no native window handle in ancestor chain");
+                            break;
+                        }
+
+                        handle = GetNativeWindowHandle(parent);
+                        if (handle != IntPtr.Zero)
+                        {
+                            LogToStderr($"Resolved window handle from ancestor at depth {i}");
+                            return handle;
+                        }
+
+                        current = parent;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogToStderr($"Exception walking ancestor chain: {ex.Message}");
+                }
+            }
+
+            // Last resort: the foreground window. The accessibility context is
+            // captured for the foreground app, so this is the right window when
+            // UIA navigation yields no handle.
+            LogToStderr("No native window handle from UIA tree; falling back to GetForegroundWindow");
+            return GetForegroundWindow();
+        }
+
+        private static IntPtr GetNativeWindowHandle(IUIAutomationElement element)
+        {
             try
             {
-                // Check if current element is a window
-                if (element.CurrentControlType == Constants.UIA_WindowControlTypeId)
-                {
-                    return element;
-                }
-
-                // Walk up to find window (use higher depth limit - windows can be far up the tree)
-                var walker = UIAutomationService.ControlViewWalker;
-                var current = element;
-
-                for (int i = 0; i < Constants.WINDOW_SEARCH_MAX_DEPTH; i++)
-                {
-                    var parent = walker.GetParentElement(current);
-                    if (parent == null) break;
-
-                    if (parent.CurrentControlType == Constants.UIA_WindowControlTypeId)
-                    {
-                        return parent;
-                    }
-
-                    current = parent;
-                }
+                // The interop exposes the handle as an int; the cast also accepts
+                // an IntPtr-typed property, so it is robust to interop changes.
+                return (IntPtr)element.CurrentNativeWindowHandle;
             }
             catch
             {
+                return IntPtr.Zero;
             }
-
-            return null;
         }
+
+        private static string? GetWindowTitle(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return null;
+
+            int length = GetWindowTextLength(hwnd);
+            if (length <= 0) return null;
+
+            var buffer = new StringBuilder(length + 1);
+            GetWindowText(hwnd, buffer, buffer.Capacity);
+            return buffer.ToString();
+        }
+
+        private static void LogToStderr(string message)
+        {
+            HelperLogger.LogToStderr($"[FocusService] {message}");
+        }
+
+        private const uint GA_ROOT = 2;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        private static extern int GetWindowTextLength(IntPtr hWnd);
     }
 }

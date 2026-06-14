@@ -1,7 +1,6 @@
 using System;
 using Interop.UIAutomationClient;
 using WindowsHelper.Models;
-using WindowsHelper.Utils;
 
 namespace WindowsHelper.Services
 {
@@ -68,13 +67,17 @@ namespace WindowsHelper.Services
                     }
                 }
 
-                // Get window info
-                var windowInfo = FocusService.GetWindowInfo(focusedElement);
+                // Resolve the top-level window once: title from its caption, and
+                // (for browsers) the omnibox lookup rooted at the same window via
+                // ElementFromHandle — both agree on which window, and neither
+                // relies on the fragile UIA "find a Window ancestor" walk.
+                var windowHandle = FocusService.GetTopLevelWindowHandle(focusedElement);
+                var windowInfo = FocusService.GetWindowInfo(windowHandle);
 
                 // Extract URL for browsers
                 if (windowInfo != null && UrlResolver.IsBrowser(processName))
                 {
-                    var windowElement = UIAutomationHelpers.GetWindowElement(focusedElement);
+                    var windowElement = UIAutomationService.ElementFromHandle(windowHandle);
                     windowInfo.Url = UrlResolver.ExtractBrowserUrl(windowElement, processName);
                 }
 
