@@ -6,6 +6,10 @@ import { NavigationButtons } from "../shared/NavigationButtons";
 import { ObButton } from "../shared/ui";
 import { KeycapSentence, KEYS_SENTINEL } from "../shared/KeyCap";
 import { useOnboardingDictation } from "../shared/useOnboardingDictation";
+import {
+  ONBOARDING_WINDOW_TITLE,
+  TRY_IT_WINDOW_TITLES,
+} from "@/constants/window-titles";
 import { cn } from "@/lib/utils";
 import { api } from "@/trpc/react";
 import { OnboardingScreen } from "../../../../types/onboarding";
@@ -68,9 +72,7 @@ export function DictationTestScreen({
   onBack,
 }: DictationTestScreenProps) {
   const { t } = useTranslation();
-  // "simple" (local) is a generic surface; email/notes map to a formatter type.
-  const surface = variant === "simple" ? undefined : variant;
-  const { isRecording } = useOnboardingDictation(surface);
+  const { isRecording } = useOnboardingDictation();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
   const configured = shortcuts?.pushToTalk ?? [];
   const screen = {
@@ -97,6 +99,21 @@ export function DictationTestScreen({
     });
     onNext();
   };
+
+  // The window title doubles as the surface signal for context building: the
+  // native helper reads it into the accessibility context, and the formatter
+  // maps it so the demo formats like the app it depicts — email prose / notes
+  // list — instead of as Amical's own Markdown-notes surface. The visible
+  // sheet header is separate, localized copy. The simple (local) variant
+  // keeps the base title: verbatim demo, generic surface.
+  useEffect(() => {
+    const surface = variant === "simple" ? null : TRY_IT_WINDOW_TITLES[variant];
+    if (!surface) return;
+    document.title = surface;
+    return () => {
+      document.title = ONBOARDING_WINDOW_TITLE;
+    };
+  }, [variant]);
 
   // The paste targets the focused element, so the textarea must hold focus
   // while a take is in flight — reclaim it when recording starts in case the

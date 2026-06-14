@@ -201,14 +201,6 @@ export class AppManager {
       this.serviceManager
         .getService("shortcutManager")
         .setCommandsSuppressed(!active && onboardingService.isInProgress());
-
-      // The native helper can't read our own window's title on Windows, so the
-      // email/notes surface signal detectApplicationType relies on never lands.
-      // Declare the surface's app-type directly while the try-it is on screen
-      // ("email"/"notes" are valid AppType values).
-      const surface = active ? onboardingService.getActiveTryItSurface() : null;
-      this.serviceManager.getService("nativeBridge").setAppTypeOverride(surface);
-
       if (active) {
         // Onboarding boot skips setupWindows, so the widget window doesn't
         // exist yet; production visibility rules take over after creation.

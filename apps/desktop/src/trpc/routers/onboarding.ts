@@ -218,12 +218,7 @@ export const onboardingRouter = createRouter({
    * window's focused field.
    */
   setDictationTryIt: procedure
-    .input(
-      z.object({
-        active: z.boolean(),
-        surface: z.enum(["email", "notes"]).optional(),
-      }),
-    )
+    .input(z.object({ active: z.boolean() }))
     .mutation(({ input, ctx }): { success: boolean } => {
       const { serviceManager } = ctx;
       if (!serviceManager) {
@@ -234,7 +229,7 @@ export const onboardingRouter = createRouter({
         throw new Error("OnboardingService not available");
       }
 
-      onboardingService.setTryItActive(input.active, input.surface);
+      onboardingService.setTryItActive(input.active);
       return { success: true };
     }),
 

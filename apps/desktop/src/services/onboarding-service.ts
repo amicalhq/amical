@@ -6,7 +6,6 @@ import type { TelemetryService } from "./telemetry-service";
 import type { ModelService } from "./model-service";
 import type { AppSettingsData } from "../db/schema";
 import { isLocalTranscriptionSupported } from "../utils/os-version";
-import type { TryItSurface } from "../types/app-type";
 import {
   OnboardingScreen,
   FeatureInterest,
@@ -45,7 +44,6 @@ export class OnboardingService extends EventEmitter {
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private isOnboardingInProgress = false;
-  private activeTryItSurface: TryItSurface | null = null;
 
   constructor(
     settingsService: SettingsService,
@@ -765,19 +763,9 @@ export class OnboardingService extends EventEmitter {
    * Emits "try-it-active-changed" - AppManager handles shortcut suppression
    * and widget bring-up
    */
-  setTryItActive(active: boolean, surface?: TryItSurface): void {
-    this.activeTryItSurface = active ? (surface ?? null) : null;
-    logger.main.info("Onboarding try-it active changed", { active, surface });
+  setTryItActive(active: boolean): void {
+    logger.main.info("Onboarding try-it active changed", { active });
     this.emit("try-it-active-changed", active);
-  }
-
-  /**
-   * The emulated surface (email/notes) of the in-flight try-it step, if any.
-   * Lets the transcription pipeline stamp the app-type signal that the native
-   * helper can't read off our own window's title on Windows.
-   */
-  getActiveTryItSurface(): TryItSurface | null {
-    return this.activeTryItSurface;
   }
 
   /**
