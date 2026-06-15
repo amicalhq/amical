@@ -157,6 +157,7 @@
       "fine": "El inicio de sesión se abre en tu navegador · Plan gratuito incluido · sin tarjeta de crédito",
       "waiting": "Esperando a que termines de iniciar sesión en tu navegador…",
       "verdict": "Sesión iniciada",
+      "switchAccount": "Usar otra cuenta",
       "toast": {
         "loginInBrowser": "Completa el inicio de sesión en tu navegador",
         "authenticated": "¡Autenticación exitosa!"

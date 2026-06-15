@@ -157,6 +157,7 @@
       "fine": "Anmeldung im Browser · Kostenloser Tarif inklusive · keine Kreditkarte nötig",
       "waiting": "Warten auf Abschluss der Anmeldung im Browser…",
       "verdict": "Angemeldet",
+      "switchAccount": "Anderes Konto verwenden",
       "toast": {
         "loginInBrowser": "Schließe die Anmeldung in deinem Browser ab",
         "authenticated": "Erfolgreich angemeldet!"

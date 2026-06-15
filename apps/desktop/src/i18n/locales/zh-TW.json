@@ -157,6 +157,7 @@
       "fine": "登入頁面會在您的瀏覽器中開啟 · 含免費方案 · 無需信用卡",
       "waiting": "正在等待您在瀏覽器中完成登入…",
       "verdict": "已登入",
+      "switchAccount": "使用其他帳戶",
       "toast": {
         "loginInBrowser": "請在您的瀏覽器中完成登入",
         "authenticated": "驗證成功！"

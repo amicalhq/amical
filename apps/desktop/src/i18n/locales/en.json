@@ -154,6 +154,7 @@
       "fine": "Sign-in opens in your browser · Free plan included · no card required",
       "waiting": "Waiting for sign-in to finish in your browser…",
       "verdict": "Signed in",
+      "switchAccount": "Use a different account",
       "toast": {
         "loginInBrowser": "Continue in your browser",
         "authenticated": "Signed in"
