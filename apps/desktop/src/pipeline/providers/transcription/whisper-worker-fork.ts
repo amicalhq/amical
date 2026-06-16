@@ -1,6 +1,7 @@
 // Worker process entry point for fork
 import { Whisper, getLoadedBindingInfo } from "@amical/whisper-wrapper";
 import { shouldDropSegment } from "../../utils/segment-filter";
+import { resolveWhisperGpuDecision } from "./whisper-gpu-policy";
 
 // Type definitions for IPC communication
 interface WorkerMessage {
@@ -65,7 +66,12 @@ const methods = {
       whisperInstance = null;
     }
 
-    whisperInstance = new Whisper(modelPath, { gpu: true });
+    const gpuDecision = await resolveWhisperGpuDecision();
+    logger.transcription.info(
+      `Whisper GPU ${gpuDecision.useGpu ? "enabled" : "disabled"}: ${gpuDecision.reason}`,
+    );
+
+    whisperInstance = new Whisper(modelPath, { gpu: gpuDecision.useGpu });
     try {
       await whisperInstance.load();
     } catch (e) {
