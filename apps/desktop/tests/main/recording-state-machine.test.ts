@@ -463,4 +463,67 @@ describe("recording state machine", () => {
       }
     }
   });
+
+  describe("dismiss event", () => {
+    it("dismisses an active PTT recording to STOP_C(user_dismissed)", () => {
+      const [state, commands] = step(
+        { tag: "REC_PTT", firstChunkReceived: true },
+        { type: "dismiss" },
+      );
+      expect(state).toEqual({ tag: "STOP_C", code: "user_dismissed" });
+      expect(commands).toContainEqual({
+        type: "stopSession",
+        code: "user_dismissed",
+      });
+    });
+
+    it("dismisses an active hands-free recording to STOP_C(user_dismissed)", () => {
+      const [state, commands] = step(
+        { tag: "REC_HF", firstChunkReceived: true },
+        { type: "dismiss" },
+      );
+      expect(state).toEqual({ tag: "STOP_C", code: "user_dismissed" });
+      expect(commands).toContainEqual({
+        type: "stopSession",
+        code: "user_dismissed",
+      });
+    });
+
+    it("dismisses a PTT quick-release window to STOP_C(user_dismissed) and clears its timer", () => {
+      const [state, commands] = step(
+        { tag: "PTT_Q", firstChunkReceived: true },
+        { type: "dismiss" },
+      );
+      expect(state).toEqual({ tag: "STOP_C", code: "user_dismissed" });
+      expect(commands).toContainEqual({ type: "clearQuickReleaseTimer" });
+      expect(commands).toContainEqual({
+        type: "stopSession",
+        code: "user_dismissed",
+      });
+    });
+
+    it("routes a dismiss during STARTING to interrupted_start (discard, no audio yet)", () => {
+      const [state, commands] = step(
+        { tag: "STARTING", mode: "hands-free" },
+        { type: "dismiss" },
+      );
+      expect(state).toEqual({ tag: "STOP_C", code: "interrupted_start" });
+      expect(commands).toContainEqual({
+        type: "stopSession",
+        code: "interrupted_start",
+      });
+    });
+
+    it("ignores dismiss when idle or already stopping", () => {
+      for (const idle of [
+        { tag: "IDLE" } as const,
+        { tag: "STOP_N" } as const,
+        { tag: "STOP_C", code: "no_audio" } as const,
+      ]) {
+        const [state, commands] = step(idle, { type: "dismiss" });
+        expect(state).toBe(idle);
+        expect(commands).toEqual([]);
+      }
+    });
+  });
 });

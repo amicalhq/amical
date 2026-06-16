@@ -14,6 +14,7 @@ export interface UseRecordingOutput {
   voiceDetected: boolean;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
+  dismissRecording: () => Promise<void>;
 }
 
 export const useRecording = (): UseRecordingOutput => {
@@ -24,6 +25,7 @@ export const useRecording = (): UseRecordingOutput => {
 
   const startRecordingMutation = api.recording.signalStart.useMutation();
   const stopRecordingMutation = api.recording.signalStop.useMutation();
+  const dismissRecordingMutation = api.recording.dismiss.useMutation();
 
   // Subscribe to recording state updates via tRPC
   api.recording.stateUpdates.useSubscription(undefined, {
@@ -86,10 +88,16 @@ export const useRecording = (): UseRecordingOutput => {
     console.log("Hook: Recording stopped");
   }, [stopRecordingMutation]);
 
+  const dismissRecording = useCallback(async () => {
+    await dismissRecordingMutation.mutateAsync();
+    console.log("Hook: Recording dismissed");
+  }, [dismissRecordingMutation]);
+
   return {
     recordingStatus,
     voiceDetected,
     startRecording,
     stopRecording,
+    dismissRecording,
   };
 };

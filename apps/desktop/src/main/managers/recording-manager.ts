@@ -139,6 +139,12 @@ export class RecordingManager extends EventEmitter {
     shortcutManager.on("paste-last-transcript-triggered", async () => {
       await this.pasteLatestTranscription();
     });
+
+    // Handle ESC dismiss (emitted on any ESC key-down; no-op unless a session
+    // is active). dismissCurrentSession guards on state.
+    shortcutManager.on("escape-pressed", async () => {
+      await this.dismissCurrentSession();
+    });
   }
 
   private emitStateChange(
@@ -675,42 +681,43 @@ export class RecordingManager extends EventEmitter {
     const chunks = this.audioChunks;
     const code = this.terminationCode;
 
-    // CANCELLED (quick_release, no_audio) - discard buffer
-    if (code) {
+    // Discard codes (quick_release, no_audio, interrupted_start) drop the buffer.
+    // user_dismissed is NOT a discard — it keeps the audio, like a normal stop.
+    if (code && code !== "user_dismissed") {
       logger.audio.info("Recording cancelled", {
         code,
         chunksDiscarded: chunks.length,
       });
-
       this.emit("recording-cancelled", { sessionId, code });
       this.resetSessionState();
       return;
     }
 
-    // Write audio file for normal recordings.
-    let audioFilePath: string | null = null;
-
-    if (chunks.length > 0) {
-      try {
-        audioFilePath = await this.createAudioFile(sessionId);
-        const wavWriter = new StreamingWavWriter(audioFilePath);
-
-        for (const chunk of chunks) {
-          await wavWriter.appendAudio(chunk);
-        }
-        await wavWriter.finalize();
-
-        logger.audio.info("Audio file written", {
-          sessionId,
-          filePath: audioFilePath,
-          chunks: chunks.length,
-        });
-      } catch (error) {
-        logger.audio.error("Failed to write audio file", { error });
-        audioFilePath = null;
-      }
-    }
+    // Normal + dismissed both persist the captured audio — written once, here.
+    const audioFilePath = await this.writeAudioFile(sessionId, chunks);
     this.audioChunks = [];
+
+    if (code === "user_dismissed") {
+      logger.audio.info("Recording dismissed", {
+        sessionId,
+        hasAudio: !!audioFilePath,
+      });
+      try {
+        await this.serviceManager
+          .getService("transcriptionService")
+          .saveDismissedTranscription({
+            sessionId,
+            audioFilePath: audioFilePath || undefined,
+          });
+      } catch (error) {
+        logger.audio.error("Failed to save dismissed transcription", {
+          error,
+        });
+      }
+      this.emit("recording-cancelled", { sessionId, code });
+      this.resetSessionState();
+      return;
+    }
 
     // NORMAL - get transcription and paste
     let result = "";
@@ -725,6 +732,17 @@ export class RecordingManager extends EventEmitter {
         recordingStoppedAt: this.recordingStoppedAt || undefined,
       });
     } catch (error) {
+      // User dismissed during finalize — TranscriptionService already persisted
+      // the dismissed row; reset silently (no failure / no-speech notification).
+      if (
+        error instanceof AppError &&
+        error.errorCode === ErrorCodes.USER_DISMISSED
+      ) {
+        logger.audio.info("Recording dismissed during finalize", { sessionId });
+        this.resetSessionState();
+        return;
+      }
+
       logger.audio.error("Failed to get final transcription", { error });
 
       // Extract error properties for notification (DB write handled by TranscriptionService)
@@ -765,6 +783,11 @@ export class RecordingManager extends EventEmitter {
       resultLength: result?.length || 0,
     });
 
+    // A non-empty result means finalizeSession committed (its final dismiss gate
+    // passed before the DB write). We deliberately do NOT re-check the dismiss
+    // flag here: a dismiss landing in this single-ms tail is an accepted race —
+    // the transcript is already saved, and pasteTranscription hands off to the
+    // native helper, so by the time the paste fires it is too late to abort.
     if (result) {
       await this.pasteTranscription(result);
     } else {
@@ -1091,6 +1114,39 @@ export class RecordingManager extends EventEmitter {
     return filePath;
   }
 
+  /**
+   * Write the accumulated audio chunks to a WAV file. Returns the path, or null
+   * if there were no chunks or the write failed.
+   */
+  private async writeAudioFile(
+    sessionId: string,
+    chunks: Float32Array[],
+  ): Promise<string | null> {
+    if (chunks.length === 0) {
+      return null;
+    }
+
+    try {
+      const audioFilePath = await this.createAudioFile(sessionId);
+      const wavWriter = new StreamingWavWriter(audioFilePath);
+
+      for (const chunk of chunks) {
+        await wavWriter.appendAudio(chunk);
+      }
+      await wavWriter.finalize();
+
+      logger.audio.info("Audio file written", {
+        sessionId,
+        filePath: audioFilePath,
+        chunks: chunks.length,
+      });
+      return audioFilePath;
+    } catch (error) {
+      logger.audio.error("Failed to write audio file", { error });
+      return null;
+    }
+  }
+
   private async pasteTranscription(transcription: string): Promise<void> {
     if (!transcription || typeof transcription !== "string") {
       logger.main.warn("Invalid transcription, not pasting");
@@ -1199,6 +1255,40 @@ export class RecordingManager extends EventEmitter {
     }
 
     await this.machine.handleEvent({ type: "signalStop" });
+  }
+
+  /**
+   * Dismiss the current dictation: abort transcription/paste and persist the
+   * captured audio to History with reason "dismissed". Called by ESC and the
+   * widget ✗ button. No-op when idle.
+   */
+  public async dismissCurrentSession(): Promise<void> {
+    const state = this.getState();
+
+    if (state === "recording" || state === "starting") {
+      await this.machine.handleEvent({ type: "dismiss" });
+      return;
+    }
+
+    // Finalize phase: a NORMAL stop (terminationCode === null) is transcribing.
+    // Abort the session so finalizeSession persists a dismissed row instead of
+    // pasting (and skips the flush if it hasn't started). We deliberately do NOT
+    // delete the streaming session here: that would race finalizeSession and
+    // drop the audio. A non-null code means a cancel is already in flight — ESC
+    // is a no-op there.
+    if (state === "stopping" && this.terminationCode === null) {
+      const sessionId = this.currentSessionId;
+      if (!sessionId) {
+        return;
+      }
+      // One signal does both jobs: it flags finalizeSession's dismiss gates AND
+      // cancels the in-flight flush (off-mutex, via flush() → provider.reset()),
+      // so a slow/hung finalize returns to idle immediately instead of waiting
+      // for the network call.
+      this.serviceManager
+        .getService("transcriptionService")
+        .abortSession(sessionId);
+    }
   }
 
   // Clean up resources

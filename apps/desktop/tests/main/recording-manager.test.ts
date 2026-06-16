@@ -3,6 +3,7 @@ import { RecordingManager } from "../../src/main/managers/recording-manager";
 import { RecordingMachineInterpreter } from "../../src/main/managers/recording-machine-interpreter";
 import type { ServiceManager } from "../../src/main/managers/service-manager";
 import type { RecordingState } from "../../src/types/recording";
+import { AppError, ErrorCodes } from "../../src/types/error";
 import type {
   ActiveRecordingMode,
   TerminationCode,
@@ -13,6 +14,7 @@ type RecordingManagerInternals = {
   currentSessionId: string | null;
   terminationCode: TerminationCode | null;
   recordingStartedAt: number | null;
+  recordingStoppedAt: number | null;
   systemAudioMuted: boolean;
   soundsMuted: boolean;
   audioChunks: Float32Array[];
@@ -151,7 +153,9 @@ describe("recording manager FSM interpreter", () => {
   });
 
   it("waits for a pending stop command before finalizing a final chunk", async () => {
-    const manager = createRecordingManager();
+    const manager = createRecordingManager({
+      transcriptionService: {},
+    });
     const internals = internalsOf(manager);
     internals.currentSessionId = "session-1";
     internals.machine.__setStateForTesting({
@@ -511,6 +515,64 @@ describe("recording manager FSM interpreter", () => {
   });
 });
 
+describe("dismissCurrentSession routing", () => {
+  it("dispatches the FSM dismiss event while recording", async () => {
+    const manager = createRecordingManager();
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+
+    const endSpy = vi
+      .spyOn(internals, "performEndRecording")
+      .mockResolvedValue(undefined);
+
+    await manager.dismissCurrentSession();
+
+    expect(internals.machine.currentState).toEqual({
+      tag: "STOP_C",
+      code: "user_dismissed",
+    });
+    expect(endSpy).toHaveBeenCalledWith("user_dismissed");
+  });
+
+  it("aborts the in-flight session during finalize", async () => {
+    const abortSession = vi.fn();
+    const cancelStreamingSession = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      transcriptionService: {
+        abortSession,
+        cancelStreamingSession,
+      },
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
+    internals.terminationCode = null;
+    internals.machine.__setStateForTesting({ tag: "STOP_N" });
+
+    await manager.dismissCurrentSession();
+
+    expect(abortSession).toHaveBeenCalledWith("session-1");
+    // Off-mutex abort, NOT the mutex-bound cancelStreamingSession.
+    expect(cancelStreamingSession).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when idle", async () => {
+    const abortSession = vi.fn();
+    const manager = createRecordingManager({
+      transcriptionService: { abortSession },
+    });
+    const internals = internalsOf(manager);
+    internals.machine.__setStateForTesting({ tag: "IDLE" });
+
+    await manager.dismissCurrentSession();
+
+    expect(abortSession).not.toHaveBeenCalled();
+  });
+});
+
 describe("final transcript delivery", () => {
   it("pastes the finalized transcript through the normal path", async () => {
     // The onboarding try-it relies on this exact behavior: the session runs
@@ -535,5 +597,39 @@ describe("final transcript delivery", () => {
 
     expect(pasteSpy).toHaveBeenCalledTimes(1);
     expect(pasteSpy).toHaveBeenCalledWith("hello world");
+  });
+
+  it("resets silently without a notification when finalize reports USER_DISMISSED", async () => {
+    // Finalize-phase dismiss (ESC after Stop): finalizeSession persists the
+    // dismissed row and throws USER_DISMISSED. handleFinalChunk must reset
+    // silently — no failure and no "no speech" toast, even for a long recording.
+    const finalizeSession = vi
+      .fn()
+      .mockRejectedValue(
+        new AppError("Recording dismissed", ErrorCodes.USER_DISMISSED),
+      );
+    const manager = createRecordingManager({
+      transcriptionService: { finalizeSession },
+    });
+    const internals = internalsOf(manager);
+    vi.spyOn(internals, "pasteTranscription").mockResolvedValue(undefined);
+
+    const widgetNotifications: Array<{ type: string }> = [];
+    manager.on("widget-notification", (n: { type: string }) => {
+      widgetNotifications.push(n);
+    });
+
+    internals.currentSessionId = "s1";
+    // Long enough that a genuine empty result would emit empty_transcript.
+    internals.recordingStartedAt = 0;
+    internals.recordingStoppedAt = 5000;
+    internals.terminationCode = null;
+    internals.audioChunks = [];
+    internals.machine.__setStateForTesting({ tag: "STOP_N" });
+
+    await internals.handleFinalChunk();
+
+    expect(finalizeSession).toHaveBeenCalledTimes(1);
+    expect(widgetNotifications).toEqual([]);
   });
 });

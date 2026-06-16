@@ -151,6 +151,9 @@ function HistoryTableCard({
       if (meta?.status === "failed") {
         return t("settings.history.item.failed");
       }
+      if (meta?.status === "dismissed") {
+        return t("settings.history.item.dismissed");
+      }
       return t("settings.history.item.noWords");
     }
     return text;

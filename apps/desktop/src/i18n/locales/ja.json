@@ -585,7 +585,8 @@
       "description": "最近の文字起こし履歴",
       "item": {
         "failed": "文字起こしに失敗しました",
-        "noWords": "単語が検出されませんでした"
+        "noWords": "単語が検出されませんでした",
+        "dismissed": "破棄されました"
       },
       "readMore": "もっと読む",
       "actions": {

@@ -5,7 +5,8 @@ export type ActiveRecordingMode = Exclude<RecordingMode, "idle">;
 export type TerminationCode =
   | "quick_release"
   | "no_audio"
-  | "interrupted_start";
+  | "interrupted_start"
+  | "user_dismissed";
 
 export type RecordingMachineState =
   | { tag: "IDLE" }
@@ -41,6 +42,7 @@ export type RecordingMachineEvent =
   | { type: "pttRelease"; quick: boolean }
   | { type: "toggle"; quick: boolean }
   | { type: "signalStop" }
+  | { type: "dismiss" }
   | { type: "quickReleaseTimeout" }
   | { type: "noAudioTimeout" }
   | { type: "durationWarningTimeout" }
@@ -249,6 +251,29 @@ export function transitionRecordingMachine(
         commands: [
           ...clearPttQTimerIfNeeded(state),
           { type: "stopSession", code: null },
+        ],
+      };
+
+    case "dismiss":
+      // Dismiss before audio capture begins is an interrupted start — there is
+      // no audio yet (capture starts in the "recording" state), so reuse the
+      // existing discard path rather than persisting an empty row.
+      if (state.tag === "STARTING") {
+        return {
+          state: { tag: "STOP_C", code: "interrupted_start" },
+          commands: [{ type: "stopSession", code: "interrupted_start" }],
+        };
+      }
+
+      if (!isRecordingState(state)) {
+        return { state, commands: [] };
+      }
+
+      return {
+        state: { tag: "STOP_C", code: "user_dismissed" },
+        commands: [
+          ...clearPttQTimerIfNeeded(state),
+          { type: "stopSession", code: "user_dismissed" },
         ],
       };
 

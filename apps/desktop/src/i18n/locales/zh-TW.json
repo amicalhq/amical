@@ -585,7 +585,8 @@
       "description": "您最近的轉錄紀錄",
       "item": {
         "failed": "轉錄失敗",
-        "noWords": "未偵測到任何字詞"
+        "noWords": "未偵測到任何字詞",
+        "dismissed": "已捨棄"
       },
       "readMore": "閱讀更多",
       "actions": {

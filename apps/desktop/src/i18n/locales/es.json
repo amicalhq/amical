@@ -585,7 +585,8 @@
       "description": "Tu historial de transcripciones recientes",
       "item": {
         "failed": "la transcripción falló",
-        "noWords": "no se detectaron palabras"
+        "noWords": "no se detectaron palabras",
+        "dismissed": "descartado"
       },
       "readMore": "Leer más",
       "actions": {

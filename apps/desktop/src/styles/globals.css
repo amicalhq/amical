@@ -54,6 +54,18 @@ body {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: #0d0d0d14;
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Recording widget controls (dismiss ✗ / stop ✓): a fixed light button with a
+     dark glyph that sit on the always-dark widget pill. Defined only here and
+     intentionally NOT overridden in .dark, so they stay constant regardless of
+     the app theme (the pill itself is always dark). */
+  --widget-control: oklch(0.985 0 0);
+  --widget-control-foreground: oklch(0.205 0 0);
+  /* Muted (secondary) variant for the dismiss control — a dimmer grey button so
+     it reads as secondary next to the prominent stop control. */
+  --widget-control-muted: oklch(0.45 0 0);
+  --widget-control-muted-foreground: oklch(0.92 0 0);
+
   --content-padding: 2rem;
   --content-max-width: 75rem;
   --header-height: 3rem;
@@ -205,6 +217,12 @@ html.vibrancy [data-slot="sidebar-inner"] {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-widget-control: var(--widget-control);
+  --color-widget-control-foreground: var(--widget-control-foreground);
+  --color-widget-control-muted: var(--widget-control-muted);
+  --color-widget-control-muted-foreground: var(
+    --widget-control-muted-foreground
+  );
 }
 
 @layer base {

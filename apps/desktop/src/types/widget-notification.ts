@@ -77,8 +77,12 @@ export const getNotificationDescription = (
 export const DISCORD_SUPPORT_URL = "https://amical.ai/community";
 export const APP_PLAN_URL = "https://app.amical.ai/plan";
 
-// Config keyed directly by error code
-export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
+// Config keyed by error code. USER_DISMISSED is intentionally excluded — it's a
+// control signal (the user dismissed the dictation), never a user-facing notification.
+export const ERROR_CODE_CONFIG: Record<
+  Exclude<ErrorCode, typeof ErrorCodes.USER_DISMISSED>,
+  WidgetNotificationConfig
+> = {
   [ErrorCodes.AUTH_REQUIRED]: {
     title: { key: "widget.notifications.errorCode.authRequired.title" },
     description: {

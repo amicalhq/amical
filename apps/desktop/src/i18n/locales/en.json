@@ -593,7 +593,8 @@
       "description": "Your recent dictation history",
       "item": {
         "failed": "transcription failed",
-        "noWords": "no words detected"
+        "noWords": "no words detected",
+        "dismissed": "dismissed"
       },
       "readMore": "Read more",
       "actions": {

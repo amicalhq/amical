@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { NotebookPen, Square } from "lucide-react";
+import { NotebookPen, Check, X } from "lucide-react";
 import { Waveform } from "@/components/Waveform";
 import { useRecording } from "@/hooks/useRecording";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -11,16 +11,35 @@ const NUM_WAVEFORM_BARS = 6; // Fewer bars to make room for stop button
 const DEBOUNCE_DELAY = 100; // milliseconds
 const TOAST_INTERACTION_STATE_EVENT = "widget:toast-interaction-state";
 
-// Separate component for the stop button
+// Stop = commit: finish + transcribe + paste
 const StopButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
   onClick,
 }) => (
   <button
     onClick={onClick}
-    className="flex items-center justify-center w-[20px] h-[20px] rounded transition-colors"
-    aria-label="Stop recording"
+    className="flex items-center justify-center w-[16px] h-[16px] rounded-full bg-widget-control transition-colors hover:bg-widget-control/90"
+    aria-label="Stop recording and transcribe"
   >
-    <Square className="w-[12px] h-[12px] text-red-500 fill-red-500" />
+    <Check
+      className="w-[13px] h-[13px] text-widget-control-foreground"
+      strokeWidth={3.5}
+    />
+  </button>
+);
+
+// Dismiss = discard: abort + save audio to history, no paste
+const DismissButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className="flex items-center justify-center w-[16px] h-[16px] rounded-full bg-widget-control-muted transition-colors hover:bg-widget-control-muted/80"
+    aria-label="Dismiss recording"
+  >
+    <X
+      className="w-[13px] h-[13px] text-widget-control-muted-foreground"
+      strokeWidth={3.5}
+    />
   </button>
 );
 
@@ -87,8 +106,13 @@ export const FloatingButton: React.FC = () => {
     };
   }, []);
 
-  const { recordingStatus, stopRecording, voiceDetected, startRecording } =
-    useRecording();
+  const {
+    recordingStatus,
+    stopRecording,
+    dismissRecording,
+    voiceDetected,
+    startRecording,
+  } = useRecording();
   // STARTING is a brief handshake before renderer capture begins; keep the
   // widget expanded and waveform-shaped like the pre-FSM flow.
   const isRecording =
@@ -138,6 +162,14 @@ export const FloatingButton: React.FC = () => {
     e.stopPropagation(); // Prevent triggering the main button click
     console.log("FAB: Stopping hands-free recording");
     await stopRecording();
+  };
+
+  // Handler for dismiss button in hands-free mode
+  const handleDismissClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("FAB: Dismissing recording");
+    await dismissRecording();
   };
 
   const handleOpenNotesClick = async (e: React.MouseEvent) => {
@@ -195,7 +227,9 @@ export const FloatingButton: React.FC = () => {
     ? "h-[8px] w-[48px]"
     : showNotesAction
       ? "h-[24px] w-[124px]"
-      : "h-[24px] w-[96px]";
+      : isHandsFreeMode && isRecording
+        ? "h-[24px] w-[100px]"
+        : "h-[24px] w-[96px]";
 
   // Function to render widget content based on state
   const renderWidgetContent = () => {
@@ -206,17 +240,20 @@ export const FloatingButton: React.FC = () => {
       return <ProcessingIndicator />;
     }
 
-    // Show waveform with stop button when in hands-free mode and recording
+    // Show dismiss (✗) | waveform | stop (✓) when hands-free and recording
     if (isHandsFreeMode && isRecording) {
       return (
         <>
-          <div className="justify-center items-center flex flex-1 gap-1">
+          <div className="h-full items-center flex ml-[5px]">
+            <DismissButton onClick={handleDismissClick} />
+          </div>
+          <div className="justify-center items-center flex flex-1 gap-1 min-w-0">
             <WaveformVisualization
               isRecording={isRecording}
               voiceDetected={voiceDetected}
             />
           </div>
-          <div className="h-full items-center flex mr-2">
+          <div className="h-full items-center flex mr-[5px]">
             <StopButton onClick={handleStopClick} />
           </div>
         </>

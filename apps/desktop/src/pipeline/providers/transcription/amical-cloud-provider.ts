@@ -96,6 +96,9 @@ interface ProviderState {
   grpcPendingFrames: Float32Array[];
   grpcPendingSampleCount: number;
   grpcNextSeq: bigint;
+  // In-flight HTTP-fallback fetch aborter; reset() aborts it so a finalize-phase
+  // dismiss can cancel an HTTP flush mid-request (gRPC uses stream.cancel()).
+  httpAbortController: AbortController | null;
   // Sticky-within-session override: once gRPC fails with a transport-level
   // error, every subsequent transcribe()/flush() in the *same* dictation
   // session takes the HTTP path. Cleared when storeContextEffect sees a new
@@ -188,6 +191,7 @@ const createInitialProviderState = (): ProviderState => ({
   grpcPendingSampleCount: 0,
   grpcNextSeq: 1n,
   transportOverride: null,
+  httpAbortController: null,
 });
 
 /**
@@ -385,12 +389,30 @@ export class AmicalCloudProvider implements TranscriptionProvider {
    * Flush any buffered audio and return transcription with formatting
    * Called at the end of a recording session
    */
-  async flush(context: TranscribeContext): Promise<TranscriptionOutput> {
-    return this.runProviderEffect(
-      this.flushEffect(context).pipe(
-        Effect.tapError((error) => this.logCloudErrorEffect(error)),
-      ),
-    );
+  async flush(
+    context: TranscribeContext,
+    signal?: AbortSignal,
+  ): Promise<TranscriptionOutput> {
+    // Dismiss/cancel arrives as an aborted signal. reset() synchronously cancels
+    // the in-flight gRPC stream and aborts the HTTP fetch, rejecting this flush so
+    // finalizeSession's catch persists the row and returns to idle immediately.
+    // (No-op for the local worker; that path lives in WhisperProvider.) Checked
+    // up-front too because addEventListener won't fire for an already-aborted
+    // signal.
+    if (signal?.aborted) {
+      this.reset();
+    }
+    const onAbort = () => this.reset();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      return await this.runProviderEffect(
+        this.flushEffect(context).pipe(
+          Effect.tapError((error) => this.logCloudErrorEffect(error)),
+        ),
+      );
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+    }
   }
 
   /**
@@ -635,11 +657,17 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   private resetEffect(): Effect.Effect<void> {
     return Effect.gen(this, function* () {
-      const stream = yield* Ref.modify(this.state, (state) => [
-        state.grpcStream,
+      const inFlight = yield* Ref.modify(this.state, (state) => [
+        {
+          stream: state.grpcStream,
+          httpAbortController: state.httpAbortController,
+        },
         resetProviderState(),
       ]);
-      yield* Effect.sync(() => stream?.cancel());
+      yield* Effect.sync(() => {
+        inFlight.stream?.cancel();
+        inFlight.httpAbortController?.abort();
+      });
     });
   }
 
@@ -1012,10 +1040,22 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const audioPayload = hasAudio
         ? Buffer.from(float32ToPcmS16le(audioData)).toString("base64")
         : "";
+      // Register an aborter so reset() (finalize-phase dismiss) can cancel this
+      // in-flight HTTP request; gRPC uses stream.cancel() for the same purpose.
+      // INVARIANT: this signal is scoped to the /transcribe request ONLY. Never
+      // widen it to cover getIdTokenEffect/refreshTokenEffect — aborting a token
+      // refresh mid-flight could drop a freshly-minted refresh token. Auth calls
+      // deliberately carry no signal, and reset() never touches AuthService.
+      const abortController = new AbortController();
+      yield* Ref.update(this.state, (state) => ({
+        ...state,
+        httpAbortController: abortController,
+      }));
       return yield* Effect.tryPromise({
         try: () =>
           fetch(`${config.apiEndpoint}/transcribe`, {
             method: "POST",
+            signal: abortController.signal,
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${idToken}`,
@@ -1044,12 +1084,20 @@ export class AmicalCloudProvider implements TranscriptionProvider {
                 : undefined,
             }),
           }),
-        catch: (fetchError) =>
-          new AppError(
-            fetchError instanceof Error ? fetchError.message : "Network error",
-            ErrorCodes.NETWORK_ERROR,
+        // A dismiss-triggered abort surfaces here as a rejected fetch; map it
+        // like any network failure. (No special CANCELLED/499 code is needed —
+        // shouldFallbackToHttp only inspects the gRPC attempt, never this HTTP
+        // route, so an aborted fetch can't spawn a phantom fallback.)
+        catch: toNetworkAppError,
+      }).pipe(
+        Effect.ensuring(
+          Ref.update(this.state, (state) =>
+            state.httpAbortController === abortController
+              ? { ...state, httpAbortController: null }
+              : state,
           ),
-      });
+        ),
+      );
     });
   }
 

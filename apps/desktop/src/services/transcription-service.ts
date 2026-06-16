@@ -329,6 +329,7 @@ export class TranscriptionService {
           transcriptionResults: [],
           firstChunkReceivedAt: performance.now(),
           recordingStartedAt: recordingStartedAt,
+          abortController: new AbortController(),
         };
 
         this.streamingSessions.set(sessionId, session);
@@ -419,6 +420,56 @@ export class TranscriptionService {
   }
 
   /**
+   * Dismiss a session by aborting its signal. This both (a) flags
+   * finalizeSession's cooperative gates so it writes a dismissed row instead of
+   * pasting, and (b) cancels an in-flight flush: flush() reacts to the abort by
+   * calling provider.reset(), which synchronously cancels the gRPC stream /
+   * aborts the HTTP fetch off the transcription mutex, rejecting the awaited
+   * flush so the recording machine returns to idle immediately. No-op effect for
+   * the local whisper worker (an in-flight decode isn't interruptible) — its
+   * cooperative checkpoints discard the result. No-op if the session is already
+   * gone (nothing left to dismiss).
+   */
+  abortSession(sessionId: string): void {
+    const session = this.streamingSessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+    session.abortController.abort();
+    logger.transcription.info("Aborted session", { sessionId });
+  }
+
+  /**
+   * The control signal finalizeSession throws on dismiss. A fresh instance per
+   * throw so the stack trace points at the actual throw site.
+   */
+  private userDismissedError(): AppError {
+    return new AppError("Recording dismissed", ErrorCodes.USER_DISMISSED);
+  }
+
+  /**
+   * Persist a dismissed dictation: empty text, the captured audio (if any), and
+   * meta.status="dismissed". No stats increment (the user deliberately discarded).
+   */
+  async saveDismissedTranscription(options: {
+    sessionId: string;
+    audioFilePath?: string;
+  }): Promise<void> {
+    await createTranscription({
+      text: "",
+      audioFile: options.audioFilePath,
+      meta: {
+        sessionId: options.sessionId,
+        status: "dismissed",
+      },
+    });
+    logger.transcription.info("Saved dismissed transcription record", {
+      sessionId: options.sessionId,
+      audioFilePath: options.audioFilePath,
+    });
+  }
+
+  /**
    * Finalize a streaming session - flush provider, format, save to DB
    * Call this instead of processStreamingChunk with isFinal=true
    */
@@ -436,8 +487,18 @@ export class TranscriptionService {
       logger.transcription.warn("No session found to finalize", { sessionId });
       return "";
     }
+    // The session's aborter — its signal drives every dismiss gate below and is
+    // handed to provider.flush() so a dismiss can cancel the in-flight call.
+    const { signal } = session.abortController;
 
     try {
+      // Early dismiss: the user dismissed before the flush started — skip the
+      // flush entirely (no wasted transcription call). The catch below persists
+      // the dismissed row once and rethrows USER_DISMISSED.
+      if (signal.aborted) {
+        throw this.userDismissedError();
+      }
+
       // Update session timestamps
       session.finalizationStartedAt = performance.now();
       session.recordingStoppedAt = recordingStoppedAt;
@@ -464,15 +525,19 @@ export class TranscriptionService {
 
         const provider = await this.selectProvider();
         usedCloudProvider = provider.name === "amical-cloud";
-        const finalResult = await provider.flush({
-          sessionId,
-          vocabulary: session.context.sharedData.vocabulary,
-          accessibilityContext: session.context.sharedData.accessibilityContext,
-          previousChunk,
-          aggregatedTranscription: aggregatedTranscription || undefined,
-          languages: session.context.sharedData.userPreferences?.languages,
-          formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
-        });
+        const finalResult = await provider.flush(
+          {
+            sessionId,
+            vocabulary: session.context.sharedData.vocabulary,
+            accessibilityContext:
+              session.context.sharedData.accessibilityContext,
+            previousChunk,
+            aggregatedTranscription: aggregatedTranscription || undefined,
+            languages: session.context.sharedData.userPreferences?.languages,
+            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+          },
+          signal,
+        );
         session.detectedLanguage = this.mergeDetectedLanguage(
           session.detectedLanguage,
           finalResult.detectedLanguage,
@@ -501,6 +566,13 @@ export class TranscriptionService {
         rawTranscriptionLength: rawTranscription.length,
         chunkCount: session.transcriptionResults.length,
       });
+
+      // Finalize-phase dismiss: the flush already ran, but the user dismissed.
+      // Discard the transcript — the catch below persists the dismissed row and
+      // rethrows USER_DISMISSED (skip paste/stats).
+      if (signal.aborted) {
+        throw this.userDismissedError();
+      }
 
       const requestedLanguage = this.singleRequestedLanguage(
         session.context.sharedData.userPreferences?.languages,
@@ -550,6 +622,20 @@ export class TranscriptionService {
       const speechModelId = usedCloudProvider
         ? "amical-cloud"
         : selectedModelId || "whisper-local";
+
+      // Late dismiss: the user dismissed while formatting / model lookup was in
+      // flight (after the post-flush check). Discard the now-formatted transcript
+      // — the catch persists the dismissed row and rethrows USER_DISMISSED, so
+      // there's no paste, no stats, no completion telemetry.
+      //
+      // This is the FINAL dismiss gate. A dismiss arriving after this point
+      // (during the DB write / return / the caller's paste) is an accepted
+      // single-ms race we deliberately do NOT guard: the transcription has
+      // effectively committed, and once handleFinalChunk hands the text to the
+      // native paste there is nothing left to abort. See handleFinalChunk.
+      if (signal.aborted) {
+        throw this.userDismissedError();
+      }
 
       await createTranscription({
         text: completeTranscription,
@@ -637,6 +723,22 @@ export class TranscriptionService {
       logger.transcription.info("Streaming session completed", { sessionId });
       return completeTranscription;
     } catch (error) {
+      // Dismiss — either an aborted flush, or the USER_DISMISSED rethrown from
+      // the pre/post-flush checks above. Persist the dismissed row once (with the
+      // already-written audio) and rethrow USER_DISMISSED so the caller resets
+      // silently — no failure toast.
+      if (signal.aborted) {
+        await this.saveDismissedTranscription({
+          sessionId,
+          audioFilePath: audioFilePath || undefined,
+        });
+        this.streamingSessions.delete(sessionId);
+        logger.transcription.info("Dismissed transcription during finalize", {
+          sessionId,
+        });
+        throw this.userDismissedError();
+      }
+
       // Save failed transcription record
       const errorCode =
         error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
@@ -1072,7 +1174,11 @@ export class TranscriptionService {
     // normalized server-side.
     const completeTranscription = usedCloudProvider
       ? formatResult.text
-      : normalizeTranscriptionBoundaries(formatResult.text, undefined, undefined);
+      : normalizeTranscriptionBoundaries(
+          formatResult.text,
+          undefined,
+          undefined,
+        );
 
     const speechModelId = usedCloudProvider
       ? "amical-cloud"

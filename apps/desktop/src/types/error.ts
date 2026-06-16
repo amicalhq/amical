@@ -30,6 +30,11 @@ export const ErrorCodes = {
   WORKER_CRASHED: "WORKER_CRASHED",
   LOCAL_TRANSCRIPTION_FAILED: "LOCAL_TRANSCRIPTION_FAILED",
   LOCAL_TRANSCRIPTION_UNSUPPORTED: "LOCAL_TRANSCRIPTION_UNSUPPORTED",
+
+  // Control signal, not a failure: the user dismissed the dictation.
+  // finalizeSession throws this so the caller can silently abandon the session
+  // (no failure/no-speech notification).
+  USER_DISMISSED: "USER_DISMISSED",
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

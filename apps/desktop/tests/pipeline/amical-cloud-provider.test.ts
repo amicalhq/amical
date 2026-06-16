@@ -920,4 +920,101 @@ describe("AmicalCloudProvider", () => {
       ).rejects.toBeDefined();
     });
   });
+
+  describe("dismiss / abort wiring", () => {
+    it("aborts the in-flight HTTP /transcribe request when the dismiss signal fires", async () => {
+      const provider = constructProviderWithTransport("http");
+      let capturedSignal: AbortSignal | undefined;
+      // Real fetch rejects when its signal aborts; model that so the in-flight
+      // request actually resolves on abort.
+      fetchMock.mockImplementationOnce(
+        (_url: unknown, init: { signal?: AbortSignal }) => {
+          capturedSignal = init.signal;
+          return new Promise((_resolve, reject) => {
+            init.signal?.addEventListener(
+              "abort",
+              () => reject(new Error("aborted")),
+              { once: true },
+            );
+          });
+        },
+      );
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const controller = new AbortController();
+      const flushPromise = provider.flush(baseContext(), controller.signal);
+      await flush(); // let the fetch start
+
+      expect(capturedSignal).toBeInstanceOf(AbortSignal);
+      expect(capturedSignal!.aborted).toBe(false);
+
+      controller.abort(); // dismiss
+
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+      // The /transcribe request itself was aborted (not left hanging).
+      expect(capturedSignal!.aborted).toBe(true);
+    });
+
+    it("cancels the in-flight gRPC flush via reset() and does not fall back to HTTP", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const resetSpy = vi.spyOn(provider, "reset");
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const controller = new AbortController();
+      const flushPromise = provider.flush(baseContext(), controller.signal);
+      await flush();
+
+      controller.abort(); // dismiss → reset() → stream.cancel()
+
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+        statusCode: 499,
+      });
+      expect(resetSpy).toHaveBeenCalled();
+      // A user-initiated cancel must NOT spawn a phantom HTTP fallback.
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("scopes the abort signal to /transcribe only — auth calls carry no signal", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "ok" },
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const controller = new AbortController();
+      await provider.flush(baseContext(), controller.signal);
+
+      // The /transcribe fetch carried an abort signal...
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect((init as { signal?: AbortSignal }).signal).toBeInstanceOf(
+        AbortSignal,
+      );
+
+      // ...but auth calls carry NONE. Aborting a dismiss must never cancel a
+      // token refresh and drop a freshly-minted refresh token.
+      expect(authMock.instance.getIdToken).toHaveBeenCalled();
+      for (const call of authMock.instance.getIdToken.mock.calls) {
+        expect(call).toHaveLength(0);
+      }
+      for (const call of authMock.instance.refreshTokenIfNeeded.mock.calls) {
+        expect(call).toHaveLength(0);
+      }
+    });
+  });
 });

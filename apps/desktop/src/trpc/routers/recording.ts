@@ -37,6 +37,14 @@ export const recordingRouter = createRouter({
     return await recordingManager.signalStop();
   }),
 
+  dismiss: procedure.mutation(async ({ ctx }) => {
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    if (!recordingManager) {
+      throw new Error("Recording manager not available");
+    }
+    return await recordingManager.dismissCurrentSession();
+  }),
+
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // Modern Node.js (20+) adds Symbol.asyncDispose to async generators natively,
   // which conflicts with electron-trpc's attempt to add the same symbol.
@@ -135,9 +143,14 @@ export const recordingRouter = createRouter({
         let config: WidgetNotificationConfig;
 
         if (data.type === "transcription_failed" && data.errorCode) {
-          config =
-            ERROR_CODE_CONFIG[data.errorCode] ??
-            ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN];
+          // USER_DISMISSED is a control signal, not in ERROR_CODE_CONFIG; it
+          // never reaches here (dismiss is handled before any emit), so fall
+          // back to UNKNOWN if it somehow did.
+          const errorConfig =
+            data.errorCode === ErrorCodes.USER_DISMISSED
+              ? undefined
+              : ERROR_CODE_CONFIG[data.errorCode];
+          config = errorConfig ?? ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN];
         } else {
           config = WIDGET_NOTIFICATION_CONFIG[data.type];
         }

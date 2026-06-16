@@ -253,6 +253,17 @@ export class WindowManager {
     const shouldOpenExternally = (url: string) => {
       try {
         const parsed = new URL(url);
+        // The app's own dev-server origin is NOT external. Vite full reloads
+        // (e.g. on i18n/JSON edits HMR can't hot-patch) navigate the window to
+        // http://localhost:<port>, which would otherwise match the http: rule
+        // below and get pushed to the default browser — stealing focus with a
+        // localhost tab on every reload. Keep same-origin navigations in-window.
+        if (
+          MAIN_WINDOW_VITE_DEV_SERVER_URL &&
+          parsed.origin === new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin
+        ) {
+          return false;
+        }
         return ["http:", "https:", "mailto:", "tel:"].includes(parsed.protocol);
       } catch {
         return false;

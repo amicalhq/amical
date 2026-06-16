@@ -119,8 +119,18 @@ export class WhisperProvider implements TranscriptionProvider {
    * Flush any buffered audio and return transcription
    * Called at the end of a recording session
    */
-  async flush(context: TranscribeContext): Promise<TranscriptionOutput> {
+  async flush(
+    context: TranscribeContext,
+    signal?: AbortSignal,
+  ): Promise<TranscriptionOutput> {
     if (this.frameBuffer.length === 0) {
+      return { text: "" };
+    }
+
+    // The native decode can't be interrupted mid-flight, so an abort that lands
+    // during it is discarded by finalizeSession's post-flush gate. Honour an
+    // abort that arrived before we started to skip the wasted decode.
+    if (signal?.aborted) {
       return { text: "" };
     }
 

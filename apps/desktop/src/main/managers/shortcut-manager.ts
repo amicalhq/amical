@@ -448,6 +448,12 @@ export class ShortcutManager extends EventEmitter {
     if (!this.isKnownKeycode(keyCode)) {
       return;
     }
+    // ESC is not a configurable chord — emit a dedicated dismiss signal and do
+    // not track it in activeKeys (it must not perturb chord/superset matching).
+    if (getKeyFromKeycode(keyCode) === "Escape") {
+      this.emit("escape-pressed");
+      return;
+    }
     this.addActiveKey(keyCode);
   }
 

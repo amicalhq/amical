@@ -596,7 +596,8 @@
       "description": "Dein aktueller Diktatverlauf",
       "item": {
         "failed": "Transkription fehlgeschlagen",
-        "noWords": "keine Wörter erkannt"
+        "noWords": "keine Wörter erkannt",
+        "dismissed": "verworfen"
       },
       "readMore": "Mehr lesen",
       "actions": {
