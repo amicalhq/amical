@@ -78,7 +78,7 @@ const grpcMock = vi.hoisted(() => {
       lastClientArgs = { target, credentials, options };
     }
 
-    makeBidiStreamRequest = vi.fn(() => {
+    makeBidiStreamRequest = vi.fn((..._args: unknown[]) => {
       lastStream = new FakeStream();
       return lastStream;
     });

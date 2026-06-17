@@ -4,7 +4,6 @@ import type {
   NewTranscription,
   NewVocabulary,
   NewModel,
-  NewAppSettings,
   NewNote,
   AppSettingsData,
 } from "@db/schema";
@@ -74,7 +73,7 @@ export const defaultAppSettings: AppSettingsData = {
   },
   dictation: {
     autoDetectEnabled: true,
-    selectedLanguage: "en",
+    languages: ["en"],
   },
   preferences: {
     launchAtLogin: false,
@@ -158,6 +157,8 @@ export const sampleModels: NewModel[] = [
   {
     id: "ggml-base.en",
     provider: "local-whisper",
+    providerType: "local-whisper",
+    providerInstanceId: "system-local-whisper",
     name: "Whisper Base English",
     type: "speech",
     size: "~147 MB",
@@ -172,6 +173,8 @@ export const sampleModels: NewModel[] = [
   {
     id: "gpt-4o-mini",
     provider: "openrouter",
+    providerType: "openrouter",
+    providerInstanceId: "system-openrouter",
     name: "GPT-4o Mini",
     type: "language",
     context: "128k",
@@ -301,7 +304,9 @@ export const fixtures = {
  */
 export async function seedDatabase(
   testDb: TestDatabase,
-  fixture: keyof typeof fixtures | ((testDb: TestDatabase) => Promise<void>),
+  fixture:
+    | Exclude<keyof typeof fixtures, "withCustomSettings">
+    | ((testDb: TestDatabase) => Promise<void>),
 ): Promise<void> {
   if (typeof fixture === "function") {
     await fixture(testDb);

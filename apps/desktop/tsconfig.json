@@ -17,11 +17,17 @@
     "baseUrl": ".",
     "noEmit": true,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@db/*": ["src/db/*"],
+      "@main/*": ["src/main/*"],
+      "@services/*": ["src/services/*"],
+      "@utils/*": ["src/utils/*"],
+      "@trpc/*": ["src/trpc/*"]
     }
   },
   "include": [
     "src/**/*",
+    "tests/**/*",
     "forge.config.ts",
     "vite.*.config.mts",
     "drizzle.config.ts"

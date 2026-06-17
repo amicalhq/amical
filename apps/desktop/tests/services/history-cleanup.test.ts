@@ -139,13 +139,13 @@ describe("HistoryCleanupService", () => {
     await cleanupService.runCleanup("startup");
 
     retentionPeriod = "1d";
-    historySettingsChangedHandler?.();
+    (historySettingsChangedHandler as (() => void) | null)?.();
 
     await vi.advanceTimersByTimeAsync(
       SETTINGS_CHANGE_CLEANUP_DELAY_MS - 60 * 1000,
     );
 
-    historySettingsChangedHandler?.();
+    (historySettingsChangedHandler as (() => void) | null)?.();
 
     await vi.advanceTimersByTimeAsync(60 * 1000);
 
