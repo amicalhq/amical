@@ -97,6 +97,9 @@ export class RecordingManager extends EventEmitter {
   private pendingInstructReview: { sessionId: string; text: string } | null =
     null;
 
+  // Held so audio-chunk handling can read the live draft-binding state.
+  private shortcutManager: ShortcutManager | null = null;
+
   constructor(private serviceManager: ServiceManager) {
     super();
     this.machine = new RecordingMachineInterpreter({
@@ -127,6 +130,7 @@ export class RecordingManager extends EventEmitter {
 
   // Setup listeners for shortcut events
   public setupShortcutListeners(shortcutManager: ShortcutManager) {
+    this.shortcutManager = shortcutManager;
     let lastPTTState = false;
 
     // Handle PTT state changes
@@ -158,31 +162,18 @@ export class RecordingManager extends EventEmitter {
     shortcutManager.on("escape-pressed", async () => {
       await this.dismissCurrentSession();
     });
+  }
 
-    // Handle the instruct-mode hotkey. Same recording semantics as PTT (the
-    // shortcut-manager gives it PTT-style hold/release); the only difference is
-    // the session is tagged instruct, which makes the cloud stream send the
-    // "instruct" preset and (in M3) hold the result for review. Tag only a fresh
-    // (idle) session; a mid-session re-press falls through to the normal PTT path.
-    let lastInstructState = false;
-    shortcutManager.on(
-      "instruct-ptt-state-changed",
-      async (isPressed: boolean) => {
-        if (isPressed === lastInstructState) {
-          return;
-        }
-        lastInstructState = isPressed;
-
-        if (isPressed) {
-          if (this.getState() === "idle") {
-            this.currentIsInstruct = true;
-          }
-          await this.onPTTPress();
-        } else {
-          await this.onPTTRelease();
-        }
-      },
-    );
+  /**
+   * Latch the draft tag once the draft binding is seen during a session. Draft
+   * is just a second PTT binding (see shortcut-manager); the cloud preset is
+   * decided at stream-open (first chunk), so reading the live draft state here
+   * makes the Fn+Ctrl chord tag as draft regardless of key order.
+   */
+  private latchDraftTag(): void {
+    if (!this.currentIsInstruct && this.shortcutManager?.isPTTDraftActive()) {
+      this.currentIsInstruct = true;
+    }
   }
 
   private emitStateChange(
@@ -639,6 +630,7 @@ export class RecordingManager extends EventEmitter {
             const transcriptionService = this.serviceManager.getService(
               "transcriptionService",
             );
+            this.latchDraftTag();
             await transcriptionService.processStreamingChunk({
               sessionId: this.currentSessionId,
               audioChunk: chunk,
@@ -673,6 +665,7 @@ export class RecordingManager extends EventEmitter {
         const transcriptionService = this.serviceManager.getService(
           "transcriptionService",
         );
+        this.latchDraftTag();
         await transcriptionService.processStreamingChunk({
           sessionId,
           audioChunk: chunk,
