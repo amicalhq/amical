@@ -65,10 +65,12 @@ export class ShortcutManager extends EventEmitter {
   // fire a phantom press and stop a hands-free session.
   private pttActive = false;
 
-  // Instruct hold latch — same hold/sustain semantics as pttActive, for the
-  // instruct chord (a superset of PTT). While active, the PTT emit is masked so
-  // holding the instruct chord runs instruct only, not normal dictation.
-  private instructActive = false;
+  // Whether the active PTT session was engaged via the "draft" binding (i.e. the
+  // draft chord is currently exactly held). Recomputed live each evaluation, so a
+  // draft chord that is a superset of plain PTT (e.g. Fn+Ctrl over Fn) still tags
+  // as draft even if the base key lands a tick before the rest. recording-manager
+  // reads this (latched per session) to send the instruct preset.
+  private pttDraftActive = false;
 
   // Generic command kill-switch (the onboarding wizard sets it: on while the
   // wizard is open, off while a dictation try-it step is on screen). While
@@ -347,7 +349,7 @@ export class ShortcutManager extends EventEmitter {
     if (this.exactMatchState.newNote) {
       for (const key of this.shortcuts.newNote) keys.add(key);
     }
-    if (this.instructActive) {
+    if (this.pttDraftActive) {
       for (const key of this.shortcuts.draftMode) keys.add(key);
     }
     return keys;
@@ -533,28 +535,13 @@ export class ShortcutManager extends EventEmitter {
     // Snapshot the active keys once; every matcher below reads the same set.
     const activeKeys = this.getActiveKeys();
 
-    // Instruct (hold-to-talk; a superset of the PTT chord). Evaluate BEFORE PTT
-    // and mask PTT while instruct is engaged so holding the instruct chord runs
-    // instruct only, not normal dictation. Owns the instructActive latch; like
-    // PTT, suppression only masks the emitted level so a mid-hold flip still
-    // delivers a release.
-    const isInstructPressed = this.isInstructShortcutPressed(
-      isKeyDown,
-      activeKeys,
-    );
-    this.emit(
-      "instruct-ptt-state-changed",
-      isInstructPressed && !this.commandsSuppressed,
-    );
-
-    // Check PTT shortcut. Always evaluate the matcher (it owns the pttActive
-    // latch); suppression only masks the EMITTED level to false, so a mid-hold
-    // suppression flip still delivers a release on the next key event.
+    // Check PTT shortcut. PTT accepts two bindings — the normal chord and the
+    // "draft" chord — both handled inside the matcher (it owns the pttActive latch
+    // and the live pttDraftActive flag). Draft is NOT a separate event: it rides
+    // the same ptt-state-changed edge, only tagged. Suppression only masks the
+    // EMITTED level to false, so a mid-hold flip still delivers a release.
     const isPTTPressed = this.isPTTShortcutPressed(isKeyDown, activeKeys);
-    this.emit(
-      "ptt-state-changed",
-      isPTTPressed && !isInstructPressed && !this.commandsSuppressed,
-    );
+    this.emit("ptt-state-changed", isPTTPressed && !this.commandsSuppressed);
 
     // Toggle/paste/newNote are edge shortcuts (one-shot on the exact-match rising
     // edge); they deliberately don't take isKeyDown — a stray edge there is rare and
@@ -636,45 +623,58 @@ export class ShortcutManager extends EventEmitter {
     return keys.length === activeKeys.length && this.allHeld(keys, activeKeys);
   }
 
+  // PTT accepts two bindings: the normal chord and the optional "draft" chord.
+  // Start only on a key-down that EXACTLY matches one of them (never latch on a
+  // key-up that collapses a larger chord onto the set — that would fire a phantom
+  // press and stop the session). Prefer the draft chord on start, so a draft chord
+  // that is a superset of plain PTT (Fn+Ctrl over Fn) tags as draft when both
+  // match in one event. Sustain while EITHER binding's keys are all held.
+  // pttDraftActive is recomputed live (draft chord currently exactly held) so the
+  // Fn-then-Ctrl press order still resolves to draft once both keys are down.
   private isPTTShortcutPressed(
     isKeyDown: boolean,
     activeKeys: number[],
   ): boolean {
     const pttKeys = this.shortcuts.pushToTalk;
-    if (!pttKeys || pttKeys.length === 0) {
+    const draftKeys = this.shortcuts.draftMode;
+    const hasPtt = !!pttKeys && pttKeys.length > 0;
+    const hasDraft = !!draftKeys && draftKeys.length > 0;
+
+    if (!hasPtt && !hasDraft) {
       this.pttActive = false;
+      this.pttDraftActive = false;
       return false;
     }
 
-    // Start only on an exact match and only on a key-down: never latch active on a
-    // key-up that collapses a larger chord down to the PTT set (e.g. releasing Space
-    // after Fn+Space started hands-free), which would fire a phantom press and stop
-    // the session. Sustain (the other branch) is explained on pttActive.
-    this.pttActive = this.pttActive
-      ? this.allHeld(pttKeys, activeKeys)
-      : isKeyDown && this.isExactMatch(pttKeys, activeKeys);
+    if (this.pttActive) {
+      // Sustain while either binding's full chord remains held.
+      this.pttActive =
+        (hasPtt && this.allHeld(pttKeys, activeKeys)) ||
+        (hasDraft && this.allHeld(draftKeys, activeKeys));
+    } else if (
+      isKeyDown &&
+      hasDraft &&
+      this.isExactMatch(draftKeys, activeKeys)
+    ) {
+      this.pttActive = true;
+    } else if (isKeyDown && hasPtt && this.isExactMatch(pttKeys, activeKeys)) {
+      this.pttActive = true;
+    }
+
+    // Tag (live): is the draft chord exactly held right now?
+    this.pttDraftActive =
+      this.pttActive && hasDraft && this.isExactMatch(draftKeys, activeKeys);
 
     return this.pttActive;
   }
 
-  // Instruct uses the same hold/latch semantics as PTT: latch on an exact-match
-  // key-down, sustain while all instruct keys remain held. The hands-free
-  // upgrade is a PTT/FSM concept and intentionally does not apply here.
-  private isInstructShortcutPressed(
-    isKeyDown: boolean,
-    activeKeys: number[],
-  ): boolean {
-    const instructKeys = this.shortcuts.draftMode;
-    if (!instructKeys || instructKeys.length === 0) {
-      this.instructActive = false;
-      return false;
-    }
-
-    this.instructActive = this.instructActive
-      ? this.allHeld(instructKeys, activeKeys)
-      : isKeyDown && this.isExactMatch(instructKeys, activeKeys);
-
-    return this.instructActive;
+  /**
+   * Whether the current PTT session is engaged via the draft binding. Read by
+   * recording-manager at chunk time and latched per session, so a draft chord
+   * that is a superset of plain PTT tags correctly regardless of key order.
+   */
+  public isPTTDraftActive(): boolean {
+    return this.pttDraftActive;
   }
 
   private isToggleRecordingShortcutPressed(activeKeys: number[]): boolean {
