@@ -106,6 +106,7 @@ export class RecordingManager extends EventEmitter {
       notifyNoAudio: () => this.notifyNoAudio(),
       notifyDurationWarning: () => this.notifyDurationWarning(),
       notifyRecordingAutoStopped: () => this.notifyRecordingAutoStopped(),
+      abortFinalization: () => this.abortCurrentFinalization(),
       startSession: (mode) => this.performStartSession(mode),
       stopSession: (code) => this.performEndRecording(code),
     });
@@ -1263,32 +1264,37 @@ export class RecordingManager extends EventEmitter {
    * widget ✗ button. No-op when idle.
    */
   public async dismissCurrentSession(): Promise<void> {
-    const state = this.getState();
+    // The FSM decides what dismiss means per state: STARTING → interrupted_start,
+    // REC_* → stop as user_dismissed, STOP_N (in-flight finalize) → abort the
+    // transcription (abortFinalization command), idle / already-cancelling
+    // STOP_C → no-op.
+    await this.machine.handleEvent({ type: "dismiss" });
+  }
 
-    if (state === "recording" || state === "starting") {
-      await this.machine.handleEvent({ type: "dismiss" });
+  /**
+   * Abort an in-flight finalize (FSM abortFinalization command, emitted when
+   * dismiss arrives during STOP_N). One signal does both jobs: it flags
+   * finalizeSession's dismiss gates AND cancels the in-flight flush (off-mutex,
+   * via flush() → provider.reset()), so finalizeSession persists a dismissed row
+   * instead of pasting and a slow/hung finalize returns to idle immediately
+   * instead of waiting for the network call. We deliberately do NOT delete the
+   * streaming session here: that would race finalizeSession and drop the audio.
+   */
+  private abortCurrentFinalization(): void {
+    const sessionId = this.currentSessionId;
+    if (!sessionId) {
       return;
     }
-
-    // Finalize phase: a NORMAL stop (terminationCode === null) is transcribing.
-    // Abort the session so finalizeSession persists a dismissed row instead of
-    // pasting (and skips the flush if it hasn't started). We deliberately do NOT
-    // delete the streaming session here: that would race finalizeSession and
-    // drop the audio. A non-null code means a cancel is already in flight — ESC
-    // is a no-op there.
-    if (state === "stopping" && this.terminationCode === null) {
-      const sessionId = this.currentSessionId;
-      if (!sessionId) {
-        return;
-      }
-      // One signal does both jobs: it flags finalizeSession's dismiss gates AND
-      // cancels the in-flight flush (off-mutex, via flush() → provider.reset()),
-      // so a slow/hung finalize returns to idle immediately instead of waiting
-      // for the network call.
-      this.serviceManager
-        .getService("transcriptionService")
-        .abortSession(sessionId);
-    }
+    // Keep the terminationCode mirror coherent with the FSM, which has just
+    // moved to STOP_C{user_dismissed}. abortFinalization carries no stopSession
+    // command, so setStopIntent never fires for this transition — set the code
+    // here (the stop timestamp was already captured on entry to STOP_N). This
+    // also makes the "skip streaming if terminated" guards treat any late chunk
+    // as cancelled, matching the dismissal.
+    this.terminationCode = "user_dismissed";
+    this.serviceManager
+      .getService("transcriptionService")
+      .abortSession(sessionId);
   }
 
   // Clean up resources

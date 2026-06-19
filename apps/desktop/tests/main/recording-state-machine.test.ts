@@ -514,10 +514,15 @@ describe("recording state machine", () => {
       });
     });
 
-    it("ignores dismiss when idle or already stopping", () => {
+    it("dismisses an in-flight finalize (STOP_N) to STOP_C(user_dismissed) via abortFinalization", () => {
+      const [state, commands] = step({ tag: "STOP_N" }, { type: "dismiss" });
+      expect(state).toEqual({ tag: "STOP_C", code: "user_dismissed" });
+      expect(commands).toEqual([{ type: "abortFinalization" }]);
+    });
+
+    it("ignores dismiss when idle or already cancelling", () => {
       for (const idle of [
         { tag: "IDLE" } as const,
-        { tag: "STOP_N" } as const,
         { tag: "STOP_C", code: "no_audio" } as const,
       ]) {
         const [state, commands] = step(idle, { type: "dismiss" });

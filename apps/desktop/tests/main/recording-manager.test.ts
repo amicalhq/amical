@@ -555,6 +555,8 @@ describe("dismissCurrentSession routing", () => {
     await manager.dismissCurrentSession();
 
     expect(abortSession).toHaveBeenCalledWith("session-1");
+    // The FSM moved to STOP_C{user_dismissed}; the mirror tracks it.
+    expect(internals.terminationCode).toBe("user_dismissed");
     // Off-mutex abort, NOT the mutex-bound cancelStreamingSession.
     expect(cancelStreamingSession).not.toHaveBeenCalled();
   });

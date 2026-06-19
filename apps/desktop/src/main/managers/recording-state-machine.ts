@@ -58,6 +58,7 @@ export type RecordingMachineCommand =
   | { type: "startQuickReleaseTimer" }
   | { type: "clearQuickReleaseTimer" }
   | { type: "stopSession"; code: TerminationCode | null }
+  | { type: "abortFinalization" }
   | { type: "markFirstAudioReceived" }
   | { type: "notifyNoAudio" }
   | { type: "notifyDurationWarning" }
@@ -262,6 +263,18 @@ export function transitionRecordingMachine(
         return {
           state: { tag: "STOP_C", code: "interrupted_start" },
           commands: [{ type: "stopSession", code: "interrupted_start" }],
+        };
+      }
+
+      // Dismiss during an in-flight finalize (STOP_N). The session is already
+      // stopping and finalizeSession is running, so we must NOT re-stop it —
+      // instead abort the transcription so it persists a dismissed row rather
+      // than pasting. A STOP_C (cancel already in flight) falls through to the
+      // no-op below.
+      if (state.tag === "STOP_N") {
+        return {
+          state: { tag: "STOP_C", code: "user_dismissed" },
+          commands: [{ type: "abortFinalization" }],
         };
       }
 

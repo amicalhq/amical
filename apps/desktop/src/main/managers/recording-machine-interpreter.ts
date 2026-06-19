@@ -46,6 +46,7 @@ type RecordingMachineInterpreterDelegate = {
   notifyNoAudio(): void;
   notifyDurationWarning(): void;
   notifyRecordingAutoStopped(): void;
+  abortFinalization(): void;
   startSession(mode: ActiveRecordingMode): Promise<void>;
   stopSession(code: TerminationCode | null): Promise<void>;
 };
@@ -339,6 +340,9 @@ export class RecordingMachineInterpreter {
         break;
       case "notifyRecordingAutoStopped":
         this.delegate.notifyRecordingAutoStopped();
+        break;
+      case "abortFinalization":
+        this.delegate.abortFinalization();
         break;
       default: {
         const exhaustive: never = command;
