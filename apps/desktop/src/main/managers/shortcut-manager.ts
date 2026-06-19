@@ -24,6 +24,7 @@ interface ShortcutConfig {
   toggleRecording: number[];
   pasteLastTranscript: number[];
   newNote: number[];
+  instructMode: number[];
 }
 
 export class ShortcutManager extends EventEmitter {
@@ -38,6 +39,7 @@ export class ShortcutManager extends EventEmitter {
     toggleRecording: [],
     pasteLastTranscript: [],
     newNote: [],
+    instructMode: [],
   };
   private settingsService: SettingsService;
   private nativeBridge: NativeBridge;

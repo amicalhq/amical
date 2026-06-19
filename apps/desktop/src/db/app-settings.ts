@@ -49,6 +49,7 @@ const getDefaultShortcuts = () => {
         MAC_KEYCODES.V,
       ],
       newNote: [MAC_KEYCODES.CMD, MAC_KEYCODES.CTRL, MAC_KEYCODES.N],
+      instructMode: [MAC_KEYCODES.FN, MAC_KEYCODES.CTRL],
     };
   }
 
@@ -65,6 +66,8 @@ const getDefaultShortcuts = () => {
       WINDOWS_KEYCODES.Z,
     ],
     newNote: [WINDOWS_KEYCODES.ALT, WINDOWS_KEYCODES.SHIFT, WINDOWS_KEYCODES.N],
+    // Windows is out of scope for instruct v1; leave unbound so nothing fires.
+    instructMode: [],
   };
 };
 

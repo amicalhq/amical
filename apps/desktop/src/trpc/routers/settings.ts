@@ -26,6 +26,7 @@ const SetShortcutSchema = z.object({
     "toggleRecording",
     "pasteLastTranscript",
     "newNote",
+    "instructMode",
   ]),
   shortcut: z.array(z.number()),
 });

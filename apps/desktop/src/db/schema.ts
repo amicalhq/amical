@@ -174,6 +174,7 @@ export interface AppSettingsData {
     toggleRecording?: number[];
     pasteLastTranscript?: number[];
     newNote?: number[];
+    instructMode?: number[];
   };
 
   modelProvidersConfig?: {
