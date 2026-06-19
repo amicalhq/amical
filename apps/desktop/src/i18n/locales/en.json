@@ -754,6 +754,10 @@
         "label": "New note",
         "description": "Open notes window and create a new note"
       },
+      "draft": {
+        "label": "Draft",
+        "description": "Hold to speak an instruction; review the generated text, then insert it"
+      },
       "validation": {
         "noKeysDetected": "No keys detected",
         "tooManyKeys": "Too many keys - use {{max}} or fewer",

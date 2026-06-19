@@ -16,8 +16,14 @@ export function ShortcutsSettingsPage() {
   const [pasteLastTranscriptShortcut, setPasteLastTranscriptShortcut] =
     useState<number[]>([]);
   const [newNoteShortcut, setNewNoteShortcut] = useState<number[]>([]);
+  const [draftModeShortcut, setDraftModeShortcut] = useState<number[]>([]);
   const [recordingShortcut, setRecordingShortcut] = useState<
-    "pushToTalk" | "toggleRecording" | "pasteLastTranscript" | "newNote" | null
+    | "pushToTalk"
+    | "toggleRecording"
+    | "pasteLastTranscript"
+    | "newNote"
+    | "draftMode"
+    | null
   >(null);
 
   // tRPC queries and mutations
@@ -34,6 +40,7 @@ export function ShortcutsSettingsPage() {
           setToggleRecordingShortcut(cached.toggleRecording);
           setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
           setNewNoteShortcut(cached.newNote);
+          setDraftModeShortcut(cached.draftMode);
         } else {
           utils.settings.getShortcuts.invalidate();
         }
@@ -67,6 +74,7 @@ export function ShortcutsSettingsPage() {
         setToggleRecordingShortcut(cached.toggleRecording);
         setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
         setNewNoteShortcut(cached.newNote);
+        setDraftModeShortcut(cached.draftMode);
       } else {
         utils.settings.getShortcuts.invalidate();
       }
@@ -80,6 +88,7 @@ export function ShortcutsSettingsPage() {
       setToggleRecordingShortcut(shortcutsQuery.data.toggleRecording);
       setPasteLastTranscriptShortcut(shortcutsQuery.data.pasteLastTranscript);
       setNewNoteShortcut(shortcutsQuery.data.newNote);
+      setDraftModeShortcut(shortcutsQuery.data.draftMode);
     }
   }, [shortcutsQuery.data]);
 
@@ -111,6 +120,14 @@ export function ShortcutsSettingsPage() {
     setNewNoteShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "newNote",
+      shortcut: shortcut,
+    });
+  };
+
+  const handleDraftModeChange = (shortcut: number[]) => {
+    setDraftModeShortcut(shortcut);
+    setShortcutMutation.mutate({
+      type: "draftMode",
       shortcut: shortcut,
     });
   };
@@ -222,6 +239,30 @@ export function ShortcutsSettingsPage() {
                     isRecordingShortcut={recordingShortcut === "newNote"}
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "newNote" : null)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Separator className="my-4" />
+              <div className="flex flex-col md:flex-row md:justify-between gap-4">
+                <div>
+                  <Label className="text-base font-semibold text-foreground">
+                    {t("settings.shortcuts.draft.label")}
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                    {t("settings.shortcuts.draft.description")}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 items-end min-w-[260px]">
+                  <ShortcutInput
+                    value={draftModeShortcut}
+                    onChange={handleDraftModeChange}
+                    isRecordingShortcut={recordingShortcut === "draftMode"}
+                    onRecordingShortcutChange={(recording) =>
+                      setRecordingShortcut(recording ? "draftMode" : null)
                     }
                   />
                 </div>
