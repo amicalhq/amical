@@ -16,6 +16,9 @@ export interface TranscribeContext {
   aggregatedTranscription?: string;
   languages?: string[]; // Selected dictation languages; providers consume this
   formattingEnabled?: boolean;
+  // When true the session sends the "instruct" preset (cloud generates content
+  // from the spoken instruction instead of formatting the transcript).
+  isInstruct?: boolean;
 }
 
 // Transcription input parameters
