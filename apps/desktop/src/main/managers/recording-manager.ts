@@ -152,6 +152,31 @@ export class RecordingManager extends EventEmitter {
     shortcutManager.on("escape-pressed", async () => {
       await this.dismissCurrentSession();
     });
+
+    // Handle the instruct-mode hotkey. Same recording semantics as PTT (the
+    // shortcut-manager gives it PTT-style hold/release); the only difference is
+    // the session is tagged instruct, which makes the cloud stream send the
+    // "instruct" preset and (in M3) hold the result for review. Tag only a fresh
+    // (idle) session; a mid-session re-press falls through to the normal PTT path.
+    let lastInstructState = false;
+    shortcutManager.on(
+      "instruct-ptt-state-changed",
+      async (isPressed: boolean) => {
+        if (isPressed === lastInstructState) {
+          return;
+        }
+        lastInstructState = isPressed;
+
+        if (isPressed) {
+          if (this.getState() === "idle") {
+            this.currentIsInstruct = true;
+          }
+          await this.onPTTPress();
+        } else {
+          await this.onPTTRelease();
+        }
+      },
+    );
   }
 
   private emitStateChange(
