@@ -29,6 +29,7 @@ import {
   type GrpcStreamContext,
   float32ToPcmS16le,
 } from "./grpc-dictation-client";
+import { resolveSessionSkills } from "./skill-resolution";
 
 // Type guard to validate error codes from server
 const isValidErrorCode = (code: string | undefined): code is ErrorCode =>
@@ -92,6 +93,9 @@ interface ProviderState {
   currentAggregatedTranscription: string | undefined;
   currentVocabulary: string[];
   currentSessionId: string | undefined;
+  // Sticky per-session: send the "instruct" preset (cloud generation) instead
+  // of formatting. Set from TranscribeContext.isInstruct in storeContextEffect.
+  currentIsInstruct: boolean;
   grpcStream: CloudDictationGrpcStream | null;
   grpcPendingFrames: Float32Array[];
   grpcPendingSampleCount: number;
@@ -122,6 +126,7 @@ interface ProviderRequestSnapshot {
   currentAggregatedTranscription: string | undefined;
   currentVocabulary: string[];
   currentSessionId: string | undefined;
+  currentIsInstruct: boolean;
 }
 
 const projectAccessibilityContext = (
@@ -186,6 +191,7 @@ const createInitialProviderState = (): ProviderState => ({
   currentAggregatedTranscription: undefined,
   currentVocabulary: [],
   currentSessionId: undefined,
+  currentIsInstruct: false,
   grpcStream: null,
   grpcPendingFrames: [],
   grpcPendingSampleCount: 0,
@@ -235,6 +241,7 @@ const requestSnapshotFromState = (
   currentAggregatedTranscription: state.currentAggregatedTranscription,
   currentVocabulary: state.currentVocabulary,
   currentSessionId: state.currentSessionId,
+  currentIsInstruct: state.currentIsInstruct,
 });
 
 const createCloudRuntime = (config: CloudConfig) =>
@@ -577,6 +584,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         currentAggregatedTranscription: context.aggregatedTranscription,
         currentVocabulary: context.vocabulary ?? [],
         currentSessionId: context.sessionId,
+        currentIsInstruct: context.isInstruct ?? false,
         transportOverride: isNewSession ? null : state.transportOverride,
         sessionAudioBuffer: isNewSession ? [] : state.sessionAudioBuffer,
         sessionAudioVadProbs: isNewSession ? [] : state.sessionAudioVadProbs,
@@ -750,21 +758,14 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         sessionId,
         languages: snapshot.currentLanguages,
         vocabulary: snapshot.currentVocabulary,
-        // Temporary bridge: until the Formatting UI is wired into the
-        // pipeline, send a single "default" preset skill when formatting
-        // is enabled, and an empty array (= raw transcript) otherwise.
-        // Future work resolves an actual rule from settings + foreground
-        // app and replaces this with the matched Skill(s).
-        resolvedSkills: enableFormatting
-          ? [
-              {
-                preset: "default",
-                args: {
-                  tone: ["casual"],
-                },
-              },
-            ]
-          : [],
+        // Instruct mode sends the "instruct" preset (cloud generates content);
+        // otherwise the temporary "default" bridge preset when formatting is on,
+        // or empty (= raw transcript). See skill-resolution.ts. The default
+        // bridge stays until per-app skill resolution is wired into the pipeline.
+        resolvedSkills: resolveSessionSkills({
+          isInstruct: snapshot.currentIsInstruct,
+          enableFormatting,
+        }),
         context: this.buildGrpcStreamContext(snapshot),
       };
 
@@ -791,6 +792,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           languages: snapshot.currentLanguages,
           vocabularySize: snapshot.currentVocabulary.length,
           formatting: enableFormatting,
+          instruct: snapshot.currentIsInstruct,
         });
       });
 
