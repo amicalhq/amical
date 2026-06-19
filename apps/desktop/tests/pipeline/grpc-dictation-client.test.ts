@@ -140,7 +140,6 @@ const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
     },
     sessionId: "session-1",
     vocabulary: [],
-    formatting: false,
     ...overrides,
   });
 
