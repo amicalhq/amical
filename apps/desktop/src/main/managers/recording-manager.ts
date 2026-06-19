@@ -91,6 +91,12 @@ export class RecordingManager extends EventEmitter {
   // Reset per session; stays false until the hotkey lands.
   private currentIsInstruct: boolean = false;
 
+  // Generated instruct text awaiting the user's paste/dismiss. While set, the
+  // session is intentionally kept alive (the FSM stays in "stopping", not reset)
+  // so the held text survives until the review box resolves.
+  private pendingInstructReview: { sessionId: string; text: string } | null =
+    null;
+
   constructor(private serviceManager: ServiceManager) {
     super();
     this.machine = new RecordingMachineInterpreter({
@@ -823,6 +829,20 @@ export class RecordingManager extends EventEmitter {
     // the transcript is already saved, and pasteTranscription hands off to the
     // native helper, so by the time the paste fires it is too late to abort.
     if (result) {
+      if (this.currentIsInstruct) {
+        // Instruct: hold the generated text for review instead of auto-pasting.
+        // Keep the session alive (do NOT reset) — confirmInstruct/dismissInstruct
+        // resolves it. The stuck-state timer was cleared at the top of this
+        // method and is not re-armed, so the lingering "stopping" state won't be
+        // force-idled while the review box is up.
+        this.pendingInstructReview = { sessionId, text: result };
+        this.emit("instruct-review-ready", { sessionId, text: result });
+        logger.audio.info("Instruct result ready for review", {
+          sessionId,
+          textLength: result.length,
+        });
+        return;
+      }
       await this.pasteTranscription(result);
     } else {
       // Check for empty transcript notification
@@ -1128,6 +1148,7 @@ export class RecordingManager extends EventEmitter {
     this.systemAudioMuted = false;
     this.soundsMuted = false;
     this.currentIsInstruct = false;
+    this.pendingInstructReview = null;
     this.clearTimers();
   }
 
@@ -1180,6 +1201,22 @@ export class RecordingManager extends EventEmitter {
       logger.audio.error("Failed to write audio file", { error });
       return null;
     }
+  }
+
+  /** Confirm the pending instruct review: paste the held text, then reset. */
+  public async confirmInstruct(): Promise<void> {
+    const pending = this.pendingInstructReview;
+    this.pendingInstructReview = null;
+    if (pending?.text) {
+      await this.pasteTranscription(pending.text);
+    }
+    this.resetSessionState();
+  }
+
+  /** Dismiss the pending instruct review without pasting, then reset. */
+  public dismissInstruct(): void {
+    this.pendingInstructReview = null;
+    this.resetSessionState();
   }
 
   private async pasteTranscription(transcription: string): Promise<void> {
