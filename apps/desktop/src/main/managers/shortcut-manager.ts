@@ -24,7 +24,7 @@ interface ShortcutConfig {
   toggleRecording: number[];
   pasteLastTranscript: number[];
   newNote: number[];
-  instructMode: number[];
+  draftMode: number[];
 }
 
 export class ShortcutManager extends EventEmitter {
@@ -39,7 +39,7 @@ export class ShortcutManager extends EventEmitter {
     toggleRecording: [],
     pasteLastTranscript: [],
     newNote: [],
-    instructMode: [],
+    draftMode: [],
   };
   private settingsService: SettingsService;
   private nativeBridge: NativeBridge;
@@ -348,7 +348,7 @@ export class ShortcutManager extends EventEmitter {
       for (const key of this.shortcuts.newNote) keys.add(key);
     }
     if (this.instructActive) {
-      for (const key of this.shortcuts.instructMode) keys.add(key);
+      for (const key of this.shortcuts.draftMode) keys.add(key);
     }
     return keys;
   }
@@ -664,7 +664,7 @@ export class ShortcutManager extends EventEmitter {
     isKeyDown: boolean,
     activeKeys: number[],
   ): boolean {
-    const instructKeys = this.shortcuts.instructMode;
+    const instructKeys = this.shortcuts.draftMode;
     if (!instructKeys || instructKeys.length === 0) {
       this.instructActive = false;
       return false;

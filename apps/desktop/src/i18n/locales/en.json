@@ -736,7 +736,7 @@
         "handsFreeUpdated": "Hands-free mode shortcut updated",
         "pasteLastTranscriptUpdated": "Paste last transcript shortcut updated",
         "newNoteUpdated": "New note shortcut updated",
-        "instructModeUpdated": "Instruct shortcut updated"
+        "draftModeUpdated": "Draft shortcut updated"
       },
       "pushToTalk": {
         "label": "Push to talk",

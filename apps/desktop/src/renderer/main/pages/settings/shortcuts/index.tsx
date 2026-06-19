@@ -53,7 +53,7 @@ export function ShortcutsSettingsPage() {
             "settings.shortcuts.toast.pasteLastTranscriptUpdated",
           ),
           newNote: t("settings.shortcuts.toast.newNoteUpdated"),
-          instructMode: t("settings.shortcuts.toast.instructModeUpdated"),
+          draftMode: t("settings.shortcuts.toast.draftModeUpdated"),
         } as const;
         toast.success(successMessages[variables.type]);
       }

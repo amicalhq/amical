@@ -20,7 +20,7 @@ export type ShortcutType =
   | "toggleRecording"
   | "pasteLastTranscript"
   | "newNote"
-  | "instructMode";
+  | "draftMode";
 
 export interface ValidationContext {
   candidateShortcut: number[];
