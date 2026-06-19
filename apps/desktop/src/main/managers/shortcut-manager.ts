@@ -65,6 +65,11 @@ export class ShortcutManager extends EventEmitter {
   // fire a phantom press and stop a hands-free session.
   private pttActive = false;
 
+  // Instruct hold latch — same hold/sustain semantics as pttActive, for the
+  // instruct chord (a superset of PTT). While active, the PTT emit is masked so
+  // holding the instruct chord runs instruct only, not normal dictation.
+  private instructActive = false;
+
   // Generic command kill-switch (the onboarding wizard sets it: on while the
   // wizard is open, off while a dictation try-it step is on screen). While
   // suppressed, command emissions are dropped HERE at the source so no
@@ -342,6 +347,9 @@ export class ShortcutManager extends EventEmitter {
     if (this.exactMatchState.newNote) {
       for (const key of this.shortcuts.newNote) keys.add(key);
     }
+    if (this.instructActive) {
+      for (const key of this.shortcuts.instructMode) keys.add(key);
+    }
     return keys;
   }
 
@@ -525,11 +533,28 @@ export class ShortcutManager extends EventEmitter {
     // Snapshot the active keys once; every matcher below reads the same set.
     const activeKeys = this.getActiveKeys();
 
+    // Instruct (hold-to-talk; a superset of the PTT chord). Evaluate BEFORE PTT
+    // and mask PTT while instruct is engaged so holding the instruct chord runs
+    // instruct only, not normal dictation. Owns the instructActive latch; like
+    // PTT, suppression only masks the emitted level so a mid-hold flip still
+    // delivers a release.
+    const isInstructPressed = this.isInstructShortcutPressed(
+      isKeyDown,
+      activeKeys,
+    );
+    this.emit(
+      "instruct-ptt-state-changed",
+      isInstructPressed && !this.commandsSuppressed,
+    );
+
     // Check PTT shortcut. Always evaluate the matcher (it owns the pttActive
     // latch); suppression only masks the EMITTED level to false, so a mid-hold
     // suppression flip still delivers a release on the next key event.
     const isPTTPressed = this.isPTTShortcutPressed(isKeyDown, activeKeys);
-    this.emit("ptt-state-changed", isPTTPressed && !this.commandsSuppressed);
+    this.emit(
+      "ptt-state-changed",
+      isPTTPressed && !isInstructPressed && !this.commandsSuppressed,
+    );
 
     // Toggle/paste/newNote are edge shortcuts (one-shot on the exact-match rising
     // edge); they deliberately don't take isKeyDown — a stray edge there is rare and
@@ -630,6 +655,26 @@ export class ShortcutManager extends EventEmitter {
       : isKeyDown && this.isExactMatch(pttKeys, activeKeys);
 
     return this.pttActive;
+  }
+
+  // Instruct uses the same hold/latch semantics as PTT: latch on an exact-match
+  // key-down, sustain while all instruct keys remain held. The hands-free
+  // upgrade is a PTT/FSM concept and intentionally does not apply here.
+  private isInstructShortcutPressed(
+    isKeyDown: boolean,
+    activeKeys: number[],
+  ): boolean {
+    const instructKeys = this.shortcuts.instructMode;
+    if (!instructKeys || instructKeys.length === 0) {
+      this.instructActive = false;
+      return false;
+    }
+
+    this.instructActive = this.instructActive
+      ? this.allHeld(instructKeys, activeKeys)
+      : isKeyDown && this.isExactMatch(instructKeys, activeKeys);
+
+    return this.instructActive;
   }
 
   private isToggleRecordingShortcutPressed(activeKeys: number[]): boolean {
