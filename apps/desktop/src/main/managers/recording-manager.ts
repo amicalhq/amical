@@ -160,6 +160,12 @@ export class RecordingManager extends EventEmitter {
     // Handle ESC dismiss (emitted on any ESC key-down; no-op unless a session
     // is active). dismissCurrentSession guards on state.
     shortcutManager.on("escape-pressed", async () => {
+      // ESC closes a held instruct/draft review (no paste); otherwise it
+      // dismisses an in-progress recording.
+      if (this.pendingInstructReview) {
+        this.dismissInstruct();
+        return;
+      }
       await this.dismissCurrentSession();
     });
   }
@@ -545,7 +551,9 @@ export class RecordingManager extends EventEmitter {
 
         // Safety timeout for stuck state
         this.stuckStateTimer = setTimeout(() => {
-          if (this.getState() === "stopping") {
+          // A held instruct/draft review keeps the session in "stopping" on
+          // purpose — don't treat that as a stuck state and force-idle it.
+          if (this.getState() === "stopping" && !this.pendingInstructReview) {
             logger.audio.warn("No final chunk received, forcing idle");
             void this.forceIdle().catch((error) => {
               logger.audio.error(
@@ -823,12 +831,14 @@ export class RecordingManager extends EventEmitter {
     // native helper, so by the time the paste fires it is too late to abort.
     if (result) {
       if (this.currentIsInstruct) {
-        // Instruct: hold the generated text for review instead of auto-pasting.
-        // Keep the session alive (do NOT reset) — confirmInstruct/dismissInstruct
-        // resolves it. The stuck-state timer was cleared at the top of this
-        // method and is not re-armed, so the lingering "stopping" state won't be
-        // force-idled while the review box is up.
+        // Instruct/draft: hold the generated text for review instead of
+        // auto-pasting. Keep the session alive (do NOT reset) until
+        // confirmInstruct/dismissInstruct resolves it. Clear the recording
+        // watchdog timers so the intentionally-lingering "stopping" state isn't
+        // auto-stopped (the stuck-state timer callback also guards on
+        // pendingInstructReview, in case the stop path re-arms it after this).
         this.pendingInstructReview = { sessionId, text: result };
+        this.clearTimers();
         this.emit("instruct-review-ready", { sessionId, text: result });
         logger.audio.info("Instruct result ready for review", {
           sessionId,

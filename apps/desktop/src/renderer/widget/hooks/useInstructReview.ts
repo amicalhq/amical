@@ -28,6 +28,18 @@ export function useInstructReview(): InstructReviewState {
       console.error("instructReview subscription error", error),
   });
 
+  // Clear the review whenever the session returns to idle. Covers ESC / hotkey
+  // dismissal that resolves the review in the main process (confirmInstruct /
+  // dismissInstruct → resetSessionState → idle), not just the in-box buttons.
+  api.recording.stateUpdates.useSubscription(undefined, {
+    onData: (update) => {
+      if (update.state === "idle") {
+        setReview(null);
+        setMousePassthrough.mutate({ ignore: true });
+      }
+    },
+  });
+
   // While reviewing, the widget must be clickable (its default is mouse
   // pass-through). Disable pass-through when a review appears.
   useEffect(() => {
