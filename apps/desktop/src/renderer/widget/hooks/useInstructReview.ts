@@ -34,8 +34,7 @@ export function useInstructReview(): InstructReviewState {
     if (review) {
       setMousePassthrough.mutate({ ignore: false });
     }
-    // setMousePassthrough is a stable tRPC mutation handle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Intentionally depends only on `review`; the mutation handle is stable.
   }, [review]);
 
   const close = () => {

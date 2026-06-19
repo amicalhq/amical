@@ -207,7 +207,6 @@ export const recordingRouter = createRouter({
   }),
 
   // Instruct review: the held generated text awaiting the user's paste/dismiss.
-  // eslint-disable-next-line deprecation/deprecation
   instructReview: procedure.subscription(({ ctx }) => {
     return observable<{ sessionId: string; text: string }>((emit) => {
       const recordingManager =
