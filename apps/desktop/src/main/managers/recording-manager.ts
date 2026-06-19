@@ -85,6 +85,12 @@ export class RecordingManager extends EventEmitter {
   // Sound muting for current session
   private soundsMuted: boolean = false;
 
+  // Instruct mode: set when the session was started via the instruct hotkey
+  // (wired in M2). Causes the cloud stream to send the "instruct" preset and
+  // (in M3) the generated result to be held for review instead of auto-pasted.
+  // Reset per session; stays false until the hotkey lands.
+  private currentIsInstruct: boolean = false;
+
   constructor(private serviceManager: ServiceManager) {
     super();
     this.machine = new RecordingMachineInterpreter({
@@ -606,6 +612,7 @@ export class RecordingManager extends EventEmitter {
               sessionId: this.currentSessionId,
               audioChunk: chunk,
               recordingStartedAt: this.recordingStartedAt || undefined,
+              isInstruct: this.currentIsInstruct,
             });
           } catch (error) {
             logger.audio.error("Error processing final chunk:", error);
@@ -639,6 +646,7 @@ export class RecordingManager extends EventEmitter {
           sessionId,
           audioChunk: chunk,
           recordingStartedAt: this.recordingStartedAt || undefined,
+          isInstruct: this.currentIsInstruct,
         });
       } catch (error) {
         logger.audio.error("Error processing chunk:", error);
@@ -1094,6 +1102,7 @@ export class RecordingManager extends EventEmitter {
     this.terminationCode = null;
     this.systemAudioMuted = false;
     this.soundsMuted = false;
+    this.currentIsInstruct = false;
     this.clearTimers();
   }
 
