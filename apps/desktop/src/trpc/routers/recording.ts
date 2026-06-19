@@ -37,6 +37,22 @@ export const recordingRouter = createRouter({
     return await recordingManager.signalStop();
   }),
 
+  confirmInstruct: procedure.mutation(async ({ ctx }) => {
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    if (!recordingManager) {
+      throw new Error("Recording manager not available");
+    }
+    await recordingManager.confirmInstruct();
+  }),
+
+  dismissInstruct: procedure.mutation(async ({ ctx }) => {
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    if (!recordingManager) {
+      throw new Error("Recording manager not available");
+    }
+    recordingManager.dismissInstruct();
+  }),
+
   dismiss: procedure.mutation(async ({ ctx }) => {
     const recordingManager = ctx.serviceManager.getService("recordingManager");
     if (!recordingManager) {
@@ -186,6 +202,28 @@ export const recordingRouter = createRouter({
       // Cleanup function
       return () => {
         recordingManager.off("widget-notification", handleNotification);
+      };
+    });
+  }),
+
+  // Instruct review: the held generated text awaiting the user's paste/dismiss.
+  // eslint-disable-next-line deprecation/deprecation
+  instructReview: procedure.subscription(({ ctx }) => {
+    return observable<{ sessionId: string; text: string }>((emit) => {
+      const recordingManager =
+        ctx.serviceManager.getService("recordingManager");
+      if (!recordingManager) {
+        throw new Error("Recording manager not available");
+      }
+
+      const handleReviewReady = (data: { sessionId: string; text: string }) => {
+        emit.next(data);
+      };
+
+      recordingManager.on("instruct-review-ready", handleReviewReady);
+
+      return () => {
+        recordingManager.off("instruct-review-ready", handleReviewReady);
       };
     });
   }),
