@@ -254,7 +254,9 @@
       "insert": "Pegar",
       "copy": "Copiar",
       "copied": "Copiado",
-      "dismiss": "Descartar"
+      "dismiss": "Descartar",
+      "listening": "Escuchando…",
+      "drafting": "Redactando…"
     },
     "notifications": {
       "micFallback": "tu micrófono",

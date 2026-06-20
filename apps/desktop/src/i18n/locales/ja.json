@@ -254,7 +254,9 @@
       "insert": "貼り付け",
       "copy": "コピー",
       "copied": "コピーしました",
-      "dismiss": "破棄"
+      "dismiss": "破棄",
+      "listening": "聞き取り中…",
+      "drafting": "作成中…"
     },
     "notifications": {
       "micFallback": "お使いのマイク",

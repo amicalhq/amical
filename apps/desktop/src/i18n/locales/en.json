@@ -251,7 +251,9 @@
       "insert": "Insert",
       "copy": "Copy",
       "copied": "Copied",
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "listening": "Listening…",
+      "drafting": "Drafting…"
     },
     "notifications": {
       "micFallback": "your microphone",

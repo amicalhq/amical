@@ -254,7 +254,9 @@
       "insert": "貼上",
       "copy": "複製",
       "copied": "已複製",
-      "dismiss": "捨棄"
+      "dismiss": "捨棄",
+      "listening": "聆聽中…",
+      "drafting": "草擬中…"
     },
     "notifications": {
       "micFallback": "您的麥克風",

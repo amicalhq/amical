@@ -254,7 +254,9 @@
       "insert": "Einfügen",
       "copy": "Kopieren",
       "copied": "Kopiert",
-      "dismiss": "Entwurf verwerfen"
+      "dismiss": "Entwurf verwerfen",
+      "listening": "Hört zu…",
+      "drafting": "Entwurf wird erstellt…"
     },
     "notifications": {
       "micFallback": "deinem Mikrofon",

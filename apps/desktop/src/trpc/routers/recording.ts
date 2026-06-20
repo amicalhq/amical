@@ -18,6 +18,7 @@ import { ErrorCodes, type ErrorCode } from "../../types/error";
 interface RecordingStateUpdate {
   state: RecordingState;
   mode: RecordingMode;
+  isDraft: boolean;
 }
 
 export const recordingRouter = createRouter({
@@ -79,6 +80,7 @@ export const recordingRouter = createRouter({
       emit.next({
         state: recordingManager.getState(),
         mode: recordingManager.getRecordingMode(),
+        isDraft: recordingManager.getIsDraftSession(),
       });
 
       // Set up listener for state changes
@@ -86,6 +88,7 @@ export const recordingRouter = createRouter({
         emit.next({
           state: status,
           mode: recordingManager.getRecordingMode(),
+          isDraft: recordingManager.getIsDraftSession(),
         });
       };
 
@@ -93,6 +96,7 @@ export const recordingRouter = createRouter({
         emit.next({
           state: recordingManager.getState(),
           mode,
+          isDraft: recordingManager.getIsDraftSession(),
         });
       };
 

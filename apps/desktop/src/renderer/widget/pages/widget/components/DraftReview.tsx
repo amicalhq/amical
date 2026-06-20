@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { CornerDownLeft, Copy, Check, X, PenLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { RecordingStatus } from "@/hooks/useRecording";
+import { Waveform } from "@/components/Waveform";
 
 interface DraftReviewProps {
   text: string;
   onInsert: () => void;
   onDismiss: () => void;
+  recordingStatus: RecordingStatus;
+  voiceDetected: boolean;
 }
 
 // A small keyboard-cap hint (e.g. ↵, esc) that teaches the shortcut driving
@@ -34,11 +38,26 @@ function Kbd({
 // Review surface for a generated draft: shows the text, then lets the user
 // Insert (also via Enter), Copy, or dismiss (also via Esc / the top-right ✕).
 // Styled to sit natively on the always-dark widget glass (see FloatingButton).
-export function DraftReview({ text, onInsert, onDismiss }: DraftReviewProps) {
+export function DraftReview({
+  text,
+  onInsert,
+  onDismiss,
+  recordingStatus,
+  voiceDetected,
+}: DraftReviewProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [shown, setShown] = useState(false);
   const copyResetRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sticky draft: the review stays open while a replacement is dictated. During
+  // that window the action bar becomes a live status (Insert/Copy return once
+  // idle); Enter is disarmed meanwhile (see RecordingManager.syncDraftEnterMask).
+  const isRecording =
+    recordingStatus.state === "recording" ||
+    recordingStatus.state === "starting";
+  const isStopping = recordingStatus.state === "stopping";
+  const isRedictating = isRecording || isStopping;
 
   // Gentle entrance (fade + rise) once mounted.
   useEffect(() => {
@@ -92,31 +111,66 @@ export function DraftReview({ text, onInsert, onDismiss }: DraftReviewProps) {
         {text}
       </div>
 
-      {/* Action bar: Copy (ghost) · Insert (primary, Enter) */}
-      <div className="mt-1 flex shrink-0 items-center justify-between gap-2 border-t border-white/[0.08] px-3 pb-3 pt-2.5">
-        <button
-          onClick={handleCopy}
-          aria-label={t("widget.draft.copy")}
-          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
-        >
-          {copied ? (
-            <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+      {/* Action bar: a live status while a replacement is being dictated;
+          otherwise Copy (ghost) · Insert (primary, Enter). */}
+      {isRedictating ? (
+        <div className="mt-1 flex shrink-0 items-center gap-2 border-t border-white/[0.08] px-4 pb-3 pt-2.5 text-white/70">
+          <PenLine
+            className="h-3.5 w-3.5 shrink-0 text-indigo-400"
+            strokeWidth={2}
+          />
+          <span className="text-[12px] font-medium">
+            {isStopping
+              ? t("widget.draft.drafting")
+              : t("widget.draft.listening")}
+          </span>
+          {isStopping ? (
+            <span className="flex items-center gap-[4px]">
+              <span className="h-[4px] w-[4px] rounded-full bg-blue-500 animate-bounce [animation-delay:-0.3s]" />
+              <span className="h-[4px] w-[4px] rounded-full bg-blue-500 animate-bounce [animation-delay:-0.15s]" />
+              <span className="h-[4px] w-[4px] rounded-full bg-blue-500 animate-bounce" />
+            </span>
           ) : (
-            <Copy className="h-3.5 w-3.5" strokeWidth={2} />
+            <span className="flex h-4 items-center gap-[3px]">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Waveform
+                  key={i}
+                  index={i}
+                  isRecording
+                  voiceDetected={voiceDetected}
+                  baseHeight={60}
+                  silentHeight={20}
+                />
+              ))}
+            </span>
           )}
-          {copied ? t("widget.draft.copied") : t("widget.draft.copy")}
-        </button>
-        <button
-          onClick={onInsert}
-          aria-label={t("widget.draft.insert")}
-          className="flex items-center gap-2 rounded-full bg-widget-control py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-widget-control-foreground transition-transform hover:bg-widget-control/90 active:scale-[0.98]"
-        >
-          {t("widget.draft.insert")}
-          <Kbd tone="dark">
-            <CornerDownLeft className="h-3.5 w-3.5" strokeWidth={2.5} />
-          </Kbd>
-        </button>
-      </div>
+        </div>
+      ) : (
+        <div className="mt-1 flex shrink-0 items-center justify-between gap-2 border-t border-white/[0.08] px-3 pb-3 pt-2.5">
+          <button
+            onClick={handleCopy}
+            aria-label={t("widget.draft.copy")}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+            ) : (
+              <Copy className="h-3.5 w-3.5" strokeWidth={2} />
+            )}
+            {copied ? t("widget.draft.copied") : t("widget.draft.copy")}
+          </button>
+          <button
+            onClick={onInsert}
+            aria-label={t("widget.draft.insert")}
+            className="flex items-center gap-2 rounded-full bg-widget-control py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-widget-control-foreground transition-transform hover:bg-widget-control/90 active:scale-[0.98]"
+          >
+            {t("widget.draft.insert")}
+            <Kbd tone="dark">
+              <CornerDownLeft className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </Kbd>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
