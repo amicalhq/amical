@@ -168,6 +168,14 @@ export class RecordingManager extends EventEmitter {
       }
       await this.dismissCurrentSession();
     });
+
+    // Enter confirms (Insert) a pending draft review. Only emitted while a draft
+    // is open (gated by ShortcutManager.draftActive); no-op otherwise.
+    shortcutManager.on("enter-pressed", async () => {
+      if (this.pendingDraft) {
+        await this.confirmDraft();
+      }
+    });
   }
 
   /**
@@ -1234,6 +1242,17 @@ export class RecordingManager extends EventEmitter {
     draft: { sessionId: string; text: string } | null,
   ): void {
     this.pendingDraft = draft;
+    const active = draft !== null;
+    // While a draft is open: route Enter -> Insert (desktop) and have the native
+    // helper mask Enter so it doesn't reach the focused app. The native mask
+    // self-disarms on the Enter key-up, so a dropped disarm here can swallow at
+    // most one Enter press — it can never get stuck. Toggling from this single
+    // choke point guarantees the OFF signal fires on every draft-close path.
+    this.shortcutManager?.setDraftActive(active);
+    const nativeBridge = this.serviceManager.getService("nativeBridge");
+    if (nativeBridge) {
+      void nativeBridge.setDraftEnterCapture(active);
+    }
     this.emit("draft-changed", draft);
   }
 

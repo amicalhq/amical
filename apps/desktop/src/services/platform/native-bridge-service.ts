@@ -42,6 +42,9 @@ import {
   SetShortcutsParams,
   SetShortcutsResult,
   SetShortcutsResultSchema,
+  SetDraftEnterCaptureParams,
+  SetDraftEnterCaptureResult,
+  SetDraftEnterCaptureResultSchema,
   RecheckPressedKeysParams,
   RecheckPressedKeysResult,
   RecheckPressedKeysResultSchema,
@@ -82,6 +85,10 @@ interface RPCMethods {
     params: SetShortcutsParams;
     result: SetShortcutsResult;
   };
+  setDraftEnterCapture: {
+    params: SetDraftEnterCaptureParams;
+    result: SetDraftEnterCaptureResult;
+  };
   recheckPressedKeys: {
     params: RecheckPressedKeysParams;
     result: RecheckPressedKeysResult;
@@ -108,6 +115,7 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
   startRecording: StartRecordingResultSchema,
   stopRecording: StopRecordingResultSchema,
   setShortcuts: SetShortcutsResultSchema,
+  setDraftEnterCapture: SetDraftEnterCaptureResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
 };
 
@@ -824,6 +832,24 @@ export class NativeBridge extends EventEmitter {
       return result.success;
     } catch (error) {
       this.logger.error("Failed to sync shortcuts to native helper", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Arm/disarm the native Draft-Enter mask. While armed, the helper swallows the
+   * Enter key (so it doesn't reach the focused app) and the desktop routes it to
+   * Insert. The native mask self-disarms on the Enter key-up, so a dropped
+   * "disarm" can swallow at most one Enter press — it can never get stuck.
+   */
+  async setDraftEnterCapture(enabled: boolean): Promise<boolean> {
+    try {
+      const result = await this.call("setDraftEnterCapture", { enabled });
+      return result.success;
+    } catch (error) {
+      this.logger.error("Failed to set draft Enter capture on native helper", {
         error: error instanceof Error ? error.message : String(error),
       });
       return false;

@@ -9,6 +9,7 @@ export * from "./schemas/methods/paste-text.js";
 export * from "./schemas/methods/start-recording.js";
 export * from "./schemas/methods/stop-recording.js";
 export * from "./schemas/methods/set-shortcuts.js";
+export * from "./schemas/methods/set-draft-enter-capture.js";
 export * from "./schemas/methods/recheck-pressed-keys.js";
 
 // Event Schemas

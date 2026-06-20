@@ -261,6 +261,38 @@ class IOBridge: NSObject {
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
 
+        case .setDraftEnterCapture:
+            logToStderr("[IOBridge] Handling setDraftEnterCapture for ID: \(request.id)")
+            guard let paramsAnyCodable = request.params else {
+                let errPayload = Error(
+                    code: -32602, data: nil, message: "Missing params for setDraftEnterCapture")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+                sendRpcResponse(rpcResponse)
+                return
+            }
+
+            do {
+                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
+                let captureParams = try jsonDecoder.decode(
+                    SetDraftEnterCaptureParamsSchema.self, from: paramsData)
+
+                ShortcutManager.shared.setDraftEnterCapture(captureParams.enabled)
+
+                let resultPayload = SetDraftEnterCaptureResultSchema(success: true)
+                let resultData = try jsonEncoder.encode(resultPayload)
+                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
+                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+
+            } catch {
+                logToStderr(
+                    "[IOBridge] Error processing setDraftEnterCapture params: \(error.localizedDescription) for ID: \(request.id)"
+                )
+                let errPayload = Error(
+                    code: -32602, data: request.params,
+                    message: "Invalid params: \(error.localizedDescription)")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+            }
+
         case .recheckPressedKeys:
             logToStderr("[IOBridge] Handling recheckPressedKeys for ID: \(request.id)")
             guard let paramsAnyCodable = request.params else {

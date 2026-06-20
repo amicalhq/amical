@@ -115,6 +115,10 @@ namespace WindowsHelper
                         response = HandleSetShortcuts(request);
                         break;
 
+                    case Method.SetDraftEnterCapture:
+                        response = HandleSetDraftEnterCapture(request);
+                        break;
+
                     case Method.RecheckPressedKeys:
                         response = HandleRecheckPressedKeys(request);
                         break;
@@ -521,6 +525,51 @@ namespace WindowsHelper
             catch (Exception ex)
             {
                 LogToStderr($"[RpcHandler] Error in setShortcuts: {ex.Message}");
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Error = new Error
+                    {
+                        Code = -32603,
+                        Message = $"Internal error: {ex.Message}"
+                    }
+                };
+            }
+        }
+
+        private RpcResponse HandleSetDraftEnterCapture(RpcRequest request)
+        {
+            LogToStderr($"[RpcHandler] Handling setDraftEnterCapture for ID: {request.Id}");
+
+            try
+            {
+                var paramsJson = JsonSerializer.Serialize(request.Params, jsonOptions);
+                var captureParams = JsonSerializer.Deserialize<SetDraftEnterCaptureParams>(paramsJson, jsonOptions);
+
+                if (captureParams == null)
+                {
+                    return new RpcResponse
+                    {
+                        Id = request.Id.ToString(),
+                        Error = new Error
+                        {
+                            Code = -32602,
+                            Message = "Invalid params: could not deserialize SetDraftEnterCaptureParams"
+                        }
+                    };
+                }
+
+                ShortcutManager.Instance.SetDraftEnterCapture(captureParams.Enabled);
+
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Result = new SetDraftEnterCaptureResult { Success = true }
+                };
+            }
+            catch (Exception ex)
+            {
+                LogToStderr($"[RpcHandler] Error in setDraftEnterCapture: {ex.Message}");
                 return new RpcResponse
                 {
                     Id = request.Id.ToString(),

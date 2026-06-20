@@ -20,6 +20,24 @@ class ShortcutManager {
     private var shortcutKeysSet = Set<Int>()
 
     // ============================================================================
+    // Draft-Enter mask
+    // ============================================================================
+    // While a Draft review window is open, the desktop arms this so the helper
+    // swallows the Enter key (the desktop routes the forwarded key-down to Insert
+    // instead of letting Enter reach the focused app).
+    //
+    // SELF-DISARMING: `draftEnterArmed` is cleared on the Enter key-up, so a
+    // missed/dropped disarm from the desktop swallows at most ONE Enter press —
+    // the mask can never become permanent. `consumingEnter` keeps swallowing the
+    // whole press (incl. auto-repeat) once started, even if the desktop disarms
+    // mid-press, so no stray Enter leaks to the focused app.
+    private var draftEnterArmed = false
+    private var consumingEnter = false
+    // Return (36) + KeypadEnter (76); 52 is the desktop keycode-map's legacy
+    // Enter alias, kept here so native masking matches desktop detection.
+    private let enterKeyCodes: Set<Int> = [36, 52, 76]
+
+    // ============================================================================
     // Modifier Key State Tracking (left/right)
     // ============================================================================
     // We track modifier key state via flagsChanged events and keep left/right
@@ -68,6 +86,35 @@ class ShortcutManager {
         logToStderr(
             "[ShortcutManager] Shortcuts updated - subset: \(subsetChords), exact: \(exactChords)"
         )
+    }
+
+    /// Arm/disarm the Draft-Enter mask. Called from IOBridge on setDraftEnterCapture.
+    /// Disarming leaves any in-flight Enter press (`consumingEnter`) to finish
+    /// swallowing through its key-up so no stray key reaches the focused app.
+    func setDraftEnterCapture(_ enabled: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        draftEnterArmed = enabled
+    }
+
+    /// Decide whether to swallow an Enter key event for the Draft-Enter mask.
+    /// One press at a time; self-disarms on key-up so the mask can never stick.
+    func consumeDraftEnter(keyCode: Int, isKeyUp: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard enterKeyCodes.contains(keyCode) else { return false }
+        if isKeyUp {
+            guard consumingEnter else { return false }
+            consumingEnter = false
+            draftEnterArmed = false  // disarm-on-key-up: bounds any desync to one press
+            return true
+        }
+        // key-down (incl. auto-repeat): swallow the whole press once started
+        if draftEnterArmed || consumingEnter {
+            consumingEnter = true
+            return true
+        }
+        return false
     }
 
     /// Update the tracked modifier key state (left/right)

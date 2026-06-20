@@ -88,6 +88,62 @@ namespace WindowsHelper
             return string.Join("; ", chords.Select(chord => $"[{string.Join(", ", chord)}]"));
         }
 
+        // ============================================================================
+        // Draft-Enter mask (mirrors swift-helper ShortcutManager)
+        // ============================================================================
+        // While a Draft review window is open, the desktop arms this so the helper
+        // swallows the Enter key (the desktop routes the forwarded key-down to Insert
+        // instead of letting Enter reach the focused app).
+        //
+        // SELF-DISARMING: _draftEnterArmed is cleared on the Enter key-up, so a
+        // missed/dropped disarm from the desktop swallows at most ONE Enter press —
+        // the mask can never become permanent. _consumingEnter keeps swallowing the
+        // whole press (incl. auto-repeat) once started, even if the desktop disarms
+        // mid-press, so no stray Enter leaks to the focused app.
+        private bool _draftEnterArmed = false;
+        private bool _consumingEnter = false;
+        // VK_RETURN (0x0D) covers both the main and numpad Enter on Windows.
+        private static readonly HashSet<int> EnterKeyCodes = new() { 0x0D };
+
+        /// <summary>
+        /// Arm/disarm the Draft-Enter mask. Called from RpcHandler on setDraftEnterCapture.
+        /// Disarming leaves any in-flight Enter press (_consumingEnter) to finish
+        /// swallowing through its key-up so no stray key reaches the focused app.
+        /// </summary>
+        public void SetDraftEnterCapture(bool enabled)
+        {
+            lock (_lock)
+            {
+                _draftEnterArmed = enabled;
+            }
+        }
+
+        /// <summary>
+        /// Decide whether to swallow an Enter key event for the Draft-Enter mask.
+        /// One press at a time; self-disarms on key-up so the mask can never stick.
+        /// </summary>
+        public bool ConsumeDraftEnter(int vkCode, bool isKeyUp)
+        {
+            lock (_lock)
+            {
+                if (!EnterKeyCodes.Contains(vkCode)) return false;
+                if (isKeyUp)
+                {
+                    if (!_consumingEnter) return false;
+                    _consumingEnter = false;
+                    _draftEnterArmed = false;  // disarm-on-key-up: bounds any desync to one press
+                    return true;
+                }
+                // key-down (incl. auto-repeat): swallow the whole press once started
+                if (_draftEnterArmed || _consumingEnter)
+                {
+                    _consumingEnter = true;
+                    return true;
+                }
+                return false;
+            }
+        }
+
         /// <summary>
         /// Check if a key is part of any configured shortcut.
         /// </summary>

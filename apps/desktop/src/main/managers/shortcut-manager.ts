@@ -82,6 +82,11 @@ export class ShortcutManager extends EventEmitter {
   // suppression flip still delivers a release on the next key event.
   private commandsSuppressed = false;
 
+  // While a Draft review window is open, Enter routes to Insert (and is masked
+  // by the native helper) instead of reaching the focused app. Set by
+  // RecordingManager in lockstep with the pending draft.
+  private draftActive = false;
+
   constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
     super();
     this.settingsService = settingsService;
@@ -90,6 +95,10 @@ export class ShortcutManager extends EventEmitter {
 
   setCommandsSuppressed(suppressed: boolean) {
     this.commandsSuppressed = suppressed;
+  }
+
+  setDraftActive(active: boolean) {
+    this.draftActive = active;
   }
 
   async initialize() {
@@ -474,6 +483,15 @@ export class ShortcutManager extends EventEmitter {
     if (getKeyFromKeycode(keyCode) === "Escape") {
       this.emit("escape-pressed");
       return;
+    }
+    // While a draft review is open, Enter routes to Insert (and is masked by the
+    // native helper); like ESC, don't track it in activeKeys / chord matching.
+    if (this.draftActive) {
+      const keyName = getKeyFromKeycode(keyCode);
+      if (keyName === "Enter" || keyName === "KeypadEnter") {
+        this.emit("enter-pressed");
+        return;
+      }
     }
     this.addActiveKey(keyCode);
   }
