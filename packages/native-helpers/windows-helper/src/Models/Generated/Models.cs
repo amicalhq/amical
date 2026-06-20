@@ -321,17 +321,11 @@ namespace WindowsHelper.Models
 
     public partial class SetShortcutsParams
     {
-        [JsonPropertyName("newNote")]
-        public List<long> NewNote { get; set; }
+        [JsonPropertyName("exactChords")]
+        public List<List<long>> ExactChords { get; set; }
 
-        [JsonPropertyName("pasteLastTranscript")]
-        public List<long> PasteLastTranscript { get; set; }
-
-        [JsonPropertyName("pushToTalk")]
-        public List<long> PushToTalk { get; set; }
-
-        [JsonPropertyName("toggleRecording")]
-        public List<long> ToggleRecording { get; set; }
+        [JsonPropertyName("subsetChords")]
+        public List<List<long>> SubsetChords { get; set; }
     }
 
     public partial class SetShortcutsResult

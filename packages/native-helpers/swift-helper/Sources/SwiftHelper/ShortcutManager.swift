@@ -12,10 +12,11 @@ struct KeyResyncResult {
 class ShortcutManager {
     static let shared = ShortcutManager()
 
-    private var pushToTalkKeys: [Int] = []
-    private var toggleRecordingKeys: [Int] = []
-    private var pasteLastTranscriptKeys: [Int] = []
-    private var newNoteKeys: [Int] = []
+    // Chords grouped by match rule (see SetShortcutsParamsSchema): subset chords
+    // (push-to-talk, draft) consume while building toward the chord; exact chords
+    // (toggle/paste/new-note) consume only when exactly held.
+    private var subsetChords: [[Int]] = []
+    private var exactChords: [[Int]] = []
     private var shortcutKeysSet = Set<Int>()
 
     // ============================================================================
@@ -56,22 +57,16 @@ class ShortcutManager {
     /// Update the configured shortcuts
     /// Called from IOBridge when setShortcuts RPC is received
     func setShortcuts(
-        pushToTalk: [Int],
-        toggleRecording: [Int],
-        pasteLastTranscript: [Int],
-        newNote: [Int]
+        subsetChords: [[Int]],
+        exactChords: [[Int]]
     ) {
         lock.lock()
         defer { lock.unlock() }
-        self.pushToTalkKeys = pushToTalk
-        self.toggleRecordingKeys = toggleRecording
-        self.pasteLastTranscriptKeys = pasteLastTranscript
-        self.newNoteKeys = newNote
-        self.shortcutKeysSet = Set(
-            pushToTalk + toggleRecording + pasteLastTranscript + newNote
-        )
+        self.subsetChords = subsetChords
+        self.exactChords = exactChords
+        self.shortcutKeysSet = Set((subsetChords + exactChords).flatMap { $0 })
         logToStderr(
-            "[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording), Paste: \(pasteLastTranscript), NewNote: \(newNote)"
+            "[ShortcutManager] Shortcuts updated - subset: \(subsetChords), exact: \(exactChords)"
         )
     }
 
@@ -236,11 +231,7 @@ class ShortcutManager {
         defer { lock.unlock() }
 
         // Early exit if no shortcuts configured
-        if pushToTalkKeys.isEmpty
-            && toggleRecordingKeys.isEmpty
-            && pasteLastTranscriptKeys.isEmpty
-            && newNoteKeys.isEmpty
-        {
+        if subsetChords.isEmpty && exactChords.isEmpty {
             return false
         }
 
@@ -252,26 +243,23 @@ class ShortcutManager {
         activeKeys.formUnion(pressedRegularKeys)
         activeKeys.insert(keyCode)
 
-        // PTT: consume if building toward the shortcut
-        // - At least one modifier from the shortcut must be held (signals intent)
-        // - All currently pressed keys must be part of the shortcut (activeKeys ⊆ pttKeys)
-        let pttKeys = Set(pushToTalkKeys)
-        let pttModifiers = pttKeys.intersection(modifierKeyCodeSet)
-        let hasRequiredModifier = !pttModifiers.isEmpty && !pttModifiers.isDisjoint(with: activeModifiers)
-        let pttMatch = !pttKeys.isEmpty && hasRequiredModifier && activeKeys.isSubset(of: pttKeys)
+        // Subset chords (PTT, draft): consume if building toward the chord.
+        // - At least one modifier from the chord must be held (signals intent)
+        // - All currently pressed keys must be part of the chord (activeKeys ⊆ chord)
+        let subsetMatch = subsetChords.contains { chord in
+            let chordKeys = Set(chord)
+            let chordModifiers = chordKeys.intersection(modifierKeyCodeSet)
+            return !chordKeys.isEmpty
+                && !chordModifiers.isEmpty
+                && !chordModifiers.isDisjoint(with: activeModifiers)
+                && activeKeys.isSubset(of: chordKeys)
+        }
 
-        // Toggle: exact match (only these keys pressed)
-        let toggleKeys = Set(toggleRecordingKeys)
-        let toggleMatch = !toggleKeys.isEmpty && toggleKeys == activeKeys
+        // Exact chords (toggle/paste/new-note): consume only when exactly held.
+        let exactMatch = exactChords.contains { chord in
+            !chord.isEmpty && Set(chord) == activeKeys
+        }
 
-        // Paste last transcript: exact match (only these keys pressed)
-        let pasteKeys = Set(pasteLastTranscriptKeys)
-        let pasteMatch = !pasteKeys.isEmpty && pasteKeys == activeKeys
-
-        // New note: exact match (only these keys pressed)
-        let newNoteKeysSet = Set(newNoteKeys)
-        let newNoteMatch = !newNoteKeysSet.isEmpty && newNoteKeysSet == activeKeys
-
-        return pttMatch || toggleMatch || pasteMatch || newNoteMatch
+        return subsetMatch || exactMatch
     }
 }

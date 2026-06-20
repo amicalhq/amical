@@ -817,10 +817,8 @@ export class NativeBridge extends EventEmitter {
     try {
       const result = await this.call("setShortcuts", shortcuts);
       this.logger.info("Shortcuts synced to native helper", {
-        pushToTalk: shortcuts.pushToTalk,
-        toggleRecording: shortcuts.toggleRecording,
-        pasteLastTranscript: shortcuts.pasteLastTranscript,
-        newNote: shortcuts.newNote,
+        subsetChords: shortcuts.subsetChords,
+        exactChords: shortcuts.exactChords,
         success: result.success,
       });
       return result.success;

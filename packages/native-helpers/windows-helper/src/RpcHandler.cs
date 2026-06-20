@@ -508,10 +508,8 @@ namespace WindowsHelper
                 }
 
                 ShortcutManager.Instance.SetShortcuts(
-                    ConvertKeycodes(setShortcutsParams.PushToTalk),
-                    ConvertKeycodes(setShortcutsParams.ToggleRecording),
-                    ConvertKeycodes(setShortcutsParams.PasteLastTranscript),
-                    ConvertKeycodes(setShortcutsParams.NewNote)
+                    ConvertChords(setShortcutsParams.SubsetChords),
+                    ConvertChords(setShortcutsParams.ExactChords)
                 );
 
                 return new RpcResponse
@@ -558,6 +556,12 @@ namespace WindowsHelper
         {
             if (keycodes == null || keycodes.Count == 0) return Array.Empty<int>();
             return keycodes.Select(keycode => (int)keycode).ToArray();
+        }
+
+        private static int[][] ConvertChords(List<List<long>>? chords)
+        {
+            if (chords == null) return Array.Empty<int[]>();
+            return chords.Select(chord => ConvertKeycodes(chord)).ToArray();
         }
     }
 }

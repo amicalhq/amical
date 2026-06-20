@@ -113,15 +113,24 @@ export class ShortcutManager extends EventEmitter {
    * Sync the configured shortcuts to the native helper for key consumption.
    * This tells the native helper which key combinations to consume
    * (prevent default behavior like cursor movement for arrow keys).
+   *
+   * The helper only needs the keys grouped by match rule, not by shortcut
+   * identity (see SetShortcutsParamsSchema): push-to-talk and draft are
+   * subset-matched (draft inherits PTT-class consumption for free); toggle,
+   * paste and new-note are exact-matched. Empty chords are dropped.
    */
   private async syncShortcutsToNative() {
     try {
-      await this.nativeBridge.setShortcuts({
-        pushToTalk: this.shortcuts.pushToTalk,
-        toggleRecording: this.shortcuts.toggleRecording,
-        pasteLastTranscript: this.shortcuts.pasteLastTranscript,
-        newNote: this.shortcuts.newNote,
-      });
+      const subsetChords = [
+        this.shortcuts.pushToTalk,
+        this.shortcuts.draftMode,
+      ].filter((chord) => chord.length > 0);
+      const exactChords = [
+        this.shortcuts.toggleRecording,
+        this.shortcuts.pasteLastTranscript,
+        this.shortcuts.newNote,
+      ].filter((chord) => chord.length > 0);
+      await this.nativeBridge.setShortcuts({ subsetChords, exactChords });
       log.info("Shortcuts synced to native helper");
     } catch (error) {
       log.error("Failed to sync shortcuts to native helper", { error });
