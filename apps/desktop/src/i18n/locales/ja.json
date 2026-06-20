@@ -249,6 +249,13 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "下書き",
+      "insert": "貼り付け",
+      "copy": "コピー",
+      "copied": "コピーしました",
+      "dismiss": "破棄"
+    },
     "notifications": {
       "micFallback": "お使いのマイク",
       "discordAlt": "Discord",

@@ -249,6 +249,13 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "Borrador",
+      "insert": "Pegar",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "dismiss": "Descartar"
+    },
     "notifications": {
       "micFallback": "tu micrófono",
       "discordAlt": "Discord",

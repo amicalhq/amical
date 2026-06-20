@@ -246,6 +246,13 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "Draft",
+      "insert": "Insert",
+      "copy": "Copy",
+      "copied": "Copied",
+      "dismiss": "Dismiss"
+    },
     "notifications": {
       "micFallback": "your microphone",
       "discordAlt": "Discord",

@@ -249,6 +249,13 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "草稿",
+      "insert": "貼上",
+      "copy": "複製",
+      "copied": "已複製",
+      "dismiss": "捨棄"
+    },
     "notifications": {
       "micFallback": "您的麥克風",
       "discordAlt": "Discord",

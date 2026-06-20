@@ -249,6 +249,13 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "Entwurf",
+      "insert": "Einfügen",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "dismiss": "Entwurf verwerfen"
+    },
     "notifications": {
       "micFallback": "deinem Mikrofon",
       "discordAlt": "Discord",
