@@ -303,7 +303,7 @@ const BUNDLE_TO_TYPE: Record<string, AppType> = {
   "com.readdle.smartemail": "email",
   "com.google.Gmail": "email",
   "com.superhuman.electron": "email",
-  "MailClient.exe": "email", // eM Client (Windows) — bundleIdentifier is the exe path, matched via partial-include below
+  "MailClient": "email", // eM Client (Windows) — Windows bundleIdentifier is the process name
   "com.tinyspeck.slackmacgap": "chat",
   "com.microsoft.teams": "chat",
   "com.facebook.archon": "chat", // Messenger
@@ -377,12 +377,11 @@ export function detectApplicationType(
   // window titles (constants we control end-to-end) declare which, so the
   // demo formats like the surface it depicts instead of as Markdown notes.
   // The rest of the setup wizard is a generic surface. On Windows the helper
-  // reports the exe path instead of a bundle id (same convention as the
-  // MailClient.exe entry below); dev runs are electron.exe and fall through
-  // to "default".
+  // reports the process name (no path, no .exe) instead of a bundle id, so our
+  // own app is "Amical"; dev runs are "electron" and fall through to "default".
   const isOwnApp =
     bundleId === "ai.amical.desktop" ||
-    bundleId.toLowerCase().endsWith("\\amical.exe");
+    bundleId.toLowerCase() === "amical";
   if (isOwnApp) {
     const title = accessibilityContext.context?.windowInfo?.title ?? "";
     if (title === TRY_IT_WINDOW_TITLES.email) return "email";
@@ -415,12 +414,16 @@ export function detectApplicationType(
     return BUNDLE_TO_TYPE[bundleId];
   }
 
-  // Check for partial matches
+  // Check for partial matches. Only the forward direction (the foreground id
+  // contains the key) is safe: it catches macOS bundle-id variants such as
+  // com.readdle.smartemail-Mac. The reverse direction would let a short Windows
+  // process name (e.g. "electron") spuriously match inside a longer bundle id
+  // (e.g. com.superhuman.electron), so it is intentionally omitted.
   for (const [key, type] of Object.entries(BUNDLE_TO_TYPE) as [
     string,
     AppType,
   ][]) {
-    if (bundleId.includes(key) || key.includes(bundleId)) {
+    if (bundleId.includes(key)) {
       return type;
     }
   }

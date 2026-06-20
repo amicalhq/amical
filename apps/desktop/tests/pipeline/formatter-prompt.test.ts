@@ -55,8 +55,8 @@ describe("detectApplicationType — Amical's own surfaces", () => {
     expect(detectApplicationType(undefined)).toBe("default");
   });
 
-  it("recognizes its own exe path on Windows (helper has no bundle ids)", () => {
-    const exe = "C:\\Users\\z\\AppData\\Local\\amical\\app-1.8.0\\Amical.exe";
+  it("recognizes its own app on Windows by process name (helper has no bundle ids)", () => {
+    const exe = "Amical";
     expect(detectApplicationType(ctx(exe, TRY_IT_WINDOW_TITLES.email))).toBe(
       "email",
     );
@@ -69,11 +69,9 @@ describe("detectApplicationType — Amical's own surfaces", () => {
     expect(detectApplicationType(ctx(exe, "Notes Widget"))).toBe(
       "amical-notes",
     );
-    // Dev runs are electron.exe — not our surface, falls through to default.
+    // Dev runs are electron — not our surface, falls through to default.
     expect(
-      detectApplicationType(
-        ctx("C:\\dev\\electron.exe", TRY_IT_WINDOW_TITLES.email),
-      ),
+      detectApplicationType(ctx("electron", TRY_IT_WINDOW_TITLES.email)),
     ).toBe("default");
   });
 });
