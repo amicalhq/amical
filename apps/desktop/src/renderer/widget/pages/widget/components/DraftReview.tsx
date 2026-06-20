@@ -1,13 +1,13 @@
-interface InstructReviewProps {
+interface DraftReviewProps {
   text: string;
-  onPaste: () => void;
+  onInsert: () => void;
   onDismiss: () => void;
 }
 
-// Minimal read-only review box for instruct results. Visual design is
+// Minimal read-only review box for draft results. Visual design is
 // intentionally rough for now (looks are refined separately); this exists to
 // carry the end-to-end flow: show the generated text, then Insert or Dismiss.
-export function InstructReview({ text, onPaste, onDismiss }: InstructReviewProps) {
+export function DraftReview({ text, onInsert, onDismiss }: DraftReviewProps) {
   return (
     <div
       className="mb-2 flex max-h-[280px] w-[560px] select-text flex-col gap-3 rounded-[20px] bg-black/70 p-4 shadow-lg ring-1 ring-black/60 backdrop-blur-md"
@@ -25,7 +25,7 @@ export function InstructReview({ text, onPaste, onDismiss }: InstructReviewProps
           ✕
         </button>
         <button
-          onClick={onPaste}
+          onClick={onInsert}
           className="flex h-8 items-center rounded-full bg-white/15 px-3 text-sm font-medium text-white transition-colors hover:bg-white/25"
         >
           Insert

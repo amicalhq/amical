@@ -1,23 +1,23 @@
 import { FloatingButton } from "./components/FloatingButton";
-import { InstructReview } from "./components/InstructReview";
+import { DraftReview } from "./components/DraftReview";
 import { useWidgetNotifications } from "../../hooks/useWidgetNotifications";
 import { useRecordingSettingsSync } from "../../hooks/useRecordingSettingsSync";
 import { useHealPendingMicrophone } from "../../hooks/useHealPendingMicrophone";
-import { useInstructReview } from "../../hooks/useInstructReview";
+import { useDraftReview } from "../../hooks/useDraftReview";
 
 export function WidgetPage() {
   useWidgetNotifications();
   useRecordingSettingsSync();
   useHealPendingMicrophone();
 
-  const instruct = useInstructReview();
+  const draft = useDraftReview();
 
-  if (instruct.review) {
+  if (draft.review) {
     return (
-      <InstructReview
-        text={instruct.review.text}
-        onPaste={instruct.paste}
-        onDismiss={instruct.dismiss}
+      <DraftReview
+        text={draft.review.text}
+        onInsert={draft.insert}
+        onDismiss={draft.dismiss}
       />
     );
   }

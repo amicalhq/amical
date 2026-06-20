@@ -91,11 +91,11 @@ export class RecordingManager extends EventEmitter {
   // Reset per session; stays false until the hotkey lands.
   private currentIsInstruct: boolean = false;
 
-  // Generated instruct text awaiting the user's paste/dismiss. While set, the
-  // session is intentionally kept alive (the FSM stays in "stopping", not reset)
-  // so the held text survives until the review box resolves.
-  private pendingInstructReview: { sessionId: string; text: string } | null =
-    null;
+  // Generated draft text awaiting the user's insert/dismiss. Decoupled from the
+  // recording session: finalize resets the FSM to idle as normal, and this holds
+  // the result independently until confirmDraft/dismissDraft (or a new dictation)
+  // resolves it. Changes are broadcast via the "draft-changed" event.
+  private pendingDraft: { sessionId: string; text: string } | null = null;
 
   // Held so audio-chunk handling can read the live draft-binding state.
   private shortcutManager: ShortcutManager | null = null;
@@ -160,10 +160,10 @@ export class RecordingManager extends EventEmitter {
     // Handle ESC dismiss (emitted on any ESC key-down; no-op unless a session
     // is active). dismissCurrentSession guards on state.
     shortcutManager.on("escape-pressed", async () => {
-      // ESC closes a held instruct/draft review (no paste); otherwise it
-      // dismisses an in-progress recording.
-      if (this.pendingInstructReview) {
-        this.dismissInstruct();
+      // ESC closes a pending draft review (no paste); otherwise it dismisses an
+      // in-progress recording.
+      if (this.pendingDraft) {
+        this.dismissDraft();
         return;
       }
       await this.dismissCurrentSession();
@@ -297,6 +297,11 @@ export class RecordingManager extends EventEmitter {
         });
         this.recordingInitiatedAt = null;
         return;
+      }
+
+      // A new dictation supersedes any pending draft review window.
+      if (this.pendingDraft) {
+        this.setPendingDraft(null);
       }
 
       const hasSpeechModel = await this.hasSpeechModelSelected();
@@ -557,9 +562,7 @@ export class RecordingManager extends EventEmitter {
 
         // Safety timeout for stuck state
         this.stuckStateTimer = setTimeout(() => {
-          // A held instruct/draft review keeps the session in "stopping" on
-          // purpose — don't treat that as a stuck state and force-idle it.
-          if (this.getState() === "stopping" && !this.pendingInstructReview) {
+          if (this.getState() === "stopping") {
             logger.audio.warn("No final chunk received, forcing idle");
             void this.forceIdle().catch((error) => {
               logger.audio.error(
@@ -837,19 +840,16 @@ export class RecordingManager extends EventEmitter {
     // native helper, so by the time the paste fires it is too late to abort.
     if (result) {
       if (this.currentIsInstruct) {
-        // Instruct/draft: hold the generated text for review instead of
-        // auto-pasting. Keep the session alive (do NOT reset) until
-        // confirmInstruct/dismissInstruct resolves it. Clear the recording
-        // watchdog timers so the intentionally-lingering "stopping" state isn't
-        // auto-stopped (the stuck-state timer callback also guards on
-        // pendingInstructReview, in case the stop path re-arms it after this).
-        this.pendingInstructReview = { sessionId, text: result };
-        this.clearTimers();
-        this.emit("instruct-review-ready", { sessionId, text: result });
-        logger.audio.info("Instruct result ready for review", {
+        // Draft: hold the generated text for review instead of auto-pasting. The
+        // result lives in pendingDraft, independent of the recording session, so
+        // the FSM resets to idle as normal below and a new dictation can start
+        // immediately. Resolved by confirmDraft / dismissDraft / a new session.
+        this.setPendingDraft({ sessionId, text: result });
+        logger.audio.info("Draft result ready for review", {
           sessionId,
           textLength: result.length,
         });
+        this.resetSessionState();
         return;
       }
       await this.pasteTranscription(result);
@@ -1157,7 +1157,6 @@ export class RecordingManager extends EventEmitter {
     this.systemAudioMuted = false;
     this.soundsMuted = false;
     this.currentIsInstruct = false;
-    this.pendingInstructReview = null;
     this.clearTimers();
   }
 
@@ -1212,20 +1211,31 @@ export class RecordingManager extends EventEmitter {
     }
   }
 
-  /** Confirm the pending instruct review: paste the held text, then reset. */
-  public async confirmInstruct(): Promise<void> {
-    const pending = this.pendingInstructReview;
-    this.pendingInstructReview = null;
+  /** The draft result awaiting insert/dismiss, or null. */
+  public getPendingDraft(): { sessionId: string; text: string } | null {
+    return this.pendingDraft;
+  }
+
+  /** Set/clear the pending draft and broadcast the change to subscribers. */
+  private setPendingDraft(
+    draft: { sessionId: string; text: string } | null,
+  ): void {
+    this.pendingDraft = draft;
+    this.emit("draft-changed", draft);
+  }
+
+  /** Confirm the pending draft: paste the held text. (Session is already idle.) */
+  public async confirmDraft(): Promise<void> {
+    const pending = this.pendingDraft;
+    this.setPendingDraft(null);
     if (pending?.text) {
       await this.pasteTranscription(pending.text);
     }
-    this.resetSessionState();
   }
 
-  /** Dismiss the pending instruct review without pasting, then reset. */
-  public dismissInstruct(): void {
-    this.pendingInstructReview = null;
-    this.resetSessionState();
+  /** Dismiss the pending draft without pasting. */
+  public dismissDraft(): void {
+    this.setPendingDraft(null);
   }
 
   private async pasteTranscription(transcription: string): Promise<void> {

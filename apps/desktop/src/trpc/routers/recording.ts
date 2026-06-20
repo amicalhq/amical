@@ -37,20 +37,20 @@ export const recordingRouter = createRouter({
     return await recordingManager.signalStop();
   }),
 
-  confirmInstruct: procedure.mutation(async ({ ctx }) => {
+  confirmDraft: procedure.mutation(async ({ ctx }) => {
     const recordingManager = ctx.serviceManager.getService("recordingManager");
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
-    await recordingManager.confirmInstruct();
+    await recordingManager.confirmDraft();
   }),
 
-  dismissInstruct: procedure.mutation(async ({ ctx }) => {
+  dismissDraft: procedure.mutation(async ({ ctx }) => {
     const recordingManager = ctx.serviceManager.getService("recordingManager");
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
-    recordingManager.dismissInstruct();
+    recordingManager.dismissDraft();
   }),
 
   dismiss: procedure.mutation(async ({ ctx }) => {
@@ -206,23 +206,28 @@ export const recordingRouter = createRouter({
     });
   }),
 
-  // Instruct review: the held generated text awaiting the user's paste/dismiss.
-  instructReview: procedure.subscription(({ ctx }) => {
-    return observable<{ sessionId: string; text: string }>((emit) => {
+  // Draft review: the held generated text awaiting the user's insert/dismiss.
+  // Emits the current draft on subscribe and on every change; null = cleared.
+  draftReview: procedure.subscription(({ ctx }) => {
+    return observable<{ sessionId: string; text: string } | null>((emit) => {
       const recordingManager =
         ctx.serviceManager.getService("recordingManager");
       if (!recordingManager) {
         throw new Error("Recording manager not available");
       }
 
-      const handleReviewReady = (data: { sessionId: string; text: string }) => {
+      emit.next(recordingManager.getPendingDraft());
+
+      const handleDraftChanged = (
+        data: { sessionId: string; text: string } | null,
+      ) => {
         emit.next(data);
       };
 
-      recordingManager.on("instruct-review-ready", handleReviewReady);
+      recordingManager.on("draft-changed", handleDraftChanged);
 
       return () => {
-        recordingManager.off("instruct-review-ready", handleReviewReady);
+        recordingManager.off("draft-changed", handleDraftChanged);
       };
     });
   }),
