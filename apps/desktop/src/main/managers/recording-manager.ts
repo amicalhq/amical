@@ -270,6 +270,12 @@ export class RecordingManager extends EventEmitter {
       return;
     }
 
+    // Draft is push-to-talk only: don't let the hands-free toggle upgrade an
+    // active draft session (it would otherwise become a "hands-free draft").
+    if (this.currentIsInstruct) {
+      return;
+    }
+
     await this.machine.handleEvent({
       type: "toggle",
       quick: this.isQuickAction(),
