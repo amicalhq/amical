@@ -264,6 +264,12 @@ export class RecordingManager extends EventEmitter {
 
   // Toggle shortcut pressed
   public async toggleHandsFree() {
+    // Draft mode is push-to-talk only and is exited only by Insert/dismiss, so
+    // the hands-free toggle does nothing while a draft review is pending.
+    if (this.pendingDraft) {
+      return;
+    }
+
     if (this.getState() === "idle") {
       this.recordingInitiatedAt = Date.now();
       await this.doStart("hands-free");
@@ -299,8 +305,12 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
-      // A new dictation supersedes any pending draft review window.
-      if (this.pendingDraft) {
+      // Draft mode is sticky: starting a dictation while a draft review is
+      // pending makes the new session itself a draft (only Insert/dismiss exits
+      // draft mode). The old result is replaced — the window shows recording now,
+      // then a fresh draft review when this session finalizes.
+      const supersedingDraft = this.pendingDraft !== null;
+      if (supersedingDraft) {
         this.setPendingDraft(null);
       }
 
@@ -309,6 +319,9 @@ export class RecordingManager extends EventEmitter {
         // Missing-model starts stay IDLE; STARTING means we have a model and
         // have allocated the session identity used by the interpreter.
         this.currentSessionId = uuid();
+        if (supersedingDraft) {
+          this.currentIsInstruct = true;
+        }
       }
 
       const commands = this.machine.transition({
