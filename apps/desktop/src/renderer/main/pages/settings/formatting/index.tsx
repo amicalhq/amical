@@ -5,9 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/trpc/react";
 import { SkillRow } from "./skill-row";
+import { Badge } from "@/components/ui/badge";
+import { useTranslation } from "react-i18next";
 import type { SkillEdit, SkillSnapshot } from "./catalog";
 
 export default function PersonalizationSettingsPage() {
+  const { t } = useTranslation();
   const utils = api.useUtils();
   const skillsQuery = api.skills.list.useQuery();
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
@@ -97,7 +100,12 @@ export default function PersonalizationSettingsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-xl font-bold">Personalization</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold">Personalization</h1>
+          <Badge className="text-[10px] px-1.5 py-0 bg-orange-500/20 text-orange-500 hover:bg-orange-500/20">
+            {t("settings.dictation.formatting.badge")}
+          </Badge>
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           How Amical personalizes your dictation. Defaults apply automatically
           based on the active app; add custom skills to override.

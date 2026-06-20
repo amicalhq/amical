@@ -44,9 +44,10 @@ const DismissButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
 );
 
 // Indigo pen marking a draft (instruct) session in the FAB (dictating + processing).
+// mr-2 adds gap between the pen and the waveform/dots that follow it.
 const DraftPen: React.FC = () => (
   <PenLine
-    className="w-[13px] h-[13px] text-indigo-400 shrink-0"
+    className="w-[13px] h-[13px] text-indigo-400 shrink-0 mr-2"
     strokeWidth={2}
   />
 );

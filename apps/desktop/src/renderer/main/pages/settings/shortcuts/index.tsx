@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { ShortcutInput } from "@/components/shortcut-input";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/trpc/react";
@@ -249,9 +250,15 @@ export function ShortcutsSettingsPage() {
               <Separator className="my-4" />
               <div className="flex flex-col md:flex-row md:justify-between gap-4">
                 <div>
-                  <Label className="text-base font-semibold text-foreground">
-                    {t("settings.shortcuts.draft.label")}
-                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-semibold text-foreground">
+                      {t("settings.shortcuts.draft.label")}
+                    </Label>
+                    {/* Reuse the app's shared (localized) alpha-stage badge. */}
+                    <Badge className="text-[10px] px-1.5 py-0 bg-orange-500/20 text-orange-500 hover:bg-orange-500/20">
+                      {t("settings.dictation.formatting.badge")}
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
                     {t("settings.shortcuts.draft.description")}
                   </p>
