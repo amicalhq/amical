@@ -654,3 +654,58 @@ jobs:
             artifacts/windows-x64/RELEASES
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  preview-release:
+    name: Publish preview release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/preview/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Resolve preview release id
+        id: preview
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          # The tag is always prefixed "preview-" and never semver / -beta.N
+          # shaped, so the update server (axis apps/core) excludes it from BOTH the
+          # stable and beta channels — preview builds can never reach real users.
+          SLUG=$(printf '%s' "${BRANCH#preview/}" | sed -E 's#[^A-Za-z0-9._-]+#-#g')
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "tag=preview-${SLUG}" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Replace previous preview release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # One rolling pre-release per preview branch: drop the old release + tag
+          # so the new one always points at the latest build's commit.
+          gh release delete "${{ steps.preview.outputs.tag }}" \
+            --repo "${{ github.repository }}" --yes --cleanup-tag || true
+
+      - name: Create preview release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          tag_name: ${{ steps.preview.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: "Preview — ${{ steps.preview.outputs.branch }}"
+          body: |
+            Automated **preview build** from `${{ steps.preview.outputs.branch }}` (`${{ github.sha }}`).
+
+            For testing only. Tagged `preview-*` and flagged pre-release, so the
+            update server keeps it out of the stable and beta channels.
+          files: |
+            artifacts/macos-arm64/*.dmg
+            artifacts/macos-arm64/zip/darwin/arm64/*.zip
+            artifacts/macos-x64/*.dmg
+            artifacts/macos-x64/zip/darwin/x64/*.zip
+            artifacts/windows-x64/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
