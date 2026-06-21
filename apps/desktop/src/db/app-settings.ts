@@ -66,8 +66,16 @@ const getDefaultShortcuts = () => {
       WINDOWS_KEYCODES.Z,
     ],
     newNote: [WINDOWS_KEYCODES.ALT, WINDOWS_KEYCODES.SHIFT, WINDOWS_KEYCODES.N],
-    // Windows is out of scope for instruct v1; leave unbound so nothing fires.
-    draftMode: [],
+    // Draft is push-to-talk style, so the chord must be modifier-only — a
+    // non-modifier key would be swallowed by the subset consume rule (e.g.
+    // Shift+letter). Ctrl+Win+Alt is pushToTalk (Ctrl+Win) plus Alt, mirroring
+    // the macOS draft = pushToTalk + modifier pattern and reusing PTT-superset
+    // suppression.
+    draftMode: [
+      WINDOWS_KEYCODES.CTRL,
+      WINDOWS_KEYCODES.WIN,
+      WINDOWS_KEYCODES.ALT,
+    ],
   };
 };
 
