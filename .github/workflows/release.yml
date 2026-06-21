@@ -3,6 +3,12 @@ name: Release
 on:
   pull_request:
   push:
+    # Pushing to a preview/* branch auto-builds signed, notarized installers for
+    # testing. event_name is "push" (not "pull_request"), so the build job takes
+    # the signed path; the release job stays skipped (it needs a tag/dispatch),
+    # so nothing is published — grab the installers from the run's Artifacts.
+    branches:
+      - "preview/**"
     tags:
       - "v*"
   workflow_dispatch:
