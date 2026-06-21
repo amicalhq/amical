@@ -750,6 +750,16 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const idToken = yield* this.getIdTokenEffect();
       const sessionId =
         snapshot.currentSessionId || `cloud-${Date.now().toString(36)}`;
+      // Instruct → "instruct" preset; otherwise the foreground app's preset
+      // (resolved from the app catalog) plus the matching skill's tone, or empty
+      // when formatting is off. See skill-resolution.ts.
+      const resolvedSkills = yield* Effect.promise(() =>
+        resolveSessionSkills({
+          isInstruct: snapshot.currentIsInstruct,
+          enableFormatting,
+          accessibilityContext: snapshot.currentAccessibilityContext,
+        }),
+      );
       const openOptions = {
         endpoint: config.apiEndpoint,
         token: idToken,
@@ -758,14 +768,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         sessionId,
         languages: snapshot.currentLanguages,
         vocabulary: snapshot.currentVocabulary,
-        // Instruct mode sends the "instruct" preset (cloud generates content);
-        // otherwise the temporary "default" bridge preset when formatting is on,
-        // or empty (= raw transcript). See skill-resolution.ts. The default
-        // bridge stays until per-app skill resolution is wired into the pipeline.
-        resolvedSkills: resolveSessionSkills({
-          isInstruct: snapshot.currentIsInstruct,
-          enableFormatting,
-        }),
+        resolvedSkills,
         context: this.buildGrpcStreamContext(snapshot),
       };
 
@@ -1056,6 +1059,17 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const audioPayload = hasAudio
         ? Buffer.from(float32ToPcmS16le(audioData)).toString("base64")
         : "";
+      // Skills drive the finalize formatter, so they only matter on the final
+      // request (same gate as `formatting`). Non-final chunks omit them.
+      const skills = isFinal
+        ? yield* Effect.promise(() =>
+            resolveSessionSkills({
+              isInstruct: snapshot.currentIsInstruct,
+              enableFormatting,
+              accessibilityContext: snapshot.currentAccessibilityContext,
+            }),
+          )
+        : undefined;
       // Register an aborter so reset() (finalize-phase dismiss) can cancel this
       // in-flight HTTP request; gRPC uses stream.cancel() for the same purpose.
       // INVARIANT: this signal is scoped to the /transcribe request ONLY. Never
@@ -1090,6 +1104,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               formatting: {
                 enabled: enableFormatting,
               },
+              skills,
               sharedContext: snapshot.currentAccessibilityContext
                 ? {
                     ...projectAccessibilityContext(
