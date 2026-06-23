@@ -12,11 +12,30 @@ struct KeyResyncResult {
 class ShortcutManager {
     static let shared = ShortcutManager()
 
-    private var pushToTalkKeys: [Int] = []
-    private var toggleRecordingKeys: [Int] = []
-    private var pasteLastTranscriptKeys: [Int] = []
-    private var newNoteKeys: [Int] = []
+    // Chords grouped by match rule (see SetShortcutsParamsSchema): subset chords
+    // (push-to-talk, draft) consume while building toward the chord; exact chords
+    // (toggle/paste/new-note) consume only when exactly held.
+    private var subsetChords: [[Int]] = []
+    private var exactChords: [[Int]] = []
     private var shortcutKeysSet = Set<Int>()
+
+    // ============================================================================
+    // Draft-Enter mask
+    // ============================================================================
+    // While a Draft review window is open, the desktop arms this so the helper
+    // swallows the Enter key (the desktop routes the forwarded key-down to Insert
+    // instead of letting Enter reach the focused app).
+    //
+    // SELF-DISARMING: `draftEnterArmed` is cleared on the Enter key-up, so a
+    // missed/dropped disarm from the desktop swallows at most ONE Enter press —
+    // the mask can never become permanent. `consumingEnter` keeps swallowing the
+    // whole press (incl. auto-repeat) once started, even if the desktop disarms
+    // mid-press, so no stray Enter leaks to the focused app.
+    private var draftEnterArmed = false
+    private var consumingEnter = false
+    // Return (36) + KeypadEnter (76); 52 is the desktop keycode-map's legacy
+    // Enter alias, kept here so native masking matches desktop detection.
+    private let enterKeyCodes: Set<Int> = [36, 52, 76]
 
     // ============================================================================
     // Modifier Key State Tracking (left/right)
@@ -56,23 +75,46 @@ class ShortcutManager {
     /// Update the configured shortcuts
     /// Called from IOBridge when setShortcuts RPC is received
     func setShortcuts(
-        pushToTalk: [Int],
-        toggleRecording: [Int],
-        pasteLastTranscript: [Int],
-        newNote: [Int]
+        subsetChords: [[Int]],
+        exactChords: [[Int]]
     ) {
         lock.lock()
         defer { lock.unlock() }
-        self.pushToTalkKeys = pushToTalk
-        self.toggleRecordingKeys = toggleRecording
-        self.pasteLastTranscriptKeys = pasteLastTranscript
-        self.newNoteKeys = newNote
-        self.shortcutKeysSet = Set(
-            pushToTalk + toggleRecording + pasteLastTranscript + newNote
-        )
+        self.subsetChords = subsetChords
+        self.exactChords = exactChords
+        self.shortcutKeysSet = Set((subsetChords + exactChords).flatMap { $0 })
         logToStderr(
-            "[ShortcutManager] Shortcuts updated - PTT: \(pushToTalk), Toggle: \(toggleRecording), Paste: \(pasteLastTranscript), NewNote: \(newNote)"
+            "[ShortcutManager] Shortcuts updated - subset: \(subsetChords), exact: \(exactChords)"
         )
+    }
+
+    /// Arm/disarm the Draft-Enter mask. Called from IOBridge on setDraftEnterCapture.
+    /// Disarming leaves any in-flight Enter press (`consumingEnter`) to finish
+    /// swallowing through its key-up so no stray key reaches the focused app.
+    func setDraftEnterCapture(_ enabled: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        draftEnterArmed = enabled
+    }
+
+    /// Decide whether to swallow an Enter key event for the Draft-Enter mask.
+    /// One press at a time; self-disarms on key-up so the mask can never stick.
+    func consumeDraftEnter(keyCode: Int, isKeyUp: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard enterKeyCodes.contains(keyCode) else { return false }
+        if isKeyUp {
+            guard consumingEnter else { return false }
+            consumingEnter = false
+            draftEnterArmed = false  // disarm-on-key-up: bounds any desync to one press
+            return true
+        }
+        // key-down (incl. auto-repeat): swallow the whole press once started
+        if draftEnterArmed || consumingEnter {
+            consumingEnter = true
+            return true
+        }
+        return false
     }
 
     /// Update the tracked modifier key state (left/right)
@@ -236,11 +278,7 @@ class ShortcutManager {
         defer { lock.unlock() }
 
         // Early exit if no shortcuts configured
-        if pushToTalkKeys.isEmpty
-            && toggleRecordingKeys.isEmpty
-            && pasteLastTranscriptKeys.isEmpty
-            && newNoteKeys.isEmpty
-        {
+        if subsetChords.isEmpty && exactChords.isEmpty {
             return false
         }
 
@@ -252,26 +290,23 @@ class ShortcutManager {
         activeKeys.formUnion(pressedRegularKeys)
         activeKeys.insert(keyCode)
 
-        // PTT: consume if building toward the shortcut
-        // - At least one modifier from the shortcut must be held (signals intent)
-        // - All currently pressed keys must be part of the shortcut (activeKeys ⊆ pttKeys)
-        let pttKeys = Set(pushToTalkKeys)
-        let pttModifiers = pttKeys.intersection(modifierKeyCodeSet)
-        let hasRequiredModifier = !pttModifiers.isEmpty && !pttModifiers.isDisjoint(with: activeModifiers)
-        let pttMatch = !pttKeys.isEmpty && hasRequiredModifier && activeKeys.isSubset(of: pttKeys)
+        // Subset chords (PTT, draft): consume if building toward the chord.
+        // - At least one modifier from the chord must be held (signals intent)
+        // - All currently pressed keys must be part of the chord (activeKeys ⊆ chord)
+        let subsetMatch = subsetChords.contains { chord in
+            let chordKeys = Set(chord)
+            let chordModifiers = chordKeys.intersection(modifierKeyCodeSet)
+            return !chordKeys.isEmpty
+                && !chordModifiers.isEmpty
+                && !chordModifiers.isDisjoint(with: activeModifiers)
+                && activeKeys.isSubset(of: chordKeys)
+        }
 
-        // Toggle: exact match (only these keys pressed)
-        let toggleKeys = Set(toggleRecordingKeys)
-        let toggleMatch = !toggleKeys.isEmpty && toggleKeys == activeKeys
+        // Exact chords (toggle/paste/new-note): consume only when exactly held.
+        let exactMatch = exactChords.contains { chord in
+            !chord.isEmpty && Set(chord) == activeKeys
+        }
 
-        // Paste last transcript: exact match (only these keys pressed)
-        let pasteKeys = Set(pasteLastTranscriptKeys)
-        let pasteMatch = !pasteKeys.isEmpty && pasteKeys == activeKeys
-
-        // New note: exact match (only these keys pressed)
-        let newNoteKeysSet = Set(newNoteKeys)
-        let newNoteMatch = !newNoteKeysSet.isEmpty && newNoteKeysSet == activeKeys
-
-        return pttMatch || toggleMatch || pasteMatch || newNoteMatch
+        return subsetMatch || exactMatch
     }
 }

@@ -34,6 +34,9 @@ describe("default settings seed", () => {
       autoDetectEnabled: false,
       languages: ["en", "hi"],
     });
+    expect(settings.labs).toEqual({
+      selfCorrection: false,
+    });
   });
 
   it("does not duplicate English when the OS language is English", async () => {

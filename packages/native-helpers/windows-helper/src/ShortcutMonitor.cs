@@ -236,6 +236,15 @@ namespace WindowsHelper
                                 ShortcutManager.Instance.AddRegularKey(vkCode);
                             }
 
+                            // Draft-Enter mask: swallow Enter while a draft review window is
+                            // open (the key event was already emitted above so the desktop can
+                            // route key-down to Insert). Self-disarms on key-up, so a missed
+                            // disarm swallows at most one press.
+                            if (ShortcutManager.Instance.ConsumeDraftEnter(vkCode, isKeyUp))
+                            {
+                                return (IntPtr)1;
+                            }
+
                             // Check if this key event should be consumed (prevent default behavior)
                             if (ShortcutManager.Instance.ShouldConsumeKey(vkCode))
                             {

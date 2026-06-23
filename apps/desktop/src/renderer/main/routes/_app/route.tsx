@@ -61,6 +61,7 @@ function AppLayoutContent() {
       "/settings/vocabulary": "Vocabulary",
       "/settings/shortcuts": "Shortcuts",
       "/settings/ai-models": "AI Models",
+      "/settings/labs": "Labs",
       "/settings/advanced": "Advanced",
       "/settings/about": "About",
     };

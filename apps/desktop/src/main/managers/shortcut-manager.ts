@@ -24,6 +24,7 @@ interface ShortcutConfig {
   toggleRecording: number[];
   pasteLastTranscript: number[];
   newNote: number[];
+  draftMode: number[];
 }
 
 export class ShortcutManager extends EventEmitter {
@@ -38,6 +39,7 @@ export class ShortcutManager extends EventEmitter {
     toggleRecording: [],
     pasteLastTranscript: [],
     newNote: [],
+    draftMode: [],
   };
   private settingsService: SettingsService;
   private nativeBridge: NativeBridge;
@@ -63,6 +65,13 @@ export class ShortcutManager extends EventEmitter {
   // fire a phantom press and stop a hands-free session.
   private pttActive = false;
 
+  // Whether the active PTT session was engaged via the "draft" binding (i.e. the
+  // draft chord is currently exactly held). Recomputed live each evaluation, so a
+  // draft chord that is a superset of plain PTT (e.g. Fn+Ctrl over Fn) still tags
+  // as draft even if the base key lands a tick before the rest. recording-manager
+  // reads this (latched per session) to send the instruct preset.
+  private pttDraftActive = false;
+
   // Generic command kill-switch (the onboarding wizard sets it: on while the
   // wizard is open, off while a dictation try-it step is on screen). While
   // suppressed, command emissions are dropped HERE at the source so no
@@ -73,6 +82,11 @@ export class ShortcutManager extends EventEmitter {
   // suppression flip still delivers a release on the next key event.
   private commandsSuppressed = false;
 
+  // While a Draft review window is open, Enter routes to Insert (and is masked
+  // by the native helper) instead of reaching the focused app. Set by
+  // RecordingManager in lockstep with the pending draft.
+  private draftActive = false;
+
   constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
     super();
     this.settingsService = settingsService;
@@ -81,6 +95,10 @@ export class ShortcutManager extends EventEmitter {
 
   setCommandsSuppressed(suppressed: boolean) {
     this.commandsSuppressed = suppressed;
+  }
+
+  setDraftActive(active: boolean) {
+    this.draftActive = active;
   }
 
   async initialize() {
@@ -104,15 +122,24 @@ export class ShortcutManager extends EventEmitter {
    * Sync the configured shortcuts to the native helper for key consumption.
    * This tells the native helper which key combinations to consume
    * (prevent default behavior like cursor movement for arrow keys).
+   *
+   * The helper only needs the keys grouped by match rule, not by shortcut
+   * identity (see SetShortcutsParamsSchema): push-to-talk and draft are
+   * subset-matched (draft inherits PTT-class consumption for free); toggle,
+   * paste and new-note are exact-matched. Empty chords are dropped.
    */
   private async syncShortcutsToNative() {
     try {
-      await this.nativeBridge.setShortcuts({
-        pushToTalk: this.shortcuts.pushToTalk,
-        toggleRecording: this.shortcuts.toggleRecording,
-        pasteLastTranscript: this.shortcuts.pasteLastTranscript,
-        newNote: this.shortcuts.newNote,
-      });
+      const subsetChords = [
+        this.shortcuts.pushToTalk,
+        this.shortcuts.draftMode,
+      ].filter((chord) => chord.length > 0);
+      const exactChords = [
+        this.shortcuts.toggleRecording,
+        this.shortcuts.pasteLastTranscript,
+        this.shortcuts.newNote,
+      ].filter((chord) => chord.length > 0);
+      await this.nativeBridge.setShortcuts({ subsetChords, exactChords });
       log.info("Shortcuts synced to native helper");
     } catch (error) {
       log.error("Failed to sync shortcuts to native helper", { error });
@@ -340,6 +367,9 @@ export class ShortcutManager extends EventEmitter {
     if (this.exactMatchState.newNote) {
       for (const key of this.shortcuts.newNote) keys.add(key);
     }
+    if (this.pttDraftActive) {
+      for (const key of this.shortcuts.draftMode) keys.add(key);
+    }
     return keys;
   }
 
@@ -454,6 +484,15 @@ export class ShortcutManager extends EventEmitter {
       this.emit("escape-pressed");
       return;
     }
+    // While a draft review is open, Enter routes to Insert (and is masked by the
+    // native helper); like ESC, don't track it in activeKeys / chord matching.
+    if (this.draftActive) {
+      const keyName = getKeyFromKeycode(keyCode);
+      if (keyName === "Enter" || keyName === "KeypadEnter") {
+        this.emit("enter-pressed");
+        return;
+      }
+    }
     this.addActiveKey(keyCode);
   }
 
@@ -523,9 +562,11 @@ export class ShortcutManager extends EventEmitter {
     // Snapshot the active keys once; every matcher below reads the same set.
     const activeKeys = this.getActiveKeys();
 
-    // Check PTT shortcut. Always evaluate the matcher (it owns the pttActive
-    // latch); suppression only masks the EMITTED level to false, so a mid-hold
-    // suppression flip still delivers a release on the next key event.
+    // Check PTT shortcut. PTT accepts two bindings — the normal chord and the
+    // "draft" chord — both handled inside the matcher (it owns the pttActive latch
+    // and the live pttDraftActive flag). Draft is NOT a separate event: it rides
+    // the same ptt-state-changed edge, only tagged. Suppression only masks the
+    // EMITTED level to false, so a mid-hold flip still delivers a release.
     const isPTTPressed = this.isPTTShortcutPressed(isKeyDown, activeKeys);
     this.emit("ptt-state-changed", isPTTPressed && !this.commandsSuppressed);
 
@@ -609,25 +650,58 @@ export class ShortcutManager extends EventEmitter {
     return keys.length === activeKeys.length && this.allHeld(keys, activeKeys);
   }
 
+  // PTT accepts two bindings: the normal chord and the optional "draft" chord.
+  // Start only on a key-down that EXACTLY matches one of them (never latch on a
+  // key-up that collapses a larger chord onto the set — that would fire a phantom
+  // press and stop the session). Prefer the draft chord on start, so a draft chord
+  // that is a superset of plain PTT (Fn+Ctrl over Fn) tags as draft when both
+  // match in one event. Sustain while EITHER binding's keys are all held.
+  // pttDraftActive is recomputed live (draft chord currently exactly held) so the
+  // Fn-then-Ctrl press order still resolves to draft once both keys are down.
   private isPTTShortcutPressed(
     isKeyDown: boolean,
     activeKeys: number[],
   ): boolean {
     const pttKeys = this.shortcuts.pushToTalk;
-    if (!pttKeys || pttKeys.length === 0) {
+    const draftKeys = this.shortcuts.draftMode;
+    const hasPtt = !!pttKeys && pttKeys.length > 0;
+    const hasDraft = !!draftKeys && draftKeys.length > 0;
+
+    if (!hasPtt && !hasDraft) {
       this.pttActive = false;
+      this.pttDraftActive = false;
       return false;
     }
 
-    // Start only on an exact match and only on a key-down: never latch active on a
-    // key-up that collapses a larger chord down to the PTT set (e.g. releasing Space
-    // after Fn+Space started hands-free), which would fire a phantom press and stop
-    // the session. Sustain (the other branch) is explained on pttActive.
-    this.pttActive = this.pttActive
-      ? this.allHeld(pttKeys, activeKeys)
-      : isKeyDown && this.isExactMatch(pttKeys, activeKeys);
+    if (this.pttActive) {
+      // Sustain while either binding's full chord remains held.
+      this.pttActive =
+        (hasPtt && this.allHeld(pttKeys, activeKeys)) ||
+        (hasDraft && this.allHeld(draftKeys, activeKeys));
+    } else if (
+      isKeyDown &&
+      hasDraft &&
+      this.isExactMatch(draftKeys, activeKeys)
+    ) {
+      this.pttActive = true;
+    } else if (isKeyDown && hasPtt && this.isExactMatch(pttKeys, activeKeys)) {
+      this.pttActive = true;
+    }
+
+    // Tag (live): is the draft chord exactly held right now?
+    this.pttDraftActive =
+      this.pttActive && hasDraft && this.isExactMatch(draftKeys, activeKeys);
 
     return this.pttActive;
+  }
+
+  /**
+   * Whether the current PTT session is engaged via the draft binding. Read by
+   * recording-manager at chunk time and latched per session, so a draft chord
+   * that is a superset of plain PTT tags correctly regardless of key order.
+   */
+  public isPTTDraftActive(): boolean {
+    return this.pttDraftActive;
   }
 
   private isToggleRecordingShortcutPressed(activeKeys: number[]): boolean {

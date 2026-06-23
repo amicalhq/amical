@@ -49,6 +49,7 @@ const macOSKeycodeToKey: Record<number, string> = {
   48: "Tab",
   49: "Space",
   51: "Delete",
+  36: "Enter", // kVK_Return (canonical); 52 kept below as a legacy/defensive alias
   52: "Enter",
   53: "Escape",
   57: "CapsLock",

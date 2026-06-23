@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { ShortcutInput } from "@/components/shortcut-input";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/trpc/react";
@@ -16,8 +17,14 @@ export function ShortcutsSettingsPage() {
   const [pasteLastTranscriptShortcut, setPasteLastTranscriptShortcut] =
     useState<number[]>([]);
   const [newNoteShortcut, setNewNoteShortcut] = useState<number[]>([]);
+  const [draftModeShortcut, setDraftModeShortcut] = useState<number[]>([]);
   const [recordingShortcut, setRecordingShortcut] = useState<
-    "pushToTalk" | "toggleRecording" | "pasteLastTranscript" | "newNote" | null
+    | "pushToTalk"
+    | "toggleRecording"
+    | "pasteLastTranscript"
+    | "newNote"
+    | "draftMode"
+    | null
   >(null);
 
   // tRPC queries and mutations
@@ -34,6 +41,7 @@ export function ShortcutsSettingsPage() {
           setToggleRecordingShortcut(cached.toggleRecording);
           setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
           setNewNoteShortcut(cached.newNote);
+          setDraftModeShortcut(cached.draftMode);
         } else {
           utils.settings.getShortcuts.invalidate();
         }
@@ -53,6 +61,7 @@ export function ShortcutsSettingsPage() {
             "settings.shortcuts.toast.pasteLastTranscriptUpdated",
           ),
           newNote: t("settings.shortcuts.toast.newNoteUpdated"),
+          draftMode: t("settings.shortcuts.toast.draftModeUpdated"),
         } as const;
         toast.success(successMessages[variables.type]);
       }
@@ -66,6 +75,7 @@ export function ShortcutsSettingsPage() {
         setToggleRecordingShortcut(cached.toggleRecording);
         setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
         setNewNoteShortcut(cached.newNote);
+        setDraftModeShortcut(cached.draftMode);
       } else {
         utils.settings.getShortcuts.invalidate();
       }
@@ -79,6 +89,7 @@ export function ShortcutsSettingsPage() {
       setToggleRecordingShortcut(shortcutsQuery.data.toggleRecording);
       setPasteLastTranscriptShortcut(shortcutsQuery.data.pasteLastTranscript);
       setNewNoteShortcut(shortcutsQuery.data.newNote);
+      setDraftModeShortcut(shortcutsQuery.data.draftMode);
     }
   }, [shortcutsQuery.data]);
 
@@ -110,6 +121,14 @@ export function ShortcutsSettingsPage() {
     setNewNoteShortcut(shortcut);
     setShortcutMutation.mutate({
       type: "newNote",
+      shortcut: shortcut,
+    });
+  };
+
+  const handleDraftModeChange = (shortcut: number[]) => {
+    setDraftModeShortcut(shortcut);
+    setShortcutMutation.mutate({
+      type: "draftMode",
       shortcut: shortcut,
     });
   };
@@ -221,6 +240,36 @@ export function ShortcutsSettingsPage() {
                     isRecordingShortcut={recordingShortcut === "newNote"}
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "newNote" : null)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Separator className="my-4" />
+              <div className="flex flex-col md:flex-row md:justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-semibold text-foreground">
+                      {t("settings.shortcuts.draft.label")}
+                    </Label>
+                    {/* Reuse the app's shared (localized) alpha-stage badge. */}
+                    <Badge className="text-[10px] px-1.5 py-0 bg-orange-500/20 text-orange-500 hover:bg-orange-500/20">
+                      {t("settings.dictation.formatting.badge")}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                    {t("settings.shortcuts.draft.description")}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 items-end min-w-[260px]">
+                  <ShortcutInput
+                    value={draftModeShortcut}
+                    onChange={handleDraftModeChange}
+                    isRecordingShortcut={recordingShortcut === "draftMode"}
+                    onRecordingShortcutChange={(recording) =>
+                      setRecordingShortcut(recording ? "draftMode" : null)
                     }
                   />
                 </div>

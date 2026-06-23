@@ -22,6 +22,7 @@ export interface ShortcutsConfig {
   toggleRecording: number[];
   pasteLastTranscript: number[];
   newNote: number[];
+  draftMode: number[];
 }
 
 export interface AppPreferences {
@@ -37,6 +38,10 @@ export interface AppPreferences {
 
 export interface HistorySettings {
   retentionPeriod: NonNullable<AppSettingsData["history"]>["retentionPeriod"];
+}
+
+export interface LabsSettings {
+  selfCorrection: boolean;
 }
 
 export class SettingsService extends EventEmitter {
@@ -157,6 +162,23 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
+   * Get experimental labs settings
+   */
+  async getLabsSettings(): Promise<LabsSettings> {
+    const labsSettings = await getSettingsSection("labs");
+    return {
+      selfCorrection: labsSettings?.selfCorrection ?? false,
+    };
+  }
+
+  /**
+   * Update experimental labs settings
+   */
+  async setLabsSettings(labsSettings: LabsSettings): Promise<void> {
+    await updateSettingsSection("labs", labsSettings);
+  }
+
+  /**
    * Get shortcuts configuration
    * Defaults are handled by app-settings.ts during initialization/migration
    */
@@ -167,6 +189,7 @@ export class SettingsService extends EventEmitter {
       toggleRecording: shortcuts?.toggleRecording ?? [],
       pasteLastTranscript: shortcuts?.pasteLastTranscript ?? [],
       newNote: shortcuts?.newNote ?? [],
+      draftMode: shortcuts?.draftMode ?? [],
     };
   }
 
@@ -186,6 +209,7 @@ export class SettingsService extends EventEmitter {
         ? shortcuts.pasteLastTranscript
         : undefined,
       newNote: shortcuts.newNote?.length ? shortcuts.newNote : undefined,
+      draftMode: shortcuts.draftMode?.length ? shortcuts.draftMode : undefined,
     };
     await updateSettingsSection("shortcuts", dataToStore);
   }

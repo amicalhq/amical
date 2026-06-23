@@ -85,6 +85,26 @@ export class RecordingManager extends EventEmitter {
   // Sound muting for current session
   private soundsMuted: boolean = false;
 
+  // Instruct mode: set when the session was started via the instruct hotkey
+  // (wired in M2). Causes the cloud stream to send the "instruct" preset and
+  // (in M3) the generated result to be held for review instead of auto-pasted.
+  // Reset per session; stays false until the hotkey lands.
+  private currentIsInstruct: boolean = false;
+
+  // Generated draft text awaiting the user's insert/dismiss. Decoupled from the
+  // recording session: finalize resets the FSM to idle as normal, and this holds
+  // the result independently until confirmDraft/dismissDraft (or a new dictation)
+  // resolves it. Changes are broadcast via the "draft-changed" event.
+  private pendingDraft: { sessionId: string; text: string } | null = null;
+
+  // Last Enter-mask armed value pushed to the shortcut manager / native helper.
+  // The mask is armed only while a draft is ready to review (pendingDraft + idle);
+  // tracked so syncDraftEnterMask only emits on actual changes.
+  private draftEnterArmed = false;
+
+  // Held so audio-chunk handling can read the live draft-binding state.
+  private shortcutManager: ShortcutManager | null = null;
+
   constructor(private serviceManager: ServiceManager) {
     super();
     this.machine = new RecordingMachineInterpreter({
@@ -115,6 +135,7 @@ export class RecordingManager extends EventEmitter {
 
   // Setup listeners for shortcut events
   public setupShortcutListeners(shortcutManager: ShortcutManager) {
+    this.shortcutManager = shortcutManager;
     let lastPTTState = false;
 
     // Handle PTT state changes
@@ -144,8 +165,41 @@ export class RecordingManager extends EventEmitter {
     // Handle ESC dismiss (emitted on any ESC key-down; no-op unless a session
     // is active). dismissCurrentSession guards on state.
     shortcutManager.on("escape-pressed", async () => {
+      // ESC closes a pending draft review (no paste); otherwise it dismisses an
+      // in-progress recording.
+      if (this.pendingDraft) {
+        this.dismissDraft();
+        return;
+      }
       await this.dismissCurrentSession();
     });
+
+    // Enter confirms (Insert) a draft that's ready to review. The emit is gated
+    // by ShortcutManager.draftActive (armed only in idle+pendingDraft), and we
+    // re-check here: during the (re-)dictation that produces a draft we're not
+    // idle, so Enter must not insert the about-to-be-replaced text.
+    shortcutManager.on("enter-pressed", async () => {
+      if (this.pendingDraft && this.getState() === "idle") {
+        await this.confirmDraft();
+      }
+    });
+  }
+
+  /**
+   * Latch the draft tag once the draft binding is seen during a session. Draft
+   * is just a second PTT binding (see shortcut-manager); the cloud preset is
+   * decided at stream-open (first chunk), so reading the live draft state here
+   * makes the Fn+Ctrl chord tag as draft regardless of key order.
+   */
+  private latchDraftTag(): void {
+    if (!this.currentIsInstruct && this.shortcutManager?.isPTTDraftActive()) {
+      this.currentIsInstruct = true;
+      // Latching happens on the first audio chunk — an internal FSM transition
+      // (no_audio_yet -> has_audio) with no public state change, so no
+      // "state-changed" fires. Emit so the widget FAB picks up isDraft=true
+      // *during* recording, not only when it later transitions to stopping.
+      this.emit("draft-latched");
+    }
   }
 
   private emitStateChange(
@@ -161,6 +215,9 @@ export class RecordingManager extends EventEmitter {
     // Broadcast the already-derived next public state. Do not re-read here:
     // listeners should receive the exact boundary that changed.
     this.emit("state-changed", newState);
+    // Re-evaluate the Enter->Insert arming: it's only valid in idle+pendingDraft,
+    // so leaving idle disarms it and returning to idle (with a draft) re-arms it.
+    this.syncDraftEnterMask();
   }
 
   private emitModeChange(newMode: RecordingMode, oldMode: RecordingMode): void {
@@ -179,6 +236,12 @@ export class RecordingManager extends EventEmitter {
 
   public getRecordingMode(): RecordingMode {
     return this.machine.getPublicMode();
+  }
+
+  /** True while the active session is a draft (instruct) session. Used by the
+   *  widget FAB to show a distinct indicator during dictation + processing. */
+  public getIsDraftSession(): boolean {
+    return this.currentIsInstruct;
   }
 
   private finalizeWithoutFinalChunk(
@@ -230,9 +293,21 @@ export class RecordingManager extends EventEmitter {
 
   // Toggle shortcut pressed
   public async toggleHandsFree() {
+    // Draft mode is push-to-talk only and is exited only by Insert/dismiss, so
+    // the hands-free toggle does nothing while a draft review is pending.
+    if (this.pendingDraft) {
+      return;
+    }
+
     if (this.getState() === "idle") {
       this.recordingInitiatedAt = Date.now();
       await this.doStart("hands-free");
+      return;
+    }
+
+    // Draft is push-to-talk only: don't let the hands-free toggle upgrade an
+    // active draft session (it would otherwise become a "hands-free draft").
+    if (this.currentIsInstruct) {
       return;
     }
 
@@ -259,11 +334,27 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
+      // Draft mode is sticky: starting a dictation while a draft review is
+      // pending makes the new session itself a draft (only Insert/dismiss exits
+      // draft mode). The pending draft stays VISIBLE during this replacement
+      // dictation — the review window shows a "listening…/drafting…" status and
+      // swaps to the fresh result when this session finalizes. The Enter->Insert
+      // mask auto-disarms while we're not idle (syncDraftEnterMask), so Enter
+      // can't insert the about-to-be-replaced text mid-dictation.
+      const supersedingDraft = this.pendingDraft !== null;
+
       const hasSpeechModel = await this.hasSpeechModelSelected();
       if (hasSpeechModel) {
         // Missing-model starts stay IDLE; STARTING means we have a model and
         // have allocated the session identity used by the interpreter.
         this.currentSessionId = uuid();
+        // Tag this as a draft session up front (the draft chord is held now) so
+        // the recording/processing FAB can show the draft indicator immediately,
+        // not only once latchDraftTag fires on the first audio chunk. Sticky
+        // supersede (dictating over a pending draft) also counts.
+        if (supersedingDraft || this.shortcutManager?.isPTTDraftActive()) {
+          this.currentIsInstruct = true;
+        }
       }
 
       const commands = this.machine.transition({
@@ -602,10 +693,12 @@ export class RecordingManager extends EventEmitter {
             const transcriptionService = this.serviceManager.getService(
               "transcriptionService",
             );
+            this.latchDraftTag();
             await transcriptionService.processStreamingChunk({
               sessionId: this.currentSessionId,
               audioChunk: chunk,
               recordingStartedAt: this.recordingStartedAt || undefined,
+              isInstruct: this.currentIsInstruct,
             });
           } catch (error) {
             logger.audio.error("Error processing final chunk:", error);
@@ -635,10 +728,12 @@ export class RecordingManager extends EventEmitter {
         const transcriptionService = this.serviceManager.getService(
           "transcriptionService",
         );
+        this.latchDraftTag();
         await transcriptionService.processStreamingChunk({
           sessionId,
           audioChunk: chunk,
           recordingStartedAt: this.recordingStartedAt || undefined,
+          isInstruct: this.currentIsInstruct,
         });
       } catch (error) {
         logger.audio.error("Error processing chunk:", error);
@@ -790,6 +885,19 @@ export class RecordingManager extends EventEmitter {
     // the transcript is already saved, and pasteTranscription hands off to the
     // native helper, so by the time the paste fires it is too late to abort.
     if (result) {
+      if (this.currentIsInstruct) {
+        // Draft: hold the generated text for review instead of auto-pasting. The
+        // result lives in pendingDraft, independent of the recording session, so
+        // the FSM resets to idle as normal below and a new dictation can start
+        // immediately. Resolved by confirmDraft / dismissDraft / a new session.
+        this.setPendingDraft({ sessionId, text: result });
+        logger.audio.info("Draft result ready for review", {
+          sessionId,
+          textLength: result.length,
+        });
+        this.resetSessionState();
+        return;
+      }
       await this.pasteTranscription(result);
     } else {
       // Check for empty transcript notification
@@ -1084,6 +1192,11 @@ export class RecordingManager extends EventEmitter {
   }
 
   private resetSessionState(options: { force?: boolean } = {}): void {
+    // Clear the draft tag before the FSM reset: machine.resetSession fires the
+    // state-changed("idle") emit synchronously, and the recording status reads
+    // getIsDraftSession() from it — so this must be false by then to avoid a
+    // stale isDraft=true on the idle update.
+    this.currentIsInstruct = false;
     if (!this.machine.resetSession(options)) {
       return;
     }
@@ -1146,6 +1259,58 @@ export class RecordingManager extends EventEmitter {
       logger.audio.error("Failed to write audio file", { error });
       return null;
     }
+  }
+
+  /** The draft result awaiting insert/dismiss, or null. */
+  public getPendingDraft(): { sessionId: string; text: string } | null {
+    return this.pendingDraft;
+  }
+
+  /** Set/clear the pending draft and broadcast the change to subscribers. */
+  private setPendingDraft(
+    draft: { sessionId: string; text: string } | null,
+  ): void {
+    this.pendingDraft = draft;
+    this.emit("draft-changed", draft);
+    this.syncDraftEnterMask();
+  }
+
+  /**
+   * Arm the Enter->Insert routing + native Enter mask ONLY while a draft is
+   * ready to review: a pending draft AND the FSM is idle. During the
+   * (re-)dictation that produces or replaces a draft we are not idle, so Enter
+   * is disarmed and can never insert the about-to-be-replaced text. The native
+   * mask stays one-shot (self-disarms on the Enter key-up); arming reflects
+   * "is there a reviewable draft right now". Driven from setPendingDraft and
+   * every state change so the two inputs (pendingDraft, state) stay in sync.
+   */
+  private syncDraftEnterMask(): void {
+    const armed = this.pendingDraft !== null && this.getState() === "idle";
+    // Called on every state change; only push when the armed value actually
+    // flips (avoids redundant native RPCs on routine idle->rec->idle transitions).
+    if (armed === this.draftEnterArmed) {
+      return;
+    }
+    this.draftEnterArmed = armed;
+    this.shortcutManager?.setDraftActive(armed);
+    const nativeBridge = this.serviceManager.getService("nativeBridge");
+    if (nativeBridge) {
+      void nativeBridge.setDraftEnterCapture(armed);
+    }
+  }
+
+  /** Confirm the pending draft: paste the held text. (Session is already idle.) */
+  public async confirmDraft(): Promise<void> {
+    const pending = this.pendingDraft;
+    this.setPendingDraft(null);
+    if (pending?.text) {
+      await this.pasteTranscription(pending.text);
+    }
+  }
+
+  /** Dismiss the pending draft without pasting. */
+  public dismissDraft(): void {
+    this.setPendingDraft(null);
   }
 
   private async pasteTranscription(transcription: string): Promise<void> {

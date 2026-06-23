@@ -26,6 +26,7 @@ const SetShortcutSchema = z.object({
     "toggleRecording",
     "pasteLastTranscript",
     "newNote",
+    "draftMode",
   ]),
   shortcut: z.array(z.number()),
 });
@@ -60,6 +61,10 @@ const DictationSettingsSchema = z.object({
         message: "Language entries must be concrete languages",
       }),
   ),
+});
+
+const LabsSettingsSchema = z.object({
+  selfCorrection: z.boolean(),
 });
 
 const AppPreferencesSchema = z.object({
@@ -486,6 +491,53 @@ export const settingsRouter = createRouter({
         const logger = ctx.serviceManager.getLogger();
         if (logger) {
           logger.main.error("Error setting dictation settings:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Get labs settings
+  getLabsSettings: procedure.query(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      return await settingsService.getLabsSettings();
+    } catch (error) {
+      const logger = ctx.serviceManager.getLogger();
+      if (logger) {
+        logger.main.error("Error getting labs settings:", error);
+      }
+      return {
+        selfCorrection: false,
+      };
+    }
+  }),
+
+  // Set labs settings
+  setLabsSettings: procedure
+    .input(LabsSettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        await settingsService.setLabsSettings(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("Labs settings updated:", input);
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting labs settings:", error);
         }
         throw error;
       }

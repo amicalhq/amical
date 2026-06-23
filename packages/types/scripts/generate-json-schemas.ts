@@ -30,6 +30,10 @@ import {
   SetShortcutsResultSchema,
 } from "../src/schemas/methods/set-shortcuts.js";
 import {
+  SetDraftEnterCaptureParamsSchema,
+  SetDraftEnterCaptureResultSchema,
+} from "../src/schemas/methods/set-draft-enter-capture.js";
+import {
   RecheckPressedKeysParamsSchema,
   RecheckPressedKeysResultSchema,
 } from "../src/schemas/methods/recheck-pressed-keys.js";
@@ -104,6 +108,16 @@ const schemasToGenerate = [
   {
     zod: SetShortcutsResultSchema,
     name: "SetShortcutsResult",
+    category: "methods",
+  },
+  {
+    zod: SetDraftEnterCaptureParamsSchema,
+    name: "SetDraftEnterCaptureParams",
+    category: "methods",
+  },
+  {
+    zod: SetDraftEnterCaptureResultSchema,
+    name: "SetDraftEnterCaptureResult",
     category: "methods",
   },
   {

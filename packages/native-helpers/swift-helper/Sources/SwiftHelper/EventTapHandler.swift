@@ -59,6 +59,13 @@ private func handleKeyEvent(_ helper: SwiftHelper, type: CGEventType, event: CGE
         ShortcutManager.shared.addRegularKey(Int(keyCode))
     }
 
+    // Draft-Enter mask: swallow Enter while a draft review window is open (the
+    // key-down was already emitted above so the desktop can route it to Insert).
+    // Self-disarms on key-up, so a missed disarm swallows at most one press.
+    if ShortcutManager.shared.consumeDraftEnter(keyCode: Int(keyCode), isKeyUp: type == .keyUp) {
+        return true
+    }
+
     // Check if this key event matches a configured shortcut and should be consumed
     return ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode))
 }

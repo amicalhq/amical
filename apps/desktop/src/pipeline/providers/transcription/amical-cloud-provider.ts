@@ -6,9 +6,13 @@ import {
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { AuthService as AuthServiceImpl } from "../../../services/auth-service";
+import type { SettingsService } from "../../../services/settings-service";
 import type { TelemetryService } from "../../../services/telemetry-service";
 import type { CloudFallbackStage } from "../../../types/telemetry-events";
 import {
+  AMICAL_LAB_SELF_CORRECTION,
+  AMICAL_LABS_HEADER,
+  buildAmicalLabsHeader,
   getAmicalClientHeaders,
   getAmicalClientInfo,
   getUserAgent,
@@ -29,6 +33,8 @@ import {
   type GrpcStreamContext,
   float32ToPcmS16le,
 } from "./grpc-dictation-client";
+import { resolveSessionSkills } from "./skill-resolution";
+import type { DictationSkill } from "./dictation-skill";
 
 // Type guard to validate error codes from server
 const isValidErrorCode = (code: string | undefined): code is ErrorCode =>
@@ -92,6 +98,12 @@ interface ProviderState {
   currentAggregatedTranscription: string | undefined;
   currentVocabulary: string[];
   currentSessionId: string | undefined;
+  // Sticky per-session: send the "instruct" preset (cloud generation) instead
+  // of formatting. Set from TranscribeContext.isInstruct in storeContextEffect.
+  currentIsInstruct: boolean;
+  // Labs tokens resolved once per session in storeContextEffect (a settings DB
+  // read), so per-chunk transcribe()/flush() snapshots stay in-memory.
+  currentEnabledLabs: string[];
   grpcStream: CloudDictationGrpcStream | null;
   grpcPendingFrames: Float32Array[];
   grpcPendingSampleCount: number;
@@ -114,6 +126,7 @@ interface TranscriptionRequest {
   enableFormatting?: boolean;
   isFinal?: boolean;
   snapshot?: ProviderRequestSnapshot;
+  skills?: DictationSkill[];
 }
 
 interface ProviderRequestSnapshot {
@@ -122,6 +135,8 @@ interface ProviderRequestSnapshot {
   currentAggregatedTranscription: string | undefined;
   currentVocabulary: string[];
   currentSessionId: string | undefined;
+  currentIsInstruct: boolean;
+  enabledLabs: string[];
 }
 
 const projectAccessibilityContext = (
@@ -186,6 +201,8 @@ const createInitialProviderState = (): ProviderState => ({
   currentAggregatedTranscription: undefined,
   currentVocabulary: [],
   currentSessionId: undefined,
+  currentIsInstruct: false,
+  currentEnabledLabs: [],
   grpcStream: null,
   grpcPendingFrames: [],
   grpcPendingSampleCount: 0,
@@ -235,6 +252,8 @@ const requestSnapshotFromState = (
   currentAggregatedTranscription: state.currentAggregatedTranscription,
   currentVocabulary: state.currentVocabulary,
   currentSessionId: state.currentSessionId,
+  currentIsInstruct: state.currentIsInstruct,
+  enabledLabs: state.currentEnabledLabs,
 });
 
 const createCloudRuntime = (config: CloudConfig) =>
@@ -273,6 +292,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private readonly runtime: CloudRuntime;
   private readonly state: Ref.Ref<ProviderState>;
   private readonly telemetryService: TelemetryService | null;
+  private readonly settingsService: SettingsService | null;
 
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
@@ -281,11 +301,15 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
 
-  constructor(telemetryService: TelemetryService | null = null) {
+  constructor(
+    telemetryService: TelemetryService | null = null,
+    settingsService: SettingsService | null = null,
+  ) {
     const config = cloudConfigFromEnvironment();
     this.runtime = createCloudRuntime(config);
     this.state = Effect.runSync(Ref.make(createInitialProviderState()));
     this.telemetryService = telemetryService;
+    this.settingsService = settingsService;
 
     logger.transcription.info("AmicalCloudProvider initialized", {
       endpoint: config.apiEndpoint,
@@ -563,24 +587,32 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private storeContextEffect(
     context: TranscribeContext,
   ): CloudProviderEffect<void> {
-    return Ref.update(this.state, (state) => {
+    return Effect.gen(this, function* () {
       // Each new session is a fresh chance to retry gRPC; clear any sticky
       // HTTP override left over from a drop in the previous session.
+      const prevSessionId = (yield* Ref.get(this.state)).currentSessionId;
       const isNewSession =
         context.sessionId !== undefined &&
-        context.sessionId !== state.currentSessionId;
+        context.sessionId !== prevSessionId;
 
-      return {
+      // Resolve labs once per session here rather than per request, so the
+      // per-chunk HTTP snapshot doesn't re-read settings from disk on every
+      // transcribe()/flush(). null = keep the value already cached in state.
+      const enabledLabs = isNewSession ? yield* this.enabledLabsEffect() : null;
+
+      yield* Ref.update(this.state, (state) => ({
         ...state,
         currentLanguages: context.languages ?? [],
         currentAccessibilityContext: context.accessibilityContext ?? null,
         currentAggregatedTranscription: context.aggregatedTranscription,
         currentVocabulary: context.vocabulary ?? [],
         currentSessionId: context.sessionId,
+        currentIsInstruct: context.isInstruct ?? false,
+        currentEnabledLabs: enabledLabs ?? state.currentEnabledLabs,
         transportOverride: isNewSession ? null : state.transportOverride,
         sessionAudioBuffer: isNewSession ? [] : state.sessionAudioBuffer,
         sessionAudioVadProbs: isNewSession ? [] : state.sessionAudioVadProbs,
-      };
+      }));
     });
   }
 
@@ -742,6 +774,16 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const idToken = yield* this.getIdTokenEffect();
       const sessionId =
         snapshot.currentSessionId || `cloud-${Date.now().toString(36)}`;
+      // Instruct uses its preset; formatting off produces no skills. Otherwise
+      // the foreground app maps to a preset, with tone added only when
+      // personalization is enabled. See skill-resolution.ts.
+      const resolvedSkills = yield* Effect.promise(() =>
+        resolveSessionSkills({
+          isInstruct: snapshot.currentIsInstruct,
+          enableFormatting,
+          accessibilityContext: snapshot.currentAccessibilityContext,
+        }),
+      );
       const openOptions = {
         endpoint: config.apiEndpoint,
         token: idToken,
@@ -751,7 +793,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         languages: snapshot.currentLanguages,
         vocabulary: snapshot.currentVocabulary,
         formatting: enableFormatting,
+        resolvedSkills,
         context: this.buildGrpcStreamContext(snapshot),
+        labs: snapshot.enabledLabs,
       };
 
       const stream = yield* Effect.try({
@@ -777,6 +821,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           languages: snapshot.currentLanguages,
           vocabularySize: snapshot.currentVocabulary.length,
           formatting: enableFormatting,
+          instruct: snapshot.currentIsInstruct,
         });
       });
 
@@ -1024,6 +1069,25 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     return Ref.get(this.state).pipe(Effect.map(requestSnapshotFromState));
   }
 
+  private enabledLabsEffect(): CloudProviderEffect<string[]> {
+    const settingsService = this.settingsService;
+    if (!settingsService) {
+      return Effect.succeed([]);
+    }
+
+    return Effect.tryPromise(() => settingsService.getLabsSettings()).pipe(
+      Effect.map((labsSettings) =>
+        labsSettings.selfCorrection ? [AMICAL_LAB_SELF_CORRECTION] : [],
+      ),
+      Effect.catchAll((error) => {
+        logger.transcription.warn("Failed to read labs settings", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return Effect.succeed<string[]>([]);
+      }),
+    );
+  }
+
   private fetchTranscriptionEffect(
     snapshot: ProviderRequestSnapshot,
     idToken: string,
@@ -1031,8 +1095,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     vadProbs: number[],
     enableFormatting: boolean,
     isFinal: boolean,
+    skills: DictationSkill[] | undefined,
   ): CloudProviderEffect<Response> {
-    // Empty audio is the format-only path (text-only finalize); preserve the
+    // Empty audio is the text-only finalize path; preserve the
     // original "" wire shape so the server's default float32 path keeps working.
     const hasAudio = audioData.length > 0;
     return Effect.gen(this, function* () {
@@ -1040,6 +1105,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const audioPayload = hasAudio
         ? Buffer.from(float32ToPcmS16le(audioData)).toString("base64")
         : "";
+      const labsHeader = buildAmicalLabsHeader(snapshot.enabledLabs);
       // Register an aborter so reset() (finalize-phase dismiss) can cancel this
       // in-flight HTTP request; gRPC uses stream.cancel() for the same purpose.
       // INVARIANT: this signal is scoped to the /transcribe request ONLY. Never
@@ -1061,6 +1127,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               Authorization: `Bearer ${idToken}`,
               "User-Agent": getUserAgent(),
               ...getAmicalClientHeaders(),
+              ...(labsHeader ? { [AMICAL_LABS_HEADER]: labsHeader } : {}),
             },
             body: JSON.stringify({
               sessionId: snapshot.currentSessionId,
@@ -1074,6 +1141,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               formatting: {
                 enabled: enableFormatting,
               },
+              skills,
               sharedContext: snapshot.currentAccessibilityContext
                 ? {
                     ...projectAccessibilityContext(
@@ -1166,15 +1234,34 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       enableFormatting = false,
       isFinal = false,
       snapshot,
+      skills: preResolvedSkills,
     } = request;
     return Effect.gen(this, function* () {
       const requestSnapshot = snapshot ?? (yield* this.requestSnapshotEffect());
+      const hasPriorText =
+        !!requestSnapshot.currentAggregatedTranscription?.trim();
+      if (audioData.length === 0 && !hasPriorText) {
+        return { text: "" };
+      }
 
+      // Resolve final skills before the empty-audio no-op check so text-only
+      // instruct behaves the same as gRPC even when formatting is toggled off.
+      const skills =
+        preResolvedSkills ??
+        (isFinal
+          ? yield* Effect.promise(() =>
+              resolveSessionSkills({
+                isInstruct: requestSnapshot.currentIsInstruct,
+                enableFormatting,
+                accessibilityContext:
+                  requestSnapshot.currentAccessibilityContext,
+              }),
+            )
+          : undefined);
       if (audioData.length === 0) {
-        const hasTextToFormat =
-          enableFormatting &&
-          requestSnapshot.currentAggregatedTranscription?.trim();
-        if (!hasTextToFormat) {
+        const shouldSendTextOnlyFinal =
+          isFinal && (enableFormatting || (skills?.length ?? 0) > 0);
+        if (!shouldSendTextOnlyFinal) {
           return { text: "" };
         }
       }
@@ -1201,6 +1288,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         vadProbs,
         enableFormatting,
         isFinal,
+        skills,
       );
 
       if (response.status === 401) {
@@ -1254,6 +1342,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           isRetry: true,
           enableFormatting,
           isFinal,
+          skills,
           snapshot: requestSnapshot,
         });
       }

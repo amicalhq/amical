@@ -124,6 +124,7 @@ import {
   GrpcDictationError,
   type GrpcDictationStreamOptions,
 } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
+import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
 
 const flushEffects = () => new Promise((resolve) => setImmediate(resolve));
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -140,7 +141,6 @@ const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
     },
     sessionId: "session-1",
     vocabulary: [],
-    formatting: false,
     ...overrides,
   });
 
@@ -233,6 +233,20 @@ describe("CloudDictationGrpcStream", () => {
     });
   });
 
+  it("sets StreamOpen formatting from the toggle independently of skills", () => {
+    createStream({
+      formatting: true,
+      resolvedSkills: [{ preset: "work_messages" }],
+    });
+    const grpcStream = grpcMock.getLastStream()!;
+    const firstWrite = grpcStream.write.mock.calls[0]?.[0] as Buffer;
+    const decoded = StreamTranscribeRequest.toObject(
+      StreamTranscribeRequest.decode(firstWrite),
+    ) as { open?: { formatting?: boolean } };
+
+    expect(decoded.open?.formatting).toBe(true);
+  });
+
   it("sends explicit Amical client metadata", () => {
     const clientStream = createStream({
       clientInfo: {
@@ -251,6 +265,22 @@ describe("CloudDictationGrpcStream", () => {
     expect(metadata.get("amical-version")).toEqual(["1.2.3"]);
     expect(metadata.get("amical-platform")).toEqual(["darwin"]);
     expect(metadata.get("x-platform")).toEqual([]);
+
+    clientStream.cancel();
+  });
+
+  it("sends stackable labs metadata when labs are enabled", () => {
+    const clientStream = createStream({
+      labs: ["self-correction", "future-lab=variant-a"],
+    });
+    const client = grpcMock.getLastClient()!;
+    const metadata = client.makeBidiStreamRequest.mock.calls[0]?.[3] as {
+      get(key: string): unknown[];
+    };
+
+    expect(metadata.get("amical-labs")).toEqual([
+      "self-correction,future-lab=variant-a",
+    ]);
 
     clientStream.cancel();
   });

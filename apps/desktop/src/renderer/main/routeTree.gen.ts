@@ -19,6 +19,8 @@ import { Route as AppSettingsVocabularyRouteImport } from './routes/_app/setting
 import { Route as AppSettingsSnippetsRouteImport } from './routes/_app/settings/snippets'
 import { Route as AppSettingsShortcutsRouteImport } from './routes/_app/settings/shortcuts'
 import { Route as AppSettingsPreferencesRouteImport } from './routes/_app/settings/preferences'
+import { Route as AppSettingsLabsRouteImport } from './routes/_app/settings/labs'
+import { Route as AppSettingsFormattingRouteImport } from './routes/_app/settings/formatting'
 import { Route as AppSettingsDictationRouteImport } from './routes/_app/settings/dictation'
 import { Route as AppSettingsAiModelsRouteImport } from './routes/_app/settings/ai-models'
 import { Route as AppSettingsAdvancedRouteImport } from './routes/_app/settings/advanced'
@@ -74,6 +76,16 @@ const AppSettingsPreferencesRoute = AppSettingsPreferencesRouteImport.update({
   path: '/settings/preferences',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppSettingsLabsRoute = AppSettingsLabsRouteImport.update({
+  id: '/settings/labs',
+  path: '/settings/labs',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsFormattingRoute = AppSettingsFormattingRouteImport.update({
+  id: '/settings/formatting',
+  path: '/settings/formatting',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppSettingsDictationRoute = AppSettingsDictationRouteImport.update({
   id: '/settings/dictation',
   path: '/settings/dictation',
@@ -109,6 +121,8 @@ export interface FileRoutesByFullPath {
   '/settings/advanced': typeof AppSettingsAdvancedRoute
   '/settings/ai-models': typeof AppSettingsAiModelsRoute
   '/settings/dictation': typeof AppSettingsDictationRoute
+  '/settings/formatting': typeof AppSettingsFormattingRoute
+  '/settings/labs': typeof AppSettingsLabsRoute
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/shortcuts': typeof AppSettingsShortcutsRoute
   '/settings/snippets': typeof AppSettingsSnippetsRoute
@@ -124,6 +138,8 @@ export interface FileRoutesByTo {
   '/settings/advanced': typeof AppSettingsAdvancedRoute
   '/settings/ai-models': typeof AppSettingsAiModelsRoute
   '/settings/dictation': typeof AppSettingsDictationRoute
+  '/settings/formatting': typeof AppSettingsFormattingRoute
+  '/settings/labs': typeof AppSettingsLabsRoute
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/shortcuts': typeof AppSettingsShortcutsRoute
   '/settings/snippets': typeof AppSettingsSnippetsRoute
@@ -142,6 +158,8 @@ export interface FileRoutesById {
   '/_app/settings/advanced': typeof AppSettingsAdvancedRoute
   '/_app/settings/ai-models': typeof AppSettingsAiModelsRoute
   '/_app/settings/dictation': typeof AppSettingsDictationRoute
+  '/_app/settings/formatting': typeof AppSettingsFormattingRoute
+  '/_app/settings/labs': typeof AppSettingsLabsRoute
   '/_app/settings/preferences': typeof AppSettingsPreferencesRoute
   '/_app/settings/shortcuts': typeof AppSettingsShortcutsRoute
   '/_app/settings/snippets': typeof AppSettingsSnippetsRoute
@@ -160,6 +178,8 @@ export interface FileRouteTypes {
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
+    | '/settings/formatting'
+    | '/settings/labs'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/snippets'
@@ -175,6 +195,8 @@ export interface FileRouteTypes {
     | '/settings/advanced'
     | '/settings/ai-models'
     | '/settings/dictation'
+    | '/settings/formatting'
+    | '/settings/labs'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/snippets'
@@ -192,6 +214,8 @@ export interface FileRouteTypes {
     | '/_app/settings/advanced'
     | '/_app/settings/ai-models'
     | '/_app/settings/dictation'
+    | '/_app/settings/formatting'
+    | '/_app/settings/labs'
     | '/_app/settings/preferences'
     | '/_app/settings/shortcuts'
     | '/_app/settings/snippets'
@@ -277,6 +301,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsPreferencesRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/settings/labs': {
+      id: '/_app/settings/labs'
+      path: '/settings/labs'
+      fullPath: '/settings/labs'
+      preLoaderRoute: typeof AppSettingsLabsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/settings/formatting': {
+      id: '/_app/settings/formatting'
+      path: '/settings/formatting'
+      fullPath: '/settings/formatting'
+      preLoaderRoute: typeof AppSettingsFormattingRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/settings/dictation': {
       id: '/_app/settings/dictation'
       path: '/settings/dictation'
@@ -336,6 +374,8 @@ interface AppRouteRouteChildren {
   AppSettingsAdvancedRoute: typeof AppSettingsAdvancedRoute
   AppSettingsAiModelsRoute: typeof AppSettingsAiModelsRoute
   AppSettingsDictationRoute: typeof AppSettingsDictationRoute
+  AppSettingsFormattingRoute: typeof AppSettingsFormattingRoute
+  AppSettingsLabsRoute: typeof AppSettingsLabsRoute
   AppSettingsPreferencesRoute: typeof AppSettingsPreferencesRoute
   AppSettingsShortcutsRoute: typeof AppSettingsShortcutsRoute
   AppSettingsSnippetsRoute: typeof AppSettingsSnippetsRoute
@@ -350,6 +390,8 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSettingsAdvancedRoute: AppSettingsAdvancedRoute,
   AppSettingsAiModelsRoute: AppSettingsAiModelsRoute,
   AppSettingsDictationRoute: AppSettingsDictationRoute,
+  AppSettingsFormattingRoute: AppSettingsFormattingRoute,
+  AppSettingsLabsRoute: AppSettingsLabsRoute,
   AppSettingsPreferencesRoute: AppSettingsPreferencesRoute,
   AppSettingsShortcutsRoute: AppSettingsShortcutsRoute,
   AppSettingsSnippetsRoute: AppSettingsSnippetsRoute,

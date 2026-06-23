@@ -249,6 +249,15 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "Borrador",
+      "insert": "Pegar",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "dismiss": "Descartar",
+      "listening": "Escuchando…",
+      "drafting": "Redactando…"
+    },
     "notifications": {
       "micFallback": "tu micrófono",
       "discordAlt": "Discord",
@@ -372,6 +381,10 @@
         "title": "Modelos de IA",
         "description": "Configura modelos y proveedores de IA"
       },
+      "labs": {
+        "title": "Labs",
+        "description": "Prueba funciones experimentales"
+      },
       "history": {
         "title": "Historial",
         "description": "Consulta y administra el historial de transcripciones"
@@ -458,6 +471,21 @@
       "theme": {
         "label": "Tema",
         "description": "Elige tu esquema de colores preferido"
+      }
+    },
+    "labs": {
+      "title": "Labs",
+      "description": "Activa funciones experimentales antes de que se conviertan en predeterminadas.",
+      "toast": {
+        "updated": "Configuración de Labs actualizada",
+        "updateFailed": "No se pudo actualizar la configuración de Labs. Por favor, inténtalo de nuevo."
+      },
+      "selfCorrection": {
+        "label": "Autocorrección",
+        "description": "Usa un prompt experimental que intenta corregir correcciones y revisiones habladas.",
+        "cloudOnly": "Solo en la nube",
+        "cloudTooltip": "Solo se aplica al dictado de Amical Cloud. El dictado local no cambia.",
+        "ariaLabel": "Activar o desactivar autocorrección"
       }
     },
     "advanced": {

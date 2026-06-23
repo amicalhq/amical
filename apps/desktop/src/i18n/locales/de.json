@@ -249,6 +249,15 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "Entwurf",
+      "insert": "Einfügen",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "dismiss": "Entwurf verwerfen",
+      "listening": "Hört zu…",
+      "drafting": "Entwurf wird erstellt…"
+    },
     "notifications": {
       "micFallback": "deinem Mikrofon",
       "discordAlt": "Discord",
@@ -372,6 +381,10 @@
         "title": "KI-Modelle",
         "description": "KI-Modelle und Anbieter konfigurieren"
       },
+      "labs": {
+        "title": "Labs",
+        "description": "Experimentelle Funktionen ausprobieren"
+      },
       "history": {
         "title": "Verlauf",
         "description": "Diktatverlauf anzeigen und verwalten"
@@ -458,6 +471,21 @@
       "theme": {
         "label": "Erscheinungsbild",
         "description": "Wähle dein bevorzugtes Farbschema"
+      }
+    },
+    "labs": {
+      "title": "Labs",
+      "description": "Probiere experimentelle Funktionen aus, bevor sie zum Standard werden.",
+      "toast": {
+        "updated": "Labs-Einstellungen aktualisiert",
+        "updateFailed": "Labs-Einstellungen konnten nicht aktualisiert werden. Bitte versuche es erneut."
+      },
+      "selfCorrection": {
+        "label": "Selbstkorrektur",
+        "description": "Verwendet einen experimentellen Prompt, der gesprochene Korrekturen und Überarbeitungen zu korrigieren versucht.",
+        "cloudOnly": "Nur Cloud",
+        "cloudTooltip": "Gilt nur für Amical Cloud-Diktat. Lokales Diktat bleibt unverändert.",
+        "ariaLabel": "Selbstkorrektur umschalten"
       }
     },
     "advanced": {

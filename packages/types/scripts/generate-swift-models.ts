@@ -31,6 +31,8 @@ try {
       "generated/json-schemas/methods/stop-recording-result.schema.json " +
       "generated/json-schemas/methods/set-shortcuts-params.schema.json " +
       "generated/json-schemas/methods/set-shortcuts-result.schema.json " +
+      "generated/json-schemas/methods/set-draft-enter-capture-params.schema.json " +
+      "generated/json-schemas/methods/set-draft-enter-capture-result.schema.json " +
       "generated/json-schemas/methods/recheck-pressed-keys-params.schema.json " +
       "generated/json-schemas/methods/recheck-pressed-keys-result.schema.json " +
       "generated/json-schemas/events/key-down-event.schema.json " +

@@ -153,9 +153,12 @@ vi.mock("../../src/services/auth-service", () => ({
 }));
 
 vi.mock("../../src/utils/http-client", () => ({
+  AMICAL_LAB_SELF_CORRECTION: "self-correction",
+  AMICAL_LABS_HEADER: "amical-labs",
   AMICAL_CLIENT_HEADER: "amical-client",
   AMICAL_VERSION_HEADER: "amical-version",
   AMICAL_PLATFORM_HEADER: "amical-platform",
+  buildAmicalLabsHeader: (labs: readonly string[]) => labs.join(","),
   getAmicalClientHeaders: () => ({
     "amical-client": "desktop",
     "amical-version": "0.0.0-test",
@@ -186,6 +189,7 @@ import { AmicalCloudProvider } from "../../src/pipeline/providers/transcription/
 import { GrpcDictationError } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
 import { AppError, ErrorCodes } from "../../src/types/error";
 import type { TranscribeContext } from "../../src/pipeline/core/pipeline-types";
+import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 
 // ---- Helpers ------------------------------------------------------------
@@ -355,7 +359,7 @@ describe("AmicalCloudProvider", () => {
         json: { success: true, transcription: "Formatted!" },
       });
 
-      // No transcribe() calls; flush with formatting + previous transcription forces the format-only path.
+      // No transcribe() calls; flush with formatting + previous transcription forces the text-only path.
       await provider.flush(
         baseContext({
           formattingEnabled: true,
@@ -367,6 +371,44 @@ describe("AmicalCloudProvider", () => {
       const body = JSON.parse(init.body as string);
       expect(body.audioData).toBe("");
       expect(body.audioFormat).toBeUndefined();
+    });
+
+    it("skips text-only final flush when formatting is off and no final skill applies", async () => {
+      const provider = constructProviderWithTransport("http");
+
+      const result = await provider.flush(
+        baseContext({
+          formattingEnabled: false,
+          aggregatedTranscription: "raw text",
+        }),
+      );
+
+      expect(result).toEqual({ text: "" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("sends text-only final flush for instruct even when formatting is off", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "Drafted!" },
+      });
+
+      await provider.flush(
+        baseContext({
+          formattingEnabled: false,
+          aggregatedTranscription: "draft source",
+          isInstruct: true,
+        }),
+      );
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      const body = JSON.parse(init.body as string);
+      expect(body.audioData).toBe("");
+      expect(body.audioFormat).toBeUndefined();
+      expect(body.formatting).toEqual({ enabled: false });
+      expect(body.previousTranscription).toBe("draft source");
+      expect(body.skills).toEqual([{ preset: "instruct" }]);
     });
 
     it("sends explicit Amical client headers", async () => {
@@ -389,6 +431,30 @@ describe("AmicalCloudProvider", () => {
         "amical-client": "desktop",
         "amical-version": "0.0.0-test",
         "amical-platform": "test-platform",
+      });
+    });
+
+    it("sends stackable labs header when self correction is enabled", async () => {
+      process.env.CLOUD_DICTATION_TRANSPORT = "http";
+      const settingsService = {
+        getLabsSettings: vi.fn().mockResolvedValue({ selfCorrection: true }),
+      } as unknown as SettingsService;
+      const provider = new AmicalCloudProvider(null, settingsService);
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "hi" },
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await provider.flush(baseContext());
+
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(init.headers).toMatchObject({
+        "amical-labs": "self-correction",
       });
     });
   });

@@ -18,11 +18,15 @@ import {
   StreamTranscribeRequest,
 } from "./gen/amical/dictation/v1/dictation";
 import {
+  AMICAL_LABS_HEADER,
   AMICAL_CLIENT_HEADER,
   AMICAL_PLATFORM_HEADER,
   AMICAL_VERSION_HEADER,
+  buildAmicalLabsHeader,
   type AmicalClientInfo,
 } from "../../../utils/http-client";
+import { logger } from "../../../main/logger";
+import type { DictationSkill } from "./dictation-skill";
 
 export interface GrpcStreamContext {
   selectedText?: string;
@@ -42,8 +46,14 @@ export interface GrpcDictationStreamOptions {
   sessionId: string;
   languages?: string[];
   vocabulary: string[];
-  formatting: boolean;
+  // Initial set of resolved skills sent immediately after StreamOpen.
+  // Empty/undefined -> no initial skills update.
+  // Use sendSkillsUpdate() on the stream to replace this set mid-flight.
+  resolvedSkills?: DictationSkill[];
   context?: GrpcStreamContext;
+  // Formatting toggle state carried on StreamOpen.
+  formatting?: boolean;
+  labs?: readonly string[];
 }
 
 export interface GrpcFinalTranscript {
@@ -216,6 +226,44 @@ const encodeContextUpdateRequest = (context: GrpcStreamContext): Buffer => {
   });
 };
 
+const buildSkill = (skill: DictationSkill) => {
+  const args: Record<string, { values: string[] }> = {};
+  if (skill.args) {
+    for (const [key, values] of Object.entries(skill.args)) {
+      args[key] = { values };
+    }
+  }
+  const out: Record<string, unknown> = {
+    args,
+  };
+  if (skill.customPrompt !== undefined) {
+    out.customPrompt = skill.customPrompt;
+  } else {
+    // Default arm of the body oneof. `preset` is empty-string when callers
+    // pass neither preset nor customPrompt — server falls back to default.
+    out.preset = skill.preset ?? "";
+  }
+  return out;
+};
+
+const encodeSkillsUpdateRequest = (skills: DictationSkill[]): Buffer => {
+  return encodeStreamTranscribeRequest({
+    skillsUpdate: {
+      resolvedSkills: skills.map(buildSkill),
+    },
+  });
+};
+
+// Compact, log-safe view of the skills going over the wire. Custom prompts
+// can be long/sensitive, so log only their length rather than the full text.
+const summarizeSkillsForLog = (skills: DictationSkill[]) =>
+  skills.map((skill) => ({
+    mode: skill.customPrompt !== undefined ? "custom" : "preset",
+    preset: skill.customPrompt !== undefined ? undefined : (skill.preset ?? ""),
+    customPromptLength: skill.customPrompt?.length,
+    args: skill.args,
+  }));
+
 const encodeAudioBatchRequest = (
   firstSeq: bigint,
   chunks: Uint8Array[],
@@ -322,6 +370,10 @@ const buildCallMetadata = (options: GrpcDictationStreamOptions): Metadata => {
   metadata.set(AMICAL_CLIENT_HEADER, options.clientInfo.client);
   metadata.set(AMICAL_VERSION_HEADER, options.clientInfo.version);
   metadata.set(AMICAL_PLATFORM_HEADER, options.clientInfo.platform);
+  const labsHeader = buildAmicalLabsHeader(options.labs ?? []);
+  if (labsHeader) {
+    metadata.set(AMICAL_LABS_HEADER, labsHeader);
+  }
   return metadata;
 };
 
@@ -439,6 +491,22 @@ export class CloudDictationGrpcStream {
         this.writeRequestNowEffect(encodeContextUpdateRequest(options.context)),
       );
     }
+    if (options.resolvedSkills && options.resolvedSkills.length > 0) {
+      logger.transcription.debug("gRPC sending initial resolved skills", {
+        sessionId: options.sessionId,
+        count: options.resolvedSkills.length,
+        skills: summarizeSkillsForLog(options.resolvedSkills),
+      });
+      runEffectSync(
+        this.writeRequestNowEffect(
+          encodeSkillsUpdateRequest(options.resolvedSkills),
+        ),
+      );
+    } else {
+      logger.transcription.debug("gRPC sending no resolved skills update", {
+        sessionId: options.sessionId,
+      });
+    }
 
     this.scheduleIdleTimeout();
   }
@@ -447,6 +515,18 @@ export class CloudDictationGrpcStream {
     this.scheduleIdleTimeout();
     await runEffectPromise(
       this.writeRequestEffect(encodeAudioBatchRequest(firstSeq, chunks)),
+    );
+  }
+
+  // Full snapshot replacement of the active skill set. Pass `[]` to clear
+  // the active skills. Safe to call any time before finalize.
+  async sendSkillsUpdate(skills: DictationSkill[]): Promise<void> {
+    logger.transcription.debug("gRPC sending resolved skills update", {
+      count: skills.length,
+      skills: summarizeSkillsForLog(skills),
+    });
+    await runEffectPromise(
+      this.writeRequestEffect(encodeSkillsUpdateRequest(skills)),
     );
   }
 

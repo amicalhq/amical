@@ -298,12 +298,13 @@ namespace WindowsHelper.Services
                 var process = Process.GetProcessById(processId);
 
                 var processName = process.ProcessName;
-                string? bundleId = null;
                 string? version = null;
 
                 try
                 {
-                    bundleId = process.MainModule?.FileName ?? "";
+                    // ProductVersion still needs MainModule. The bundle id on
+                    // Windows is the process name (no path, no .exe) so it is a
+                    // stable, comparable key for app matching.
                     version = process.MainModule?.FileVersionInfo.ProductVersion ?? "";
                 }
                 catch
@@ -314,7 +315,7 @@ namespace WindowsHelper.Services
                 var app = new Application
                 {
                     Name = processName,
-                    BundleIdentifier = bundleId ?? "",
+                    BundleIdentifier = processName,
                     Pid = processId,
                     Version = version ?? ""
                 };

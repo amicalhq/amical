@@ -49,6 +49,7 @@ const getDefaultShortcuts = () => {
         MAC_KEYCODES.V,
       ],
       newNote: [MAC_KEYCODES.CMD, MAC_KEYCODES.CTRL, MAC_KEYCODES.N],
+      draftMode: [MAC_KEYCODES.FN, MAC_KEYCODES.CTRL],
     };
   }
 
@@ -65,6 +66,16 @@ const getDefaultShortcuts = () => {
       WINDOWS_KEYCODES.Z,
     ],
     newNote: [WINDOWS_KEYCODES.ALT, WINDOWS_KEYCODES.SHIFT, WINDOWS_KEYCODES.N],
+    // Draft is push-to-talk style, so the chord must be modifier-only — a
+    // non-modifier key would be swallowed by the subset consume rule (e.g.
+    // Shift+letter). Ctrl+Win+Alt is pushToTalk (Ctrl+Win) plus Alt, mirroring
+    // the macOS draft = pushToTalk + modifier pattern and reusing PTT-superset
+    // suppression.
+    draftMode: [
+      WINDOWS_KEYCODES.CTRL,
+      WINDOWS_KEYCODES.WIN,
+      WINDOWS_KEYCODES.ALT,
+    ],
   };
 };
 
@@ -115,6 +126,9 @@ const buildDefaultSettings = (): AppSettingsData => ({
     enableTimestamps: false,
   },
   dictation: defaultDictationSettings(),
+  labs: {
+    selfCorrection: false,
+  },
   recording: {
     defaultFormat: "wav",
     sampleRate: 16000,

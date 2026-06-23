@@ -9,8 +9,32 @@ vi.mock("../../src/db/app-settings", () => ({
 }));
 
 import { SettingsService } from "../../src/services/settings-service";
+import {
+  getSettingsSection,
+  updateSettingsSection,
+} from "../../src/db/app-settings";
 
 describe("SettingsService", () => {
+  it("defaults labs self correction off when unset", async () => {
+    vi.mocked(getSettingsSection).mockResolvedValueOnce(undefined);
+
+    const service = new SettingsService();
+
+    await expect(service.getLabsSettings()).resolves.toEqual({
+      selfCorrection: false,
+    });
+  });
+
+  it("persists labs settings as their own section", async () => {
+    const service = new SettingsService();
+
+    await service.setLabsSettings({ selfCorrection: true });
+
+    expect(updateSettingsSection).toHaveBeenCalledWith("labs", {
+      selfCorrection: true,
+    });
+  });
+
   it("emits 'recording-settings-changed' when recording settings are saved", async () => {
     const service = new SettingsService();
     const listener = vi.fn();

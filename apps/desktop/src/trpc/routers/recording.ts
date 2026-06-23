@@ -18,6 +18,7 @@ import { ErrorCodes, type ErrorCode } from "../../types/error";
 interface RecordingStateUpdate {
   state: RecordingState;
   mode: RecordingMode;
+  isDraft: boolean;
 }
 
 export const recordingRouter = createRouter({
@@ -35,6 +36,22 @@ export const recordingRouter = createRouter({
       throw new Error("Recording manager not available");
     }
     return await recordingManager.signalStop();
+  }),
+
+  confirmDraft: procedure.mutation(async ({ ctx }) => {
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    if (!recordingManager) {
+      throw new Error("Recording manager not available");
+    }
+    await recordingManager.confirmDraft();
+  }),
+
+  dismissDraft: procedure.mutation(async ({ ctx }) => {
+    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    if (!recordingManager) {
+      throw new Error("Recording manager not available");
+    }
+    recordingManager.dismissDraft();
   }),
 
   dismiss: procedure.mutation(async ({ ctx }) => {
@@ -63,6 +80,7 @@ export const recordingRouter = createRouter({
       emit.next({
         state: recordingManager.getState(),
         mode: recordingManager.getRecordingMode(),
+        isDraft: recordingManager.getIsDraftSession(),
       });
 
       // Set up listener for state changes
@@ -70,6 +88,7 @@ export const recordingRouter = createRouter({
         emit.next({
           state: status,
           mode: recordingManager.getRecordingMode(),
+          isDraft: recordingManager.getIsDraftSession(),
         });
       };
 
@@ -77,16 +96,30 @@ export const recordingRouter = createRouter({
         emit.next({
           state: recordingManager.getState(),
           mode,
+          isDraft: recordingManager.getIsDraftSession(),
+        });
+      };
+
+      // The draft tag latches mid-recording (first audio chunk) without a public
+      // state change, so re-push the current state with the now-true isDraft so
+      // the FAB shows the draft glyph while still recording.
+      const handleDraftLatched = () => {
+        emit.next({
+          state: recordingManager.getState(),
+          mode: recordingManager.getRecordingMode(),
+          isDraft: recordingManager.getIsDraftSession(),
         });
       };
 
       recordingManager.on("state-changed", handleStateChange);
       recordingManager.on("mode-changed", handleModeChange);
+      recordingManager.on("draft-latched", handleDraftLatched);
 
       // Cleanup function
       return () => {
         recordingManager.off("state-changed", handleStateChange);
         recordingManager.off("mode-changed", handleModeChange);
+        recordingManager.off("draft-latched", handleDraftLatched);
       };
     });
   }),
@@ -186,6 +219,32 @@ export const recordingRouter = createRouter({
       // Cleanup function
       return () => {
         recordingManager.off("widget-notification", handleNotification);
+      };
+    });
+  }),
+
+  // Draft review: the held generated text awaiting the user's insert/dismiss.
+  // Emits the current draft on subscribe and on every change; null = cleared.
+  draftReview: procedure.subscription(({ ctx }) => {
+    return observable<{ sessionId: string; text: string } | null>((emit) => {
+      const recordingManager =
+        ctx.serviceManager.getService("recordingManager");
+      if (!recordingManager) {
+        throw new Error("Recording manager not available");
+      }
+
+      emit.next(recordingManager.getPendingDraft());
+
+      const handleDraftChanged = (
+        data: { sessionId: string; text: string } | null,
+      ) => {
+        emit.next(data);
+      };
+
+      recordingManager.on("draft-changed", handleDraftChanged);
+
+      return () => {
+        recordingManager.off("draft-changed", handleDraftChanged);
       };
     });
   }),

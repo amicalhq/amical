@@ -30,10 +30,11 @@ namespace WindowsHelper
         };
 
         private readonly object _lock = new();
-        private int[] _pushToTalkKeys = Array.Empty<int>();
-        private int[] _toggleRecordingKeys = Array.Empty<int>();
-        private int[] _pasteLastTranscriptKeys = Array.Empty<int>();
-        private int[] _newNoteKeys = Array.Empty<int>();
+        // Chords grouped by match rule (see SetShortcutsParamsSchema): subset chords
+        // (push-to-talk, draft) consume while building toward the chord; exact chords
+        // (toggle/paste/new-note) consume only when exactly held.
+        private int[][] _subsetChords = Array.Empty<int[]>();
+        private int[][] _exactChords = Array.Empty<int[]>();
         private HashSet<int> _shortcutKeysSet = new();
         // Shortcut key → that key plus every key of every configured shortcut
         // containing it ("chord-mates"). Rebuilt in SetShortcuts; read-only on
@@ -65,21 +66,81 @@ namespace WindowsHelper
         /// Update the configured shortcuts.
         /// Called from RpcHandler when setShortcuts RPC is received.
         /// </summary>
-        public void SetShortcuts(int[] pushToTalk, int[] toggleRecording, int[] pasteLastTranscript, int[] newNote)
+        public void SetShortcuts(int[][] subsetChords, int[][] exactChords)
         {
             lock (_lock)
             {
-                _pushToTalkKeys = pushToTalk ?? Array.Empty<int>();
-                _toggleRecordingKeys = toggleRecording ?? Array.Empty<int>();
-                _pasteLastTranscriptKeys = pasteLastTranscript ?? Array.Empty<int>();
-                _newNoteKeys = newNote ?? Array.Empty<int>();
-                _shortcutKeysSet = new HashSet<int>(_pushToTalkKeys
-                    .Concat(_toggleRecordingKeys)
-                    .Concat(_pasteLastTranscriptKeys)
-                    .Concat(_newNoteKeys));
+                _subsetChords = subsetChords ?? Array.Empty<int[]>();
+                _exactChords = exactChords ?? Array.Empty<int[]>();
+                _shortcutKeysSet = new HashSet<int>(
+                    AllChords().SelectMany(chord => chord));
                 _chordKeysByTrigger = BuildChordKeysByTrigger();
                 _activatedMaskKeys.Clear();
-                LogToStderr($"Shortcuts updated - PTT: [{string.Join(", ", _pushToTalkKeys)}], Toggle: [{string.Join(", ", _toggleRecordingKeys)}], Paste: [{string.Join(", ", _pasteLastTranscriptKeys)}], NewNote: [{string.Join(", ", _newNoteKeys)}]");
+                LogToStderr($"Shortcuts updated - subset: [{FormatChords(_subsetChords)}], exact: [{FormatChords(_exactChords)}]");
+            }
+        }
+
+        // All configured chords across both match groups. Caller holds _lock.
+        private IEnumerable<int[]> AllChords() => _subsetChords.Concat(_exactChords);
+
+        private static string FormatChords(int[][] chords)
+        {
+            return string.Join("; ", chords.Select(chord => $"[{string.Join(", ", chord)}]"));
+        }
+
+        // ============================================================================
+        // Draft-Enter mask (mirrors swift-helper ShortcutManager)
+        // ============================================================================
+        // While a Draft review window is open, the desktop arms this so the helper
+        // swallows the Enter key (the desktop routes the forwarded key-down to Insert
+        // instead of letting Enter reach the focused app).
+        //
+        // SELF-DISARMING: _draftEnterArmed is cleared on the Enter key-up, so a
+        // missed/dropped disarm from the desktop swallows at most ONE Enter press —
+        // the mask can never become permanent. _consumingEnter keeps swallowing the
+        // whole press (incl. auto-repeat) once started, even if the desktop disarms
+        // mid-press, so no stray Enter leaks to the focused app.
+        private bool _draftEnterArmed = false;
+        private bool _consumingEnter = false;
+        // VK_RETURN (0x0D) covers both the main and numpad Enter on Windows.
+        private static readonly HashSet<int> EnterKeyCodes = new() { 0x0D };
+
+        /// <summary>
+        /// Arm/disarm the Draft-Enter mask. Called from RpcHandler on setDraftEnterCapture.
+        /// Disarming leaves any in-flight Enter press (_consumingEnter) to finish
+        /// swallowing through its key-up so no stray key reaches the focused app.
+        /// </summary>
+        public void SetDraftEnterCapture(bool enabled)
+        {
+            lock (_lock)
+            {
+                _draftEnterArmed = enabled;
+            }
+        }
+
+        /// <summary>
+        /// Decide whether to swallow an Enter key event for the Draft-Enter mask.
+        /// One press at a time; self-disarms on key-up so the mask can never stick.
+        /// </summary>
+        public bool ConsumeDraftEnter(int vkCode, bool isKeyUp)
+        {
+            lock (_lock)
+            {
+                if (!EnterKeyCodes.Contains(vkCode)) return false;
+                if (isKeyUp)
+                {
+                    if (!_consumingEnter) return false;
+                    _consumingEnter = false;
+                    _draftEnterArmed = false;  // disarm-on-key-up: bounds any desync to one press
+                    return true;
+                }
+                // key-down (incl. auto-repeat): swallow the whole press once started
+                if (_draftEnterArmed || _consumingEnter)
+                {
+                    _consumingEnter = true;
+                    return true;
+                }
+                return false;
             }
         }
 
@@ -135,10 +196,7 @@ namespace WindowsHelper
                 var heldKeys = new HashSet<int>(_pressedModifierKeys);
                 heldKeys.UnionWith(_pressedRegularKeys);
 
-                if (IsExactlyHeld(_pushToTalkKeys, heldKeys)
-                    || IsExactlyHeld(_toggleRecordingKeys, heldKeys)
-                    || IsExactlyHeld(_pasteLastTranscriptKeys, heldKeys)
-                    || IsExactlyHeld(_newNoteKeys, heldKeys))
+                if (AllChords().Any(chord => IsExactlyHeld(chord, heldKeys)))
                 {
                     ArmHeldMaskableModifiers();
                 }
@@ -380,22 +438,16 @@ namespace WindowsHelper
         private Dictionary<int, HashSet<int>> BuildChordKeysByTrigger()
         {
             var map = new Dictionary<int, HashSet<int>>();
-            foreach (var shortcut in new[]
+            foreach (var chord in AllChords())
             {
-                _pushToTalkKeys,
-                _toggleRecordingKeys,
-                _pasteLastTranscriptKeys,
-                _newNoteKeys,
-            })
-            {
-                foreach (var key in shortcut)
+                foreach (var key in chord)
                 {
                     if (!map.TryGetValue(key, out var chordKeys))
                     {
                         chordKeys = new HashSet<int>();
                         map[key] = chordKeys;
                     }
-                    chordKeys.UnionWith(shortcut);
+                    chordKeys.UnionWith(chord);
                 }
             }
             return map;
@@ -410,10 +462,7 @@ namespace WindowsHelper
             lock (_lock)
             {
                 // Early exit if no shortcuts configured
-                if (_pushToTalkKeys.Length == 0
-                    && _toggleRecordingKeys.Length == 0
-                    && _pasteLastTranscriptKeys.Length == 0
-                    && _newNoteKeys.Length == 0)
+                if (_subsetChords.Length == 0 && _exactChords.Length == 0)
                 {
                     return false;
                 }
@@ -424,28 +473,25 @@ namespace WindowsHelper
                 activeKeys.UnionWith(_pressedRegularKeys);
                 activeKeys.Add(vkCode);
 
-                // PTT: consume if building toward the shortcut
-                // - At least one modifier from the shortcut must be held (signals intent)
-                // - All currently pressed keys must be part of the shortcut (activeKeys ⊆ pttKeys)
-                var pttKeys = new HashSet<int>(_pushToTalkKeys);
-                var pttModifiers = new HashSet<int>(pttKeys);
-                pttModifiers.IntersectWith(KeycodeConstants.ModifierKeyCodeSet);
-                var hasRequiredModifier = pttModifiers.Count > 0 && pttModifiers.Overlaps(activeModifiers);
-                var pttMatch = pttKeys.Count > 0 && hasRequiredModifier && activeKeys.IsSubsetOf(pttKeys);
+                // Subset chords (PTT, draft): consume if building toward the chord.
+                // - At least one modifier from the chord must be held (signals intent)
+                // - All currently pressed keys must be part of the chord (activeKeys ⊆ chord)
+                var subsetMatch = _subsetChords.Any(chord =>
+                {
+                    var chordKeys = new HashSet<int>(chord);
+                    var chordModifiers = new HashSet<int>(chordKeys);
+                    chordModifiers.IntersectWith(KeycodeConstants.ModifierKeyCodeSet);
+                    return chordKeys.Count > 0
+                        && chordModifiers.Count > 0
+                        && chordModifiers.Overlaps(activeModifiers)
+                        && activeKeys.IsSubsetOf(chordKeys);
+                });
 
-                // Toggle: exact match (only these keys pressed)
-                var toggleKeys = new HashSet<int>(_toggleRecordingKeys);
-                var toggleMatch = toggleKeys.Count > 0 && toggleKeys.SetEquals(activeKeys);
+                // Exact chords (toggle/paste/new-note): consume only when exactly held.
+                var exactMatch = _exactChords.Any(chord =>
+                    chord.Length > 0 && activeKeys.SetEquals(chord));
 
-                // Paste last transcript: exact match (only these keys pressed)
-                var pasteKeys = new HashSet<int>(_pasteLastTranscriptKeys);
-                var pasteMatch = pasteKeys.Count > 0 && pasteKeys.SetEquals(activeKeys);
-
-                // New note: exact match (only these keys pressed)
-                var newNoteKeys = new HashSet<int>(_newNoteKeys);
-                var newNoteMatch = newNoteKeys.Count > 0 && newNoteKeys.SetEquals(activeKeys);
-
-                return pttMatch || toggleMatch || pasteMatch || newNoteMatch;
+                return subsetMatch || exactMatch;
             }
         }
     }

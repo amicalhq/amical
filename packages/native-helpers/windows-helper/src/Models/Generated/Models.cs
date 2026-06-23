@@ -22,6 +22,8 @@
 //    var stopRecordingResult = StopRecordingResult.FromJson(jsonString);
 //    var setShortcutsParams = SetShortcutsParams.FromJson(jsonString);
 //    var setShortcutsResult = SetShortcutsResult.FromJson(jsonString);
+//    var setDraftEnterCaptureParams = SetDraftEnterCaptureParams.FromJson(jsonString);
+//    var setDraftEnterCaptureResult = SetDraftEnterCaptureResult.FromJson(jsonString);
 //    var recheckPressedKeysParams = RecheckPressedKeysParams.FromJson(jsonString);
 //    var recheckPressedKeysResult = RecheckPressedKeysResult.FromJson(jsonString);
 //    var keyDownEvent = KeyDownEvent.FromJson(jsonString);
@@ -321,20 +323,26 @@ namespace WindowsHelper.Models
 
     public partial class SetShortcutsParams
     {
-        [JsonPropertyName("newNote")]
-        public List<long> NewNote { get; set; }
+        [JsonPropertyName("exactChords")]
+        public List<List<long>> ExactChords { get; set; }
 
-        [JsonPropertyName("pasteLastTranscript")]
-        public List<long> PasteLastTranscript { get; set; }
-
-        [JsonPropertyName("pushToTalk")]
-        public List<long> PushToTalk { get; set; }
-
-        [JsonPropertyName("toggleRecording")]
-        public List<long> ToggleRecording { get; set; }
+        [JsonPropertyName("subsetChords")]
+        public List<List<long>> SubsetChords { get; set; }
     }
 
     public partial class SetShortcutsResult
+    {
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+    }
+
+    public partial class SetDraftEnterCaptureParams
+    {
+        [JsonPropertyName("enabled")]
+        public bool Enabled { get; set; }
+    }
+
+    public partial class SetDraftEnterCaptureResult
     {
         [JsonPropertyName("success")]
         public bool Success { get; set; }
@@ -564,7 +572,7 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, SetShortcuts, StartRecording, StopRecording };
+    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, SetDraftEnterCapture, SetShortcuts, StartRecording, StopRecording };
 
     public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
 
@@ -648,6 +656,16 @@ namespace WindowsHelper.Models
         public static SetShortcutsResult FromJson(string json) => JsonSerializer.Deserialize<SetShortcutsResult>(json, WindowsHelper.Models.Converter.Settings);
     }
 
+    public partial class SetDraftEnterCaptureParams
+    {
+        public static SetDraftEnterCaptureParams FromJson(string json) => JsonSerializer.Deserialize<SetDraftEnterCaptureParams>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
+    public partial class SetDraftEnterCaptureResult
+    {
+        public static SetDraftEnterCaptureResult FromJson(string json) => JsonSerializer.Deserialize<SetDraftEnterCaptureResult>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
     public partial class RecheckPressedKeysParams
     {
         public static RecheckPressedKeysParams FromJson(string json) => JsonSerializer.Deserialize<RecheckPressedKeysParams>(json, WindowsHelper.Models.Converter.Settings);
@@ -694,6 +712,8 @@ namespace WindowsHelper.Models
         public static string ToJson(this StopRecordingResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this SetShortcutsParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this SetShortcutsResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this SetDraftEnterCaptureParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this SetDraftEnterCaptureResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this RecheckPressedKeysParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this RecheckPressedKeysResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this KeyDownEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
@@ -743,6 +763,8 @@ namespace WindowsHelper.Models
                     return Method.RecheckPressedKeys;
                 case "requestAccessibilityPermission":
                     return Method.RequestAccessibilityPermission;
+                case "setDraftEnterCapture":
+                    return Method.SetDraftEnterCapture;
                 case "setShortcuts":
                     return Method.SetShortcuts;
                 case "startRecording":
@@ -774,6 +796,9 @@ namespace WindowsHelper.Models
                     return;
                 case Method.RequestAccessibilityPermission:
                     JsonSerializer.Serialize(writer, "requestAccessibilityPermission", options);
+                    return;
+                case Method.SetDraftEnterCapture:
+                    JsonSerializer.Serialize(writer, "setDraftEnterCapture", options);
                     return;
                 case Method.SetShortcuts:
                     JsonSerializer.Serialize(writer, "setShortcuts", options);

@@ -154,12 +154,82 @@ message StreamOpen {
   AudioConfig audio_config = 2;
   StreamLanguageConfig language = 3;
   repeated string vocabulary = 4;
+
+  // Fallback formatting hint for clients that do not send StreamSkillsUpdate.
+  // The server only consults this field if no StreamSkillsUpdate was ever sent
+  // for the session. In that case `true` synthesizes a single preset skill
+  // derived from the latest StreamContextUpdate.context.app_type, and
+  // `false`/unset means no formatting. Once StreamSkillsUpdate has been
+  // received, this field is ignored for the remainder of the session.
   optional bool formatting = 5;
 }
 
 message StreamContextUpdate {
   // Full snapshot replacement.
   StreamContext context = 1;
+}
+
+// Full snapshot replacement of the active skill set. Sent whenever the
+// client (re)resolves which skills apply to the in-flight session — e.g.
+// after foreground app detection completes, after the user alt-tabs
+// mid-dictation, or after the user toggles a rule in settings during an
+// open stream.
+//
+// Skills are applied in declared order. Empty array → server returns
+// the raw transcript with no formatting pass. Last write wins; the
+// server uses the skill set current at finalize time when formatting
+// the transcript.
+//
+// If StreamSkillsUpdate is never sent for a session, the server falls
+// back to the `formatting` bool on StreamOpen (`true` → synthesize a
+// single preset skill from the latest StreamContextUpdate.context.app_type;
+// `false`/unset → no formatting). Once a StreamSkillsUpdate has been received,
+// that bool is ignored for the remainder of the session; an explicitly empty
+// array means "no formatting" and overrides any fallback hint.
+message StreamSkillsUpdate {
+  repeated Skill resolved_skills = 1;
+}
+
+message Skill {
+  // What the skill IS. Exactly one is set.
+  oneof body {
+    // Server-defined preset identifier. Intentionally a string (not an
+    // enum) so the server can add new presets ("code_review",
+    // "meeting_notes", …) without forcing a desktop update. Unknown
+    // ids → server falls back to "default".
+    // Known today: "default", "personal_messages", "work_messages", "email",
+    // "instruct". "instruct" is special: it flips the contract from
+    // formatting (clean up the transcript) to generation (the transcript is
+    // an instruction; the output is generated content). When present it is
+    // exclusive — other presets and tone args are ignored.
+    string preset = 1;
+
+    // User-supplied custom prompt, sent verbatim. Used in place of any
+    // preset ruleset. Reserved for the custom-skills follow-up — v1
+    // desktops do not send.
+    string custom_prompt = 2;
+  }
+
+  // Per-skill knobs. Values are always lists so future multi-value args
+  // (e.g. "examples", "banned_words") ship as a no-op wire change.
+  // Scalars travel as length-1 lists.
+  //
+  // Known v1 keys:
+  //   "tone"  ∈ ["formal"] | ["casual"] | ["excited"] | ["very_casual"]
+  //             presentation of the output — capitalization, punctuation
+  //             density, exclamation usage. The axis the desktop
+  //             "Formal / Casual / Excited" cards drive. Per-preset
+  //             one-shot examples define the exact rendering.
+  //
+  // Reserved namespaces:
+  //   "x-amical.*"   server-side experiments / A-B
+  //   "x-client.*"   client telemetry passthrough
+  map<string, StringList> args = 3;
+}
+
+// Wrapper because proto3 map values cannot themselves be `repeated`.
+message StringList {
+  repeated string values = 1;
 }
 
 message StreamAudioBatch {
@@ -187,6 +257,7 @@ message StreamTranscribeRequest {
     StreamAudioBatch audio = 3;
     StreamFinalize finalize = 4;
     StreamCancel cancel = 5;
+    StreamSkillsUpdate skills_update = 6;
   }
 }
 

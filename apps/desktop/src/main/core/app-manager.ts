@@ -11,7 +11,6 @@ import { createContext } from "../../trpc/context";
 import type { OnboardingService } from "../../services/onboarding-service";
 import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
-import type { RecordingState } from "../../types/recording";
 import type { SettingsService } from "../../services/settings-service";
 import { runDataMigrations } from "../migrations/data-migrations";
 import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
@@ -216,13 +215,29 @@ export class AppManager {
   private setupRecordingEventListeners(
     recordingManager: RecordingManager,
   ): void {
-    recordingManager.on("state-changed", (state: RecordingState) => {
-      this.updateWidgetVisibility(state === "idle").catch((error) => {
-        logger.main.error("Failed to update widget visibility", error);
-      });
-    });
+    const refresh = () => {
+      this.updateWidgetVisibility(this.isEffectivelyIdle(recordingManager)).catch(
+        (error) => {
+          logger.main.error("Failed to update widget visibility", error);
+        },
+      );
+    };
+
+    recordingManager.on("state-changed", refresh);
+    // A pending draft keeps the widget shown even though the FSM is idle, so the
+    // review box survives until insert/dismiss; re-hide once it's cleared.
+    recordingManager.on("draft-changed", refresh);
 
     logger.main.info("Recording state listener connected in AppManager");
+  }
+
+  // The widget should be treated as "active" (shown) whenever recording OR while
+  // a draft review is pending — even though the recording FSM is idle then.
+  private isEffectivelyIdle(recordingManager: RecordingManager): boolean {
+    return (
+      recordingManager.getState() === "idle" &&
+      recordingManager.getPendingDraft() === null
+    );
   }
 
   private setupShortcutEventListeners(shortcutManager: ShortcutManager): void {
@@ -275,8 +290,9 @@ export class AppManager {
         if (showWidgetWhileInactiveChanged) {
           const recordingManager =
             this.serviceManager.getService("recordingManager");
-          const isIdle = recordingManager.getState() === "idle";
-          await this.updateWidgetVisibility(isIdle);
+          await this.updateWidgetVisibility(
+            this.isEffectivelyIdle(recordingManager),
+          );
         }
         if (showInDockChanged) {
           settingsService.syncDockVisibility();

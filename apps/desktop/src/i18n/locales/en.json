@@ -246,6 +246,15 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "Draft",
+      "insert": "Insert",
+      "copy": "Copy",
+      "copied": "Copied",
+      "dismiss": "Dismiss",
+      "listening": "Listening…",
+      "drafting": "Drafting…"
+    },
     "notifications": {
       "micFallback": "your microphone",
       "discordAlt": "Discord",
@@ -365,9 +374,17 @@
         "title": "Snippets",
         "description": "Expand short triggers into longer text while dictating"
       },
+      "formatting": {
+        "title": "Personalization",
+        "description": "Per-app personalization rules for your dictation"
+      },
       "aiModels": {
         "title": "AI Models",
         "description": "Configure AI models and providers"
+      },
+      "labs": {
+        "title": "Labs",
+        "description": "Try experimental features"
       },
       "history": {
         "title": "History",
@@ -455,6 +472,21 @@
       "theme": {
         "label": "Theme",
         "description": "Choose your preferred color scheme"
+      }
+    },
+    "labs": {
+      "title": "Labs",
+      "description": "Opt into experimental features before they become defaults.",
+      "toast": {
+        "updated": "Labs settings updated",
+        "updateFailed": "Failed to update labs settings. Please try again."
+      },
+      "selfCorrection": {
+        "label": "Self correction",
+        "description": "Use an experimental prompt that tries to fix spoken corrections and revisions.",
+        "cloudOnly": "Cloud only",
+        "cloudTooltip": "Applies to Amical Cloud dictation only. Local dictation is unchanged.",
+        "ariaLabel": "Toggle self correction"
       }
     },
     "advanced": {
@@ -731,7 +763,8 @@
         "pushToTalkUpdated": "Push to talk shortcut updated",
         "handsFreeUpdated": "Hands-free mode shortcut updated",
         "pasteLastTranscriptUpdated": "Paste last transcript shortcut updated",
-        "newNoteUpdated": "New note shortcut updated"
+        "newNoteUpdated": "New note shortcut updated",
+        "draftModeUpdated": "Draft shortcut updated"
       },
       "pushToTalk": {
         "label": "Push to talk",
@@ -748,6 +781,10 @@
       "newNote": {
         "label": "New note",
         "description": "Open notes window and create a new note"
+      },
+      "draft": {
+        "label": "Draft",
+        "description": "Hold to speak an instruction; review the generated text, then insert it"
       },
       "validation": {
         "noKeysDetected": "No keys detected",

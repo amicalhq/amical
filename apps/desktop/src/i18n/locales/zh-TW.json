@@ -249,6 +249,15 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "草稿",
+      "insert": "貼上",
+      "copy": "複製",
+      "copied": "已複製",
+      "dismiss": "捨棄",
+      "listening": "聆聽中…",
+      "drafting": "草擬中…"
+    },
     "notifications": {
       "micFallback": "您的麥克風",
       "discordAlt": "Discord",
@@ -372,6 +381,10 @@
         "title": "AI 模型",
         "description": "AI 模型與提供者設定"
       },
+      "labs": {
+        "title": "Labs",
+        "description": "試用實驗性功能"
+      },
       "history": {
         "title": "歷史紀錄",
         "description": "轉錄歷史紀錄檢視和管理"
@@ -458,6 +471,21 @@
       "theme": {
         "label": "主題與外觀",
         "description": "設定您偏好的配色"
+      }
+    },
+    "labs": {
+      "title": "Labs",
+      "description": "在實驗性功能成為預設前選擇加入。",
+      "toast": {
+        "updated": "Labs 設定已更新",
+        "updateFailed": "無法更新 Labs 設定，請再試一次。"
+      },
+      "selfCorrection": {
+        "label": "自我修正",
+        "description": "使用實驗性提示詞，嘗試修正語音中的更正和改述。",
+        "cloudOnly": "僅限雲端",
+        "cloudTooltip": "僅適用於 Amical Cloud 聽寫。本機聽寫不受影響。",
+        "ariaLabel": "切換自我修正"
       }
     },
     "advanced": {

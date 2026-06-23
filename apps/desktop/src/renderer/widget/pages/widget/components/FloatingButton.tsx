@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import { NotebookPen, Check, X } from "lucide-react";
+import { NotebookPen, Check, X, Pencil } from "lucide-react";
 import { Waveform } from "@/components/Waveform";
-import { useRecording } from "@/hooks/useRecording";
+import type { RecordingStatus } from "@/hooks/useRecording";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
@@ -43,12 +43,26 @@ const DismissButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
   </button>
 );
 
-// Separate component for the processing indicator
-const ProcessingIndicator: React.FC = () => (
-  <div className="flex gap-[4px] items-center justify-center flex-1 h-6">
-    <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-    <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-    <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce" />
+// Indigo pencil marking a draft (instruct) session in the FAB (dictating + processing).
+// mr-2 adds gap between the glyph and the waveform/dots that follow it.
+const DraftPen: React.FC = () => (
+  <Pencil
+    className="w-[13px] h-[13px] text-indigo-400 shrink-0 mr-2"
+    strokeWidth={2}
+  />
+);
+
+// Separate component for the processing indicator. Draft (instruct) sessions add
+// an indigo pen glyph so "drafting…" reads differently from normal dictation;
+// the dots stay blue in both cases.
+const ProcessingIndicator: React.FC<{ isDraft?: boolean }> = ({ isDraft }) => (
+  <div className="flex gap-1.5 items-center justify-center flex-1 h-6">
+    {isDraft && <DraftPen />}
+    <div className="flex gap-[4px] items-center">
+      <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+      <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
+      <div className="w-[4px] h-[4px] bg-blue-500 rounded-full animate-bounce" />
+    </div>
   </div>
 );
 
@@ -71,7 +85,21 @@ const WaveformVisualization: React.FC<{
   </>
 );
 
-export const FloatingButton: React.FC = () => {
+interface FloatingButtonProps {
+  recordingStatus: RecordingStatus;
+  voiceDetected: boolean;
+  startRecording: () => Promise<void>;
+  stopRecording: () => Promise<void>;
+  dismissRecording: () => Promise<void>;
+}
+
+export const FloatingButton: React.FC<FloatingButtonProps> = ({
+  recordingStatus,
+  voiceDetected,
+  startRecording,
+  stopRecording,
+  dismissRecording,
+}) => {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout
@@ -106,13 +134,6 @@ export const FloatingButton: React.FC = () => {
     };
   }, []);
 
-  const {
-    recordingStatus,
-    stopRecording,
-    dismissRecording,
-    voiceDetected,
-    startRecording,
-  } = useRecording();
   // STARTING is a brief handshake before renderer capture begins; keep the
   // widget expanded and waveform-shaped like the pre-FSM flow.
   const isRecording =
@@ -121,6 +142,8 @@ export const FloatingButton: React.FC = () => {
   const isStopping = recordingStatus.state === "stopping";
   const isHandsFreeMode = recordingStatus.mode === "hands-free";
   const isNoteWindowEnabled = noteWindowFeatureFlag.enabled;
+  // Draft (instruct) session: show a distinct indicator while dictating + processing.
+  const isDraft = recordingStatus.isDraft;
 
   // Track when recording state changes to "recording" after a click
   useEffect(() => {
@@ -229,7 +252,9 @@ export const FloatingButton: React.FC = () => {
       ? "h-[24px] w-[124px]"
       : isHandsFreeMode && isRecording
         ? "h-[24px] w-[100px]"
-        : "h-[24px] w-[96px]";
+        : isDraft
+          ? "h-[24px] w-[116px]"
+          : "h-[24px] w-[96px]";
 
   // Function to render widget content based on state
   const renderWidgetContent = () => {
@@ -237,7 +262,7 @@ export const FloatingButton: React.FC = () => {
 
     // Show processing indicator when stopping.
     if (isStopping) {
-      return <ProcessingIndicator />;
+      return <ProcessingIndicator isDraft={isDraft} />;
     }
 
     // Show dismiss (✗) | waveform | stop (✓) when hands-free and recording
@@ -268,6 +293,7 @@ export const FloatingButton: React.FC = () => {
           role="button"
           onClick={handleButtonClick}
         >
+          {isDraft && <DraftPen />}
           <WaveformVisualization
             isRecording={isRecording}
             voiceDetected={voiceDetected}

@@ -249,6 +249,15 @@
     }
   },
   "widget": {
+    "draft": {
+      "label": "下書き",
+      "insert": "貼り付け",
+      "copy": "コピー",
+      "copied": "コピーしました",
+      "dismiss": "破棄",
+      "listening": "聞き取り中…",
+      "drafting": "作成中…"
+    },
     "notifications": {
       "micFallback": "お使いのマイク",
       "discordAlt": "Discord",
@@ -372,6 +381,10 @@
         "title": "AIモデル",
         "description": "AIモデルとプロバイダーを設定"
       },
+      "labs": {
+        "title": "Labs",
+        "description": "実験的な機能を試す"
+      },
       "history": {
         "title": "履歴",
         "description": "文字起こし履歴の表示と管理"
@@ -458,6 +471,21 @@
       "theme": {
         "label": "テーマ",
         "description": "お好みのカラースキームを選択"
+      }
+    },
+    "labs": {
+      "title": "Labs",
+      "description": "標準機能になる前の実験的な機能をオプトインできます。",
+      "toast": {
+        "updated": "Labs設定を更新しました",
+        "updateFailed": "Labs設定の更新に失敗しました。もう一度お試しください。"
+      },
+      "selfCorrection": {
+        "label": "自己修正",
+        "description": "発話中の言い直しや修正を補正しようとする実験的なプロンプトを使用します。",
+        "cloudOnly": "クラウドのみ",
+        "cloudTooltip": "Amical Cloud の音声入力にのみ適用されます。ローカル音声入力は変更されません。",
+        "ariaLabel": "自己修正を切り替え"
       }
     },
     "advanced": {

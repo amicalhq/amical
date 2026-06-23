@@ -70,7 +70,10 @@ export class TranscriptionService {
     private onboardingService: OnboardingService | null,
   ) {
     this.whisperProvider = new WhisperProvider(modelService);
-    this.cloudProvider = new AmicalCloudProvider(telemetryService);
+    this.cloudProvider = new AmicalCloudProvider(
+      telemetryService,
+      settingsService,
+    );
     this.vadService = vadService;
     this.settingsService = settingsService;
     this.vadMutex = new Mutex();
@@ -261,8 +264,9 @@ export class TranscriptionService {
     sessionId: string;
     audioChunk: Float32Array;
     recordingStartedAt?: number;
+    isInstruct?: boolean;
   }): Promise<string> {
-    const { sessionId, audioChunk, recordingStartedAt } = options;
+    const { sessionId, audioChunk, recordingStartedAt, isInstruct } = options;
 
     // Run VAD on the audio chunk
     let speechProbability = this.vadService ? 0 : 1;
@@ -319,6 +323,10 @@ export class TranscriptionService {
             isAmicalCloudSelectionValue(formatterConfig.modelId)
           ),
         );
+        // Instruct rides the per-session metadata (like cloudFormattingEnabled)
+        // so it persists across chunks and into finalize. Drives the "instruct"
+        // preset sent to the cloud at stream open.
+        streamingContext.metadata.set("isInstruct", !!isInstruct);
 
         // Get accessibility context from NativeBridge
         streamingContext.sharedData.accessibilityContext =
@@ -364,6 +372,7 @@ export class TranscriptionService {
           languages: session.context.sharedData.userPreferences?.languages,
           formattingEnabled:
             session.context.metadata.get("cloudFormattingEnabled") === true,
+          isInstruct: session.context.metadata.get("isInstruct") === true,
         },
       });
       session.detectedLanguage = this.mergeDetectedLanguage(
@@ -535,6 +544,7 @@ export class TranscriptionService {
             aggregatedTranscription: aggregatedTranscription || undefined,
             languages: session.context.sharedData.userPreferences?.languages,
             formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+            isInstruct: session.context.metadata.get("isInstruct") === true,
           },
           signal,
         );
