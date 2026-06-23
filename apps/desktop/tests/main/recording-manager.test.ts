@@ -267,7 +267,8 @@ describe("recording manager FSM interpreter", () => {
       cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
     };
     const nativeBridge = {
-      refreshAccessibilityContext: vi.fn(),
+      refreshAccessibilityContext: vi.fn().mockResolvedValue(undefined),
+      getAccessibilityContext: vi.fn().mockReturnValue(null),
       call: vi.fn().mockResolvedValue({ success: true }),
     };
     const settingsService = {
@@ -310,7 +311,8 @@ describe("recording manager FSM interpreter", () => {
       warmupActiveProvider: vi.fn().mockResolvedValue(undefined),
     };
     const nativeBridge = {
-      refreshAccessibilityContext: vi.fn(),
+      refreshAccessibilityContext: vi.fn().mockResolvedValue(undefined),
+      getAccessibilityContext: vi.fn().mockReturnValue(null),
       call: vi.fn().mockResolvedValue({ success: true }),
     };
     const settingsService = {

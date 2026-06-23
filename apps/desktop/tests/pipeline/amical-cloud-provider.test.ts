@@ -187,8 +187,10 @@ vi.mock("../../src/main/logger", () => ({
 
 import { AmicalCloudProvider } from "../../src/pipeline/providers/transcription/amical-cloud-provider";
 import { GrpcDictationError } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
+import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
 import { AppError, ErrorCodes } from "../../src/types/error";
 import type { TranscribeContext } from "../../src/pipeline/core/pipeline-types";
+import type { GetAccessibilityContextResult } from "@amical/types";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 
@@ -218,6 +220,46 @@ const audioFrame = (samples = 512, fill = 0.1): Float32Array => {
   const a = new Float32Array(samples);
   a.fill(fill);
   return a;
+};
+
+const accessibilityContext = (
+  bundleIdentifier: string,
+): GetAccessibilityContextResult =>
+  ({
+    context: {
+      application: {
+        bundleIdentifier,
+        name: "Discord",
+      },
+      textSelection: {
+        selectedText: "",
+        preSelectionText: "before",
+        postSelectionText: "after",
+      },
+    },
+  }) as unknown as GetAccessibilityContextResult;
+
+const decodedGrpcWrites = () => {
+  const stream = grpcMock.getLastStream();
+  if (!stream) throw new Error("No grpc stream constructed");
+  return stream.write.mock.calls.map(([message]) =>
+    StreamTranscribeRequest.toObject(
+      StreamTranscribeRequest.decode(message as Buffer),
+    ),
+  ) as Array<{
+    open?: { sessionId?: string };
+    contextUpdate?: {
+      context?: {
+        appBundleId?: string;
+        appName?: string;
+        beforeText?: string;
+        afterText?: string;
+      };
+    };
+    skillsUpdate?: {
+      resolvedSkills?: Array<{ preset?: string }>;
+    };
+  }>;
 };
 
 const settleGrpcOk = (
@@ -324,6 +366,102 @@ describe("AmicalCloudProvider", () => {
       expect(result.text).toBe("hello world");
       expect(grpcMock.getLastClient()).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("gRPC live session updates", () => {
+    it("sends late accessibility context to an open stream", async () => {
+      const provider = constructProviderWithTransport("grpc");
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({
+          formattingEnabled: false,
+          accessibilityContext: null,
+        }),
+      });
+
+      await provider.updateSessionContext({
+        ...baseContext({
+          formattingEnabled: false,
+          accessibilityContext: accessibilityContext("com.hnc.Discord"),
+        }),
+      });
+
+      const contextUpdates = decodedGrpcWrites().filter(
+        (write) => write.contextUpdate,
+      );
+      expect(contextUpdates).toHaveLength(1);
+      expect(contextUpdates[0]?.contextUpdate?.context).toMatchObject({
+        appBundleId: "com.hnc.Discord",
+        appName: "Discord",
+        beforeText: "before",
+        afterText: "after",
+      });
+    });
+
+    it("sends instruct skills when draft state arrives after stream open", async () => {
+      const provider = constructProviderWithTransport("grpc");
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({
+          formattingEnabled: false,
+          isInstruct: false,
+        }),
+      });
+
+      await provider.updateSessionContext(
+        baseContext({
+          formattingEnabled: false,
+          isInstruct: true,
+        }),
+      );
+
+      const skillsUpdates = decodedGrpcWrites().filter(
+        (write) => write.skillsUpdate,
+      );
+      expect(skillsUpdates).toHaveLength(1);
+      expect(
+        skillsUpdates[0]?.skillsUpdate?.resolvedSkills?.[0]?.preset,
+      ).toBe("instruct");
+    });
+
+    it("sends context before skills and suppresses duplicate snapshots", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const liveContext = baseContext({
+        formattingEnabled: false,
+        accessibilityContext: accessibilityContext("com.hnc.Discord"),
+        isInstruct: true,
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({
+          formattingEnabled: false,
+          accessibilityContext: null,
+          isInstruct: false,
+        }),
+      });
+
+      await provider.updateSessionContext(liveContext);
+      const writesAfterFirstUpdate = decodedGrpcWrites();
+      await provider.updateSessionContext(liveContext);
+
+      expect(decodedGrpcWrites()).toHaveLength(writesAfterFirstUpdate.length);
+      const updateCases = writesAfterFirstUpdate
+        .map((write) =>
+          write.contextUpdate
+            ? "contextUpdate"
+            : write.skillsUpdate
+              ? "skillsUpdate"
+              : null,
+        )
+        .filter((kind): kind is "contextUpdate" | "skillsUpdate" => !!kind);
+      expect(updateCases).toEqual(["contextUpdate", "skillsUpdate"]);
     });
   });
 

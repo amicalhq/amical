@@ -2,6 +2,7 @@ import {
   PipelineContext,
   StreamingPipelineContext,
   StreamingSession,
+  TranscribeContext,
   TranscriptionProvider,
   FormattingProvider,
 } from "../pipeline/core/pipeline-types";
@@ -29,6 +30,7 @@ import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
+import type { GetAccessibilityContextResult } from "@amical/types";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
 import { normalizeTranscriptionBoundaries } from "../utils/boundary-spacing";
@@ -43,6 +45,11 @@ import {
 } from "../utils/model-selection";
 import { countWords } from "../utils/dictation-stats";
 
+type StreamingSessionUpdate = {
+  accessibilityContext?: GetAccessibilityContextResult | null;
+  isInstruct?: boolean;
+};
+
 /**
  * Service for audio transcription and optional formatting
  */
@@ -51,6 +58,10 @@ export class TranscriptionService {
   private cloudProvider: AmicalCloudProvider;
   private currentProvider: TranscriptionProvider | null = null;
   private streamingSessions = new Map<string, StreamingSession>();
+  private pendingStreamingSessionUpdates = new Map<
+    string,
+    StreamingSessionUpdate
+  >();
   private vadService: VADService | null;
   private settingsService: SettingsService;
   private vadMutex: Mutex;
@@ -91,6 +102,100 @@ export class TranscriptionService {
   async warmupActiveProvider(): Promise<void> {
     const provider = await this.selectProvider();
     await provider.warmup?.();
+  }
+
+  private buildTranscribeContextForSession(
+    sessionId: string,
+    session: StreamingSession,
+  ): TranscribeContext {
+    const previousChunk =
+      session.transcriptionResults.length > 0
+        ? session.transcriptionResults[session.transcriptionResults.length - 1]
+        : undefined;
+    const aggregatedTranscription = session.transcriptionResults.join("");
+
+    return {
+      sessionId,
+      vocabulary: session.context.sharedData.vocabulary,
+      accessibilityContext: session.context.sharedData.accessibilityContext,
+      previousChunk,
+      aggregatedTranscription: aggregatedTranscription || undefined,
+      languages: session.context.sharedData.userPreferences?.languages,
+      formattingEnabled:
+        session.context.metadata.get("cloudFormattingEnabled") === true,
+      isInstruct: session.context.metadata.get("isInstruct") === true,
+    };
+  }
+
+  private async pushProviderSessionContext(
+    context: TranscribeContext,
+  ): Promise<void> {
+    const provider = this.currentProvider;
+    if (!provider?.updateSessionContext) {
+      return;
+    }
+
+    await provider.updateSessionContext(context);
+  }
+
+  private applyStreamingSessionUpdate(
+    session: StreamingSession,
+    update: StreamingSessionUpdate,
+  ): void {
+    if (update.accessibilityContext !== undefined) {
+      session.context.sharedData.accessibilityContext =
+        update.accessibilityContext;
+    }
+    if (update.isInstruct !== undefined) {
+      session.context.metadata.set("isInstruct", update.isInstruct);
+    }
+  }
+
+  async updateStreamingSession(
+    options: { sessionId: string } & StreamingSessionUpdate,
+  ): Promise<void> {
+    const update: StreamingSessionUpdate = {};
+    if (options.accessibilityContext !== undefined) {
+      update.accessibilityContext = options.accessibilityContext;
+    }
+    if (options.isInstruct !== undefined) {
+      update.isInstruct = options.isInstruct;
+    }
+    if (
+      update.accessibilityContext === undefined &&
+      update.isInstruct === undefined
+    ) {
+      return;
+    }
+
+    let providerContext: TranscribeContext | null = null;
+
+    await this.transcriptionMutex.acquire();
+    try {
+      const session = this.streamingSessions.get(options.sessionId);
+      if (!session) {
+        const pending =
+          this.pendingStreamingSessionUpdates.get(options.sessionId) ?? {};
+        this.pendingStreamingSessionUpdates.set(options.sessionId, {
+          ...pending,
+          ...update,
+        });
+        return;
+      }
+
+      this.applyStreamingSessionUpdate(session, update);
+
+      providerContext = this.buildTranscribeContextForSession(
+        options.sessionId,
+        session,
+      );
+    } finally {
+      this.transcriptionMutex.release();
+    }
+
+    if (providerContext) {
+      await this.pushProviderSessionContext(providerContext);
+    }
   }
 
   /**
@@ -307,6 +412,8 @@ export class TranscriptionService {
 
     try {
       if (!session) {
+        const pendingUpdate =
+          this.pendingStreamingSessionUpdates.get(sessionId);
         const context = await this.buildContext();
         const streamingContext: StreamingPipelineContext = {
           ...context,
@@ -326,11 +433,16 @@ export class TranscriptionService {
         // Instruct rides the per-session metadata (like cloudFormattingEnabled)
         // so it persists across chunks and into finalize. Drives the "instruct"
         // preset sent to the cloud at stream open.
-        streamingContext.metadata.set("isInstruct", !!isInstruct);
+        streamingContext.metadata.set(
+          "isInstruct",
+          pendingUpdate?.isInstruct ?? !!isInstruct,
+        );
 
         // Get accessibility context from NativeBridge
         streamingContext.sharedData.accessibilityContext =
-          this.nativeBridge?.getAccessibilityContext() ?? null;
+          pendingUpdate?.accessibilityContext !== undefined
+            ? pendingUpdate.accessibilityContext
+            : (this.nativeBridge?.getAccessibilityContext() ?? null);
 
         session = {
           context: streamingContext,
@@ -341,20 +453,15 @@ export class TranscriptionService {
         };
 
         this.streamingSessions.set(sessionId, session);
+        this.pendingStreamingSessionUpdates.delete(sessionId);
 
         logger.transcription.info("Started streaming session", {
           sessionId,
         });
       }
-
-      // Direct frame to Whisper - it will handle aggregation and VAD internally
-      const previousChunk =
-        session.transcriptionResults.length > 0
-          ? session.transcriptionResults[
-              session.transcriptionResults.length - 1
-            ]
-          : undefined;
-      const aggregatedTranscription = session.transcriptionResults.join("");
+      if (isInstruct !== undefined) {
+        session.context.metadata.set("isInstruct", !!isInstruct);
+      }
 
       // Select the appropriate provider
       const provider = await this.selectProvider();
@@ -363,17 +470,7 @@ export class TranscriptionService {
       const chunkResult = await provider.transcribe({
         audioData: audioChunk,
         speechProbability: speechProbability,
-        context: {
-          sessionId,
-          vocabulary: session.context.sharedData.vocabulary,
-          accessibilityContext: session.context.sharedData.accessibilityContext,
-          previousChunk,
-          aggregatedTranscription: aggregatedTranscription || undefined,
-          languages: session.context.sharedData.userPreferences?.languages,
-          formattingEnabled:
-            session.context.metadata.get("cloudFormattingEnabled") === true,
-          isInstruct: session.context.metadata.get("isInstruct") === true,
-        },
+        context: this.buildTranscribeContextForSession(sessionId, session),
       });
       session.detectedLanguage = this.mergeDetectedLanguage(
         session.detectedLanguage,
@@ -413,18 +510,21 @@ export class TranscriptionService {
    * Used when recording is cancelled (e.g., quick tap, accidental activation)
    */
   async cancelStreamingSession(sessionId: string): Promise<void> {
-    if (this.streamingSessions.has(sessionId)) {
-      // Acquire mutex to prevent race with processStreamingChunk
-      await this.transcriptionMutex.acquire();
-      try {
-        // Clear provider buffers to prevent audio bleed into next session
-        this.currentProvider?.reset();
-
-        this.streamingSessions.delete(sessionId);
-        logger.transcription.info("Streaming session cancelled", { sessionId });
-      } finally {
-        this.transcriptionMutex.release();
+    // Acquire mutex to prevent race with processStreamingChunk
+    await this.transcriptionMutex.acquire();
+    try {
+      this.pendingStreamingSessionUpdates.delete(sessionId);
+      if (!this.streamingSessions.has(sessionId)) {
+        return;
       }
+
+      // Clear provider buffers to prevent audio bleed into next session
+      this.currentProvider?.reset();
+
+      this.streamingSessions.delete(sessionId);
+      logger.transcription.info("Streaming session cancelled", { sessionId });
+    } finally {
+      this.transcriptionMutex.release();
     }
   }
 
@@ -493,6 +593,7 @@ export class TranscriptionService {
 
     const session = this.streamingSessions.get(sessionId);
     if (!session) {
+      this.pendingStreamingSessionUpdates.delete(sessionId);
       logger.transcription.warn("No session found to finalize", { sessionId });
       return "";
     }
@@ -728,6 +829,7 @@ export class TranscriptionService {
         vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
       });
 
+      this.pendingStreamingSessionUpdates.delete(sessionId);
       this.streamingSessions.delete(sessionId);
 
       logger.transcription.info("Streaming session completed", { sessionId });
@@ -742,6 +844,7 @@ export class TranscriptionService {
           sessionId,
           audioFilePath: audioFilePath || undefined,
         });
+        this.pendingStreamingSessionUpdates.delete(sessionId);
         this.streamingSessions.delete(sessionId);
         logger.transcription.info("Dismissed transcription during finalize", {
           sessionId,
@@ -792,6 +895,7 @@ export class TranscriptionService {
       }
 
       // Clean up session
+      this.pendingStreamingSessionUpdates.delete(sessionId);
       this.streamingSessions.delete(sessionId);
 
       // Re-throw for RecordingManager to handle notifications

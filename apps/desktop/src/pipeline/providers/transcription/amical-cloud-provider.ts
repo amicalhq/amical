@@ -105,6 +105,8 @@ interface ProviderState {
   // read), so per-chunk transcribe()/flush() snapshots stay in-memory.
   currentEnabledLabs: string[];
   grpcStream: CloudDictationGrpcStream | null;
+  grpcSentContextKey: string | null;
+  grpcSentSkillsKey: string | null;
   grpcPendingFrames: Float32Array[];
   grpcPendingSampleCount: number;
   grpcNextSeq: bigint;
@@ -157,6 +159,12 @@ const projectAccessibilityContext = (
   };
 };
 
+const snapshotKey = (value: unknown): string => JSON.stringify(value);
+
+const contextSnapshotKey = (
+  context: GrpcStreamContext | undefined,
+): string | null => (context ? snapshotKey(context) : null);
+
 const toNetworkAppError = (error: unknown): AppError => {
   if (error instanceof AppError) {
     return error;
@@ -204,6 +212,8 @@ const createInitialProviderState = (): ProviderState => ({
   currentIsInstruct: false,
   currentEnabledLabs: [],
   grpcStream: null,
+  grpcSentContextKey: null,
+  grpcSentSkillsKey: null,
   grpcPendingFrames: [],
   grpcPendingSampleCount: 0,
   grpcNextSeq: 1n,
@@ -266,6 +276,8 @@ type CloudRuntime = ReturnType<typeof createCloudRuntime>;
 const resetGrpcState = (state: ProviderState): ProviderState => ({
   ...state,
   grpcStream: null,
+  grpcSentContextKey: null,
+  grpcSentSkillsKey: null,
   grpcPendingFrames: [],
   grpcPendingSampleCount: 0,
   grpcNextSeq: 1n,
@@ -381,6 +393,38 @@ export class AmicalCloudProvider implements TranscriptionProvider {
    */
   async warmup(): Promise<void> {
     await AuthServiceImpl.getInstance().refreshTokenIfNeeded();
+  }
+
+  async updateSessionContext(context: TranscribeContext): Promise<void> {
+    await this.runProviderEffect(
+      this.updateSessionContextEffect(context).pipe(
+        Effect.tapError((error) => this.logCloudErrorEffect(error)),
+      ),
+    );
+  }
+
+  private updateSessionContextEffect(
+    context: TranscribeContext,
+  ): CloudProviderEffect<void> {
+    return Effect.gen(this, function* () {
+      yield* this.storeContextEffect(context);
+      const transport = yield* this.effectiveTransportEffect();
+      if (transport !== "grpc") {
+        return;
+      }
+
+      const stream = yield* Ref.get(this.state).pipe(
+        Effect.map((state) => state.grpcStream),
+      );
+      if (!stream) {
+        return;
+      }
+
+      yield* this.sendGrpcSessionUpdatesEffect(
+        stream,
+        context.formattingEnabled ?? false,
+      );
+    });
   }
 
   private transcribeViaHttpEffect(
@@ -749,6 +793,12 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   }> {
     return Effect.gen(this, function* () {
       const stream = yield* this.ensureGrpcStreamEffect(enableFormatting);
+      // Final re-sync: flush any context/skills change that landed since the
+      // last push but wasn't sent (e.g. a dropped mid-session push). The server
+      // formats the final transcript against the latest snapshot, so this is
+      // the one place it has to be current. Dedup keys make it a no-op when the
+      // pushes already landed.
+      yield* this.sendGrpcSessionUpdatesEffect(stream, enableFormatting);
       yield* this.sendReadyGrpcPacketsEffect(true);
 
       return yield* Effect.tryPromise({
@@ -765,6 +815,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const existingStream = yield* Ref.get(this.state).pipe(
         Effect.map((state) => state.grpcStream),
       );
+      // Pure get-or-create: mid-session context/skills changes are pushed by
+      // updateSessionContext, and a final re-sync happens in
+      // finalizeGrpcStreamEffect. Don't re-send snapshots from here, or every
+      // chunk (and every audio packet) pays for a snapshot diff.
       if (existingStream) {
         return existingStream;
       }
@@ -784,6 +838,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           accessibilityContext: snapshot.currentAccessibilityContext,
         }),
       );
+      const streamContext = this.buildGrpcStreamContext(snapshot);
+      const sentContextKey = contextSnapshotKey(streamContext);
+      const sentSkillsKey = snapshotKey(resolvedSkills);
       const openOptions = {
         endpoint: config.apiEndpoint,
         token: idToken,
@@ -794,7 +851,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         vocabulary: snapshot.currentVocabulary,
         formatting: enableFormatting,
         resolvedSkills,
-        context: this.buildGrpcStreamContext(snapshot),
+        context: streamContext,
         labs: snapshot.enabledLabs,
       };
 
@@ -807,7 +864,15 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           return [state.grpcStream, state] as const;
         }
 
-        return [stream, { ...state, grpcStream: stream }] as const;
+        return [
+          stream,
+          {
+            ...state,
+            grpcStream: stream,
+            grpcSentContextKey: sentContextKey,
+            grpcSentSkillsKey: sentSkillsKey,
+          },
+        ] as const;
       });
       if (selectedStream !== stream) {
         yield* Effect.sync(() => stream.cancel());
@@ -826,6 +891,54 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       });
 
       return stream;
+    });
+  }
+
+  private sendGrpcSessionUpdatesEffect(
+    stream: CloudDictationGrpcStream,
+    enableFormatting: boolean,
+  ): CloudProviderEffect<void> {
+    return Effect.gen(this, function* () {
+      const snapshot = yield* this.requestSnapshotEffect();
+      const streamContext = this.buildGrpcStreamContext(snapshot);
+      const nextContextKey = contextSnapshotKey(streamContext);
+      const sentContextKey = yield* Ref.get(this.state).pipe(
+        Effect.map((state) => state.grpcSentContextKey),
+      );
+
+      if (streamContext && nextContextKey !== sentContextKey) {
+        yield* Effect.tryPromise({
+          try: () => stream.sendContextUpdate(streamContext),
+          catch: (error) => this.toAppError(error),
+        });
+        yield* Ref.update(this.state, (state) => ({
+          ...state,
+          grpcSentContextKey: nextContextKey,
+        }));
+      }
+
+      const resolvedSkills = yield* Effect.promise(() =>
+        resolveSessionSkills({
+          isInstruct: snapshot.currentIsInstruct,
+          enableFormatting,
+          accessibilityContext: snapshot.currentAccessibilityContext,
+        }),
+      );
+      const nextSkillsKey = snapshotKey(resolvedSkills);
+      const sentSkillsKey = yield* Ref.get(this.state).pipe(
+        Effect.map((state) => state.grpcSentSkillsKey),
+      );
+
+      if (nextSkillsKey !== sentSkillsKey) {
+        yield* Effect.tryPromise({
+          try: () => stream.sendSkillsUpdate(resolvedSkills),
+          catch: (error) => this.toAppError(error),
+        });
+        yield* Ref.update(this.state, (state) => ({
+          ...state,
+          grpcSentSkillsKey: nextSkillsKey,
+        }));
+      }
     });
   }
 

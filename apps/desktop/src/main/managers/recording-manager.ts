@@ -187,11 +187,12 @@ export class RecordingManager extends EventEmitter {
 
   /**
    * Latch the draft tag once the draft binding is seen during a session. Draft
-   * is just a second PTT binding (see shortcut-manager); the cloud preset is
-   * decided at stream-open (first chunk), so reading the live draft state here
-   * makes the Fn+Ctrl chord tag as draft regardless of key order.
+   * is just a second PTT binding (see shortcut-manager). Reading the live draft
+   * state here makes the Fn+Ctrl chord tag as draft regardless of key order; if
+   * the cloud stream is already open, the transcription service pushes an
+   * updated skills snapshot before the next chunk is processed.
    */
-  private latchDraftTag(): void {
+  private async latchDraftTag(): Promise<void> {
     if (!this.currentIsInstruct && this.shortcutManager?.isPTTDraftActive()) {
       this.currentIsInstruct = true;
       // Latching happens on the first audio chunk — an internal FSM transition
@@ -199,6 +200,19 @@ export class RecordingManager extends EventEmitter {
       // "state-changed" fires. Emit so the widget FAB picks up isDraft=true
       // *during* recording, not only when it later transitions to stopping.
       this.emit("draft-latched");
+      if (this.currentSessionId) {
+        try {
+          const transcriptionService = this.serviceManager.getService(
+            "transcriptionService",
+          );
+          await transcriptionService.updateStreamingSession({
+            sessionId: this.currentSessionId,
+            isInstruct: this.currentIsInstruct,
+          });
+        } catch (error) {
+          logger.audio.warn("Failed to propagate draft latch", { error });
+        }
+      }
     }
   }
 
@@ -474,10 +488,38 @@ export class RecordingManager extends EventEmitter {
         logger.audio.warn("Provider warmup failed (non-fatal)", { error });
       });
 
-      // Refresh accessibility context (TextMarker API for Electron support)
-      // Fire and forget - context will be ready by the time first audio chunk arrives
+      // Refresh accessibility context (TextMarker API for Electron support).
+      // Fire and forget: if it resolves before the first chunk, the
+      // transcription service stores it for stream-open; otherwise it pushes a
+      // live gRPC session update.
       const nativeBridge = this.serviceManager.getService("nativeBridge");
-      nativeBridge.refreshAccessibilityContext();
+      const sessionId = this.currentSessionId;
+      void nativeBridge
+        .refreshAccessibilityContext()
+        .then(async () => {
+          const accessibilityContext = nativeBridge.getAccessibilityContext();
+          // Null means the helper could not resolve a usable focused-app/text
+          // context. The gRPC client currently only sends concrete context
+          // snapshots, so clearing a previously sent context is intentionally
+          // left unsupported here.
+          if (
+            !sessionId ||
+            !accessibilityContext ||
+            this.currentSessionId !== sessionId
+          ) {
+            return;
+          }
+
+          await transcriptionService.updateStreamingSession({
+            sessionId,
+            accessibilityContext,
+          });
+        })
+        .catch((error) => {
+          logger.audio.warn("Failed to propagate accessibility context", {
+            error,
+          });
+        });
 
       // Always call startRecording, conditionally mute system audio and play sounds
       const settingsService = this.serviceManager.getService("settingsService");
@@ -693,7 +735,7 @@ export class RecordingManager extends EventEmitter {
             const transcriptionService = this.serviceManager.getService(
               "transcriptionService",
             );
-            this.latchDraftTag();
+            await this.latchDraftTag();
             await transcriptionService.processStreamingChunk({
               sessionId: this.currentSessionId,
               audioChunk: chunk,
@@ -728,7 +770,7 @@ export class RecordingManager extends EventEmitter {
         const transcriptionService = this.serviceManager.getService(
           "transcriptionService",
         );
-        this.latchDraftTag();
+        await this.latchDraftTag();
         await transcriptionService.processStreamingChunk({
           sessionId,
           audioChunk: chunk,

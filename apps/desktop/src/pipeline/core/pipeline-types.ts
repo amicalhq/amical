@@ -64,6 +64,11 @@ export interface TranscriptionProvider {
    * first-chunk sessions don't waste a connection).
    */
   warmup?(): Promise<void>;
+  /**
+   * Push updated per-session context to providers that support live updates.
+   * Cloud gRPC consumes this to send full snapshot context/skills updates.
+   */
+  updateSessionContext?(context: TranscribeContext): Promise<void>;
 }
 
 // Formatting provider interface

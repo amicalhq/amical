@@ -518,6 +518,21 @@ export class CloudDictationGrpcStream {
     );
   }
 
+  // Full snapshot replacement of the active stream context.
+  async sendContextUpdate(context: GrpcStreamContext): Promise<void> {
+    logger.transcription.debug("gRPC sending context update", {
+      appType: context.appType,
+      appBundleId: context.appBundleId,
+      appName: context.appName,
+      hasSelectedText: !!context.selectedText,
+      hasBeforeText: context.beforeText !== undefined,
+      hasAfterText: context.afterText !== undefined,
+    });
+    await runEffectPromise(
+      this.writeRequestEffect(encodeContextUpdateRequest(context)),
+    );
+  }
+
   // Full snapshot replacement of the active skill set. Pass `[]` to clear
   // the active skills. Safe to call any time before finalize.
   async sendSkillsUpdate(skills: DictationSkill[]): Promise<void> {
