@@ -482,7 +482,7 @@
       },
       "selfCorrection": {
         "label": "自我修正",
-        "description": "使用實驗性提示詞，嘗試修正語音中的更正和改述。",
+        "description": "套用口述中的更正與改述，讓最終聽寫內容反映您的原意。",
         "cloudOnly": "僅限雲端",
         "cloudTooltip": "僅適用於 Amical Cloud 聽寫。本機聽寫不受影響。",
         "ariaLabel": "切換自我修正"

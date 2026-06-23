@@ -482,7 +482,7 @@
       },
       "selfCorrection": {
         "label": "自己修正",
-        "description": "発話中の言い直しや修正を補正しようとする実験的なプロンプトを使用します。",
+        "description": "話した訂正や言い直しを反映し、最終的な音声入力が意図どおりになるようにします。",
         "cloudOnly": "クラウドのみ",
         "cloudTooltip": "Amical Cloud の音声入力にのみ適用されます。ローカル音声入力は変更されません。",
         "ariaLabel": "自己修正を切り替え"

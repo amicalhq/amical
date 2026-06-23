@@ -482,7 +482,7 @@
       },
       "selfCorrection": {
         "label": "Autocorrección",
-        "description": "Usa un prompt experimental que intenta corregir correcciones y revisiones habladas.",
+        "description": "Aplica correcciones y revisiones habladas para que el dictado final refleje lo que querías decir.",
         "cloudOnly": "Solo en la nube",
         "cloudTooltip": "Solo se aplica al dictado de Amical Cloud. El dictado local no cambia.",
         "ariaLabel": "Activar o desactivar autocorrección"

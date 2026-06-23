@@ -482,7 +482,7 @@
       },
       "selfCorrection": {
         "label": "Selbstkorrektur",
-        "description": "Verwendet einen experimentellen Prompt, der gesprochene Korrekturen und Überarbeitungen zu korrigieren versucht.",
+        "description": "Übernimmt gesprochene Korrekturen und Überarbeitungen, damit dein fertiges Diktat ausdrückt, was du gemeint hast.",
         "cloudOnly": "Nur Cloud",
         "cloudTooltip": "Gilt nur für Amical Cloud-Diktat. Lokales Diktat bleibt unverändert.",
         "ariaLabel": "Selbstkorrektur umschalten"
