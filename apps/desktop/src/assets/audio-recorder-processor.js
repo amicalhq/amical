@@ -4,10 +4,10 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     this.frameSize = 512; // 32ms at 16kHz
     this.sampleRate = 16000;
     this.buffer = [];
-    
+
     // Listen for control messages
     this.port.onmessage = (event) => {
-      if (event.data.type === 'flush') {
+      if (event.data.type === "flush") {
         this.flushBuffer();
       }
     };
@@ -17,11 +17,11 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     // Always send a final frame to signal end of recording
     const finalFrame = new Float32Array(this.buffer);
     this.buffer = [];
-    
+
     this.port.postMessage({
-      type: 'audioFrame',
+      type: "audioFrame",
       frame: finalFrame,
-      isFinal: true
+      isFinal: true,
     });
   }
 
@@ -30,7 +30,7 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     if (!input || !input[0]) return true;
 
     const channelData = input[0];
-    
+
     // Add samples to buffer
     for (let i = 0; i < channelData.length; i++) {
       this.buffer.push(channelData[i]);
@@ -43,9 +43,9 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
 
       // Send frame to main thread
       this.port.postMessage({
-        type: 'audioFrame',
+        type: "audioFrame",
         frame: new Float32Array(frame),
-        isFinal: false
+        isFinal: false,
       });
     }
 
@@ -53,4 +53,4 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('audio-recorder-processor', AudioRecorderProcessor);
+registerProcessor("audio-recorder-processor", AudioRecorderProcessor);

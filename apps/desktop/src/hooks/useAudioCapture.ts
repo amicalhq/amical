@@ -4,11 +4,19 @@ import { api } from "@/trpc/react";
 import { Mutex } from "async-mutex";
 import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
 import {
-  DEFAULT_DEVICE_ID,
-  resolveActiveMicrophone,
-} from "@/utils/audio-devices";
+  createAudioCaptureGraph,
+  createOrResumeAudioContext,
+} from "./audioCaptureContext";
+import { acquireMicrophoneStream } from "./audioCaptureDevice";
+import { computeIdleRecycleDelayMs } from "./audioCaptureRecycle";
+import {
+  attachAudioWorkletFrameHandler,
+  createWorkletFlushRequest,
+  type WorkletFlushRequest,
+} from "./audioCaptureWorklet";
 
 const SAMPLE_RATE = 16000;
+const AUDIO_WORKLET_FLUSH_TIMEOUT_MS = 1_000;
 
 export interface UseAudioCaptureParams {
   onAudioChunk: (
@@ -17,6 +25,7 @@ export interface UseAudioCaptureParams {
     isFinalChunk: boolean,
   ) => Promise<void> | void;
   enabled: boolean;
+  idle: boolean;
 }
 
 export interface UseAudioCaptureOutput {
@@ -26,6 +35,7 @@ export interface UseAudioCaptureOutput {
 export const useAudioCapture = ({
   onAudioChunk,
   enabled,
+  idle,
 }: UseAudioCaptureParams): UseAudioCaptureOutput => {
   const [voiceDetected, setVoiceDetected] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -34,6 +44,18 @@ export const useAudioCapture = ({
   const streamRef = useRef<MediaStream | null>(null);
   const trackDiagnosticsCleanupRef = useRef<(() => void) | null>(null);
   const mutexRef = useRef(new Mutex());
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleRef = useRef(idle);
+  const pendingWorkletFlushRef = useRef<WorkletFlushRequest | null>(null);
+  // performance.now() when the current AudioContext was constructed (for max-age).
+  const contextCreatedAtRef = useRef(0);
+  // Set true once the hook unmounts so deferred mutex bodies stop touching state.
+  const disposedRef = useRef(false);
+  // Set synchronously the instant a start is requested, so a just-fired idle
+  // timer keeps the context warm instead of closing it out from under the start.
+  const pendingStartRef = useRef(false);
+
+  idleRef.current = idle;
 
   // Subscribe to voice detection updates via tRPC
   api.recording.voiceDetectionUpdates.useSubscription(undefined, {
@@ -53,197 +75,121 @@ export const useAudioCapture = ({
   // (incl. reorders that keep the top entry), not on every settings refetch.
   const microphonePriorityKey = JSON.stringify(microphonePriority ?? []);
 
-  const startCapture = useCallback(async () => {
-    await mutexRef.current.runExclusive(async () => {
+  const clearIdleTimer = useCallback(() => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  }, []);
+
+  // Fully release every audio resource (mic stream, nodes, context). The caller
+  // must hold the mutex. Safe to call with any subset already torn down.
+  const releaseAll = useCallback(async () => {
+    pendingWorkletFlushRef.current?.finish();
+    pendingWorkletFlushRef.current = null;
+    if (workletNodeRef.current) {
+      workletNodeRef.current.port.onmessage = null;
+    }
+    trackDiagnosticsCleanupRef.current?.();
+    trackDiagnosticsCleanupRef.current = null;
+    if (sourceRef.current && workletNodeRef.current) {
       try {
-        const overallStartTime = performance.now();
-        console.log("AudioCapture: Starting audio capture");
+        sourceRef.current.disconnect(workletNodeRef.current);
+      } catch {
+        // Nodes may already be detached or on a closed context.
+      }
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    if (audioContextRef.current) {
+      await audioContextRef.current.close().catch(() => {});
+    }
+    sourceRef.current = null;
+    workletNodeRef.current = null;
+    audioContextRef.current = null;
+    streamRef.current = null;
+  }, []);
 
-        // Build audio constraints
-        const audioConstraints: MediaTrackConstraints = {
-          channelCount: 1,
-          sampleRate: SAMPLE_RATE,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        };
+  const startCapture = useCallback(async () => {
+    // StrictMode can remount and call us before the teardown effect's cleanup is
+    // reverted, so clear disposed here. pendingStartRef is read by closeIdleContext.
+    disposedRef.current = false;
+    pendingStartRef.current = true;
+    await mutexRef.current
+      .runExclusive(async () => {
+        try {
+          const overallStartTime = performance.now();
+          console.log("AudioCapture: Starting audio capture");
 
-        let preferredDevice: MediaDeviceInfo | undefined;
-        if (microphonePriority?.length) {
-          const enumerateStartTime = performance.now();
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const enumerateDuration = performance.now() - enumerateStartTime;
-          const audioInputDevices = devices.filter(
-            (device) => device.kind === "audioinput",
-          );
-          audioCaptureDiagnostics.logEnumerateDevicesTiming(enumerateDuration);
-          audioCaptureDiagnostics.logAudioInputDevices(
-            "Available audio input devices",
-            devices,
-          );
+          // A new dictation started — cancel any pending idle teardown so the
+          // warm AudioContext is resumed rather than closed out from under us.
+          clearIdleTimer();
 
-          // Use the highest-ranked microphone that is currently connected,
-          // falling back down the chain (and finally to the system default).
-          const activeDeviceId = resolveActiveMicrophone(
+          const { stream, audioTrack } = await acquireMicrophoneStream({
             microphonePriority,
-            audioInputDevices,
-          );
-          preferredDevice =
-            activeDeviceId === DEFAULT_DEVICE_ID
-              ? undefined
-              : audioInputDevices.find(
-                  (device) => device.deviceId === activeDeviceId,
-                );
-          audioCaptureDiagnostics.logPreferredDeviceResolution({
-            matchedBy: preferredDevice ? "deviceId" : "none",
-            device: preferredDevice,
-            preferredDeviceId: activeDeviceId,
-            preferredName: preferredDevice?.label ?? undefined,
-          });
-        }
-
-        const captureSource: "preferred" | "default" = preferredDevice
-          ? "preferred"
-          : "default";
-        audioConstraints.deviceId = {
-          exact: preferredDevice ? preferredDevice.deviceId : DEFAULT_DEVICE_ID,
-        };
-        if (captureSource === "default") {
-          console.log("AudioCapture: Using Chromium default microphone alias", {
-            deviceId: DEFAULT_DEVICE_ID,
-          });
-        }
-
-        const getUserMediaStartTime = performance.now();
-        streamRef.current = await navigator.mediaDevices.getUserMedia({
-          audio: audioConstraints,
-        });
-        console.log(
-          `AudioCapture: getUserMedia (${captureSource}) took ${(
-            performance.now() - getUserMediaStartTime
-          ).toFixed(2)}ms`,
-        );
-
-        const audioTrack = streamRef.current.getAudioTracks()[0];
-        if (!audioTrack) {
-          throw new Error("No audio tracks available from microphone");
-        }
-        audioCaptureDiagnostics.logTrackState(audioTrack);
-        trackDiagnosticsCleanupRef.current?.();
-        trackDiagnosticsCleanupRef.current =
-          audioCaptureDiagnostics.registerTrack(audioTrack);
-
-        // Create or resume audio context
-        const audioContextStartTime = performance.now();
-        if (
-          audioContextRef.current &&
-          audioContextRef.current.state === "suspended"
-        ) {
-          // Resume existing context (faster)
-          await audioContextRef.current.resume();
-          const resumeDuration = performance.now() - audioContextStartTime;
-          console.log(
-            `AudioCapture: AudioContext resumed took ${resumeDuration.toFixed(2)}ms`,
-          );
-        } else if (!audioContextRef.current) {
-          // Create new context (first time only)
-          audioContextRef.current = new AudioContext({
             sampleRate: SAMPLE_RATE,
           });
-          const audioContextDuration =
-            performance.now() - audioContextStartTime;
-          console.log(
-            `AudioCapture: AudioContext creation took ${audioContextDuration.toFixed(2)}ms`,
-          );
+          streamRef.current = stream;
+          audioCaptureDiagnostics.logTrackState(audioTrack);
+          trackDiagnosticsCleanupRef.current?.();
+          trackDiagnosticsCleanupRef.current =
+            audioCaptureDiagnostics.registerTrack(audioTrack);
 
-          // Load audio worklet (only needed on first creation)
-          const workletStartTime = performance.now();
-          await audioContextRef.current.audioWorklet.addModule(audioWorkletUrl);
-          const workletDuration = performance.now() - workletStartTime;
-          console.log(
-            `AudioCapture: audioWorklet.addModule took ${workletDuration.toFixed(2)}ms`,
-          );
-        } else {
-          // Context exists but not suspended (already running)
-          console.log("AudioCapture: AudioContext already running");
-        }
-
-        // Create nodes
-        const nodeCreationStartTime = performance.now();
-        sourceRef.current = audioContextRef.current.createMediaStreamSource(
-          streamRef.current,
-        );
-        workletNodeRef.current = new AudioWorkletNode(
-          audioContextRef.current,
-          "audio-recorder-processor",
-        );
-        const nodeCreationDuration = performance.now() - nodeCreationStartTime;
-        console.log(
-          `AudioCapture: Node creation took ${nodeCreationDuration.toFixed(2)}ms`,
-        );
-
-        // Track first frame timing
-        let firstFrameReceived = false;
-        const firstFrameStartTime = performance.now();
-
-        // Handle audio frames from worklet
-        workletNodeRef.current.port.onmessage = async (event) => {
-          if (event.data.type === "audioFrame") {
-            if (!firstFrameReceived) {
-              firstFrameReceived = true;
-              const firstFrameDuration =
-                performance.now() - firstFrameStartTime;
-              console.log(
-                `AudioCapture: First audio frame received after ${firstFrameDuration.toFixed(2)}ms`,
-              );
-            }
-
-            const frame = event.data.frame;
-            console.debug("AudioCapture: Received frame", {
-              frameLength: frame.length,
-              isFinal: event.data.isFinal,
-            });
-            const isFinal = event.data.isFinal || false;
-
-            // Convert to ArrayBuffer for IPC
-            const arrayBuffer = frame.buffer.slice(
-              frame.byteOffset,
-              frame.byteOffset + frame.byteLength,
-            );
-
-            // Send to main process for VAD processing
-            // Main process will update voice detection state
-            await onAudioChunk(arrayBuffer, 0, isFinal); // Speech probability will come from main
+          // Bail if the hook was disposed while we awaited the microphone, so we
+          // don't build a graph (or resurrect a context) after unmount.
+          if (disposedRef.current) {
+            await releaseAll();
+            return;
           }
-        };
 
-        // Connect audio graph
-        sourceRef.current.connect(workletNodeRef.current);
+          const { audioContext, createdAt } = await createOrResumeAudioContext({
+            currentAudioContext: audioContextRef.current,
+            sampleRate: SAMPLE_RATE,
+            audioWorkletUrl,
+          });
+          audioContextRef.current = audioContext;
+          if (createdAt !== undefined) {
+            contextCreatedAtRef.current = createdAt;
+          }
 
-        const overallDuration = performance.now() - overallStartTime;
-        console.log(
-          `AudioCapture: Total startup took ${overallDuration.toFixed(2)}ms`,
-        );
-        console.log("AudioCapture: Audio capture started successfully");
-      } catch (error) {
-        console.error("AudioCapture: Failed to start capture:", error);
+          // Bail if disposed while resuming or loading the worklet module.
+          if (disposedRef.current) {
+            await releaseAll();
+            return;
+          }
 
-        // Release whatever was acquired before the failure so the mic doesn't
-        // stay open. We can't call stopCapture() here — it re-enters the same
-        // mutex this block already holds (deadlock) — so tear down inline.
-        trackDiagnosticsCleanupRef.current?.();
-        trackDiagnosticsCleanupRef.current = null;
-        streamRef.current?.getTracks().forEach((track) => track.stop());
-        audioContextRef.current?.close().catch(() => {});
-        sourceRef.current = null;
-        workletNodeRef.current = null;
-        audioContextRef.current = null;
-        streamRef.current = null;
+          const { source, workletNode } = createAudioCaptureGraph(
+            audioContextRef.current,
+            streamRef.current,
+          );
+          sourceRef.current = source;
+          workletNodeRef.current = workletNode;
+          attachAudioWorkletFrameHandler({
+            workletNode,
+            onAudioChunk,
+            finishPendingFlush: (didFlush) =>
+              pendingWorkletFlushRef.current?.finish(didFlush),
+          });
 
-        throw error;
-      }
-    });
-  }, [onAudioChunk, microphonePriorityKey]);
+          // Connect audio graph
+          sourceRef.current.connect(workletNodeRef.current);
+
+          const overallDuration = performance.now() - overallStartTime;
+          console.log(
+            `AudioCapture: Total startup took ${overallDuration.toFixed(2)}ms`,
+          );
+          console.log("AudioCapture: Audio capture started successfully");
+        } catch (error) {
+          console.error("AudioCapture: Failed to start capture:", error);
+          // Release whatever was acquired before the failure so the mic doesn't
+          // stay open. (Can't call stopCapture here — same mutex would deadlock.)
+          await releaseAll();
+          throw error;
+        }
+      })
+      .finally(() => {
+        pendingStartRef.current = false;
+      });
+  }, [onAudioChunk, microphonePriorityKey, releaseAll, clearIdleTimer]);
 
   // Device-change diagnostics are only attached while dictation is active, so
   // they don't enumerate/log in the background when not recording.
@@ -283,52 +229,115 @@ export const useAudioCapture = ({
     };
   }, [enabled]);
 
+  // Safe to recycle only when the app is idle with no active dictation and none
+  // about to start. Shared by the scheduler and the timer's deferred close.
+  const canRecycleWhileIdle = useCallback(
+    () => idleRef.current && !streamRef.current && !pendingStartRef.current,
+    [],
+  );
+
+  // Recycle the warm AudioContext only while the app is truly idle. Guarded by
+  // the mutex so it can't race a concurrent start.
+  const closeIdleContext = useCallback(async () => {
+    await mutexRef.current.runExclusive(async () => {
+      if (!canRecycleWhileIdle()) {
+        return;
+      }
+      if (audioContextRef.current) {
+        await releaseAll();
+        console.log("AudioCapture: AudioContext recycled while idle");
+      }
+    });
+  }, [releaseAll, canRecycleWhileIdle]);
+
+  const scheduleIdleContextRecycle = useCallback(() => {
+    clearIdleTimer();
+
+    if (
+      disposedRef.current ||
+      !canRecycleWhileIdle() ||
+      !audioContextRef.current
+    ) {
+      return;
+    }
+
+    const idleRecycleDelayMs = computeIdleRecycleDelayMs(
+      performance.now() - contextCreatedAtRef.current,
+    );
+
+    idleTimerRef.current = setTimeout(() => {
+      idleTimerRef.current = null;
+      closeIdleContext().catch((error) => {
+        console.error("AudioCapture: Error recycling idle context:", error);
+      });
+    }, idleRecycleDelayMs);
+  }, [clearIdleTimer, closeIdleContext, canRecycleWhileIdle]);
+
+  // Resolves true once the worklet's final buffer has been flushed (or there is
+  // nothing to flush), false if the flush request failed or timed out — in which
+  // case the caller must force a full release rather than just suspend.
+  const waitForWorkletFlush = useCallback(async (): Promise<boolean> => {
+    const workletNode = workletNodeRef.current;
+    if (!workletNode) {
+      return true;
+    }
+
+    const flushRequest = createWorkletFlushRequest({
+      workletNode,
+      timeoutMs: AUDIO_WORKLET_FLUSH_TIMEOUT_MS,
+    });
+    pendingWorkletFlushRef.current = flushRequest;
+    flushRequest.request();
+
+    const didFlush = await flushRequest.promise;
+    if (pendingWorkletFlushRef.current === flushRequest) {
+      pendingWorkletFlushRef.current = null;
+    }
+    return didFlush;
+  }, []);
+
   const stopCapture = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
+      console.log("AudioCapture: Stopping audio capture");
       try {
-        console.log("AudioCapture: Stopping audio capture");
-
-        // Send flush command to worklet before disconnecting
-        if (workletNodeRef.current) {
-          workletNodeRef.current.port.postMessage({ type: "flush" });
-          console.log("AudioCapture: Sent flush command to worklet");
+        // Flush while still connected so the worklet remains pulled by the
+        // render graph. Any post-flush samples are harmless because this node is
+        // per-dictation and is dropped before the next recording.
+        const didFlush = await waitForWorkletFlush();
+        if (!didFlush) {
+          await releaseAll();
+          return;
         }
-
-        // Disconnect nodes
         if (sourceRef.current && workletNodeRef.current) {
           sourceRef.current.disconnect(workletNodeRef.current);
+          sourceRef.current = null;
         }
-
-        // Suspend audio context (keep it alive for next recording)
-        if (
-          audioContextRef.current &&
-          audioContextRef.current.state === "running"
-        ) {
-          await audioContextRef.current.suspend();
-          console.log("AudioCapture: AudioContext suspended (ready for reuse)");
+        // Suspend (not close) so the next dictation can resume it.
+        if (audioContextRef.current?.state === "running") {
+          await audioContextRef.current.suspend().catch(() => {});
         }
-
+      } catch (error) {
+        console.error("AudioCapture: Error during stop:", error);
+      } finally {
+        // Always release the mic, even if the steps above threw — otherwise the
+        // microphone could stay live.
         trackDiagnosticsCleanupRef.current?.();
         trackDiagnosticsCleanupRef.current = null;
-
-        // Stop media stream
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((track) => track.stop());
-        }
-
-        // Clear refs
-        audioContextRef.current = null;
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        // Keep the suspended AudioContext for reuse; drop per-dictation nodes and
+        // stream. The next dictation creates a fresh worklet node.
         sourceRef.current = null;
         workletNodeRef.current = null;
         streamRef.current = null;
 
+        // Context/worklet recycling is scheduled only once the main recording
+        // state is idle, so the final flush can complete while stopping.
+        scheduleIdleContextRecycle();
+
         console.log("AudioCapture: Audio capture stopped");
-      } catch (error) {
-        console.error("AudioCapture: Error during stop:", error);
-        throw error;
       }
     });
-  }, []);
+  }, [releaseAll, scheduleIdleContextRecycle, waitForWorkletFlush]);
 
   // Start/stop based on enabled state
   useEffect(() => {
@@ -346,6 +355,31 @@ export const useAudioCapture = ({
       });
     };
   }, [enabled, startCapture, stopCapture]);
+
+  useEffect(() => {
+    if (!idle) {
+      clearIdleTimer();
+      return;
+    }
+
+    scheduleIdleContextRecycle();
+
+    return () => {
+      clearIdleTimer();
+    };
+  }, [idle, clearIdleTimer, scheduleIdleContextRecycle]);
+
+  // Final teardown on unmount: mark disposed, cancel the idle timer, and release
+  // the AudioContext through the mutex so it runs strictly after any in-flight
+  // start/stopCapture rather than racing them (which could orphan a context or
+  // leave the mic live).
+  useEffect(() => {
+    return () => {
+      disposedRef.current = true;
+      clearIdleTimer();
+      void mutexRef.current.runExclusive(() => releaseAll());
+    };
+  }, [releaseAll, clearIdleTimer]);
 
   return {
     voiceDetected,

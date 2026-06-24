@@ -17,6 +17,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Renderer tests (jsdom) can't load the real tRPC React client; point it at
+      // a stub. Must precede "@" so it wins over the generic src alias.
+      "@/trpc/react": resolve(__dirname, "tests/stubs/trpc-react.ts"),
       "@": resolve(__dirname, "src"),
       "@db": resolve(__dirname, "src/db"),
       "@main": resolve(__dirname, "src/main"),

@@ -67,10 +67,12 @@ export const useRecording = (): UseRecordingOutput => {
 
   // Manage audio capture when recording is active
   const isActive = recordingStatus.state === "recording";
+  const isIdle = recordingStatus.state === "idle";
 
   const { voiceDetected } = useAudioCapture({
     onAudioChunk: handleAudioChunk,
     enabled: isActive,
+    idle: isIdle,
   });
 
   const startRecording = useCallback(async () => {

@@ -254,5 +254,7 @@ afterEach(() => {
   // Additional cleanup if needed
 });
 
-// Export for use in tests
-export { TEST_USER_DATA_PATH };
+// Export for use in tests. Re-exported from source (rather than
+// `export { TEST_USER_DATA_PATH }`) so this file transforms cleanly under the
+// jsdom/web pipeline used by renderer tests.
+export { TEST_USER_DATA_PATH } from "./helpers/electron-mocks";
