@@ -123,10 +123,11 @@ export class ShortcutManager extends EventEmitter {
    * This tells the native helper which key combinations to consume
    * (prevent default behavior like cursor movement for arrow keys).
    *
-   * The helper only needs the keys grouped by match rule, not by shortcut
-   * identity (see SetShortcutsParamsSchema): push-to-talk and draft are
-   * subset-matched (draft inherits PTT-class consumption for free); toggle,
-   * paste and new-note are exact-matched. Empty chords are dropped.
+   * The helper consumes a key only when a full chord is exactly held, and only
+   * on key-down (see SetShortcutsParamsSchema). Both groups are matched
+   * identically now; the split (push-to-talk/draft vs toggle/paste/new-note) is
+   * retained only as this grouping and may be collapsed later. Empty chords are
+   * dropped.
    */
   private async syncShortcutsToNative() {
     try {

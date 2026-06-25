@@ -66,8 +66,20 @@ private func handleKeyEvent(_ helper: SwiftHelper, type: CGEventType, event: CGE
         return true
     }
 
-    // Check if this key event matches a configured shortcut and should be consumed
-    return ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode))
+    // Design choice: this gate only ever consumes key-DOWN; it never swallows a
+    // key-UP. Letting every release reach the focused app guarantees a key can
+    // never be stranded in the "held" state. The risk this avoids: when a base
+    // key's key-down was NOT consumed (an out-of-order chord press leaks the down
+    // to the app), swallowing its key-up would leave the app believing the key is
+    // still held — a stuck, phantom key. The reverse is harmless — a consumed
+    // key-down whose key-up passes through just hands the app a lone release for a
+    // key it never saw pressed, which it ignores. (The draft-Enter mask above is
+    // the one deliberate exception that swallows a key-up; it stays balanced by
+    // swallowing the Enter down and up together.)
+    if type == .keyDown {
+        return ShortcutManager.shared.shouldConsumeKey(keyCode: Int(keyCode))
+    }
+    return false
 }
 
 private func handleFlagsChangedEvent(_ helper: SwiftHelper, event: CGEvent) {

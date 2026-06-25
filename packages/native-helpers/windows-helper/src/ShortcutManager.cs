@@ -30,9 +30,11 @@ namespace WindowsHelper
         };
 
         private readonly object _lock = new();
-        // Chords grouped by match rule (see SetShortcutsParamsSchema): subset chords
-        // (push-to-talk, draft) consume while building toward the chord; exact chords
-        // (toggle/paste/new-note) consume only when exactly held.
+        // Configured shortcut chords as grouped by the desktop (see
+        // SetShortcutsParamsSchema): _subsetChords = push-to-talk/draft,
+        // _exactChords = toggle/paste/new-note. Both groups are now consumed
+        // identically — only when the full chord is exactly held — so the split is
+        // vestigial (see the TODO in set-shortcuts.ts).
         private int[][] _subsetChords = Array.Empty<int[]>();
         private int[][] _exactChords = Array.Empty<int[]>();
         private HashSet<int> _shortcutKeysSet = new();
@@ -468,30 +470,20 @@ namespace WindowsHelper
                 }
 
                 // Build full set of active keys (modifiers + tracked regular keys + current key)
-                var activeModifiers = new HashSet<int>(_pressedModifierKeys);
-                var activeKeys = new HashSet<int>(activeModifiers);
+                var activeKeys = new HashSet<int>(_pressedModifierKeys);
                 activeKeys.UnionWith(_pressedRegularKeys);
                 activeKeys.Add(vkCode);
 
-                // Subset chords (PTT, draft): consume if building toward the chord.
-                // - At least one modifier from the chord must be held (signals intent)
-                // - All currently pressed keys must be part of the chord (activeKeys ⊆ chord)
-                var subsetMatch = _subsetChords.Any(chord =>
-                {
-                    var chordKeys = new HashSet<int>(chord);
-                    var chordModifiers = new HashSet<int>(chordKeys);
-                    chordModifiers.IntersectWith(KeycodeConstants.ModifierKeyCodeSet);
-                    return chordKeys.Count > 0
-                        && chordModifiers.Count > 0
-                        && chordModifiers.Overlaps(activeModifiers)
-                        && activeKeys.IsSubsetOf(chordKeys);
-                });
+                // Consume a key only when a configured chord is *exactly* held — i.e. the
+                // regular key being pressed is the final key completing the chord. A
+                // partially-held chord never consumes, so a chord like Shift+Ctrl+D does
+                // not swallow Shift+D or Ctrl+D and those stay typeable. Both chord
+                // classes match identically now; the subset/exact split survives only as
+                // the desktop's RPC grouping. (AMIC-19)
+                bool IsExactlyHeld(int[] chord) =>
+                    chord.Length > 0 && activeKeys.SetEquals(chord);
 
-                // Exact chords (toggle/paste/new-note): consume only when exactly held.
-                var exactMatch = _exactChords.Any(chord =>
-                    chord.Length > 0 && activeKeys.SetEquals(chord));
-
-                return subsetMatch || exactMatch;
+                return _subsetChords.Any(IsExactlyHeld) || _exactChords.Any(IsExactlyHeld);
             }
         }
     }

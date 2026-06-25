@@ -245,8 +245,19 @@ namespace WindowsHelper
                                 return (IntPtr)1;
                             }
 
-                            // Check if this key event should be consumed (prevent default behavior)
-                            if (ShortcutManager.Instance.ShouldConsumeKey(vkCode))
+                            // Design choice: this gate only ever consumes key-DOWN; it never
+                            // swallows a key-UP. Letting every release reach the focused app
+                            // guarantees a key can never be stranded in the "held" state. The risk
+                            // this avoids: when a base key's key-down was NOT consumed (an
+                            // out-of-order chord press leaks the down to the app), swallowing its
+                            // key-up would leave the app believing the key is still held — a stuck,
+                            // phantom key. The reverse is harmless — a consumed key-down whose key-up
+                            // passes through just hands the app a lone release for a key it never saw
+                            // pressed, which it ignores. (Deliberate exceptions that still swallow a
+                            // key-up: the draft-Enter mask above stays balanced by swallowing the
+                            // Enter down and up together; the Alt/Win release-mask swallows the real
+                            // release but injects a synthetic one so the modifier never sticks.)
+                            if (isKeyDown && ShortcutManager.Instance.ShouldConsumeKey(vkCode))
                             {
                                 // A configured shortcut matched: arm its held Alt/Win keys so
                                 // their release is masked (prevents menu bar / Start menu steal).
