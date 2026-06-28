@@ -78,7 +78,7 @@ export function CompletionScreen({
   return (
     <OnboardingLayout
       badge={
-        <div className="mb-3 grid size-[52px] place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-400 text-white shadow-lg shadow-indigo-500/40">
+        <div className="mb-3 grid size-[52px] place-items-center rounded-2xl bg-gradient-to-br from-brand to-brand/70 text-brand-foreground shadow-lg shadow-brand/40">
           <Sparkles size={26} />
         </div>
       }

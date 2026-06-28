@@ -46,6 +46,21 @@ body {
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
+  /* Brand + semantic tone accents. `brand` is the indigo accent used across
+     onboarding, nav, settings, and remote-config surfaces; info/warn/success
+     carry semantic surfaces (e.g. a service notice → warn). Used at full
+     strength for fills/text and via opacity for washes/borders; each pairs with
+     a `-foreground` token for text on the filled accent. */
+  --brand: oklch(0.585 0.203 277.117); /* Tailwind indigo-500 */
+  --brand-foreground: oklch(0.985 0 0);
+  /* Faint brand tint for atmospheric washes (e.g. the onboarding bg glow). */
+  --brand-glow: color-mix(in oklch, var(--brand) 12%, transparent);
+  --info: oklch(0.52 0.17 250);
+  --info-foreground: oklch(0.985 0 0);
+  --warn: oklch(0.58 0.14 60);
+  --warn-foreground: oklch(0.985 0 0);
+  --success: oklch(0.55 0.13 162);
+  --success-foreground: oklch(0.985 0 0);
   --sidebar: #f4f5f6;
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -102,6 +117,11 @@ body {
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+  /* Brighter in dark so the fills read on #181818 and tone text stays legible.
+     `brand` stays Tailwind indigo-500 in both themes (matches the rest of the app). */
+  --info: oklch(0.64 0.15 250);
+  --warn: oklch(0.66 0.14 64);
+  --success: oklch(0.66 0.13 162);
   --sidebar: #222526;
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -190,6 +210,15 @@ html.vibrancy [data-slot="sidebar-inner"] {
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-glow: var(--brand-glow);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

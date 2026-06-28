@@ -42,9 +42,7 @@ function CoachBubble({
     <div
       className={cn(
         "absolute bottom-[76px] left-1/2 z-10 -translate-x-1/2 select-none rounded-2xl px-4 py-3 shadow-xl transition-colors duration-150",
-        recording
-          ? "bg-indigo-500 shadow-indigo-500/40"
-          : "bg-zinc-900 shadow-black/30",
+        recording ? "bg-brand shadow-brand/40" : "bg-zinc-900 shadow-black/30",
       )}
     >
       <KeycapSentence
@@ -150,7 +148,7 @@ export function DictationTestScreen({
       }
     >
       <div className="relative flex self-stretch">
-        <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-3xl border border-border bg-white text-zinc-900 shadow-2xl shadow-indigo-500/20">
+        <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-3xl border border-border bg-white text-zinc-900 shadow-2xl shadow-brand/20">
           <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-3 py-[9px] text-center text-xs font-semibold text-zinc-500">
             {t(`${ns}.mockHeader`)}
           </div>
@@ -174,7 +172,7 @@ export function DictationTestScreen({
               ref={areaRef}
               autoFocus
               spellCheck={false}
-              className="w-full flex-1 resize-none border-0 bg-transparent py-4 text-[15.5px] leading-[1.65] text-zinc-900 caret-indigo-500 outline-none placeholder:text-zinc-400"
+              className="w-full flex-1 resize-none border-0 bg-transparent py-4 text-[15.5px] leading-[1.65] text-zinc-900 caret-brand outline-none placeholder:text-zinc-400"
               placeholder={t(`${ns}.ghost`)}
               value={text}
               onChange={(e) => setText(e.target.value)}

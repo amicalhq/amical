@@ -32,7 +32,7 @@ export function PhaseProgress({
               key={phase}
             >
               <div
-                className="block h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-[width] duration-[550ms] ease-out"
+                className="block h-full rounded-full bg-gradient-to-r from-brand to-brand/70 transition-[width] duration-[550ms] ease-out"
                 style={{ width: `${width}%` }}
               />
             </div>

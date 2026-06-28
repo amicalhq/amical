@@ -43,7 +43,7 @@ export function SpokenLanguageScreen({
   };
 
   const langChip =
-    "inline-flex items-center gap-1.5 rounded-full border border-indigo-500/35 bg-indigo-500/10 px-[13px] py-1.5 text-[13px] font-medium text-indigo-700 dark:border-indigo-500/45 dark:bg-indigo-500/15 dark:text-white";
+    "inline-flex items-center gap-1.5 rounded-full border border-brand/35 bg-brand/10 px-[13px] py-1.5 text-[13px] font-medium text-brand dark:border-brand/45 dark:bg-brand/15 dark:text-brand-foreground";
 
   return (
     <SplitScreen

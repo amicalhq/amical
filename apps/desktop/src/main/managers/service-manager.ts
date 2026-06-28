@@ -14,6 +14,7 @@ import { TelemetryService } from "../../services/telemetry-service";
 import { AuthService } from "../../services/auth-service";
 import { OnboardingService } from "../../services/onboarding-service";
 import { FeatureFlagService } from "../../services/feature-flag-service";
+import { RemoteConfigService } from "../../services/remote-config-service";
 import { HistoryCleanupService } from "../../services/history-cleanup-service";
 
 /**
@@ -23,6 +24,7 @@ export interface ServiceMap {
   posthogClient: PostHogClient;
   telemetryService: TelemetryService;
   featureFlagService: FeatureFlagService;
+  remoteConfigService: RemoteConfigService;
   modelService: ModelService;
   transcriptionService: TranscriptionService;
   settingsService: SettingsService;
@@ -46,6 +48,7 @@ export class ServiceManager {
   private posthogClient: PostHogClient | null = null;
   private telemetryService: TelemetryService | null = null;
   private featureFlagService: FeatureFlagService | null = null;
+  private remoteConfigService: RemoteConfigService | null = null;
   private modelService: ModelService | null = null;
   private transcriptionService: TranscriptionService | null = null;
   private settingsService: SettingsService | null = null;
@@ -74,6 +77,7 @@ export class ServiceManager {
     await this.initializePostHogClient();
     await this.initializeTelemetryService();
     await this.initializeFeatureFlagService();
+    await this.initializeRemoteConfigService();
     await this.initializeModelServices();
     await this.initializeOnboardingService();
     this.initializePlatformServices();
@@ -109,6 +113,16 @@ export class ServiceManager {
     );
     await this.featureFlagService.initialize();
     logger.main.info("Feature flag service initialized");
+  }
+
+  private async initializeRemoteConfigService(): Promise<void> {
+    this.remoteConfigService = new RemoteConfigService(
+      this.authService!,
+      this.settingsService!,
+      this.telemetryService!,
+    );
+    await this.remoteConfigService.initialize();
+    logger.main.info("Remote config service initialized");
   }
 
   private initializeSettingsService(): void {
@@ -265,6 +279,7 @@ export class ServiceManager {
       posthogClient: this.posthogClient!,
       telemetryService: this.telemetryService!,
       featureFlagService: this.featureFlagService!,
+      remoteConfigService: this.remoteConfigService!,
       modelService: this.modelService!,
       transcriptionService: this.transcriptionService!,
       settingsService: this.settingsService!,
@@ -318,6 +333,11 @@ export class ServiceManager {
     if (this.featureFlagService) {
       logger.main.info("Shutting down feature flag service...");
       await this.featureFlagService.shutdown();
+    }
+
+    if (this.remoteConfigService) {
+      logger.main.info("Shutting down remote config service...");
+      await this.remoteConfigService.shutdown();
     }
 
     // PostHogClient shuts down last so all events are flushed after services stop capturing

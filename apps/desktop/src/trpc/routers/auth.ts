@@ -20,6 +20,16 @@ export const authRouter = createRouter({
     };
   }),
 
+  // Dev-only: surface the current ID token for manual API testing. Gated so the
+  // raw token is never exposed via tRPC in a production build.
+  getIdToken: procedure.mutation(async ({ ctx }) => {
+    if (process.env.NODE_ENV !== "development") {
+      throw new Error("Only available in development");
+    }
+    const authService = ctx.serviceManager.getService("authService");
+    return { token: await authService.getIdToken() };
+  }),
+
   // Initiate login flow
   login: procedure.mutation(async ({ ctx }) => {
     const authService = ctx.serviceManager.getService("authService");

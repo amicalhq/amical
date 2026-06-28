@@ -104,7 +104,7 @@ export function DownloadScreen({ onNext, onBack }: DownloadScreenProps) {
     >
       <div className="w-full max-w-[480px] animate-ob-rise rounded-2xl border border-border bg-card p-[22px]">
         <div className="mb-[17px] flex items-center gap-[13px]">
-          <Tile className="size-11 bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/15">
+          <Tile className="size-11 bg-brand/10 text-brand dark:bg-brand/15">
             <Cpu size={22} />
           </Tile>
           <div>
@@ -127,7 +127,7 @@ export function DownloadScreen({ onNext, onBack }: DownloadScreenProps) {
           <>
             <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div
-                className="block h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-[width] duration-300 ease-linear"
+                className="block h-full rounded-full bg-gradient-to-r from-brand to-brand/70 transition-[width] duration-300 ease-linear"
                 style={{ width: `${ready ? 100 : pct}%` }}
               />
             </div>

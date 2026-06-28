@@ -47,7 +47,7 @@ const DismissButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
 // mr-2 adds gap between the glyph and the waveform/dots that follow it.
 const DraftPen: React.FC = () => (
   <Pencil
-    className="w-[13px] h-[13px] text-indigo-400 shrink-0 mr-2"
+    className="w-[13px] h-[13px] text-brand shrink-0 mr-2"
     strokeWidth={2}
   />
 );

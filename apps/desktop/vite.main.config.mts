@@ -19,6 +19,7 @@ export default defineConfig({
       process.env.AUTH_TOKEN_ENDPOINT || "",
     ),
     __BUNDLED_API_ENDPOINT: JSON.stringify(process.env.API_ENDPOINT || ""),
+    __BUNDLED_CORE_API_URL: JSON.stringify(process.env.CORE_API_URL || ""),
     __BUNDLED_FEEDBACK_SURVEY_ID: JSON.stringify(
       process.env.FEEDBACK_SURVEY_ID || "",
     ),

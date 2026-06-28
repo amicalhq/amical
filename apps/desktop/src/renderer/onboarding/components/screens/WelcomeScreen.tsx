@@ -136,7 +136,7 @@ export function WelcomeScreen({
                   <Icon
                     size={15}
                     className={cn(
-                      isSelected ? "text-indigo-500" : "text-muted-foreground",
+                      isSelected ? "text-brand" : "text-muted-foreground",
                     )}
                   />
                 )}

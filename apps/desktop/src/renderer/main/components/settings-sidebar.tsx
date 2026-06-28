@@ -34,6 +34,7 @@ import {
 import { CommandSearchButton } from "./command-search-button";
 import { CreateNoteButton } from "./create-note-button";
 import { NavCloud } from "./nav-cloud";
+import { RemoteConfigSidebarSlot } from "./remote-config-surfaces";
 import { SettingsNavigationControls } from "./settings-navigation-controls";
 import { APP_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
@@ -112,7 +113,7 @@ export function SettingsSidebar({
       <SidebarMenuItem>
         <SidebarMenuButton
           asChild
-          className="bg-indigo-500 text-white hover:bg-indigo-600 hover:text-white active:bg-indigo-600 active:text-white data-[active=true]:bg-indigo-600 data-[active=true]:text-white"
+          className="bg-brand text-brand-foreground hover:bg-brand/90 hover:text-brand-foreground active:bg-brand/90 active:text-brand-foreground data-[active=true]:bg-brand/90 data-[active=true]:text-brand-foreground"
         >
           <Link
             to="/settings/about"
@@ -201,6 +202,7 @@ export function SettingsSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter className="p-0">
+        <RemoteConfigSidebarSlot />
         <NavSecondary
           items={navSecondary}
           prefix={<NavCloud />}

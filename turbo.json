@@ -34,7 +34,8 @@
         "AUTH_TOKEN_ENDPOINT",
         "AUTH_REDIRECT_URI",
         "FEEDBACK_SURVEY_ID",
-        "API_ENDPOINT"
+        "API_ENDPOINT",
+        "CORE_API_URL"
       ]
     },
     "build:native": {

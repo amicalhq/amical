@@ -5,6 +5,7 @@ import {
   NavSecondaryItemButton,
   type NavSecondaryItem,
 } from "@/components/nav-secondary-item-button";
+import { DevMenu } from "@/components/dev-menu";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -13,8 +14,6 @@ import {
 } from "@/components/ui/sidebar";
 import { AuthButton } from "@/components/auth-button";
 import { FeedbackButton } from "@/components/feedback-button";
-import { DevThemeToggle } from "@/components/dev-theme-toggle";
-import { DevFeatureFlagsRefresh } from "@/components/dev-feature-flags-refresh";
 import { isInternalUrl } from "@/utils/url";
 export type { NavSecondaryItem } from "@/components/nav-secondary-item-button";
 
@@ -52,12 +51,7 @@ export function NavSecondary({
               </SidebarMenuItem>
             );
           })}
-          {process.env.NODE_ENV === "development" && (
-            <>
-              <DevThemeToggle />
-              <DevFeatureFlagsRefresh />
-            </>
-          )}
+          {process.env.NODE_ENV === "development" && <DevMenu />}
           <FeedbackButton />
           {beforeAuth}
           <AuthButton />

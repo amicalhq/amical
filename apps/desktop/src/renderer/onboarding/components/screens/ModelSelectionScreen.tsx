@@ -28,7 +28,7 @@ const cardClass = (selected: boolean, locked = false) =>
     locked
       ? "cursor-not-allowed border-border bg-card opacity-55"
       : selected
-        ? "cursor-pointer border-indigo-500/35 bg-indigo-500/10 dark:border-indigo-500/45 dark:bg-indigo-500/15"
+        ? "cursor-pointer border-brand/35 bg-brand/10 dark:border-brand/45 dark:bg-brand/15"
         : "cursor-pointer border-border bg-card hover:border-neutral-300 hover:bg-secondary/60 dark:hover:border-neutral-600",
   );
 
@@ -134,7 +134,7 @@ export function ModelSelectionScreen({
           className={cardClass(selectedModel === ModelType.Cloud)}
           onClick={() => handleSelect(ModelType.Cloud)}
         >
-          <span className="absolute right-[18px] top-[18px] rounded-full bg-indigo-500/10 px-[9px] py-[5px] text-[10px] font-bold uppercase tracking-wider text-indigo-500 dark:bg-indigo-500/15">
+          <span className="absolute right-[18px] top-[18px] rounded-full bg-brand/10 px-[9px] py-[5px] text-[10px] font-bold uppercase tracking-wider text-brand dark:bg-brand/15">
             {t("onboarding.modelSelection.recommended")}
           </span>
           <div className="mb-3.5 flex items-center gap-3">
@@ -142,7 +142,7 @@ export function ModelSelectionScreen({
               className={cn(
                 "size-[42px]",
                 selectedModel === ModelType.Cloud &&
-                  "bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/15",
+                  "bg-brand/10 text-brand dark:bg-brand/15",
               )}
             >
               <Cloud size={20} />
@@ -181,7 +181,7 @@ export function ModelSelectionScreen({
                 "size-[42px]",
                 localSupported &&
                   selectedModel === ModelType.Local &&
-                  "bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/15",
+                  "bg-brand/10 text-brand dark:bg-brand/15",
               )}
             >
               <Cpu size={20} />

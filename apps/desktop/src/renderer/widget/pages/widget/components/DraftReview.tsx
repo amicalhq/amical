@@ -116,7 +116,7 @@ export function DraftReview({
       {isRedictating ? (
         <div className="mt-1 flex shrink-0 items-center gap-2 border-t border-white/[0.08] px-4 pb-3 pt-2.5 text-white/70">
           <PenLine
-            className="h-3.5 w-3.5 shrink-0 text-indigo-400"
+            className="h-3.5 w-3.5 shrink-0 text-brand"
             strokeWidth={2}
           />
           <span className="text-[12px] font-medium">

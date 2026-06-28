@@ -7,6 +7,7 @@ import {
   SettingsHeaderProvider,
   useSettingsHeaderActions,
 } from "../../components/settings-header-actions-context";
+import { RemoteConfigSurfaces } from "../../components/remote-config-surfaces";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -99,7 +100,9 @@ function AppLayoutContent() {
                     ref={sentinelRef}
                     className="absolute top-0 h-[60px] w-px"
                   />
-                  <Outlet />
+                  <RemoteConfigSurfaces>
+                    <Outlet />
+                  </RemoteConfigSurfaces>
                 </div>
               </div>
             </div>

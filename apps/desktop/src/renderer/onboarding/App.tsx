@@ -446,7 +446,7 @@ export function App() {
 
   return (
     <OnboardingErrorBoundary>
-      <div className="flex h-screen flex-col overflow-hidden bg-background text-sm text-foreground antialiased [background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-indigo-50)_0%,transparent_60%)] dark:[background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-neutral-800)_0%,transparent_60%)]">
+      <div className="flex h-screen flex-col overflow-hidden bg-background text-sm text-foreground antialiased [background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-brand-glow)_0%,transparent_60%)]">
         {/* native titlebar drag region (traffic lights drawn by titleBarOverlay) */}
         <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
         <PhaseProgress

@@ -14,7 +14,7 @@ export const obButtonVariants = cva(
     variants: {
       variant: {
         primary:
-          "bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 enabled:hover:-translate-y-px enabled:hover:bg-indigo-600 enabled:hover:shadow-indigo-500/40",
+          "bg-brand text-brand-foreground shadow-lg shadow-brand/30 enabled:hover:-translate-y-px enabled:hover:bg-brand/90 enabled:hover:shadow-brand/40",
         soft: "border border-border bg-secondary text-foreground enabled:hover:border-neutral-300 enabled:hover:bg-muted dark:enabled:hover:border-neutral-600",
         ghost:
           "px-3 text-muted-foreground enabled:hover:bg-secondary enabled:hover:text-foreground",
@@ -71,7 +71,7 @@ export function SelectChip({
       className={cn(
         "inline-flex cursor-pointer items-center gap-[7px] rounded-full border px-4 py-2.5 text-sm font-medium transition-colors duration-150",
         selected
-          ? "border-indigo-500/35 bg-indigo-500/10 text-indigo-700 dark:border-indigo-500/45 dark:bg-indigo-500/15 dark:text-white"
+          ? "border-brand/35 bg-brand/10 text-brand dark:border-brand/45 dark:bg-brand/15 dark:text-brand-foreground"
           : "border-border bg-card text-foreground hover:border-neutral-300 dark:hover:border-neutral-600",
         className,
       )}
@@ -147,7 +147,7 @@ export function ScreenHeader({
 }) {
   return (
     <div>
-      <span className="mb-[13px] flex w-fit items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-indigo-500 before:h-[1.5px] before:w-[18px] before:rounded-full before:bg-indigo-500/45 before:content-['']">
+      <span className="mb-[13px] flex w-fit items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-brand before:h-[1.5px] before:w-[18px] before:rounded-full before:bg-brand/45 before:content-['']">
         {eyebrow}
       </span>
       <h1 className="text-[34px] font-bold leading-[1.08] tracking-[-0.01em]">

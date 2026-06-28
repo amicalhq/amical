@@ -56,13 +56,13 @@ export function KeyCap({
       className={cn(
         "relative flex size-[78px] select-none flex-col items-start justify-between rounded-2xl border border-b-4 border-border bg-secondary px-3.5 py-3 text-foreground shadow-[0_8px_20px_-12px_rgba(0,0,0,0.4)] transition-all duration-150",
         active &&
-          "translate-y-0.5 scale-105 border-indigo-400 bg-indigo-500 text-white ring-4 ring-indigo-500/25",
+          "translate-y-0.5 scale-105 border-brand/70 bg-brand text-brand-foreground ring-4 ring-brand/25",
       )}
     >
       <span
         className={cn(
           "self-end [&_svg]:size-[15px]",
-          active ? "text-white/85" : "text-muted-foreground",
+          active ? "text-brand-foreground/85" : "text-muted-foreground",
         )}
       >
         {isFn && <Globe size={15} />}

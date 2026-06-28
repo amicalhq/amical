@@ -516,4 +516,20 @@ export class SettingsService extends EventEmitter {
   ): Promise<void> {
     await updateSettingsSection("featureFlags", featureFlags);
   }
+
+  /**
+   * Get the persisted remote-config cache
+   */
+  async getRemoteConfig(): Promise<AppSettingsData["remoteConfig"]> {
+    return await getSettingsSection("remoteConfig");
+  }
+
+  /**
+   * Update the persisted remote-config cache
+   */
+  async setRemoteConfig(
+    remoteConfig: AppSettingsData["remoteConfig"],
+  ): Promise<void> {
+    await updateSettingsSection("remoteConfig", remoteConfig);
+  }
 }

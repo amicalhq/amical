@@ -27,6 +27,10 @@ export default defineConfig(async () => {
       //! 504 outdated optimize deps
       //! likely due to configs changing upon route tree regen of tanstack router
       force: true,
+      // The remote-config surfaces use eager `import { icons }` from lucide,
+      // which pulls in the full icon set — pre-bundle it up front so vite
+      // doesn't re-optimize (and 504) when it's first hit mid-session.
+      include: ["lucide-react"],
       exclude: ["better-sqlite3"],
     },
   };

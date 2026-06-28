@@ -11,6 +11,7 @@ import { notesRouter } from "./routers/notes";
 import { authRouter } from "./routers/auth";
 import { onboardingRouter } from "./routers/onboarding";
 import { featureFlagsRouter } from "./routers/feature-flags";
+import { remoteConfigRouter } from "./routers/remote-config";
 import { telemetryRouter } from "./routers/telemetry";
 import { skillsRouter } from "./routers/skills";
 import { createRouter, procedure } from "./trpc";
@@ -75,6 +76,9 @@ export const router = createRouter({
 
   // Feature flags router
   featureFlags: featureFlagsRouter,
+
+  // Remote config (server-controlled surfaces)
+  remoteConfig: remoteConfigRouter,
 
   // Telemetry router
   telemetry: telemetryRouter,

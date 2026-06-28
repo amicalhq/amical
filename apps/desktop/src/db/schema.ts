@@ -10,6 +10,7 @@ import {
   blob,
   check,
 } from "drizzle-orm/sqlite-core";
+import type { RemoteConfig } from "@/types/remote-config";
 import type { HistoryRetentionPeriod } from "../constants/history-retention";
 
 // Transcriptions table
@@ -246,6 +247,12 @@ export interface AppSettingsData {
   featureFlags?: {
     flags?: Record<string, string | boolean>;
     payloads?: Record<string, unknown>;
+    lastFetchedAt?: string; // ISO 8601
+  };
+  // Last remote-config envelope fetched from amical-core, persisted for instant
+  // + offline render. Re-validated against RemoteConfigSchema on read.
+  remoteConfig?: {
+    config?: RemoteConfig;
     lastFetchedAt?: string; // ISO 8601
   };
   dataMigrations?: {

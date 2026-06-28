@@ -23,7 +23,7 @@ export function MicLevelBar({ level }: { level: number }) {
             key={i}
             className={cn(
               "w-[7px] rounded-full transition-colors duration-75",
-              lit ? "bg-indigo-500" : "bg-muted-foreground/20",
+              lit ? "bg-brand" : "bg-muted-foreground/20",
             )}
             style={{ height: `${height}%` }}
           />

@@ -41,7 +41,7 @@ export function SplitScreen({
           <div className="flex flex-col">
             <ScreenHeader eyebrow={eyebrow} title={title} subtitle={subtitle} />
             {hint && (
-              <div className="mt-6 flex items-start gap-[9px] text-[13px] leading-snug text-muted-foreground [&_svg]:mt-px [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:text-indigo-500">
+              <div className="mt-6 flex items-start gap-[9px] text-[13px] leading-snug text-muted-foreground [&_svg]:mt-px [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:text-brand">
                 {hint}
               </div>
             )}

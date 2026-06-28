@@ -212,6 +212,7 @@ export class AuthService extends EventEmitter {
           authState.userInfo.name,
         );
         this.refreshFeatureFlagsAfterIdentityChange();
+        this.resetRemoteConfigAfterIdentityChange();
       }
 
       // Clear pending auth
@@ -295,6 +296,10 @@ export class AuthService extends EventEmitter {
     } catch {
       // Logout can happen during startup token validation before services are ready.
     }
+    // Remote config is functional config, independent of telemetry/identity, so
+    // refresh on every logout: it re-fetches anonymously and the server drops any
+    // per-user surfaces. Has its own readiness guard.
+    this.resetRemoteConfigAfterIdentityChange();
     this.emit("logged-out");
     logger.main.info("User logged out");
   }
@@ -325,6 +330,21 @@ export class AuthService extends EventEmitter {
       });
     } catch {
       // Auth can change before feature flag services are ready.
+    }
+  }
+
+  private resetRemoteConfigAfterIdentityChange(): void {
+    try {
+      const remoteConfigService = ServiceManager.getInstance().getService(
+        "remoteConfigService",
+      );
+      remoteConfigService.resetForIdentityChange().catch((error) => {
+        logger.main.warn("Remote config reset after auth change failed", {
+          error,
+        });
+      });
+    } catch {
+      // Auth can change before the remote config service is ready.
     }
   }
 

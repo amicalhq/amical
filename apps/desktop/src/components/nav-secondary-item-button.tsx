@@ -40,13 +40,13 @@ const CTA_STYLE_CLASS_MAP: Record<
 > = {
   purple: {
     solidButtonClassName:
-      "bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 hover:text-white",
+      "bg-gradient-to-r from-brand via-purple-500 to-pink-500 text-white hover:from-brand hover:via-purple-600 hover:to-pink-600 hover:text-white",
     textLabelClassName:
-      "bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent",
+      "bg-gradient-to-r from-brand via-purple-500 to-pink-500 bg-clip-text text-transparent",
     shimmerLabelClassName:
-      "animate-shimmer bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 from-30% via-50% to-70% bg-clip-text text-transparent",
+      "animate-shimmer bg-gradient-to-r from-brand via-purple-500 to-pink-500 from-30% via-50% to-70% bg-clip-text text-transparent",
     borderWrapperClassName:
-      "relative w-full rounded-md p-[1.5px] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500",
+      "relative w-full rounded-md p-[1.5px] bg-gradient-to-r from-brand via-purple-500 to-pink-500",
   },
   green: {
     solidButtonClassName:

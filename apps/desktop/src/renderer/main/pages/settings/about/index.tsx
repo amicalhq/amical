@@ -152,8 +152,7 @@ export default function AboutSettingsPage() {
           tabIndex={-1}
           className={cn(
             "outline-none transition-[border-color,box-shadow] duration-300",
-            isUpdateCardHighlighted &&
-            "border-indigo-500 ring-2 ring-indigo-500/50",
+            isUpdateCardHighlighted && "border-brand ring-2 ring-brand/50",
           )}
         >
           <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

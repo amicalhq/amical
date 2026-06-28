@@ -59,3 +59,13 @@ export function getUserAgent(): string {
   const platform = getPlatformDisplayName();
   return `amical-desktop/${version} (${platform})`;
 }
+
+/**
+ * Resolve a path against the amical-core base URL (e.g. /remote-config, /me/*).
+ * Read from CORE_API_URL rather than derived from the auth token endpoint, so
+ * callers don't depend on AuthService for the origin. (AuthService still derives
+ * its own /api/auth/* endpoints from the token endpoint.)
+ */
+export function getCoreApiUrl(path: string): URL {
+  return new URL(path, process.env.CORE_API_URL || __BUNDLED_CORE_API_URL);
+}
