@@ -105,4 +105,5 @@ jobs:
           AUTH_TOKEN_ENDPOINT: ""
           API_ENDPOINT: ""
           AUTH_REDIRECT_URI: ""
+          CORE_API_URL: ""
         run: pnpm package

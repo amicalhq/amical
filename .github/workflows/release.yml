@@ -145,6 +145,7 @@ jobs:
           AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
+          CORE_API_URL: ${{ secrets.CORE_API_URL }}
         run: |
           echo "Building macOS ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}
@@ -183,6 +184,7 @@ jobs:
           AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
+          CORE_API_URL: ${{ secrets.CORE_API_URL }}
         run: |
           echo "Packaging unsigned Windows x64 app"
           pnpm package:windows
