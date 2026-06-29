@@ -129,6 +129,7 @@ jobs:
         if: matrix.os == 'macos' && github.event_name != 'pull_request'
         working-directory: apps/desktop
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           SKIP_CODESIGNING: false
           SKIP_NOTARIZATION: false
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -152,6 +153,7 @@ jobs:
         if: matrix.os == 'macos' && github.event_name == 'pull_request'
         working-directory: apps/desktop
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           SKIP_CODESIGNING: "true"
           SKIP_NOTARIZATION: "true"
           TELEMETRY_ENABLED: "false"
@@ -171,6 +173,7 @@ jobs:
         if: matrix.os == 'windows' && github.event_name != 'pull_request'
         working-directory: apps/desktop
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
@@ -270,6 +273,7 @@ jobs:
         if: matrix.os == 'windows' && github.event_name == 'pull_request'
         working-directory: apps/desktop
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           TELEMETRY_ENABLED: "false"
           POSTHOG_HOST: https://app.posthog.com
           POSTHOG_API_KEY: ""
@@ -293,8 +297,19 @@ jobs:
         if: matrix.os == 'macos'
         shell: bash
         run: |
-          cd apps/desktop/out/make
-          for dmg in *.dmg; do
+          make_dir="apps/desktop/out/make"
+          if [ ! -d "$make_dir" ]; then
+            echo "::error::Build produced no artifacts: $make_dir is missing. The macOS build step likely failed upstream (e.g. an out-of-memory crash during 'electron-forge make')."
+            exit 1
+          fi
+          cd "$make_dir"
+          shopt -s nullglob
+          dmgs=(*.dmg)
+          if [ ${#dmgs[@]} -eq 0 ]; then
+            echo "::error::No .dmg found in $make_dir. The macOS build did not produce a disk image."
+            exit 1
+          fi
+          for dmg in "${dmgs[@]}"; do
             mv "$dmg" "Amical-macos-${{ matrix.arch }}.dmg"
             echo "Renamed $dmg → Amical-macos-${{ matrix.arch }}.dmg"
           done
@@ -303,8 +318,19 @@ jobs:
         if: matrix.os == 'windows'
         shell: bash
         run: |
-          cd apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}
-          for exe in *.exe; do
+          make_dir="apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}"
+          if [ ! -d "$make_dir" ]; then
+            echo "::error::Build produced no artifacts: $make_dir is missing. The Windows build/installer step likely failed upstream."
+            exit 1
+          fi
+          cd "$make_dir"
+          shopt -s nullglob
+          exes=(*.exe)
+          if [ ${#exes[@]} -eq 0 ]; then
+            echo "::error::No .exe found in $make_dir. The Windows build did not produce an installer."
+            exit 1
+          fi
+          for exe in "${exes[@]}"; do
             mv "$exe" "Amical-windows-${{ matrix.arch }}.exe"
             echo "Renamed $exe → Amical-windows-${{ matrix.arch }}.exe"
           done
