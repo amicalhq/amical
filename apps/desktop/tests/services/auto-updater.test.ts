@@ -48,6 +48,7 @@ describe("AutoUpdaterService", () => {
     (app as unknown as { isPackaged: boolean }).isPackaged = true;
     autoUpdater.removeAllListeners();
     vi.clearAllMocks();
+    vi.mocked(app.getVersion).mockReturnValue("0.1.0-test");
 
     emitUpdateChannelChanged = null;
     telemetry = {
@@ -129,7 +130,7 @@ describe("AutoUpdaterService", () => {
       expect(telemetry.captureException).toHaveBeenCalledOnce();
     });
 
-    it("invalidates a staged update after a generic updater error", async () => {
+    it("preserves a staged update after a generic updater error", async () => {
       vi.mocked(net.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ action: "prompt", version: "1.8.0" }),
@@ -145,14 +146,17 @@ describe("AutoUpdaterService", () => {
 
       autoUpdater.emit("error", new Error("Remote release File is corrupted"));
 
-      expect(service.getUpdateState()).toBe("error");
-      expect(service.isDownloaded()).toBe(false);
-      expect(service.getUpdatePrompt()).toBeNull();
+      expect(service.getUpdateState()).toBe("downloaded");
+      expect(service.isDownloaded()).toBe(true);
+      expect(service.getUpdatePrompt()).toMatchObject({
+        action: "prompt",
+        version: "1.8.0",
+      });
 
       service.quitAndInstall();
-      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
       expect(vi.mocked(autoUpdater.setFeedURL)).toHaveBeenLastCalledWith({
-        url: expect.stringContaining("/0.1.0-test"),
+        url: expect.stringContaining("/1.8.0"),
       });
     });
 
@@ -406,7 +410,67 @@ describe("AutoUpdaterService", () => {
       expect(service.getUpdateState()).toBe("downloaded");
     });
 
-    it("invalidates a staged update when the native check throws", async () => {
+    it("treats Windows no-update as downloaded when metadata offers an update", async () => {
+      const original = process.platform;
+      Object.defineProperty(process, "platform", {
+        value: "win32",
+        configurable: true,
+      });
+      vi.mocked(app.getVersion).mockReturnValue("1.8.9");
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "force", version: "1.9.0" }),
+      } as any);
+
+      try {
+        await service.checkForUpdates(true);
+        autoUpdater.emit("update-not-available");
+
+        expect(service.getUpdateState()).toBe("downloaded");
+        expect(service.isDownloaded()).toBe(true);
+        expect(service.getUpdatePrompt()).toMatchObject({
+          action: "force",
+          version: "1.9.0",
+        });
+        expect(vi.mocked(autoUpdater.setFeedURL)).toHaveBeenLastCalledWith({
+          url: expect.stringContaining("/1.9.0"),
+        });
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: original,
+          configurable: true,
+        });
+      }
+    });
+
+    it("does not infer a downloaded update from metadata on non-Windows platforms", async () => {
+      const original = process.platform;
+      Object.defineProperty(process, "platform", {
+        value: "darwin",
+        configurable: true,
+      });
+      vi.mocked(app.getVersion).mockReturnValue("1.8.9");
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "force", version: "1.9.0" }),
+      } as any);
+
+      try {
+        await service.checkForUpdates(true);
+        autoUpdater.emit("update-not-available");
+
+        expect(service.getUpdateState()).toBe("not-available");
+        expect(service.isDownloaded()).toBe(false);
+        expect(service.getUpdatePrompt()).toBeNull();
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: original,
+          configurable: true,
+        });
+      }
+    });
+
+    it("preserves a staged update when the native check throws", async () => {
       autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
       vi.mocked(net.fetch).mockResolvedValue({
         ok: true,
@@ -418,10 +482,10 @@ describe("AutoUpdaterService", () => {
 
       await service.checkForUpdates();
 
-      expect(service.getUpdateState()).toBe("error");
-      expect(service.isDownloaded()).toBe(false);
+      expect(service.getUpdateState()).toBe("downloaded");
+      expect(service.isDownloaded()).toBe(true);
       expect(vi.mocked(autoUpdater.setFeedURL)).toHaveBeenLastCalledWith({
-        url: expect.stringContaining("/0.1.0-test"),
+        url: expect.stringContaining("/1.8.0"),
       });
     });
   });

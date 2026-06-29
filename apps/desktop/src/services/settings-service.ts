@@ -1,3 +1,6 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { app } from "electron";
 import { EventEmitter } from "events";
 import { FormatterConfig } from "../types/formatter";
@@ -13,6 +16,72 @@ import {
   normalizeOpenAICompatibleBaseURL,
 } from "../utils/provider-utils";
 import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention";
+import { isWindows } from "../utils/platform";
+import { logger } from "../main/logger";
+
+function getSquirrelUpdateExePath(): string {
+  return path.resolve(path.dirname(process.execPath), "..", "Update.exe");
+}
+
+function runSquirrelShortcutCommand(
+  updateExe: string,
+  args: string[],
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(updateExe, args, {
+      detached: false,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`Squirrel shortcut command exited with code ${code}`));
+    });
+  });
+}
+
+function syncWindowsSquirrelAutoLaunch(openAtLogin: boolean): void {
+  const updateExe = getSquirrelUpdateExePath();
+
+  if (!existsSync(updateExe)) {
+    logger.main.warn(
+      "Squirrel Update.exe not found; falling back to Electron login item settings",
+      { updateExe },
+    );
+    app.setLoginItemSettings({ openAtLogin, openAsHidden: false });
+    return;
+  }
+
+  // Squirrel shortcuts should point at Update.exe, not the versioned app-*/exe.
+  // Clear Electron's direct login item first so Windows does not keep launching
+  // an old app directory after a staged update.
+  app.setLoginItemSettings({ openAtLogin: false, openAsHidden: false });
+
+  const target = path.basename(process.execPath);
+  const args = [
+    `${openAtLogin ? "--createShortcut" : "--removeShortcut"}=${target}`,
+    "--shortcut-locations=Startup",
+  ];
+
+  void runSquirrelShortcutCommand(updateExe, args)
+    .then(() => {
+      logger.main.info("Windows Squirrel startup shortcut synced", {
+        openAtLogin,
+      });
+    })
+    .catch((error) => {
+      logger.main.error("Failed to sync Windows Squirrel startup shortcut", {
+        error,
+        openAtLogin,
+        updateExe,
+      });
+    });
+}
 
 /**
  * Database-backed settings service with typed configuration
@@ -438,12 +507,21 @@ export class SettingsService extends EventEmitter {
    */
   syncAutoLaunch(): void {
     // Get the current preference asynchronously and apply it
-    this.getPreferences().then((preferences) => {
-      app.setLoginItemSettings({
-        openAtLogin: preferences.launchAtLogin,
-        openAsHidden: false,
+    this.getPreferences()
+      .then((preferences) => {
+        if (isWindows() && app.isPackaged) {
+          syncWindowsSquirrelAutoLaunch(preferences.launchAtLogin);
+          return;
+        }
+
+        app.setLoginItemSettings({
+          openAtLogin: preferences.launchAtLogin,
+          openAsHidden: false,
+        });
+      })
+      .catch((error) => {
+        logger.main.error("Failed to sync auto-launch setting", { error });
       });
-    });
   }
 
   /**

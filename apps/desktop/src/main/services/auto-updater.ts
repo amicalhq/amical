@@ -251,17 +251,70 @@ export class AutoUpdaterService extends EventEmitter {
     return true;
   }
 
+  // Shared enter/exit-staged transition: pin the feed URL to `version`,
+  // reschedule background checks for the new staged state, and notify the UI.
+  private applyStagedVersion(staged: boolean, version: string): void {
+    this.staged = staged;
+    this.effectiveVersion = version;
+    this.setFeedURL(this.currentChannel);
+    this.scheduleAutomaticChecks();
+    this.emit("update-prompt-changed");
+  }
+
   private clearDownloadedUpdate(reason: string): void {
     if (!this.staged && this.effectiveVersion === app.getVersion()) {
       return;
     }
 
     logger.updater.info("Clearing downloaded update state", { reason });
-    this.staged = false;
-    this.effectiveVersion = app.getVersion();
-    this.setFeedURL(this.currentChannel);
-    this.scheduleAutomaticChecks();
-    this.emit("update-prompt-changed");
+    this.applyStagedVersion(false, app.getVersion());
+  }
+
+  private markDownloadedFromMetadata(reason: string): boolean {
+    if (process.platform !== "win32") {
+      return false;
+    }
+
+    if (!this.lastMetadata?.version || this.lastMetadata.action === "none") {
+      return false;
+    }
+
+    const updateVersion = this.lastMetadata.version;
+
+    // Windows Squirrel compares the remote RELEASES feed against its local
+    // packages/RELEASES version, not the currently running app.exe. If a
+    // package was downloaded but the app kept launching the old app-* dir,
+    // metadata can still offer an update while Squirrel emits
+    // update-not-available because that same version is already in its local
+    // package cache. In that contradiction, keep the UI on Restart/Update
+    // instead of telling the user they are up to date.
+    this.applyStagedVersion(true, updateVersion);
+
+    logger.updater.warn(
+      "Native updater reported no update while metadata offered an update; treating update as downloaded",
+      {
+        reason,
+        channel: this.currentChannel,
+        runningVersion: app.getVersion(),
+        updateVersion,
+      },
+    );
+
+    return true;
+  }
+
+  // A failure during check/download must never invalidate an already-staged
+  // install: keep the Restart/Update prompt up and just settle the phase. Only
+  // when nothing is staged do we surface the error and reset to the running
+  // version. Single home for the "clearing while staged is forbidden" rule.
+  private failOrPreserveStaged(reason: string): void {
+    if (this.staged) {
+      this.setPhase("idle");
+      this.emit("update-prompt-changed");
+      return;
+    }
+    this.clearDownloadedUpdate(reason);
+    this.setPhase("error");
   }
 
   private registerEventHandlers(): void {
@@ -292,8 +345,14 @@ export class AutoUpdaterService extends EventEmitter {
         channel: this.currentChannel,
         classification,
       });
-      this.clearDownloadedUpdate(classification);
-      this.setPhase("error");
+
+      if (this.staged) {
+        logger.updater.warn(
+          "Auto-updater error occurred after an update was staged; preserving downloaded update",
+          { error: message, classification },
+        );
+      }
+      this.failOrPreserveStaged(classification);
     });
 
     autoUpdater.on("checking-for-update", () => {
@@ -313,6 +372,10 @@ export class AutoUpdaterService extends EventEmitter {
     autoUpdater.on("update-not-available", () => {
       logger.updater.info("No update available");
       if (this.applyPendingChannelIfNeeded("native_not_available")) {
+        return;
+      }
+      if (this.markDownloadedFromMetadata("native_not_available")) {
+        this.setPhase("idle");
         return;
       }
       this.setPhase("idle");
@@ -490,8 +553,7 @@ export class AutoUpdaterService extends EventEmitter {
       autoUpdater.checkForUpdates();
     } catch (error) {
       logger.updater.error("Failed to check for updates", { error });
-      this.clearDownloadedUpdate("check_failed");
-      this.setPhase("error");
+      this.failOrPreserveStaged("check_failed");
     }
   }
 

@@ -63,7 +63,9 @@ const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   // Another instance is already running, quit this one
+  logger.main.info("Another instance is already running, exiting");
   app.quit();
+  app.exit(0);
 }
 
 const appManager = new AppManager();
