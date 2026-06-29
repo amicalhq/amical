@@ -147,7 +147,8 @@ export class AutoUpdaterService extends EventEmitter {
   private setFeedURL(channel: "stable" | "beta"): void {
     const platform = process.platform;
     const arch = process.arch;
-    const url = `${UPDATE_SERVER}/update/${channel}/${platform}-${arch}/${this.effectiveVersion}`;
+    const runningVersion = encodeURIComponent(app.getVersion());
+    const url = `${UPDATE_SERVER}/update/${channel}/${platform}-${arch}/${this.effectiveVersion}?runningVersion=${runningVersion}`;
 
     try {
       autoUpdater.setFeedURL({ url });
