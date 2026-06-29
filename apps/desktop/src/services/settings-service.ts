@@ -19,8 +19,6 @@ import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention
 import { isWindows } from "../utils/platform";
 import { logger } from "../main/logger";
 
-const ENABLE_WINDOWS_SQUIRREL_AUTO_LAUNCH = false;
-
 function getSquirrelUpdateExePath(): string {
   return path.resolve(path.dirname(process.execPath), "..", "Update.exe");
 }
@@ -511,13 +509,7 @@ export class SettingsService extends EventEmitter {
     // Get the current preference asynchronously and apply it
     this.getPreferences()
       .then((preferences) => {
-        // Temporarily disabled while the Windows updater bridge is rolled out.
-        // Fall through to Electron's existing login-item behavior.
-        if (
-          ENABLE_WINDOWS_SQUIRREL_AUTO_LAUNCH &&
-          isWindows() &&
-          app.isPackaged
-        ) {
+        if (isWindows() && app.isPackaged) {
           syncWindowsSquirrelAutoLaunch(preferences.launchAtLogin);
           return;
         }
