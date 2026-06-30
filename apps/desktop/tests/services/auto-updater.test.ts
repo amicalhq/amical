@@ -234,6 +234,33 @@ describe("AutoUpdaterService", () => {
       expect(vi.mocked(autoUpdater.checkForUpdates)).toHaveBeenCalledOnce();
     });
 
+    it("keeps a real downloaded update when a later background check finds nothing", async () => {
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "prompt", version: "1.8.0" }),
+      } as any);
+
+      await service.checkForUpdates();
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+      expect(service.getUpdateState()).toBe("downloaded");
+      expect(service.isDownloaded()).toBe(true);
+
+      await service.checkForUpdates();
+      expect(vi.mocked(autoUpdater.checkForUpdates)).toHaveBeenCalledTimes(2);
+
+      autoUpdater.emit("update-not-available");
+
+      expect(service.getUpdateState()).toBe("downloaded");
+      expect(service.isDownloaded()).toBe(true);
+      expect(service.getUpdatePrompt()).toMatchObject({
+        action: "prompt",
+        version: "1.8.0",
+      });
+
+      service.quitAndInstall();
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
+    });
+
     it("ignores a re-entrant check while one is already in flight", async () => {
       vi.mocked(net.fetch).mockResolvedValue({
         ok: true,
@@ -410,7 +437,7 @@ describe("AutoUpdaterService", () => {
       expect(service.getUpdateState()).toBe("downloaded");
     });
 
-    it("treats Windows no-update as downloaded when metadata offers an update", async () => {
+    it("does not infer a downloaded update from metadata on Windows", async () => {
       const original = process.platform;
       Object.defineProperty(process, "platform", {
         value: "win32",
@@ -426,15 +453,9 @@ describe("AutoUpdaterService", () => {
         await service.checkForUpdates(true);
         autoUpdater.emit("update-not-available");
 
-        expect(service.getUpdateState()).toBe("downloaded");
-        expect(service.isDownloaded()).toBe(true);
-        expect(service.getUpdatePrompt()).toMatchObject({
-          action: "force",
-          version: "1.9.0",
-        });
-        expect(vi.mocked(autoUpdater.setFeedURL)).toHaveBeenLastCalledWith({
-          url: expect.stringContaining("/1.9.0"),
-        });
+        expect(service.getUpdateState()).toBe("not-available");
+        expect(service.isDownloaded()).toBe(false);
+        expect(service.getUpdatePrompt()).toBeNull();
       } finally {
         Object.defineProperty(process, "platform", {
           value: original,

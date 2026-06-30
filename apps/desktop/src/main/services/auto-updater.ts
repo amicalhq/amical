@@ -271,39 +271,6 @@ export class AutoUpdaterService extends EventEmitter {
     this.applyStagedVersion(false, app.getVersion());
   }
 
-  private markDownloadedFromMetadata(reason: string): boolean {
-    if (process.platform !== "win32") {
-      return false;
-    }
-
-    if (!this.lastMetadata?.version || this.lastMetadata.action === "none") {
-      return false;
-    }
-
-    const updateVersion = this.lastMetadata.version;
-
-    // Windows Squirrel compares the remote RELEASES feed against its local
-    // packages/RELEASES version, not the currently running app.exe. If a
-    // package was downloaded but the app kept launching the old app-* dir,
-    // metadata can still offer an update while Squirrel emits
-    // update-not-available because that same version is already in its local
-    // package cache. In that contradiction, keep the UI on Restart/Update
-    // instead of telling the user they are up to date.
-    this.applyStagedVersion(true, updateVersion);
-
-    logger.updater.warn(
-      "Native updater reported no update while metadata offered an update; treating update as downloaded",
-      {
-        reason,
-        channel: this.currentChannel,
-        runningVersion: app.getVersion(),
-        updateVersion,
-      },
-    );
-
-    return true;
-  }
-
   // A failure during check/download must never invalidate an already-staged
   // install: keep the Restart/Update prompt up and just settle the phase. Only
   // when nothing is staged do we surface the error and reset to the running
@@ -373,10 +340,6 @@ export class AutoUpdaterService extends EventEmitter {
     autoUpdater.on("update-not-available", () => {
       logger.updater.info("No update available");
       if (this.applyPendingChannelIfNeeded("native_not_available")) {
-        return;
-      }
-      if (this.markDownloadedFromMetadata("native_not_available")) {
-        this.setPhase("idle");
         return;
       }
       this.setPhase("idle");
