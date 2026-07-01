@@ -15,6 +15,7 @@ namespace WindowsHelper
         static ShortcutMonitor? shortcutMonitor;
         static ClipboardService? clipboardService;
         static RpcHandler? rpcHandler;
+        static ActiveDisplayMonitor? activeDisplayMonitor;
         static readonly CancellationTokenSource cancellationTokenSource = new();
 
         // P/Invoke for tool window style
@@ -96,8 +97,13 @@ namespace WindowsHelper
                 // 4. RpcHandler - processes requests on background thread, dispatches to STA as needed
                 rpcHandler = new RpcHandler(keyboardStaRunner, clipboardService);
 
+                // 5. ActiveDisplayMonitor - reports foreground-window monitor changes
+                //    so the desktop app can move the widget to the focused display.
+                activeDisplayMonitor = new ActiveDisplayMonitor();
+
                 // Set up event handlers
-                shortcutMonitor.KeyEventOccurred += OnKeyEvent;
+                shortcutMonitor.KeyEventOccurred += OnHelperEvent;
+                activeDisplayMonitor.DisplayChanged += OnHelperEvent;
 
                 // Start keyboard STA thread
                 LogToStderr("Starting keyboard STA thread...");
@@ -106,6 +112,12 @@ namespace WindowsHelper
                 // Install keyboard hooks on dedicated STA thread
                 LogToStderr("Installing keyboard hooks...");
                 shortcutMonitor.Start();
+
+                // Install the foreground WinEvent hook on this (main WinForms)
+                // thread, which pumps messages via Application.Run — required for
+                // WINEVENT_OUTOFCONTEXT callbacks to be delivered.
+                LogToStderr("Installing foreground display hook...");
+                activeDisplayMonitor.Start();
 
                 // Start RPC processing in background thread
                 Task.Run(() =>
@@ -127,6 +139,7 @@ namespace WindowsHelper
         {
             try
             {
+                activeDisplayMonitor?.Stop();
                 shortcutMonitor?.Stop();
                 keyboardStaRunner?.Stop();
                 cancellationTokenSource.Cancel();
@@ -140,7 +153,7 @@ namespace WindowsHelper
             }
         }
 
-        private static void OnKeyEvent(object? sender, HelperEvent e)
+        private static void OnHelperEvent(object? sender, HelperEvent e)
         {
             StdoutWriter.WriteEvent(e);
         }

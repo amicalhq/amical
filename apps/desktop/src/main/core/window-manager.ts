@@ -632,7 +632,7 @@ export class WindowManager {
     logger.main.info("Started cursor polling for display detection");
   }
 
-  private handleDisplayChange(event: string): void {
+  handleDisplayChange(event: string): void {
     logger.main.debug("handleDisplayChange", { event });
 
     if (!this.widgetWindow || this.widgetWindow.isDestroyed()) return;

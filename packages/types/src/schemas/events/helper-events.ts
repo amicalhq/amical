@@ -38,11 +38,24 @@ export const FlagsChangedEventSchema = z.object({
 });
 export type FlagsChangedEvent = z.infer<typeof FlagsChangedEventSchema>;
 
+// Unsolicited notification fired (Windows helper) when the foreground window
+// moves to a different monitor. Like macOS's NSWorkspaceActiveDisplayDidChange
+// it carries no payload — it's just a trigger, and the desktop side reads the
+// cursor position to pick the display to relocate the widget to.
+export const ActiveDisplayChangedEventSchema = z.object({
+  type: z.literal("activeDisplayChanged"),
+  timestamp: z.string().datetime({ offset: true }).optional(),
+});
+export type ActiveDisplayChangedEvent = z.infer<
+  typeof ActiveDisplayChangedEventSchema
+>;
+
 // This will be the primary schema for unsolicited events from Swift
 export const HelperEventSchema = z.discriminatedUnion("type", [
   KeyDownEventSchema,
   KeyUpEventSchema,
   FlagsChangedEventSchema, // Added FlagsChangedEventSchema
+  ActiveDisplayChangedEventSchema,
   // Future: Add other event types like mouse events, etc.
 ]);
 export type HelperEvent = z.infer<typeof HelperEventSchema>;

@@ -13,7 +13,7 @@ export * from "./schemas/methods/set-draft-enter-capture.js";
 export * from "./schemas/methods/recheck-pressed-keys.js";
 
 // Event Schemas
-export * from "./schemas/events/key-events.js";
+export * from "./schemas/events/helper-events.js";
 
 // Remote config (server-controlled surfaces + future config domains)
 export * from "./schemas/remote-config.js";

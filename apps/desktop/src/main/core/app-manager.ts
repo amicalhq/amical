@@ -12,6 +12,8 @@ import type { OnboardingService } from "../../services/onboarding-service";
 import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { SettingsService } from "../../services/settings-service";
+import type { NativeBridge } from "../../services/platform/native-bridge-service";
+import type { HelperEvent } from "@amical/types";
 import { runDataMigrations } from "../migrations/data-migrations";
 import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
@@ -100,6 +102,8 @@ export class AppManager {
     this.setupRecordingEventListeners(recordingManager);
     const shortcutManager = this.serviceManager.getService("shortcutManager");
     this.setupShortcutEventListeners(shortcutManager);
+    const nativeBridge = this.serviceManager.getService("nativeBridge");
+    this.setupNativeBridgeEventListeners(nativeBridge);
 
     // Check if onboarding is needed using OnboardingService (single source of truth)
     const onboardingCheck = await onboardingService.checkNeedsOnboarding();
@@ -246,6 +250,19 @@ export class AppManager {
     });
 
     logger.main.info("Shortcut listeners connected in AppManager");
+  }
+
+  private setupNativeBridgeEventListeners(nativeBridge: NativeBridge): void {
+    // Move the widget to the focused display when the foreground window changes.
+    // Windows has no OS "active display changed" notification, so the native
+    // helper reports the foreground monitor and we relocate here.
+    nativeBridge.on("helperEvent", (event: HelperEvent) => {
+      if (event.type === "activeDisplayChanged") {
+        this.windowManager.handleDisplayChange("foreground-window");
+      }
+    });
+
+    logger.main.info("Native bridge listeners connected in AppManager");
   }
 
   private async handleOpenNotesWindowShortcut(): Promise<void> {

@@ -41,8 +41,9 @@ import {
   KeyDownEventSchema,
   KeyUpEventSchema,
   FlagsChangedEventSchema,
+  ActiveDisplayChangedEventSchema,
   HelperEventSchema,
-} from "../src/schemas/events/key-events.js";
+} from "../src/schemas/events/helper-events.js";
 
 // Output directory
 const baseOutputDir = "generated/json-schemas";
@@ -75,6 +76,11 @@ const schemasToGenerate = [
   {
     zod: FlagsChangedEventSchema,
     name: "FlagsChangedEvent",
+    category: "events",
+  },
+  {
+    zod: ActiveDisplayChangedEventSchema,
+    name: "ActiveDisplayChangedEvent",
     category: "events",
   },
   { zod: HelperEventSchema, name: "HelperEvent", category: "events" },

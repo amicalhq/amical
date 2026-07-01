@@ -521,6 +521,7 @@ namespace WindowsHelper.Models
 
     public partial class HelperEvent
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("payload")]
         public HelperEventPayload Payload { get; set; }
 
@@ -584,7 +585,7 @@ namespace WindowsHelper.Models
 
     public enum FlagsChangedEventType { FlagsChanged };
 
-    public enum HelperEventType { FlagsChanged, KeyDown, KeyUp };
+    public enum HelperEventType { ActiveDisplayChanged, FlagsChanged, KeyDown, KeyUp };
 
     public partial class RpcRequest
     {
@@ -1019,6 +1020,8 @@ namespace WindowsHelper.Models
             var value = reader.GetString();
             switch (value)
             {
+                case "activeDisplayChanged":
+                    return HelperEventType.ActiveDisplayChanged;
                 case "flagsChanged":
                     return HelperEventType.FlagsChanged;
                 case "keyDown":
@@ -1033,6 +1036,9 @@ namespace WindowsHelper.Models
         {
             switch (value)
             {
+                case HelperEventType.ActiveDisplayChanged:
+                    JsonSerializer.Serialize(writer, "activeDisplayChanged", options);
+                    return;
                 case HelperEventType.FlagsChanged:
                     JsonSerializer.Serialize(writer, "flagsChanged", options);
                     return;
