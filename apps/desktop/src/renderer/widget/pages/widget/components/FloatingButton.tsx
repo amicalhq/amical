@@ -5,11 +5,11 @@ import type { RecordingStatus } from "@/hooks/useRecording";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
+import { setPassThroughReason } from "../../../pass-through";
 import { useTranslation } from "react-i18next";
 
 const NUM_WAVEFORM_BARS = 6; // Fewer bars to make room for stop button
 const DEBOUNCE_DELAY = 100; // milliseconds
-const TOAST_INTERACTION_STATE_EVENT = "widget:toast-interaction-state";
 
 // Stop = commit: finish + transcribe + paste
 const StopButton: React.FC<{ onClick: (e: React.MouseEvent) => void }> = ({
@@ -104,33 +104,16 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout
   const clickTimeRef = useRef<number | null>(null); // Track when user clicked
-  const hasActiveToastRef = useRef(false);
 
-  // tRPC mutation to control widget mouse events
-  const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
   const openNotesWindow = api.widget.openNotesWindow.useMutation();
   const noteWindowFeatureFlag = useFeatureFlag(NOTE_WINDOW_FEATURE_FLAG);
 
-  // Log component initialization
+  // Release the hover pass-through reason if the FAB unmounts mid-hover (e.g.
+  // a draft review takes over the widget), so it can't pin the window
+  // clickable after the FAB is gone.
   useEffect(() => {
-    console.log("FloatingButton component initialized");
-
-    const handleToastInteractionState = (event: Event) => {
-      const customEvent = event as CustomEvent<{ active: boolean }>;
-      hasActiveToastRef.current = !!customEvent.detail?.active;
-    };
-
-    window.addEventListener(
-      TOAST_INTERACTION_STATE_EVENT,
-      handleToastInteractionState,
-    );
-
     return () => {
-      window.removeEventListener(
-        TOAST_INTERACTION_STATE_EVENT,
-        handleToastInteractionState,
-      );
-      console.debug("FloatingButton component unmounting");
+      setPassThroughReason("hover", false);
     };
   }, []);
 
@@ -209,38 +192,27 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
   };
 
   // Debounced mouse leave handler
-  const handleMouseLeave = async () => {
+  const handleMouseLeave = () => {
     if (leaveTimeoutRef.current) {
       clearTimeout(leaveTimeoutRef.current);
     }
-    leaveTimeoutRef.current = setTimeout(async () => {
+    leaveTimeoutRef.current = setTimeout(() => {
       setIsHovered(false);
-      if (hasActiveToastRef.current) {
-        console.debug(
-          "Skipped re-enabling mouse pass-through while toast is active",
-        );
-        return;
-      }
-      // Re-enable mouse event forwarding when not hovering
-      try {
-        await setIgnoreMouseEvents.mutateAsync({ ignore: true });
-        console.debug("Re-enabled mouse event forwarding");
-      } catch (error) {
-        console.error("Failed to re-enable mouse event forwarding:", error);
-      }
+      // Drop only the hover reason; the controller keeps the widget clickable
+      // if a toast or draft review still needs it.
+      setPassThroughReason("hover", false);
     }, DEBOUNCE_DELAY);
   };
 
   // Mouse enter handler - clears any pending leave timeout
-  const handleMouseEnter = async () => {
+  const handleMouseEnter = () => {
     if (leaveTimeoutRef.current) {
       clearTimeout(leaveTimeoutRef.current);
       leaveTimeoutRef.current = null;
     }
     setIsHovered(true);
-    // Disable mouse event forwarding to make widget clickable
-    await setIgnoreMouseEvents.mutateAsync({ ignore: false });
-    console.debug("Disabled mouse event forwarding for clicking");
+    // Make the widget clickable while hovered.
+    setPassThroughReason("hover", true);
   };
 
   const isWidgetActive = isRecording || isStopping || isHovered;

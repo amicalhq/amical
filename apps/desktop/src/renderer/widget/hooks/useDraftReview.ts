@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "@/trpc/react";
+import { setPassThroughReason } from "../pass-through";
 
 export interface DraftReviewState {
   /** The generated text to review, or null when there's nothing to review. */
@@ -16,9 +17,6 @@ export function useDraftReview(): DraftReviewState {
     text: string;
   } | null>(null);
 
-  // Toggles the widget window's mouse passthrough
-  // (ignore: true = click-through; ignore: false = clickable).
-  const setMousePassthrough = api.widget.setIgnoreMouseEvents.useMutation();
   const confirmDraft = api.recording.confirmDraft.useMutation();
   const dismissDraft = api.recording.dismissDraft.useMutation();
 
@@ -28,7 +26,8 @@ export function useDraftReview(): DraftReviewState {
   api.recording.draftReview.useSubscription(undefined, {
     onData: (data) => {
       setReview(data);
-      setMousePassthrough.mutate({ ignore: !data });
+      // Clickable while a draft is shown, click-through otherwise.
+      setPassThroughReason("draft", !!data);
     },
     onError: (error) => console.error("draftReview subscription error", error),
   });

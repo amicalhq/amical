@@ -12,19 +12,19 @@ import {
   type WidgetNotificationAction,
   type WidgetNotification,
 } from "@/types/widget-notification";
+import type { RecordingState } from "@/types/recording";
 import { WidgetToast } from "../components/WidgetToast";
+import { setPassThroughReason } from "../pass-through";
 import { useTranslation } from "react-i18next";
 
-const TOAST_INTERACTION_STATE_EVENT = "widget:toast-interaction-state";
-
-export const useWidgetNotifications = () => {
+export const useWidgetNotifications = (recordingState: RecordingState) => {
   const { t } = useTranslation();
   const navigateMainWindow = api.widget.navigateMainWindow.useMutation();
-  const setIgnoreMouseEvents = api.widget.setIgnoreMouseEvents.useMutation();
   const trackEvent = api.telemetry.trackEvent.useMutation();
   const { data: settings } = api.settings.getSettings.useQuery();
   const { devices: audioDevices, defaultDeviceName } = useAudioDevices();
   const activeToastIdsRef = useRef<Set<string | number>>(new Set());
+  const prevRecordingStateRef = useRef<RecordingState>(recordingState);
 
   // Name the active mic: the highest-ranked connected entry in the fallback
   // chain, or the system default when the chain is empty / nothing matches.
@@ -40,14 +40,8 @@ export const useWidgetNotifications = () => {
     );
   };
 
-  const syncPassThroughWithToastState = () => {
-    const hasActiveToasts = activeToastIdsRef.current.size > 0;
-    setIgnoreMouseEvents.mutate({ ignore: !hasActiveToasts });
-    window.dispatchEvent(
-      new CustomEvent<{ active: boolean }>(TOAST_INTERACTION_STATE_EVENT, {
-        detail: { active: hasActiveToasts },
-      }),
-    );
+  const syncToastPassThrough = () => {
+    setPassThroughReason("toast", activeToastIdsRef.current.size > 0);
   };
 
   const handleActionClick = async (action: WidgetNotificationAction) => {
@@ -77,6 +71,11 @@ export const useWidgetNotifications = () => {
       notification.description ||
       getNotificationDescription(notification.type, micName);
 
+    // Same cleanup whether the toast is dismissed or auto-closes.
+    const handleToastClosed = () => {
+      activeToastIdsRef.current.delete(createdToastId);
+      syncToastPassThrough();
+    };
     const createdToastId = toast.custom(
       (toastId) => (
         <WidgetToast
@@ -97,26 +96,47 @@ export const useWidgetNotifications = () => {
       {
         unstyled: true,
         duration,
-        onDismiss: () => {
-          activeToastIdsRef.current.delete(createdToastId);
-          syncPassThroughWithToastState();
-        },
-        onAutoClose: () => {
-          activeToastIdsRef.current.delete(createdToastId);
-          syncPassThroughWithToastState();
-        },
+        onDismiss: handleToastClosed,
+        onAutoClose: handleToastClosed,
       },
     );
     activeToastIdsRef.current.add(createdToastId);
-    syncPassThroughWithToastState();
+    syncToastPassThrough();
   };
 
   useEffect(() => {
     return () => {
       activeToastIdsRef.current.clear();
-      setIgnoreMouseEvents.mutate({ ignore: true });
+      setPassThroughReason("toast", false);
     };
   }, []);
+
+  // Clear any lingering notification toasts the moment a new recording begins.
+  // Toasts live for WIDGET_NOTIFICATION_TIMEOUT (7s), so without this a "No
+  // speech detected" (or other error) toast from the previous session stays on
+  // screen and bleeds into the next press — making it look like the new
+  // recording instantly failed before its own finalize could run. Trigger on
+  // entering any active state (not just "starting"): idle→starting→recording
+  // can land in a single render, so "starting" alone may never be observed.
+  useEffect(() => {
+    const isActive = (s: RecordingState) =>
+      s === "starting" || s === "recording";
+    const prev = prevRecordingStateRef.current;
+    prevRecordingStateRef.current = recordingState;
+    // Only act on the idle→active edge, and only when there's actually
+    // something to clear. We clear just the "toast" pass-through reason — never
+    // the whole widget — so dismissing a stale toast can't make the window
+    // click-through while the FAB is hovered or a draft review is open.
+    if (
+      isActive(recordingState) &&
+      !isActive(prev) &&
+      activeToastIdsRef.current.size > 0
+    ) {
+      activeToastIdsRef.current.forEach((id) => toast.dismiss(id));
+      activeToastIdsRef.current.clear();
+      setPassThroughReason("toast", false);
+    }
+  }, [recordingState]);
 
   api.recording.widgetNotifications.useSubscription(undefined, {
     onData: (notification) => {
