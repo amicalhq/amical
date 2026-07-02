@@ -36,6 +36,12 @@ jobs:
             runner: windows-2022
 
     steps:
+      - name: Fix macOS DNS (Intel runner workaround)
+        if: runner.os == 'macOS'
+        run: |
+          sudo networksetup -setdnsservers Wi-Fi 8.8.8.8 8.8.4.4 || true
+          sudo networksetup -setdnsservers Ethernet 8.8.8.8 8.8.4.4 || true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
