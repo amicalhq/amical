@@ -1,44 +1,21 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { api } from "@/trpc/react";
-import { useAudioDevices } from "@/hooks/useAudioDevices";
-import {
-  DEFAULT_DEVICE_ID,
-  resolveActiveMicrophone,
-} from "@/utils/audio-devices";
 import {
   WIDGET_NOTIFICATION_TIMEOUT,
-  getNotificationDescription,
+  WIDGET_NOTIFICATION_CONFIG,
   type WidgetNotificationAction,
   type WidgetNotification,
 } from "@/types/widget-notification";
 import type { RecordingState } from "@/types/recording";
 import { WidgetToast } from "../components/WidgetToast";
 import { setPassThroughReason } from "../pass-through";
-import { useTranslation } from "react-i18next";
 
 export const useWidgetNotifications = (recordingState: RecordingState) => {
-  const { t } = useTranslation();
   const navigateMainWindow = api.widget.navigateMainWindow.useMutation();
   const trackEvent = api.telemetry.trackEvent.useMutation();
-  const { data: settings } = api.settings.getSettings.useQuery();
-  const { devices: audioDevices, defaultDeviceName } = useAudioDevices();
   const activeToastIdsRef = useRef<Set<string | number>>(new Set());
   const prevRecordingStateRef = useRef<RecordingState>(recordingState);
-
-  // Name the active mic: the highest-ranked connected entry in the fallback
-  // chain, or the system default when the chain is empty / nothing matches.
-  const getEffectiveMicName = () => {
-    const activeDeviceId = resolveActiveMicrophone(
-      settings?.recording?.microphonePriority,
-      audioDevices,
-    );
-    if (activeDeviceId === DEFAULT_DEVICE_ID) return defaultDeviceName;
-    return (
-      audioDevices.find((d) => d.deviceId === activeDeviceId)?.label ||
-      defaultDeviceName
-    );
-  };
 
   const syncToastPassThrough = () => {
     setPassThroughReason("toast", activeToastIdsRef.current.size > 0);
@@ -65,11 +42,9 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
     >,
     duration = WIDGET_NOTIFICATION_TIMEOUT,
   ) => {
-    const micName =
-      getEffectiveMicName() || t("widget.notifications.micFallback");
     const description =
-      notification.description ||
-      getNotificationDescription(notification.type, micName);
+      notification.description ??
+      WIDGET_NOTIFICATION_CONFIG[notification.type].description;
 
     // Same cleanup whether the toast is dismissed or auto-closes.
     const handleToastClosed = () => {

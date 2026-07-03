@@ -73,6 +73,36 @@ export const getNotificationDescription = (
   }
 };
 
+// Resolve the description shown in a widget notification toast. Precedence:
+// an explicit uiMessage always wins; otherwise no_audio/empty_transcript with a
+// resolved microphone name use the "…from {mic}" template; everything else falls
+// back to the type's default description (with any params injected).
+export const buildNotificationDescription = (
+  type: WidgetNotificationType,
+  config: WidgetNotificationConfig,
+  data: {
+    uiMessage?: string;
+    params?: Record<string, string | number>;
+  },
+): LocalizedText => {
+  if (data.uiMessage != null) return data.uiMessage;
+
+  const microphoneName =
+    typeof data.params?.microphone === "string"
+      ? data.params.microphone
+      : undefined;
+  if (
+    microphoneName &&
+    (type === "no_audio" || type === "empty_transcript")
+  ) {
+    return getNotificationDescription(type, microphoneName);
+  }
+
+  const fallback = config.description;
+  if (!data.params || typeof fallback === "string") return fallback;
+  return { ...fallback, params: { ...fallback.params, ...data.params } };
+};
+
 // Discord support server URL (same as sidebar Community link)
 export const DISCORD_SUPPORT_URL = "https://amical.ai/community";
 export const APP_PLAN_URL = "https://app.amical.ai/plan";

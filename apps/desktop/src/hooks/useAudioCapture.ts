@@ -7,7 +7,10 @@ import {
   createAudioCaptureGraph,
   createOrResumeAudioContext,
 } from "./audioCaptureContext";
-import { acquireMicrophoneStream } from "./audioCaptureDevice";
+import {
+  acquireMicrophoneStream,
+  type AcquiredMicrophoneMetadata,
+} from "./audioCaptureDevice";
 import { computeIdleRecycleDelayMs } from "./audioCaptureRecycle";
 import {
   attachAudioWorkletFrameHandler,
@@ -24,6 +27,9 @@ export interface UseAudioCaptureParams {
     speechProbability: number,
     isFinalChunk: boolean,
   ) => Promise<void> | void;
+  onCaptureStarted?: (
+    microphone: AcquiredMicrophoneMetadata,
+  ) => Promise<void> | void;
   enabled: boolean;
   idle: boolean;
 }
@@ -34,6 +40,7 @@ export interface UseAudioCaptureOutput {
 
 export const useAudioCapture = ({
   onAudioChunk,
+  onCaptureStarted,
   enabled,
   idle,
 }: UseAudioCaptureParams): UseAudioCaptureOutput => {
@@ -46,6 +53,7 @@ export const useAudioCapture = ({
   const mutexRef = useRef(new Mutex());
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleRef = useRef(idle);
+  const onCaptureStartedRef = useRef(onCaptureStarted);
   const pendingWorkletFlushRef = useRef<WorkletFlushRequest | null>(null);
   // performance.now() when the current AudioContext was constructed (for max-age).
   const contextCreatedAtRef = useRef(0);
@@ -56,6 +64,7 @@ export const useAudioCapture = ({
   const pendingStartRef = useRef(false);
 
   idleRef.current = idle;
+  onCaptureStartedRef.current = onCaptureStarted;
 
   // Subscribe to voice detection updates via tRPC
   api.recording.voiceDetectionUpdates.useSubscription(undefined, {
@@ -124,10 +133,11 @@ export const useAudioCapture = ({
           // warm AudioContext is resumed rather than closed out from under us.
           clearIdleTimer();
 
-          const { stream, audioTrack } = await acquireMicrophoneStream({
-            microphonePriority,
-            sampleRate: SAMPLE_RATE,
-          });
+          const { stream, audioTrack, microphone } =
+            await acquireMicrophoneStream({
+              microphonePriority,
+              sampleRate: SAMPLE_RATE,
+            });
           streamRef.current = stream;
           audioCaptureDiagnostics.logTrackState(audioTrack);
           trackDiagnosticsCleanupRef.current?.();
@@ -139,6 +149,18 @@ export const useAudioCapture = ({
           if (disposedRef.current) {
             await releaseAll();
             return;
+          }
+
+          const reportCaptureStarted = onCaptureStartedRef.current;
+          if (reportCaptureStarted) {
+            void Promise.resolve(reportCaptureStarted(microphone)).catch(
+              (error) => {
+                console.warn(
+                  "AudioCapture: Failed to report active microphone:",
+                  error,
+                );
+              },
+            );
           }
 
           const { audioContext, createdAt } = await createOrResumeAudioContext({

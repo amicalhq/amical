@@ -259,7 +259,6 @@
       "drafting": "Redactando…"
     },
     "notifications": {
-      "micFallback": "tu micrófono",
       "discordAlt": "Discord",
       "copyErrorId": "Copiar ID de error",
       "recordingSaved": "Tu grabación fue guardada. Puedes acceder a ella en el Historial.",

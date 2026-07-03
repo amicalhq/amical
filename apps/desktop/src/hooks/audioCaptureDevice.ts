@@ -10,9 +10,16 @@ export interface AcquireMicrophoneStreamOptions {
   sampleRate: number;
 }
 
+export interface AcquiredMicrophoneMetadata {
+  name?: string;
+  deviceId?: string;
+  captureSource: "preferred" | "default";
+}
+
 export interface AcquiredMicrophoneStream {
   stream: MediaStream;
   audioTrack: MediaStreamTrack;
+  microphone: AcquiredMicrophoneMetadata;
 }
 
 export const acquireMicrophoneStream = async ({
@@ -87,5 +94,20 @@ export const acquireMicrophoneStream = async ({
     throw new Error("No audio tracks available from microphone");
   }
 
-  return { stream, audioTrack };
+  const trackSettings = audioTrack.getSettings?.() ?? {};
+  const microphoneName = audioTrack.label || preferredDevice?.label;
+  const microphoneDeviceId =
+    trackSettings.deviceId ||
+    preferredDevice?.deviceId ||
+    (captureSource === "default" ? DEFAULT_DEVICE_ID : undefined);
+
+  return {
+    stream,
+    audioTrack,
+    microphone: {
+      name: microphoneName || undefined,
+      deviceId: microphoneDeviceId,
+      captureSource,
+    },
+  };
 };

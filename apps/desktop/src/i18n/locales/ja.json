@@ -259,7 +259,6 @@
       "drafting": "作成中…"
     },
     "notifications": {
-      "micFallback": "お使いのマイク",
       "discordAlt": "Discord",
       "copyErrorId": "エラーIDをコピー",
       "recordingSaved": "録音が保存されました。履歴からアクセスできます。",

@@ -1,6 +1,7 @@
 import { observable } from "@trpc/server/observable";
 import { createRouter, procedure } from "../trpc";
 import { v4 as uuid } from "uuid";
+import { z } from "zod";
 import type { RecordingState } from "../../types/recording";
 import type { RecordingMode } from "../../main/managers/recording-manager";
 import type {
@@ -12,6 +13,7 @@ import type {
 import {
   WIDGET_NOTIFICATION_CONFIG,
   ERROR_CODE_CONFIG,
+  buildNotificationDescription,
 } from "../../types/widget-notification";
 import { ErrorCodes, type ErrorCode } from "../../types/error";
 
@@ -61,6 +63,24 @@ export const recordingRouter = createRouter({
     }
     return await recordingManager.dismissCurrentSession();
   }),
+
+  captureStarted: procedure
+    .input(
+      z.object({
+        microphoneName: z.string().optional(),
+        deviceId: z.string().optional(),
+        captureSource: z.enum(["preferred", "default"]).optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => {
+      const recordingManager =
+        ctx.serviceManager.getService("recordingManager");
+      if (!recordingManager) {
+        throw new Error("Recording manager not available");
+      }
+
+      recordingManager.setActiveMicrophoneForCurrentSession(input);
+    }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // Modern Node.js (20+) adds Symbol.asyncDispose to async generators natively,
@@ -194,17 +214,17 @@ export const recordingRouter = createRouter({
           return { ...text, params: { ...text.params, ...data.params } };
         };
 
-        // no_audio and empty_transcript use mic-name template on frontend
-        const usesFrontendTemplate =
-          data.type === "no_audio" || data.type === "empty_transcript";
+        const description = buildNotificationDescription(
+          data.type,
+          config,
+          data,
+        );
 
         emit.next({
           id: uuid(),
           type: data.type,
           title: data.uiTitle ?? injectParams(config.title),
-          description: usesFrontendTemplate
-            ? undefined
-            : (data.uiMessage ?? injectParams(config.description)),
+          description,
           subDescription: config.subDescription,
           errorCode: data.errorCode,
           traceId: data.traceId,

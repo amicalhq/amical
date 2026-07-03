@@ -259,7 +259,6 @@
       "drafting": "草擬中…"
     },
     "notifications": {
-      "micFallback": "您的麥克風",
       "discordAlt": "Discord",
       "copyErrorId": "複製錯誤 ID",
       "recordingSaved": "您的錄音已儲存，您可以在歷史紀錄中存取它。",

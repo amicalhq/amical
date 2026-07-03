@@ -259,7 +259,6 @@
       "drafting": "Entwurf wird erstellt…"
     },
     "notifications": {
-      "micFallback": "deinem Mikrofon",
       "discordAlt": "Discord",
       "copyErrorId": "Fehler-ID kopieren",
       "recordingSaved": "Deine Aufnahme wurde gespeichert. Du findest sie im Verlauf.",

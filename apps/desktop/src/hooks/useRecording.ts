@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { useAudioCapture } from "./useAudioCapture";
+import type { AcquiredMicrophoneMetadata } from "./audioCaptureDevice";
 import { api } from "@/trpc/react";
 import type { RecordingState } from "@/types/recording";
 import type { RecordingMode } from "@/main/managers/recording-manager";
@@ -28,6 +29,7 @@ export const useRecording = (): UseRecordingOutput => {
   const startRecordingMutation = api.recording.signalStart.useMutation();
   const stopRecordingMutation = api.recording.signalStop.useMutation();
   const dismissRecordingMutation = api.recording.dismiss.useMutation();
+  const captureStartedMutation = api.recording.captureStarted.useMutation();
 
   // Subscribe to recording state updates via tRPC
   api.recording.stateUpdates.useSubscription(undefined, {
@@ -65,12 +67,31 @@ export const useRecording = (): UseRecordingOutput => {
     [],
   );
 
+  const handleCaptureStarted = useCallback(
+    (microphone: AcquiredMicrophoneMetadata) => {
+      captureStartedMutation.mutate(
+        {
+          microphoneName: microphone.name,
+          deviceId: microphone.deviceId,
+          captureSource: microphone.captureSource,
+        },
+        {
+          onError: (error) => {
+            console.warn("Failed to report active microphone", error);
+          },
+        },
+      );
+    },
+    [captureStartedMutation],
+  );
+
   // Manage audio capture when recording is active
   const isActive = recordingStatus.state === "recording";
   const isIdle = recordingStatus.state === "idle";
 
   const { voiceDetected } = useAudioCapture({
     onAudioChunk: handleAudioChunk,
+    onCaptureStarted: handleCaptureStarted,
     enabled: isActive,
     idle: isIdle,
   });

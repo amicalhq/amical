@@ -85,6 +85,9 @@ export class RecordingManager extends EventEmitter {
   // Sound muting for current session
   private soundsMuted: boolean = false;
 
+  // Microphone name resolved from the renderer capture stream for the current session.
+  private activeMicrophoneName: string | null = null;
+
   // Instruct mode: set when the session was started via the instruct hotkey
   // (wired in M2). Causes the cloud stream to send the "instruct" preset and
   // (in M3) the generated result to be held for review instead of auto-pasted.
@@ -258,6 +261,45 @@ export class RecordingManager extends EventEmitter {
     return this.currentIsInstruct;
   }
 
+  public setActiveMicrophoneForCurrentSession(input: {
+    microphoneName?: string;
+    deviceId?: string;
+    captureSource?: "preferred" | "default";
+  }): void {
+    const state = this.getState();
+    if (
+      !this.currentSessionId ||
+      (state !== "starting" && state !== "recording")
+    ) {
+      logger.audio.debug("Ignoring active microphone update", {
+        state,
+        hasSession: Boolean(this.currentSessionId),
+      });
+      return;
+    }
+
+    const microphoneName = input.microphoneName?.trim() || null;
+
+    this.activeMicrophoneName = microphoneName;
+
+    logger.audio.info("Active microphone resolved for recording session", {
+      sessionId: this.currentSessionId,
+      microphoneName,
+      deviceId: input.deviceId?.trim() || null,
+      captureSource: input.captureSource ?? null,
+    });
+  }
+
+  private getActiveMicrophoneNotificationParams():
+    | Record<string, string>
+    | undefined {
+    if (!this.activeMicrophoneName) {
+      return undefined;
+    }
+
+    return { microphone: this.activeMicrophoneName };
+  }
+
   private finalizeWithoutFinalChunk(
     code: TerminationCode,
     sessionId: string,
@@ -362,6 +404,7 @@ export class RecordingManager extends EventEmitter {
         // Missing-model starts stay IDLE; STARTING means we have a model and
         // have allocated the session identity used by the interpreter.
         this.currentSessionId = uuid();
+        this.activeMicrophoneName = null;
         // Tag this as a draft session up front (the draft chord is held now) so
         // the recording/processing FAB can show the draft indicator immediately,
         // not only once latchDraftTag fires on the first audio chunk. Sticky
@@ -948,9 +991,13 @@ export class RecordingManager extends EventEmitter {
           ? this.recordingStoppedAt - this.recordingStartedAt
           : 0;
       if (sessionDurationMs > 3500) {
-        this.emit("widget-notification", { type: "empty_transcript" });
+        this.emit("widget-notification", {
+          type: "empty_transcript",
+          params: this.getActiveMicrophoneNotificationParams(),
+        });
         logger.audio.info("Emitted widget notification", {
           type: "empty_transcript",
+          microphoneName: this.activeMicrophoneName,
         });
       }
     }
@@ -1013,8 +1060,14 @@ export class RecordingManager extends EventEmitter {
   private notifyNoAudio(): void {
     logger.audio.warn("No audio detected for 5 seconds");
     this.emit("no-audio-detected");
-    this.emit("widget-notification", { type: "no_audio" });
-    logger.audio.info("Emitted widget notification", { type: "no_audio" });
+    this.emit("widget-notification", {
+      type: "no_audio",
+      params: this.getActiveMicrophoneNotificationParams(),
+    });
+    logger.audio.info("Emitted widget notification", {
+      type: "no_audio",
+      microphoneName: this.activeMicrophoneName,
+    });
   }
 
   private notifyDurationWarning(): void {
@@ -1249,6 +1302,7 @@ export class RecordingManager extends EventEmitter {
     this.terminationCode = null;
     this.systemAudioMuted = false;
     this.soundsMuted = false;
+    this.activeMicrophoneName = null;
     this.clearTimers();
   }
 

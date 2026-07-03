@@ -256,7 +256,6 @@
       "drafting": "Drafting…"
     },
     "notifications": {
-      "micFallback": "your microphone",
       "discordAlt": "Discord",
       "copyErrorId": "Copy Error ID",
       "recordingSaved": "Your recording is saved. You can access it in History.",
