@@ -26,7 +26,6 @@ export function useDraftReview(): DraftReviewState {
   api.recording.draftReview.useSubscription(undefined, {
     onData: (data) => {
       setReview(data);
-      // Clickable while a draft is shown, click-through otherwise.
       setPassThroughReason("draft", !!data);
     },
     onError: (error) => console.error("draftReview subscription error", error),
