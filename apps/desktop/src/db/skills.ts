@@ -19,7 +19,7 @@ export const SEED_APP_DEFAULTS: Record<string, string[]> = {
 export const SEED_SITE_DEFAULTS: Record<string, string[]> = {
   default: [],
   personal: ["web.whatsapp.com", "discord.com"],
-  work: ["app.slack.com", "linear.app", "www.notion.so"],
+  work: ["app.slack.com", "linear.app", "notion.so", "notion.com"],
   email: ["mail.google.com", "outlook.live.com", "outlook.office.com"],
 };
 

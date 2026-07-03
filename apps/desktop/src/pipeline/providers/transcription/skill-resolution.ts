@@ -1,8 +1,12 @@
 import type { GetAccessibilityContextResult } from "@amical/types";
 import type { DictationSkill } from "./dictation-skill";
-import { resolvePresetForBundleId } from "../../../shared/app-catalog";
+import {
+  resolvePresetForBundleId,
+  resolvePresetForHostname,
+} from "../../../shared/app-catalog";
 import { listSkills } from "../../../db/skills";
 import { logger } from "../../../main/logger";
+import { extractHostnameFromBrowserUrl } from "../../../utils/url";
 
 /**
  * Server-known preset id that switches a cloud session into instruct
@@ -30,8 +34,8 @@ export function buildPresetSkill(
 
 /**
  * preset → tone from the built-in skill rows. Tone is the one per-skill knob a
- * user can edit today; the app→preset mapping comes from the app catalog, not
- * from the skills table (the table's app lists aren't user-editable).
+ * user can edit today; the surface→preset mapping (native app or browser
+ * hostname) comes from the app catalog, not from the skills table.
  */
 async function builtInToneByPreset(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
@@ -57,12 +61,14 @@ async function builtInToneByPreset(): Promise<Map<string, string>> {
  * - instruct mode → the instruct preset; all formatting/tone is ignored (the
  *   server runs generation, not cleanup).
  * - non-instruct + formatting off → empty (server returns the raw transcript).
- * - else → the foreground app's preset, resolved from the app catalog
- *   (`bundleIdentifier` is the macOS bundle id or the Windows process name).
- *   Personalization can optionally add the matching built-in skill's tone; while
- *   PERSONALIZATION_OFF is true we still read the DB tone but send the preset
- *   with no tone. An unmatched app resolves to the "default" preset — identical
- *   to the prior bridge.
+ * - else → the foreground surface's preset from the app catalog: the browser
+ *   tab's hostname first (longest-suffix match), then the native app's
+ *   `bundleIdentifier` (macOS bundle id or Windows process name). Both share one
+ *   preset taxonomy, so a site resolves the same as its native app (e.g. Notion
+ *   → markdown_notes). Personalization can optionally add the matching built-in
+ *   skill's tone; while PERSONALIZATION_OFF is true we still read the DB tone but
+ *   send the preset with no tone. An unmatched surface resolves to the "default"
+ *   preset — identical to the prior bridge.
  */
 export async function resolveSessionSkills(opts: {
   isInstruct: boolean;
@@ -78,7 +84,11 @@ export async function resolveSessionSkills(opts: {
 
   const identifier =
     opts.accessibilityContext?.context?.application?.bundleIdentifier ?? null;
-  const preset = resolvePresetForBundleId(identifier);
+  const hostname = extractHostnameFromBrowserUrl(
+    opts.accessibilityContext?.context?.windowInfo?.url,
+  );
+  const preset =
+    resolvePresetForHostname(hostname) ?? resolvePresetForBundleId(identifier);
   const tone = (await builtInToneByPreset()).get(preset);
   return [buildPresetSkill(preset, PERSONALIZATION_OFF ? undefined : tone)];
 }

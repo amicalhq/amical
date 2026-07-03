@@ -11,21 +11,24 @@ import {
 } from "@/pipeline/providers/transcription/skill-resolution";
 import type { GetAccessibilityContextResult } from "@amical/types";
 
-const ctx = (bundleId: string | null): GetAccessibilityContextResult | null =>
+const ctx = (
+  bundleId: string | null,
+  url?: string,
+): GetAccessibilityContextResult | null =>
   bundleId === null
     ? null
     : ({
-        context: { application: { bundleIdentifier: bundleId } },
+        context: {
+          application: { bundleIdentifier: bundleId },
+          windowInfo: url ? { url } : undefined,
+        },
       } as unknown as GetAccessibilityContextResult);
 
-// Built-in rows as listSkills() resolves them (preset + seeded tone).
+// Built-in rows as listSkills() resolves them. Only isBuiltIn + preset + tone
+// matter here — surface→preset resolution comes from the app catalog, not these
+// rows; listSkills only supplies the optional per-preset tone.
 const BUILT_INS = [
-  {
-    id: "personal",
-    isBuiltIn: true,
-    preset: "personal_messages",
-    tone: "casual",
-  },
+  { id: "personal", isBuiltIn: true, preset: "personal_messages", tone: "casual" },
   { id: "work", isBuiltIn: true, preset: "work_messages", tone: "casual" },
   { id: "email", isBuiltIn: true, preset: "email", tone: "formal" },
   { id: "default", isBuiltIn: true, preset: "default", tone: "casual" },
@@ -80,6 +83,77 @@ describe("resolveSessionSkills", () => {
         accessibilityContext: ctx("OUTLOOK"),
       }),
     ).toEqual([{ preset: "email" }]);
+  });
+
+  it("resolves a browser tab hostname via the site catalog", async () => {
+    // mail.google.com → email (PRESET_SITE_DEFAULTS)
+    expect(
+      await resolveSessionSkills({
+        isInstruct: false,
+        enableFormatting: true,
+        accessibilityContext: ctx(
+          "com.google.Chrome",
+          "https://mail.google.com/mail/u/0/#inbox?compose=new",
+        ),
+      }),
+    ).toEqual([{ preset: "email" }]);
+  });
+
+  it("resolves an already-normalized bare hostname (the shape production sends)", async () => {
+    // normalizeAccessibilityContext strips windowInfo.url to the hostname
+    // before it reaches here; re-extraction must be idempotent.
+    expect(
+      await resolveSessionSkills({
+        isInstruct: false,
+        enableFormatting: true,
+        accessibilityContext: ctx("com.google.Chrome", "mail.google.com"),
+      }),
+    ).toEqual([{ preset: "email" }]);
+  });
+
+  it("resolves a web app to the same preset as its native app (Notion → markdown_notes)", async () => {
+    // notion.com sits under the Work skill in the picker, but the catalog
+    // resolves it to markdown_notes — matching native Notion, not work_messages.
+    expect(
+      await resolveSessionSkills({
+        isInstruct: false,
+        enableFormatting: true,
+        accessibilityContext: ctx("com.google.Chrome", "https://notion.com/"),
+      }),
+    ).toEqual([{ preset: "markdown_notes" }]);
+  });
+
+  it("matches a subdomain of a catalog site by longest suffix", async () => {
+    // app.notion.com is not a catalog entry; notion.com is, and app.notion.com
+    // ends on that label boundary → markdown_notes.
+    expect(
+      await resolveSessionSkills({
+        isInstruct: false,
+        enableFormatting: true,
+        accessibilityContext: ctx("com.google.Chrome", "https://app.notion.com/workspace"),
+      }),
+    ).toEqual([{ preset: "markdown_notes" }]);
+  });
+
+  it("matches the www / legacy form of a catalog site (notion.so → markdown_notes)", async () => {
+    expect(
+      await resolveSessionSkills({
+        isInstruct: false,
+        enableFormatting: true,
+        accessibilityContext: ctx("com.google.Chrome", "https://www.notion.so/page"),
+      }),
+    ).toEqual([{ preset: "markdown_notes" }]);
+  });
+
+  it("does not let a lookalike domain hijack a catalog site (label-boundary safe)", async () => {
+    // evilnotion.so must NOT match notion.so; unknown app → default preset.
+    expect(
+      await resolveSessionSkills({
+        isInstruct: false,
+        enableFormatting: true,
+        accessibilityContext: ctx("com.unknown.example", "https://evilnotion.so/"),
+      }),
+    ).toEqual([{ preset: "default" }]);
   });
 
   it("omits tone for a preset with no built-in skill (e.g. ai)", async () => {

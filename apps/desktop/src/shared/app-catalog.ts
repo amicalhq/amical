@@ -558,16 +558,18 @@ export const APP_CATALOG: TargetMeta[] = [
   },
 ];
 
-// Curated list of websites for the picker. The id is the hostname we
-// match against the browser tab URL at dictation time. v1: exact
-// hostname match.
+// Curated list of websites for the picker menu. Its id is a hostname;
+// choosing one stores it on a skill's includedSites (grouping only). Preset
+// resolution for a browser tab is separate — see PRESET_SITE_DEFAULTS /
+// resolvePresetForHostname below.
 export const SITE_CATALOG: TargetMeta[] = [
   { id: "mail.google.com", name: "Gmail (web)", emoji: "✉️" },
   { id: "outlook.live.com", name: "Outlook (web)", emoji: "📧" },
   { id: "outlook.office.com", name: "Outlook 365 (web)", emoji: "📧" },
   { id: "app.slack.com", name: "Slack (web)", emoji: "💬" },
   { id: "linear.app", name: "Linear (web)", emoji: "📋" },
-  { id: "www.notion.so", name: "Notion (web)", emoji: "📝" },
+  { id: "notion.com", name: "Notion (web)", emoji: "📝" },
+  { id: "notion.so", name: "Notion (legacy)", emoji: "📝" },
   { id: "web.whatsapp.com", name: "WhatsApp (web)", emoji: "🟢" },
   { id: "discord.com", name: "Discord (web)", emoji: "🎮" },
   { id: "x.com", name: "X / Twitter", emoji: "🐦" },
@@ -712,6 +714,51 @@ export const resolvePresetForBundleId = (
   (appBundleId
     ? APP_IDENTIFIER_TO_PRESET.get(normalizeAppIdentifier(appBundleId))
     : undefined) ?? "default";
+
+// Default formatting preset for the foreground browser tab, keyed by preset id
+// — the web counterpart of PRESET_APP_DEFAULTS. Entries are registrable
+// hostnames; a "notion.com" entry also covers "www."/"app."/naked via the
+// longest-suffix match below. Kept parallel to the app groups so a website
+// resolves to the same preset its native app would (Notion/Linear →
+// markdown_notes), rather than being limited to the four skills-table presets.
+export const PRESET_SITE_DEFAULTS: Partial<Record<PresetId, string[]>> = {
+  work_messages: ["app.slack.com"],
+  personal_messages: ["web.whatsapp.com", "discord.com"],
+  email: ["mail.google.com", "outlook.live.com", "outlook.office.com"],
+  markdown_notes: ["notion.so", "notion.com", "linear.app"],
+};
+
+// Flat hostname -> preset lookup, derived from the groups above.
+const HOSTNAME_TO_PRESET: Map<string, PresetId> = (() => {
+  const m = new Map<string, PresetId>();
+  for (const [preset, hosts] of Object.entries(PRESET_SITE_DEFAULTS)) {
+    for (const host of hosts ?? []) {
+      m.set(host, preset as PresetId);
+    }
+  }
+  return m;
+})();
+
+// Longest-suffix hostname match on label boundaries. Walks the tab hostname's
+// own suffixes most→least specific (app.notion.com → notion.com) and returns
+// the first seeded site, so one "notion.com" entry covers the www./app./naked
+// forms. Whole labels only, so a lookalike can't hijack a site (evilnotion.so
+// never yields notion.so), and a multi-label host never tests its bare TLD.
+// Unknown / empty host -> undefined so the caller falls back to the bundle id.
+export const resolvePresetForHostname = (
+  hostname?: string | null,
+): PresetId | undefined => {
+  if (!hostname) return undefined;
+  const labels = hostname.split(".");
+  // Stop before the bare TLD of a multi-label host; the `, 1` floor still looks
+  // up a single-label host (e.g. an intranet name) as-is instead of skipping it.
+  const suffixCount = Math.max(labels.length - 1, 1);
+  for (let i = 0; i < suffixCount; i++) {
+    const preset = HOSTNAME_TO_PRESET.get(labels.slice(i).join("."));
+    if (preset) return preset;
+  }
+  return undefined;
+};
 
 // Normalize user-typed website input. Returns null if the input
 // doesn't look like a hostname; otherwise the canonical form we'll

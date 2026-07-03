@@ -313,15 +313,13 @@ export const dailyStats = sqliteTable(
 // output. Seeded rows ship with the app and cannot be deleted (v1);
 // user-added rows are deletable.
 //
-// Matching has two channels:
-//   includedApps  — native app identifiers (bundle id on macOS,
-//                   exe basename / AUMID on Windows). The "default"
-//                   row leaves this empty and acts as the fallback.
-//   includedSites — website hostnames matched against the foreground
-//                   browser tab. Lets the same Email skill fire for
-//                   Apple Mail (native) and mail.google.com (web).
-// Both lists are JSON-encoded string arrays. v1 uses exact-hostname
-// match; subdomain wildcards (e.g. "*.google.com") are a future v1.1.
+// includedApps / includedSites group native apps and website hostnames
+// under a skill for the settings picker (e.g. the Email skill lists both
+// Apple Mail and mail.google.com). Both are JSON-encoded string arrays.
+// These lists drive the picker UI, not preset resolution: the
+// foreground-surface → preset defaults live in the app catalog
+// (PRESET_APP_DEFAULTS / PRESET_SITE_DEFAULTS), matched by bundle id and by
+// longest hostname suffix respectively.
 //
 // Mode mirrors the proto's `oneof body { preset, custom_prompt }`:
 //   mode = "preset"  → preset is set, prompt is null
