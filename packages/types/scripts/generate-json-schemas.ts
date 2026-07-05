@@ -34,6 +34,10 @@ import {
   SetDraftEnterCaptureResultSchema,
 } from "../src/schemas/methods/set-draft-enter-capture.js";
 import {
+  SetAllowInjectedKeysParamsSchema,
+  SetAllowInjectedKeysResultSchema,
+} from "../src/schemas/methods/set-allow-injected-keys.js";
+import {
   RecheckPressedKeysParamsSchema,
   RecheckPressedKeysResultSchema,
 } from "../src/schemas/methods/recheck-pressed-keys.js";
@@ -124,6 +128,16 @@ const schemasToGenerate = [
   {
     zod: SetDraftEnterCaptureResultSchema,
     name: "SetDraftEnterCaptureResult",
+    category: "methods",
+  },
+  {
+    zod: SetAllowInjectedKeysParamsSchema,
+    name: "SetAllowInjectedKeysParams",
+    category: "methods",
+  },
+  {
+    zod: SetAllowInjectedKeysResultSchema,
+    name: "SetAllowInjectedKeysResult",
     category: "methods",
   },
   {

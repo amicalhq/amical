@@ -94,6 +94,10 @@ function AppLayoutContent() {
                   style={{
                     maxWidth: "var(--content-max-width)",
                     paddingInline: "var(--content-padding)",
+                    // Bottom breathing room so the last element of any page
+                    // doesn't butt against the scroll edge (top is handled by
+                    // the SiteHeader above this scroll area).
+                    paddingBottom: "var(--content-padding)",
                   }}
                 >
                   <div

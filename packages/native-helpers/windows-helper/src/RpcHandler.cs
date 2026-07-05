@@ -119,6 +119,10 @@ namespace WindowsHelper
                         response = HandleSetDraftEnterCapture(request);
                         break;
 
+                    case Method.SetAllowInjectedKeys:
+                        response = HandleSetAllowInjectedKeys(request);
+                        break;
+
                     case Method.RecheckPressedKeys:
                         response = HandleRecheckPressedKeys(request);
                         break;
@@ -570,6 +574,51 @@ namespace WindowsHelper
             catch (Exception ex)
             {
                 LogToStderr($"[RpcHandler] Error in setDraftEnterCapture: {ex.Message}");
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Error = new Error
+                    {
+                        Code = -32603,
+                        Message = $"Internal error: {ex.Message}"
+                    }
+                };
+            }
+        }
+
+        private RpcResponse HandleSetAllowInjectedKeys(RpcRequest request)
+        {
+            LogToStderr($"[RpcHandler] Handling setAllowInjectedKeys for ID: {request.Id}");
+
+            try
+            {
+                var paramsJson = JsonSerializer.Serialize(request.Params, jsonOptions);
+                var allowParams = JsonSerializer.Deserialize<SetAllowInjectedKeysParams>(paramsJson, jsonOptions);
+
+                if (allowParams == null)
+                {
+                    return new RpcResponse
+                    {
+                        Id = request.Id.ToString(),
+                        Error = new Error
+                        {
+                            Code = -32602,
+                            Message = "Invalid params: could not deserialize SetAllowInjectedKeysParams"
+                        }
+                    };
+                }
+
+                ShortcutManager.Instance.SetAllowInjectedKeys(allowParams.Enabled);
+
+                return new RpcResponse
+                {
+                    Id = request.Id.ToString(),
+                    Result = new SetAllowInjectedKeysResult { Success = true }
+                };
+            }
+            catch (Exception ex)
+            {
+                LogToStderr($"[RpcHandler] Error in setAllowInjectedKeys: {ex.Message}");
                 return new RpcResponse
                 {
                     Id = request.Id.ToString(),

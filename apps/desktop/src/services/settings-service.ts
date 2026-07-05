@@ -103,6 +103,7 @@ export interface AppPreferences {
   muteDictationSounds: boolean;
   autoDictateOnNewNote: boolean;
   preserveClipboard: boolean;
+  allowInjectedKeys: boolean;
 }
 
 export interface HistorySettings {
@@ -446,6 +447,7 @@ export class SettingsService extends EventEmitter {
       muteDictationSounds: preferences?.muteDictationSounds ?? false,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
       preserveClipboard: preferences?.preserveClipboard ?? true,
+      allowInjectedKeys: preferences?.allowInjectedKeys ?? false,
     };
   }
 

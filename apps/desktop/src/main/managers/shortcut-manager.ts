@@ -104,6 +104,7 @@ export class ShortcutManager extends EventEmitter {
   async initialize() {
     await this.loadShortcuts();
     this.syncShortcutsToNative(); // fire-and-forget
+    this.syncAllowInjectedKeysToNative(); // fire-and-forget
     this.setupEventListeners();
     this.startPeriodicRecheck();
   }
@@ -150,6 +151,30 @@ export class ShortcutManager extends EventEmitter {
   async reloadShortcuts() {
     await this.loadShortcuts();
     this.syncShortcutsToNative(); // fire-and-forget
+  }
+
+  /**
+   * Sync the "allow injected keys" preference to the native helper.
+   *
+   * Windows only in effect: when enabled, the Windows helper stops filtering
+   * third-party injected keystrokes (LLKHF_INJECTED), so keys from remote
+   * desktop / KVM switches / virtual keyboards / key remappers can drive
+   * shortcut matching. The helper always ignores its OWN injected events
+   * regardless. The macOS helper accepts this call and no-ops. Called on init
+   * and whenever the preference is toggled.
+   */
+  async syncAllowInjectedKeysToNative() {
+    try {
+      const { allowInjectedKeys } = await this.settingsService.getPreferences();
+      await this.nativeBridge.setAllowInjectedKeys(allowInjectedKeys);
+      log.info("Allow-injected-keys synced to native helper", {
+        allowInjectedKeys,
+      });
+    } catch (error) {
+      log.error("Failed to sync allow-injected-keys to native helper", {
+        error,
+      });
+    }
   }
 
   /**

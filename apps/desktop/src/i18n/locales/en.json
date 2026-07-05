@@ -785,6 +785,12 @@
         "label": "Draft",
         "description": "Hold to speak an instruction; review the generated text, then insert it"
       },
+      "allowInjectedKeys": {
+        "label": "Allow injected keystrokes",
+        "description": "Let injected keystrokes trigger your shortcuts.",
+        "callout": "By default, Amical only responds to physical key presses, to prevent unexpected interference from key-injecting tools like remote desktop, KVM switches, or key remappers. Turn it on if that's keeping your shortcuts from firing.",
+        "learnMore": "Learn more"
+      },
       "validation": {
         "noKeysDetected": "No keys detected",
         "tooManyKeys": "Too many keys - use {{max}} or fewer",

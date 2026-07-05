@@ -76,6 +76,7 @@ const AppPreferencesSchema = z.object({
   muteDictationSounds: z.boolean().optional(),
   autoDictateOnNewNote: z.boolean().optional(),
   preserveClipboard: z.boolean().optional(),
+  allowInjectedKeys: z.boolean().optional(),
 });
 
 const HistorySettingsSchema = z.object({
@@ -745,6 +746,14 @@ export const settingsRouter = createRouter({
 
       await settingsService.setPreferences(input);
       // Window updates are handled via settings events in AppManager
+
+      // Push the injected-keys toggle to the native helper (Windows-only in
+      // effect; the macOS helper no-ops). Only when it actually changed hands.
+      if (input.allowInjectedKeys !== undefined) {
+        const shortcutManager =
+          ctx.serviceManager.getService("shortcutManager");
+        shortcutManager?.syncAllowInjectedKeysToNative();
+      }
 
       return true;
     }),

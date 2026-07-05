@@ -757,6 +757,12 @@
         "label": "新筆記",
         "description": "開啟筆記視窗並建立新筆記"
       },
+      "allowInjectedKeys": {
+        "label": "允許注入的按鍵",
+        "description": "讓注入的按鍵觸發您的快速鍵。",
+        "callout": "預設情況下，Amical 只會回應實體按鍵，以避免遠端桌面、KVM 切換器或按鍵重新對應工具等注入按鍵的工具造成非預期的干擾。如果這導致您的快速鍵無法觸發，請開啟此選項。",
+        "learnMore": "了解更多"
+      },
       "validation": {
         "noKeysDetected": "未偵測到任何按鍵",
         "tooManyKeys": "按鍵數量過多 - 請使用 {{max}} 個或更少",

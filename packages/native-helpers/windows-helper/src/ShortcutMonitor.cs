@@ -139,15 +139,23 @@ namespace WindowsHelper
                     {
                         var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
-                        // Skip every injected event, not just our own. Any synthetic
-                        // keystroke (from us or any other software) carries the
-                        // LLKHF_INJECTED flag; only physical key presses should drive
-                        // shortcut matching and pressed-key tracking. This also covers
-                        // our own SendInput events (the paste chord and masked modifier
-                        // release), so no feedback loop forms.
+                        // Injected events (LLKHF_INJECTED) come from SendInput/keybd_event
+                        // — our own paste chord and masked modifier releases, but also
+                        // remote desktop, KVM switches, virtual keyboards and key remappers.
+                        //
+                        // ALWAYS drop our OWN injections (tagged in dwExtraInfo) so no
+                        // feedback loop can form, even when the user has opted to honor
+                        // injected keys. Third-party injected keys are dropped too UNLESS
+                        // the AllowInjectedKeys setting is on — then they fall through and
+                        // drive shortcut matching and pressed-key tracking like physical
+                        // keys. Physical key presses always fall through.
                         if ((kbStruct.flags & LLKHF_INJECTED) != 0)
                         {
-                            return CallNextHookEx(hookId, nCode, wParam, lParam);
+                            bool isSelfInjected = kbStruct.dwExtraInfo == KeycodeConstants.SelfInjectedEventTag;
+                            if (isSelfInjected || !ShortcutManager.Instance.AllowInjectedKeys)
+                            {
+                                return CallNextHookEx(hookId, nCode, wParam, lParam);
+                            }
                         }
 
                         var vkCode = (int)kbStruct.vkCode;

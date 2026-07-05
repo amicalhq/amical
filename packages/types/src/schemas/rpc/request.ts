@@ -15,6 +15,7 @@ const RPCMethodNameSchema = z.union([
   z.literal("stopRecording"),
   z.literal("setShortcuts"),
   z.literal("setDraftEnterCapture"),
+  z.literal("setAllowInjectedKeys"),
   z.literal("recheckPressedKeys"),
 ]);
 

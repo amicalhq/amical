@@ -32,10 +32,11 @@ namespace WindowsHelper
         /// <summary>
         /// Sentinel stamped into dwExtraInfo on keyboard events the helper injects itself
         /// (the Ctrl+V paste chord and modifier-masking releases in AccessibilityService).
-        /// The low-level keyboard hook skips every injected event (via LLKHF_INJECTED),
-        /// so our own synthetic input is already excluded from shortcut matching and
-        /// pressed-key tracking; this tag now just marks those events as ours, mirroring
-        /// the macOS helper's SELF_GENERATED_EVENT_TAG (0x414D4943414C5048 = "AMICALPH").
+        /// The low-level keyboard hook uses this tag to tell our OWN injected events apart
+        /// from third-party injected input: our own events are ALWAYS dropped (so no
+        /// feedback loop forms), while third-party injected keys are honored only when the
+        /// AllowInjectedKeys setting is on (see ShortcutMonitor.HookCallback). Mirrors the
+        /// macOS helper's SELF_GENERATED_EVENT_TAG (0x414D4943414C5048 = "AMICALPH").
         /// </summary>
         internal static readonly IntPtr SelfInjectedEventTag = unchecked((IntPtr)0x414D4943414C5048L);
     }

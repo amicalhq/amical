@@ -757,6 +757,12 @@
         "label": "Nueva nota",
         "description": "Abre la ventana de notas y crea una nota nueva"
       },
+      "allowInjectedKeys": {
+        "label": "Permitir pulsaciones inyectadas",
+        "description": "Permite que las pulsaciones inyectadas activen tus atajos.",
+        "callout": "De forma predeterminada, Amical solo responde a pulsaciones físicas para evitar interferencias inesperadas de herramientas que inyectan teclas, como el escritorio remoto, los conmutadores KVM o los reasignadores de teclas. Actívalo si eso impide que tus atajos funcionen.",
+        "learnMore": "Más información"
+      },
       "validation": {
         "noKeysDetected": "No se detectaron teclas",
         "tooManyKeys": "Demasiadas teclas: usa {{max}} o menos",

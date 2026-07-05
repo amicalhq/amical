@@ -44,6 +44,13 @@ namespace WindowsHelper
         private Dictionary<int, HashSet<int>> _chordKeysByTrigger = new();
         private readonly HashSet<int> _activatedMaskKeys = new();
 
+        // When true, injected keystrokes (LLKHF_INJECTED) from other software are
+        // honored by shortcut matching instead of being filtered out (see the
+        // hook in ShortcutMonitor). Our OWN injected events (tagged in dwExtraInfo
+        // with KeycodeConstants.SelfInjectedEventTag) are always dropped
+        // regardless, so no feedback loop forms. Off by default.
+        private bool _allowInjectedKeys = false;
+
         // Track currently pressed modifier keys (left/right distinct).
         private readonly HashSet<int> _pressedModifierKeys = new();
 
@@ -80,6 +87,35 @@ namespace WindowsHelper
                 _activatedMaskKeys.Clear();
                 LogToStderr($"Shortcuts updated - subset: [{FormatChords(_subsetChords)}], exact: [{FormatChords(_exactChords)}]");
             }
+        }
+
+        /// <summary>
+        /// Whether injected keystrokes should drive shortcut matching (Windows-only
+        /// setting). The hook always drops our OWN injected events regardless; this
+        /// only decides whether THIRD-PARTY injected input is honored.
+        /// </summary>
+        public bool AllowInjectedKeys
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _allowInjectedKeys;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Update the allow-injected-keys setting.
+        /// Called from RpcHandler when setAllowInjectedKeys RPC is received.
+        /// </summary>
+        public void SetAllowInjectedKeys(bool enabled)
+        {
+            lock (_lock)
+            {
+                _allowInjectedKeys = enabled;
+            }
+            LogToStderr($"Allow injected keys set to {enabled}");
         }
 
         // All configured chords across both match groups. Caller holds _lock.

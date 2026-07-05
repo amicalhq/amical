@@ -779,6 +779,12 @@
         "label": "Neue Notiz",
         "description": "Notizen-Fenster öffnen und eine neue Notiz erstellen"
       },
+      "allowInjectedKeys": {
+        "label": "Injizierte Tastenanschläge zulassen",
+        "description": "Lass injizierte Tastenanschläge deine Tastenkürzel auslösen.",
+        "callout": "Standardmäßig reagiert Amical nur auf physische Tastendrücke, um unerwartete Störungen durch Tools zu vermeiden, die Tastenanschläge einspeisen – etwa Remotedesktop, KVM-Switches oder Tasten-Remapper. Aktiviere die Option, wenn dadurch deine Tastenkürzel nicht ausgelöst werden.",
+        "learnMore": "Mehr erfahren"
+      },
       "validation": {
         "noKeysDetected": "Keine Tasten erkannt",
         "tooManyKeys": "Zu viele Tasten – verwende {{max}} oder weniger",

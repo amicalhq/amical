@@ -293,6 +293,27 @@ class IOBridge: NSObject {
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
 
+        case .setAllowInjectedKeys:
+            // Windows-only behavior: the injected-key filter lives in the Windows
+            // helper's low-level hook. macOS accepts this call and no-ops so the
+            // desktop can push the setting uniformly to whichever helper is running.
+            logToStderr(
+                "[IOBridge] Handling setAllowInjectedKeys (no-op on macOS) for ID: \(request.id)")
+            do {
+                let resultPayload = SetAllowInjectedKeysResultSchema(success: true)
+                let resultData = try jsonEncoder.encode(resultPayload)
+                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
+                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
+            } catch {
+                logToStderr(
+                    "[IOBridge] Error encoding setAllowInjectedKeys result: \(error.localizedDescription) for ID: \(request.id)"
+                )
+                let errPayload = Error(
+                    code: -32603, data: nil,
+                    message: "Error encoding result: \(error.localizedDescription)")
+                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
+            }
+
         case .recheckPressedKeys:
             logToStderr("[IOBridge] Handling recheckPressedKeys for ID: \(request.id)")
             guard let paramsAnyCodable = request.params else {

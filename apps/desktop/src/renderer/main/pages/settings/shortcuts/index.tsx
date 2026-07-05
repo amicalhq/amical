@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 import { ShortcutInput } from "@/components/shortcut-input";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/trpc/react";
@@ -10,6 +13,9 @@ import { useTranslation } from "react-i18next";
 
 export function ShortcutsSettingsPage() {
   const { t } = useTranslation();
+  // The injected-keys toggle only has an effect on Windows (the injected-key
+  // filter lives in the Windows native hook); hide it everywhere else.
+  const isWindows = window.electronAPI.platform === "win32";
   const [pushToTalkShortcut, setPushToTalkShortcut] = useState<number[]>([]);
   const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState<
     number[]
@@ -30,6 +36,25 @@ export function ShortcutsSettingsPage() {
   // tRPC queries and mutations
   const shortcutsQuery = api.settings.getShortcuts.useQuery();
   const utils = api.useUtils();
+
+  // Allow-injected-keys preference (Windows only, see isWindows above).
+  const preferencesQuery = api.settings.getPreferences.useQuery();
+  const allowInjectedKeys = preferencesQuery.data?.allowInjectedKeys ?? false;
+  const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
+    onSuccess: () => utils.settings.getPreferences.invalidate(),
+    onError: () => {
+      toast.error(t("errors.generic"));
+      utils.settings.getPreferences.invalidate();
+    },
+  });
+  const handleAllowInjectedKeysChange = (checked: boolean) => {
+    updatePreferencesMutation.mutate({ allowInjectedKeys: checked });
+  };
+  const handleOpenInjectedKeysDocs = () => {
+    window.electronAPI.openExternal(
+      "https://amical.ai/docs/custom-hotkeys#allow-injected-keystrokes-windows",
+    );
+  };
 
   const setShortcutMutation = api.settings.setShortcut.useMutation({
     onSuccess: (data, variables) => {
@@ -277,6 +302,46 @@ export function ShortcutsSettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {isWindows && (
+          <Card>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col md:flex-row md:justify-between gap-4">
+                <div>
+                  <Label className="text-base font-semibold text-foreground">
+                    {t("settings.shortcuts.allowInjectedKeys.label")}
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                    {t("settings.shortcuts.allowInjectedKeys.description")}
+                  </p>
+                </div>
+                <div className="flex items-center min-w-[260px] md:justify-end">
+                  <Switch
+                    checked={allowInjectedKeys}
+                    onCheckedChange={handleAllowInjectedKeysChange}
+                    disabled={updatePreferencesMutation.isPending}
+                    aria-label={t("settings.shortcuts.allowInjectedKeys.label")}
+                  />
+                </div>
+              </div>
+              <Alert>
+                <Info />
+                <AlertDescription>
+                  <p>
+                    {t("settings.shortcuts.allowInjectedKeys.callout")}{" "}
+                    <button
+                      type="button"
+                      onClick={handleOpenInjectedKeysDocs}
+                      className="text-primary hover:underline"
+                    >
+                      {t("settings.shortcuts.allowInjectedKeys.learnMore")}
+                    </button>
+                  </p>
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

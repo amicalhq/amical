@@ -45,6 +45,9 @@ import {
   SetDraftEnterCaptureParams,
   SetDraftEnterCaptureResult,
   SetDraftEnterCaptureResultSchema,
+  SetAllowInjectedKeysParams,
+  SetAllowInjectedKeysResult,
+  SetAllowInjectedKeysResultSchema,
   RecheckPressedKeysParams,
   RecheckPressedKeysResult,
   RecheckPressedKeysResultSchema,
@@ -89,6 +92,10 @@ interface RPCMethods {
     params: SetDraftEnterCaptureParams;
     result: SetDraftEnterCaptureResult;
   };
+  setAllowInjectedKeys: {
+    params: SetAllowInjectedKeysParams;
+    result: SetAllowInjectedKeysResult;
+  };
   recheckPressedKeys: {
     params: RecheckPressedKeysParams;
     result: RecheckPressedKeysResult;
@@ -116,6 +123,7 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
   stopRecording: StopRecordingResultSchema,
   setShortcuts: SetShortcutsResultSchema,
   setDraftEnterCapture: SetDraftEnterCaptureResultSchema,
+  setAllowInjectedKeys: SetAllowInjectedKeysResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
 };
 
@@ -850,6 +858,25 @@ export class NativeBridge extends EventEmitter {
       return result.success;
     } catch (error) {
       this.logger.error("Failed to set draft Enter capture on native helper", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Control whether the native helper honors injected keystrokes when matching
+   * shortcuts. Windows only in effect: when enabled, the Windows helper stops
+   * filtering third-party injected keys (LLKHF_INJECTED) so input from remote
+   * desktop / KVM / virtual keyboards / remappers can drive shortcuts; it always
+   * ignores its own injected events. The macOS helper accepts this and no-ops.
+   */
+  async setAllowInjectedKeys(enabled: boolean): Promise<boolean> {
+    try {
+      const result = await this.call("setAllowInjectedKeys", { enabled });
+      return result.success;
+    } catch (error) {
+      this.logger.error("Failed to set allow-injected-keys on native helper", {
         error: error instanceof Error ? error.message : String(error),
       });
       return false;

@@ -114,6 +114,7 @@ const buildDefaultSettings = (): AppSettingsData => ({
     muteDictationSounds: false,
     autoDictateOnNewNote: false,
     preserveClipboard: true,
+    allowInjectedKeys: false,
   },
   history: {
     retentionPeriod: DEFAULT_HISTORY_RETENTION_PERIOD,
