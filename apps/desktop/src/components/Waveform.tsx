@@ -1,53 +1,36 @@
 import React from "react";
-import { motion } from "framer-motion";
 
 interface WaveformProps {
-  index: number;
   isRecording: boolean;
-  voiceDetected: boolean;
+  /** This bar's spectrum energy (0..1). */
+  level: number;
   baseHeight?: number;
   silentHeight?: number;
 }
 
 export function Waveform({
-  index,
   isRecording,
-  voiceDetected,
+  level,
   baseHeight = 20,
   silentHeight = 20,
 }: WaveformProps) {
-  // Calculate animation values
   const minHeight = silentHeight;
   const maxHeight = baseHeight;
-  const midHeight = minHeight + (maxHeight - minHeight) * 0.6;
 
   if (!isRecording) {
     return <div className="h-[15%] w-1 rounded-full bg-white" />;
   }
 
+  const clampedLevel = Math.min(1, Math.max(0, level));
+  const height = minHeight + (maxHeight - minHeight) * clampedLevel;
+
+  // Drive the height directly and let a short CSS transition bridge the ~32ms
+  // gaps between frames. A framer-motion tween restarts on every render (faster
+  // than its own duration), which smears the signal and looks janky.
   return (
-    <motion.div
-      className="w-1 rounded-full bg-white gap-0.5"
-      style={{ height: `${silentHeight}%` }}
-      animate={{
-        height: voiceDetected
-          ? [
-              `${midHeight}%`,
-              `${maxHeight}%`,
-              `${midHeight}%`,
-              `${minHeight + 5}%`,
-              `${midHeight}%`,
-            ]
-          : `${silentHeight}%`,
-      }}
-      transition={{
-        duration: voiceDetected ? 0.8 : 0.3,
-        ease: "easeInOut",
-        repeat: voiceDetected ? Number.POSITIVE_INFINITY : 0,
-        repeatType: "loop",
-        delay: index * 0.06,
-        type: "tween",
-      }}
+    <div
+      className="w-1 rounded-full bg-white"
+      style={{ height: `${height}%`, transition: "height 70ms linear" }}
     />
   );
 }

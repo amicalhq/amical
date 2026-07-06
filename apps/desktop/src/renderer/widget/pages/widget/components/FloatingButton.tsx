@@ -69,16 +69,15 @@ const ProcessingIndicator: React.FC<{ isDraft?: boolean }> = ({ isDraft }) => (
 // Separate component for the waveform visualization
 const WaveformVisualization: React.FC<{
   isRecording: boolean;
-  voiceDetected: boolean;
-}> = ({ isRecording, voiceDetected }) => (
+  audioLevels: number[];
+}> = ({ isRecording, audioLevels }) => (
   <>
     {Array.from({ length: NUM_WAVEFORM_BARS }).map((_, index) => (
       <Waveform
         key={index}
-        index={index}
         isRecording={isRecording}
-        voiceDetected={voiceDetected}
-        baseHeight={60}
+        level={audioLevels[index] ?? 0}
+        baseHeight={70}
         silentHeight={20}
       />
     ))}
@@ -87,7 +86,7 @@ const WaveformVisualization: React.FC<{
 
 interface FloatingButtonProps {
   recordingStatus: RecordingStatus;
-  voiceDetected: boolean;
+  audioLevels: number[];
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   dismissRecording: () => Promise<void>;
@@ -95,7 +94,7 @@ interface FloatingButtonProps {
 
 export const FloatingButton: React.FC<FloatingButtonProps> = ({
   recordingStatus,
-  voiceDetected,
+  audioLevels,
   startRecording,
   stopRecording,
   dismissRecording,
@@ -247,7 +246,7 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
           <div className="justify-center items-center flex flex-1 gap-1 min-w-0">
             <WaveformVisualization
               isRecording={isRecording}
-              voiceDetected={voiceDetected}
+              audioLevels={audioLevels}
             />
           </div>
           <div className="h-full items-center flex mr-[5px]">
@@ -268,7 +267,7 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
           {isDraft && <DraftPen />}
           <WaveformVisualization
             isRecording={isRecording}
-            voiceDetected={voiceDetected}
+            audioLevels={audioLevels}
           />
         </button>
 

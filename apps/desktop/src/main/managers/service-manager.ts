@@ -175,6 +175,17 @@ export class ServiceManager {
   private async initializeVADService(): Promise<void> {
     try {
       this.vadService = new VADService();
+      // The service degrades to a speechProbability=1 shim instead of
+      // throwing when ONNX Runtime is unavailable; report that to PostHog.
+      this.vadService.on(
+        "vad-fallback",
+        ({ stage, error }: { stage: string; error: unknown }) => {
+          this.telemetryService?.captureException(error, {
+            source: "vad_service",
+            stage: `vad_fallback_${stage}`,
+          });
+        },
+      );
       await this.vadService.initialize();
       logger.main.info("VAD service initialized");
     } catch (error) {

@@ -1,11 +1,14 @@
-import * as ort from "onnxruntime-node";
+import type * as ort from "onnxruntime-node";
 import { logger } from "../main/logger";
 import { app } from "electron";
 import * as path from "path";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 
+type OrtModule = typeof import("onnxruntime-node");
+
 export class VADService extends EventEmitter {
+  private ort: OrtModule | null = null;
   private session: ort.InferenceSession | null = null;
   private modelPath: string | null = null;
   private state: ort.Tensor | null = null;
@@ -23,6 +26,10 @@ export class VADService extends EventEmitter {
   private speechFrameCount = 0;
   private silenceFrameCount = 0;
   private isSpeaking = false;
+  // When true, real VAD is unavailable and every frame is treated as speech
+  // (probability 1) through the same smoothing logic, so consumers see the
+  // exact same contract (results, events, state) as with the real model.
+  private fallbackMode = false;
 
   constructor() {
     super();
@@ -30,6 +37,12 @@ export class VADService extends EventEmitter {
 
   async initialize(): Promise<void> {
     try {
+      // Load onnxruntime-node lazily so a broken native binding (e.g. the
+      // bundled onnxruntime.dll losing the load race to a stale System32 copy
+      // right after install) degrades to the fallback shim instead of
+      // crashing the main process at require time.
+      this.ort = await import("onnxruntime-node");
+
       // Handle both development and production paths
       if (app.isPackaged) {
         // In production, the assets are copied to the resources folder
@@ -57,7 +70,7 @@ export class VADService extends EventEmitter {
       }
 
       // Load ONNX model
-      this.session = await ort.InferenceSession.create(this.modelPath, {
+      this.session = await this.ort.InferenceSession.create(this.modelPath, {
         executionProviders: ["coreml", "cpu"],
       });
 
@@ -66,19 +79,55 @@ export class VADService extends EventEmitter {
 
       logger.main.info("VAD service initialized successfully");
     } catch (error) {
-      logger.main.error("Failed to initialize VAD service:", error);
-      throw error;
+      this.enterFallbackMode("initialize", error);
     }
   }
 
-  getIsSpeaking(): boolean {
-    return this.isSpeaking;
+  /**
+   * Switch to the mocked shim: every frame reports speechProbability 1.
+   * Emits "vad-fallback" once so the service manager can report to PostHog.
+   */
+  private enterFallbackMode(stage: string, error: unknown): void {
+    if (this.fallbackMode) return;
+    this.fallbackMode = true;
+    // Release the native ONNX session before dropping the reference. On the
+    // inference-failure path the session is still fully loaded, and nulling it
+    // without release() would strand its native memory — dispose() would then
+    // see a null session and skip the release. Fire-and-forget (and guarded so
+    // this error path can never itself throw): we don't block the fallback.
+    const session = this.session;
+    this.session = null;
+    if (session) {
+      try {
+        void session.release().catch((releaseError) => {
+          logger.main.error(
+            "VAD: failed to release ONNX session on fallback:",
+            releaseError,
+          );
+        });
+      } catch (releaseError) {
+        logger.main.error(
+          "VAD: failed to release ONNX session on fallback:",
+          releaseError,
+        );
+      }
+    }
+    logger.main.error(
+      `VAD unavailable (${stage}); falling back to speechProbability=1 shim:`,
+      error,
+    );
+    this.emit("vad-fallback", { stage, error });
+  }
+
+  private fallbackResult(): { probability: number; isSpeaking: boolean } {
+    return { probability: 1, isSpeaking: this.applySpeechDetectionLogic(1) };
   }
 
   private resetStates(): void {
+    if (!this.ort) return;
     // Silero VAD uses a state tensor with shape [2, 1, 128]
     const stateSize = 2 * 1 * 128;
-    this.state = new ort.Tensor(
+    this.state = new this.ort.Tensor(
       "float32",
       new Float32Array(stateSize).fill(0),
       [2, 1, 128],
@@ -88,8 +137,8 @@ export class VADService extends EventEmitter {
   async processBatch(
     audioFrames: Float32Array,
   ): Promise<{ probability: number; isSpeaking: boolean }> {
-    if (!this.session || !this.state) {
-      throw new Error("VAD service not initialized");
+    if (this.fallbackMode || !this.ort || !this.session || !this.state) {
+      return this.fallbackResult();
     }
 
     try {
@@ -98,12 +147,12 @@ export class VADService extends EventEmitter {
       input.set(this.context, 0);
       input.set(audioFrames, this.CTX_SIZE);
 
-      const inputTensor = new ort.Tensor("float32", input, [
+      const inputTensor = new this.ort.Tensor("float32", input, [
         1,
         this.INPUT_SIZE,
       ]);
 
-      const srTensor = new ort.Tensor(
+      const srTensor = new this.ort.Tensor(
         "int64",
         BigInt64Array.from([BigInt(this.sr)]),
         [],
@@ -134,8 +183,8 @@ export class VADService extends EventEmitter {
 
       return { probability, isSpeaking };
     } catch (error) {
-      logger.main.error("VAD inference failed:", error);
-      throw error;
+      this.enterFallbackMode("inference", error);
+      return this.fallbackResult();
     }
   }
 
@@ -155,13 +204,11 @@ export class VADService extends EventEmitter {
     // Start speaking after enough speech frames
     if (!this.isSpeaking && this.speechFrameCount >= 3) {
       this.isSpeaking = true;
-      this.emit("voice-detected", true);
     }
 
     // Stop speaking after enough silence
     if (this.isSpeaking && this.silenceFrameCount >= this.REDEMPTION_FRAMES) {
       this.isSpeaking = false;
-      this.emit("voice-detected", false);
     }
 
     return this.isSpeaking;
@@ -187,10 +234,6 @@ export class VADService extends EventEmitter {
 
     // Process through VAD
     return this.processBatch(audioData);
-  }
-
-  getSpeechState(): boolean {
-    return this.isSpeaking;
   }
 
   /**

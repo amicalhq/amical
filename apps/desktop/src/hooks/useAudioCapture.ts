@@ -21,6 +21,23 @@ import {
 const SAMPLE_RATE = 16000;
 const AUDIO_WORKLET_FLUSH_TIMEOUT_MS = 1_000;
 
+// Scrolling level history. One overall loudness value per frame is pushed into
+// a history buffer, and each bar reads a different time-lag of it, so a loud
+// moment enters at bar 0 and ripples across the row (all bars move; the wave
+// "carries over"). A fixed-frequency spectrum can't do that — bands are pinned
+// in place and voice energy is lopsided toward the low ones.
+const WAVEFORM_BAR_SLOTS = 6;
+const BAR_STRIDE = 3; // frames of lag between adjacent bars (~96ms @ 31fps)
+const LEVEL_HISTORY_LEN = (WAVEFORM_BAR_SLOTS - 1) * BAR_STRIDE + 1;
+const LEVEL_GAIN = 2.2; // lift averaged band energy into a usable 0..1 range
+const VOICE_BIN_LOW = 2; // ~125 Hz
+const VOICE_BIN_HIGH = 30; // ~1.9 kHz (speech-dominant band)
+const ANALYSER_FFT_SIZE = 256; // 128 bins @ ~62.5 Hz each at 16 kHz
+const ANALYSER_SMOOTHING = 0.3; // light so syllables stay sharp enough to travel
+const ANALYSER_MIN_DB = -70; // bottom of the byte range (quiet)
+const ANALYSER_MAX_DB = -30; // top of the byte range (loud)
+const EMPTY_BARS: number[] = new Array(WAVEFORM_BAR_SLOTS).fill(0);
+
 export interface UseAudioCaptureParams {
   onAudioChunk: (
     arrayBuffer: ArrayBuffer,
@@ -35,7 +52,8 @@ export interface UseAudioCaptureParams {
 }
 
 export interface UseAudioCaptureOutput {
-  voiceDetected: boolean;
+  /** Per-bar levels (0..1): a scrolling history of mic loudness, newest first. */
+  audioLevels: number[];
 }
 
 export const useAudioCapture = ({
@@ -44,7 +62,14 @@ export const useAudioCapture = ({
   enabled,
   idle,
 }: UseAudioCaptureParams): UseAudioCaptureOutput => {
-  const [voiceDetected, setVoiceDetected] = useState(false);
+  const [audioLevels, setAudioLevels] = useState<number[]>(EMPTY_BARS);
+  // Analyser tap, reused byte buffer, and the rolling level history — kept in
+  // refs so the frame handler doesn't depend on state.
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const freqDataRef = useRef<Uint8Array | null>(null);
+  const levelHistoryRef = useRef<number[]>(
+    new Array(LEVEL_HISTORY_LEN).fill(0),
+  );
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -66,17 +91,6 @@ export const useAudioCapture = ({
   idleRef.current = idle;
   onCaptureStartedRef.current = onCaptureStarted;
 
-  // Subscribe to voice detection updates via tRPC
-  api.recording.voiceDetectionUpdates.useSubscription(undefined, {
-    enabled,
-    onData: (detected: boolean) => {
-      setVoiceDetected(detected);
-    },
-    onError: (err) => {
-      console.error("Voice detection subscription error:", err);
-    },
-  });
-
   // Get the user's microphone fallback chain from settings.
   const { data: settings } = api.settings.getSettings.useQuery();
   const microphonePriority = settings?.recording?.microphonePriority;
@@ -88,6 +102,43 @@ export const useAudioCapture = ({
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
+    }
+  }, []);
+
+  // Compute one overall voice-band loudness (getByteFrequencyData already maps
+  // [minDecibels, maxDecibels] -> 0..255 per bin, so this auto-windows), push it
+  // into the history, then read each bar at a different lag so a loud moment
+  // ripples from bar 0 across the row.
+  const updateBars = useCallback(() => {
+    const analyser = analyserRef.current;
+    const data = freqDataRef.current;
+    if (!analyser || !data) return;
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let k = VOICE_BIN_LOW; k < VOICE_BIN_HIGH; k++) {
+      sum += data[k];
+    }
+    const level = Math.min(
+      1,
+      (sum / (VOICE_BIN_HIGH - VOICE_BIN_LOW) / 255) * LEVEL_GAIN,
+    );
+
+    const hist = levelHistoryRef.current;
+    hist.unshift(level);
+    hist.length = LEVEL_HISTORY_LEN; // drop the oldest, keep fixed length
+    const bars = new Array<number>(WAVEFORM_BAR_SLOTS);
+    for (let b = 0; b < WAVEFORM_BAR_SLOTS; b++) {
+      bars[b] = hist[b * BAR_STRIDE];
+    }
+    if (!disposedRef.current) {
+      setAudioLevels(bars);
+    }
+  }, []);
+
+  const resetBars = useCallback(() => {
+    levelHistoryRef.current = new Array(LEVEL_HISTORY_LEN).fill(0);
+    if (!disposedRef.current) {
+      setAudioLevels(EMPTY_BARS);
     }
   }, []);
 
@@ -108,6 +159,9 @@ export const useAudioCapture = ({
         // Nodes may already be detached or on a closed context.
       }
     }
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    freqDataRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     if (audioContextRef.current) {
       await audioContextRef.current.close().catch(() => {});
@@ -116,7 +170,8 @@ export const useAudioCapture = ({
     workletNodeRef.current = null;
     audioContextRef.current = null;
     streamRef.current = null;
-  }, []);
+    resetBars();
+  }, [resetBars]);
 
   const startCapture = useCallback(async () => {
     // StrictMode can remount and call us before the teardown effect's cleanup is
@@ -187,13 +242,35 @@ export const useAudioCapture = ({
           workletNodeRef.current = workletNode;
           attachAudioWorkletFrameHandler({
             workletNode,
-            onAudioChunk,
+            onAudioChunk: (arrayBuffer, speechProbability, isFinalChunk) => {
+              try {
+                updateBars();
+              } catch (error) {
+                console.error(
+                  "AudioCapture: Failed to update waveform bars:",
+                  error,
+                );
+              }
+              return onAudioChunk(arrayBuffer, speechProbability, isFinalChunk);
+            },
             finishPendingFlush: (didFlush) =>
               pendingWorkletFlushRef.current?.finish(didFlush),
           });
 
           // Connect audio graph
           sourceRef.current.connect(workletNodeRef.current);
+
+          // Tap the source with an analyser for the spectrum visualiser. It's a
+          // passive branch (no downstream connection) and doesn't touch the
+          // worklet capture path.
+          const analyser = audioContextRef.current.createAnalyser();
+          analyser.fftSize = ANALYSER_FFT_SIZE;
+          analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
+          analyser.minDecibels = ANALYSER_MIN_DB;
+          analyser.maxDecibels = ANALYSER_MAX_DB;
+          sourceRef.current.connect(analyser);
+          analyserRef.current = analyser;
+          freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
 
           const overallDuration = performance.now() - overallStartTime;
           console.log(
@@ -211,7 +288,13 @@ export const useAudioCapture = ({
       .finally(() => {
         pendingStartRef.current = false;
       });
-  }, [onAudioChunk, microphonePriorityKey, releaseAll, clearIdleTimer]);
+  }, [
+    onAudioChunk,
+    microphonePriorityKey,
+    releaseAll,
+    clearIdleTimer,
+    updateBars,
+  ]);
 
   // Device-change diagnostics are only attached while dictation is active, so
   // they don't enumerate/log in the background when not recording.
@@ -330,11 +413,8 @@ export const useAudioCapture = ({
           await releaseAll();
           return;
         }
-        if (sourceRef.current && workletNodeRef.current) {
-          sourceRef.current.disconnect(workletNodeRef.current);
-          sourceRef.current = null;
-        }
-        // Suspend (not close) so the next dictation can resume it.
+        // Suspend (not close) so the next dictation can resume it. The source's
+        // edges are dropped in the finally, so every stop path cleans them up.
         if (audioContextRef.current?.state === "running") {
           await audioContextRef.current.suspend().catch(() => {});
         }
@@ -347,10 +427,21 @@ export const useAudioCapture = ({
         trackDiagnosticsCleanupRef.current = null;
         streamRef.current?.getTracks().forEach((track) => track.stop());
         // Keep the suspended AudioContext for reuse; drop per-dictation nodes and
-        // stream. The next dictation creates a fresh worklet node.
+        // stream. Fully disconnect the source first so its worklet + analyser-tap
+        // edges don't leave stopped nodes attached to the retained context.
+        if (sourceRef.current) {
+          try {
+            sourceRef.current.disconnect();
+          } catch {
+            // Already detached or on a closed context.
+          }
+        }
         sourceRef.current = null;
         workletNodeRef.current = null;
         streamRef.current = null;
+        analyserRef.current = null;
+        freqDataRef.current = null;
+        resetBars();
 
         // Context/worklet recycling is scheduled only once the main recording
         // state is idle, so the final flush can complete while stopping.
@@ -359,7 +450,12 @@ export const useAudioCapture = ({
         console.log("AudioCapture: Audio capture stopped");
       }
     });
-  }, [releaseAll, scheduleIdleContextRecycle, waitForWorkletFlush]);
+  }, [
+    releaseAll,
+    scheduleIdleContextRecycle,
+    waitForWorkletFlush,
+    resetBars,
+  ]);
 
   // Start/stop based on enabled state
   useEffect(() => {
@@ -404,6 +500,6 @@ export const useAudioCapture = ({
   }, [releaseAll, clearIdleTimer]);
 
   return {
-    voiceDetected,
+    audioLevels,
   };
 };

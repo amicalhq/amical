@@ -43,6 +43,7 @@ interface FakeStream {
 let audioContexts: FakeAudioContext[] = [];
 let workletNodes: FakeWorkletNode[] = [];
 let sources: FakeSourceNode[] = [];
+let analysers: FakeAnalyserNode[] = [];
 let streams: FakeStream[] = [];
 
 class FakeSourceNode {
@@ -50,6 +51,22 @@ class FakeSourceNode {
   disconnect = vi.fn();
   constructor() {
     sources.push(this);
+  }
+}
+
+class FakeAnalyserNode {
+  fftSize = 0;
+  smoothingTimeConstant = 0;
+  minDecibels = 0;
+  maxDecibels = 0;
+  connect = vi.fn();
+  disconnect = vi.fn();
+  getByteFrequencyData = vi.fn();
+  get frequencyBinCount() {
+    return this.fftSize / 2;
+  }
+  constructor() {
+    analysers.push(this);
   }
 }
 
@@ -88,6 +105,7 @@ class FakeAudioContext {
   state: "running" | "suspended" | "closed" = "running";
   audioWorklet = { addModule: vi.fn(async () => undefined) };
   createMediaStreamSource = vi.fn(() => new FakeSourceNode());
+  createAnalyser = vi.fn(() => new FakeAnalyserNode());
   resume = vi.fn(async () => {
     this.state = "running";
   });
@@ -119,6 +137,7 @@ beforeEach(() => {
   audioContexts = [];
   workletNodes = [];
   sources = [];
+  analysers = [];
   streams = [];
   getUserMedia = vi.fn(async () => makeStream());
 
@@ -171,6 +190,9 @@ describe("useAudioCapture lifecycle", () => {
     expect(workletNodes).toHaveLength(1);
     // source connected to the worklet node
     expect(sources[0].connect).toHaveBeenCalledWith(workletNodes[0]);
+    // and tapped by an analyser for the waveform visualiser
+    expect(analysers).toHaveLength(1);
+    expect(sources[0].connect).toHaveBeenCalledWith(analysers[0]);
   });
 
   it("keeps the AudioContext warm across dictations but creates a fresh worklet node each time", async () => {
@@ -185,6 +207,9 @@ describe("useAudioCapture lifecycle", () => {
 
     expect(audioContexts[0].suspend).toHaveBeenCalled();
     expect(audioContexts[0].state).toBe("suspended");
+    // The source is fully disconnected on stop, so its worklet + analyser-tap
+    // edges don't accumulate on the retained warm context.
+    expect(sources[0].disconnect).toHaveBeenCalledWith();
 
     // Second dictation reuses the same (warm) context.
     rerender({ enabled: true, idle: false });
@@ -194,8 +219,9 @@ describe("useAudioCapture lifecycle", () => {
     expect(audioContexts).toHaveLength(1);
     expect(audioContexts[0].audioWorklet.addModule).toHaveBeenCalledOnce();
     expect(audioContexts[0].resume).toHaveBeenCalled();
-    // Fresh node per dictation (no stale buffer can survive).
+    // Fresh worklet node + analyser per dictation (no stale buffer can survive).
     expect(workletNodes).toHaveLength(2);
+    expect(analysers).toHaveLength(2);
   });
 
   it("stops the mic track on stop while keeping the context for reuse", async () => {

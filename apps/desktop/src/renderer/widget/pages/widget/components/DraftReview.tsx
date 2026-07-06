@@ -9,7 +9,7 @@ interface DraftReviewProps {
   onInsert: () => void;
   onDismiss: () => void;
   recordingStatus: RecordingStatus;
-  voiceDetected: boolean;
+  audioLevels: number[];
 }
 
 // A small keyboard-cap hint (e.g. ↵, esc) that teaches the shortcut driving
@@ -43,7 +43,7 @@ export function DraftReview({
   onInsert,
   onDismiss,
   recordingStatus,
-  voiceDetected,
+  audioLevels,
 }: DraftReviewProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -135,10 +135,9 @@ export function DraftReview({
               {Array.from({ length: 5 }).map((_, i) => (
                 <Waveform
                   key={i}
-                  index={i}
                   isRecording
-                  voiceDetected={voiceDetected}
-                  baseHeight={60}
+                  level={audioLevels[i] ?? 0}
+                  baseHeight={70}
                   silentHeight={20}
                 />
               ))}

@@ -13,7 +13,8 @@ export interface RecordingStatus {
 
 export interface UseRecordingOutput {
   recordingStatus: RecordingStatus;
-  voiceDetected: boolean;
+  /** Per-bar levels (0..1): scrolling history of mic loudness for the bars. */
+  audioLevels: number[];
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   dismissRecording: () => Promise<void>;
@@ -89,7 +90,7 @@ export const useRecording = (): UseRecordingOutput => {
   const isActive = recordingStatus.state === "recording";
   const isIdle = recordingStatus.state === "idle";
 
-  const { voiceDetected } = useAudioCapture({
+  const { audioLevels } = useAudioCapture({
     onAudioChunk: handleAudioChunk,
     onCaptureStarted: handleCaptureStarted,
     enabled: isActive,
@@ -120,7 +121,7 @@ export const useRecording = (): UseRecordingOutput => {
 
   return {
     recordingStatus,
-    voiceDetected,
+    audioLevels,
     startRecording,
     stopRecording,
     dismissRecording,

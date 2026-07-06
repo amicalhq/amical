@@ -3,11 +3,6 @@
 // jsdom/web test transform can't resolve. Only the surface the hooks touch is
 // implemented here; expand as renderer tests need more of the api.
 export const api = {
-  recording: {
-    voiceDetectionUpdates: {
-      useSubscription: (): void => undefined,
-    },
-  },
   settings: {
     getSettings: {
       useQuery: (): { data: undefined } => ({ data: undefined }),
