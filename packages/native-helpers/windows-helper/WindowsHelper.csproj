@@ -10,7 +10,11 @@
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Compressed bundles are inflated into private memory on every launch
+         (~3-4x slower start, ~70 MB extra resident RAM for the process lifetime);
+         the Squirrel package already compresses the download. -->
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <AssemblyName>WindowsHelper</AssemblyName>
     <RootNamespace>WindowsHelper</RootNamespace>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -31,5 +35,29 @@
     <EmbeddedResource Include="Resources\rec-stop.mp3" />
     <EmbeddedResource Include="Resources\error-chime.mp3" />
   </ItemGroup>
+
+  <!-- Self-contained publish ships the full Microsoft.WindowsDesktop.App runtime pack
+       regardless of FrameworkReference profile (SDK limitation), so WPF (~44 MB managed
+       + ~8 MB native, all unused) must be dropped by pruning the publish list. Hooks
+       ComputeResolvedFilesToPublishList because the single-file bundler snapshots its
+       inputs before ComputeFilesToPublish. -->
+  <Target Name="StripWpfFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <_WpfPublishFile Include="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('Presentation')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('wpfgfx')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('D3DCompiler')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('PenImc')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('ReachFramework')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('System.Xaml')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('UIAutomation')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('WindowsBase')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('System.Windows.Controls.Ribbon')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('System.Windows.Input.Manipulations')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('System.Windows.Presentation')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('System.Printing'))" />
+      <ResolvedFileToPublish Remove="@(_WpfPublishFile)" />
+    </ItemGroup>
+  </Target>
 
 </Project>
