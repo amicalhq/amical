@@ -247,6 +247,11 @@ export interface AppSettingsData {
     };
   };
   updateChannel?: "stable" | "beta";
+  // Stable per-install anonymous id, generated and persisted only as a fallback
+  // when the OS machine id is unreadable (e.g. reg.exe blocked by AppLocker/GPO
+  // on Windows). Top-level so telemetry opt-in/out (which replaces the telemetry
+  // section) can't wipe it.
+  installId?: string;
   featureFlags?: {
     flags?: Record<string, string | boolean>;
     payloads?: Record<string, unknown>;

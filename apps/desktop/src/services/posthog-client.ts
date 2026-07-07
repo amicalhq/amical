@@ -1,8 +1,10 @@
 import { PostHog } from "posthog-node";
-import { machineId } from "node-machine-id";
+import { machineIdSync } from "node-machine-id";
+import { randomUUID } from "crypto";
 import * as si from "systeminformation";
 import { app } from "electron";
 import { logger } from "../main/logger";
+import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
 
 export interface SystemInfo {
   // Hardware
@@ -65,8 +67,8 @@ export class PostHogClient {
   }
 
   async initialize(): Promise<void> {
-    this._machineId = await machineId();
-    logger.main.info("Machine ID generated", { machineId: this._machineId });
+    this._machineId = await this.resolveDeviceId();
+    logger.main.info("Machine ID resolved", { machineId: this._machineId });
 
     this._systemInfo = await this.collectSystemInfo();
     logger.main.info("System information collected", {
@@ -140,6 +142,38 @@ export class PostHogClient {
 
   clearIdentifiedUser(): void {
     this._identifiedUser = null;
+  }
+
+  // Reads the OS machine id (sha256 of the hardware guid). On Windows this shells
+  // out to reg.exe, which enterprise hardening (AppLocker / GPO) can block — that
+  // must never keep the app from starting, so any failure falls back to a stable,
+  // persisted per-install id instead of throwing.
+  private async resolveDeviceId(): Promise<string> {
+    try {
+      const id = machineIdSync();
+      if (id) {
+        return id;
+      }
+      logger.main.warn(
+        "Machine id read returned empty, using install id fallback",
+      );
+    } catch (error) {
+      logger.main.warn("Failed to read machine id, using install id fallback", {
+        error,
+      });
+    }
+    return this.getOrCreateInstallId();
+  }
+
+  private async getOrCreateInstallId(): Promise<string> {
+    const existing = await getSettingsSection("installId");
+    if (existing) {
+      return existing;
+    }
+    const installId = randomUUID();
+    await updateSettingsSection("installId", installId);
+    logger.main.info("Generated fallback install id", { installId });
+    return installId;
   }
 
   private async collectSystemInfo(): Promise<SystemInfo> {
