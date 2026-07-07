@@ -53,6 +53,16 @@ namespace WindowsHelper.Utils
         /// </summary>
         public const double EXTRACTION_TIMEOUT_MS = 1000.0;
 
+        /// <summary>
+        /// Max time to wait for an app to respond to the injected copy chord.
+        /// </summary>
+        public const int COPY_CAPTURE_TIMEOUT_MS = 300;
+
+        /// <summary>
+        /// Poll interval while waiting for the clipboard sequence number to bump
+        /// </summary>
+        public const int COPY_CAPTURE_POLL_INTERVAL_MS = 25;
+
         // =============================================================================
         // Search Limits
         // =============================================================================

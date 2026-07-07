@@ -82,6 +82,14 @@ namespace WindowsHelper.Services
         }
 
         /// <summary>
+        /// Reads clipboard text, or null when the clipboard holds no text format.
+        /// </summary>
+        public string? GetTextOrNull()
+        {
+            return InvokeOnMainThread(() => Clipboard.ContainsText() ? Clipboard.GetText() : (string?)null);
+        }
+
+        /// <summary>
         /// Restores previously saved clipboard content synchronously.
         /// Returns error message if restore failed, null on success.
         /// </summary>

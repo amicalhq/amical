@@ -13,6 +13,10 @@ class IOBridge: NSObject {
     let jsonDecoder: JSONDecoder
     private let accessibilityService: AccessibilityService
     private let audioService: AudioService
+    // Copy capture polls the pasteboard for up to the capture timeout; it
+    // touches no AX state, so it gets its own serial queue instead of
+    // blocking AccessibilityQueue (and the AX context requests behind it).
+    private let copyCaptureQueue = DispatchQueue(label: "com.amical.helper.copy-capture")
 
     init(jsonEncoder: JSONEncoder, jsonDecoder: JSONDecoder) {
         self.jsonEncoder = jsonEncoder
@@ -349,6 +353,15 @@ class IOBridge: NSObject {
                 rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
             }
 
+        case .getSelectedTextViaCopy:
+            // Blocks up to the copy-capture timeout while polling the pasteboard,
+            // so run it off the IO thread (own queue — see copyCaptureQueue).
+            copyCaptureQueue.async { [weak self] in
+                guard let self = self else { return }
+                self.handleGetSelectedTextViaCopy(id: request.id)
+            }
+            return
+
         default:
             logToStderr("[IOBridge] Method not found: \(request.method) for ID: \(request.id)")
             let errPayload = Error(
@@ -502,6 +515,13 @@ class IOBridge: NSObject {
             logToStderr("[IOBridge] NSException in getAccessibilityContext: \(exception.name) - \(exception.reason)")
             sendError(id: id, code: -32603, message: "\(exception.name): \(exception.reason)")
         }
+    }
+
+    private func handleGetSelectedTextViaCopy(id: String) {
+        logToStderr("[IOBridge] Handling getSelectedTextViaCopy for ID: \(id)")
+
+        let result = accessibilityService.getSelectedTextViaCopy()
+        sendResult(id: id, result: result)
     }
 
     private func handleGetAccessibilityStatus(id: String) {

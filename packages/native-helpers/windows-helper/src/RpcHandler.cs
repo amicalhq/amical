@@ -127,6 +127,10 @@ namespace WindowsHelper
                         response = HandleRecheckPressedKeys(request);
                         break;
 
+                    case Method.GetSelectedTextViaCopy:
+                        response = HandleGetSelectedTextViaCopy(request);
+                        break;
+
                     default:
                         LogToStderr($"Method not found: {request.Method} for ID: {request.Id}");
                         response = new RpcResponse
@@ -287,6 +291,18 @@ namespace WindowsHelper
             {
                 Id = request.Id.ToString(),
                 Result = new GetAccessibilityContextResult { Context = context }
+            };
+        }
+
+        private RpcResponse HandleGetSelectedTextViaCopy(RpcRequest request)
+        {
+            LogToStderr($"Handling getSelectedTextViaCopy for ID: {request.Id}");
+
+            var result = accessibilityService.GetSelectedTextViaCopy();
+            return new RpcResponse
+            {
+                Id = request.Id.ToString(),
+                Result = result
             };
         }
 

@@ -145,10 +145,11 @@ namespace WindowsHelper.Services
                 builder.ExtractionMethod = The0.ValueAttribute;
                 builder.IsEditable = focusedIsEditable || IsElementEditable(extractionElement);
                 builder.IsPlaceholder = IsPlaceholderShowing(focusedElement) || IsPlaceholderShowing(extractionElement);
-                // ValuePattern doesn't provide caret info, but provide empty strings for consistency
-                builder.SelectedText = "";
-                builder.PreSelectionText = "";
-                builder.PostSelectionText = "";
+                // ValuePattern provides no caret/selection info. Leave selection
+                // fields null (unknown) per the schema's null-vs-empty semantics:
+                // "" would claim "we read the selection and it is empty", which
+                // this path cannot know. null is the honest value for an
+                // unverifiable selection.
                 return builder.Build();
             }
 
@@ -156,7 +157,14 @@ namespace WindowsHelper.Services
         }
 
         /// <summary>
-        /// Get TextPattern from element if it's a text-capable control type.
+        /// Get TextPattern from element if it's an Edit or Document control.
+        /// Deliberately NOT widened to every TextPattern-bearing surface
+        /// (chat transcripts, terminals, read-only panes): the accessibility
+        /// context is fetched on every dictation, and read-only content
+        /// selected somewhere on screen should not ride along with ordinary
+        /// dictations. Draft mode still gets read-only selections — when this
+        /// path yields nothing, the desktop's draft-only clipboard-copy
+        /// fallback (getSelectedTextViaCopy) captures them instead.
         /// </summary>
         private static IUIAutomationTextPattern? GetTextPattern(IUIAutomationElement element)
         {
@@ -166,7 +174,6 @@ namespace WindowsHelper.Services
             {
                 var controlType = element.CurrentControlType;
 
-                // Only check Edit and Document control types
                 if (controlType != Constants.UIA_EditControlTypeId &&
                     controlType != Constants.UIA_DocumentControlTypeId)
                 {

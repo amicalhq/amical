@@ -21,6 +21,7 @@ import type {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { v4 as uuid } from "uuid";
+import type { GetAccessibilityContextResult } from "@amical/types";
 
 export type { RecordingMode } from "./recording-state-machine";
 
@@ -28,6 +29,11 @@ export type { RecordingMode } from "./recording-state-machine";
 const QUICK_PRESS_THRESHOLD = 500;
 const NO_AUDIO_TIMEOUT = 5000;
 const CLEANUP_STOPPING_WAIT_TIMEOUT = 1000;
+// Hard bound on the stop-path draft selection capture, so a wedged helper
+// can't hold the widget in "stopping". The capture is bounded tighter on its
+// own (2s RPC timeout + a fast merge), so losing this race is a backstop
+// case, not an expected path.
+const DRAFT_CAPTURE_BARRIER_TIMEOUT = 2500;
 
 // Recording duration limits (ms)
 const RECORDING_WARNING_TIMEOUT = 5 * 60 * 1000; // 5 minutes - show warning toast
@@ -541,10 +547,10 @@ export class RecordingManager extends EventEmitter {
         .refreshAccessibilityContext()
         .then(async () => {
           const accessibilityContext = nativeBridge.getAccessibilityContext();
-          // Null means the helper could not resolve a usable focused-app/text
-          // context. The gRPC client currently only sends concrete context
-          // snapshots, so clearing a previously sent context is intentionally
-          // left unsupported here.
+          // Null means the refresh failed or the helper could not resolve a
+          // usable focused-app/text context. The gRPC client currently only
+          // sends concrete context snapshots, so clearing a previously sent
+          // context is intentionally left unsupported here.
           if (
             !sessionId ||
             !accessibilityContext ||
@@ -578,6 +584,111 @@ export class RecordingManager extends EventEmitter {
     } catch (error) {
       this.systemAudioMuted = false;
       logger.audio.error("Failed to initialize session", { error });
+    }
+  }
+
+  /**
+   * Draft-mode fallback: when the accessibility context couldn't read the
+   * selected text — null, or a phantom "" such as Chrome page selections where
+   * the WebArea reports a {0,0} range — capture it via the helper's
+   * clipboard-copy RPC and merge it into the streaming session context.
+   *
+   * Runs inline in performEndRecording (stop time), once, for non-cancelled
+   * draft stops only — so the session is alive by construction, cancels never
+   * reach it, and the chord keys are already released when the copy chord is
+   * injected (the helper's modifier masking is defense-in-depth). Costs
+   * ~50-150ms at stop when a selection exists, the full poll timeout (~300ms)
+   * when nothing is selected; the RPC's own 2s timeout bounds the worst case,
+   * with the caller's race (DRAFT_CAPTURE_BARRIER_TIMEOUT) as backstop.
+   * Never runs for plain dictation.
+   */
+  private async captureDraftSelectionViaCopy(sessionId: string): Promise<void> {
+    try {
+      // Session already torn down — nothing to capture for.
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
+
+      const nativeBridge = this.serviceManager.getService("nativeBridge");
+      const cached = nativeBridge.getAccessibilityContext();
+      const axSelectedText = cached?.context?.textSelection?.selectedText;
+      if (axSelectedText && axSelectedText.trim() !== "") {
+        return; // AX path already captured the selection
+      }
+
+      const baseContext = cached?.context;
+      if (!baseContext) {
+        // The bridge clears its cache when a refresh starts, so it holds this
+        // session's result or null: null means the refresh failed, hasn't
+        // resolved yet, or the helper produced no usable context — either way
+        // there is nothing trustworthy to merge into, so skip before paying
+        // for an injection we couldn't use.
+        logger.audio.warn(
+          "Draft copy-capture skipped: no fresh accessibility context to merge into",
+          { sessionId },
+        );
+        return;
+      }
+
+      const captured = await nativeBridge.getSelectedTextViaCopy();
+      const selectedText = captured?.selectedText;
+      if (!selectedText || selectedText.trim() === "") {
+        logger.audio.info("Draft copy-capture found no selection", {
+          sessionId,
+          clipboardChanged: captured?.clipboardChanged ?? null,
+          message: captured?.message,
+        });
+        return;
+      }
+
+      // Session ended while the capture was in flight — don't merge into a
+      // session that moved on without us.
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
+
+      // clipboardCopy yields only the text. Every other selection field is
+      // either unknown or known-wrong — this path only runs because the AX
+      // read failed or returned a phantom range, so the base context's
+      // window fields (fullContent, pre/post text) describe the wrong
+      // location. Report null/false rather than junk; isEditable false so
+      // downstream never plans an in-place replacement it can't verify.
+      const merged: GetAccessibilityContextResult = {
+        context: {
+          ...baseContext,
+          textSelection: {
+            selectedText,
+            fullContent: null,
+            preSelectionText: null,
+            postSelectionText: null,
+            selectionRange: null,
+            isEditable: false,
+            extractionMethod: "clipboardCopy",
+            hasMultipleRanges: false,
+            isPlaceholder: false,
+            isSecure: baseContext.textSelection?.isSecure ?? false,
+            fullContentTruncated: false,
+          },
+        },
+      };
+
+      const transcriptionService = this.serviceManager.getService(
+        "transcriptionService",
+      );
+      await transcriptionService.updateStreamingSession({
+        sessionId,
+        accessibilityContext: merged,
+      });
+
+      logger.audio.info("Draft selection captured via clipboard copy", {
+        sessionId,
+        selectedTextLength: selectedText.length,
+      });
+    } catch (error) {
+      logger.audio.warn("Draft copy-capture fallback failed", {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -689,6 +800,19 @@ export class RecordingManager extends EventEmitter {
           this.machine.resolvePendingStopSession(pendingStopSession);
           this.finalizeWithoutFinalChunk("interrupted_start", sessionId);
           return;
+        }
+
+        // Draft selection capture, inline at stop. Placed AFTER the native
+        // stop so the rec-stop sound and unmute aren't blocked; ordering is
+        // still safe because the final chunk's finalize waits on
+        // pendingStopSession, which only resolves in the finally below.
+        if (!shouldCancelStreamingEarly && this.currentIsInstruct && sessionId) {
+          await Promise.race([
+            this.captureDraftSelectionViaCopy(sessionId),
+            new Promise<void>((resolve) =>
+              setTimeout(resolve, DRAFT_CAPTURE_BARRIER_TIMEOUT),
+            ),
+          ]);
         }
 
         // Safety timeout for stuck state

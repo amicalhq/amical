@@ -42,6 +42,10 @@ import {
   RecheckPressedKeysResultSchema,
 } from "../src/schemas/methods/recheck-pressed-keys.js";
 import {
+  GetSelectedTextViaCopyParamsSchema,
+  GetSelectedTextViaCopyResultSchema,
+} from "../src/schemas/methods/get-selected-text-via-copy.js";
+import {
   KeyDownEventSchema,
   KeyUpEventSchema,
   FlagsChangedEventSchema,
@@ -148,6 +152,16 @@ const schemasToGenerate = [
   {
     zod: RecheckPressedKeysResultSchema,
     name: "RecheckPressedKeysResult",
+    category: "methods",
+  },
+  {
+    zod: GetSelectedTextViaCopyParamsSchema,
+    name: "GetSelectedTextViaCopyParams",
+    category: "methods",
+  },
+  {
+    zod: GetSelectedTextViaCopyResultSchema,
+    name: "GetSelectedTextViaCopyResult",
     category: "methods",
   },
 ];

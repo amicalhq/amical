@@ -17,6 +17,7 @@ const RPCMethodNameSchema = z.union([
   z.literal("setDraftEnterCapture"),
   z.literal("setAllowInjectedKeys"),
   z.literal("recheckPressedKeys"),
+  z.literal("getSelectedTextViaCopy"),
 ]);
 
 export const RpcRequestSchema = z.object({

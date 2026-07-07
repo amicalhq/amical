@@ -451,18 +451,7 @@ class AccessibilityService {
         logToStderr("[AccessibilityService] Attempting to paste transcript: \(transcript).")
 
         let pasteboard = NSPasteboard.general
-        let originalPasteboardItems =
-            pasteboard.pasteboardItems?.compactMap { item -> NSPasteboardItem? in
-                let newItem = NSPasteboardItem()
-                var hasData = false
-                for type in item.types ?? [] {
-                    if let data = item.data(forType: type) {
-                        newItem.setData(data, forType: type)
-                        hasData = true
-                    }
-                }
-                return hasData ? newItem : nil
-            } ?? []
+        let originalPasteboardItems = snapshotPasteboardItems(pasteboard)
 
         let originalChangeCount = pasteboard.changeCount  // Save change count to detect external modifications
 
@@ -474,48 +463,17 @@ class AccessibilityService {
             // Restore original content before returning
             restorePasteboard(
                 pasteboard: pasteboard, items: originalPasteboardItems,
-                originalChangeCount: originalChangeCount)
+                expectedChangeCount: originalChangeCount + 1)
             return false
         }
 
-        // Resolve "v" under the active layout so Cmd+V doesn't land as Cmd+K
-        // on Dvorak/Colemak. VK_V is the QWERTY fallback.
-        let pasteKey = KeyboardLayoutResolver.keycode(for: "v") ?? VK_V
-
-        let source = CGEventSource(stateID: .hidSystemState)
-
-        let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: true)
-        cmdDown?.flags = .maskCommand
-
-        let vDown = CGEvent(keyboardEventSource: source, virtualKey: pasteKey, keyDown: true)
-        vDown?.flags = .maskCommand
-
-        let vUp = CGEvent(keyboardEventSource: source, virtualKey: pasteKey, keyDown: false)
-        vUp?.flags = .maskCommand
-
-        let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: false)
-        // No flags needed for key up typically, or just .maskCommand if it was held
-
-        // Tag all simulated events so our event tap can skip them and avoid
-        // a feedback loop where the simulated Cmd+V re-triggers the shortcut.
-        for ev in [cmdDown, vDown, vUp, cmdUp] {
-            ev?.setIntegerValueField(.eventSourceUserData, value: SELF_GENERATED_EVENT_TAG)
-        }
-
-        if cmdDown == nil || vDown == nil || vUp == nil || cmdUp == nil {
+        if !postCommandChord(character: "v", fallbackKey: VK_V) {
             logToStderr("[AccessibilityService] Failed to create CGEvent for paste.")
             restorePasteboard(
                 pasteboard: pasteboard, items: originalPasteboardItems,
-                originalChangeCount: originalChangeCount)
+                expectedChangeCount: originalChangeCount + 1)
             return false
         }
-
-        let loc: CGEventTapLocation = .cgSessionEventTap
-
-        cmdDown!.post(tap: loc)
-        vDown!.post(tap: loc)
-        vUp!.post(tap: loc)
-        cmdUp!.post(tap: loc)
 
         logToStderr("[AccessibilityService] Paste keyboard events posted.")
 
@@ -525,7 +483,7 @@ class AccessibilityService {
             DispatchQueue.main.asyncAfter(deadline: .now() + PASTE_RESTORE_DELAY_SECONDS) {
                 self.restorePasteboard(
                     pasteboard: pasteboard, items: originalPasteboardItems,
-                    originalChangeCount: originalChangeCount)
+                    expectedChangeCount: originalChangeCount + 1)
             }
         } else {
             logToStderr("[AccessibilityService] preserveClipboard=false, skipping pasteboard restoration.")
@@ -534,26 +492,169 @@ class AccessibilityService {
         return true
     }
 
+    /// Posts a Cmd+<character> chord as synthetic events, resolving the key
+    /// under the active layout (so e.g. Cmd+V doesn't land as Cmd+K on
+    /// Dvorak/Colemak) with the given QWERTY fallback. Every event is tagged
+    /// with SELF_GENERATED_EVENT_TAG so our own event tap skips it and no
+    /// feedback loop forms with shortcut matching. Returns false if event
+    /// creation failed.
+    private func postCommandChord(character: Character, fallbackKey: CGKeyCode) -> Bool {
+        let key = KeyboardLayoutResolver.keycode(for: character) ?? fallbackKey
+
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: true)
+        cmdDown?.flags = .maskCommand
+
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
+        keyDown?.flags = .maskCommand
+
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
+        keyUp?.flags = .maskCommand
+
+        let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: false)
+
+        for ev in [cmdDown, keyDown, keyUp, cmdUp] {
+            ev?.setIntegerValueField(.eventSourceUserData, value: SELF_GENERATED_EVENT_TAG)
+        }
+
+        guard let cmdDownEv = cmdDown, let keyDownEv = keyDown, let keyUpEv = keyUp,
+            let cmdUpEv = cmdUp
+        else {
+            return false
+        }
+
+        let loc: CGEventTapLocation = .cgSessionEventTap
+        cmdDownEv.post(tap: loc)
+        keyDownEv.post(tap: loc)
+        keyUpEv.post(tap: loc)
+        cmdUpEv.post(tap: loc)
+        return true
+    }
+
+    /// Clones the current pasteboard items so they can be written back later.
+    private func snapshotPasteboardItems(_ pasteboard: NSPasteboard) -> [NSPasteboardItem] {
+        return pasteboard.pasteboardItems?.compactMap { item -> NSPasteboardItem? in
+            let newItem = NSPasteboardItem()
+            var hasData = false
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    newItem.setData(data, forType: type)
+                    hasData = true
+                }
+            }
+            return hasData ? newItem : nil
+        } ?? []
+    }
+
+    /// Restores saved items, but only if the pasteboard's changeCount still matches
+    /// what the caller last observed (i.e. no other process wrote in between).
+    /// Returns true if the restore was performed.
+    @discardableResult
     private func restorePasteboard(
-        pasteboard: NSPasteboard, items: [NSPasteboardItem], originalChangeCount: Int
-    ) {
+        pasteboard: NSPasteboard, items: [NSPasteboardItem], expectedChangeCount: Int
+    ) -> Bool {
         // Only restore if our temporary content is still the active content on the pasteboard.
-        // This means the changeCount should be exactly one greater than when we saved it,
-        // indicating our setString operation was the last modification.
-        if pasteboard.changeCount == originalChangeCount + 1 {
+        if pasteboard.changeCount == expectedChangeCount {
             pasteboard.clearContents()
             if !items.isEmpty {
                 pasteboard.writeObjects(items)
             }
             logToStderr("[AccessibilityService] Original pasteboard content restored.")
+            return true
         } else {
             // If changeCount is different, it means another app or the user has modified the pasteboard
-            // after we set our transcript but before this restoration block was executed.
+            // after we touched it but before this restoration block was executed.
             // In this case, we should not interfere with the new pasteboard content.
             logToStderr(
-                "[AccessibilityService] Pasteboard changed by another process or a new copy occurred (expected changeCount: \(originalChangeCount + 1), current: \(pasteboard.changeCount)); not restoring original content to avoid conflict."
+                "[AccessibilityService] Pasteboard changed by another process (expected changeCount: \(expectedChangeCount), current: \(pasteboard.changeCount)); not restoring original content to avoid conflict."
             )
+            return false
         }
+    }
+
+    // Clipboard-copy selection capture; see the GetSelectedTextViaCopy schema
+    // in @amical/types for the contract and caveats.
+    public func getSelectedTextViaCopy() -> GetSelectedTextViaCopyResultSchema {
+        // Posting CGEvents silently no-ops without post-event access, which would
+        // masquerade as "no selection" — surface it explicitly instead.
+        if !CGPreflightPostEventAccess() {
+            logToStderr("[AccessibilityService] Copy capture aborted: no post-event access.")
+            return GetSelectedTextViaCopyResultSchema(
+                clipboardChanged: false,
+                message: "Event posting not permitted (grant Accessibility permission)",
+                selectedText: nil)
+        }
+
+        // The frontmost app is where the copy chord lands; name it in the
+        // diagnostics so a wrong-focus capture is self-explanatory in logs.
+        let frontPid = AXHelpers.getFrontProcessID()
+        let frontApp =
+            frontPid > 0 ? (AXHelpers.getProcessName(pid: frontPid) ?? "pid \(frontPid)") : "unknown"
+
+        let pasteboard = NSPasteboard.general
+        let originalItems = snapshotPasteboardItems(pasteboard)
+
+        // The pasteboard is never cleared up front — the changeCount tells us
+        // whether a copy landed, so when nothing lands it is left untouched.
+        let baselineChangeCount = pasteboard.changeCount
+        logToStderr(
+            "[AccessibilityService] Copy capture: frontmost=\(frontApp), baseline changeCount=\(baselineChangeCount)"
+        )
+
+        if !postCommandChord(character: "c", fallbackKey: VK_C) {
+            logToStderr("[AccessibilityService] Failed to create CGEvent for copy.")
+            return GetSelectedTextViaCopyResultSchema(
+                clipboardChanged: false,
+                message: "Failed to create copy events",
+                selectedText: nil)
+        }
+
+        // Wait for the app's copy to land (changeCount bump), best-effort.
+        // No bump within the timeout means no selection, an app that ignores
+        // Cmd+C, or a slow app — indistinguishable, so report null.
+        let deadline = Date().addingTimeInterval(COPY_CAPTURE_TIMEOUT_SECONDS)
+        var clipboardChanged = false
+        while Date() < deadline {
+            if pasteboard.changeCount != baselineChangeCount {
+                clipboardChanged = true
+                break
+            }
+            Thread.sleep(forTimeInterval: COPY_CAPTURE_POLL_INTERVAL_SECONDS)
+        }
+
+        if !clipboardChanged {
+            // Pasteboard untouched — nothing to read, nothing to restore.
+            // Accepted tradeoff: if the app responds to the chord AFTER this
+            // timeout, that late copy lands on the clipboard and is not
+            // restored over. A delayed restore can't distinguish a late
+            // injected copy from a manual user copy in the interim, and
+            // clobbering the latter would be data loss.
+            logToStderr(
+                "[AccessibilityService] Copy capture: no changeCount bump within timeout (frontmost=\(frontApp))"
+            )
+            return GetSelectedTextViaCopyResultSchema(
+                clipboardChanged: false,
+                message: "No copy landed within timeout (frontmost: \(frontApp))",
+                selectedText: nil)
+        }
+
+        let observedChangeCount = pasteboard.changeCount
+
+        // null when the copy produced no text (e.g. an image selection);
+        // clipboardChanged disambiguates that from "nothing happened".
+        let selectedText = pasteboard.string(forType: .string)
+
+        // Restore behind the changeCount guard: an external write after the
+        // observation is preserved rather than clobbered.
+        let restored = restorePasteboard(
+            pasteboard: pasteboard, items: originalItems,
+            expectedChangeCount: observedChangeCount)
+
+        return GetSelectedTextViaCopyResultSchema(
+            clipboardChanged: true,
+            message: restored ? nil : "Pasteboard restore skipped (changed externally)",
+            selectedText: selectedText)
     }
 
     // Determines whether a keyboard event should be forwarded to the Electron application.

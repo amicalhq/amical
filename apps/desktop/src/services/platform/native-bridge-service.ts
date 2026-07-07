@@ -51,6 +51,9 @@ import {
   RecheckPressedKeysParams,
   RecheckPressedKeysResult,
   RecheckPressedKeysResultSchema,
+  GetSelectedTextViaCopyParams,
+  GetSelectedTextViaCopyResult,
+  GetSelectedTextViaCopyResultSchema,
   AppContext,
 } from "@amical/types";
 
@@ -100,6 +103,10 @@ interface RPCMethods {
     params: RecheckPressedKeysParams;
     result: RecheckPressedKeysResult;
   };
+  getSelectedTextViaCopy: {
+    params: GetSelectedTextViaCopyParams;
+    result: GetSelectedTextViaCopyResult;
+  };
 }
 
 type PendingRpc = {
@@ -125,6 +132,7 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
   setDraftEnterCapture: SetDraftEnterCaptureResultSchema,
   setAllowInjectedKeys: SetAllowInjectedKeysResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
+  getSelectedTextViaCopy: GetSelectedTextViaCopyResultSchema,
 };
 
 function normalizeAccessibilityContext(
@@ -790,8 +798,14 @@ export class NativeBridge extends EventEmitter {
   /**
    * Refresh the cached accessibility context from the native helper.
    * This is called asynchronously when recording starts.
+   *
+   * The cache is cleared up front, so it always holds THIS refresh's result
+   * or null — never a previous session's context. A failed refresh therefore
+   * reads as "no context" rather than silently serving stale data to the
+   * session or the draft copy-capture.
    */
   async refreshAccessibilityContext(): Promise<void> {
+    this.accessibilityContext = null;
     try {
       const result = await this.call("getAccessibilityContext", {
         editableOnly: false,
@@ -810,6 +824,28 @@ export class NativeBridge extends EventEmitter {
       this.logger.error("Failed to refresh accessibility context", {
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Clipboard-copy selection capture (side-effectful; see the
+   * GetSelectedTextViaCopy schema for the contract and caveats). Returns null
+   * on transport failure.
+   *
+   * 2s timeout (instead of the 5s default): the helper's own budget is the
+   * 300ms clipboard poll plus injection and multi-format clipboard
+   * save/restore (image formats can take a beat), so a healthy capture always
+   * answers well inside 2s — and the caller's stop-path barrier must not ride
+   * a wedged helper to the full 5s.
+   */
+  async getSelectedTextViaCopy(): Promise<GetSelectedTextViaCopyResult | null> {
+    try {
+      return await this.call("getSelectedTextViaCopy", {}, 2000);
+    } catch (error) {
+      this.logger.error("getSelectedTextViaCopy failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 

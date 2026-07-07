@@ -28,6 +28,8 @@
 //    var setAllowInjectedKeysResult = SetAllowInjectedKeysResult.FromJson(jsonString);
 //    var recheckPressedKeysParams = RecheckPressedKeysParams.FromJson(jsonString);
 //    var recheckPressedKeysResult = RecheckPressedKeysResult.FromJson(jsonString);
+//    var getSelectedTextViaCopyParams = GetSelectedTextViaCopyParams.FromJson(jsonString);
+//    var getSelectedTextViaCopyResult = GetSelectedTextViaCopyResult.FromJson(jsonString);
 //    var keyDownEvent = KeyDownEvent.FromJson(jsonString);
 //    var keyUpEvent = KeyUpEvent.FromJson(jsonString);
 //    var flagsChangedEvent = FlagsChangedEvent.FromJson(jsonString);
@@ -374,6 +376,23 @@ namespace WindowsHelper.Models
         public List<long> StaleKeyCodes { get; set; }
     }
 
+    public partial class GetSelectedTextViaCopyParams
+    {
+    }
+
+    public partial class GetSelectedTextViaCopyResult
+    {
+        [JsonPropertyName("clipboardChanged")]
+        public bool ClipboardChanged { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonPropertyName("message")]
+        public string Message { get; set; }
+
+        [JsonPropertyName("selectedText")]
+        public string SelectedText { get; set; }
+    }
+
     public partial class KeyDownEvent
     {
         [JsonPropertyName("payload")]
@@ -587,7 +606,7 @@ namespace WindowsHelper.Models
         public bool? ShiftKey { get; set; }
     }
 
-    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, SetAllowInjectedKeys, SetDraftEnterCapture, SetShortcuts, StartRecording, StopRecording };
+    public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, GetSelectedTextViaCopy, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, SetAllowInjectedKeys, SetDraftEnterCapture, SetShortcuts, StartRecording, StopRecording };
 
     public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
 
@@ -701,6 +720,16 @@ namespace WindowsHelper.Models
         public static RecheckPressedKeysResult FromJson(string json) => JsonSerializer.Deserialize<RecheckPressedKeysResult>(json, WindowsHelper.Models.Converter.Settings);
     }
 
+    public partial class GetSelectedTextViaCopyParams
+    {
+        public static GetSelectedTextViaCopyParams FromJson(string json) => JsonSerializer.Deserialize<GetSelectedTextViaCopyParams>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
+    public partial class GetSelectedTextViaCopyResult
+    {
+        public static GetSelectedTextViaCopyResult FromJson(string json) => JsonSerializer.Deserialize<GetSelectedTextViaCopyResult>(json, WindowsHelper.Models.Converter.Settings);
+    }
+
     public partial class KeyDownEvent
     {
         public static KeyDownEvent FromJson(string json) => JsonSerializer.Deserialize<KeyDownEvent>(json, WindowsHelper.Models.Converter.Settings);
@@ -743,6 +772,8 @@ namespace WindowsHelper.Models
         public static string ToJson(this SetAllowInjectedKeysResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this RecheckPressedKeysParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this RecheckPressedKeysResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this GetSelectedTextViaCopyParams self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
+        public static string ToJson(this GetSelectedTextViaCopyResult self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this KeyDownEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this KeyUpEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
         public static string ToJson(this FlagsChangedEvent self) => JsonSerializer.Serialize(self, WindowsHelper.Models.Converter.Settings);
@@ -784,6 +815,8 @@ namespace WindowsHelper.Models
                     return Method.GetAccessibilityStatus;
                 case "getAccessibilityTreeDetails":
                     return Method.GetAccessibilityTreeDetails;
+                case "getSelectedTextViaCopy":
+                    return Method.GetSelectedTextViaCopy;
                 case "pasteText":
                     return Method.PasteText;
                 case "recheckPressedKeys":
@@ -816,6 +849,9 @@ namespace WindowsHelper.Models
                     return;
                 case Method.GetAccessibilityTreeDetails:
                     JsonSerializer.Serialize(writer, "getAccessibilityTreeDetails", options);
+                    return;
+                case Method.GetSelectedTextViaCopy:
+                    JsonSerializer.Serialize(writer, "getSelectedTextViaCopy", options);
                     return;
                 case Method.PasteText:
                     JsonSerializer.Serialize(writer, "pasteText", options);

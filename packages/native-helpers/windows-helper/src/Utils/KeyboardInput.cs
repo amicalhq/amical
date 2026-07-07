@@ -17,6 +17,7 @@ namespace WindowsHelper.Utils
         private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
         private const uint INPUT_KEYBOARD = 1;
+        internal const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         internal const uint KEYEVENTF_KEYUP = 0x0002;
 
         private static readonly int InputSize = Marshal.SizeOf<INPUT>();

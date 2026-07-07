@@ -84,6 +84,12 @@ let EXTRACTION_TIMEOUT_MS: Double = 600.0
 /// Delay before restoring pasteboard after paste (seconds)
 let PASTE_RESTORE_DELAY_SECONDS: Double = 0.7
 
+/// Max time to wait for an app to respond to the injected copy chord (seconds)
+let COPY_CAPTURE_TIMEOUT_SECONDS: Double = 0.3
+
+/// Poll interval while waiting for the pasteboard changeCount to bump (seconds)
+let COPY_CAPTURE_POLL_INTERVAL_SECONDS: Double = 0.025
+
 // MARK: - Self-Generated Event Tag
 
 /// Sentinel value written to CGEvent.eventSourceUserData to tag events
@@ -96,6 +102,9 @@ let SELF_GENERATED_EVENT_TAG: Int64 = 0x414D4943_414C5048  // "AMICALPH" in ASCI
 
 /// Virtual key code for 'V' key
 let VK_V: CGKeyCode = 9
+
+/// Virtual key code for 'C' key
+let VK_C: CGKeyCode = 8
 
 /// Virtual key code for Command key
 let VK_COMMAND: CGKeyCode = 55
