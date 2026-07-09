@@ -28,7 +28,9 @@
   "include": [
     "src/**/*",
     "tests/**/*",
+    "e2e/**/*",
     "forge.config.ts",
+    "playwright.config.ts",
     "vite.*.config.mts",
     "drizzle.config.ts"
   ],

@@ -5,10 +5,13 @@ import * as path from "path";
 import * as fs from "fs";
 import * as schema from "./schema";
 
-// Get the user data directory for storing the database
-export const dbPath = app.isPackaged
-  ? path.join(app.getPath("userData"), "amical.db")
-  : path.join(process.cwd(), "amical.db");
+// Get the user data directory for storing the database. The e2e harness
+// (see e2e/) points userData at a throwaway profile; honor that in the
+// unpackaged flow too so bundle-target test runs never touch the dev DB.
+export const dbPath =
+  app.isPackaged || process.env.AMICAL_E2E_USER_DATA_DIR
+    ? path.join(app.getPath("userData"), "amical.db")
+    : path.join(process.cwd(), "amical.db");
 
 export const db = drizzle(`file:${dbPath}`, {
   schema: {

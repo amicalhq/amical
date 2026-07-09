@@ -100,3 +100,6 @@ bin/
 
 # Design mocks / playgrounds (design source of truth, kept local only)
 design/
+
+# Playwright e2e artifacts
+e2e/.artifacts/

@@ -1,6 +1,15 @@
 import { app, dialog } from "electron";
 import started from "electron-squirrel-startup";
 
+// E2E harness hook (see e2e/): give each test run an isolated profile. Must
+// happen before ./app loads — requestSingleInstanceLock() there keys its lock
+// off userData, and an isolated path keeps test instances from colliding with
+// a real running Amical. sessionData is set too so Chromium caches follow.
+if (process.env.AMICAL_E2E_USER_DATA_DIR) {
+  app.setPath("userData", process.env.AMICAL_E2E_USER_DATA_DIR);
+  app.setPath("sessionData", process.env.AMICAL_E2E_USER_DATA_DIR);
+}
+
 if (started) {
   // Squirrel.Windows event hook process (--squirrel-install/-updated/
   // -obsolete/-uninstall): electron-squirrel-startup spawns the Update.exe

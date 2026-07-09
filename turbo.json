@@ -6,7 +6,11 @@
     "AWS_SECRET_ACCESS_KEY",
     "AWS_REGION",
     "S3_BUCKET_NAME",
-    "S3_ENDPOINT"
+    "S3_ENDPOINT",
+    "AMICAL_E2E",
+    "AMICAL_E2E_USER_DATA_DIR",
+    "AMICAL_E2E_TARGET",
+    "AMICAL_E2E_PACKAGE"
   ],
   "tasks": {
     "build": {

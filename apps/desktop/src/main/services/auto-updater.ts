@@ -102,6 +102,11 @@ export class AutoUpdaterService extends EventEmitter {
       return;
     }
 
+    if (process.env.AMICAL_E2E === "1") {
+      logger.updater.info("Skipping auto-updater: e2e test run");
+      return;
+    }
+
     if (process.argv.includes("--squirrel-firstrun")) {
       logger.updater.info(
         "Skipping auto-updater: first run after Squirrel install",

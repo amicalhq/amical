@@ -779,7 +779,11 @@ const config: ForgeConfig = {
       [FuseV1Options.RunAsNode]: false,
       [FuseV1Options.EnableCookieEncryption]: true,
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
+      // Playwright drives the packaged app through the Node inspector, which
+      // this fuse blocks. AMICAL_E2E_PACKAGE=1 (set by `pnpm test:e2e:fresh`)
+      // builds an e2e-testable package; release builds keep it disabled.
+      [FuseV1Options.EnableNodeCliInspectArguments]:
+        process.env.AMICAL_E2E_PACKAGE === "1",
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
