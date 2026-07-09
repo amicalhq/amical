@@ -81,6 +81,15 @@ app.on("open-url", (event, url) => {
 
 // Handle when another instance tries to start (Windows/Linux deep link handling)
 app.on("second-instance", (_event, commandLine) => {
+  // Squirrel spawns hook processes (--squirrel-updated/-obsolete) while
+  // applying a background update; never treat those as a user launch. The
+  // entry gate already keeps current hook processes off the lock — this
+  // guards against older exes (the --squirrel-obsolete hook runs the
+  // outgoing version's code).
+  if (commandLine.some((arg) => arg.startsWith("--squirrel-"))) {
+    return;
+  }
+
   // Someone tried to run a second instance, we should focus our window instead.
   if (isInitialized) {
     appManager.handleSecondInstance();

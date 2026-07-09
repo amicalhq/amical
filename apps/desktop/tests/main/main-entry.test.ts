@@ -57,5 +57,9 @@ describe("main entry", () => {
     const { app } = await importEntry({ started: true });
 
     expect(app.quit).toHaveBeenCalled();
+    // Hook processes must never load the app: reaching
+    // requestSingleInstanceLock() would fire second-instance in the running
+    // app and pop the main window mid-background-update.
+    expect(appModuleLoaded).toBe(false);
   });
 });
