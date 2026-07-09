@@ -28,6 +28,19 @@ tests always see a fresh profile (onboarding) and never collide with a real
 running Amical. `AMICAL_E2E=1` skips the auto-updater; telemetry is disabled
 via `TELEMETRY_ENABLED=false`.
 
+## Squirrel specs (`squirrel.spec.ts`)
+
+Windows + `packaged` target only (skipped elsewhere). Guard the update-hook
+regression: probes spawn the packaged exe with `--squirrel-*` args against the
+running instance's profile — the way `Update.exe` does during a background
+update — and assert the app is undisturbed (no `second-instance` event for
+hook args, no window changes, no "Second instance attempted" log line for a
+lock-contending `--squirrel-firstrun` probe). No `Update.exe` exists next to
+the `out/` exe, so the hook probe's shortcut spawn fails internally; that's
+fine — the subject is the running instance, not shortcut creation. Run on the
+win box; note `test:e2e:fresh`'s env-prefix syntax needs a POSIX shell
+(git-bash) there.
+
 ## OS side effects
 
 The app's startup deliberately runs un-gated in tests (so the real code paths

@@ -21,7 +21,7 @@ export interface AmicalLaunch {
   userDataDir: string;
 }
 
-function resolveTarget(): LaunchTarget {
+export function resolveTarget(): LaunchTarget {
   const target = process.env.AMICAL_E2E_TARGET ?? "packaged";
   if (target !== "packaged" && target !== "bundle") {
     throw new Error(
@@ -31,7 +31,7 @@ function resolveTarget(): LaunchTarget {
   return target;
 }
 
-function packagedExecutablePath(): string {
+export function packagedExecutablePath(): string {
   const dir = path.join(
     desktopRoot,
     "out",
