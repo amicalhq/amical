@@ -13,7 +13,7 @@ const flags = {
 };
 
 describe("getActiveOnboardingScreens", () => {
-  it("cloud flow: SignIn setup + shared config + try-it, no Download", () => {
+  it("cloud flow: SignIn setup + shared config + try-it + draft, no Download", () => {
     const screens = getActiveOnboardingScreens({
       modelType: ModelType.Cloud,
       flags,
@@ -30,6 +30,10 @@ describe("getActiveOnboardingScreens", () => {
       OnboardingScreen.SpokenLanguage,
       OnboardingScreen.DictationEmail,
       OnboardingScreen.DictationNotes,
+      OnboardingScreen.DraftIntro,
+      OnboardingScreen.DraftShortcut,
+      OnboardingScreen.DraftCompose,
+      OnboardingScreen.DraftSelection,
       OnboardingScreen.Completion,
     ]);
   });
@@ -87,6 +91,10 @@ describe("getActiveOnboardingScreens", () => {
     expect(screens).not.toContain(OnboardingScreen.DictationEmail);
     expect(screens).not.toContain(OnboardingScreen.DictationNotes);
     expect(screens).not.toContain(OnboardingScreen.DictationLocal);
+    expect(screens).not.toContain(OnboardingScreen.DraftIntro);
+    expect(screens).not.toContain(OnboardingScreen.DraftShortcut);
+    expect(screens).not.toContain(OnboardingScreen.DraftCompose);
+    expect(screens).not.toContain(OnboardingScreen.DraftSelection);
     // shared config still present
     expect(screens).toContain(OnboardingScreen.MicTest);
   });
@@ -104,7 +112,7 @@ describe("getActiveOnboardingScreens", () => {
 });
 
 describe("phasesForScreens", () => {
-  it("cloud has 5 phases including Try it", () => {
+  it("cloud has 6 phases including Try it and Draft", () => {
     const screens = getActiveOnboardingScreens({
       modelType: ModelType.Cloud,
       flags,
@@ -115,11 +123,12 @@ describe("phasesForScreens", () => {
       "setUp",
       "configure",
       "tryIt",
+      "draft",
       "done",
     ]);
   });
 
-  it("local has 5 phases including Try it", () => {
+  it("local has 5 phases including Try it, no Draft", () => {
     const screens = getActiveOnboardingScreens({
       modelType: ModelType.Local,
       flags,
@@ -144,6 +153,7 @@ describe("phasesForScreens", () => {
       "setUp",
       "configure",
       "tryIt",
+      "draft",
       "done",
     ]);
   });

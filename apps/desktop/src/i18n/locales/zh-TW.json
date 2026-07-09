@@ -227,6 +227,48 @@
         "ghost": "回家路上買水、牛奶、麵包和吐司。"
       }
     },
+    "draft": {
+      "insertCta": "按 {{keys}} 插入您的草稿",
+      "intro": {
+        "title": "認識草稿功能",
+        "contrast1Lead": "聽寫",
+        "contrast1Rest": "逐字輸入您說的話。",
+        "contrast2Lead": "草稿",
+        "contrast2Rest": "寫出您想表達的意思。",
+        "howTo": "告訴 Amical 您想傳達的內容，它就會以合適的語氣和情境為您寫好訊息。",
+        "demoPlaceholder": "您說…",
+        "demoInstruction": "幫我寫一封有禮貌的追蹤信給 John，關於那份提案",
+        "demoDraft": "嗨 John，\n\n想跟進一下我上週寄出的提案，請問您有機會看過了嗎？\n\n祝好\nAlex",
+        "replay": "重播"
+      },
+      "shortcut": {
+        "title": "設定您的草稿快捷鍵",
+        "subtitle": "按住您的草稿快捷鍵，確認它能正常運作。",
+        "hint": "與您的聽寫快捷鍵（{{keys}}）各自獨立。兩者之後都可以在設定中更改。",
+        "caption": "按鍵亮起即表示快捷鍵正常"
+      },
+      "compose": {
+        "title": "草擬您的第一封郵件",
+        "subtitle": "按住草稿快捷鍵，說出您想要的內容，然後放開。",
+        "tip": "試試說：「告訴 Sarah 時程延後一週，更新的計畫週五提供」。Amical 會寫好郵件，您只需確認。",
+        "cta": "按住 {{keys}} 說出您想要的內容",
+        "mockHeader": "電子郵件",
+        "to": "收件人：Sarah Chen",
+        "subject": "主旨：專案時程",
+        "ghost": "告訴 Sarah 時程延後一週，更新的計畫週五提供。"
+      },
+      "selection": {
+        "title": "改寫任何文字",
+        "subtitle": "草稿也能處理您選取的文字。選取後按住草稿快捷鍵，說出想怎麼修改。",
+        "tip": "這則回覆有點生硬。試試說：「改得友善一點，並為延遲致歉」。",
+        "cta": "按住 {{keys}} 說出想怎麼修改",
+        "mockHeader": "電子郵件",
+        "to": "收件人：Mark Rivera",
+        "subject": "主旨：Re: 報告進度",
+        "seedText": "嘿，報告還沒完成。我需要更多時間。下週再寄給你。",
+        "selectHint": "請先選取這段文字"
+      }
+    },
     "completion": {
       "title": "一切就緒",
       "subtitle": "在任何地方按住快捷鍵即可開始。這些都可以在設定中更改。",
@@ -245,6 +287,7 @@
       "setUp": "準備",
       "configure": "調整",
       "tryIt": "試用",
+      "draft": "草稿",
       "done": "完成"
     }
   },

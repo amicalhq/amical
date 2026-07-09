@@ -20,6 +20,7 @@ export function SplitScreen({
   title,
   subtitle,
   hint,
+  railExtra,
   children,
   footer,
 }: {
@@ -28,6 +29,8 @@ export function SplitScreen({
   title: string;
   subtitle?: string;
   hint?: React.ReactNode;
+  /** Optional rail content below the header/hint (e.g. the Draft intro steps). */
+  railExtra?: React.ReactNode;
   /** The right-hand instrument (preview card or sheet). */
   children: React.ReactNode;
   footer?: React.ReactNode;
@@ -45,6 +48,7 @@ export function SplitScreen({
                 {hint}
               </div>
             )}
+            {railExtra}
           </div>
           {children}
         </div>

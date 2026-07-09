@@ -16,6 +16,9 @@ import { MicTestScreen } from "./components/screens/MicTestScreen";
 import { ShortcutScreen } from "./components/screens/ShortcutScreen";
 import { SpokenLanguageScreen } from "./components/screens/SpokenLanguageScreen";
 import { DictationTestScreen } from "./components/screens/DictationTestScreen";
+import { DraftIntroScreen } from "./components/screens/DraftIntroScreen";
+import { DraftShortcutScreen } from "./components/screens/DraftShortcutScreen";
+import { DraftTestScreen } from "./components/screens/DraftTestScreen";
 import { CompletionScreen } from "./components/screens/CompletionScreen";
 
 // Screen-ordering helpers
@@ -413,6 +416,36 @@ export function App() {
           <DictationTestScreen
             key="local"
             variant="simple"
+            onNext={navigateNext}
+            onBack={navigateBack}
+          />
+        );
+
+      case OnboardingScreen.DraftIntro:
+        return <DraftIntroScreen onNext={navigateNext} onBack={navigateBack} />;
+
+      case OnboardingScreen.DraftShortcut:
+        return (
+          <DraftShortcutScreen onNext={navigateNext} onBack={navigateBack} />
+        );
+
+      // key forces a remount between the two draft try-its (same reason as the
+      // dictation try-its above).
+      case OnboardingScreen.DraftCompose:
+        return (
+          <DraftTestScreen
+            key="draft-compose"
+            variant="compose"
+            onNext={navigateNext}
+            onBack={navigateBack}
+          />
+        );
+
+      case OnboardingScreen.DraftSelection:
+        return (
+          <DraftTestScreen
+            key="draft-selection"
+            variant="selection"
             onNext={navigateNext}
             onBack={navigateBack}
           />

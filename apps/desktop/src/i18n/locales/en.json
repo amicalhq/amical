@@ -224,6 +224,48 @@
         "ghost": "Pick up water, milk, bread, and toast on the way home."
       }
     },
+    "draft": {
+      "insertCta": "Press {{keys}} to insert your draft",
+      "intro": {
+        "title": "Meet Draft",
+        "contrast1Lead": "Dictation",
+        "contrast1Rest": "types what you say.",
+        "contrast2Lead": "Draft",
+        "contrast2Rest": "writes what you mean.",
+        "howTo": "Tell Amical what you want to communicate, and it writes the message for you in the right tone and context.",
+        "demoPlaceholder": "You say…",
+        "demoInstruction": "Write a polite follow-up to John about the proposal",
+        "demoDraft": "Hi John,\n\nJust following up on the proposal I sent over last week. Have you had a chance to take a look?\n\nBest,\nAlex",
+        "replay": "Replay"
+      },
+      "shortcut": {
+        "title": "Set your Draft shortcut",
+        "subtitle": "Press and hold your Draft shortcut to check that it works.",
+        "hint": "Separate from your dictation shortcut ({{keys}}). Change either later in Settings.",
+        "caption": "Your shortcut works if the keys light up"
+      },
+      "compose": {
+        "title": "Draft your first email",
+        "subtitle": "Hold your Draft shortcut, say what you want, and release.",
+        "tip": "Try: “Tell Sarah the timeline slipped a week and the updated plan lands Friday.” Amical writes the email. You just approve it.",
+        "cta": "Hold {{keys}} and say what you want",
+        "mockHeader": "Email",
+        "to": "To: Sarah Chen",
+        "subject": "Subject: Project timeline",
+        "ghost": "Tell Sarah the timeline slipped a week and the updated plan lands Friday."
+      },
+      "selection": {
+        "title": "Rewrite anything",
+        "subtitle": "Draft also works on text you've selected. Select it, hold your Draft shortcut, and say how to change it.",
+        "tip": "This reply reads a little blunt. Try: “Make this friendlier and apologize for the delay.”",
+        "cta": "Hold {{keys}} and say how to change it",
+        "mockHeader": "Email",
+        "to": "To: Mark Rivera",
+        "subject": "Subject: Re: Report status",
+        "seedText": "Hey, the report isn't done. I need more time. Will send next week.",
+        "selectHint": "First, select this text"
+      }
+    },
     "completion": {
       "title": "You're all set",
       "subtitle": "Hold your shortcut anywhere to start. You can change any of this in Settings.",
@@ -242,6 +284,7 @@
       "setUp": "Set up",
       "configure": "Configure",
       "tryIt": "Try it",
+      "draft": "Draft",
       "done": "Done"
     }
   },

@@ -25,6 +25,13 @@ const BASE_ORDER: OnboardingScreen[] = [
   OnboardingScreen.DictationEmail, // cloud-only try-it
   OnboardingScreen.DictationNotes, // cloud-only try-it
   OnboardingScreen.DictationLocal, // local-only try-it (verbatim, no formatting demo)
+  // Draft chapter: generation rides the cloud pipeline, so all four are
+  // cloud-only. Ordered learn -> configure -> compose try-it -> selection
+  // try-it, after the dictation try-its (draft builds on "you can dictate").
+  OnboardingScreen.DraftIntro,
+  OnboardingScreen.DraftShortcut,
+  OnboardingScreen.DraftCompose,
+  OnboardingScreen.DraftSelection,
   OnboardingScreen.Completion,
 ];
 
@@ -32,6 +39,10 @@ const CLOUD_ONLY = new Set<OnboardingScreen>([
   OnboardingScreen.SignIn,
   OnboardingScreen.DictationEmail,
   OnboardingScreen.DictationNotes,
+  OnboardingScreen.DraftIntro,
+  OnboardingScreen.DraftShortcut,
+  OnboardingScreen.DraftCompose,
+  OnboardingScreen.DraftSelection,
 ]);
 
 const LOCAL_ONLY = new Set<OnboardingScreen>([
@@ -45,6 +56,7 @@ export type OnboardingPhase =
   | "setUp"
   | "configure"
   | "tryIt"
+  | "draft"
   | "done";
 
 /** i18n key for a phase's display label (the eyebrow). */
@@ -69,6 +81,10 @@ export const SCREEN_PHASE: Record<OnboardingScreen, OnboardingPhase> = {
   [OnboardingScreen.DictationEmail]: "tryIt",
   [OnboardingScreen.DictationNotes]: "tryIt",
   [OnboardingScreen.DictationLocal]: "tryIt",
+  [OnboardingScreen.DraftIntro]: "draft",
+  [OnboardingScreen.DraftShortcut]: "draft",
+  [OnboardingScreen.DraftCompose]: "draft",
+  [OnboardingScreen.DraftSelection]: "draft",
   [OnboardingScreen.Completion]: "done",
 };
 

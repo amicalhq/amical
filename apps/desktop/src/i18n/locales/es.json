@@ -227,6 +227,48 @@
         "ghost": "Comprar agua, leche, pan y tostadas de camino a casa."
       }
     },
+    "draft": {
+      "insertCta": "Pulsa {{keys}} para insertar tu borrador",
+      "intro": {
+        "title": "Conoce Borrador",
+        "contrast1Lead": "El dictado",
+        "contrast1Rest": "escribe lo que dices.",
+        "contrast2Lead": "Borrador",
+        "contrast2Rest": "redacta lo que quieres decir.",
+        "howTo": "Dile a Amical qué quieres comunicar y escribirá el mensaje por ti, con el tono y el contexto adecuados.",
+        "demoPlaceholder": "Tú dices…",
+        "demoInstruction": "Escribe un seguimiento cordial para John sobre la propuesta",
+        "demoDraft": "Hola John:\n\nSolo quería dar seguimiento a la propuesta que envié la semana pasada. ¿Has podido revisarla?\n\nUn saludo,\nAlex",
+        "replay": "Repetir"
+      },
+      "shortcut": {
+        "title": "Configura tu atajo de Borrador",
+        "subtitle": "Mantén presionado tu atajo de Borrador para comprobar que funciona.",
+        "hint": "Es independiente de tu atajo de dictado ({{keys}}). Puedes cambiar ambos después en Configuración.",
+        "caption": "Tu atajo funciona si las teclas se iluminan"
+      },
+      "compose": {
+        "title": "Redacta tu primer correo",
+        "subtitle": "Mantén tu atajo de Borrador, di lo que quieres y suéltalo.",
+        "tip": "Prueba: «Dile a Sarah que el cronograma se retrasó una semana y que el plan actualizado llega el viernes». Amical escribe el correo. Tú solo lo apruebas.",
+        "cta": "Mantén {{keys}} y di lo que quieres",
+        "mockHeader": "Correo",
+        "to": "Para: Sarah Chen",
+        "subject": "Asunto: Cronograma del proyecto",
+        "ghost": "Dile a Sarah que el cronograma se retrasó una semana y que el plan actualizado llega el viernes."
+      },
+      "selection": {
+        "title": "Reescribe lo que sea",
+        "subtitle": "Borrador también funciona con texto seleccionado. Selecciónalo, mantén tu atajo de Borrador y di cómo cambiarlo.",
+        "tip": "Esta respuesta suena un poco seca. Prueba: «Hazla más amable y discúlpate por el retraso».",
+        "cta": "Mantén {{keys}} y di cómo cambiarlo",
+        "mockHeader": "Correo",
+        "to": "Para: Mark Rivera",
+        "subject": "Asunto: Re: Estado del informe",
+        "seedText": "Hola, el informe no está listo. Necesito más tiempo. Lo envío la próxima semana.",
+        "selectHint": "Primero, selecciona este texto"
+      }
+    },
     "completion": {
       "title": "Todo listo",
       "subtitle": "Mantén presionado tu atajo en cualquier lugar para empezar. Puedes cambiar todo esto en Configuración.",
@@ -245,6 +287,7 @@
       "setUp": "Preparar",
       "configure": "Configurar",
       "tryIt": "Probar",
+      "draft": "Borrador",
       "done": "Listo"
     }
   },

@@ -227,6 +227,48 @@
         "ghost": "Auf dem Heimweg Wasser, Milch, Brot und Toast besorgen."
       }
     },
+    "draft": {
+      "insertCta": "Drücke {{keys}}, um deinen Entwurf einzufügen",
+      "intro": {
+        "title": "Das ist Entwurf",
+        "contrast1Lead": "Diktieren",
+        "contrast1Rest": "tippt, was du sagst.",
+        "contrast2Lead": "Entwurf",
+        "contrast2Rest": "schreibt, was du meinst.",
+        "howTo": "Sag Amical, was du mitteilen willst, und es schreibt die Nachricht für dich, im passenden Ton und Kontext.",
+        "demoPlaceholder": "Du sagst…",
+        "demoInstruction": "Schreib ein freundliches Follow-up an John zum Angebot",
+        "demoDraft": "Hi John,\n\nich wollte nur kurz zum Angebot von letzter Woche nachfassen. Hattest du schon Zeit, es dir anzuschauen?\n\nViele Grüße\nAlex",
+        "replay": "Wiederholen"
+      },
+      "shortcut": {
+        "title": "Lege dein Entwurf-Tastenkürzel fest",
+        "subtitle": "Halte dein Entwurf-Tastenkürzel gedrückt, um zu prüfen, ob es funktioniert.",
+        "hint": "Getrennt von deinem Diktat-Tastenkürzel ({{keys}}). Beide kannst du später in den Einstellungen ändern.",
+        "caption": "Dein Tastenkürzel funktioniert, wenn die Tasten aufleuchten"
+      },
+      "compose": {
+        "title": "Entwirf deine erste E-Mail",
+        "subtitle": "Halte dein Entwurf-Tastenkürzel, sag, was du willst, und lass los.",
+        "tip": "Probiere: „Sag Sarah, dass sich der Zeitplan um eine Woche verschiebt und der neue Plan am Freitag kommt.“ Amical schreibt die E-Mail. Du gibst sie nur frei.",
+        "cta": "Halte {{keys}} und sag, was du willst",
+        "mockHeader": "E-Mail",
+        "to": "An: Sarah Chen",
+        "subject": "Betreff: Projekt-Zeitplan",
+        "ghost": "Sag Sarah, dass sich der Zeitplan um eine Woche verschiebt und der neue Plan am Freitag kommt."
+      },
+      "selection": {
+        "title": "Schreib alles um",
+        "subtitle": "Entwurf funktioniert auch mit markiertem Text. Markiere ihn, halte dein Entwurf-Tastenkürzel und sag, wie er sich ändern soll.",
+        "tip": "Diese Antwort klingt etwas knapp. Probiere: „Mach das freundlicher und entschuldige dich für die Verzögerung.“",
+        "cta": "Halte {{keys}} und sag, was sich ändern soll",
+        "mockHeader": "E-Mail",
+        "to": "An: Mark Rivera",
+        "subject": "Betreff: Re: Bericht-Status",
+        "seedText": "Hey, der Bericht ist nicht fertig. Ich brauche mehr Zeit. Schicke ihn nächste Woche.",
+        "selectHint": "Markiere zuerst diesen Text"
+      }
+    },
     "completion": {
       "title": "Alles bereit",
       "subtitle": "Halte dein Tastenkürzel in jeder App gedrückt, um loszulegen. Alles davon kannst du in den Einstellungen ändern.",
@@ -245,6 +287,7 @@
       "setUp": "Einrichten",
       "configure": "Konfigurieren",
       "tryIt": "Ausprobieren",
+      "draft": "Entwurf",
       "done": "Fertig"
     }
   },

@@ -5,13 +5,26 @@ import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
+/** Which shortcut binding the input edits; labels come from the matching
+ *  settings.shortcuts.* strings. */
+const BINDING_LABELS = {
+  pushToTalk: "settings.shortcuts.pushToTalk",
+  draftMode: "settings.shortcuts.draft",
+} as const;
+
+type Binding = keyof typeof BINDING_LABELS;
+
 /**
- * Push to Talk shortcut input for onboarding
- * Wraps ShortcutInput with label and handles data fetching/saving
+ * Shortcut input for onboarding (push-to-talk by default, or the Draft
+ * binding). Wraps ShortcutInput with label and handles data fetching/saving.
  */
-export function OnboardingShortcutInput() {
+export function OnboardingShortcutInput({
+  binding = "pushToTalk",
+}: {
+  binding?: Binding;
+}) {
   const { t } = useTranslation();
-  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<number[]>([]);
+  const [shortcut, setShortcut] = useState<number[]>([]);
   const [isRecording, setIsRecording] = useState(false);
 
   const utils = api.useUtils();
@@ -41,15 +54,15 @@ export function OnboardingShortcutInput() {
   // Load current shortcut
   useEffect(() => {
     if (shortcutsQuery.data) {
-      setPushToTalkShortcut(shortcutsQuery.data.pushToTalk);
+      setShortcut(shortcutsQuery.data[binding]);
     }
-  }, [shortcutsQuery.data]);
+  }, [shortcutsQuery.data, binding]);
 
-  const handleShortcutChange = (shortcut: number[]) => {
-    setPushToTalkShortcut(shortcut);
+  const handleShortcutChange = (newShortcut: number[]) => {
+    setShortcut(newShortcut);
     setShortcutMutation.mutate({
-      type: "pushToTalk",
-      shortcut: shortcut,
+      type: binding,
+      shortcut: newShortcut,
     });
   };
 
@@ -57,15 +70,15 @@ export function OnboardingShortcutInput() {
     <div className="flex items-center justify-between">
       <div>
         <Label className="text-base font-semibold text-foreground">
-          {t("settings.shortcuts.pushToTalk.label")}
+          {t(`${BINDING_LABELS[binding]}.label`)}
         </Label>
         <p className="text-xs text-muted-foreground mt-1">
-          {t("settings.shortcuts.pushToTalk.description")}
+          {t(`${BINDING_LABELS[binding]}.description`)}
         </p>
       </div>
       <div className="min-w-[200px] flex justify-end">
         <ShortcutInput
-          value={pushToTalkShortcut}
+          value={shortcut}
           onChange={handleShortcutChange}
           isRecordingShortcut={isRecording}
           onRecordingShortcutChange={setIsRecording}

@@ -210,6 +210,23 @@ export class AppManager {
         this.windowManager.ensureWidgetWindow().catch((error) => {
           logger.main.error("Failed to bring up widget for try-it", error);
         });
+      } else {
+        // Leaving a try-it step abandons its take — ESC-equivalent cleanup,
+        // covering both jobs at once (ESC itself does one or the other): a
+        // held draft review and an in-flight take (recording OR generating;
+        // dismissCurrentSession aborts an in-flight finalize). Otherwise the
+        // result publishes after the step is gone and Enter can insert stale
+        // text into whatever is focused on the next screen. Both are no-ops
+        // when there's nothing to clean.
+        const recordingManager =
+          this.serviceManager.getService("recordingManager");
+        recordingManager.dismissDraft();
+        recordingManager.dismissCurrentSession().catch((error) => {
+          logger.main.error(
+            "Failed to dismiss in-flight take on try-it exit",
+            error,
+          );
+        });
       }
     });
 

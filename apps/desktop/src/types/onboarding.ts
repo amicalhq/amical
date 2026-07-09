@@ -22,6 +22,10 @@ export enum OnboardingScreen {
   DictationEmail = "dictation_email",
   DictationNotes = "dictation_notes",
   DictationLocal = "dictation_local",
+  DraftIntro = "draft_intro",
+  DraftShortcut = "draft_shortcut",
+  DraftCompose = "draft_compose",
+  DraftSelection = "draft_selection",
   Completion = "completion",
 }
 
