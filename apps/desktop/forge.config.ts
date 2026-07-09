@@ -167,24 +167,6 @@ const config: ForgeConfig = {
         }
       }
 
-      // Prune heavy native sources that trigger MAX_PATH on Windows packages
-      const whisperWrapperPath = join(
-        localNodeModules,
-        "@amical",
-        "whisper-wrapper",
-      );
-      const whisperPruneTargets = [
-        join(whisperWrapperPath, "whisper.cpp"),
-        join(whisperWrapperPath, "build"),
-        join(whisperWrapperPath, ".cmake-js"),
-      ];
-      for (const target of whisperPruneTargets) {
-        if (existsSync(target)) {
-          console.log(`Pruning ${target} from packaged output`);
-          rmSync(target, { recursive: true, force: true });
-        }
-      }
-
       // Second pass: Replace any symlinks with dereferenced copies
       console.log("Checking for symlinks in copied dependencies...");
       for (const dep of nativeModuleDependenciesToPackage) {
@@ -225,6 +207,28 @@ const config: ForgeConfig = {
           }
         } catch (error) {
           console.error(`Failed to check/replace symlink for ${dep}:`, error);
+        }
+      }
+
+      // Prune heavy native sources that trigger MAX_PATH on Windows packages.
+      // Must stay AFTER the symlink-dereference pass above: before it,
+      // node_modules/@amical/whisper-wrapper is a pnpm symlink into
+      // packages/whisper-wrapper, and rmSync would follow it and delete the
+      // real whisper.cpp submodule working tree from the source checkout.
+      const whisperWrapperPath = join(
+        localNodeModules,
+        "@amical",
+        "whisper-wrapper",
+      );
+      const whisperPruneTargets = [
+        join(whisperWrapperPath, "whisper.cpp"),
+        join(whisperWrapperPath, "build"),
+        join(whisperWrapperPath, ".cmake-js"),
+      ];
+      for (const target of whisperPruneTargets) {
+        if (existsSync(target)) {
+          console.log(`Pruning ${target} from packaged output`);
+          rmSync(target, { recursive: true, force: true });
         }
       }
 
