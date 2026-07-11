@@ -5,8 +5,10 @@ namespace WindowsHelper.Utils
     /// The OS sees the Alt/Win release "in combination" with Ctrl, so it does not
     /// activate the menu bar (Alt) or Start menu (Win), while the modifier is still
     /// properly released (no stuck key). The events are built via KeyboardInput, so
-    /// they carry the self-injected tag the helper's own hook skips. Uses left-Ctrl
-    /// (0xA2) with no extended-key flag.
+    /// they carry the self-injected tag the helper's own hook skips. The left-Ctrl
+    /// masking key (0xA2) is not extended, but the modifier being released may be
+    /// (right-Alt, both Win keys) — its key-up carries KEYEVENTF_EXTENDEDKEY so the OS
+    /// clears the real key instead of a non-extended left-side lookalike.
     /// </summary>
     internal static class KeyboardInjector
     {
@@ -22,16 +24,34 @@ namespace WindowsHelper.Utils
         // invariant.
         private const ushort VK_LCONTROL = (ushort)KeycodeConstants.VkLControl; // 0xA2 — left-Ctrl, the masking key
 
+        // Right-Alt and both Win keys are extended keys (scancode prefixed with 0xE0);
+        // left-Alt is not. A synthesized release of an extended modifier MUST set
+        // KEYEVENTF_EXTENDEDKEY, or the OS emits a non-extended (left-side) scancode that
+        // never clears the real key — e.g. a right-Alt release without the flag reads as
+        // left-Alt and leaves right-Alt logically down, poisoning the next injected chord
+        // (the dictation Ctrl+V lands as Ctrl+Alt+V and never pastes). Mirrors the
+        // extended-key tagging in AccessibilityService.GetHeldModifiersToMask.
+        private static bool IsExtendedModifier(int vk) =>
+            vk == KeycodeConstants.VkRMenu
+            || vk == KeycodeConstants.VkLWin
+            || vk == KeycodeConstants.VkRWin;
+
         /// <summary>
         /// Inject [LCtrl down, modifierVk up, LCtrl up]. Returns false if SendInput did
         /// not dispatch every event.
         /// </summary>
         public static bool InjectMaskedRelease(int modifierVk)
         {
+            var modifierUpFlags = KeyboardInput.KEYEVENTF_KEYUP;
+            if (IsExtendedModifier(modifierVk))
+            {
+                modifierUpFlags |= KeyboardInput.KEYEVENTF_EXTENDEDKEY;
+            }
+
             var inputs = new[]
             {
                 KeyboardInput.KeyboardEvent(VK_LCONTROL),
-                KeyboardInput.KeyboardEvent((ushort)modifierVk, KeyboardInput.KEYEVENTF_KEYUP),
+                KeyboardInput.KeyboardEvent((ushort)modifierVk, modifierUpFlags),
                 KeyboardInput.KeyboardEvent(VK_LCONTROL, KeyboardInput.KEYEVENTF_KEYUP),
             };
 
