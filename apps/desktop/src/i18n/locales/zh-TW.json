@@ -454,7 +454,8 @@
           "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
-          "zh-TW": "繁體中文"
+          "zh-TW": "繁體中文",
+          "ko": "한국어"
         },
         "restartDialog": {
           "title": "需要重啟",
