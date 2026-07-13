@@ -11,6 +11,7 @@ import {
 import type { AuthService } from "./auth-service";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
+import { getApplicationLocale } from "../i18n/application-locale";
 
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const EMPTY_CONFIG: RemoteConfig = { version: 1, surfaces: [] };
@@ -112,7 +113,7 @@ export class RemoteConfigService {
       const url = getCoreApiUrl("/remote-config");
       url.searchParams.set("platform", process.platform);
       url.searchParams.set("version", app.getVersion());
-      url.searchParams.set("locale", app.getLocale());
+      url.searchParams.set("locale", getApplicationLocale());
 
       // Runs in all cases — the server decides what (if anything) to return per
       // auth state. Attach the bearer token only when signed in, plus the

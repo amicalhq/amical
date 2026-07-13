@@ -10,7 +10,7 @@
  */
 
 import { z } from "zod";
-import { ErrorCodes, type ErrorCode } from "./error";
+import { ErrorCodes, type DictationErrorCode, type ErrorCode } from "./error";
 import type { WidgetNotificationType } from "./widget-notification";
 
 // ============================================================================
@@ -144,7 +144,9 @@ export type CloudFallbackStage = "transcribe" | "flush";
  */
 export interface CloudGrpcFallbackEvent {
   error_code: ErrorCode;
-  status_code?: number;
+  application_code?: DictationErrorCode;
+  grpc_status?: number;
+  http_status?: number;
   message: string;
   trace_id?: string;
   session_id?: string;

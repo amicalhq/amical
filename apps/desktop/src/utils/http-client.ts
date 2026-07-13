@@ -1,15 +1,18 @@
 import { app } from "electron";
+import { getApplicationLocale } from "../i18n/application-locale";
 import { getPlatformDisplayName } from "./platform";
 
 export interface AmicalClientInfo {
   client: "desktop";
   version: string;
   platform: NodeJS.Platform;
+  locale: string;
 }
 
 export const AMICAL_CLIENT_HEADER = "amical-client";
 export const AMICAL_VERSION_HEADER = "amical-version";
 export const AMICAL_PLATFORM_HEADER = "amical-platform";
+export const AMICAL_ACCEPT_LANGUAGE_HEADER = "Accept-Language";
 export const AMICAL_LABS_HEADER = "amical-labs";
 export const AMICAL_LAB_SELF_CORRECTION = "self-correction";
 // Anonymous, stable per-install id (the telemetry machineId) used by the update
@@ -19,7 +22,7 @@ export const AMICAL_DEVICE_ID_HEADER = "amical-device-id";
 
 const AMICAL_LAB_TOKEN_PATTERN = /^[A-Za-z0-9._~-]+(?:=[A-Za-z0-9._~-]+)?$/;
 
-const AMICAL_CLIENT_INFO: AmicalClientInfo = {
+const AMICAL_CLIENT_INFO: Omit<AmicalClientInfo, "locale"> = {
   client: "desktop",
   version: app.getVersion(),
   platform: process.platform,
@@ -32,11 +35,17 @@ const AMICAL_CLIENT_HEADERS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 export function getAmicalClientInfo(): AmicalClientInfo {
-  return AMICAL_CLIENT_INFO;
+  return {
+    ...AMICAL_CLIENT_INFO,
+    locale: getApplicationLocale(),
+  };
 }
 
 export function getAmicalClientHeaders(): Readonly<Record<string, string>> {
-  return AMICAL_CLIENT_HEADERS;
+  return {
+    ...AMICAL_CLIENT_HEADERS,
+    [AMICAL_ACCEPT_LANGUAGE_HEADER]: getApplicationLocale(),
+  };
 }
 
 export function buildAmicalLabsHeader(

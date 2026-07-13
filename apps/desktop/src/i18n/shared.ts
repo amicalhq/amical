@@ -27,12 +27,17 @@ export const supportedLocales = ["en", "de", "es", "ja", "zh-TW"] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
 export const defaultLocale: SupportedLocale = "en";
 
-export const resolveLocale = (locale?: string | null): SupportedLocale => {
+export const matchSupportedLocale = (
+  locale?: string | null,
+): SupportedLocale | undefined => {
   if (!locale) {
-    return defaultLocale;
+    return undefined;
   }
 
-  const normalized = locale.replace("_", "-");
+  const normalized = locale.trim().replace(/_/g, "-");
+  if (!normalized) {
+    return undefined;
+  }
 
   if (supportedLocales.includes(normalized as SupportedLocale)) {
     return normalized as SupportedLocale;
@@ -52,8 +57,11 @@ export const resolveLocale = (locale?: string | null): SupportedLocale => {
     return "zh-TW";
   }
 
-  return defaultLocale;
+  return undefined;
 };
+
+export const resolveLocale = (locale?: string | null): SupportedLocale =>
+  matchSupportedLocale(locale) ?? defaultLocale;
 
 export const getI18nOptions = (locale?: string | null): InitOptions => ({
   resources,

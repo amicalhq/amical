@@ -11,6 +11,7 @@ import {
   HISTORY_RETENTION_PERIODS,
   DEFAULT_HISTORY_RETENTION_PERIOD,
 } from "../../constants/history-retention";
+import { supportedLocales } from "../../i18n/shared";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
@@ -89,7 +90,7 @@ const UIThemeSchema = z.object({
 
 const UILocaleSchema = z.object({
   // null means "follow system locale"
-  locale: z.string().nullable(),
+  locale: z.enum(supportedLocales).nullable(),
 });
 
 const RecordingSettingsSchema = z.object({

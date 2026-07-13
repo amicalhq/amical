@@ -16,6 +16,7 @@ import { OnboardingService } from "../../services/onboarding-service";
 import { FeatureFlagService } from "../../services/feature-flag-service";
 import { RemoteConfigService } from "../../services/remote-config-service";
 import { HistoryCleanupService } from "../../services/history-cleanup-service";
+import { setApplicationLocale } from "../../i18n/application-locale";
 
 /**
  * Service map for type-safe service access
@@ -71,7 +72,7 @@ export class ServiceManager {
       return;
     }
 
-    this.initializeSettingsService();
+    await this.initializeSettingsService();
     await this.initializeHistoryCleanupService();
     this.initializeAuthService();
     await this.initializePostHogClient();
@@ -125,8 +126,10 @@ export class ServiceManager {
     logger.main.info("Remote config service initialized");
   }
 
-  private initializeSettingsService(): void {
+  private async initializeSettingsService(): Promise<void> {
     this.settingsService = new SettingsService();
+    const uiSettings = await this.settingsService.getUISettings();
+    setApplicationLocale(uiSettings.locale);
     logger.main.info("Settings service initialized");
   }
 

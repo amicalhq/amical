@@ -17,6 +17,7 @@ import type { HelperEvent } from "@amical/types";
 import { runDataMigrations } from "../migrations/data-migrations";
 import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
+import { getApplicationLocale } from "@/i18n/application-locale";
 
 export class AppManager {
   private windowManager!: WindowManager;
@@ -379,9 +380,7 @@ export class AppManager {
   }
 
   private async setupMenu(): Promise<string> {
-    const settingsService = this.serviceManager.getService("settingsService");
-    const uiSettings = await settingsService.getUISettings();
-    const locale = uiSettings.locale ?? app.getLocale();
+    const locale = getApplicationLocale();
     await setupApplicationMenu(
       () => {
         void this.windowManager.navigateMainWindow("/settings/preferences");

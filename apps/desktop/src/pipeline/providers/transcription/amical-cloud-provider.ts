@@ -21,7 +21,11 @@ import { detectApplicationType } from "../formatting/formatter-prompt";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import {
   AppError,
+  DictationErrorCodes,
   ErrorCodes,
+  isDictationErrorCode,
+  mapDictationErrorCodeToErrorCode,
+  type DictationErrorCode,
   type ErrorCode,
   type CloudErrorResponse,
 } from "../../../types/error";
@@ -36,10 +40,6 @@ import {
 import { resolveSessionSkills } from "./skill-resolution";
 import type { DictationSkill } from "./dictation-skill";
 
-// Type guard to validate error codes from server
-const isValidErrorCode = (code: string | undefined): code is ErrorCode =>
-  code !== undefined && Object.values(ErrorCodes).includes(code as ErrorCode);
-
 // Success response from cloud API (HTTP 200)
 interface CloudTranscriptionSuccess {
   success: true;
@@ -52,6 +52,11 @@ interface CloudTranscriptionSuccess {
 // Error response from cloud API (HTTP 4xx/5xx)
 interface CloudTranscriptionError {
   error: CloudErrorResponse;
+}
+
+interface ClassifiedHttpError {
+  errorCode: ErrorCode;
+  applicationCode?: DictationErrorCode;
 }
 
 type CloudTranscriptionResponse =
@@ -233,7 +238,7 @@ const createInitialProviderState = (): ProviderState => ({
  *   - RATE_LIMIT_EXCEEDED (429): account-level throttle, same backend.
  *   - QUOTA_EXCEEDED (402): plan/word-limit cap, same backend — retry won't help.
  *   - IDLE_TIMEOUT: orchestrator stopped feeding chunks; HTTP would also be starved.
- *   - CANCELLED (499): user-initiated (e.g., reset() during flush) — falling
+ *   - CANCELLED: user-initiated (e.g., reset() during flush) — falling
  *     back would trigger a phantom HTTP transcription right after the user
  *     tried to stop.
  */
@@ -244,11 +249,26 @@ const NO_HTTP_FALLBACK_CODES: ReadonlySet<ErrorCode> = new Set([
   ErrorCodes.IDLE_TIMEOUT,
 ]);
 
+const NO_HTTP_FALLBACK_APPLICATION_CODES: ReadonlySet<DictationErrorCode> =
+  new Set([
+    DictationErrorCodes.AUTH_REQUIRED,
+    DictationErrorCodes.FORBIDDEN,
+    DictationErrorCodes.QUOTA_EXCEEDED,
+    DictationErrorCodes.RATE_LIMIT_EXCEEDED,
+    DictationErrorCodes.REQUEST_CANCELED,
+  ]);
+
 const shouldFallbackToHttp = (error: AppError): boolean => {
   if (NO_HTTP_FALLBACK_CODES.has(error.errorCode)) {
     return false;
   }
-  if (error.statusCode === 499) {
+  if (
+    error.applicationCode &&
+    NO_HTTP_FALLBACK_APPLICATION_CODES.has(error.applicationCode)
+  ) {
+    return false;
+  }
+  if (error.grpcStatus === GrpcStatus.CANCELLED) {
     return false;
   }
   return true;
@@ -558,7 +578,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           "Cloud transcription falling back to HTTP after gRPC failure",
           {
             errorCode: error.errorCode,
-            statusCode: error.statusCode,
+            applicationCode: error.applicationCode,
+            grpcStatus: error.grpcStatus,
+            httpStatus: error.httpStatus,
             message: error.message,
             traceId: error.traceId,
             stage,
@@ -567,7 +589,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         );
         this.telemetryService?.trackCloudGrpcFallback({
           error_code: error.errorCode,
-          status_code: error.statusCode,
+          application_code: error.applicationCode,
+          grpc_status: error.grpcStatus,
+          http_status: error.httpStatus,
           message: error.message,
           trace_id: error.traceId,
           session_id: sessionId,
@@ -636,8 +660,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       // HTTP override left over from a drop in the previous session.
       const prevSessionId = (yield* Ref.get(this.state)).currentSessionId;
       const isNewSession =
-        context.sessionId !== undefined &&
-        context.sessionId !== prevSessionId;
+        context.sessionId !== undefined && context.sessionId !== prevSessionId;
 
       // Resolve labs once per session here rather than per request, so the
       // per-chunk HTTP snapshot doesn't re-read settings from disk on every
@@ -1059,67 +1082,80 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     }
 
     if (error instanceof GrpcDictationError) {
-      const build = (code: ErrorCode, status: number | undefined) =>
+      const build = (code: ErrorCode, applicationCode?: DictationErrorCode) =>
         new AppError(error.message, code, {
-          statusCode: status,
+          applicationCode,
+          grpcStatus: error.grpcStatus,
+          httpStatus: error.httpStatus,
           traceId: error.traceId,
+          uiMessage: applicationCode ? error.localizedMessage : undefined,
         });
 
       // Defense-in-depth idle close — distinct from user-cancellation even
       // though both surface as gRPC CANCELLED on the wire.
       if (error.isIdleTimeout) {
-        return build(ErrorCodes.IDLE_TIMEOUT, undefined);
+        return build(ErrorCodes.IDLE_TIMEOUT);
+      }
+
+      if (isDictationErrorCode(error.applicationCode)) {
+        return build(
+          mapDictationErrorCodeToErrorCode(error.applicationCode),
+          error.applicationCode,
+        );
       }
 
       switch (error.grpcStatus) {
         case GrpcStatus.UNAUTHENTICATED:
-          return build(ErrorCodes.AUTH_REQUIRED, 401);
+          return build(ErrorCodes.AUTH_REQUIRED);
         // The server's only RESOURCE_EXHAUSTED case today is a plan/word-limit
         // cap, not a per-second throttle — surface as QUOTA_EXCEEDED so the
         // user sees an Upgrade CTA instead of a generic rate-limit message.
         case GrpcStatus.RESOURCE_EXHAUSTED:
-          return build(ErrorCodes.QUOTA_EXCEEDED, 402);
+          if (error.applicationCode) {
+            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
+          }
+          return build(ErrorCodes.QUOTA_EXCEEDED);
         case GrpcStatus.PERMISSION_DENIED:
-          return build(ErrorCodes.AUTH_REQUIRED, 403);
+          return build(ErrorCodes.AUTH_REQUIRED);
       }
 
       switch (error.httpStatus) {
         case 401:
-          return build(ErrorCodes.AUTH_REQUIRED, 401);
+          return build(ErrorCodes.AUTH_REQUIRED);
         case 402:
-          return build(ErrorCodes.QUOTA_EXCEEDED, 402);
+          return build(ErrorCodes.QUOTA_EXCEEDED);
         case 403:
-          return build(ErrorCodes.AUTH_REQUIRED, 403);
+          return build(ErrorCodes.AUTH_REQUIRED);
         case 429:
-          return build(ErrorCodes.RATE_LIMIT_EXCEEDED, 429);
+          return build(ErrorCodes.RATE_LIMIT_EXCEEDED);
       }
 
       if (error.httpStatus && error.httpStatus >= 500) {
-        return build(ErrorCodes.INTERNAL_SERVER_ERROR, error.httpStatus);
+        return build(ErrorCodes.INTERNAL_SERVER_ERROR);
       }
 
       if (!error.httpStatus) {
         switch (error.grpcStatus) {
           case GrpcStatus.CANCELLED:
-            return build(ErrorCodes.NETWORK_ERROR, 499);
+            return build(ErrorCodes.NETWORK_ERROR);
           case GrpcStatus.INVALID_ARGUMENT:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR, 400);
+            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
           case GrpcStatus.DEADLINE_EXCEEDED:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR, 504);
+            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
           case GrpcStatus.NOT_FOUND:
-            return build(ErrorCodes.UNKNOWN, 404);
+            return build(ErrorCodes.UNKNOWN);
           case GrpcStatus.ALREADY_EXISTS:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR, 409);
+            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
           case GrpcStatus.FAILED_PRECONDITION:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR, 412);
+            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
           case GrpcStatus.INTERNAL:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR, 500);
+            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
           case GrpcStatus.UNAVAILABLE:
-            return build(ErrorCodes.NETWORK_ERROR, 503);
+            return build(ErrorCodes.NETWORK_ERROR);
         }
       }
 
-      return build(ErrorCodes.UNKNOWN, error.httpStatus);
+      return build(ErrorCodes.UNKNOWN);
     }
 
     return new AppError(
@@ -1309,32 +1345,38 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           "Invalid cloud API response",
           ErrorCodes.INTERNAL_SERVER_ERROR,
           {
-            statusCode: response.status,
+            httpStatus: response.status,
           },
         ),
     });
   }
 
-  private errorCodeForHttpResponse(
+  private classifyHttpError(
     response: Response,
     errorData: CloudErrorResponse | undefined,
-  ): ErrorCode {
-    if (isValidErrorCode(errorData?.code)) {
-      return errorData.code;
+  ): ClassifiedHttpError {
+    if (isDictationErrorCode(errorData?.code)) {
+      return {
+        errorCode: mapDictationErrorCodeToErrorCode(errorData.code),
+        applicationCode: errorData.code,
+      };
+    }
+    if (response.status === 401) {
+      return { errorCode: ErrorCodes.AUTH_REQUIRED };
     }
     if (response.status === 402) {
-      return ErrorCodes.QUOTA_EXCEEDED;
+      return { errorCode: ErrorCodes.QUOTA_EXCEEDED };
     }
     if (response.status === 403) {
-      return ErrorCodes.AUTH_REQUIRED;
+      return { errorCode: ErrorCodes.AUTH_REQUIRED };
     }
     if (response.status === 429) {
-      return ErrorCodes.RATE_LIMIT_EXCEEDED;
+      return { errorCode: ErrorCodes.RATE_LIMIT_EXCEEDED };
     }
     if (response.status >= 500) {
-      return ErrorCodes.INTERNAL_SERVER_ERROR;
+      return { errorCode: ErrorCodes.INTERNAL_SERVER_ERROR };
     }
-    return ErrorCodes.UNKNOWN;
+    return { errorCode: ErrorCodes.UNKNOWN };
   }
 
   private makeTranscriptionRequestEffect(
@@ -1407,15 +1449,19 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       if (response.status === 401) {
         if (isRetry) {
           const errorData = yield* this.readCloudErrorResponseEffect(response);
+          const classifiedError = this.classifyHttpError(response, errorData);
           return yield* Effect.fail(
             new AppError(
-              "Cloud auth failed after retry",
-              ErrorCodes.AUTH_REQUIRED,
+              errorData?.message ?? "Cloud auth failed after retry",
+              classifiedError.errorCode,
               {
-                statusCode: 401,
+                applicationCode: classifiedError.applicationCode,
+                httpStatus: response.status,
                 uiTitle: errorData?.ui?.title,
-                uiMessage: errorData?.message,
-                traceId: errorData?.id,
+                uiMessage: classifiedError.applicationCode
+                  ? errorData?.localizedMessage?.message
+                  : undefined,
+                traceId: errorData?.traceId ?? errorData?.id,
               },
             ),
           );
@@ -1442,7 +1488,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
                 new AppError(
                   "Authentication failed - please log in again",
                   ErrorCodes.AUTH_REQUIRED,
-                  { statusCode: 401 },
+                  { httpStatus: 401 },
                 ),
               );
             }),
@@ -1462,6 +1508,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
       if (!response.ok) {
         const errorData = yield* this.readCloudErrorResponseEffect(response);
+        const classifiedError = this.classifyHttpError(response, errorData);
 
         yield* Effect.sync(() => {
           logger.transcription.error("Cloud API error:", {
@@ -1470,19 +1517,24 @@ export class AmicalCloudProvider implements TranscriptionProvider {
             errorCode: errorData?.code,
             errorTitle: errorData?.ui?.title,
             errorMessage: errorData?.message,
-            traceId: errorData?.id,
+            localizedErrorMessage: errorData?.localizedMessage?.message,
+            traceId: errorData?.traceId ?? errorData?.id,
           });
         });
 
         return yield* Effect.fail(
           new AppError(
-            `Cloud API error: ${response.status} ${response.statusText}`,
-            this.errorCodeForHttpResponse(response, errorData),
+            errorData?.message ??
+              `Cloud API error: ${response.status} ${response.statusText}`,
+            classifiedError.errorCode,
             {
-              statusCode: response.status,
+              applicationCode: classifiedError.applicationCode,
+              httpStatus: response.status,
               uiTitle: errorData?.ui?.title,
-              uiMessage: errorData?.message,
-              traceId: errorData?.id,
+              uiMessage: classifiedError.applicationCode
+                ? errorData?.localizedMessage?.message
+                : undefined,
+              traceId: errorData?.traceId ?? errorData?.id,
             },
           ),
         );

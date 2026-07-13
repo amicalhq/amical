@@ -127,6 +127,8 @@ const grpcMock = vi.hoisted(() => {
   };
 });
 
+const httpClientMock = vi.hoisted(() => ({ locale: "en" }));
+
 vi.mock("@grpc/grpc-js", () => grpcMock.module);
 
 // ---- AuthService mock ----------------------------------------------------
@@ -163,11 +165,13 @@ vi.mock("../../src/utils/http-client", () => ({
     "amical-client": "desktop",
     "amical-version": "0.0.0-test",
     "amical-platform": "test-platform",
+    "Accept-Language": httpClientMock.locale,
   }),
   getAmicalClientInfo: () => ({
     client: "desktop",
     version: "0.0.0-test",
     platform: "test-platform",
+    locale: httpClientMock.locale,
   }),
   getUserAgent: () => "test-agent",
 }));
@@ -188,7 +192,11 @@ vi.mock("../../src/main/logger", () => ({
 import { AmicalCloudProvider } from "../../src/pipeline/providers/transcription/amical-cloud-provider";
 import { GrpcDictationError } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
 import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
-import { AppError, ErrorCodes } from "../../src/types/error";
+import {
+  AppError,
+  DictationErrorCodes,
+  ErrorCodes,
+} from "../../src/types/error";
 import type { TranscribeContext } from "../../src/pipeline/core/pipeline-types";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import type { SettingsService } from "../../src/services/settings-service";
@@ -317,6 +325,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   grpcMock.reset();
   authMock.reset();
+  httpClientMock.locale = "en";
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("__BUNDLED_API_ENDPOINT", "https://cloud.test");
@@ -424,9 +433,9 @@ describe("AmicalCloudProvider", () => {
         (write) => write.skillsUpdate,
       );
       expect(skillsUpdates).toHaveLength(1);
-      expect(
-        skillsUpdates[0]?.skillsUpdate?.resolvedSkills?.[0]?.preset,
-      ).toBe("instruct");
+      expect(skillsUpdates[0]?.skillsUpdate?.resolvedSkills?.[0]?.preset).toBe(
+        "instruct",
+      );
     });
 
     it("sends context before skills and suppresses duplicate snapshots", async () => {
@@ -569,11 +578,13 @@ describe("AmicalCloudProvider", () => {
         "amical-client": "desktop",
         "amical-version": "0.0.0-test",
         "amical-platform": "test-platform",
+        "Accept-Language": "en",
       });
     });
 
     it("sends stackable labs header when self correction is enabled", async () => {
       process.env.CLOUD_DICTATION_TRANSPORT = "http";
+      httpClientMock.locale = "ja";
       const settingsService = {
         getLabsSettings: vi.fn().mockResolvedValue({ selfCorrection: true }),
       } as unknown as SettingsService;
@@ -593,6 +604,7 @@ describe("AmicalCloudProvider", () => {
       const [, init] = fetchMock.mock.calls[0]!;
       expect(init.headers).toMatchObject({
         "amical-labs": "self-correction",
+        "Accept-Language": "ja",
       });
     });
   });
@@ -610,8 +622,100 @@ describe("AmicalCloudProvider", () => {
         context: baseContext(),
       });
       await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        message: "boom",
         errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
-        statusCode: 500,
+        httpStatus: 500,
+        uiMessage: undefined,
+      });
+    });
+
+    it("uses only localizedMessage as the user-facing HTTP override", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 402,
+        json: {
+          error: {
+            code: "QUOTA_EXCEEDED",
+            message: "The account has exhausted its dictation quota.",
+            localizedMessage: {
+              locale: "de",
+              message: "Du hast dein Transkriptionslimit erreicht.",
+            },
+            traceId: "trace-http",
+          },
+        },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        message: "The account has exhausted its dictation quota.",
+        errorCode: ErrorCodes.QUOTA_EXCEEDED,
+        applicationCode: DictationErrorCodes.QUOTA_EXCEEDED,
+        httpStatus: 402,
+        uiMessage: "Du hast dein Transkriptionslimit erreicht.",
+        traceId: "trace-http",
+      });
+    });
+
+    it("maps a validated FORBIDDEN code independently of its HTTP status", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 403,
+        json: {
+          error: {
+            code: "FORBIDDEN",
+            message: "Cloud transcription access denied.",
+            localizedMessage: {
+              locale: "de",
+              message: "Du hast keinen Zugriff auf die Cloud-Transkription.",
+            },
+          },
+        },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
+        applicationCode: DictationErrorCodes.FORBIDDEN,
+        httpStatus: 403,
+        uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
+      });
+    });
+
+    it("does not trust desktop-only codes or localized text from HTTP", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 500,
+        json: {
+          error: {
+            code: "USER_DISMISSED",
+            message: "boom",
+            localizedMessage: {
+              locale: "en",
+              message: "Untrusted display override",
+            },
+          },
+        },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
+        applicationCode: undefined,
+        httpStatus: 500,
+        uiMessage: undefined,
       });
     });
 
@@ -650,6 +754,24 @@ describe("AmicalCloudProvider", () => {
       expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalled();
     });
 
+    it("surfaces AUTH_REQUIRED when the retried request also returns 401", async () => {
+      const provider = constructProviderWithTransport("http");
+      mockFetchOnce({ status: 401, json: { error: {} } });
+      mockFetchOnce({ status: 401, json: { error: {} } });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.AUTH_REQUIRED,
+        httpStatus: 401,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it("surfaces AUTH_REQUIRED when token refresh fails after 401", async () => {
       const provider = constructProviderWithTransport("http");
       mockFetchOnce({ status: 401, json: { error: {} } });
@@ -663,7 +785,7 @@ describe("AmicalCloudProvider", () => {
       });
       await expect(provider.flush(baseContext())).rejects.toMatchObject({
         errorCode: ErrorCodes.AUTH_REQUIRED,
-        statusCode: 401,
+        httpStatus: 401,
       });
     });
   });
@@ -692,17 +814,119 @@ describe("AmicalCloudProvider", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    // RESOURCE_EXHAUSTED maps to QUOTA_EXCEEDED today (Upgrade CTA, 402).
-    // The wire doesn't yet disambiguate plan-cap rejections from other
-    // resource-exhausted causes; revisit once server-side trailers carry a
-    // reason and split this test per-reason.
-    it("surfaces RESOURCE_EXHAUSTED as QUOTA_EXCEEDED without falling back", async () => {
+    // Compatibility fallback for servers that do not send ErrorInfo yet.
+    it("surfaces unstructured RESOURCE_EXHAUSTED as QUOTA_EXCEEDED", async () => {
       const { flushPromise } = await driveGrpcThenSettleError(
         grpcMock.status.RESOURCE_EXHAUSTED,
       );
       await expect(flushPromise).rejects.toMatchObject({
         errorCode: ErrorCodes.QUOTA_EXCEEDED,
-        statusCode: 402,
+        grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("prefers a structured quota reason and localized message", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+
+      grpcMock
+        .getLastStream()!
+        .emit(
+          "error",
+          new GrpcDictationError(
+            "Word limit exceeded",
+            grpcMock.status.RESOURCE_EXHAUSTED,
+            undefined,
+            "trace-rich",
+            false,
+            "QUOTA_EXCEEDED",
+            "Du hast dein Transkriptionslimit erreicht.",
+          ),
+        );
+
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: ErrorCodes.QUOTA_EXCEEDED,
+        applicationCode: DictationErrorCodes.QUOTA_EXCEEDED,
+        grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+        uiMessage: "Du hast dein Transkriptionslimit erreicht.",
+        traceId: "trace-rich",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not treat a structured buffer limit as plan quota", async () => {
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "http fallback" },
+      });
+      const provider = constructProviderWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+
+      grpcMock
+        .getLastStream()!
+        .emit(
+          "error",
+          new GrpcDictationError(
+            "buffer full",
+            grpcMock.status.RESOURCE_EXHAUSTED,
+            undefined,
+            undefined,
+            false,
+            "AUDIO_BUFFER_EXCEEDED",
+            "Too much audio was buffered.",
+          ),
+        );
+
+      await expect(flushPromise).resolves.toMatchObject({
+        text: "http fallback",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("maps structured FORBIDDEN the same way as HTTP without falling back", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+
+      grpcMock
+        .getLastStream()!
+        .emit(
+          "error",
+          new GrpcDictationError(
+            "Cloud transcription access denied.",
+            grpcMock.status.PERMISSION_DENIED,
+            undefined,
+            "trace-forbidden",
+            false,
+            "FORBIDDEN",
+            "Du hast keinen Zugriff auf die Cloud-Transkription.",
+          ),
+        );
+
+      await expect(flushPromise).rejects.toMatchObject({
+        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
+        applicationCode: DictationErrorCodes.FORBIDDEN,
+        grpcStatus: grpcMock.status.PERMISSION_DENIED,
+        httpStatus: undefined,
+        uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
       });
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -714,7 +938,7 @@ describe("AmicalCloudProvider", () => {
       // Should surface the cancellation as a NETWORK_ERROR, not trigger an HTTP transcription.
       await expect(flushPromise).rejects.toMatchObject({
         errorCode: ErrorCodes.NETWORK_ERROR,
-        statusCode: 499,
+        grpcStatus: grpcMock.status.CANCELLED,
       });
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -850,9 +1074,56 @@ describe("AmicalCloudProvider", () => {
       expect(trackCloudGrpcFallback).toHaveBeenCalledWith(
         expect.objectContaining({
           error_code: ErrorCodes.NETWORK_ERROR,
-          status_code: 503,
+          grpc_status: grpcMock.status.UNAVAILABLE,
           session_id: "session-1",
           fallback_stage: "flush",
+        }),
+      );
+    });
+
+    it("classifies structured SERVICE_UNAVAILABLE as a server error before fallback", async () => {
+      const trackCloudGrpcFallback = vi.fn();
+      const telemetryStub = {
+        trackCloudGrpcFallback,
+      } as unknown as TelemetryService;
+      process.env.CLOUD_DICTATION_TRANSPORT = "grpc";
+      const provider = new AmicalCloudProvider(telemetryStub);
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "fallback worked" },
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+
+      grpcMock
+        .getLastStream()!
+        .emit(
+          "error",
+          new GrpcDictationError(
+            "server shutting down",
+            grpcMock.status.UNAVAILABLE,
+            undefined,
+            "trace-shutdown",
+            false,
+            DictationErrorCodes.SERVICE_UNAVAILABLE,
+            "Cloud transcription is temporarily unavailable.",
+          ),
+        );
+
+      await expect(flushPromise).resolves.toMatchObject({
+        text: "fallback worked",
+      });
+      expect(trackCloudGrpcFallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error_code: ErrorCodes.INTERNAL_SERVER_ERROR,
+          application_code: DictationErrorCodes.SERVICE_UNAVAILABLE,
+          grpc_status: grpcMock.status.UNAVAILABLE,
         }),
       );
     });
@@ -1182,7 +1453,7 @@ describe("AmicalCloudProvider", () => {
 
       await expect(flushPromise).rejects.toMatchObject({
         errorCode: ErrorCodes.NETWORK_ERROR,
-        statusCode: 499,
+        grpcStatus: grpcMock.status.CANCELLED,
       });
       expect(resetSpy).toHaveBeenCalled();
       // A user-initiated cancel must NOT spawn a phantom HTTP fallback.

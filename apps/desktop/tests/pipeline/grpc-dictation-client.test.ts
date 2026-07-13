@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Writer } from "protobufjs";
 
 const grpcMock = vi.hoisted(() => {
   type Handler = (...args: unknown[]) => void;
@@ -88,6 +89,7 @@ const grpcMock = vi.hoisted(() => {
     OK: 0,
     CANCELLED: 1,
     UNKNOWN: 2,
+    RESOURCE_EXHAUSTED: 8,
     INTERNAL: 13,
     UNAVAILABLE: 14,
     UNAUTHENTICATED: 16,
@@ -129,6 +131,41 @@ import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcript
 const flushEffects = () => new Promise((resolve) => setImmediate(resolve));
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const encodeAny = (typeName: string, value: Uint8Array): Uint8Array =>
+  Writer.create()
+    .uint32(10)
+    .string(`type.googleapis.com/${typeName}`)
+    .uint32(18)
+    .bytes(value)
+    .finish();
+
+const encodeRichStatus = (
+  reason: string,
+  localizedMessage: string,
+): Uint8Array => {
+  const errorInfo = Writer.create()
+    .uint32(10)
+    .string(reason)
+    .uint32(18)
+    .string("dictation.amical.ai")
+    .finish();
+  const localized = Writer.create()
+    .uint32(10)
+    .string("de")
+    .uint32(18)
+    .string(localizedMessage)
+    .finish();
+
+  return Writer.create()
+    .uint32(8)
+    .int32(grpcMock.status.RESOURCE_EXHAUSTED)
+    .uint32(26)
+    .bytes(encodeAny("google.rpc.ErrorInfo", errorInfo))
+    .uint32(26)
+    .bytes(encodeAny("google.rpc.LocalizedMessage", localized))
+    .finish();
+};
+
 const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
   new CloudDictationGrpcStream({
     endpoint: "https://dictation.test",
@@ -138,6 +175,7 @@ const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
       client: "desktop",
       version: "0.0.0-test",
       platform: "darwin",
+      locale: "en",
     },
     sessionId: "session-1",
     vocabulary: [],
@@ -253,6 +291,7 @@ describe("CloudDictationGrpcStream", () => {
         client: "desktop",
         version: "1.2.3",
         platform: "darwin",
+        locale: "ja-JP",
       },
     });
     const client = grpcMock.getLastClient()!;
@@ -264,6 +303,7 @@ describe("CloudDictationGrpcStream", () => {
     expect(metadata.get("amical-client")).toEqual(["desktop"]);
     expect(metadata.get("amical-version")).toEqual(["1.2.3"]);
     expect(metadata.get("amical-platform")).toEqual(["darwin"]);
+    expect(metadata.get("accept-language")).toEqual(["ja-JP"]);
     expect(metadata.get("x-platform")).toEqual([]);
 
     clientStream.cancel();
@@ -391,6 +431,73 @@ describe("CloudDictationGrpcStream", () => {
     await expect(clientStream.finalTranscript).rejects.toBeInstanceOf(
       GrpcDictationError,
     );
+  });
+
+  it("decodes standard application and localized error details", async () => {
+    const clientStream = createStream();
+    const grpcStream = grpcMock.getLastStream()!;
+    const metadata = grpcMock.metadata();
+    metadata.set(
+      "grpc-status-details-bin",
+      Buffer.from(
+        encodeRichStatus(
+          "QUOTA_EXCEEDED",
+          "Du hast dein Transkriptionslimit erreicht.",
+        ),
+      ),
+    );
+
+    grpcStream.emit("status", {
+      code: grpcMock.status.RESOURCE_EXHAUSTED,
+      details: "Word limit exceeded",
+      metadata,
+    });
+
+    await expect(clientStream.finalTranscript).rejects.toMatchObject({
+      name: "GrpcDictationError",
+      grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+      applicationCode: "QUOTA_EXCEEDED",
+      localizedMessage: "Du hast dein Transkriptionslimit erreicht.",
+    });
+  });
+
+  it("preserves rich details when grpc-js emits error before status", async () => {
+    const clientStream = createStream();
+    const grpcStream = grpcMock.getLastStream()!;
+    const metadata = grpcMock.metadata();
+    metadata.set("x-trace-id", "trace-error-status");
+    metadata.set(
+      "grpc-status-details-bin",
+      Buffer.from(
+        encodeRichStatus(
+          "QUOTA_EXCEEDED",
+          "Du hast dein Transkriptionslimit erreicht.",
+        ),
+      ),
+    );
+    const serviceError = Object.assign(new Error("Word limit exceeded"), {
+      code: grpcMock.status.RESOURCE_EXHAUSTED,
+      details: "Word limit exceeded",
+      metadata,
+    });
+
+    // grpc-js emits the ServiceError first, followed by the terminal status.
+    grpcStream.emit("error", serviceError);
+    grpcStream.emit("status", {
+      code: grpcMock.status.RESOURCE_EXHAUSTED,
+      details: "Word limit exceeded",
+      metadata,
+    });
+
+    await expect(clientStream.finalTranscript).rejects.toMatchObject({
+      name: "GrpcDictationError",
+      grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+      traceId: "trace-error-status",
+      applicationCode: "QUOTA_EXCEEDED",
+      localizedMessage: "Du hast dein Transkriptionslimit erreicht.",
+    });
+    await flushEffects();
+    expect(grpcMock.getLastClient()!.close).toHaveBeenCalledTimes(1);
   });
 
   it("preserves raw HTTP status from grpc-js ServiceError details", async () => {

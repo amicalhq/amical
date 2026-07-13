@@ -27,6 +27,7 @@ import {
 } from "../../../utils/http-client";
 import { logger } from "../../../main/logger";
 import type { DictationSkill } from "./dictation-skill";
+import { decodeGrpcRichErrorDetails } from "./grpc-error-details";
 
 export interface GrpcStreamContext {
   selectedText?: string;
@@ -69,6 +70,8 @@ export class GrpcDictationError extends Error {
     public readonly httpStatus?: number,
     public readonly traceId?: string,
     public readonly isIdleTimeout?: boolean,
+    public readonly applicationCode?: string,
+    public readonly localizedMessage?: string,
   ) {
     super(message);
     this.name = "GrpcDictationError";
@@ -370,6 +373,7 @@ const buildCallMetadata = (options: GrpcDictationStreamOptions): Metadata => {
   metadata.set(AMICAL_CLIENT_HEADER, options.clientInfo.client);
   metadata.set(AMICAL_VERSION_HEADER, options.clientInfo.version);
   metadata.set(AMICAL_PLATFORM_HEADER, options.clientInfo.platform);
+  metadata.set("accept-language", options.clientInfo.locale);
   const labsHeader = buildAmicalLabsHeader(options.labs ?? []);
   if (labsHeader) {
     metadata.set(AMICAL_LABS_HEADER, labsHeader);
@@ -831,6 +835,7 @@ export class CloudDictationGrpcStream {
       if (streamStatus.code !== grpcStatusCode.OK) {
         const state = yield* Ref.get(this.stateRef);
         if (!state.cancelled) {
+          const richDetails = decodeGrpcRichErrorDetails(streamStatus.metadata);
           const httpStatus = extractHttpStatusFromGrpcJsDetails(
             streamStatus.details,
           );
@@ -841,6 +846,9 @@ export class CloudDictationGrpcStream {
               streamStatus.code,
               httpStatus,
               state.traceId,
+              undefined,
+              richDetails.applicationCode,
+              richDetails.localizedMessage,
             ),
             false,
           );
@@ -994,6 +1002,7 @@ export class CloudDictationGrpcStream {
       return Effect.gen(this, function* () {
         yield* this.updateTraceIdEffect(error.metadata);
         const state = yield* Ref.get(this.stateRef);
+        const richDetails = decodeGrpcRichErrorDetails(error.metadata);
         const httpStatus =
           extractHttpStatusFromGrpcJsDetails(error.details) ??
           extractHttpStatusFromGrpcJsDetails(error.message);
@@ -1004,6 +1013,9 @@ export class CloudDictationGrpcStream {
           error.code,
           httpStatus,
           state.traceId,
+          undefined,
+          richDetails.applicationCode,
+          richDetails.localizedMessage,
         );
       });
     }

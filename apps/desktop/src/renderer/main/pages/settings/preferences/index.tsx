@@ -24,6 +24,7 @@ import {
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { matchSupportedLocale, type SupportedLocale } from "@/i18n/shared";
 
 export default function PreferencesSettingsPage() {
   const { t } = useTranslation();
@@ -102,9 +103,16 @@ export default function PreferencesSettingsPage() {
   };
 
   const handleLanguageChange = (value: string) => {
-    setSelectedLocale(value);
+    let nextLocale: SupportedLocale | null = null;
+    if (value !== "system") {
+      const supportedLocale = matchSupportedLocale(value);
+      if (!supportedLocale) {
+        return;
+      }
+      nextLocale = supportedLocale;
+    }
+    setSelectedLocale(nextLocale ?? "system");
 
-    const nextLocale = value === "system" ? null : value;
     const currentLocale = uiSettingsQuery.data?.locale ?? null;
     if (nextLocale === currentLocale) {
       return;
