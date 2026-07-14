@@ -79,6 +79,10 @@ jobs:
           GGML_NATIVE: OFF
         run: pnpm install --frozen-lockfile
 
+      - name: Test Windows helper
+        if: matrix.os == 'windows'
+        run: dotnet test packages/native-helpers/windows-helper-tests/WindowsHelper.Tests.csproj -c Release --arch x64 -- RunConfiguration.TreatNoTestsAsError=true
+
       - name: Build whisper wrapper JS
         run: pnpm --filter @amical/whisper-wrapper build
 

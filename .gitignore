@@ -35,6 +35,8 @@ out/
 build
 dist
 packages/whisper-wrapper/native/
+packages/native-helpers/windows-helper-tests/bin/
+packages/native-helpers/windows-helper-tests/obj/
 
 
 # Debug

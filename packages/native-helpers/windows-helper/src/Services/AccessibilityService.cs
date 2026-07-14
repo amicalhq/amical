@@ -169,7 +169,7 @@ namespace WindowsHelper.Services
 
             try
             {
-                var savedContent = clipboardService.Save();
+                var savedContent = clipboardService.SaveForClipboardTransaction();
                 if (savedContent.SaveFailed)
                 {
                     // Injecting a copy could overwrite content we cannot restore.
@@ -219,10 +219,10 @@ namespace WindowsHelper.Services
 
                 // Restore behind the sequence-number guard: an external write
                 // after observedSeq is preserved rather than clobbered.
-                var restoreError = clipboardService.RestoreSync(savedContent, observedSeq);
-                if (restoreError != null)
+                var restoreWarning = clipboardService.RestoreSync(savedContent, observedSeq);
+                if (restoreWarning != null)
                 {
-                    result.Message = $"Copy captured but clipboard restore failed: {restoreError}";
+                    result.Message = $"Copy captured with clipboard restoration warning: {restoreWarning}";
                     LogToStderr(result.Message);
                 }
 
@@ -244,10 +244,20 @@ namespace WindowsHelper.Services
             {
                 LogToStderr($"PasteText called with text length: {text.Length}, preserveClipboard: {preserveClipboard}");
 
-                // Save original clipboard content
-                var savedContent = clipboardService.Save();
-                var originalSeq = clipboardService.GetSequenceNumber();
-                LogToStderr($"Original clipboard saved. Sequence number: {originalSeq}");
+                // Snapshot only when it will be restored. Both paste and Draft
+                // selection capture use the same detachable-format policy.
+                var savedContent = preserveClipboard
+                    ? clipboardService.SaveForClipboardTransaction()
+                    : null;
+                if (savedContent != null)
+                {
+                    var originalSeq = clipboardService.GetSequenceNumber();
+                    LogToStderr($"Original clipboard saved. Sequence number: {originalSeq}");
+                }
+                else
+                {
+                    LogToStderr("preserveClipboard=false, skipping clipboard snapshot.");
+                }
 
                 // Set new clipboard content
                 clipboardService.SetText(text);
@@ -272,14 +282,14 @@ namespace WindowsHelper.Services
                 // Wait for paste to complete before restoring
                 Thread.Sleep(700);
 
-                if (preserveClipboard)
+                if (savedContent != null)
                 {
                     // Restore original clipboard synchronously and report errors
-                    var restoreError = clipboardService.RestoreSync(savedContent, newSeq);
-                    if (restoreError != null)
+                    var restoreWarning = clipboardService.RestoreSync(savedContent, newSeq);
+                    if (restoreWarning != null)
                     {
-                        // Paste succeeded but restore failed - report as partial success
-                        errorMessage = $"Paste succeeded but clipboard restore failed: {restoreError}";
+                        // Paste succeeded; report clipboard preservation problems as partial success.
+                        errorMessage = $"Paste succeeded with clipboard restoration warning: {restoreWarning}";
                         LogToStderr(errorMessage);
                         // Still return true since the paste itself worked
                     }
