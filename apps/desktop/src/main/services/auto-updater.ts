@@ -149,11 +149,14 @@ export class AutoUpdaterService extends EventEmitter {
     });
   }
 
-  private setFeedURL(channel: "stable" | "beta"): void {
+  private setFeedURL(channel: "stable" | "beta", targetVersion?: string): void {
     const platform = process.platform;
     const arch = process.arch;
     const runningVersion = encodeURIComponent(app.getVersion());
-    const url = `${UPDATE_SERVER}/update/${channel}/${platform}-${arch}/${this.effectiveVersion}?runningVersion=${runningVersion}`;
+    const targetVersionQuery = targetVersion
+      ? `&targetVersion=${encodeURIComponent(targetVersion)}`
+      : "";
+    const url = `${UPDATE_SERVER}/update/${channel}/${platform}-${arch}/${this.effectiveVersion}?runningVersion=${runningVersion}${targetVersionQuery}`;
 
     try {
       autoUpdater.setFeedURL({ url });
@@ -517,8 +520,13 @@ export class AutoUpdaterService extends EventEmitter {
         }
       }
 
-      // Proceed with native update check (uses effectiveVersion in feed URL,
-      // so it discovers newer releases even if one is already downloaded).
+      // Pin this native check to the version selected by metadata. Rewriting
+      // the URL without a target on metadata failures/missing versions keeps
+      // the server's latest-release fallback and clears any prior target.
+      this.setFeedURL(this.currentChannel, metadata?.version);
+
+      // Proceed with native update check (uses effectiveVersion in the feed
+      // path, so it discovers newer releases even if one is already staged).
       autoUpdater.checkForUpdates();
     } catch (error) {
       logger.updater.error("Failed to check for updates", { error });

@@ -223,15 +223,61 @@ describe("AutoUpdaterService", () => {
       expect(service.getUpdateState()).toBe("not-available");
     });
 
-    it("runs the native check when an update is offered", async () => {
+    it("targets the metadata version when an update is offered", async () => {
       vi.mocked(net.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ action: "silent", version: "1.8.0" }),
+        json: async () => ({ action: "silent", version: "1.8.0-beta+1" }),
       } as any);
 
       await service.checkForUpdates(true);
 
       expect(vi.mocked(autoUpdater.checkForUpdates)).toHaveBeenCalledOnce();
+      expect(vi.mocked(autoUpdater.setFeedURL)).toHaveBeenLastCalledWith({
+        url: expect.stringContaining(
+          "?runningVersion=0.1.0-test&targetVersion=1.8.0-beta%2B1",
+        ),
+      });
+    });
+
+    it("clears a prior target when metadata omits the selected version", async () => {
+      vi.mocked(net.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ action: "silent", version: "1.8.0" }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ action: "silent" }),
+        } as any);
+
+      await service.checkForUpdates();
+      autoUpdater.emit("update-not-available");
+      await service.checkForUpdates();
+
+      const feedCalls = vi.mocked(autoUpdater.setFeedURL).mock.calls;
+      const lastFeedUrl = feedCalls[feedCalls.length - 1]?.[0]?.url;
+      expect(vi.mocked(autoUpdater.checkForUpdates)).toHaveBeenCalledTimes(2);
+      expect(lastFeedUrl).toContain("?runningVersion=0.1.0-test");
+      expect(lastFeedUrl).not.toContain("targetVersion=");
+    });
+
+    it("clears a prior target when metadata fetching fails", async () => {
+      vi.mocked(net.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ action: "silent", version: "1.8.0" }),
+        } as any)
+        .mockRejectedValueOnce(new Error("metadata unavailable"));
+
+      await service.checkForUpdates();
+      autoUpdater.emit("update-not-available");
+      await service.checkForUpdates();
+
+      const feedCalls = vi.mocked(autoUpdater.setFeedURL).mock.calls;
+      const lastFeedUrl = feedCalls[feedCalls.length - 1]?.[0]?.url;
+      expect(vi.mocked(autoUpdater.checkForUpdates)).toHaveBeenCalledTimes(2);
+      expect(lastFeedUrl).toContain("?runningVersion=0.1.0-test");
+      expect(lastFeedUrl).not.toContain("targetVersion=");
     });
 
     it("keeps a real downloaded update when a later background check finds nothing", async () => {
