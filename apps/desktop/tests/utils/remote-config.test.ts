@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { RemoteConfig } from "../../src/types/remote-config";
+import {
+  RemoteConfigSchema,
+  type RemoteConfig,
+} from "../../src/types/remote-config";
 import {
   getActiveRemoteConfigSurfaces,
   isRemoteConfigSurfaceActive,
@@ -34,6 +37,16 @@ const config: RemoteConfig = {
 };
 
 describe("remote config helpers", () => {
+  it("retains boolean feature flags", () => {
+    const parsed = RemoteConfigSchema.parse({
+      version: 1,
+      surfaces: [],
+      flags: { "desktop-background-updates": false },
+    });
+
+    expect(parsed.flags).toEqual({ "desktop-background-updates": false });
+  });
+
   it("filters expired and dismissed surfaces, then sorts by priority", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     const dayMs = 24 * 60 * 60 * 1000;

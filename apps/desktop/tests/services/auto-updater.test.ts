@@ -1,9 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { EventEmitter } from "node:events";
 import { app, autoUpdater, net } from "electron";
 import {
   AutoUpdaterService,
   classifyUpdaterError,
 } from "../../src/main/services/auto-updater";
+import type { RecordingState } from "../../src/types/recording";
 
 describe("classifyUpdaterError", () => {
   it("classifies macOS read-only volume updater failures as known noise", () => {
@@ -42,7 +44,17 @@ describe("AutoUpdaterService", () => {
     captureException: ReturnType<typeof vi.fn>;
     getMachineId: ReturnType<typeof vi.fn>;
   };
+  let remoteConfig: { getConfig: ReturnType<typeof vi.fn> };
+  let recordingState: RecordingState;
+  let recordingManager: EventEmitter & {
+    getState: ReturnType<typeof vi.fn>;
+  };
   let emitUpdateChannelChanged: ((channel: "stable" | "beta") => void) | null;
+
+  const setRecordingState = (state: RecordingState): void => {
+    recordingState = state;
+    recordingManager.emit("state-changed", state);
+  };
 
   beforeEach(async () => {
     (app as unknown as { isPackaged: boolean }).isPackaged = true;
@@ -55,6 +67,17 @@ describe("AutoUpdaterService", () => {
       captureException: vi.fn(),
       getMachineId: vi.fn().mockReturnValue("machine-xyz"),
     };
+    remoteConfig = {
+      getConfig: vi.fn().mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": true },
+      }),
+    };
+    recordingState = "idle";
+    recordingManager = Object.assign(new EventEmitter(), {
+      getState: vi.fn(() => recordingState),
+    });
     service = new AutoUpdaterService();
     await service.initialize(
       {
@@ -67,11 +90,14 @@ describe("AutoUpdaterService", () => {
         removeAllListeners: vi.fn(),
       } as any,
       telemetry as any,
+      remoteConfig as any,
+      recordingManager as any,
     );
   });
 
   afterEach(() => {
     service.cleanup();
+    vi.useRealTimers();
     (app as unknown as { isPackaged: boolean }).isPackaged = false;
   });
 
@@ -629,6 +655,165 @@ describe("AutoUpdaterService", () => {
         action: "force",
         version: "2.0.0",
       });
+    });
+  });
+
+  describe("background update installation", () => {
+    it("defaults the background-updates flag to enabled", async () => {
+      vi.useFakeTimers();
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
+    });
+
+    it("installs when the background-updates flag is enabled", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": true },
+      });
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
+    });
+
+    it("does not install when the remote flag is disabled", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": false },
+      });
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+    });
+
+    it("waits for 20 continuous idle minutes and installs only once", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": true },
+      });
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000 - 1);
+      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
+    });
+
+    it("resets the full idle window when recording starts", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": true },
+      });
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+      await vi.advanceTimersByTimeAsync(19 * 60 * 1000);
+
+      setRecordingState("recording");
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+
+      setRecordingState("idle");
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000 - 1);
+      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
+    });
+
+    it("starts a fresh idle window when a recording ends", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": true },
+      });
+      setRecordingState("recording");
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+      await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+
+      setRecordingState("idle");
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
+    });
+
+    it("uses the latest remote flag value while an update is staged", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": false },
+      });
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": true },
+      });
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
+      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
+    });
+
+    it("cancels idle installation when the staged update is replaced", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": true },
+      });
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+      await vi.advanceTimersByTimeAsync(19 * 60 * 1000);
+
+      autoUpdater.emit("update-available");
+      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+
+      expect(vi.mocked(autoUpdater.quitAndInstall)).not.toHaveBeenCalled();
+    });
+
+    it("waits 9 hours before rechecking after a download", async () => {
+      vi.useFakeTimers();
+      remoteConfig.getConfig.mockReturnValue({
+        version: 1,
+        surfaces: [],
+        flags: { "desktop-background-updates": false },
+      });
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "none" }),
+      } as any);
+      autoUpdater.emit("update-downloaded", {}, "## notes", "1.8.0");
+
+      await vi.advanceTimersByTimeAsync(9 * 60 * 60 * 1000 - 1);
+      expect(vi.mocked(net.fetch)).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(vi.mocked(net.fetch)).toHaveBeenCalledOnce();
     });
   });
 

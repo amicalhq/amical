@@ -94,5 +94,6 @@ export type RemoteConfigSideSlotSurface = Extract<
 export const RemoteConfigSchema = z.object({
   version: z.number(),
   surfaces: z.array(RemoteConfigSurfaceSchema).optional(),
+  flags: z.record(z.string(), z.boolean()).optional(),
 });
 export type RemoteConfig = z.infer<typeof RemoteConfigSchema>;

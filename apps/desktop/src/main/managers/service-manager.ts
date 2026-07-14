@@ -275,6 +275,8 @@ export class ServiceManager {
     await this.autoUpdaterService.initialize(
       this.settingsService!,
       this.telemetryService!,
+      this.remoteConfigService!,
+      this.recordingManager!,
     );
   }
 

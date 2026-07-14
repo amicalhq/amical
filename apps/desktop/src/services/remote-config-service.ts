@@ -14,7 +14,22 @@ import type { TelemetryService } from "./telemetry-service";
 import { getApplicationLocale } from "../i18n/application-locale";
 
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-const EMPTY_CONFIG: RemoteConfig = { version: 1, surfaces: [] };
+export const DESKTOP_BACKGROUND_UPDATES_FLAG = "desktop-background-updates";
+
+export type DesktopRemoteConfig = Omit<RemoteConfig, "flags"> & {
+  flags: NonNullable<RemoteConfig["flags"]> &
+    Record<typeof DESKTOP_BACKGROUND_UPDATES_FLAG, boolean>;
+};
+
+const resolveRemoteConfig = (config: RemoteConfig): DesktopRemoteConfig => ({
+  ...config,
+  flags: {
+    [DESKTOP_BACKGROUND_UPDATES_FLAG]: true,
+    ...(config.flags ?? {}),
+  },
+});
+
+const EMPTY_CONFIG = resolveRemoteConfig({ version: 1, surfaces: [] });
 
 /**
  * Fetches the server-controlled remote-config envelope (banner / side-slot
@@ -30,7 +45,7 @@ export class RemoteConfigService {
   private settingsService: SettingsService;
   private telemetryService: TelemetryService;
 
-  private config: RemoteConfig = EMPTY_CONFIG;
+  private config: DesktopRemoteConfig = EMPTY_CONFIG;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private refreshPromise: Promise<void> | null = null;
   // Bumped on identity change; an in-flight refresh whose generation no longer
@@ -75,7 +90,7 @@ export class RemoteConfigService {
     }
   }
 
-  getConfig(): RemoteConfig {
+  getConfig(): DesktopRemoteConfig {
     return this.config;
   }
 
@@ -170,9 +185,10 @@ export class RemoteConfigService {
 
   // Update the in-memory config and the persisted cache together.
   private async setConfig(config: RemoteConfig): Promise<void> {
-    this.config = config;
+    const resolvedConfig = resolveRemoteConfig(config);
+    this.config = resolvedConfig;
     await this.settingsService.setRemoteConfig({
-      config,
+      config: resolvedConfig,
       lastFetchedAt: new Date().toISOString(),
     });
   }
@@ -184,7 +200,14 @@ export class RemoteConfigService {
     try {
       const persisted = await this.settingsService.getRemoteConfig();
       if (persisted?.config) {
-        this.config = persisted.config;
+        const parsed = RemoteConfigSchema.safeParse(persisted.config);
+        if (!parsed.success) {
+          logger.main.error("Persisted remote config failed validation", {
+            issues: parsed.error.issues,
+          });
+          return null;
+        }
+        this.config = resolveRemoteConfig(parsed.data);
         return persisted.lastFetchedAt ?? null;
       }
       return null;

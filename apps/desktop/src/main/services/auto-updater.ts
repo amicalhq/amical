@@ -8,11 +8,19 @@ import {
 } from "../../utils/http-client";
 import type { SettingsService } from "../../services/settings-service";
 import type { TelemetryService } from "../../services/telemetry-service";
+import {
+  DESKTOP_BACKGROUND_UPDATES_FLAG,
+  type RemoteConfigService,
+} from "../../services/remote-config-service";
+import type { RecordingManager } from "../managers/recording-manager";
+import type { RecordingState } from "../../types/recording";
 import { computeUpdatePrompt, type UpdatePrompt } from "./update-prompt";
 
 const UPDATE_SERVER = "https://update.amical.ai";
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
-const CHECK_INTERVAL_AFTER_DOWNLOAD_MS = 3 * 60 * 60 * 1000; // 3 hours
+const CHECK_INTERVAL_AFTER_DOWNLOAD_MS = 9 * 60 * 60 * 1000; // 9 hours
+const IDLE_INSTALL_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const IDLE_INSTALL_THRESHOLD_MS = 20 * 60 * 1000; // 20 minutes
 
 export type UpdateAction = "none" | "silent" | "prompt" | "force";
 
@@ -66,8 +74,11 @@ export function classifyUpdaterError(
 
 export class AutoUpdaterService extends EventEmitter {
   private checkInterval: ReturnType<typeof setInterval> | null = null;
+  private idleInstallInterval: ReturnType<typeof setInterval> | null = null;
   private settingsService: SettingsService | null = null;
   private telemetryService: TelemetryService | null = null;
+  private remoteConfigService: RemoteConfigService | null = null;
+  private recordingManager: RecordingManager | null = null;
   private currentChannel: "stable" | "beta" = "stable";
   // Track the latest version we know about (downloaded or running) so the
   // feed URL always reflects the newest version we have, preventing
@@ -88,6 +99,20 @@ export class AutoUpdaterService extends EventEmitter {
   // channel and let the next manual or scheduled check fetch fresh metadata.
   private pendingChannel: "stable" | "beta" | null = null;
   private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
+  private installTriggered = false;
+  private recordingIdleSince: number | null = null;
+  private readonly handleRecordingStateChanged = (
+    state: RecordingState,
+  ): void => {
+    if (state === "idle") {
+      this.recordingIdleSince = Date.now();
+      this.startIdleInstallChecks();
+      return;
+    }
+
+    this.recordingIdleSince = null;
+    this.stopIdleInstallChecks();
+  };
 
   constructor() {
     super();
@@ -96,6 +121,8 @@ export class AutoUpdaterService extends EventEmitter {
   async initialize(
     settingsService: SettingsService,
     telemetryService: TelemetryService,
+    remoteConfigService: RemoteConfigService,
+    recordingManager: RecordingManager,
   ): Promise<void> {
     if (!app.isPackaged) {
       logger.updater.info("Skipping auto-updater: app is not packaged");
@@ -116,6 +143,10 @@ export class AutoUpdaterService extends EventEmitter {
 
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
+    this.remoteConfigService = remoteConfigService;
+    this.recordingManager = recordingManager;
+    recordingManager.on("state-changed", this.handleRecordingStateChanged);
+    this.handleRecordingStateChanged(recordingManager.getState());
     this.currentChannel = await settingsService.getUpdateChannel();
 
     this.setFeedURL(this.currentChannel);
@@ -181,6 +212,54 @@ export class AutoUpdaterService extends EventEmitter {
     });
   }
 
+  private stopIdleInstallChecks(): void {
+    if (this.idleInstallInterval) {
+      clearInterval(this.idleInstallInterval);
+      this.idleInstallInterval = null;
+    }
+  }
+
+  private clearStagedInstallState(): void {
+    this.staged = false;
+    this.installTriggered = false;
+    this.stopIdleInstallChecks();
+  }
+
+  private isBackgroundUpdateEnabled(): boolean {
+    if (!this.remoteConfigService) return false;
+    return this.remoteConfigService.getConfig().flags[
+      DESKTOP_BACKGROUND_UPDATES_FLAG
+    ];
+  }
+
+  private maybeInstallStagedUpdate(): void {
+    if (!this.staged || this.installTriggered) return;
+    if (!this.isBackgroundUpdateEnabled()) return;
+    if (this.recordingManager?.getState() !== "idle") return;
+    if (
+      this.recordingIdleSince === null ||
+      Date.now() - this.recordingIdleSince < IDLE_INSTALL_THRESHOLD_MS
+    ) {
+      return;
+    }
+
+    logger.updater.info("Installing staged update after recording idle", {
+      idleThresholdMs: IDLE_INSTALL_THRESHOLD_MS,
+    });
+    this.quitAndInstall();
+  }
+
+  private startIdleInstallChecks(): void {
+    this.stopIdleInstallChecks();
+    this.maybeInstallStagedUpdate();
+    if (!this.staged || this.installTriggered) return;
+
+    this.idleInstallInterval = setInterval(
+      () => this.maybeInstallStagedUpdate(),
+      IDLE_INSTALL_CHECK_INTERVAL_MS,
+    );
+  }
+
   // A check/download cycle is in flight ("available"/downloading included).
   // Reads `phase` only, so resetting the public/UI state elsewhere (e.g. on a
   // channel change) can never clear it.
@@ -219,7 +298,7 @@ export class AutoUpdaterService extends EventEmitter {
   // and effectiveVersion are intentionally NOT reset here — deferChannelChange
   // must keep them pinned to the in-flight cycle's channel.
   private resetPromptState(): void {
-    this.staged = false;
+    this.clearStagedInstallState();
     this.lastMetadata = null;
     this.dismissedVersion = undefined;
     this.emit("update-prompt-changed");
@@ -264,6 +343,10 @@ export class AutoUpdaterService extends EventEmitter {
   // reschedule background checks for the new staged state, and notify the UI.
   private applyStagedVersion(staged: boolean, version: string): void {
     this.staged = staged;
+    if (!staged) {
+      this.installTriggered = false;
+      this.stopIdleInstallChecks();
+    }
     this.effectiveVersion = version;
     this.setFeedURL(this.currentChannel);
     this.scheduleAutomaticChecks();
@@ -340,7 +423,7 @@ export class AutoUpdaterService extends EventEmitter {
     autoUpdater.on("update-available", () => {
       logger.updater.info("Update available, downloading...");
       // Reset so isDownloaded() only reflects the current download
-      this.staged = false;
+      this.clearStagedInstallState();
       this.setPhase("downloading");
       this.emit("update-available");
     });
@@ -365,6 +448,7 @@ export class AutoUpdaterService extends EventEmitter {
         return;
       }
       this.staged = true;
+      this.installTriggered = false;
       this.setPhase("idle");
       logger.updater.info("Update downloaded", { releaseName });
       // Advance effective version so subsequent checks use the downloaded
@@ -377,6 +461,7 @@ export class AutoUpdaterService extends EventEmitter {
       this.scheduleAutomaticChecks();
       this.emit("update-downloaded", { releaseNotes, releaseName });
       this.emit("update-prompt-changed");
+      this.startIdleInstallChecks();
     });
   }
 
@@ -543,6 +628,8 @@ export class AutoUpdaterService extends EventEmitter {
     }
 
     logger.updater.info("Quitting and installing update");
+    this.installTriggered = true;
+    this.stopIdleInstallChecks();
     autoUpdater.quitAndInstall();
   }
 
@@ -555,9 +642,19 @@ export class AutoUpdaterService extends EventEmitter {
       clearTimeout(this.initialCheckTimeout);
       this.initialCheckTimeout = null;
     }
+    this.stopIdleInstallChecks();
     if (this.settingsService) {
       this.settingsService.removeAllListeners("update-channel-changed");
       this.settingsService = null;
     }
+    if (this.recordingManager) {
+      this.recordingManager.off(
+        "state-changed",
+        this.handleRecordingStateChanged,
+      );
+    }
+    this.recordingIdleSince = null;
+    this.remoteConfigService = null;
+    this.recordingManager = null;
   }
 }
