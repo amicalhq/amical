@@ -419,6 +419,10 @@
         "title": "Textbausteine",
         "description": "Kurze Auslöser beim Diktieren in längeren Text umwandeln"
       },
+      "formatting": {
+        "title": "Personalisierung",
+        "description": "App-spezifische Regeln zur Personalisierung deiner Diktate"
+      },
       "aiModels": {
         "title": "KI-Modelle",
         "description": "KI-Modelle und Anbieter konfigurieren"
@@ -804,7 +808,8 @@
         "pushToTalkUpdated": "Push-to-Talk-Tastenkürzel aktualisiert",
         "handsFreeUpdated": "Tastenkürzel für Freisprechmodus aktualisiert",
         "pasteLastTranscriptUpdated": "Tastenkürzel zum Einfügen der letzten Transkription aktualisiert",
-        "newNoteUpdated": "Tastenkürzel für neue Notiz aktualisiert"
+        "newNoteUpdated": "Tastenkürzel für neue Notiz aktualisiert",
+        "draftModeUpdated": "Entwurf-Tastenkürzel aktualisiert"
       },
       "pushToTalk": {
         "label": "Push-to-Talk",
@@ -821,6 +826,10 @@
       "newNote": {
         "label": "Neue Notiz",
         "description": "Notizen-Fenster öffnen und eine neue Notiz erstellen"
+      },
+      "draft": {
+        "label": "Entwurf",
+        "description": "Halte das Tastenkürzel gedrückt, um eine Anweisung einzusprechen; prüfe anschließend den erstellten Text und füge ihn ein"
       },
       "allowInjectedKeys": {
         "label": "Injizierte Tastenanschläge zulassen",

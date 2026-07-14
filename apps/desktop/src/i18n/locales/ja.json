@@ -419,6 +419,10 @@
         "title": "スニペット",
         "description": "音声入力中に短いトリガーを長いテキストに展開"
       },
+      "formatting": {
+        "title": "パーソナライズ",
+        "description": "アプリごとに音声入力をカスタマイズするルールを設定"
+      },
       "aiModels": {
         "title": "AIモデル",
         "description": "AIモデルとプロバイダーを設定"
@@ -559,6 +563,17 @@
           "updateFailed": "アップデートチャンネルの変更に失敗しました。もう一度お試しください。"
         }
       },
+      "historyRetention": {
+        "label": "履歴の保存期間",
+        "description": "選択した保存期間を過ぎた文字起こし履歴を自動的に削除します",
+        "options": {
+          "1d": "1日",
+          "7d": "7日間",
+          "14d": "14日間",
+          "28d": "28日間",
+          "never": "削除しない"
+        }
+      },
       "telemetry": {
         "label": "匿名テレメトリー",
         "description": "匿名の使用データを共有してAmicalの改善にご協力ください。",
@@ -679,9 +694,20 @@
       "dialog": {
         "title": "文字起こしの詳細"
       },
+      "deleteAll": {
+        "menuItem": "すべての履歴を削除",
+        "dialog": {
+          "title": "文字起こし履歴をすべて削除しますか？",
+          "description": "この操作は元に戻せません。すべての文字起こしと、それに関連する音声ファイルが完全に削除されます。",
+          "cancel": "キャンセル",
+          "confirm": "すべて削除"
+        }
+      },
       "toast": {
         "deleted": "文字起こしを削除しました",
         "deleteFailed": "文字起こしの削除に失敗しました",
+        "allDeleted": "文字起こし履歴をすべて削除しました",
+        "allDeleteFailed": "文字起こし履歴の削除に失敗しました",
         "downloaded": "音声ファイルをダウンロードしました",
         "downloadFailed": "音声ファイルのダウンロードに失敗しました",
         "loadAudioFailed": "音声ファイルの読み込みに失敗しました",
@@ -782,7 +808,8 @@
         "pushToTalkUpdated": "プッシュトゥトークのショートカットを更新しました",
         "handsFreeUpdated": "ハンズフリーモードのショートカットを更新しました",
         "pasteLastTranscriptUpdated": "最新の文字起こしを貼り付けるショートカットを更新しました",
-        "newNoteUpdated": "新規ノートのショートカットを更新しました"
+        "newNoteUpdated": "新規ノートのショートカットを更新しました",
+        "draftModeUpdated": "下書きのショートカットを更新しました"
       },
       "pushToTalk": {
         "label": "プッシュトゥトーク",
@@ -799,6 +826,10 @@
       "newNote": {
         "label": "新規ノート",
         "description": "ノートウィンドウを開いて新しいノートを作成します"
+      },
+      "draft": {
+        "label": "下書き",
+        "description": "キーを押しながら指示を音声で伝え、生成された文章を確認してから挿入します"
       },
       "allowInjectedKeys": {
         "label": "注入されたキー入力を許可",

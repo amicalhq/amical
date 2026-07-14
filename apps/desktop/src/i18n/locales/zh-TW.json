@@ -419,6 +419,10 @@
         "title": "片段",
         "description": "在聽寫時將簡短的觸發詞展開為更長的文字"
       },
+      "formatting": {
+        "title": "個人化",
+        "description": "為各個應用程式設定個人化聽寫規則"
+      },
       "aiModels": {
         "title": "AI 模型",
         "description": "AI 模型與提供者設定"
@@ -559,6 +563,17 @@
           "updateFailed": "變更更新頻道失敗，請再試一次。"
         }
       },
+      "historyRetention": {
+        "label": "歷史紀錄保留期限",
+        "description": "自動刪除超過所選保留期限的轉錄紀錄",
+        "options": {
+          "1d": "1 天",
+          "7d": "7 天",
+          "14d": "14 天",
+          "28d": "28 天",
+          "never": "永不刪除"
+        }
+      },
       "telemetry": {
         "label": "匿名遙測資料回傳",
         "description": "分享匿名使用資料，幫助我們改進 Amical。",
@@ -679,9 +694,20 @@
       "dialog": {
         "title": "轉錄詳情"
       },
+      "deleteAll": {
+        "menuItem": "刪除所有歷史紀錄",
+        "dialog": {
+          "title": "要刪除所有轉錄紀錄嗎？",
+          "description": "此動作無法復原。所有轉錄紀錄及其相關音訊檔案都將永久刪除。",
+          "cancel": "取消",
+          "confirm": "全部刪除"
+        }
+      },
       "toast": {
         "deleted": "已刪除轉錄",
         "deleteFailed": "無法刪除轉錄",
+        "allDeleted": "已刪除所有轉錄紀錄",
+        "allDeleteFailed": "無法刪除所有轉錄紀錄",
         "downloaded": "音訊檔下載完畢",
         "downloadFailed": "無法下載音訊檔",
         "loadAudioFailed": "無法載入音訊檔",
@@ -782,7 +808,8 @@
         "pushToTalkUpdated": "「按住說話」快捷鍵已更新",
         "handsFreeUpdated": "免持模式快捷鍵已更新",
         "pasteLastTranscriptUpdated": "貼上最後一次轉錄內容的快捷鍵已更新",
-        "newNoteUpdated": "建立新筆記的快捷鍵已更新"
+        "newNoteUpdated": "建立新筆記的快捷鍵已更新",
+        "draftModeUpdated": "草稿快捷鍵已更新"
       },
       "pushToTalk": {
         "label": "按住說話",
@@ -799,6 +826,10 @@
       "newNote": {
         "label": "新筆記",
         "description": "開啟筆記視窗並建立新筆記"
+      },
+      "draft": {
+        "label": "草稿",
+        "description": "按住快捷鍵並說出指示，檢視產生的文字後再插入"
       },
       "allowInjectedKeys": {
         "label": "允許注入的按鍵",

@@ -419,6 +419,10 @@
         "title": "Fragmentos",
         "description": "Expande disparadores cortos en texto más largo al dictar"
       },
+      "formatting": {
+        "title": "Personalización",
+        "description": "Reglas de personalización por aplicación para tus dictados"
+      },
       "aiModels": {
         "title": "Modelos de IA",
         "description": "Configura modelos y proveedores de IA"
@@ -559,6 +563,17 @@
           "updateFailed": "No se pudo cambiar el canal de actualización. Por favor, inténtalo de nuevo."
         }
       },
+      "historyRetention": {
+        "label": "Conservación del historial",
+        "description": "Elimina automáticamente del historial las transcripciones con una antigüedad superior al período seleccionado",
+        "options": {
+          "1d": "1 día",
+          "7d": "7 días",
+          "14d": "14 días",
+          "28d": "28 días",
+          "never": "Nunca"
+        }
+      },
       "telemetry": {
         "label": "Telemetría anónima",
         "description": "Ayuda a mejorar Amical compartiendo datos de uso anónimos.",
@@ -679,9 +694,20 @@
       "dialog": {
         "title": "Detalles de la transcripción"
       },
+      "deleteAll": {
+        "menuItem": "Eliminar todo el historial",
+        "dialog": {
+          "title": "¿Eliminar todo el historial de transcripciones?",
+          "description": "Esta acción no se puede deshacer. Todas las transcripciones y sus archivos de audio asociados se eliminarán de forma permanente.",
+          "cancel": "Cancelar",
+          "confirm": "Eliminar todo"
+        }
+      },
       "toast": {
         "deleted": "Transcripción eliminada",
         "deleteFailed": "No se pudo eliminar la transcripción",
+        "allDeleted": "Se eliminó todo el historial de transcripciones",
+        "allDeleteFailed": "No se pudo eliminar el historial de transcripciones",
         "downloaded": "Archivo de audio descargado",
         "downloadFailed": "No se pudo descargar el archivo de audio",
         "loadAudioFailed": "No se pudo cargar el archivo de audio",
@@ -782,7 +808,8 @@
         "pushToTalkUpdated": "Atajo de pulsar para hablar actualizado",
         "handsFreeUpdated": "Atajo de modo manos libres actualizado",
         "pasteLastTranscriptUpdated": "Atajo de pegar última transcripción actualizado",
-        "newNoteUpdated": "Atajo de nueva nota actualizado"
+        "newNoteUpdated": "Atajo de nueva nota actualizado",
+        "draftModeUpdated": "Atajo de Borrador actualizado"
       },
       "pushToTalk": {
         "label": "Pulsar para hablar",
@@ -799,6 +826,10 @@
       "newNote": {
         "label": "Nueva nota",
         "description": "Abre la ventana de notas y crea una nota nueva"
+      },
+      "draft": {
+        "label": "Borrador",
+        "description": "Mantén presionado para dar una instrucción por voz; revisa el texto generado y luego insértalo"
       },
       "allowInjectedKeys": {
         "label": "Permitir pulsaciones inyectadas",

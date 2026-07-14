@@ -564,7 +564,7 @@
         "label": "History Retention",
         "description": "Automatically delete dictation history older than the selected period",
         "options": {
-          "1d": "Daily",
+          "1d": "1 day",
           "7d": "7 days",
           "14d": "14 days",
           "28d": "28 days",
