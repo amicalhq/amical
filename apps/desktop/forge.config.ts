@@ -636,6 +636,21 @@ const config: ForgeConfig = {
     ignore: (file: string) => {
       try {
         const filePath = file.toLowerCase();
+        // Foreign-platform native binaries must not ship in the Windows
+        // package: Squirrel's releasify signs every .exe/.dll/.node it packs
+        // and aborts on Mach-O/ELF files — and they're dead weight anyway.
+        if (process.platform === "win32") {
+          if (/^\/node_modules\/@libsql\/(darwin|linux)-/.test(filePath)) {
+            return true;
+          }
+          if (
+            /^\/node_modules\/onnxruntime-node\/bin\/napi-v\d+\/(darwin|linux)(\/|$)/.test(
+              filePath,
+            )
+          ) {
+            return true;
+          }
+        }
         const KEEP_FILE = {
           keep: false,
           log: true,
