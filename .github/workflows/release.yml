@@ -253,8 +253,9 @@ jobs:
           # during make, so those must be signed inside releasify (windowsSign in
           # forge.config.ts). Fetch the Trusted Signing dlib and point signtool at it.
           $client = Join-Path $env:RUNNER_TEMP "trusted-signing-client"
-          nuget install Microsoft.Trusted.Signing.Client -x -NonInteractive -OutputDirectory $client | Out-Null
-          $dlib = Join-Path $client "Microsoft.Trusted.Signing.Client\bin\x64\Azure.CodeSigning.Dlib.dll"
+          # Microsoft.Trusted.Signing.Client was renamed; the dlib inside kept its name
+          nuget install Microsoft.ArtifactSigning.Client -x -NonInteractive -Source https://api.nuget.org/v3/index.json -OutputDirectory $client | Out-Null
+          $dlib = Join-Path $client "Microsoft.ArtifactSigning.Client\bin\x64\Azure.CodeSigning.Dlib.dll"
           if (-not (Test-Path $dlib)) { throw "Azure.CodeSigning.Dlib.dll not found under $client" }
 
           $metadata = Join-Path $client "metadata.json"
