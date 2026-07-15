@@ -1,6 +1,9 @@
 import "dotenv/config";
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerSquirrel } from "@electron-forge/maker-squirrel";
+import {
+  MakerSquirrel,
+  type MakerSquirrelConfig,
+} from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerDeb } from "@electron-forge/maker-deb";
@@ -711,6 +714,25 @@ const config: ForgeConfig = {
     new MakerSquirrel({
       name: "Amical",
       setupIcon: "./assets/logo.ico",
+      // Squirrel generates the app-launcher stub (Amical_ExecutionStub.exe →
+      // installed root Amical.exe) and Squirrel.exe (→ installed Update.exe)
+      // during `make`, after the packaged-app signing pass — so they can only
+      // be signed inside releasify. CI sets these env vars (release.yml);
+      // local and PR builds skip Squirrel signing entirely.
+      ...(process.env.WINDOWS_SIGN_WITH_PARAMS
+        ? {
+            windowsSign: {
+              // Modern SDK signtool — Squirrel's vendored copy predates the
+              // /dlib flag that Azure Trusted Signing needs.
+              signToolPath: process.env.WINDOWS_SIGNTOOL_PATH,
+              signWithParams: process.env.WINDOWS_SIGN_WITH_PARAMS,
+              timestampServer: "http://timestamp.acs.microsoft.com",
+              // Trusted Signing is SHA-256 only; the default would also
+              // attempt a SHA-1 dual-sign pass.
+              hashes: ["sha256"],
+            } as MakerSquirrelConfig["windowsSign"],
+          }
+        : {}),
     }),
     new MakerZIP(
       {

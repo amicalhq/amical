@@ -244,9 +244,47 @@ jobs:
           description: Amical
           description-url: https://amical.ai
 
+      - name: Prepare Squirrel signing (Trusted Signing dlib)
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        id: squirrel_signing
+        shell: pwsh
+        run: |
+          # Squirrel's releasify generates the app-launcher stub and Update.exe
+          # during make, so those must be signed inside releasify (windowsSign in
+          # forge.config.ts). Fetch the Trusted Signing dlib and point signtool at it.
+          $client = Join-Path $env:RUNNER_TEMP "trusted-signing-client"
+          nuget install Microsoft.Trusted.Signing.Client -x -NonInteractive -OutputDirectory $client | Out-Null
+          $dlib = Join-Path $client "Microsoft.Trusted.Signing.Client\bin\x64\Azure.CodeSigning.Dlib.dll"
+          if (-not (Test-Path $dlib)) { throw "Azure.CodeSigning.Dlib.dll not found under $client" }
+
+          $metadata = Join-Path $client "metadata.json"
+          @{
+            Endpoint               = "${{ secrets.AZURE_CODESIGN_ENDPOINT }}"
+            CodeSigningAccountName = "${{ secrets.AZURE_CODESIGN_ACCOUNT_NAME }}"
+            CertificateProfileName = "${{ secrets.AZURE_CODESIGN_PROFILE_NAME }}"
+            CorrelationId          = "${{ secrets.AZURE_CODESIGN_CORRELATION_ID || github.run_id }}"
+          } | ConvertTo-Json | Set-Content -Path $metadata -Encoding utf8
+
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } |
+            Select-Object -Last 1 -ExpandProperty FullName
+          if (-not $signtool) { throw "signtool.exe not found in the Windows SDK" }
+
+          "signtool_path=$signtool" >> $env:GITHUB_OUTPUT
+          "sign_params=/v /dlib $dlib /dmdf $metadata" >> $env:GITHUB_OUTPUT
+
       - name: Build Windows installer from signed package
         if: matrix.os == 'windows' && github.event_name != 'pull_request'
         working-directory: apps/desktop
+        env:
+          # Consumed by windowsSign in forge.config.ts to sign the
+          # Squirrel-generated binaries (stub launcher, Update.exe) in-releasify.
+          WINDOWS_SIGN_WITH_PARAMS: ${{ steps.squirrel_signing.outputs.sign_params }}
+          WINDOWS_SIGNTOOL_PATH: ${{ steps.squirrel_signing.outputs.signtool_path }}
+          # The Trusted Signing dlib authenticates via EnvironmentCredential.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           echo "Making Windows installer from signed package"
           pnpm exec electron-forge make --platform=win32 --arch=${{ matrix.arch }} --skip-package
