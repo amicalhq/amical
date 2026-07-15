@@ -134,13 +134,6 @@ export class AutoUpdaterService extends EventEmitter {
       return;
     }
 
-    if (process.argv.includes("--squirrel-firstrun")) {
-      logger.updater.info(
-        "Skipping auto-updater: first run after Squirrel install",
-      );
-      return;
-    }
-
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
     this.remoteConfigService = remoteConfigService;
