@@ -93,7 +93,7 @@ export function SpokenLanguageScreen({
         onOpenChange={handleModalOpenChange}
         title={t("onboarding.spokenLanguage.change")}
       >
-        <LanguageSettings />
+        <LanguageSettings inModal />
       </ChangeModal>
     </SplitScreen>
   );

@@ -16,12 +16,12 @@ import {
   AVAILABLE_LANGUAGES,
   labelForLanguage as labelFor,
 } from "@/constants/languages";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "@/trpc/react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
-export function LanguageSettings() {
+export function LanguageSettings({ inModal = false }: { inModal?: boolean }) {
   const { t } = useTranslation();
   const utils = api.useUtils();
 
@@ -69,12 +69,13 @@ export function LanguageSettings() {
   const busy = isLoading || updateDictationSettings.isPending;
 
   const anchor = useComboboxAnchor();
+  const portalContainer = useRef<HTMLDivElement | null>(null);
   const languageCodes = AVAILABLE_LANGUAGES.filter(
     (l) => l.value !== "auto",
   ).map((l) => l.value);
 
   return (
-    <div>
+    <div ref={portalContainer}>
       <div className="flex items-center justify-between mb-2">
         <div>
           <Label className="text-base font-semibold text-foreground">
@@ -126,7 +127,13 @@ export function LanguageSettings() {
                   )}
                 </ComboboxValue>
               </ComboboxChips>
-              <ComboboxContent anchor={anchor}>
+              {/* In a modal, the dropdown must portal inside the dialog —
+                  a body portal is unclickable under Radix's pointer-events
+                  lock and its clicks dismiss the dialog. */}
+              <ComboboxContent
+                anchor={anchor}
+                container={inModal ? portalContainer : undefined}
+              >
                 <ComboboxEmpty>
                   {t("settings.dictation.language.noResults")}
                 </ComboboxEmpty>
