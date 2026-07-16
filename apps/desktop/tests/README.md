@@ -96,6 +96,59 @@ await fixtures.withCustomSettings(testDb, {
 });
 ```
 
+## The service graph (Effect layers)
+
+Since AMIC-42, ServiceManager's services are constructed by an Effect Layer
+graph (`src/main/runtime/`): `tags.ts` (one `Context.Tag` per service),
+`layers.ts` (one layer per service wrapping the existing class), and
+`app-runtime.ts` (builds the graph into an app-owned scope whose finalizers
+run the old cleanup methods, dependents-first).
+
+Two test files pin the graph's semantic contracts — treat failures there as
+real regressions, not flakes:
+
+- **`tests/main/app-layers.test.ts`** (graph level): the full graph builds
+  under the global mocks; each service is constructed exactly once; early
+  refs register for the crash path; the teardown-order lock (shortcut <
+  recording drain < transcription dispose < native-helper stop, and
+  {featureFlag, remoteConfig} shutdown < posthog shutdown — PostHog flushes
+  last); no rollback on a partial build failure (releases run exactly once,
+  at cleanup); the non-fatal transcription init (null tag, boot continues).
+- **`tests/main/app-runtime-failure.test.ts`** (facade level): a failed boot
+  rethrows the ORIGINAL error (no FiberFailure wrapper — app.ts's dialog
+  depends on it), the nullable accessors serve early refs for crash
+  telemetry, and `cleanup()` is idempotent.
+
+### Faking a service in a new test
+
+Prefer providing a fake through the graph over `vi.mock`ing the module: build
+a subgraph with `Layer.succeed(Tag, fake)` and `Layer.provide`. Example —
+exercising a layer against a fake settings service:
+
+```typescript
+import { Effect, Layer } from "effect";
+import { SettingsServiceTag } from "../../src/main/runtime/tags";
+import { HistoryCleanupServiceLive } from "../../src/main/runtime/layers";
+
+const fakeSettings = { getHistorySettings: async () => ({ retentionPeriod: "7d" }) };
+const TestLayer = HistoryCleanupServiceLive.pipe(
+  Layer.provide(Layer.succeed(SettingsServiceTag, fakeSettings as never)),
+);
+// Layer.build TestLayer in a scope (see app-layers.test.ts for the pattern)
+```
+
+Existing `vi.mock`-based suites are fine as-is; the layer idiom is for new
+tests that want a real slice of the graph.
+
+### Env-config seeding
+
+Services read config as `process.env.X || __BUNDLED_X`. The `__BUNDLED_*`
+define globals only exist in the forge build, so under vitest an unset env
+var would throw a ReferenceError. `tests/setup.ts` seeds dummy values for all
+of them (`??=`, so a real `.env` wins) — a fresh checkout needs no `.env` to
+run the suite. If a new `__BUNDLED_*` global is added to
+`vite.main.config.mts`, seed its env counterpart in `tests/setup.ts` too.
+
 ## Known Limitations
 
 1. **Full AppManager initialization** - Currently has issues with ServiceManager initialization. Use `initializeTestServices` instead for testing service business logic.

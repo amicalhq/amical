@@ -7,6 +7,23 @@ import path from "path";
 process.env.NODE_ENV = "test";
 process.env.VITEST = "true";
 
+// Seed the env-config vars services read at construction. In the forge build
+// these fall back to __BUNDLED_* define globals, but no define plugin runs
+// under vitest, so on a checkout without apps/desktop/.env the bare global
+// reference throws (e.g. AuthService's constructor:
+// `process.env.AUTH_CLIENT_ID || __BUNDLED_AUTH_CLIENT_ID`). Dummies keep
+// fresh checkouts green; ??= lets a real .env still win.
+process.env.AUTH_CLIENT_ID ??= "test-oauth-client-id";
+process.env.AUTHORIZATION_ENDPOINT ??= "https://auth.test/authorize";
+process.env.AUTH_TOKEN_ENDPOINT ??= "https://auth.test/token";
+process.env.AUTH_REDIRECT_URI ??= "amical://oauth/callback";
+process.env.API_ENDPOINT ??= "https://api.test";
+process.env.CORE_API_URL ??= "https://core.test";
+process.env.POSTHOG_HOST ??= "https://posthog.test";
+process.env.POSTHOG_API_KEY ??= "test-posthog-key";
+process.env.TELEMETRY_ENABLED ??= "true";
+process.env.FEEDBACK_SURVEY_ID ??= "test-survey-id";
+
 // Global test database instance - will be set by each test
 let currentTestDb: any = null;
 

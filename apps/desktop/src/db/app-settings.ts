@@ -145,8 +145,45 @@ const buildDefaultSettings = (): AppSettingsData => ({
   },
 });
 
+// Write serialization: settings live in a single JSON blob row maintained by
+// read-merge-write (see updateAppSettings), so two writers whose awaits
+// interleave silently drop a section, and two first-run readers race the
+// default-row insert. Every mutating path is chained through this queue;
+// happy-path reads (row exists, current version) stay lock-free. Ops queued
+// here must never call serialized() themselves — that would deadlock.
+let writeChain: Promise<unknown> = Promise.resolve();
+
+function serialized<T>(op: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(op, op);
+  // Keep the chain alive after a failed op without swallowing the caller's
+  // rejection.
+  writeChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 // Get all app settings (with automatic migration if needed)
 export async function getAppSettings(): Promise<AppSettingsData> {
+  const result = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.id, SETTINGS_ID));
+
+  if (result.length > 0 && result[0].version >= CURRENT_SETTINGS_VERSION) {
+    return result[0].data;
+  }
+
+  // First run (row missing) or migration needed — both paths write, so take
+  // the queue; readOrInitSettingsLocked re-checks in case a concurrent caller
+  // already created or migrated the row while we waited.
+  return serialized(readOrInitSettingsLocked);
+}
+
+// Read the settings row, creating defaults or migrating as needed.
+// Runs only inside the write queue.
+async function readOrInitSettingsLocked(): Promise<AppSettingsData> {
   const result = await db
     .select()
     .from(appSettings)
@@ -189,42 +226,46 @@ export async function getAppSettings(): Promise<AppSettingsData> {
 export async function updateAppSettings(
   newSettings: Partial<AppSettingsData>,
 ): Promise<AppSettingsData> {
-  const currentSettings = await getAppSettings();
+  return serialized(async () => {
+    const currentSettings = await readOrInitSettingsLocked();
 
-  // Simple shallow merge - each top-level section is replaced entirely
-  const mergedSettings: AppSettingsData = {
-    ...currentSettings,
-    ...newSettings,
-  };
+    // Simple shallow merge - each top-level section is replaced entirely
+    const mergedSettings: AppSettingsData = {
+      ...currentSettings,
+      ...newSettings,
+    };
 
-  const now = new Date();
+    const now = new Date();
 
-  await db
-    .update(appSettings)
-    .set({
-      data: mergedSettings,
-      updatedAt: now,
-    })
-    .where(eq(appSettings.id, SETTINGS_ID));
+    await db
+      .update(appSettings)
+      .set({
+        data: mergedSettings,
+        updatedAt: now,
+      })
+      .where(eq(appSettings.id, SETTINGS_ID));
 
-  return mergedSettings;
+    return mergedSettings;
+  });
 }
 
 // Replace all app settings (complete override)
 export async function replaceAppSettings(
   newSettings: AppSettingsData,
 ): Promise<AppSettingsData> {
-  const now = new Date();
+  return serialized(async () => {
+    const now = new Date();
 
-  await db
-    .update(appSettings)
-    .set({
-      data: newSettings,
-      updatedAt: now,
-    })
-    .where(eq(appSettings.id, SETTINGS_ID));
+    await db
+      .update(appSettings)
+      .set({
+        data: newSettings,
+        updatedAt: now,
+      })
+      .where(eq(appSettings.id, SETTINGS_ID));
 
-  return newSettings;
+    return newSettings;
+  });
 }
 
 // Get a specific setting section
@@ -252,7 +293,7 @@ export async function resetAppSettings(): Promise<AppSettingsData> {
   return await replaceAppSettings(buildDefaultSettings());
 }
 
-// Create default settings (internal helper)
+// Create default settings (internal helper). Runs only inside the write queue.
 async function createDefaultSettings(): Promise<AppSettingsData> {
   const now = new Date();
   const data = buildDefaultSettings();

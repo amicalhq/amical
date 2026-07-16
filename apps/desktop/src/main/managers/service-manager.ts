@@ -1,22 +1,41 @@
+import { Cause, Context, Exit } from "effect";
+import type { Scope } from "effect";
+
 import { logger } from "../logger";
-import { ModelService } from "../../services/model-service";
-import { TranscriptionService } from "../../services/transcription-service";
-import { SettingsService } from "../../services/settings-service";
-import { NativeBridge } from "../../services/platform/native-bridge-service";
-import { AutoUpdaterService } from "../services/auto-updater";
-import { RecordingManager } from "./recording-manager";
-import { VADService } from "../../services/vad-service";
-import { ShortcutManager } from "./shortcut-manager";
-import { WindowManager } from "../core/window-manager";
-import { isMacOS, isWindows } from "../../utils/platform";
-import { PostHogClient } from "../../services/posthog-client";
-import { TelemetryService } from "../../services/telemetry-service";
-import { AuthService } from "../../services/auth-service";
-import { OnboardingService } from "../../services/onboarding-service";
-import { FeatureFlagService } from "../../services/feature-flag-service";
-import { RemoteConfigService } from "../../services/remote-config-service";
-import { HistoryCleanupService } from "../../services/history-cleanup-service";
-import { setApplicationLocale } from "../../i18n/application-locale";
+import { buildAppServices, closeAppScope } from "../runtime/app-runtime";
+import {
+  SettingsServiceTag,
+  AuthServiceTag,
+  PostHogClientTag,
+  TelemetryServiceTag,
+  FeatureFlagServiceTag,
+  RemoteConfigServiceTag,
+  ModelServiceTag,
+  OnboardingServiceTag,
+  NativeBridgeTag,
+  VadServiceTag,
+  TranscriptionServiceTag,
+  RecordingManagerTag,
+  ShortcutManagerTag,
+  AutoUpdaterServiceTag,
+  type AppServices,
+} from "../runtime/tags";
+
+import type { ModelService } from "../../services/model-service";
+import type { TranscriptionService } from "../../services/transcription-service";
+import type { SettingsService } from "../../services/settings-service";
+import type { NativeBridge } from "../../services/platform/native-bridge-service";
+import type { AutoUpdaterService } from "../services/auto-updater";
+import type { RecordingManager } from "./recording-manager";
+import type { VADService } from "../../services/vad-service";
+import type { ShortcutManager } from "./shortcut-manager";
+import type { WindowManager } from "../core/window-manager";
+import type { PostHogClient } from "../../services/posthog-client";
+import type { TelemetryService } from "../../services/telemetry-service";
+import type { AuthService } from "../../services/auth-service";
+import type { OnboardingService } from "../../services/onboarding-service";
+import type { FeatureFlagService } from "../../services/feature-flag-service";
+import type { RemoteConfigService } from "../../services/remote-config-service";
 
 /**
  * Service map for type-safe service access
@@ -40,29 +59,72 @@ export interface ServiceMap {
 }
 
 /**
- * Manages service initialization and lifecycle
+ * Early service refs — registered by the layer graph's Settings/Telemetry/
+ * Onboarding acquires (src/main/runtime/layers.ts) the moment each instance
+ * exists, so the nullable accessors can serve the crash path mid-build.
+ */
+export interface EarlyServiceRefs {
+  settingsService?: SettingsService;
+  telemetryService?: TelemetryService;
+  onboardingService?: OnboardingService;
+}
+
+// ServiceMap keys backed by the layer graph. windowManager is deliberately
+// absent (it is the late-bound slot below), and historyCleanupService has a
+// layer but no ServiceMap entry — lifecycle-only, unreachable via
+// getService(), exactly as in the old container.
+const TAGS = {
+  posthogClient: PostHogClientTag,
+  telemetryService: TelemetryServiceTag,
+  featureFlagService: FeatureFlagServiceTag,
+  remoteConfigService: RemoteConfigServiceTag,
+  modelService: ModelServiceTag,
+  transcriptionService: TranscriptionServiceTag,
+  settingsService: SettingsServiceTag,
+  authService: AuthServiceTag,
+  vadService: VadServiceTag,
+  nativeBridge: NativeBridgeTag,
+  autoUpdaterService: AutoUpdaterServiceTag,
+  recordingManager: RecordingManagerTag,
+  shortcutManager: ShortcutManagerTag,
+  onboardingService: OnboardingServiceTag,
+} as const satisfies Record<Exclude<keyof ServiceMap, "windowManager">, unknown>;
+
+/**
+ * Manages service initialization and lifecycle.
+ *
+ * Since AMIC-42 the services are constructed and torn down by the Effect
+ * layer graph (src/main/runtime/): initialize() builds the graph into an
+ * app-owned scope, getService() is a synchronous Context lookup, and
+ * cleanup() closes the scope, running the registered finalizers
+ * dependents-first. The public surface is unchanged from the hand-rolled
+ * container it replaced — consumers, the tRPC context, and the test harness
+ * see identical behavior, including:
+ * - getService() throwing "ServiceManager not initialized..." until the FULL
+ *   graph has built (AuthService's startup-logout guards rely on the throw);
+ * - windowManager being a silent-null late-bound slot until AppManager calls
+ *   setWindowManager();
+ * - a failed initialize() leaving the partial graph ALIVE (no rollback) so
+ *   app.ts's crash path can read getTelemetryService() and flush PostHog,
+ *   with the ORIGINAL Error (never a FiberFailure) rethrown to the dialog;
+ * - cleanup() staying safe and idempotent on a never-initialized or
+ *   half-built container.
  */
 export class ServiceManager {
   private static instance: ServiceManager | null = null;
   private isInitialized = false;
 
-  private posthogClient: PostHogClient | null = null;
-  private telemetryService: TelemetryService | null = null;
-  private featureFlagService: FeatureFlagService | null = null;
-  private remoteConfigService: RemoteConfigService | null = null;
-  private modelService: ModelService | null = null;
-  private transcriptionService: TranscriptionService | null = null;
-  private settingsService: SettingsService | null = null;
-  private authService: AuthService | null = null;
-  private vadService: VADService | null = null;
-  private onboardingService: OnboardingService | null = null;
-  private historyCleanupService: HistoryCleanupService | null = null;
-
-  private nativeBridge: NativeBridge | null = null;
-  private autoUpdaterService: AutoUpdaterService | null = null;
-  private recordingManager: RecordingManager | null = null;
-  private shortcutManager: ShortcutManager | null = null;
+  private scope: Scope.CloseableScope | null = null;
+  private context: Context.Context<AppServices> | null = null;
   private windowManager: WindowManager | null = null;
+  private earlyRefs: EarlyServiceRefs = {};
+
+  registerEarlyService<K extends keyof EarlyServiceRefs>(
+    name: K,
+    service: NonNullable<EarlyServiceRefs[K]>,
+  ): void {
+    this.earlyRefs[name] = service;
+  }
 
   async initialize(): Promise<void> {
     if (this.isInitialized) {
@@ -72,212 +134,25 @@ export class ServiceManager {
       return;
     }
 
-    await this.initializeSettingsService();
-    await this.initializeHistoryCleanupService();
-    this.initializeAuthService();
-    await this.initializePostHogClient();
-    await this.initializeTelemetryService();
-    await this.initializeFeatureFlagService();
-    await this.initializeRemoteConfigService();
-    await this.initializeModelServices();
-    await this.initializeOnboardingService();
-    this.initializePlatformServices();
-    await this.initializeVADService();
-    await this.initializeAIServices();
-    this.initializeRecordingManager();
-    await this.initializeShortcutManager();
-    await this.initializeAutoUpdater();
+    const { scope, exit } = await buildAppServices(this);
+    // The scope is held even on failure: the partial graph stays alive for
+    // the crash path, and cleanup() releases it.
+    this.scope = scope;
 
+    if (Exit.isFailure(exit)) {
+      logger.main.error(
+        "Service graph build failed:\n" + Cause.pretty(exit.cause),
+      );
+      // Cause.squash hands back the ORIGINAL Error thrown by a service init,
+      // so app.ts's dialog text and instanceof checks are unchanged.
+      throw Cause.squash(exit.cause);
+    }
+
+    this.context = exit.value;
+    // Flips only after the FULL graph builds — preserving the pre-ready
+    // throw window that AuthService's guards depend on.
     this.isInitialized = true;
     logger.main.info("Services initialized successfully");
-  }
-
-  private async initializePostHogClient(): Promise<void> {
-    this.posthogClient = new PostHogClient();
-    await this.posthogClient.initialize();
-    logger.main.info("PostHog client initialized");
-  }
-
-  private async initializeTelemetryService(): Promise<void> {
-    this.telemetryService = new TelemetryService(
-      this.posthogClient!,
-      this.settingsService!,
-    );
-    await this.telemetryService.initialize();
-    logger.main.info("Telemetry service initialized");
-  }
-
-  private async initializeFeatureFlagService(): Promise<void> {
-    this.featureFlagService = new FeatureFlagService(
-      this.posthogClient!,
-      this.settingsService!,
-    );
-    await this.featureFlagService.initialize();
-    logger.main.info("Feature flag service initialized");
-  }
-
-  private async initializeRemoteConfigService(): Promise<void> {
-    this.remoteConfigService = new RemoteConfigService(
-      this.authService!,
-      this.settingsService!,
-      this.telemetryService!,
-    );
-    await this.remoteConfigService.initialize();
-    logger.main.info("Remote config service initialized");
-  }
-
-  private async initializeSettingsService(): Promise<void> {
-    this.settingsService = new SettingsService();
-    const uiSettings = await this.settingsService.getUISettings();
-    setApplicationLocale(uiSettings.locale);
-    logger.main.info("Settings service initialized");
-  }
-
-  private async initializeHistoryCleanupService(): Promise<void> {
-    if (!this.settingsService) {
-      throw new Error("Settings service not initialized");
-    }
-
-    this.historyCleanupService = new HistoryCleanupService(
-      this.settingsService,
-    );
-    await this.historyCleanupService.initialize();
-    logger.main.info("History cleanup service initialized");
-  }
-
-  private initializeAuthService(): void {
-    this.authService = AuthService.getInstance();
-    logger.main.info("Auth service initialized");
-  }
-
-  private async initializeOnboardingService(): Promise<void> {
-    if (!this.settingsService || !this.telemetryService || !this.modelService) {
-      logger.main.warn(
-        "Settings, telemetry, or model service not available for onboarding",
-      );
-      return;
-    }
-
-    this.onboardingService = OnboardingService.getInstance(
-      this.settingsService,
-      this.telemetryService,
-      this.modelService,
-    );
-    logger.main.info("Onboarding service initialized");
-  }
-
-  private async initializeModelServices(): Promise<void> {
-    // Initialize Model Manager Service
-    if (!this.settingsService) {
-      throw new Error("Settings service not initialized");
-    }
-    this.modelService = new ModelService(this.settingsService);
-    await this.modelService.initialize();
-  }
-
-  private async initializeVADService(): Promise<void> {
-    try {
-      this.vadService = new VADService();
-      // The service degrades to a speechProbability=1 shim instead of
-      // throwing when ONNX Runtime is unavailable; report that to PostHog.
-      this.vadService.on(
-        "vad-fallback",
-        ({ stage, error }: { stage: string; error: unknown }) => {
-          this.telemetryService?.captureException(error, {
-            source: "vad_service",
-            stage: `vad_fallback_${stage}`,
-          });
-        },
-      );
-      await this.vadService.initialize();
-      logger.main.info("VAD service initialized");
-    } catch (error) {
-      this.telemetryService?.captureException(error, {
-        source: "service_manager",
-        stage: "initialize_vad_service",
-      });
-      logger.main.error("Failed to initialize VAD service:", error);
-      // Don't throw - VAD is not critical for basic functionality
-    }
-  }
-
-  private async initializeAIServices(): Promise<void> {
-    try {
-      if (!this.modelService) {
-        throw new Error("Model manager service not initialized");
-      }
-
-      if (!this.settingsService) {
-        throw new Error("Settings service not initialized");
-      }
-
-      this.transcriptionService = new TranscriptionService(
-        this.modelService,
-        this.vadService!,
-        this.settingsService,
-        this.telemetryService!,
-        this.nativeBridge,
-        this.onboardingService,
-      );
-      await this.transcriptionService.initialize();
-
-      logger.transcription.info("Transcription Service initialized", {
-        client: "Pipeline with Whisper",
-      });
-    } catch (error) {
-      this.telemetryService?.captureException(error, {
-        source: "service_manager",
-        stage: "initialize_ai_services",
-      });
-      logger.transcription.error(
-        "Error initializing Transcription Service:",
-        error,
-      );
-      logger.transcription.warn(
-        "Transcription will not work until configuration is fixed",
-      );
-      this.transcriptionService = null;
-    }
-  }
-
-  private initializePlatformServices(): void {
-    // Initialize platform-specific bridge
-    if (isMacOS() || isWindows()) {
-      this.nativeBridge = new NativeBridge(this.telemetryService ?? undefined);
-    }
-  }
-
-  private initializeRecordingManager(): void {
-    this.recordingManager = new RecordingManager(this);
-    logger.main.info("Recording manager initialized");
-  }
-
-  private async initializeShortcutManager(): Promise<void> {
-    if (!this.settingsService || !this.nativeBridge || !this.recordingManager) {
-      throw new Error(
-        "SettingsService, NativeBridge and RecordingManager must be initialized first",
-      );
-    }
-    this.shortcutManager = new ShortcutManager(
-      this.settingsService,
-      this.nativeBridge,
-    );
-    await this.shortcutManager.initialize();
-
-    // Connect shortcut events to recording manager
-    this.recordingManager.setupShortcutListeners(this.shortcutManager);
-
-    logger.main.info("Shortcut manager initialized");
-  }
-
-  private async initializeAutoUpdater(): Promise<void> {
-    this.autoUpdaterService = new AutoUpdaterService();
-    await this.autoUpdaterService.initialize(
-      this.settingsService!,
-      this.telemetryService!,
-      this.remoteConfigService!,
-      this.recordingManager!,
-    );
   }
 
   getLogger() {
@@ -285,94 +160,47 @@ export class ServiceManager {
   }
 
   getService<K extends keyof ServiceMap>(serviceName: K): ServiceMap[K] {
-    if (!this.isInitialized) {
+    if (!this.isInitialized || !this.context) {
       throw new Error(
         "ServiceManager not initialized. Call initialize() first.",
       );
     }
 
-    const services: ServiceMap = {
-      posthogClient: this.posthogClient!,
-      telemetryService: this.telemetryService!,
-      featureFlagService: this.featureFlagService!,
-      remoteConfigService: this.remoteConfigService!,
-      modelService: this.modelService!,
-      transcriptionService: this.transcriptionService!,
-      settingsService: this.settingsService!,
-      authService: this.authService!,
-      vadService: this.vadService!,
-      nativeBridge: this.nativeBridge!,
-      autoUpdaterService: this.autoUpdaterService!,
-      recordingManager: this.recordingManager!,
-      shortcutManager: this.shortcutManager!,
-      windowManager: this.windowManager!,
-      onboardingService: this.onboardingService!,
-    };
+    if (serviceName === "windowManager") {
+      // Late-bound slot: silent null until setWindowManager(), as always.
+      return this.windowManager as ServiceMap[K];
+    }
 
-    return services[serviceName];
+    const tag = TAGS[serviceName as Exclude<keyof ServiceMap, "windowManager">];
+    // Nullable tags (nativeBridge, transcriptionService) are cast into
+    // ServiceMap's non-null lie exactly as the old `!` block did — consumers'
+    // existing falsy guards carry the safety.
+    return Context.get(this.context, tag as never) as ServiceMap[K];
   }
 
   async cleanup(): Promise<void> {
-    if (this.shortcutManager) {
-      logger.main.info("Cleaning up shortcut manager...");
-      this.shortcutManager.cleanup();
+    // Idempotence latch: pre-init or double cleanup is a no-op.
+    if (!this.scope) {
+      return;
     }
-    if (this.recordingManager) {
-      logger.main.info("Cleaning up recording manager...");
-      await this.recordingManager.cleanup();
-    }
-    if (this.modelService) {
-      logger.main.info("Cleaning up model downloads...");
-      this.modelService.cleanup();
-    }
-
-    if (this.vadService) {
-      logger.main.info("Cleaning up VAD service...");
-      await this.vadService.dispose();
-    }
-
-    if (this.autoUpdaterService) {
-      logger.main.info("Cleaning up auto-updater...");
-      this.autoUpdaterService.cleanup();
-    }
-
-    if (this.historyCleanupService) {
-      logger.main.info("Cleaning up history cleanup service...");
-      await this.historyCleanupService.cleanup();
-    }
-
-    if (this.nativeBridge) {
-      logger.main.info("Stopping native helper...");
-      this.nativeBridge.stopHelper();
-    }
-
-    if (this.featureFlagService) {
-      logger.main.info("Shutting down feature flag service...");
-      await this.featureFlagService.shutdown();
-    }
-
-    if (this.remoteConfigService) {
-      logger.main.info("Shutting down remote config service...");
-      await this.remoteConfigService.shutdown();
-    }
-
-    // PostHogClient shuts down last so all events are flushed after services stop capturing
-    if (this.posthogClient) {
-      logger.main.info("Shutting down PostHog client...");
-      await this.posthogClient.shutdown();
-    }
+    const scope = this.scope;
+    this.scope = null;
+    // context/isInitialized are intentionally NOT reset: RecordingManager's
+    // finalizer calls getService() during its drain, and the old cleaned-up
+    // container kept serving getService too.
+    await closeAppScope(scope);
   }
 
   getOnboardingService(): OnboardingService | null {
-    return this.onboardingService;
+    return this.earlyRefs.onboardingService ?? null;
   }
 
   getSettingsService(): SettingsService | null {
-    return this.settingsService;
+    return this.earlyRefs.settingsService ?? null;
   }
 
   getTelemetryService(): TelemetryService | null {
-    return this.telemetryService;
+    return this.earlyRefs.telemetryService ?? null;
   }
 
   static getInstance(): ServiceManager {
