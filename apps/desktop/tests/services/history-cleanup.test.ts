@@ -16,14 +16,42 @@ vi.mock("../../src/db/index.ts", () => ({
   closeDatabase: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { Context, Effect, Exit, Layer, Scope } from "effect";
 import {
   HistoryCleanupService,
   SETTINGS_CHANGE_CLEANUP_DELAY_MS,
 } from "../../src/services/history-cleanup-service";
+import {
+  HistoryCleanupServiceTag,
+  SettingsServiceTag,
+  AppScopeTag,
+} from "../../src/main/runtime/tags";
 
 describe("HistoryCleanupService", () => {
   let testDb: TestDatabase;
   let cleanupService: HistoryCleanupService | null = null;
+  let closeScope: (() => Promise<void>) | null = null;
+
+  // The service is only constructible through its Live layer; build it with
+  // fakes via Layer.succeed (see tests/README.md). Closing the scope runs the
+  // registered release — the same path the app's cleanup() takes.
+  async function buildCleanupService(
+    settingsService: unknown,
+  ): Promise<HistoryCleanupService> {
+    const scope = Effect.runSync(Scope.make());
+    const ctx = await Effect.runPromise(
+      Layer.build(
+        HistoryCleanupService.Live.pipe(
+          Layer.provide(
+            Layer.succeed(SettingsServiceTag, settingsService as never),
+          ),
+          Layer.provide(Layer.succeed(AppScopeTag, scope)),
+        ),
+      ).pipe(Scope.extend(scope)),
+    );
+    closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
+    return Context.get(ctx, HistoryCleanupServiceTag);
+  }
 
   beforeEach(async () => {
     testDb = await createTestDatabase();
@@ -31,10 +59,11 @@ describe("HistoryCleanupService", () => {
   });
 
   afterEach(async () => {
-    if (cleanupService) {
-      await cleanupService.cleanup();
-      cleanupService = null;
+    if (closeScope) {
+      await closeScope();
+      closeScope = null;
     }
+    cleanupService = null;
 
     vi.useRealTimers();
 
@@ -66,8 +95,7 @@ describe("HistoryCleanupService", () => {
       },
     ]);
 
-    cleanupService = new HistoryCleanupService(settingsService);
-    await cleanupService.initialize();
+    cleanupService = await buildCleanupService(settingsService);
     await cleanupService.runCleanup("startup");
 
     const remaining = await testDb.db.select().from(schema.transcriptions);
@@ -99,8 +127,7 @@ describe("HistoryCleanupService", () => {
       },
     ]);
 
-    cleanupService = new HistoryCleanupService(settingsService);
-    await cleanupService.initialize();
+    cleanupService = await buildCleanupService(settingsService);
     await cleanupService.runCleanup("startup");
 
     const remaining = await testDb.db.select().from(schema.transcriptions);
@@ -134,8 +161,7 @@ describe("HistoryCleanupService", () => {
       timestamp: twoDaysAgo,
     });
 
-    cleanupService = new HistoryCleanupService(settingsService);
-    await cleanupService.initialize();
+    cleanupService = await buildCleanupService(settingsService);
     await cleanupService.runCleanup("startup");
 
     retentionPeriod = "1d";

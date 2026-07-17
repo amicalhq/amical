@@ -128,14 +128,18 @@ exercising a layer against a fake settings service:
 ```typescript
 import { Effect, Layer } from "effect";
 import { SettingsServiceTag } from "../../src/main/runtime/tags";
-import { HistoryCleanupServiceLive } from "../../src/main/runtime/layers";
+import { HistoryCleanupService } from "../../src/services/history-cleanup-service";
 
 const fakeSettings = { getHistorySettings: async () => ({ retentionPeriod: "7d" }) };
-const TestLayer = HistoryCleanupServiceLive.pipe(
+const TestLayer = HistoryCleanupService.Live.pipe(
   Layer.provide(Layer.succeed(SettingsServiceTag, fakeSettings as never)),
 );
-// Layer.build TestLayer in a scope (see app-layers.test.ts for the pattern)
+// Layer.build TestLayer in a scope — see the buildCleanupService helper in
+// tests/services/history-cleanup.test.ts for the full working pattern.
 ```
+
+Converted services (those with a class-static `Live`) have private
+constructors — tests build them through the layer as above, never `new`.
 
 Existing `vi.mock`-based suites are fine as-is; the layer idiom is for new
 tests that want a real slice of the graph.

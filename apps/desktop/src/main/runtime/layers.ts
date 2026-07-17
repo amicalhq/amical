@@ -84,7 +84,6 @@ import { AutoUpdaterService } from "../services/auto-updater";
 
 import {
   SettingsServiceTag,
-  HistoryCleanupServiceTag,
   AuthServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
@@ -246,30 +245,6 @@ export const RemoteConfigServiceLive: Layer.Layer<
     logger.main.info("Remote config service initialized");
     up("remoteConfigService");
     return remoteConfigService;
-  }),
-);
-
-export const HistoryCleanupServiceLive: Layer.Layer<
-  HistoryCleanupServiceTag,
-  never,
-  SettingsServiceTag | AppScopeTag
-> = Layer.effect(
-  HistoryCleanupServiceTag,
-  Effect.gen(function* () {
-    const settingsService = yield* SettingsServiceTag;
-    const appScope = yield* AppScopeTag;
-    const historyCleanupService = new HistoryCleanupService(settingsService);
-    // cleanup() awaits the in-flight deletion queue.
-    yield* addRelease(
-      appScope,
-      "Cleaning up history cleanup service...",
-      "historyCleanupService",
-      () => historyCleanupService.cleanup(),
-    );
-    yield* step(() => historyCleanupService.initialize());
-    logger.main.info("History cleanup service initialized");
-    up("historyCleanupService");
-    return historyCleanupService;
   }),
 );
 
@@ -592,7 +567,9 @@ export const AppLive: Layer.Layer<
       NativeBridgeLive,
       FeatureFlagServiceLive,
       RemoteConfigServiceLive,
-      HistoryCleanupServiceLive,
+      // Converted services own their Live (class-static, colocated with the
+      // implementation); this file only composes them.
+      HistoryCleanupService.Live,
     ),
   ),
   Layer.provideMerge(TelemetryServiceLive),

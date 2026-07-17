@@ -1,7 +1,15 @@
+import { Effect, Layer } from "effect";
+
 import { logger } from "../main/logger";
 import { getHistoryRetentionCutoffDate } from "../constants/history-retention";
 import { deleteTranscriptionsOlderThan } from "../db/transcriptions";
 import { deleteAudioFilesForTranscriptions } from "../utils/audio-file-cleanup";
+import {
+  HistoryCleanupServiceTag,
+  SettingsServiceTag,
+  AppScopeTag,
+} from "../main/runtime/tags";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 import type { SettingsService } from "./settings-service";
 
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -18,9 +26,40 @@ export class HistoryCleanupService {
     this.scheduleSettingsChangeCleanup();
   };
 
-  constructor(private readonly settingsService: SettingsService) {}
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor(private readonly settingsService: SettingsService) {}
 
-  async initialize(): Promise<void> {
+  /**
+   * The service's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    HistoryCleanupServiceTag,
+    never,
+    SettingsServiceTag | AppScopeTag
+  > = Layer.effect(
+    HistoryCleanupServiceTag,
+    Effect.gen(function* () {
+      const settingsService = yield* SettingsServiceTag;
+      const appScope = yield* AppScopeTag;
+      const service = new HistoryCleanupService(settingsService);
+      // cleanup() awaits the in-flight deletion queue.
+      yield* addRelease(
+        appScope,
+        "Cleaning up history cleanup service...",
+        "historyCleanupService",
+        () => service.cleanup(),
+      );
+      yield* step(() => service.initialize());
+      logger.main.info("History cleanup service initialized");
+      up("historyCleanupService");
+      return service;
+    }),
+  );
+
+  private async initialize(): Promise<void> {
     this.settingsService.on(
       "history-settings-changed",
       this.handleHistorySettingsChanged,
