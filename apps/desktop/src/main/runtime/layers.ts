@@ -329,38 +329,6 @@ export const NativeBridgeLive: Layer.Layer<
   }),
 );
 
-export const VadServiceLive: Layer.Layer<
-  VadServiceTag,
-  never,
-  TelemetryServiceTag | AppScopeTag
-> = Layer.effect(
-  VadServiceTag,
-  Effect.gen(function* () {
-    const telemetryService = yield* TelemetryServiceTag;
-    const appScope = yield* AppScopeTag;
-    const vadService = new VADService();
-    // Subscribed BEFORE initialize(), as in the old init: the service
-    // degrades to a speechProbability=1 shim instead of throwing when ONNX
-    // Runtime is unavailable; report that to PostHog.
-    vadService.on(
-      "vad-fallback",
-      ({ stage, error }: { stage: string; error: unknown }) => {
-        telemetryService.captureException(error, {
-          source: "vad_service",
-          stage: `vad_fallback_${stage}`,
-        });
-      },
-    );
-    yield* addRelease(appScope, "Cleaning up VAD service...", "vadService", () =>
-      vadService.dispose(),
-    );
-    yield* step(() => vadService.initialize());
-    logger.main.info("VAD service initialized");
-    up("vadService");
-    return vadService;
-  }),
-);
-
 export const TranscriptionServiceLive: Layer.Layer<
   TranscriptionServiceTag,
   never,
@@ -563,7 +531,7 @@ export const AppLive: Layer.Layer<
   Layer.provideMerge(
     Layer.mergeAll(
       ModelServiceLive,
-      VadServiceLive,
+      VADService.Live,
       NativeBridgeLive,
       FeatureFlagServiceLive,
       RemoteConfigServiceLive,

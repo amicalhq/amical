@@ -1,9 +1,16 @@
 import type * as ort from "onnxruntime-node";
+import { Effect, Layer } from "effect";
 import { logger } from "../main/logger";
 import { app } from "electron";
 import * as path from "path";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
+import {
+  VadServiceTag,
+  TelemetryServiceTag,
+  AppScopeTag,
+} from "../main/runtime/tags";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 
 type OrtModule = typeof import("onnxruntime-node");
 
@@ -31,11 +38,50 @@ export class VADService extends EventEmitter {
   // exact same contract (results, events, state) as with the real model.
   private fallbackMode = false;
 
-  constructor() {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor() {
     super();
   }
 
-  async initialize(): Promise<void> {
+  /**
+   * The service's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    VadServiceTag,
+    never,
+    TelemetryServiceTag | AppScopeTag
+  > = Layer.effect(
+    VadServiceTag,
+    Effect.gen(function* () {
+      const telemetryService = yield* TelemetryServiceTag;
+      const appScope = yield* AppScopeTag;
+      const service = new VADService();
+      // Subscribed BEFORE initialize(): the service degrades to a
+      // speechProbability=1 shim instead of throwing when ONNX Runtime is
+      // unavailable; report that to PostHog.
+      service.on(
+        "vad-fallback",
+        ({ stage, error }: { stage: string; error: unknown }) => {
+          telemetryService.captureException(error, {
+            source: "vad_service",
+            stage: `vad_fallback_${stage}`,
+          });
+        },
+      );
+      yield* addRelease(appScope, "Cleaning up VAD service...", "vadService", () =>
+        service.dispose(),
+      );
+      yield* step(() => service.initialize());
+      logger.main.info("VAD service initialized");
+      up("vadService");
+      return service;
+    }),
+  );
+
+  private async initialize(): Promise<void> {
     try {
       // Load onnxruntime-node lazily so a broken native binding (e.g. the
       // bundled onnxruntime.dll losing the load race to a stale System32 copy
