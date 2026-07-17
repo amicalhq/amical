@@ -59,9 +59,10 @@
  * service twice (two native-helper spawns, duplicate ipcMain.handle throw).
  */
 
-import { Effect, Layer, Scope } from "effect";
+import { Effect, Layer } from "effect";
 
 import { logger } from "../logger";
+import { addRelease, step, up } from "./layer-helpers";
 import { setApplicationLocale } from "../../i18n/application-locale";
 import { isMacOS, isWindows } from "../../utils/platform";
 
@@ -101,38 +102,6 @@ import {
   AppScopeTag,
   type AppServices,
 } from "./tags";
-
-const up = (name: string) => logger.main.debug(`[layers] ${name} up`);
-const down = (name: string) =>
-  Effect.sync(() => logger.main.debug(`[layers] ${name} down`));
-
-/**
- * Registers a service release on the app scope (see module header, mechanic
- * 1). `legacyMessage` is the old cleanup()'s info line for this service,
- * logged BEFORE the release exactly as the old container did — a shutdown
- * hang stays attributable from the last info line in the field log file.
- */
-const addRelease = (
-  appScope: Scope.CloseableScope,
-  legacyMessage: string,
-  name: string,
-  release: () => void | Promise<void>,
-) =>
-  Scope.addFinalizer(
-    appScope,
-    Effect.sync(() => logger.main.info(legacyMessage)).pipe(
-      Effect.zipRight(
-        Effect.promise(async () => {
-          await release();
-        }),
-      ),
-      Effect.zipLeft(down(name)),
-    ),
-  );
-
-/** Awaited init step, interruption-masked (see module header, mechanic 2). */
-const step = <T>(run: () => Promise<T>) =>
-  Effect.uninterruptible(Effect.promise(run));
 
 export const AuthServiceLive: Layer.Layer<AuthServiceTag> = Layer.sync(
   AuthServiceTag,
