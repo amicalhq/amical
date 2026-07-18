@@ -18,8 +18,7 @@ export const telemetryRouter = createRouter({
   trackEvent: procedure
     .input(telemetryEventSchema)
     .mutation(({ ctx, input }) => {
-      const telemetryService =
-        ctx.serviceManager.getService("telemetryService");
+      const telemetryService = ctx.services.telemetryService;
 
       switch (input.event) {
         case "widget_notification_shown":

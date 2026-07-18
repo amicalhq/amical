@@ -7,7 +7,7 @@ import { AuthState } from "../../services/auth-service";
 export const authRouter = createRouter({
   // Get current auth status
   getAuthStatus: procedure.query(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService");
+    const authService = ctx.services.authService;
 
     const authState = await authService.getAuthState();
     const isAuthenticated = await authService.isAuthenticated();
@@ -26,13 +26,13 @@ export const authRouter = createRouter({
     if (process.env.NODE_ENV !== "development") {
       throw new Error("Only available in development");
     }
-    const authService = ctx.serviceManager.getService("authService");
+    const authService = ctx.services.authService;
     return { token: await authService.getIdToken() };
   }),
 
   // Initiate login flow
   login: procedure.mutation(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService");
+    const authService = ctx.services.authService;
 
     await authService.login();
 
@@ -46,14 +46,14 @@ export const authRouter = createRouter({
   openWebSession: procedure
     .input(z.object({ returnPath: z.string().optional() }).optional())
     .mutation(async ({ ctx, input }) => {
-      const authService = ctx.serviceManager.getService("authService");
+      const authService = ctx.services.authService;
       await authService.openWebSession(input?.returnPath ?? "/");
       return { success: true };
     }),
 
   // Logout
   logout: procedure.mutation(async ({ ctx }) => {
-    const authService = ctx.serviceManager.getService("authService");
+    const authService = ctx.services.authService;
 
     await authService.logout();
 
@@ -75,7 +75,7 @@ export const authRouter = createRouter({
       userName: string | null;
       error?: string;
     }>((emit) => {
-      const authService = ctx.serviceManager.getService("authService");
+      const authService = ctx.services.authService;
 
       // Define handlers once (not in a loop)
       const handleAuthenticated = async (authState: AuthState) => {
@@ -139,7 +139,7 @@ export const authRouter = createRouter({
 
   // Check if cloud model requires auth
   isCloudModelSelected: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
+    const modelService = ctx.services.modelService;
     if (!modelService) {
       return false;
     }

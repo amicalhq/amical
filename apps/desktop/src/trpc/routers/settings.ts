@@ -112,13 +112,13 @@ export const settingsRouter = createRouter({
   // Get all settings
   getSettings: procedure.query(async ({ ctx }) => {
     try {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
       return await settingsService.getAllSettings();
     } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.error("Error getting settings:", error);
       }
@@ -140,8 +140,7 @@ export const settingsRouter = createRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
@@ -169,12 +168,10 @@ export const settingsRouter = createRouter({
 
         // Handle model preloading change (fire-and-forget to avoid blocking UI)
         if (preloadChanged) {
-          const transcriptionService = ctx.serviceManager.getService(
-            "transcriptionService",
-          );
+          const transcriptionService = ctx.services.transcriptionService;
           if (transcriptionService) {
             transcriptionService.handleModelChange().catch((err) => {
-              const logger = ctx.serviceManager.getLogger();
+              const logger = ctx.logger;
               logger?.main.error("Failed to handle model change:", err);
             });
           }
@@ -182,7 +179,7 @@ export const settingsRouter = createRouter({
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error updating transcription settings:", error);
         }
@@ -195,8 +192,7 @@ export const settingsRouter = createRouter({
     .input(RecordingSettingsSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
@@ -215,14 +211,14 @@ export const settingsRouter = createRouter({
 
         await settingsService.setRecordingSettings(mergedSettings);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Recording settings updated", mergedSettings);
         }
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error updating recording settings:", error);
         }
@@ -233,13 +229,13 @@ export const settingsRouter = createRouter({
   // Get formatter configuration
   getFormatterConfig: procedure.query(async ({ ctx }) => {
     try {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
       return await settingsService.getFormatterConfig();
     } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.transcription.error("Error getting formatter config:", error);
       }
@@ -251,13 +247,13 @@ export const settingsRouter = createRouter({
   setFormatterConfig: procedure
     .input(FormatterConfigSchema)
     .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       await settingsService.setFormatterConfig(input);
       return true;
     }),
   // Get shortcuts configuration
   getShortcuts: procedure.query(async ({ ctx }) => {
-    const settingsService = ctx.serviceManager.getService("settingsService");
+    const settingsService = ctx.services.settingsService;
     if (!settingsService) {
       throw new Error("SettingsService not available");
     }
@@ -267,7 +263,7 @@ export const settingsRouter = createRouter({
   setShortcut: procedure
     .input(SetShortcutSchema)
     .mutation(async ({ input, ctx }) => {
-      const shortcutManager = ctx.serviceManager.getService("shortcutManager");
+      const shortcutManager = ctx.services.shortcutManager;
       if (!shortcutManager) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -295,15 +291,14 @@ export const settingsRouter = createRouter({
     .input(z.boolean())
     .mutation(async ({ input, ctx }) => {
       try {
-        const shortcutManager =
-          ctx.serviceManager.getService("shortcutManager");
+        const shortcutManager = ctx.services.shortcutManager;
         if (!shortcutManager) {
           throw new Error("ShortcutManager not available");
         }
 
         shortcutManager.setIsRecordingShortcut(input);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Shortcut recording state updated", {
             isRecording: input,
@@ -312,7 +307,7 @@ export const settingsRouter = createRouter({
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting shortcut recording state:", error);
         }
@@ -323,8 +318,8 @@ export const settingsRouter = createRouter({
   // Active keys subscription for shortcut recording
   activeKeysUpdates: procedure.subscription(({ ctx }) => {
     return observable<number[]>((emit) => {
-      const shortcutManager = ctx.serviceManager.getService("shortcutManager");
-      const logger = ctx.serviceManager.getLogger();
+      const shortcutManager = ctx.services.shortcutManager;
+      const logger = ctx.logger;
 
       if (!shortcutManager) {
         logger?.main.warn(
@@ -357,8 +352,8 @@ export const settingsRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   recordingSettingsUpdates: procedure.subscription(({ ctx }) => {
     return observable<AppSettingsData["recording"]>((emit) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
-      const logger = ctx.serviceManager.getLogger();
+      const settingsService = ctx.services.settingsService;
+      const logger = ctx.logger;
 
       if (!settingsService) {
         logger?.main.warn(
@@ -397,8 +392,7 @@ export const settingsRouter = createRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
@@ -423,7 +417,7 @@ export const settingsRouter = createRouter({
 
         await settingsService.setRecordingSettings(updatedSettings);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Microphone priority updated:", {
             priority: input.priority.map((entry) => entry.deviceId),
@@ -432,7 +426,7 @@ export const settingsRouter = createRouter({
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting microphone priority:", error);
         }
@@ -448,13 +442,13 @@ export const settingsRouter = createRouter({
   // Get dictation settings
   getDictationSettings: procedure.query(async ({ ctx }) => {
     try {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
       return await settingsService.getDictationSettings();
     } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.error("Error getting dictation settings:", error);
       }
@@ -470,8 +464,7 @@ export const settingsRouter = createRouter({
     .input(DictationSettingsSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
@@ -483,14 +476,14 @@ export const settingsRouter = createRouter({
 
         await settingsService.setDictationSettings(dictationSettings);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Dictation settings updated:", dictationSettings);
         }
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting dictation settings:", error);
         }
@@ -501,13 +494,13 @@ export const settingsRouter = createRouter({
   // Get labs settings
   getLabsSettings: procedure.query(async ({ ctx }) => {
     try {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
       return await settingsService.getLabsSettings();
     } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.error("Error getting labs settings:", error);
       }
@@ -522,22 +515,21 @@ export const settingsRouter = createRouter({
     .input(LabsSettingsSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
 
         await settingsService.setLabsSettings(input);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Labs settings updated:", input);
         }
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting labs settings:", error);
         }
@@ -548,13 +540,13 @@ export const settingsRouter = createRouter({
   // Get model providers configuration
   getModelProvidersConfig: procedure.query(async ({ ctx }) => {
     try {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
       return await settingsService.getModelProvidersConfig();
     } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.error("Error getting model providers config:", error);
       }
@@ -567,21 +559,20 @@ export const settingsRouter = createRouter({
     .input(ModelProvidersConfigSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
         await settingsService.setModelProvidersConfig(input);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Model providers configuration updated");
         }
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting model providers config:", error);
         }
@@ -594,21 +585,20 @@ export const settingsRouter = createRouter({
     .input(OpenRouterConfigSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
         await settingsService.setOpenRouterConfig(input);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("OpenRouter configuration updated");
         }
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting OpenRouter config:", error);
         }
@@ -621,21 +611,20 @@ export const settingsRouter = createRouter({
     .input(OllamaConfigSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
         await settingsService.setOllamaConfig(input);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Ollama configuration updated");
         }
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting Ollama config:", error);
         }
@@ -648,21 +637,20 @@ export const settingsRouter = createRouter({
     .input(OpenAICompatibleConfigSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
         await settingsService.setOpenAICompatibleConfig(input);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("OpenAI-compatible configuration updated");
         }
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error setting OpenAI-compatible config:", error);
         }
@@ -685,14 +673,14 @@ export const settingsRouter = createRouter({
 
   // Get machine ID for display
   getMachineId: procedure.query(async ({ ctx }) => {
-    const telemetryService = ctx.serviceManager.getService("telemetryService");
+    const telemetryService = ctx.services.telemetryService;
     return telemetryService?.getMachineId() ?? "";
   }),
 
   // Get telemetry config for renderer (PostHog surveys).
   // Identity is delivered separately via api.auth.onAuthStateChange so this stays cheap to poll.
   getTelemetryConfig: procedure.query(async ({ ctx }) => {
-    const telemetryService = ctx.serviceManager.getService("telemetryService");
+    const telemetryService = ctx.services.telemetryService;
     return {
       apiKey: process.env.POSTHOG_API_KEY || __BUNDLED_POSTHOG_API_KEY,
       host: process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST,
@@ -729,7 +717,7 @@ export const settingsRouter = createRouter({
 
   // Get app preferences (launch at login, minimize to tray, etc.)
   getPreferences: procedure.query(async ({ ctx }) => {
-    const settingsService = ctx.serviceManager.getService("settingsService");
+    const settingsService = ctx.services.settingsService;
     if (!settingsService) {
       throw new Error("SettingsService not available");
     }
@@ -740,7 +728,7 @@ export const settingsRouter = createRouter({
   updatePreferences: procedure
     .input(AppPreferencesSchema)
     .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
@@ -751,8 +739,7 @@ export const settingsRouter = createRouter({
       // Push the injected-keys toggle to the native helper (Windows-only in
       // effect; the macOS helper no-ops). Only when it actually changed hands.
       if (input.allowInjectedKeys !== undefined) {
-        const shortcutManager =
-          ctx.serviceManager.getService("shortcutManager");
+        const shortcutManager = ctx.services.shortcutManager;
         shortcutManager?.syncAllowInjectedKeysToNative();
       }
 
@@ -761,7 +748,7 @@ export const settingsRouter = createRouter({
 
   // Get history settings
   getHistorySettings: procedure.query(async ({ ctx }) => {
-    const settingsService = ctx.serviceManager.getService("settingsService");
+    const settingsService = ctx.services.settingsService;
     if (!settingsService) {
       throw new Error("SettingsService not available");
     }
@@ -773,7 +760,7 @@ export const settingsRouter = createRouter({
   updateHistorySettings: procedure
     .input(HistorySettingsSchema)
     .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
@@ -783,7 +770,7 @@ export const settingsRouter = createRouter({
           input.retentionPeriod ?? DEFAULT_HISTORY_RETENTION_PERIOD,
       });
 
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       logger?.main.info("History settings updated", input);
 
       return true;
@@ -793,7 +780,7 @@ export const settingsRouter = createRouter({
   updateUITheme: procedure
     .input(UIThemeSchema)
     .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
@@ -808,7 +795,7 @@ export const settingsRouter = createRouter({
       });
       // Window updates are handled via settings events in AppManager
 
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.info("UI theme updated", { theme: input.theme });
       }
@@ -820,14 +807,13 @@ export const settingsRouter = createRouter({
   getUISettings: procedure.query(
     async ({ ctx }): Promise<NonNullable<AppSettingsData["ui"]>> => {
       try {
-        const settingsService =
-          ctx.serviceManager.getService("settingsService");
+        const settingsService = ctx.services.settingsService;
         if (!settingsService) {
           throw new Error("SettingsService not available");
         }
         return await settingsService.getUISettings();
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         logger?.main.error("Error getting UI settings:", error);
         return { theme: "system" };
       }
@@ -838,7 +824,7 @@ export const settingsRouter = createRouter({
   updateUILocale: procedure
     .input(UILocaleSchema)
     .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
@@ -857,7 +843,7 @@ export const settingsRouter = createRouter({
 
       await settingsService.setUISettings(nextUISettings);
 
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       logger?.main.info("UI locale updated", { locale: input.locale });
 
       return true;
@@ -865,7 +851,7 @@ export const settingsRouter = createRouter({
 
   // Restart the app (prod relaunch; dev just quits)
   restartApp: procedure.mutation(async ({ ctx }) => {
-    const logger = ctx.serviceManager.getLogger();
+    const logger = ctx.logger;
     logger?.main.info("Restart requested from settings");
 
     if (process.env.NODE_ENV === "development" || !app.isPackaged) {
@@ -882,13 +868,13 @@ export const settingsRouter = createRouter({
   // Get telemetry settings
   getTelemetrySettings: procedure.query(async ({ ctx }) => {
     try {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       if (!settingsService) {
         throw new Error("SettingsService not available");
       }
       return await settingsService.getTelemetrySettings();
     } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.error("Error getting telemetry settings:", error);
       }
@@ -905,8 +891,7 @@ export const settingsRouter = createRouter({
     )
     .mutation(async ({ input, ctx }) => {
       try {
-        const telemetryService =
-          ctx.serviceManager.getService("telemetryService");
+        const telemetryService = ctx.services.telemetryService;
         if (!telemetryService) {
           throw new Error("TelemetryService not available");
         }
@@ -914,7 +899,7 @@ export const settingsRouter = createRouter({
         // Update the telemetry service state
         await telemetryService.setEnabled(input.enabled);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.info("Telemetry settings updated", {
             enabled: input.enabled,
@@ -923,7 +908,7 @@ export const settingsRouter = createRouter({
 
         return true;
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         if (logger) {
           logger.main.error("Error updating telemetry settings:", error);
         }
@@ -933,7 +918,7 @@ export const settingsRouter = createRouter({
 
   // Get update channel
   getUpdateChannel: procedure.query(async ({ ctx }) => {
-    const settingsService = ctx.serviceManager.getService("settingsService");
+    const settingsService = ctx.services.settingsService;
     return await settingsService.getUpdateChannel();
   }),
 
@@ -941,10 +926,10 @@ export const settingsRouter = createRouter({
   setUpdateChannel: procedure
     .input(z.enum(["stable", "beta"]))
     .mutation(async ({ input, ctx }) => {
-      const settingsService = ctx.serviceManager.getService("settingsService");
+      const settingsService = ctx.services.settingsService;
       await settingsService.setUpdateChannel(input);
 
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       logger?.main.info("Update channel changed", { channel: input });
 
       return true;
@@ -953,7 +938,7 @@ export const settingsRouter = createRouter({
   // Reset app - deletes database and models, then restarts
   resetApp: procedure.mutation(async ({ ctx }) => {
     try {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.info("Resetting app - deleting database and models");
       }
@@ -997,7 +982,7 @@ export const settingsRouter = createRouter({
 
       return { success: true };
     } catch (error) {
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       if (logger) {
         logger.main.error("Error resetting app:", error);
       }

@@ -12,7 +12,7 @@ export const widgetRouter = createRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const windowManager = ctx.serviceManager.getService("windowManager");
+      const windowManager = ctx.services.windowManager;
       if (!windowManager) {
         logger.main.error("Window manager service not available");
         return false;
@@ -32,14 +32,13 @@ export const widgetRouter = createRouter({
         .optional(),
     )
     .mutation(async ({ ctx, input }) => {
-      const windowManager = ctx.serviceManager.getService("windowManager");
+      const windowManager = ctx.services.windowManager;
       if (!windowManager) {
         logger.main.error("Window manager service not available");
         return false;
       }
 
-      const featureFlagService =
-        ctx.serviceManager.getService("featureFlagService");
+      const featureFlagService = ctx.services.featureFlagService;
       const noteWindowFlag = await getMainFeatureFlagState(
         featureFlagService,
         NOTE_WINDOW_FEATURE_FLAG,
@@ -62,7 +61,7 @@ export const widgetRouter = createRouter({
     }),
 
   closeNotesWindow: procedure.mutation(async ({ ctx }) => {
-    const windowManager = ctx.serviceManager.getService("windowManager");
+    const windowManager = ctx.services.windowManager;
     if (!windowManager) {
       logger.main.error("Window manager service not available");
       return false;
@@ -71,8 +70,8 @@ export const widgetRouter = createRouter({
     windowManager.closeNotesWindow();
 
     // Closing the notes window should immediately return to normal visibility rules.
-    const settingsService = ctx.serviceManager.getService("settingsService");
-    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    const settingsService = ctx.services.settingsService;
+    const recordingManager = ctx.services.recordingManager;
     const preferences = await settingsService.getPreferences();
     const isIdle = recordingManager.getState() === "idle";
 
@@ -94,7 +93,7 @@ export const widgetRouter = createRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const windowManager = ctx.serviceManager.getService("windowManager");
+      const windowManager = ctx.services.windowManager;
       if (!windowManager) {
         logger.main.error("Window manager service not available");
         return false;

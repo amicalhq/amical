@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
 import NotesService from "../../services/notes-service";
-import { ServiceManager } from "../../main/managers/service-manager";
 
 const notesService = NotesService.getInstance();
 
@@ -58,23 +57,24 @@ export const notesRouter = createRouter({
     }),
 
   // Create new note
-  createNote: procedure.input(CreateNoteSchema).mutation(async ({ input }) => {
-    const note = await notesService.createNote({
-      title: input.title,
-      icon: input.icon,
-    });
+  createNote: procedure
+    .input(CreateNoteSchema)
+    .mutation(async ({ input, ctx }) => {
+      const note = await notesService.createNote({
+        title: input.title,
+        icon: input.icon,
+      });
 
-    // Track telemetry
-    const telemetryService =
-      ServiceManager.getInstance().getService("telemetryService");
-    telemetryService.trackNoteCreated({
-      note_id: note.id,
-      has_initial_content: false,
-      has_icon: !!input.icon,
-    });
+      // Track telemetry
+      const telemetryService = ctx.services.telemetryService;
+      telemetryService.trackNoteCreated({
+        note_id: note.id,
+        has_initial_content: false,
+        has_icon: !!input.icon,
+      });
 
-    return note;
-  }),
+      return note;
+    }),
 
   // Update note title
   updateNoteTitle: procedure

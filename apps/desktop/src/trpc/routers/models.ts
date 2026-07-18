@@ -50,14 +50,14 @@ async function removeProviderEndpoint(
   provider: RemoteProvider,
   configKey: ProviderConfigKey,
 ): Promise<true> {
-  const modelService = ctx.serviceManager.getService("modelService");
+  const modelService = ctx.services.modelService;
   if (!modelService) {
     throw new Error("Model manager service not initialized");
   }
 
   await modelService.removeProviderModels(provider);
 
-  const settingsService = ctx.serviceManager.getService("settingsService");
+  const settingsService = ctx.services.settingsService;
   if (settingsService) {
     const currentConfig = await settingsService.getModelProvidersConfig();
     const updatedConfig = { ...currentConfig };
@@ -79,7 +79,7 @@ export const modelsRouter = createRouter({
       }),
     )
     .query(async ({ input, ctx }): Promise<Model[]> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not available");
       }
@@ -92,7 +92,7 @@ export const modelsRouter = createRouter({
         const downloadedModels = await modelService.getDownloadedModels();
 
         // Check authentication status for cloud model filtering
-        const authService = ctx.serviceManager.getService("authService");
+        const authService = ctx.services.authService;
         const isAuthenticated = await authService.isAuthenticated();
 
         // Map available models to Model format using downloaded data if available
@@ -179,14 +179,14 @@ export const modelsRouter = createRouter({
   // Legacy endpoints (kept for backward compatibility)
   getAvailableModels: procedure.query(
     async ({ ctx }): Promise<AvailableWhisperModel[]> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       return modelService?.getAvailableModels() || [];
     },
   ),
 
   getDownloadedModels: procedure.query(
     async ({ ctx }): Promise<Record<string, Model>> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not available");
       }
@@ -198,7 +198,7 @@ export const modelsRouter = createRouter({
   isModelDownloaded: procedure
     .input(z.object({ modelId: z.string() }))
     .query(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       return modelService
         ? await modelService.isModelDownloaded(input.modelId)
         : false;
@@ -208,27 +208,27 @@ export const modelsRouter = createRouter({
   getDownloadProgress: procedure
     .input(z.object({ modelId: z.string() }))
     .query(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       return modelService?.getDownloadProgress(input.modelId) || null;
     }),
 
   // Get active downloads
   getActiveDownloads: procedure.query(
     async ({ ctx }): Promise<DownloadProgress[]> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       return modelService?.getActiveDownloads() || [];
     },
   ),
 
   // Get models directory
   getModelsDirectory: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
+    const modelService = ctx.services.modelService;
     return modelService?.getModelsDirectory() || "";
   }),
 
   // Transcription model selection methods
   isTranscriptionAvailable: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
+    const modelService = ctx.services.modelService;
     return modelService ? await modelService.isAvailable() : false;
   }),
 
@@ -239,14 +239,14 @@ export const modelsRouter = createRouter({
   ),
 
   getTranscriptionModels: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
+    const modelService = ctx.services.modelService;
     return modelService
       ? await modelService.getAvailableModelsForTranscription()
       : [];
   }),
 
   getSelectedModel: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
+    const modelService = ctx.services.modelService;
     return modelService ? await modelService.getSelectedModel() : null;
   }),
 
@@ -254,7 +254,7 @@ export const modelsRouter = createRouter({
   downloadModel: procedure
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -264,7 +264,7 @@ export const modelsRouter = createRouter({
   cancelDownload: procedure
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -274,7 +274,7 @@ export const modelsRouter = createRouter({
   deleteModel: procedure
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -284,16 +284,14 @@ export const modelsRouter = createRouter({
   setSelectedModel: procedure
     .input(z.object({ modelId: z.string().nullable() }))
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
       await modelService.setSelectedModel(input.modelId);
 
       // Notify transcription service about model change (fire-and-forget to avoid blocking UI)
-      const transcriptionService = ctx.serviceManager.getService(
-        "transcriptionService",
-      );
+      const transcriptionService = ctx.services.transcriptionService;
       if (transcriptionService) {
         await transcriptionService.handleModelChange();
       }
@@ -305,7 +303,7 @@ export const modelsRouter = createRouter({
   validateOpenRouterConnection: procedure
     .input(z.object({ apiKey: z.string() }))
     .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -315,7 +313,7 @@ export const modelsRouter = createRouter({
   validateOllamaConnection: procedure
     .input(z.object({ url: z.string() }))
     .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -325,7 +323,7 @@ export const modelsRouter = createRouter({
   validateOpenAICompatibleConnection: procedure
     .input(z.object({ baseURL: z.string().url(), apiKey: z.string() }))
     .mutation(async ({ input, ctx }): Promise<ValidationResult> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -339,7 +337,7 @@ export const modelsRouter = createRouter({
   fetchOpenRouterModels: procedure
     .input(z.object({ apiKey: z.string() }))
     .query(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -349,7 +347,7 @@ export const modelsRouter = createRouter({
   fetchOllamaModels: procedure
     .input(z.object({ url: z.string() }))
     .query(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -359,7 +357,7 @@ export const modelsRouter = createRouter({
   fetchOpenAICompatibleModels: procedure
     .input(z.object({ baseURL: z.string().url(), apiKey: z.string() }))
     .query(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -372,7 +370,7 @@ export const modelsRouter = createRouter({
   // Provider model database sync
   getSyncedProviderModels: procedure.query(
     async ({ ctx }): Promise<Model[]> => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -388,7 +386,7 @@ export const modelsRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -407,7 +405,7 @@ export const modelsRouter = createRouter({
       }),
     )
     .query(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -430,7 +428,7 @@ export const modelsRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -439,12 +437,10 @@ export const modelsRouter = createRouter({
         case "speech": {
           await modelService.setSelectedModel(input.modelId);
           // Notify transcription service about model change (fire-and-forget to avoid blocking UI)
-          const transcriptionService = ctx.serviceManager.getService(
-            "transcriptionService",
-          );
+          const transcriptionService = ctx.services.transcriptionService;
           if (transcriptionService) {
             transcriptionService.handleModelChange().catch((err) => {
-              const logger = ctx.serviceManager.getLogger();
+              const logger = ctx.logger;
               logger?.main.error("Failed to handle model change:", err);
             });
           }
@@ -462,7 +458,7 @@ export const modelsRouter = createRouter({
 
   // Legacy endpoints (kept for backward compatibility, can be removed later)
   getDefaultLanguageModel: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
+    const modelService = ctx.services.modelService;
     if (!modelService) {
       throw new Error("Model manager service not initialized");
     }
@@ -472,7 +468,7 @@ export const modelsRouter = createRouter({
   setDefaultLanguageModel: procedure
     .input(z.object({ modelId: z.string().nullable() }))
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -481,7 +477,7 @@ export const modelsRouter = createRouter({
     }),
 
   getDefaultEmbeddingModel: procedure.query(async ({ ctx }) => {
-    const modelService = ctx.serviceManager.getService("modelService");
+    const modelService = ctx.services.modelService;
     if (!modelService) {
       throw new Error("Model manager service not initialized");
     }
@@ -491,7 +487,7 @@ export const modelsRouter = createRouter({
   setDefaultEmbeddingModel: procedure
     .input(z.object({ modelId: z.string().nullable() }))
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -503,7 +499,7 @@ export const modelsRouter = createRouter({
   removeProviderModel: procedure
     .input(z.object({ modelId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -551,7 +547,7 @@ export const modelsRouter = createRouter({
   onDownloadProgress: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string; progress: DownloadProgress }>(
       (emit) => {
-        const modelService = ctx.serviceManager.getService("modelService");
+        const modelService = ctx.services.modelService;
         if (!modelService) {
           throw new Error("Model manager service not initialized");
         }
@@ -580,7 +576,7 @@ export const modelsRouter = createRouter({
       modelId: string;
       downloadedModel: Model;
     }>((emit) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -605,7 +601,7 @@ export const modelsRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   onDownloadError: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string; error: string }>((emit) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -627,7 +623,7 @@ export const modelsRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   onDownloadCancelled: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string }>((emit) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -649,7 +645,7 @@ export const modelsRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   onModelDeleted: procedure.subscription(({ ctx }) => {
     return observable<{ modelId: string }>((emit) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }
@@ -680,7 +676,7 @@ export const modelsRouter = createRouter({
         | "cleared";
       modelType: "speech" | "language" | "embedding";
     }>((emit) => {
-      const modelService = ctx.serviceManager.getService("modelService");
+      const modelService = ctx.services.modelService;
       if (!modelService) {
         throw new Error("Model manager service not initialized");
       }

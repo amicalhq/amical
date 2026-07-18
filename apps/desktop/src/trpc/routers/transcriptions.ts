@@ -95,7 +95,7 @@ export const transcriptionsRouter = createRouter({
         ? await deleteAudioFilesForTranscriptions([result])
         : 0;
 
-      const logger = ctx.serviceManager.getLogger();
+      const logger = ctx.logger;
       logger.main.info("Transcription deleted", {
         transcriptionId: input.id,
         deletedAudioFiles,
@@ -111,7 +111,7 @@ export const transcriptionsRouter = createRouter({
       deletedTranscriptions,
     );
 
-    const logger = ctx.serviceManager.getLogger();
+    const logger = ctx.logger;
     logger.main.info("All transcriptions deleted", {
       deletedTranscriptions: deletedTranscriptions.length,
       deletedAudioFiles,
@@ -170,7 +170,7 @@ export const transcriptionsRouter = createRouter({
           mimeType,
         };
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         logger.main.error("Failed to read audio file", {
           transcriptionId: input.transcriptionId,
           audioFile: transcription.audioFile,
@@ -184,9 +184,7 @@ export const transcriptionsRouter = createRouter({
   retryTranscription: procedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      const transcriptionService = ctx.serviceManager.getService(
-        "transcriptionService",
-      );
+      const transcriptionService = ctx.services.transcriptionService;
       return await transcriptionService.retryTranscription(input.id);
     }),
 
@@ -194,9 +192,8 @@ export const transcriptionsRouter = createRouter({
   reportTranscription: procedure
     .input(ReportTranscriptionSchema)
     .mutation(async ({ input, ctx }) => {
-      const logger = ctx.serviceManager.getLogger();
-      const telemetryService =
-        ctx.serviceManager.getService("telemetryService");
+      const logger = ctx.logger;
+      const telemetryService = ctx.services.telemetryService;
       const transcription = await getTranscriptionById(input.transcriptionId);
 
       if (!transcription) {
@@ -258,7 +255,7 @@ export const transcriptionsRouter = createRouter({
         // Write file to chosen location
         await fs.promises.writeFile(result.filePath, audioData);
 
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         logger.main.info("Audio file downloaded", {
           transcriptionId: input.transcriptionId,
           savedTo: result.filePath,
@@ -270,7 +267,7 @@ export const transcriptionsRouter = createRouter({
           filePath: result.filePath,
         };
       } catch (error) {
-        const logger = ctx.serviceManager.getLogger();
+        const logger = ctx.logger;
         logger.main.error("Failed to download audio file", {
           transcriptionId: input.transcriptionId,
           audioFile: transcription.audioFile,

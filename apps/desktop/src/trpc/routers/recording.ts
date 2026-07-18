@@ -25,7 +25,7 @@ interface RecordingStateUpdate {
 
 export const recordingRouter = createRouter({
   signalStart: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    const recordingManager = ctx.services.recordingManager;
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
@@ -33,7 +33,7 @@ export const recordingRouter = createRouter({
   }),
 
   signalStop: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    const recordingManager = ctx.services.recordingManager;
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
@@ -41,7 +41,7 @@ export const recordingRouter = createRouter({
   }),
 
   confirmDraft: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    const recordingManager = ctx.services.recordingManager;
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
@@ -49,7 +49,7 @@ export const recordingRouter = createRouter({
   }),
 
   dismissDraft: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    const recordingManager = ctx.services.recordingManager;
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
@@ -57,7 +57,7 @@ export const recordingRouter = createRouter({
   }),
 
   dismiss: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.serviceManager.getService("recordingManager");
+    const recordingManager = ctx.services.recordingManager;
     if (!recordingManager) {
       throw new Error("Recording manager not available");
     }
@@ -73,8 +73,7 @@ export const recordingRouter = createRouter({
       }),
     )
     .mutation(({ ctx, input }) => {
-      const recordingManager =
-        ctx.serviceManager.getService("recordingManager");
+      const recordingManager = ctx.services.recordingManager;
       if (!recordingManager) {
         throw new Error("Recording manager not available");
       }
@@ -90,8 +89,7 @@ export const recordingRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   stateUpdates: procedure.subscription(({ ctx }) => {
     return observable<RecordingStateUpdate>((emit) => {
-      const recordingManager =
-        ctx.serviceManager.getService("recordingManager");
+      const recordingManager = ctx.services.recordingManager;
       if (!recordingManager) {
         throw new Error("Recording manager not available");
       }
@@ -147,8 +145,7 @@ export const recordingRouter = createRouter({
   // Widget notification subscription
   widgetNotifications: procedure.subscription(({ ctx }) => {
     return observable<WidgetNotification>((emit) => {
-      const recordingManager =
-        ctx.serviceManager.getService("recordingManager");
+      const recordingManager = ctx.services.recordingManager;
       if (!recordingManager) {
         throw new Error("Recording manager not available");
       }
@@ -215,8 +212,7 @@ export const recordingRouter = createRouter({
   // Emits the current draft on subscribe and on every change; null = cleared.
   draftReview: procedure.subscription(({ ctx }) => {
     return observable<{ sessionId: string; text: string } | null>((emit) => {
-      const recordingManager =
-        ctx.serviceManager.getService("recordingManager");
+      const recordingManager = ctx.services.recordingManager;
       if (!recordingManager) {
         throw new Error("Recording manager not available");
       }

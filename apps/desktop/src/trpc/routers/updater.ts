@@ -13,7 +13,7 @@ export const updaterRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   updatePrompt: procedure.subscription(({ ctx }) => {
     return observable<UpdatePrompt | null>((emit) => {
-      const service = ctx.serviceManager.getService("autoUpdaterService");
+      const service = ctx.services.autoUpdaterService;
       if (!service) {
         throw new Error("Auto-updater service not available");
       }
@@ -27,7 +27,7 @@ export const updaterRouter = createRouter({
   }),
 
   dismissUpdatePrompt: procedure.mutation(({ ctx }) => {
-    ctx.serviceManager.getService("autoUpdaterService")?.dismissUpdatePrompt();
+    ctx.services.autoUpdaterService?.dismissUpdatePrompt();
     return { success: true };
   }),
 
@@ -38,7 +38,7 @@ export const updaterRouter = createRouter({
         .optional(),
     )
     .mutation(async ({ input, ctx }) => {
-      const service = ctx.serviceManager.getService("autoUpdaterService");
+      const service = ctx.services.autoUpdaterService;
       if (!service) throw new Error("Auto-updater service not available");
       await service.checkForUpdates(input?.userInitiated ?? false);
       return { success: true };
@@ -46,7 +46,7 @@ export const updaterRouter = createRouter({
 
   onUpdateStateChange: procedure.subscription(({ ctx }) => {
     return observable<UpdateStateUpdate>((emit) => {
-      const service = ctx.serviceManager.getService("autoUpdaterService");
+      const service = ctx.services.autoUpdaterService;
       if (!service) {
         emit.next({ state: "not-available" });
         return () => {};
@@ -62,7 +62,7 @@ export const updaterRouter = createRouter({
   }),
 
   quitAndInstall: procedure.mutation(({ ctx }) => {
-    const service = ctx.serviceManager.getService("autoUpdaterService");
+    const service = ctx.services.autoUpdaterService;
     if (!service) throw new Error("Auto-updater service not available");
     service.quitAndInstall();
     return { success: true };

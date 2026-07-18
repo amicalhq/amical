@@ -36,15 +36,13 @@ describe("transcriptionsRouter.deleteAllTranscriptions", () => {
     );
 
     const caller = transcriptionsRouter.createCaller({
-      serviceManager: {
-        getLogger: () => ({
-          main: {
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-            debug: vi.fn(),
-          },
-        }),
+      logger: {
+        main: {
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+        },
       },
     } as any);
 

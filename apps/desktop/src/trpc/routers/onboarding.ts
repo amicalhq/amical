@@ -20,12 +20,7 @@ export const onboardingRouter = createRouter({
    */
   getState: procedure.query(async ({ ctx }) => {
     try {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        logger.main.warn("ServiceManager not available");
-        return null;
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
 
       if (!onboardingService) {
         logger.main.warn("OnboardingService not available");
@@ -46,11 +41,7 @@ export const onboardingRouter = createRouter({
   getSystemRecommendation: procedure.query(
     async ({ ctx }): Promise<ModelRecommendation> => {
       try {
-        const { serviceManager } = ctx;
-        if (!serviceManager) {
-          throw new Error("ServiceManager not available");
-        }
-        const onboardingService = serviceManager.getOnboardingService();
+        const onboardingService = ctx.onboardingServiceOrNull();
 
         if (!onboardingService) {
           throw new Error("OnboardingService not available");
@@ -70,11 +61,7 @@ export const onboardingRouter = createRouter({
    * Get recommended local model ID based on hardware
    */
   getRecommendedLocalModel: procedure.query(({ ctx }): string => {
-    const { serviceManager } = ctx;
-    if (!serviceManager) {
-      return "whisper-base";
-    }
-    const onboardingService = serviceManager.getOnboardingService();
+    const onboardingService = ctx.onboardingServiceOrNull();
     if (!onboardingService) {
       return "whisper-base";
     }
@@ -86,19 +73,7 @@ export const onboardingRouter = createRouter({
    */
   needsOnboarding: procedure.query(async ({ ctx }) => {
     try {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        // If service manager not available, assume onboarding not needed
-        return {
-          needed: false,
-          reason: {
-            forceOnboarding: false,
-            notCompleted: false,
-            missingPermissions: false,
-          },
-        };
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
 
       if (!onboardingService) {
         // If service not available, assume onboarding not needed
@@ -134,17 +109,7 @@ export const onboardingRouter = createRouter({
   getFeatureFlags: procedure.query(
     async ({ ctx }): Promise<OnboardingFeatureFlags> => {
       try {
-        const { serviceManager } = ctx;
-        if (!serviceManager) {
-          // Return all screens enabled by default
-          return {
-            skipWelcome: false,
-            skipFeatures: false,
-            skipDiscovery: false,
-            skipModels: false,
-          };
-        }
-        const onboardingService = serviceManager.getOnboardingService();
+        const onboardingService = ctx.onboardingServiceOrNull();
 
         if (!onboardingService) {
           // Return all screens enabled by default
@@ -186,11 +151,7 @@ export const onboardingRouter = createRouter({
         ctx,
       }): Promise<{ success: boolean; message?: string }> => {
         try {
-          const { serviceManager } = ctx;
-          if (!serviceManager) {
-            throw new Error("ServiceManager not available");
-          }
-          const onboardingService = serviceManager.getOnboardingService();
+          const onboardingService = ctx.onboardingServiceOrNull();
 
           if (!onboardingService) {
             throw new Error("OnboardingService not available");
@@ -220,11 +181,7 @@ export const onboardingRouter = createRouter({
   setDictationTryIt: procedure
     .input(z.object({ active: z.boolean() }))
     .mutation(({ input, ctx }): { success: boolean } => {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        throw new Error("ServiceManager not available");
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
       if (!onboardingService) {
         throw new Error("OnboardingService not available");
       }
@@ -240,11 +197,7 @@ export const onboardingRouter = createRouter({
    */
   applySelectedModel: procedure.mutation(
     async ({ ctx }): Promise<{ success: boolean }> => {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        throw new Error("ServiceManager not available");
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
       if (!onboardingService) {
         throw new Error("OnboardingService not available");
       }
@@ -266,11 +219,7 @@ export const onboardingRouter = createRouter({
       }),
     )
     .mutation(({ input, ctx }): { success: boolean } => {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        throw new Error("ServiceManager not available");
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
       if (!onboardingService) {
         throw new Error("OnboardingService not available");
       }
@@ -286,11 +235,7 @@ export const onboardingRouter = createRouter({
     .input(OnboardingStateSchema)
     .mutation(async ({ input, ctx }): Promise<{ success: boolean }> => {
       try {
-        const { serviceManager } = ctx;
-        if (!serviceManager) {
-          throw new Error("ServiceManager not available");
-        }
-        const onboardingService = serviceManager.getOnboardingService();
+        const onboardingService = ctx.onboardingServiceOrNull();
 
         if (!onboardingService) {
           throw new Error("OnboardingService not available");
@@ -316,11 +261,7 @@ export const onboardingRouter = createRouter({
    */
   cancel: procedure.mutation(async ({ ctx }) => {
     try {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        throw new Error("ServiceManager not available");
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
 
       if (!onboardingService) {
         throw new Error("OnboardingService not available");
@@ -340,11 +281,7 @@ export const onboardingRouter = createRouter({
    */
   reset: procedure.mutation(async ({ ctx }) => {
     try {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        throw new Error("ServiceManager not available");
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
 
       if (!onboardingService) {
         throw new Error("OnboardingService not available");
@@ -365,11 +302,7 @@ export const onboardingRouter = createRouter({
    */
   getSkippedScreens: procedure.query(async ({ ctx }) => {
     try {
-      const { serviceManager } = ctx;
-      if (!serviceManager) {
-        return [];
-      }
-      const onboardingService = serviceManager.getOnboardingService();
+      const onboardingService = ctx.onboardingServiceOrNull();
 
       if (!onboardingService) {
         return [];
