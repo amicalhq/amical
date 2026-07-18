@@ -1,5 +1,6 @@
 import { app, ipcMain, shell } from "electron";
 import { initializeDatabase } from "../../db";
+import { ensureSeededSkills } from "../../db/skills";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
 import { setupApplicationMenu } from "../menu";
@@ -160,6 +161,11 @@ export class AppManager {
 
   private async initializeDatabase(): Promise<void> {
     await initializeDatabase();
+    // Ensure seeded baseline skill rows exist. Idempotent (INSERT ...
+    // ON CONFLICT DO NOTHING) — new seeded ids added in future releases get
+    // planted on next launch; existing rows untouched. Lives here (not in
+    // db/index) so db/index never imports a module that imports it back.
+    await ensureSeededSkills();
     await runDataMigrations();
     logger.db.info(
       "Database initialized and migrations completed successfully",
