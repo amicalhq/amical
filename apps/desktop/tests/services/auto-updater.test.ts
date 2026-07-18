@@ -78,7 +78,7 @@ describe("AutoUpdaterService", () => {
     recordingManager = Object.assign(new EventEmitter(), {
       getState: vi.fn(() => recordingState),
     });
-    service = new AutoUpdaterService();
+    service = AutoUpdaterService.createForTests();
     await service.initialize(
       {
         getUpdateChannel: vi.fn().mockResolvedValue("stable"),

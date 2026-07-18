@@ -15,6 +15,16 @@ import {
 import type { RecordingManager } from "../managers/recording-manager";
 import type { RecordingState } from "../../types/recording";
 import { computeUpdatePrompt, type UpdatePrompt } from "./update-prompt";
+import { Effect, Layer } from "effect";
+import {
+  AutoUpdaterServiceTag,
+  SettingsServiceTag,
+  TelemetryServiceTag,
+  RemoteConfigServiceTag,
+  RecordingManagerTag,
+  AppScopeTag,
+} from "../runtime/tags";
+import { addRelease, step, up } from "../runtime/layer-helpers";
 
 const UPDATE_SERVER = "https://update.amical.ai";
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
@@ -114,8 +124,60 @@ export class AutoUpdaterService extends EventEmitter {
     this.stopIdleInstallChecks();
   };
 
-  constructor() {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor() {
     super();
+  }
+
+  /**
+   * The service's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    AutoUpdaterServiceTag,
+    never,
+    | SettingsServiceTag
+    | TelemetryServiceTag
+    | RemoteConfigServiceTag
+    | RecordingManagerTag
+    | AppScopeTag
+  > = Layer.effect(
+    AutoUpdaterServiceTag,
+    Effect.gen(function* () {
+      const settingsService = yield* SettingsServiceTag;
+      const telemetryService = yield* TelemetryServiceTag;
+      const remoteConfigService = yield* RemoteConfigServiceTag;
+      const recordingManager = yield* RecordingManagerTag;
+      const appScope = yield* AppScopeTag;
+      const service = new AutoUpdaterService();
+      yield* addRelease(
+        appScope,
+        "Cleaning up auto-updater...",
+        "autoUpdaterService",
+        () => service.cleanup(),
+      );
+      yield* step(() =>
+        service.initialize(
+          settingsService,
+          telemetryService,
+          remoteConfigService,
+          recordingManager,
+        ),
+      );
+      up("autoUpdaterService");
+      return service;
+    }),
+  );
+
+  /**
+   * Test-only escape hatch: a raw, UNINITIALIZED instance for unit tests
+   * that drive initialize() with fakes directly. Production construction
+   * goes through Live.
+   */
+  static createForTests(): AutoUpdaterService {
+    return new AutoUpdaterService();
   }
 
   async initialize(

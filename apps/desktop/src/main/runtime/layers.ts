@@ -284,42 +284,6 @@ export const ShortcutManagerLive: Layer.Layer<
   }),
 );
 
-export const AutoUpdaterServiceLive: Layer.Layer<
-  AutoUpdaterServiceTag,
-  never,
-  | SettingsServiceTag
-  | TelemetryServiceTag
-  | RemoteConfigServiceTag
-  | RecordingManagerTag
-  | AppScopeTag
-> = Layer.effect(
-  AutoUpdaterServiceTag,
-  Effect.gen(function* () {
-    const settingsService = yield* SettingsServiceTag;
-    const telemetryService = yield* TelemetryServiceTag;
-    const remoteConfigService = yield* RemoteConfigServiceTag;
-    const recordingManager = yield* RecordingManagerTag;
-    const appScope = yield* AppScopeTag;
-    const autoUpdaterService = new AutoUpdaterService();
-    yield* addRelease(
-      appScope,
-      "Cleaning up auto-updater...",
-      "autoUpdaterService",
-      () => autoUpdaterService.cleanup(),
-    );
-    yield* step(() =>
-      autoUpdaterService.initialize(
-        settingsService,
-        telemetryService,
-        remoteConfigService,
-        recordingManager,
-      ),
-    );
-    up("autoUpdaterService");
-    return autoUpdaterService;
-  }),
-);
-
 /**
  * The composed app graph. Requires ServiceLocatorTag and AppScopeTag
  * (provided at build time by app-runtime.ts). Independent branches build
@@ -334,7 +298,7 @@ export const AppLive: Layer.Layer<
   Exclude<AppServices, ServiceLocatorTag>,
   never,
   ServiceLocatorTag | AppScopeTag
-> = Layer.mergeAll(ShortcutManagerLive, AutoUpdaterServiceLive).pipe(
+> = Layer.mergeAll(ShortcutManagerLive, AutoUpdaterService.Live).pipe(
   Layer.provideMerge(RecordingManagerLive),
   Layer.provideMerge(TranscriptionService.Live),
   Layer.provideMerge(OnboardingServiceLive),
