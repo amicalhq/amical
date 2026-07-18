@@ -72,26 +72,6 @@ function spyOnMethod(target: object, method: string) {
   );
 }
 
-// The lazy getService() names RecordingManager pulls after boot, mapped to
-// tags so the stub locator can serve them from the built context.
-const TAGS_BY_NAME: Record<string, Context.Tag<never, never> | undefined> = {
-  settingsService: SettingsServiceTag as never,
-  telemetryService: TelemetryServiceTag as never,
-  modelService: ModelServiceTag as never,
-  transcriptionService: TranscriptionServiceTag as never,
-  nativeBridge: NativeBridgeTag as never,
-  vadService: VadServiceTag as never,
-  recordingManager: RecordingManagerTag as never,
-  shortcutManager: ShortcutManagerTag as never,
-  windowManager: WindowManagerTag as never,
-  featureFlagService: FeatureFlagServiceTag as never,
-  remoteConfigService: RemoteConfigServiceTag as never,
-  posthogClient: PostHogClientTag as never,
-  authService: AuthServiceTag as never,
-  onboardingService: OnboardingServiceTag as never,
-  autoUpdaterService: AutoUpdaterServiceTag as never,
-};
-
 describe("app layer graph (pre-cutover)", () => {
   let testDb: TestDatabase;
   let builtCtx: Context.Context<AppServices> | null = null;
@@ -102,17 +82,10 @@ describe("app layer graph (pre-cutover)", () => {
     testDb = await createTestDatabase();
     setTestDatabase(testDb.db);
     builtCtx = null;
+    // The graph's only locator touchpoints are registerEarlyService (in
+    // Lives) and createContext (per tRPC request — never invoked here).
     stubLocator = {
       registerEarlyService: vi.fn(),
-      getService: vi.fn((name: string) => {
-        const tag = TAGS_BY_NAME[name];
-        if (!builtCtx || !tag) {
-          throw new Error(
-            "ServiceManager not initialized. Call initialize() first.",
-          );
-        }
-        return Context.get(builtCtx, tag as never);
-      }),
       getLogger: () => logger,
     } as unknown as ServiceManager;
   });

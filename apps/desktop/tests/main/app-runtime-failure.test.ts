@@ -79,8 +79,8 @@ describe("ServiceManager boot failure (facade)", () => {
     expect((thrown as Error).message).toBe("boot boom");
     expect((thrown as Error).constructor.name).toBe("Error");
 
-    // getService keeps the exact pre-ready throw…
-    expect(() => serviceManager.getService("settingsService")).toThrow(
+    // services() keeps the exact pre-ready throw…
+    expect(() => serviceManager.services()).toThrow(
       "ServiceManager not initialized. Call initialize() first.",
     );
     // …while the crash path's nullable accessors serve the early refs.
@@ -105,10 +105,10 @@ describe("ServiceManager boot failure (facade)", () => {
     await serviceManager.cleanup();
 
     await serviceManager.initialize();
-    const settings = serviceManager.getService("settingsService");
+    const settings = serviceManager.services().settingsService;
 
     // Double init: warn-noop — same graph, same instances.
     await serviceManager.initialize();
-    expect(serviceManager.getService("settingsService")).toBe(settings);
+    expect(serviceManager.services().settingsService).toBe(settings);
   });
 });

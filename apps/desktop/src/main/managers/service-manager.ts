@@ -19,7 +19,6 @@ import {
   ShortcutManagerTag,
   AutoUpdaterServiceTag,
   WindowManagerTag,
-  type AppServices,
 } from "../runtime/tags";
 
 import type { ModelService } from "../../services/model-service";
@@ -73,26 +72,9 @@ export interface EarlyServiceRefs {
   onboardingService?: OnboardingService;
 }
 
-// ServiceMap keys backed by the layer graph. historyCleanupService has a
-// layer but no ServiceMap entry — lifecycle-only, unreachable via
-// getService(), exactly as in the old container.
-const TAGS = {
-  posthogClient: PostHogClientTag,
-  telemetryService: TelemetryServiceTag,
-  featureFlagService: FeatureFlagServiceTag,
-  remoteConfigService: RemoteConfigServiceTag,
-  modelService: ModelServiceTag,
-  transcriptionService: TranscriptionServiceTag,
-  settingsService: SettingsServiceTag,
-  authService: AuthServiceTag,
-  vadService: VadServiceTag,
-  nativeBridge: NativeBridgeTag,
-  autoUpdaterService: AutoUpdaterServiceTag,
-  recordingManager: RecordingManagerTag,
-  shortcutManager: ShortcutManagerTag,
-  windowManager: WindowManagerTag,
-  onboardingService: OnboardingServiceTag,
-} as const satisfies Record<keyof ServiceMap, unknown>;
+// historyCleanupService has a layer but no ServiceMap entry —
+// lifecycle-only, unreachable via services(), exactly as in the old
+// container.
 
 /**
  * The boot handle: initialize() builds the Effect layer graph
@@ -101,14 +83,15 @@ const TAGS = {
  * accessors serve the crash path. Services get their dependencies from the
  * graph, not from here.
  *
- * getService() is a synchronous Context lookup with exactly two callers —
- * the tRPC context's lazy getters (src/trpc/context.ts) and AppManager's
- * one-time post-build resolve. Do not add new ones; take the dependency in
- * your Live layer instead. Behavior is unchanged from the hand-rolled
- * container this replaced, including:
- * - getService() throwing "ServiceManager not initialized..." until the FULL
- *   graph has built (the lazy tRPC context's failed-init tolerance relies on
- *   the throw);
+ * services() returns the frozen bundle resolved ONCE at the end of
+ * initialize() — windows (and thus tRPC requests) can only exist after
+ * that, so nothing can observe a partial map. Exactly two callers: the
+ * tRPC context (src/trpc/context.ts, per request) and AppManager's
+ * post-build resolve. Do not add new ones; take the dependency in your
+ * Live layer instead. Behavior is unchanged from the hand-rolled container
+ * this replaced, including:
+ * - services() throwing "ServiceManager not initialized..." until the FULL
+ *   graph has built (the pre-ready throw window the test harness pins);
  * - a failed initialize() leaving the partial graph ALIVE (no rollback) so
  *   app.ts's crash path can read getTelemetryService() and flush PostHog,
  *   with the ORIGINAL Error (never a FiberFailure) rethrown to the dialog;
@@ -121,7 +104,7 @@ export class ServiceManager {
   private isInitialized = false;
 
   private scope: Scope.CloseableScope | null = null;
-  private context: Context.Context<AppServices> | null = null;
+  private resolvedServices: Readonly<ServiceMap> | null = null;
   private earlyRefs: EarlyServiceRefs = {};
 
   registerEarlyService<K extends keyof EarlyServiceRefs>(
@@ -153,9 +136,26 @@ export class ServiceManager {
       throw Cause.squash(exit.cause);
     }
 
-    this.context = exit.value;
-    // Flips only after the FULL graph builds — preserving the pre-ready
-    // throw window the lazy tRPC context depends on.
+    // Resolve the full bundle once, and only after the FULL graph builds —
+    // preserving the pre-ready throw window of services().
+    const ctx = exit.value;
+    this.resolvedServices = Object.freeze({
+      posthogClient: Context.get(ctx, PostHogClientTag),
+      telemetryService: Context.get(ctx, TelemetryServiceTag),
+      featureFlagService: Context.get(ctx, FeatureFlagServiceTag),
+      remoteConfigService: Context.get(ctx, RemoteConfigServiceTag),
+      modelService: Context.get(ctx, ModelServiceTag),
+      transcriptionService: Context.get(ctx, TranscriptionServiceTag),
+      settingsService: Context.get(ctx, SettingsServiceTag),
+      authService: Context.get(ctx, AuthServiceTag),
+      vadService: Context.get(ctx, VadServiceTag),
+      nativeBridge: Context.get(ctx, NativeBridgeTag),
+      autoUpdaterService: Context.get(ctx, AutoUpdaterServiceTag),
+      recordingManager: Context.get(ctx, RecordingManagerTag),
+      shortcutManager: Context.get(ctx, ShortcutManagerTag),
+      windowManager: Context.get(ctx, WindowManagerTag),
+      onboardingService: Context.get(ctx, OnboardingServiceTag),
+    });
     this.isInitialized = true;
     logger.main.info("Services initialized successfully");
   }
@@ -164,18 +164,18 @@ export class ServiceManager {
     return logger;
   }
 
-  getService<K extends keyof ServiceMap>(serviceName: K): ServiceMap[K] {
-    if (!this.isInitialized || !this.context) {
+  /**
+   * The resolved service bundle. Throws until the FULL graph has built;
+   * never a partial map (windows, and thus tRPC requests, exist only
+   * post-build).
+   */
+  services(): Readonly<ServiceMap> {
+    if (!this.resolvedServices) {
       throw new Error(
         "ServiceManager not initialized. Call initialize() first.",
       );
     }
-
-    const tag = TAGS[serviceName];
-    // Correlation cast only: TS can't relate TAGS[K]'s tag to ServiceMap[K]
-    // across the generic; the value types match key-for-key (including the
-    // honest `| null` on transcriptionService/nativeBridge).
-    return Context.get(this.context, tag as never) as ServiceMap[K];
+    return this.resolvedServices;
   }
 
   async cleanup(): Promise<void> {
@@ -185,9 +185,9 @@ export class ServiceManager {
     }
     const scope = this.scope;
     this.scope = null;
-    // context/isInitialized are intentionally NOT reset: renderer tRPC calls
-    // racing teardown still resolve through the lazy context getters, and
-    // the old cleaned-up container kept serving getService too.
+    // resolvedServices/isInitialized are intentionally NOT reset: renderer
+    // tRPC calls racing teardown still read the bundle, and the old
+    // cleaned-up container kept serving lookups too.
     await closeAppScope(scope);
   }
 

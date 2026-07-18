@@ -88,19 +88,17 @@ export class AppManager {
     // One-time resolution off the built graph; every later use reads these
     // fields. The tRPC handler and WindowManager are graph services now;
     // window CREATION (below) stays here so window timing is unchanged.
-    this.windowManager = this.serviceManager.getService("windowManager");
-    this.settingsService = this.serviceManager.getService("settingsService");
-    this.shortcutManager = this.serviceManager.getService("shortcutManager");
-    this.recordingManager = this.serviceManager.getService("recordingManager");
-    this.featureFlagService =
-      this.serviceManager.getService("featureFlagService");
-    this.autoUpdaterService =
-      this.serviceManager.getService("autoUpdaterService");
-    this.authService = this.serviceManager.getService("authService");
-    const telemetryService = this.serviceManager.getService("telemetryService");
-    const onboardingService =
-      this.serviceManager.getService("onboardingService");
-    const nativeBridge = this.serviceManager.getService("nativeBridge");
+    const services = this.serviceManager.services();
+    this.windowManager = services.windowManager;
+    this.settingsService = services.settingsService;
+    this.shortcutManager = services.shortcutManager;
+    this.recordingManager = services.recordingManager;
+    this.featureFlagService = services.featureFlagService;
+    this.autoUpdaterService = services.autoUpdaterService;
+    this.authService = services.authService;
+    const telemetryService = services.telemetryService;
+    const onboardingService = services.onboardingService;
+    const nativeBridge = services.nativeBridge;
 
     telemetryService.trackAppLaunch();
 

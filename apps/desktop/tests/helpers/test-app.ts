@@ -3,7 +3,24 @@ import type { TestDatabase } from "./test-db";
 import { AppManager } from "@main/core/app-manager";
 import { ServiceManager } from "@main/managers/service-manager";
 import { router } from "@trpc/router";
-import { createContext } from "@trpc/context";
+import { createContext, type Context } from "@trpc/context";
+
+/**
+ * Context with LAZY service resolution — unlike production's createContext,
+ * which reads the bundle eagerly per request (requests only exist
+ * post-build). The harness deliberately tolerates a failed graph build
+ * (e.g. the real NativeBridge ctor throwing without the module mock), so
+ * tests that only exercise DB-backed procedures still run; a procedure that
+ * actually touches ctx.services gets the not-initialized throw instead.
+ */
+function createLazyTestContext(serviceManager: ServiceManager): Context {
+  return {
+    logger: serviceManager.getLogger(),
+    get services() {
+      return serviceManager.services();
+    },
+  };
+}
 
 /**
  * Test wrapper for AppManager
@@ -54,8 +71,7 @@ export async function initializeTestApp(
   }
 
   // Create tRPC caller for testing
-  const ctx = createContext(serviceManager);
-  const trpcCaller = router.createCaller(ctx);
+  const trpcCaller = router.createCaller(createLazyTestContext(serviceManager));
 
   return {
     appManager,
@@ -103,8 +119,7 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
   }
 
   // Create tRPC caller
-  const ctx = createContext(serviceManager);
-  const trpcCaller = router.createCaller(ctx);
+  const trpcCaller = router.createCaller(createLazyTestContext(serviceManager));
 
   return {
     serviceManager,
