@@ -96,8 +96,6 @@ import {
   ModelServiceTag,
   OnboardingServiceTag,
   NativeBridgeTag,
-  TranscriptionServiceTag,
-  RecordingManagerTag,
   TrpcHandlerTag,
   ServiceLocatorTag,
   AppScopeTag,
@@ -166,40 +164,6 @@ export const NativeBridgeLive: Layer.Layer<
   }),
 );
 
-export const RecordingManagerLive: Layer.Layer<
-  RecordingManagerTag,
-  never,
-  | ServiceLocatorTag
-  | TranscriptionServiceTag
-  | NativeBridgeTag
-  | SettingsServiceTag
-  | ModelServiceTag
-  | AppScopeTag
-> = Layer.effect(
-  RecordingManagerTag,
-  Effect.gen(function* () {
-    const locator = yield* ServiceLocatorTag;
-    // Ordering-only: RecordingManager pulls these lazily via the locator's
-    // getService() after boot; the edges also pin the reverse release order
-    // (recording drain completes before the helper/model/transcription go).
-    yield* TranscriptionServiceTag;
-    yield* NativeBridgeTag;
-    yield* SettingsServiceTag;
-    yield* ModelServiceTag;
-    const appScope = yield* AppScopeTag;
-    const recordingManager = new RecordingManager(locator);
-    yield* addRelease(
-      appScope,
-      "Cleaning up recording manager...",
-      "recordingManager",
-      () => recordingManager.cleanup(),
-    );
-    logger.main.info("Recording manager initialized");
-    up("recordingManager");
-    return recordingManager;
-  }),
-);
-
 /**
  * The tRPC IPC handler as a graph service. Context resolution is lazy (per
  * property access through the locator), so building the handler mid-graph is
@@ -240,7 +204,7 @@ export const AppLive: Layer.Layer<
   never,
   ServiceLocatorTag | AppScopeTag
 > = Layer.mergeAll(ShortcutManager.Live, AutoUpdaterService.Live).pipe(
-  Layer.provideMerge(RecordingManagerLive),
+  Layer.provideMerge(RecordingManager.Live),
   Layer.provideMerge(WindowManager.Live),
   Layer.provideMerge(TrpcHandlerLive),
   Layer.provideMerge(TranscriptionService.Live),

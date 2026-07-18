@@ -2,7 +2,20 @@ import { ipcMain, app } from "electron";
 import { EventEmitter } from "node:events";
 import { Mutex } from "async-mutex";
 import { logger, logPerformance } from "../logger";
-import type { ServiceManager } from "@/main/managers/service-manager";
+import { Effect, Layer } from "effect";
+import type { SettingsService } from "../../services/settings-service";
+import type { ModelService } from "../../services/model-service";
+import type { NativeBridge } from "../../services/platform/native-bridge-service";
+import type { TranscriptionService } from "../../services/transcription-service";
+import {
+  RecordingManagerTag,
+  SettingsServiceTag,
+  ModelServiceTag,
+  NativeBridgeTag,
+  TranscriptionServiceTag,
+  AppScopeTag,
+} from "../runtime/tags";
+import { addRelease, up } from "../runtime/layer-helpers";
 import type { RecordingState } from "../../types/recording";
 import type { ShortcutManager } from "./shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
@@ -114,8 +127,87 @@ export class RecordingManager extends EventEmitter {
   // Held so audio-chunk handling can read the live draft-binding state.
   private shortcutManager: ShortcutManager | null = null;
 
-  constructor(private serviceManager: ServiceManager) {
+  private readonly settingsService: SettingsService;
+  private readonly modelService: ModelService;
+  // Typed non-null like ServiceMap for now (the honest-nullability capstone
+  // flips these two to `| null` and adds the guards).
+  private readonly nativeBridge: NativeBridge;
+  private readonly transcriptionService: TranscriptionService;
+
+  /**
+   * The manager's layer: real constructor dependencies (the locator is
+   * gone), teardown on the app scope. Composed into AppLive by
+   * src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    RecordingManagerTag,
+    never,
+    | SettingsServiceTag
+    | ModelServiceTag
+    | NativeBridgeTag
+    | TranscriptionServiceTag
+    | AppScopeTag
+  > = Layer.effect(
+    RecordingManagerTag,
+    Effect.gen(function* () {
+      const settingsService = yield* SettingsServiceTag;
+      const modelService = yield* ModelServiceTag;
+      const nativeBridge = yield* NativeBridgeTag;
+      const transcriptionService = yield* TranscriptionServiceTag;
+      const appScope = yield* AppScopeTag;
+      const manager = new RecordingManager({
+        settingsService,
+        modelService,
+        // ServiceMap's non-null lie, unchanged failure mode: a null service
+        // throws at the call site exactly as the old lazy getService did.
+        nativeBridge: nativeBridge as NativeBridge,
+        transcriptionService: transcriptionService as TranscriptionService,
+      });
+      yield* addRelease(
+        appScope,
+        "Cleaning up recording manager...",
+        "recordingManager",
+        () => manager.cleanup(),
+      );
+      logger.main.info("Recording manager initialized");
+      up("recordingManager");
+      return manager;
+    }),
+  );
+
+  /**
+   * Test-only escape hatch: a raw instance with only the fakes a given test
+   * needs. Production construction goes through Live.
+   */
+  static createForTests(deps: {
+    settingsService?: SettingsService;
+    modelService?: ModelService;
+    nativeBridge?: NativeBridge;
+    transcriptionService?: TranscriptionService;
+  }): RecordingManager {
+    return new RecordingManager(
+      deps as {
+        settingsService: SettingsService;
+        modelService: ModelService;
+        nativeBridge: NativeBridge;
+        transcriptionService: TranscriptionService;
+      },
+    );
+  }
+
+  // Construction goes through Live: the graph is the only thing that may
+  // build this manager, which also makes single-construction structural.
+  private constructor(deps: {
+    settingsService: SettingsService;
+    modelService: ModelService;
+    nativeBridge: NativeBridge;
+    transcriptionService: TranscriptionService;
+  }) {
     super();
+    this.settingsService = deps.settingsService;
+    this.modelService = deps.modelService;
+    this.nativeBridge = deps.nativeBridge;
+    this.transcriptionService = deps.transcriptionService;
     this.machine = new RecordingMachineInterpreter({
       getSessionId: () => this.currentSessionId,
       emitStateChange: (newState, oldState) =>
@@ -211,9 +303,7 @@ export class RecordingManager extends EventEmitter {
       this.emit("draft-latched");
       if (this.currentSessionId) {
         try {
-          const transcriptionService = this.serviceManager.getService(
-            "transcriptionService",
-          );
+          const transcriptionService = this.transcriptionService;
           await transcriptionService.updateStreamingSession({
             sessionId: this.currentSessionId,
             isInstruct: this.currentIsInstruct,
@@ -524,9 +614,7 @@ export class RecordingManager extends EventEmitter {
     try {
       // Reset VAD state for fresh speech detection (mutex-protected to avoid
       // interleaving with retry VAD computation)
-      const transcriptionService = this.serviceManager.getService(
-        "transcriptionService",
-      );
+      const transcriptionService = this.transcriptionService;
       await transcriptionService.resetVadForNewSession();
 
       // Warm the active provider in parallel with native startRecording so
@@ -541,7 +629,7 @@ export class RecordingManager extends EventEmitter {
       // Fire and forget: if it resolves before the first chunk, the
       // transcription service stores it for stream-open; otherwise it pushes a
       // live gRPC session update.
-      const nativeBridge = this.serviceManager.getService("nativeBridge");
+      const nativeBridge = this.nativeBridge;
       const sessionId = this.currentSessionId;
       void nativeBridge
         .refreshAccessibilityContext()
@@ -571,7 +659,7 @@ export class RecordingManager extends EventEmitter {
         });
 
       // Always call startRecording, conditionally mute system audio and play sounds
-      const settingsService = this.serviceManager.getService("settingsService");
+      const settingsService = this.settingsService;
       const preferences = await settingsService.getPreferences();
       const shouldMute = preferences.muteSystemAudio;
       this.soundsMuted = preferences.muteDictationSounds;
@@ -609,7 +697,7 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
-      const nativeBridge = this.serviceManager.getService("nativeBridge");
+      const nativeBridge = this.nativeBridge;
       const cached = nativeBridge.getAccessibilityContext();
       const axSelectedText = cached?.context?.textSelection?.selectedText;
       if (axSelectedText && axSelectedText.trim() !== "") {
@@ -672,9 +760,7 @@ export class RecordingManager extends EventEmitter {
         },
       };
 
-      const transcriptionService = this.serviceManager.getService(
-        "transcriptionService",
-      );
+      const transcriptionService = this.transcriptionService;
       await transcriptionService.updateStreamingSession({
         sessionId,
         accessibilityContext: merged,
@@ -759,7 +845,7 @@ export class RecordingManager extends EventEmitter {
 
         // Always call stopRecording, conditionally restore system audio and play sounds
         try {
-          const nativeBridge = this.serviceManager.getService("nativeBridge");
+          const nativeBridge = this.nativeBridge;
           await nativeBridge.call("stopRecording", {
             wasMuted: this.systemAudioMuted,
             muteSounds: this.soundsMuted,
@@ -775,9 +861,7 @@ export class RecordingManager extends EventEmitter {
         // Cancel streaming immediately for true cancellations.
         if (shouldCancelStreamingEarly && sessionId) {
           try {
-            const transcriptionService = this.serviceManager.getService(
-              "transcriptionService",
-            );
+            const transcriptionService = this.transcriptionService;
             await transcriptionService.cancelStreamingSession(sessionId);
           } catch (error) {
             logger.audio.warn("Failed to cancel streaming session", { error });
@@ -899,9 +983,7 @@ export class RecordingManager extends EventEmitter {
         // Also send to transcription if we have a session and not terminated
         if (this.currentSessionId && !this.terminationCode) {
           try {
-            const transcriptionService = this.serviceManager.getService(
-              "transcriptionService",
-            );
+            const transcriptionService = this.transcriptionService;
             await this.latchDraftTag();
             await transcriptionService.processStreamingChunk({
               sessionId: this.currentSessionId,
@@ -934,9 +1016,7 @@ export class RecordingManager extends EventEmitter {
     // Stream to transcription (skip if terminated)
     if (!this.terminationCode) {
       try {
-        const transcriptionService = this.serviceManager.getService(
-          "transcriptionService",
-        );
+        const transcriptionService = this.transcriptionService;
         await this.latchDraftTag();
         await transcriptionService.processStreamingChunk({
           sessionId,
@@ -1008,8 +1088,7 @@ export class RecordingManager extends EventEmitter {
         hasAudio: !!audioFilePath,
       });
       try {
-        await this.serviceManager
-          .getService("transcriptionService")
+        await this.transcriptionService
           .saveDismissedTranscription({
             sessionId,
             audioFilePath: audioFilePath || undefined,
@@ -1027,9 +1106,7 @@ export class RecordingManager extends EventEmitter {
     // NORMAL - get transcription and paste
     let result = "";
     try {
-      const transcriptionService = this.serviceManager.getService(
-        "transcriptionService",
-      );
+      const transcriptionService = this.transcriptionService;
       result = await transcriptionService.finalizeSession({
         sessionId,
         audioFilePath: audioFilePath || undefined,
@@ -1139,7 +1216,7 @@ export class RecordingManager extends EventEmitter {
   }
 
   private async hasSpeechModelSelected(): Promise<boolean> {
-    const modelService = this.serviceManager.getService("modelService");
+    const modelService = this.modelService;
     return Boolean(await modelService.getSelectedModel());
   }
 
@@ -1378,9 +1455,7 @@ export class RecordingManager extends EventEmitter {
     // Cancel streaming session if one exists to prevent memory leak and audio bleed
     if (this.currentSessionId) {
       try {
-        const transcriptionService = this.serviceManager.getService(
-          "transcriptionService",
-        );
+        const transcriptionService = this.transcriptionService;
         await transcriptionService.cancelStreamingSession(
           this.currentSessionId,
         );
@@ -1391,7 +1466,7 @@ export class RecordingManager extends EventEmitter {
 
     // Always call stopRecording, conditionally restore system audio and play sounds
     try {
-      const nativeBridge = this.serviceManager.getService("nativeBridge");
+      const nativeBridge = this.nativeBridge;
       await nativeBridge.call("stopRecording", {
         wasMuted: this.systemAudioMuted,
         muteSounds: this.soundsMuted,
@@ -1513,7 +1588,7 @@ export class RecordingManager extends EventEmitter {
     }
     this.draftEnterArmed = armed;
     this.shortcutManager?.setDraftActive(armed);
-    const nativeBridge = this.serviceManager.getService("nativeBridge");
+    const nativeBridge = this.nativeBridge;
     if (nativeBridge) {
       void nativeBridge.setDraftEnterCapture(armed);
     }
@@ -1540,8 +1615,8 @@ export class RecordingManager extends EventEmitter {
     }
 
     try {
-      const nativeBridge = this.serviceManager.getService("nativeBridge");
-      const settingsService = this.serviceManager.getService("settingsService");
+      const nativeBridge = this.nativeBridge;
+      const settingsService = this.settingsService;
       const preferences = await settingsService.getPreferences();
       const preserveClipboard = preferences.preserveClipboard;
 
@@ -1677,8 +1752,7 @@ export class RecordingManager extends EventEmitter {
     // also makes the "skip streaming if terminated" guards treat any late chunk
     // as cancelled, matching the dismissal.
     this.terminationCode = "user_dismissed";
-    this.serviceManager
-      .getService("transcriptionService")
+    this.transcriptionService
       .abortSession(sessionId);
   }
 

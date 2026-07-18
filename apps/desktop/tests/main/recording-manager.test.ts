@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { RecordingManager } from "../../src/main/managers/recording-manager";
 import { RecordingMachineInterpreter } from "../../src/main/managers/recording-machine-interpreter";
-import type { ServiceManager } from "../../src/main/managers/service-manager";
 import type { RecordingState } from "../../src/types/recording";
 import { AppError, ErrorCodes } from "../../src/types/error";
 import type {
@@ -31,9 +30,7 @@ type RecordingManagerInternals = {
 const createRecordingManager = (
   services: Record<string, unknown> = {},
 ): RecordingManager =>
-  new RecordingManager({
-    getService: vi.fn((serviceName: string) => services[serviceName]),
-  } as unknown as ServiceManager);
+  RecordingManager.createForTests(services as never);
 
 const internalsOf = (manager: RecordingManager): RecordingManagerInternals =>
   manager as unknown as RecordingManagerInternals;
