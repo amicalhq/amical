@@ -160,36 +160,6 @@ export const TelemetryServiceLive: Layer.Layer<
   }),
 );
 
-export const RemoteConfigServiceLive: Layer.Layer<
-  RemoteConfigServiceTag,
-  never,
-  AuthServiceTag | SettingsServiceTag | TelemetryServiceTag | AppScopeTag
-> = Layer.effect(
-  RemoteConfigServiceTag,
-  Effect.gen(function* () {
-    const authService = yield* AuthServiceTag;
-    const settingsService = yield* SettingsServiceTag;
-    const telemetryService = yield* TelemetryServiceTag;
-    const appScope = yield* AppScopeTag;
-    const remoteConfigService = new RemoteConfigService(
-      authService,
-      settingsService,
-      telemetryService,
-    );
-    // shutdown() clears the 15-minute refresh interval.
-    yield* addRelease(
-      appScope,
-      "Shutting down remote config service...",
-      "remoteConfigService",
-      () => remoteConfigService.shutdown(),
-    );
-    yield* step(() => remoteConfigService.initialize());
-    logger.main.info("Remote config service initialized");
-    up("remoteConfigService");
-    return remoteConfigService;
-  }),
-);
-
 export const ModelServiceLive: Layer.Layer<
   ModelServiceTag,
   never,
@@ -476,7 +446,7 @@ export const AppLive: Layer.Layer<
       VADService.Live,
       NativeBridgeLive,
       FeatureFlagService.Live,
-      RemoteConfigServiceLive,
+      RemoteConfigService.Live,
       // Converted services own their Live (class-static, colocated with the
       // implementation); this file only composes them.
       HistoryCleanupService.Live,

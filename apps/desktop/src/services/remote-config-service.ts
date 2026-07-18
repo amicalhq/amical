@@ -12,6 +12,15 @@ import type { AuthService } from "./auth-service";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
 import { getApplicationLocale } from "../i18n/application-locale";
+import { Effect, Layer } from "effect";
+import {
+  RemoteConfigServiceTag,
+  AuthServiceTag,
+  SettingsServiceTag,
+  TelemetryServiceTag,
+  AppScopeTag,
+} from "../main/runtime/tags";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const DESKTOP_BACKGROUND_UPDATES_FLAG = "desktop-background-updates";
@@ -52,7 +61,9 @@ export class RemoteConfigService {
   // matches discards its result, so a pre-change fetch can't clobber the reset.
   private generation = 0;
 
-  constructor(
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor(
     authService: AuthService,
     settingsService: SettingsService,
     telemetryService: TelemetryService,
@@ -62,7 +73,42 @@ export class RemoteConfigService {
     this.telemetryService = telemetryService;
   }
 
-  async initialize(): Promise<void> {
+  /**
+   * The service's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    RemoteConfigServiceTag,
+    never,
+    AuthServiceTag | SettingsServiceTag | TelemetryServiceTag | AppScopeTag
+  > = Layer.effect(
+    RemoteConfigServiceTag,
+    Effect.gen(function* () {
+      const authService = yield* AuthServiceTag;
+      const settingsService = yield* SettingsServiceTag;
+      const telemetryService = yield* TelemetryServiceTag;
+      const appScope = yield* AppScopeTag;
+      const service = new RemoteConfigService(
+        authService,
+        settingsService,
+        telemetryService,
+      );
+      // shutdown() clears the 15-minute refresh interval.
+      yield* addRelease(
+        appScope,
+        "Shutting down remote config service...",
+        "remoteConfigService",
+        () => service.shutdown(),
+      );
+      yield* step(() => service.initialize());
+      logger.main.info("Remote config service initialized");
+      up("remoteConfigService");
+      return service;
+    }),
+  );
+
+  private async initialize(): Promise<void> {
     // Load the persisted envelope first (fast, no network).
     const lastFetchedAt = await this.loadPersisted();
 
