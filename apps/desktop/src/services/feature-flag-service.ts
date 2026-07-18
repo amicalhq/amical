@@ -1,4 +1,14 @@
+import { Effect, Layer } from "effect";
+
 import { logger } from "../main/logger";
+import {
+  FeatureFlagServiceTag,
+  PostHogClientTag,
+  SettingsServiceTag,
+  TelemetryServiceTag,
+  AppScopeTag,
+} from "../main/runtime/tags";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 import type { PostHogClient } from "./posthog-client";
 import type { SettingsService } from "./settings-service";
 
@@ -13,12 +23,46 @@ export class FeatureFlagService {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private refreshPromise: Promise<void> | null = null;
 
-  constructor(client: PostHogClient, settingsService: SettingsService) {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor(client: PostHogClient, settingsService: SettingsService) {
     this.client = client;
     this.settingsService = settingsService;
   }
 
-  async initialize(): Promise<void> {
+  /**
+   * The service's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    FeatureFlagServiceTag,
+    never,
+    PostHogClientTag | SettingsServiceTag | TelemetryServiceTag | AppScopeTag
+  > = Layer.effect(
+    FeatureFlagServiceTag,
+    Effect.gen(function* () {
+      const client = yield* PostHogClientTag;
+      const settingsService = yield* SettingsServiceTag;
+      // Ordering-only: telemetry sets the PostHog identity during its init;
+      // flags must not be evaluated before that (old init order steps 5 -> 6).
+      yield* TelemetryServiceTag;
+      const appScope = yield* AppScopeTag;
+      const service = new FeatureFlagService(client, settingsService);
+      yield* addRelease(
+        appScope,
+        "Shutting down feature flag service...",
+        "featureFlagService",
+        () => service.shutdown(),
+      );
+      yield* step(() => service.initialize());
+      logger.main.info("Feature flag service initialized");
+      up("featureFlagService");
+      return service;
+    }),
+  );
+
+  private async initialize(): Promise<void> {
     // Load persisted flags from DB (fast, no network)
     const lastFetchedAt = await this.loadPersistedFlags();
 

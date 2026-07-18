@@ -160,36 +160,6 @@ export const TelemetryServiceLive: Layer.Layer<
   }),
 );
 
-export const FeatureFlagServiceLive: Layer.Layer<
-  FeatureFlagServiceTag,
-  never,
-  PostHogClientTag | SettingsServiceTag | TelemetryServiceTag | AppScopeTag
-> = Layer.effect(
-  FeatureFlagServiceTag,
-  Effect.gen(function* () {
-    const posthogClient = yield* PostHogClientTag;
-    const settingsService = yield* SettingsServiceTag;
-    // Ordering-only: telemetry sets the PostHog identity during its init;
-    // flags must not be evaluated before that (old init order steps 5 -> 6).
-    yield* TelemetryServiceTag;
-    const appScope = yield* AppScopeTag;
-    const featureFlagService = new FeatureFlagService(
-      posthogClient,
-      settingsService,
-    );
-    yield* addRelease(
-      appScope,
-      "Shutting down feature flag service...",
-      "featureFlagService",
-      () => featureFlagService.shutdown(),
-    );
-    yield* step(() => featureFlagService.initialize());
-    logger.main.info("Feature flag service initialized");
-    up("featureFlagService");
-    return featureFlagService;
-  }),
-);
-
 export const RemoteConfigServiceLive: Layer.Layer<
   RemoteConfigServiceTag,
   never,
@@ -505,7 +475,7 @@ export const AppLive: Layer.Layer<
       ModelServiceLive,
       VADService.Live,
       NativeBridgeLive,
-      FeatureFlagServiceLive,
+      FeatureFlagService.Live,
       RemoteConfigServiceLive,
       // Converted services own their Live (class-static, colocated with the
       // implementation); this file only composes them.
