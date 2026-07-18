@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
 import {
@@ -29,9 +30,10 @@ describe("RemoteConfigService", () => {
   // afterEach runs the registered shutdown release (clears the refresh
   // interval).
   const createService = async (persisted?: PersistedRemoteConfig) => {
-    const authService = {
+    // The Live subscribes to auth events, so the stub must be an emitter.
+    const authService = Object.assign(new EventEmitter(), {
       getIdToken: vi.fn().mockResolvedValue(null),
-    } as unknown as AuthService;
+    }) as unknown as AuthService;
     const settingsService = {
       getRemoteConfig: vi.fn().mockResolvedValue(persisted),
       setRemoteConfig: vi.fn().mockResolvedValue(undefined),
@@ -56,8 +58,22 @@ describe("RemoteConfigService", () => {
     return {
       service: Context.get(ctx, RemoteConfigServiceTag),
       settingsService,
+      authService,
     };
   };
+
+  // A persisted envelope that is fresh and well-formed, so building the Live
+  // triggers no startup refresh — auth-event tests can then attribute every
+  // fetch to the event under test.
+  const freshPersisted = (): PersistedRemoteConfig =>
+    ({
+      config: {
+        version: 1,
+        surfaces: [],
+        flags: { [DESKTOP_BACKGROUND_UPDATES_FLAG]: true },
+      },
+      lastFetchedAt: new Date().toISOString(),
+    }) as unknown as PersistedRemoteConfig;
 
   beforeEach(() => {
     process.env.CORE_API_URL = "https://core.test";
@@ -181,6 +197,57 @@ describe("RemoteConfigService", () => {
     expect(service.getConfig().flags[DESKTOP_BACKGROUND_UPDATES_FLAG]).toBe(
       true,
     );
+  });
+
+  it("resets on every logged-out event", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+    vi.stubGlobal("fetch", fetchMock);
+    const { authService } = await createService(freshPersisted());
+    const emitter = authService as unknown as EventEmitter;
+
+    emitter.emit("logged-out");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    // EVERY, not just the first — a once()-style subscription must fail here.
+    emitter.emit("logged-out");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("resets on authenticated only when the token carried a subject", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+    vi.stubGlobal("fetch", fetchMock);
+    const { authService } = await createService(freshPersisted());
+    const emitter = authService as unknown as EventEmitter;
+
+    emitter.emit("authenticated", { isAuthenticated: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    emitter.emit("authenticated", {
+      isAuthenticated: true,
+      userInfo: { sub: "user-1" },
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+  });
+
+  it("drops the auth subscriptions when the scope closes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+    vi.stubGlobal("fetch", fetchMock);
+    const { authService } = await createService(freshPersisted());
+    const emitter = authService as unknown as EventEmitter;
+
+    await closeScope!();
+    closeScope = null;
+
+    emitter.emit("logged-out");
+    emitter.emit("authenticated", {
+      isAuthenticated: true,
+      userInfo: { sub: "user-1" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(emitter.listenerCount("logged-out")).toBe(0);
+    expect(emitter.listenerCount("authenticated")).toBe(0);
   });
 
   it("returns to the true default while identity config is refetched", async () => {

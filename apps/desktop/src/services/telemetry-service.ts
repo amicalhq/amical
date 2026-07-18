@@ -1,15 +1,19 @@
 import { app } from "electron";
+import { EventEmitter } from "events";
 import { logger } from "../main/logger";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Scope } from "effect";
 import {
   TelemetryServiceTag,
   PostHogClientTag,
   SettingsServiceTag,
   ServiceLocatorTag,
+  AuthServiceTag,
+  AppScopeTag,
 } from "../main/runtime/tags";
 import { step, up } from "../main/runtime/layer-helpers";
 import type { SettingsService } from "./settings-service";
 import type { PostHogClient, SystemInfo } from "./posthog-client";
+import type { AuthState } from "./auth-service";
 import type {
   OnboardingStartedEvent,
   OnboardingScreenViewedEvent,
@@ -50,7 +54,12 @@ export interface TranscriptionMetrics {
   vocabulary_size?: number;
 }
 
-export class TelemetryService {
+/**
+ * Emits "identity-changed" after identifyUser()/resetUser() so downstream
+ * identity consumers (feature flags) can react without auth or telemetry
+ * knowing about them.
+ */
+export class TelemetryService extends EventEmitter {
   private client: PostHogClient;
   private enabled: boolean = false;
   private initialized: boolean = false;
@@ -60,30 +69,63 @@ export class TelemetryService {
   // Construction goes through Live: the graph is the only thing that may
   // build this service, which also makes single-construction structural.
   private constructor(client: PostHogClient, settingsService: SettingsService) {
+    super();
     this.client = client;
     this.settingsService = settingsService;
   }
 
   /**
    * The service's layer. Registers the early ref (the facade's nullable
-   * accessor serves crash telemetry mid-build). Composed into AppLive by
-   * src/main/runtime/layers.ts.
+   * accessor serves crash telemetry mid-build) and subscribes to the auth
+   * events that drive identity: identify on "authenticated" (when the token
+   * carried a subject), reset on "logged-out" (only if identified — the
+   * reset gate keeps "identity-changed" meaning an ACTUAL change). The
+   * subscriptions are removed when the app scope closes: the auth instance
+   * is a process-wide static that outlives the graph. Composed into AppLive
+   * by src/main/runtime/layers.ts.
    */
   static readonly Live: Layer.Layer<
     TelemetryServiceTag,
     never,
-    PostHogClientTag | SettingsServiceTag | ServiceLocatorTag
+    | PostHogClientTag
+    | SettingsServiceTag
+    | ServiceLocatorTag
+    | AuthServiceTag
+    | AppScopeTag
   > = Layer.effect(
     TelemetryServiceTag,
     Effect.gen(function* () {
       const locator = yield* ServiceLocatorTag;
       const client = yield* PostHogClientTag;
       const settingsService = yield* SettingsServiceTag;
+      const authService = yield* AuthServiceTag;
+      const appScope = yield* AppScopeTag;
       const service = new TelemetryService(client, settingsService);
       yield* Effect.sync(() =>
         locator.registerEarlyService("telemetryService", service),
       );
       yield* step(() => service.initialize());
+      const onAuthenticated = (authState: AuthState) => {
+        if (!authState.userInfo?.sub) return;
+        service.identifyUser(
+          authState.userInfo.sub,
+          authState.userInfo.email,
+          authState.userInfo.name,
+        );
+      };
+      const onLoggedOut = () => {
+        if (!service.isUserIdentified()) return;
+        service.resetUser();
+      };
+      authService.on("authenticated", onAuthenticated);
+      authService.on("logged-out", onLoggedOut);
+      yield* Scope.addFinalizer(
+        appScope,
+        Effect.sync(() => {
+          authService.off("authenticated", onAuthenticated);
+          authService.off("logged-out", onLoggedOut);
+        }),
+      );
       logger.main.info("Telemetry service initialized");
       up("telemetryService");
       return service;
@@ -250,6 +292,7 @@ export class TelemetryService {
   identifyUser(userId: string, email?: string, name?: string): void {
     this.client.setIdentifiedUser(userId, email, name);
     this.sendIdentifyForCurrentUser();
+    this.emit("identity-changed");
   }
 
   /**
@@ -257,6 +300,7 @@ export class TelemetryService {
    */
   resetUser(): void {
     this.client.clearIdentifiedUser();
+    this.emit("identity-changed");
   }
 
   isUserIdentified(): boolean {

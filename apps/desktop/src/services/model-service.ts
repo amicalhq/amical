@@ -31,7 +31,7 @@ import {
   OpenAICompatibleModel,
 } from "../types/providers";
 import { SettingsService } from "./settings-service";
-import { AuthService } from "./auth-service";
+import type { AuthService } from "./auth-service";
 import { logger } from "../main/logger";
 import { Effect, Layer } from "effect";
 import {
@@ -168,15 +168,20 @@ class ModelService extends EventEmitter {
   private state: ModelManagerState;
   private modelsDirectory: string;
   private settingsService: SettingsService;
+  private authService: AuthService;
 
   // Construction goes through Live: the graph is the only thing that may
   // build this service, which also makes single-construction structural.
-  private constructor(settingsService: SettingsService) {
+  private constructor(
+    settingsService: SettingsService,
+    authService: AuthService,
+  ) {
     super();
     this.state = {
       activeDownloads: new Map(),
     };
     this.settingsService = settingsService;
+    this.authService = authService;
 
     // Create models directory in app data
     this.modelsDirectory = path.join(app.getPath("userData"), "models");
@@ -229,15 +234,15 @@ class ModelService extends EventEmitter {
     ModelServiceTag,
     Effect.gen(function* () {
       const settingsService = yield* SettingsServiceTag;
-      // Ordering-only: model init reaches AuthService.getInstance() directly
-      // (cloud-model auth check) — pin the hidden edge.
-      yield* AuthServiceTag;
+      // Real dependency: init's cloud-model auth check, setSelectedModel's
+      // auth gate, and the logged-out auto-switch listener.
+      const authService = yield* AuthServiceTag;
       // Ordering-only: model init can write settings sections (selection
       // normalization); keep it after telemetry's settings reads as in the
       // old sequential order (steps 5 -> 8).
       yield* TelemetryServiceTag;
       const appScope = yield* AppScopeTag;
-      const service = new ModelService(settingsService);
+      const service = new ModelService(settingsService, authService);
       yield* addRelease(
         appScope,
         "Cleaning up model downloads...",
@@ -286,8 +291,7 @@ class ModelService extends EventEmitter {
 
         // Check if it's a cloud model and user is authenticated
         if (availableModel?.setup === "cloud") {
-          const authService = AuthService.getInstance();
-          const isAuthenticated = await authService.isAuthenticated();
+          const isAuthenticated = await this.authService.isAuthenticated();
 
           if (!isAuthenticated) {
             // Cloud model selected but not authenticated - auto-switch to local model
@@ -386,9 +390,7 @@ class ModelService extends EventEmitter {
 
   // Setup auth event listeners to handle logout
   private setupAuthEventListeners(): void {
-    const authService = AuthService.getInstance();
-
-    authService.on("logged-out", async () => {
+    this.authService.on("logged-out", async () => {
       try {
         const selectedModelId = await this.getSelectedModel();
 
@@ -929,8 +931,7 @@ class ModelService extends EventEmitter {
 
       if (availableModel?.setup === "cloud") {
         // Cloud model - check authentication
-        const authService = AuthService.getInstance();
-        const isAuthenticated = await authService.isAuthenticated();
+        const isAuthenticated = await this.authService.isAuthenticated();
 
         if (!isAuthenticated) {
           throw new Error("Authentication required for cloud models");

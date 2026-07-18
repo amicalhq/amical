@@ -3,16 +3,14 @@
  *
  * Converted services own their Live layer (a class-static `Live` colocated
  * with the implementation — see e.g. services/history-cleanup-service.ts);
- * this file only composes them into AppLive, plus the four wrappers that
+ * this file only composes them into AppLive, plus the two wrappers that
  * intentionally remain central:
  *
- * - AuthServiceLive / OnboardingServiceLive: module singletons
- *   (getInstance) pending the statics-dissolution phase.
  * - NativeBridgeLive: tests vi.mock the native-bridge-service MODULE with a
  *   spawn-less fake class that has no Live static, so the layer must live
  *   outside that module (the mock boundary).
- * - RecordingManagerLive: constructor still takes the ServiceManager
- *   locator; converts in the windowManager/tRPC de-facade phase (knot 1).
+ * - TrpcHandlerLive: composition-only glue (router + context over the
+ *   locator), not a service module.
  *
  * THE LOAD-BEARING MECHANICS (apply to every Live, converted or central):
  *
@@ -34,12 +32,12 @@
  *
  *   ServiceLocator + AppScope (Layer.succeed at build)   Auth (Layer.sync)
  *        │                                                 │
- *   Settings ──► PostHog ──► Telemetry                     │
+ *   Settings ──► PostHog ──► Telemetry◄────────────────────┤
  *      │  │         │        │  │  │ │                     │
  *      │  │  ┌──────┴─────┬──┤  │  │ └───────┬─────────────┤
  *      │  │  ▼            ▼  ▼  ▼  ▼         ▼             │
  *      │  │ FeatureFlag  RemoteConfig◄───────┼─────────────┤
- *      │  │ Model◄╌╌(auth backdoor)╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌┘
+ *      │  │ Model◄───────────────────────────┼─────────────┘
  *      │  │ VAD   NativeBridge   HistoryCleanup   (mid-tier: concurrent)
  *      │  │  │     │    │
  *      │  └──┼─────┼────┼────► Onboarding (◄ Settings, Telemetry, Model)
@@ -52,6 +50,12 @@
  *                │                    │
  *                ▼                    ▼
  *          ShortcutManager      AutoUpdater (◄ Settings, Telemetry, RC, Recording)
+ *
+ * Identity flows over events, not calls: auth emits "authenticated" /
+ * "logged-out"; telemetry (identify/reset), remote config (reset), and model
+ * (cloud auto-switch) subscribe in their Lives, and feature flags subscribe
+ * to telemetry's "identity-changed" so a refresh fires only on an ACTUAL
+ * identity change.
  *
  * Finalizer order at scope close is the reverse of registration order, and
  * registration happens at construction — dependents always release before
@@ -90,52 +94,13 @@ import { router } from "../../trpc/router";
 import { createContext } from "../../trpc/context";
 
 import {
-  SettingsServiceTag,
-  AuthServiceTag,
   TelemetryServiceTag,
-  ModelServiceTag,
-  OnboardingServiceTag,
   NativeBridgeTag,
   TrpcHandlerTag,
   ServiceLocatorTag,
   AppScopeTag,
   type AppServices,
 } from "./tags";
-
-export const AuthServiceLive: Layer.Layer<AuthServiceTag> = Layer.sync(
-  AuthServiceTag,
-  () => {
-    const authService = AuthService.getInstance();
-    logger.main.info("Auth service initialized");
-    up("authService");
-    return authService;
-  },
-);
-
-export const OnboardingServiceLive: Layer.Layer<
-  OnboardingServiceTag,
-  never,
-  SettingsServiceTag | TelemetryServiceTag | ModelServiceTag | ServiceLocatorTag
-> = Layer.effect(
-  OnboardingServiceTag,
-  Effect.gen(function* () {
-    const locator = yield* ServiceLocatorTag;
-    const settingsService = yield* SettingsServiceTag;
-    const telemetryService = yield* TelemetryServiceTag;
-    const modelService = yield* ModelServiceTag;
-    const onboardingService = OnboardingService.getInstance(
-      settingsService,
-      telemetryService,
-      modelService,
-    );
-    yield* Effect.sync(() =>
-      locator.registerEarlyService("onboardingService", onboardingService),
-    );
-    logger.main.info("Onboarding service initialized");
-    up("onboardingService");
-    return onboardingService;
-  }),
-);
 
 export const NativeBridgeLive: Layer.Layer<
   NativeBridgeTag,
@@ -208,7 +173,7 @@ export const AppLive: Layer.Layer<
   Layer.provideMerge(WindowManager.Live),
   Layer.provideMerge(TrpcHandlerLive),
   Layer.provideMerge(TranscriptionService.Live),
-  Layer.provideMerge(OnboardingServiceLive),
+  Layer.provideMerge(OnboardingService.Live),
   Layer.provideMerge(
     Layer.mergeAll(
       ModelService.Live,
@@ -224,5 +189,5 @@ export const AppLive: Layer.Layer<
   Layer.provideMerge(TelemetryService.Live),
   Layer.provideMerge(PostHogClient.Live),
   Layer.provideMerge(SettingsService.Live),
-  Layer.provideMerge(AuthServiceLive),
+  Layer.provideMerge(AuthService.Live),
 );

@@ -1,10 +1,12 @@
 import { shell } from "electron";
 import { randomBytes, createHash } from "crypto";
+import { Layer } from "effect";
 import { logger } from "../main/logger";
 import { EventEmitter } from "events";
 import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
 import { getAmicalClientHeaders, getUserAgent } from "../utils/http-client";
-import { ServiceManager } from "../main/managers/service-manager";
+import { AuthServiceTag } from "../main/runtime/tags";
+import { up } from "../main/runtime/layer-helpers";
 
 interface AuthConfig {
   clientId: string;
@@ -76,12 +78,35 @@ export class AuthService extends EventEmitter {
     });
   }
 
+  /**
+   * Static bridge for callers outside the layer graph — today only
+   * amical-cloud-provider's warmup(), which runs long after boot. Everything
+   * else resolves AuthServiceTag; deleting this accessor (and the static) is
+   * the follow-up phase once the provider takes auth as a real dependency.
+   */
   static getInstance(): AuthService {
     if (!AuthService.instance) {
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
   }
+
+  /**
+   * The service's layer. Identity side-effects on auth changes (telemetry
+   * identify/reset, feature-flag refresh, remote-config reset) are NOT
+   * called from here or from this class — the consumers subscribe to the
+   * "authenticated" / "logged-out" events in their own Live layers. Composed
+   * into AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<AuthServiceTag> = Layer.sync(
+    AuthServiceTag,
+    () => {
+      const authService = AuthService.getInstance();
+      logger.main.info("Auth service initialized");
+      up("authService");
+      return authService;
+    },
+  );
 
   /**
    * Generate PKCE challenge and verifier
@@ -202,23 +227,11 @@ export class AuthService extends EventEmitter {
       // Save to database
       await updateSettingsSection("auth", authState);
 
-      // Identify user in telemetry
-      if (authState.userInfo?.sub) {
-        const telemetryService =
-          ServiceManager.getInstance().getService("telemetryService");
-        telemetryService.identifyUser(
-          authState.userInfo.sub,
-          authState.userInfo.email,
-          authState.userInfo.name,
-        );
-        this.refreshFeatureFlagsAfterIdentityChange();
-        this.resetRemoteConfigAfterIdentityChange();
-      }
-
       // Clear pending auth
       this.pendingAuth = null;
 
-      // Emit success event
+      // Emit success event. Identity consumers (telemetry identify, feature
+      // flag refresh, remote config reset) subscribe in their Live layers.
       this.emit("authenticated", authState);
 
       logger.main.info("Authentication successful", {
@@ -286,20 +299,10 @@ export class AuthService extends EventEmitter {
    */
   async logout(): Promise<void> {
     await updateSettingsSection("auth", undefined);
-    try {
-      const telemetryService =
-        ServiceManager.getInstance().getService("telemetryService");
-      if (telemetryService.isUserIdentified()) {
-        telemetryService.resetUser();
-        this.refreshFeatureFlagsAfterIdentityChange();
-      }
-    } catch {
-      // Logout can happen during startup token validation before services are ready.
-    }
-    // Remote config is functional config, independent of telemetry/identity, so
-    // refresh on every logout: it re-fetches anonymously and the server drops any
-    // per-user surfaces. Has its own readiness guard.
-    this.resetRemoteConfigAfterIdentityChange();
+    // Identity consumers (telemetry reset, feature flag refresh, remote
+    // config reset, model auto-switch) subscribe in their Live layers. A
+    // logout during startup token validation fires before those listeners
+    // exist and is a no-op for them, as before.
     this.emit("logged-out");
     logger.main.info("User logged out");
   }
@@ -317,35 +320,6 @@ export class AuthService extends EventEmitter {
     }
 
     return true;
-  }
-
-  private refreshFeatureFlagsAfterIdentityChange(): void {
-    try {
-      const featureFlagService =
-        ServiceManager.getInstance().getService("featureFlagService");
-      featureFlagService.refresh().catch((error) => {
-        logger.main.warn("Feature flag refresh after auth change failed", {
-          error,
-        });
-      });
-    } catch {
-      // Auth can change before feature flag services are ready.
-    }
-  }
-
-  private resetRemoteConfigAfterIdentityChange(): void {
-    try {
-      const remoteConfigService = ServiceManager.getInstance().getService(
-        "remoteConfigService",
-      );
-      remoteConfigService.resetForIdentityChange().catch((error) => {
-        logger.main.warn("Remote config reset after auth change failed", {
-          error,
-        });
-      });
-    } catch {
-      // Auth can change before the remote config service is ready.
-    }
   }
 
   /**

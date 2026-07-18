@@ -8,11 +8,11 @@ import {
   getCoreApiUrl,
   getUserAgent,
 } from "../utils/http-client";
-import type { AuthService } from "./auth-service";
+import type { AuthService, AuthState } from "./auth-service";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
 import { getApplicationLocale } from "../i18n/application-locale";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Scope } from "effect";
 import {
   RemoteConfigServiceTag,
   AuthServiceTag,
@@ -102,6 +102,32 @@ export class RemoteConfigService {
         () => service.shutdown(),
       );
       yield* step(() => service.initialize());
+      // Refetch on identity changes: sign-in (when the token carried a
+      // subject), and EVERY logout — remote config is functional config,
+      // independent of telemetry identity, so a logout always re-fetches
+      // anonymously and the server drops any per-user surfaces. The
+      // subscriptions come off when the app scope closes: the auth instance
+      // is a process-wide static that outlives the graph.
+      const resetForAuthChange = () => {
+        service.resetForIdentityChange().catch((error) => {
+          logger.main.warn("Remote config reset after auth change failed", {
+            error,
+          });
+        });
+      };
+      const onAuthenticated = (authState: AuthState) => {
+        if (!authState.userInfo?.sub) return;
+        resetForAuthChange();
+      };
+      authService.on("authenticated", onAuthenticated);
+      authService.on("logged-out", resetForAuthChange);
+      yield* Scope.addFinalizer(
+        appScope,
+        Effect.sync(() => {
+          authService.off("authenticated", onAuthenticated);
+          authService.off("logged-out", resetForAuthChange);
+        }),
+      );
       logger.main.info("Remote config service initialized");
       up("remoteConfigService");
       return service;

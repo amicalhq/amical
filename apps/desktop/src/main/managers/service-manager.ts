@@ -102,7 +102,8 @@ const TAGS = {
  * container it replaced — consumers, the tRPC context, and the test harness
  * see identical behavior, including:
  * - getService() throwing "ServiceManager not initialized..." until the FULL
- *   graph has built (AuthService's startup-logout guards rely on the throw);
+ *   graph has built (the lazy tRPC context's failed-init tolerance relies on
+ *   the throw);
  * - a failed initialize() leaving the partial graph ALIVE (no rollback) so
  *   app.ts's crash path can read getTelemetryService() and flush PostHog,
  *   with the ORIGINAL Error (never a FiberFailure) rethrown to the dialog;
@@ -148,7 +149,7 @@ export class ServiceManager {
 
     this.context = exit.value;
     // Flips only after the FULL graph builds — preserving the pre-ready
-    // throw window that AuthService's guards depend on.
+    // throw window the lazy tRPC context depends on.
     this.isInitialized = true;
     logger.main.info("Services initialized successfully");
   }

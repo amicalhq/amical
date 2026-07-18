@@ -28,7 +28,7 @@ const createService = (persistedOnboarding: Record<string, unknown> | null) => {
     getDownloadedModels: vi.fn(async () => ({ "whisper-medium": {} })),
     setSelectedModel: vi.fn(async () => undefined),
   };
-  const service = new OnboardingService(
+  const service = OnboardingService.createForTests(
     settingsService as unknown as SettingsService,
     telemetryService as unknown as TelemetryService,
     modelService as unknown as ModelService,

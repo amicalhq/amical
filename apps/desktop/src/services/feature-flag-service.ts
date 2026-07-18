@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Scope } from "effect";
 
 import { logger } from "../main/logger";
 import {
@@ -44,9 +44,10 @@ export class FeatureFlagService {
     Effect.gen(function* () {
       const client = yield* PostHogClientTag;
       const settingsService = yield* SettingsServiceTag;
-      // Ordering-only: telemetry sets the PostHog identity during its init;
-      // flags must not be evaluated before that (old init order steps 5 -> 6).
-      yield* TelemetryServiceTag;
+      // Telemetry sets the PostHog identity during its init; flags must not
+      // be evaluated before that (old init order steps 5 -> 6). It is also
+      // the identity-change signal subscribed to below.
+      const telemetryService = yield* TelemetryServiceTag;
       const appScope = yield* AppScopeTag;
       const service = new FeatureFlagService(client, settingsService);
       yield* addRelease(
@@ -56,6 +57,23 @@ export class FeatureFlagService {
         () => service.shutdown(),
       );
       yield* step(() => service.initialize());
+      // Re-evaluate flags whenever the telemetry identity ACTUALLY changed
+      // (identify after sign-in, reset after a signed-in logout) — the gate
+      // lives in telemetry's auth subscription.
+      const onIdentityChanged = () => {
+        service.refresh().catch((error) => {
+          logger.main.warn("Feature flag refresh after auth change failed", {
+            error,
+          });
+        });
+      };
+      telemetryService.on("identity-changed", onIdentityChanged);
+      yield* Scope.addFinalizer(
+        appScope,
+        Effect.sync(() =>
+          telemetryService.off("identity-changed", onIdentityChanged),
+        ),
+      );
       logger.main.info("Feature flag service initialized");
       up("featureFlagService");
       return service;

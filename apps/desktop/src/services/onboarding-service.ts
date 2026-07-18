@@ -1,6 +1,15 @@
 import { EventEmitter } from "events";
 import { systemPreferences } from "electron";
+import { Effect, Layer } from "effect";
 import { logger } from "../main/logger";
+import {
+  OnboardingServiceTag,
+  SettingsServiceTag,
+  TelemetryServiceTag,
+  ModelServiceTag,
+  ServiceLocatorTag,
+} from "../main/runtime/tags";
+import { up } from "../main/runtime/layer-helpers";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
 import type { ModelService } from "./model-service";
@@ -39,13 +48,14 @@ type OnboardingStateDb = {
 };
 
 export class OnboardingService extends EventEmitter {
-  private static instance: OnboardingService | null = null;
   private settingsService: SettingsService;
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private isOnboardingInProgress = false;
 
-  constructor(
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor(
     settingsService: SettingsService,
     telemetryService: TelemetryService,
     modelService: ModelService,
@@ -56,19 +66,53 @@ export class OnboardingService extends EventEmitter {
     this.modelService = modelService;
   }
 
-  static getInstance(
-    settingsService: SettingsService,
-    telemetryService: TelemetryService,
-    modelService: ModelService,
-  ): OnboardingService {
-    if (!OnboardingService.instance) {
-      OnboardingService.instance = new OnboardingService(
+  /**
+   * The service's layer. Registers the early ref (the facade's nullable
+   * accessor serves the onboarding router mid-init and on a failed boot).
+   * Composed into AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    OnboardingServiceTag,
+    never,
+    | SettingsServiceTag
+    | TelemetryServiceTag
+    | ModelServiceTag
+    | ServiceLocatorTag
+  > = Layer.effect(
+    OnboardingServiceTag,
+    Effect.gen(function* () {
+      const locator = yield* ServiceLocatorTag;
+      const settingsService = yield* SettingsServiceTag;
+      const telemetryService = yield* TelemetryServiceTag;
+      const modelService = yield* ModelServiceTag;
+      const onboardingService = new OnboardingService(
         settingsService,
         telemetryService,
         modelService,
       );
-    }
-    return OnboardingService.instance;
+      yield* Effect.sync(() =>
+        locator.registerEarlyService("onboardingService", onboardingService),
+      );
+      logger.main.info("Onboarding service initialized");
+      up("onboardingService");
+      return onboardingService;
+    }),
+  );
+
+  /**
+   * Test-only escape hatch: a raw instance for unit tests that drive the
+   * service with fakes directly. Production construction goes through Live.
+   */
+  static createForTests(
+    settingsService: SettingsService,
+    telemetryService: TelemetryService,
+    modelService: ModelService,
+  ): OnboardingService {
+    return new OnboardingService(
+      settingsService,
+      telemetryService,
+      modelService,
+    );
   }
 
   /**
