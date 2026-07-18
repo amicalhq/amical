@@ -48,6 +48,8 @@ import {
   RecordingManagerTag,
   ShortcutManagerTag,
   AutoUpdaterServiceTag,
+  TrpcHandlerTag,
+  WindowManagerTag,
   ServiceLocatorTag,
   type AppServices,
 } from "../../src/main/runtime/tags";
@@ -81,6 +83,7 @@ const TAGS_BY_NAME: Record<string, Context.Tag<never, never> | undefined> = {
   vadService: VadServiceTag as never,
   recordingManager: RecordingManagerTag as never,
   shortcutManager: ShortcutManagerTag as never,
+  windowManager: WindowManagerTag as never,
   featureFlagService: FeatureFlagServiceTag as never,
   remoteConfigService: RemoteConfigServiceTag as never,
   posthogClient: PostHogClientTag as never,
@@ -102,7 +105,6 @@ describe("app layer graph (pre-cutover)", () => {
     stubLocator = {
       registerEarlyService: vi.fn(),
       getService: vi.fn((name: string) => {
-        if (name === "windowManager") return null; // facade slot, silent null
         const tag = TAGS_BY_NAME[name];
         if (!builtCtx || !tag) {
           throw new Error(
@@ -161,6 +163,9 @@ describe("app layer graph (pre-cutover)", () => {
     expect(Context.get(ctx, RecordingManagerTag)).toBeTruthy();
     expect(Context.get(ctx, ShortcutManagerTag)).toBeTruthy();
     expect(Context.get(ctx, AutoUpdaterServiceTag)).toBeTruthy();
+    // Knot 1: the tRPC handler and WindowManager are graph services.
+    expect(Context.get(ctx, TrpcHandlerTag)).toBeTruthy();
+    expect(Context.get(ctx, WindowManagerTag)).toBeTruthy();
     expect(Context.get(ctx, ServiceLocatorTag)).toBe(stubLocator);
   });
 

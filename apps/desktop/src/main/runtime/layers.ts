@@ -84,6 +84,10 @@ import { TranscriptionService } from "../../services/transcription-service";
 import { RecordingManager } from "../managers/recording-manager";
 import { ShortcutManager } from "../managers/shortcut-manager";
 import { AutoUpdaterService } from "../services/auto-updater";
+import { WindowManager } from "../core/window-manager";
+import { createIPCHandler } from "electron-trpc-experimental/main";
+import { router } from "../../trpc/router";
+import { createContext } from "../../trpc/context";
 
 import {
   SettingsServiceTag,
@@ -94,6 +98,7 @@ import {
   NativeBridgeTag,
   TranscriptionServiceTag,
   RecordingManagerTag,
+  TrpcHandlerTag,
   ServiceLocatorTag,
   AppScopeTag,
   type AppServices,
@@ -196,6 +201,31 @@ export const RecordingManagerLive: Layer.Layer<
 );
 
 /**
+ * The tRPC IPC handler as a graph service. Context resolution is lazy (per
+ * property access through the locator), so building the handler mid-graph is
+ * safe: no renderer can call before a window exists, and windows are created
+ * by AppManager only after the full build.
+ */
+export const TrpcHandlerLive: Layer.Layer<
+  TrpcHandlerTag,
+  never,
+  ServiceLocatorTag
+> = Layer.effect(
+  TrpcHandlerTag,
+  Effect.gen(function* () {
+    const locator = yield* ServiceLocatorTag;
+    const handler = createIPCHandler({
+      router,
+      windows: [],
+      createContext: async () => createContext(locator),
+    });
+    logger.main.info("tRPC handler initialized");
+    up("trpcHandler");
+    return handler;
+  }),
+);
+
+/**
  * The composed app graph. Requires ServiceLocatorTag and AppScopeTag
  * (provided at build time by app-runtime.ts). Independent branches build
  * CONCURRENTLY — ordering is expressed exclusively through the tag
@@ -211,6 +241,8 @@ export const AppLive: Layer.Layer<
   ServiceLocatorTag | AppScopeTag
 > = Layer.mergeAll(ShortcutManager.Live, AutoUpdaterService.Live).pipe(
   Layer.provideMerge(RecordingManagerLive),
+  Layer.provideMerge(WindowManager.Live),
+  Layer.provideMerge(TrpcHandlerLive),
   Layer.provideMerge(TranscriptionService.Live),
   Layer.provideMerge(OnboardingServiceLive),
   Layer.provideMerge(

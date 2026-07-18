@@ -24,6 +24,17 @@ process.env.POSTHOG_API_KEY ??= "test-posthog-key";
 process.env.TELEMETRY_ENABLED ??= "true";
 process.env.FEEDBACK_SURVEY_ID ??= "test-survey-id";
 
+// Forge's vite plugin defines these window-entry globals in real builds;
+// under vitest they'd be bare ReferenceErrors the first time a window class
+// is constructed (WindowManager is a graph service since knot 1). Values are
+// never dereferenced in tests — windows are mocked — only read.
+const g = globalThis as Record<string, unknown>;
+g.MAIN_WINDOW_VITE_DEV_SERVER_URL ??= "";
+g.MAIN_WINDOW_VITE_NAME ??= "main_window";
+g.NOTES_WIDGET_WINDOW_VITE_NAME ??= "notes_widget_window";
+g.ONBOARDING_WINDOW_VITE_NAME ??= "onboarding_window";
+g.WIDGET_WINDOW_VITE_NAME ??= "widget_window";
+
 // Global test database instance - will be set by each test
 let currentTestDb: any = null;
 

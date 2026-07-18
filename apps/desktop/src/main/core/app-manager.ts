@@ -5,9 +5,6 @@ import { WindowManager } from "./window-manager";
 import { setupApplicationMenu } from "../menu";
 import { ServiceManager } from "../managers/service-manager";
 import { TrayManager } from "../managers/tray-manager";
-import { createIPCHandler } from "electron-trpc-experimental/main";
-import { router } from "../../trpc/router";
-import { createContext } from "../../trpc/context";
 import type { OnboardingService } from "../../services/onboarding-service";
 import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
@@ -23,7 +20,6 @@ export class AppManager {
   private windowManager!: WindowManager;
   private serviceManager: ServiceManager;
   private trayManager: TrayManager;
-  private trpcHandler!: ReturnType<typeof createIPCHandler>;
 
   constructor() {
     this.serviceManager = ServiceManager.getInstance();
@@ -78,20 +74,10 @@ export class AppManager {
     const telemetryService = this.serviceManager.getService("telemetryService");
     telemetryService.trackAppLaunch();
 
-    // Initialize tRPC handler (services must be ready first)
-    this.trpcHandler = createIPCHandler({
-      router,
-      windows: [],
-      createContext: async () => createContext(this.serviceManager),
-    });
-    logger.main.info("tRPC handler initialized");
-
-    // Create WindowManager now that all deps are ready
+    // The tRPC handler and WindowManager are graph services now; window
+    // CREATION (below) stays here so window timing is unchanged.
+    this.windowManager = this.serviceManager.getService("windowManager");
     const settingsService = this.serviceManager.getService("settingsService");
-    this.windowManager = new WindowManager(settingsService, this.trpcHandler);
-
-    // Register WindowManager with ServiceManager for getService("windowManager")
-    this.serviceManager.setWindowManager(this.windowManager);
 
     // Get onboarding service and subscribe to lifecycle events
     const onboardingService =

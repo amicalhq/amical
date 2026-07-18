@@ -18,6 +18,7 @@ import {
   RecordingManagerTag,
   ShortcutManagerTag,
   AutoUpdaterServiceTag,
+  WindowManagerTag,
   type AppServices,
 } from "../runtime/tags";
 
@@ -69,8 +70,7 @@ export interface EarlyServiceRefs {
   onboardingService?: OnboardingService;
 }
 
-// ServiceMap keys backed by the layer graph. windowManager is deliberately
-// absent (it is the late-bound slot below), and historyCleanupService has a
+// ServiceMap keys backed by the layer graph. historyCleanupService has a
 // layer but no ServiceMap entry — lifecycle-only, unreachable via
 // getService(), exactly as in the old container.
 const TAGS = {
@@ -87,8 +87,9 @@ const TAGS = {
   autoUpdaterService: AutoUpdaterServiceTag,
   recordingManager: RecordingManagerTag,
   shortcutManager: ShortcutManagerTag,
+  windowManager: WindowManagerTag,
   onboardingService: OnboardingServiceTag,
-} as const satisfies Record<Exclude<keyof ServiceMap, "windowManager">, unknown>;
+} as const satisfies Record<keyof ServiceMap, unknown>;
 
 /**
  * Manages service initialization and lifecycle.
@@ -102,8 +103,6 @@ const TAGS = {
  * see identical behavior, including:
  * - getService() throwing "ServiceManager not initialized..." until the FULL
  *   graph has built (AuthService's startup-logout guards rely on the throw);
- * - windowManager being a silent-null late-bound slot until AppManager calls
- *   setWindowManager();
  * - a failed initialize() leaving the partial graph ALIVE (no rollback) so
  *   app.ts's crash path can read getTelemetryService() and flush PostHog,
  *   with the ORIGINAL Error (never a FiberFailure) rethrown to the dialog;
@@ -116,7 +115,6 @@ export class ServiceManager {
 
   private scope: Scope.CloseableScope | null = null;
   private context: Context.Context<AppServices> | null = null;
-  private windowManager: WindowManager | null = null;
   private earlyRefs: EarlyServiceRefs = {};
 
   registerEarlyService<K extends keyof EarlyServiceRefs>(
@@ -166,12 +164,7 @@ export class ServiceManager {
       );
     }
 
-    if (serviceName === "windowManager") {
-      // Late-bound slot: silent null until setWindowManager(), as always.
-      return this.windowManager as ServiceMap[K];
-    }
-
-    const tag = TAGS[serviceName as Exclude<keyof ServiceMap, "windowManager">];
+    const tag = TAGS[serviceName];
     // Nullable tags (nativeBridge, transcriptionService) are cast into
     // ServiceMap's non-null lie exactly as the old `!` block did — consumers'
     // existing falsy guards carry the safety.
@@ -221,8 +214,4 @@ export class ServiceManager {
     ServiceManager.instance = null;
   }
 
-  setWindowManager(windowManager: WindowManager): void {
-    this.windowManager = windowManager;
-    logger.main.info("Window manager registered with ServiceManager");
-  }
 }

@@ -15,9 +15,10 @@
  * rejects (it degrades internally); the null branch in the old container was
  * dead code.
  *
- * WindowManager deliberately has no tag — it is AppManager-owned and remains
- * a late-bound slot on the ServiceManager facade (see the migration plan,
- * decision 4.6).
+ * WindowManager and the tRPC handler are graph services (knot 1 of the
+ * de-facade program): construction lives in the graph; window-CREATION
+ * policy (onboarding vs main window) stays imperative in AppManager after
+ * the build, so window timing is unchanged.
  */
 
 import { Context } from "effect";
@@ -39,6 +40,8 @@ import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { AutoUpdaterService } from "../services/auto-updater";
 import type { ServiceManager } from "../managers/service-manager";
+import type { WindowManager } from "../core/window-manager";
+import type { createIPCHandler } from "electron-trpc-experimental/main";
 
 export class SettingsServiceTag extends Context.Tag(
   "AmicalApp/SettingsService",
@@ -105,6 +108,16 @@ export class AutoUpdaterServiceTag extends Context.Tag(
   "AmicalApp/AutoUpdaterService",
 )<AutoUpdaterServiceTag, AutoUpdaterService>() {}
 
+export class TrpcHandlerTag extends Context.Tag("AmicalApp/TrpcHandler")<
+  TrpcHandlerTag,
+  ReturnType<typeof createIPCHandler>
+>() {}
+
+export class WindowManagerTag extends Context.Tag("AmicalApp/WindowManager")<
+  WindowManagerTag,
+  WindowManager
+>() {}
+
 /**
  * The ServiceManager facade itself, injected into the graph at build time via
  * Layer.succeed. Exists for exactly two legacy consumers: RecordingManager's
@@ -149,4 +162,6 @@ export type AppServices =
   | RecordingManagerTag
   | ShortcutManagerTag
   | AutoUpdaterServiceTag
+  | TrpcHandlerTag
+  | WindowManagerTag
   | ServiceLocatorTag;

@@ -11,6 +11,13 @@ import { logger } from "../logger";
 import type { SettingsService } from "../../services/settings-service";
 import type { createIPCHandler } from "electron-trpc-experimental/main";
 import { NotesWindowController } from "./windows/notes-window-controller";
+import { Effect, Layer } from "effect";
+import {
+  WindowManagerTag,
+  SettingsServiceTag,
+  TrpcHandlerTag,
+} from "../runtime/tags";
+import { up } from "../runtime/layer-helpers";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -90,7 +97,31 @@ export class WindowManager {
     return cursorDisplay.workArea;
   }
 
-  constructor(
+  /**
+   * The manager's layer: CONSTRUCTION only — no windows are opened here.
+   * Window-creation policy (onboarding vs main, widget) stays imperative in
+   * AppManager after the graph builds, so window timing is unchanged, and
+   * AppManager keeps calling cleanup() in its own teardown order (no release
+   * registered here). Composed into AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    WindowManagerTag,
+    never,
+    SettingsServiceTag | TrpcHandlerTag
+  > = Layer.effect(
+    WindowManagerTag,
+    Effect.gen(function* () {
+      const settingsService = yield* SettingsServiceTag;
+      const trpcHandler = yield* TrpcHandlerTag;
+      const manager = new WindowManager(settingsService, trpcHandler);
+      up("windowManager");
+      return manager;
+    }),
+  );
+
+  // Construction goes through Live: the graph is the only thing that may
+  // build this manager, which also makes single-construction structural.
+  private constructor(
     private settingsService: SettingsService,
     private trpcHandler: ReturnType<typeof createIPCHandler>,
   ) {
