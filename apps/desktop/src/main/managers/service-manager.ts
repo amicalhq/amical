@@ -47,11 +47,14 @@ export interface ServiceMap {
   featureFlagService: FeatureFlagService;
   remoteConfigService: RemoteConfigService;
   modelService: ModelService;
-  transcriptionService: TranscriptionService;
+  // Honest nullability: transcription's init failure is non-fatal (the tag
+  // holds null so dictation can fail cleanly while the rest of the app
+  // works), and the bridge only exists on macOS/Windows.
+  transcriptionService: TranscriptionService | null;
   settingsService: SettingsService;
   authService: AuthService;
   vadService: VADService;
-  nativeBridge: NativeBridge;
+  nativeBridge: NativeBridge | null;
   autoUpdaterService: AutoUpdaterService;
   recordingManager: RecordingManager;
   shortcutManager: ShortcutManager;
@@ -166,9 +169,9 @@ export class ServiceManager {
     }
 
     const tag = TAGS[serviceName];
-    // Nullable tags (nativeBridge, transcriptionService) are cast into
-    // ServiceMap's non-null lie exactly as the old `!` block did — consumers'
-    // existing falsy guards carry the safety.
+    // Correlation cast only: TS can't relate TAGS[K]'s tag to ServiceMap[K]
+    // across the generic; the value types match key-for-key (including the
+    // honest `| null` on transcriptionService/nativeBridge).
     return Context.get(this.context, tag as never) as ServiceMap[K];
   }
 

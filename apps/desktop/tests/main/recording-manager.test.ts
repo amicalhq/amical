@@ -20,6 +20,7 @@ type RecordingManagerInternals = {
   initPromise: Promise<void> | null;
   performStartSession(mode: ActiveRecordingMode): Promise<void>;
   performEndRecording(code?: TerminationCode | null): Promise<void>;
+  initializeSession(): Promise<void>;
   handleAudioChunk(chunk: Float32Array, isFinalChunk: boolean): Promise<void>;
   handleFinalChunk(): Promise<void>;
   notifyNoAudio(): void;
@@ -34,6 +35,23 @@ const createRecordingManager = (
 
 const internalsOf = (manager: RecordingManager): RecordingManagerInternals =>
   manager as unknown as RecordingManagerInternals;
+
+describe("nullable dependencies", () => {
+  // transcriptionService/nativeBridge are honestly `| null` (failed init /
+  // platform gate). A missing service must take the flow's existing degraded
+  // path — logged and contained — never an unhandled rejection.
+  it("initializeSession degrades cleanly when transcription and bridge are null", async () => {
+    const manager = createRecordingManager({
+      transcriptionService: null,
+      nativeBridge: null,
+    });
+    const internals = internalsOf(manager);
+    internals.systemAudioMuted = true;
+
+    await expect(internals.initializeSession()).resolves.toBeUndefined();
+    expect(internals.systemAudioMuted).toBe(false);
+  });
+});
 
 describe("recording manager FSM interpreter", () => {
   it("sets stop intent before broadcasting stopping", () => {

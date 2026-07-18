@@ -68,6 +68,20 @@ const RECORDING_MAX_DURATION = 6 * 60 * 1000; // 6 minutes - auto-stop
  * - Stop intent is applied before public stopping notifications so final chunks
  *   finalize with the correct action
  */
+
+/**
+ * Narrow a nullable dependency (bridge is platform-gated, transcription's
+ * init can fail non-fatally) inside a flow's existing try/catch: a missing
+ * service takes the same degraded path the old implicit TypeError did, with
+ * an explicit message.
+ */
+const requireService = <T>(service: T | null, name: string): T => {
+  if (service === null) {
+    throw new Error(`${name} is unavailable`);
+  }
+  return service;
+};
+
 export class RecordingManager extends EventEmitter {
   // Core state
   private readonly machine: RecordingMachineInterpreter;
@@ -129,10 +143,12 @@ export class RecordingManager extends EventEmitter {
 
   private readonly settingsService: SettingsService;
   private readonly modelService: ModelService;
-  // Typed non-null like ServiceMap for now (the honest-nullability capstone
-  // flips these two to `| null` and adds the guards).
-  private readonly nativeBridge: NativeBridge;
-  private readonly transcriptionService: TranscriptionService;
+  // Honestly nullable: the bridge is platform-gated (macOS/Windows only)
+  // and transcription holds null when its init failed non-fatally. Flows
+  // route a missing service through their existing catch paths via
+  // requireService — same degraded behavior as before, explicit message.
+  private readonly nativeBridge: NativeBridge | null;
+  private readonly transcriptionService: TranscriptionService | null;
 
   /**
    * The manager's layer: real constructor dependencies (the locator is
@@ -158,10 +174,8 @@ export class RecordingManager extends EventEmitter {
       const manager = new RecordingManager({
         settingsService,
         modelService,
-        // ServiceMap's non-null lie, unchanged failure mode: a null service
-        // throws at the call site exactly as the old lazy getService did.
-        nativeBridge: nativeBridge as NativeBridge,
-        transcriptionService: transcriptionService as TranscriptionService,
+        nativeBridge,
+        transcriptionService,
       });
       yield* addRelease(
         appScope,
@@ -182,15 +196,15 @@ export class RecordingManager extends EventEmitter {
   static createForTests(deps: {
     settingsService?: SettingsService;
     modelService?: ModelService;
-    nativeBridge?: NativeBridge;
-    transcriptionService?: TranscriptionService;
+    nativeBridge?: NativeBridge | null;
+    transcriptionService?: TranscriptionService | null;
   }): RecordingManager {
     return new RecordingManager(
       deps as {
         settingsService: SettingsService;
         modelService: ModelService;
-        nativeBridge: NativeBridge;
-        transcriptionService: TranscriptionService;
+        nativeBridge: NativeBridge | null;
+        transcriptionService: TranscriptionService | null;
       },
     );
   }
@@ -200,8 +214,8 @@ export class RecordingManager extends EventEmitter {
   private constructor(deps: {
     settingsService: SettingsService;
     modelService: ModelService;
-    nativeBridge: NativeBridge;
-    transcriptionService: TranscriptionService;
+    nativeBridge: NativeBridge | null;
+    transcriptionService: TranscriptionService | null;
   }) {
     super();
     this.settingsService = deps.settingsService;
@@ -303,7 +317,10 @@ export class RecordingManager extends EventEmitter {
       this.emit("draft-latched");
       if (this.currentSessionId) {
         try {
-          const transcriptionService = this.transcriptionService;
+          const transcriptionService = requireService(
+            this.transcriptionService,
+            "transcriptionService",
+          );
           await transcriptionService.updateStreamingSession({
             sessionId: this.currentSessionId,
             isInstruct: this.currentIsInstruct,
@@ -614,7 +631,10 @@ export class RecordingManager extends EventEmitter {
     try {
       // Reset VAD state for fresh speech detection (mutex-protected to avoid
       // interleaving with retry VAD computation)
-      const transcriptionService = this.transcriptionService;
+      const transcriptionService = requireService(
+        this.transcriptionService,
+        "transcriptionService",
+      );
       await transcriptionService.resetVadForNewSession();
 
       // Warm the active provider in parallel with native startRecording so
@@ -629,7 +649,7 @@ export class RecordingManager extends EventEmitter {
       // Fire and forget: if it resolves before the first chunk, the
       // transcription service stores it for stream-open; otherwise it pushes a
       // live gRPC session update.
-      const nativeBridge = this.nativeBridge;
+      const nativeBridge = requireService(this.nativeBridge, "nativeBridge");
       const sessionId = this.currentSessionId;
       void nativeBridge
         .refreshAccessibilityContext()
@@ -697,7 +717,7 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
-      const nativeBridge = this.nativeBridge;
+      const nativeBridge = requireService(this.nativeBridge, "nativeBridge");
       const cached = nativeBridge.getAccessibilityContext();
       const axSelectedText = cached?.context?.textSelection?.selectedText;
       if (axSelectedText && axSelectedText.trim() !== "") {
@@ -760,7 +780,10 @@ export class RecordingManager extends EventEmitter {
         },
       };
 
-      const transcriptionService = this.transcriptionService;
+      const transcriptionService = requireService(
+        this.transcriptionService,
+        "transcriptionService",
+      );
       await transcriptionService.updateStreamingSession({
         sessionId,
         accessibilityContext: merged,
@@ -845,7 +868,10 @@ export class RecordingManager extends EventEmitter {
 
         // Always call stopRecording, conditionally restore system audio and play sounds
         try {
-          const nativeBridge = this.nativeBridge;
+          const nativeBridge = requireService(
+            this.nativeBridge,
+            "nativeBridge",
+          );
           await nativeBridge.call("stopRecording", {
             wasMuted: this.systemAudioMuted,
             muteSounds: this.soundsMuted,
@@ -861,7 +887,10 @@ export class RecordingManager extends EventEmitter {
         // Cancel streaming immediately for true cancellations.
         if (shouldCancelStreamingEarly && sessionId) {
           try {
-            const transcriptionService = this.transcriptionService;
+            const transcriptionService = requireService(
+              this.transcriptionService,
+              "transcriptionService",
+            );
             await transcriptionService.cancelStreamingSession(sessionId);
           } catch (error) {
             logger.audio.warn("Failed to cancel streaming session", { error });
@@ -983,7 +1012,10 @@ export class RecordingManager extends EventEmitter {
         // Also send to transcription if we have a session and not terminated
         if (this.currentSessionId && !this.terminationCode) {
           try {
-            const transcriptionService = this.transcriptionService;
+            const transcriptionService = requireService(
+              this.transcriptionService,
+              "transcriptionService",
+            );
             await this.latchDraftTag();
             await transcriptionService.processStreamingChunk({
               sessionId: this.currentSessionId,
@@ -1016,7 +1048,10 @@ export class RecordingManager extends EventEmitter {
     // Stream to transcription (skip if terminated)
     if (!this.terminationCode) {
       try {
-        const transcriptionService = this.transcriptionService;
+        const transcriptionService = requireService(
+          this.transcriptionService,
+          "transcriptionService",
+        );
         await this.latchDraftTag();
         await transcriptionService.processStreamingChunk({
           sessionId,
@@ -1088,11 +1123,13 @@ export class RecordingManager extends EventEmitter {
         hasAudio: !!audioFilePath,
       });
       try {
-        await this.transcriptionService
-          .saveDismissedTranscription({
-            sessionId,
-            audioFilePath: audioFilePath || undefined,
-          });
+        await requireService(
+          this.transcriptionService,
+          "transcriptionService",
+        ).saveDismissedTranscription({
+          sessionId,
+          audioFilePath: audioFilePath || undefined,
+        });
       } catch (error) {
         logger.audio.error("Failed to save dismissed transcription", {
           error,
@@ -1106,7 +1143,10 @@ export class RecordingManager extends EventEmitter {
     // NORMAL - get transcription and paste
     let result = "";
     try {
-      const transcriptionService = this.transcriptionService;
+      const transcriptionService = requireService(
+        this.transcriptionService,
+        "transcriptionService",
+      );
       result = await transcriptionService.finalizeSession({
         sessionId,
         audioFilePath: audioFilePath || undefined,
@@ -1455,7 +1495,10 @@ export class RecordingManager extends EventEmitter {
     // Cancel streaming session if one exists to prevent memory leak and audio bleed
     if (this.currentSessionId) {
       try {
-        const transcriptionService = this.transcriptionService;
+        const transcriptionService = requireService(
+          this.transcriptionService,
+          "transcriptionService",
+        );
         await transcriptionService.cancelStreamingSession(
           this.currentSessionId,
         );
@@ -1466,7 +1509,7 @@ export class RecordingManager extends EventEmitter {
 
     // Always call stopRecording, conditionally restore system audio and play sounds
     try {
-      const nativeBridge = this.nativeBridge;
+      const nativeBridge = requireService(this.nativeBridge, "nativeBridge");
       await nativeBridge.call("stopRecording", {
         wasMuted: this.systemAudioMuted,
         muteSounds: this.soundsMuted,
@@ -1752,8 +1795,9 @@ export class RecordingManager extends EventEmitter {
     // also makes the "skip streaming if terminated" guards treat any late chunk
     // as cancelled, matching the dismissal.
     this.terminationCode = "user_dismissed";
-    this.transcriptionService
-      .abortSession(sessionId);
+    // No try/catch here: with a null transcription service no streaming
+    // session can exist, so there is simply nothing to abort.
+    this.transcriptionService?.abortSession(sessionId);
   }
 
   // Clean up resources

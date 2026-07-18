@@ -13,11 +13,6 @@ export const widgetRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const windowManager = ctx.services.windowManager;
-      if (!windowManager) {
-        logger.main.error("Window manager service not available");
-        return false;
-      }
-
       windowManager.setWidgetIgnoreMouseEvents(input.ignore);
       logger.main.debug("Set widget ignore mouse events", input);
       return true;
@@ -33,11 +28,6 @@ export const widgetRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const windowManager = ctx.services.windowManager;
-      if (!windowManager) {
-        logger.main.error("Window manager service not available");
-        return false;
-      }
-
       const featureFlagService = ctx.services.featureFlagService;
       const noteWindowFlag = await getMainFeatureFlagState(
         featureFlagService,
@@ -62,11 +52,6 @@ export const widgetRouter = createRouter({
 
   closeNotesWindow: procedure.mutation(async ({ ctx }) => {
     const windowManager = ctx.services.windowManager;
-    if (!windowManager) {
-      logger.main.error("Window manager service not available");
-      return false;
-    }
-
     windowManager.closeNotesWindow();
 
     // Closing the notes window should immediately return to normal visibility rules.
@@ -94,11 +79,6 @@ export const widgetRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const windowManager = ctx.services.windowManager;
-      if (!windowManager) {
-        logger.main.error("Window manager service not available");
-        return false;
-      }
-
       await windowManager.navigateMainWindow(input.route);
 
       logger.main.info("Navigated main window", {

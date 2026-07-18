@@ -185,6 +185,9 @@ export const transcriptionsRouter = createRouter({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const transcriptionService = ctx.services.transcriptionService;
+      if (!transcriptionService) {
+        throw new Error("Transcription service not available");
+      }
       return await transcriptionService.retryTranscription(input.id);
     }),
 

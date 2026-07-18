@@ -90,7 +90,9 @@ export class AppManager {
     const shortcutManager = this.serviceManager.getService("shortcutManager");
     this.setupShortcutEventListeners(shortcutManager);
     const nativeBridge = this.serviceManager.getService("nativeBridge");
-    this.setupNativeBridgeEventListeners(nativeBridge);
+    if (nativeBridge) {
+      this.setupNativeBridgeEventListeners(nativeBridge);
+    }
 
     // Check if onboarding is needed using OnboardingService (single source of truth)
     const onboardingCheck = await onboardingService.checkNeedsOnboarding();
