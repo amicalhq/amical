@@ -85,7 +85,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       {},
       { get: () => vi.fn(async () => undefined) },
     );
-    svc = new TranscriptionService(
+    svc = TranscriptionService.createForTests(
       modelService as any,
       null as any,
       settingsService as any,

@@ -212,79 +212,6 @@ export const NativeBridgeLive: Layer.Layer<
   }),
 );
 
-export const TranscriptionServiceLive: Layer.Layer<
-  TranscriptionServiceTag,
-  never,
-  | ModelServiceTag
-  | VadServiceTag
-  | SettingsServiceTag
-  | TelemetryServiceTag
-  | NativeBridgeTag
-  | OnboardingServiceTag
-  | AppScopeTag
-> = Layer.effect(
-  TranscriptionServiceTag,
-  Effect.gen(function* () {
-    const modelService = yield* ModelServiceTag;
-    const vadService = yield* VadServiceTag;
-    const settingsService = yield* SettingsServiceTag;
-    const telemetryService = yield* TelemetryServiceTag;
-    const nativeBridge = yield* NativeBridgeTag;
-    const onboardingService = yield* OnboardingServiceTag;
-    const appScope = yield* AppScopeTag;
-    // Non-fatal by design: a failed transcription init leaves the tag null
-    // and boot continues — verbatim from the old initializeAIServices
-    // (service-manager.ts), including the telemetry capture and log lines.
-    const transcriptionService = yield* step(async () => {
-      try {
-        const transcriptionService = new TranscriptionService(
-          modelService,
-          vadService,
-          settingsService,
-          telemetryService,
-          nativeBridge,
-          onboardingService,
-        );
-        await transcriptionService.initialize();
-        logger.transcription.info("Transcription Service initialized", {
-          client: "Pipeline with Whisper",
-        });
-        up("transcriptionService");
-        return transcriptionService;
-      } catch (error) {
-        telemetryService.captureException(error, {
-          source: "service_manager",
-          stage: "initialize_ai_services",
-        });
-        logger.transcription.error(
-          "Error initializing Transcription Service:",
-          error,
-        );
-        logger.transcription.warn(
-          "Transcription will not work until configuration is fixed",
-        );
-        return null;
-      }
-    });
-    if (transcriptionService) {
-      // The migration's one intentional behavior improvement (AMIC-42 step
-      // 5): dispose() — whisper fork kill + cloud provider ManagedRuntime
-      // dispose — had ZERO callers before this; the fork leaked at quit.
-      // Registered after init on purpose: a failed init returns null and
-      // gets no finalizer, matching the old container. Graph edges already
-      // order this release after the recording drain and before the native
-      // helper/VAD/model releases.
-      yield* addRelease(
-        appScope,
-        "Disposing transcription service...",
-        "transcriptionService",
-        () => transcriptionService.dispose(),
-      );
-    }
-    return transcriptionService;
-  }),
-);
-
 export const RecordingManagerLive: Layer.Layer<
   RecordingManagerTag,
   never,
@@ -409,7 +336,7 @@ export const AppLive: Layer.Layer<
   ServiceLocatorTag | AppScopeTag
 > = Layer.mergeAll(ShortcutManagerLive, AutoUpdaterServiceLive).pipe(
   Layer.provideMerge(RecordingManagerLive),
-  Layer.provideMerge(TranscriptionServiceLive),
+  Layer.provideMerge(TranscriptionService.Live),
   Layer.provideMerge(OnboardingServiceLive),
   Layer.provideMerge(
     Layer.mergeAll(

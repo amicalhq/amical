@@ -44,6 +44,18 @@ import {
   isAmicalCloudSelectionValue,
 } from "../utils/model-selection";
 import { countWords } from "../utils/dictation-stats";
+import { Effect, Layer } from "effect";
+import {
+  TranscriptionServiceTag,
+  ModelServiceTag,
+  VadServiceTag,
+  SettingsServiceTag,
+  TelemetryServiceTag,
+  NativeBridgeTag,
+  OnboardingServiceTag,
+  AppScopeTag,
+} from "../main/runtime/tags";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 
 type StreamingSessionUpdate = {
   accessibilityContext?: GetAccessibilityContextResult | null;
@@ -72,7 +84,9 @@ export class TranscriptionService {
   private modelWasPreloaded: boolean = false;
   private loggedVadFallback = false;
 
-  constructor(
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor(
     modelService: ModelService,
     vadService: VADService,
     settingsService: SettingsService,
@@ -224,7 +238,102 @@ export class TranscriptionService {
     return this.whisperProvider;
   }
 
-  async initialize(): Promise<void> {
+  /**
+   * The service's layer. Non-fatal by design: a failed init leaves the tag
+   * null and boot continues — verbatim from the old container, including the
+   * telemetry capture and log lines. The dispose() release registers on the
+   * app scope only for the non-null case, so a failed init gets no
+   * finalizer, matching the old container. Composed into AppLive by
+   * src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    TranscriptionServiceTag,
+    never,
+    | ModelServiceTag
+    | VadServiceTag
+    | SettingsServiceTag
+    | TelemetryServiceTag
+    | NativeBridgeTag
+    | OnboardingServiceTag
+    | AppScopeTag
+  > = Layer.effect(
+    TranscriptionServiceTag,
+    Effect.gen(function* () {
+      const modelService = yield* ModelServiceTag;
+      const vadService = yield* VadServiceTag;
+      const settingsService = yield* SettingsServiceTag;
+      const telemetryService = yield* TelemetryServiceTag;
+      const nativeBridge = yield* NativeBridgeTag;
+      const onboardingService = yield* OnboardingServiceTag;
+      const appScope = yield* AppScopeTag;
+      const service = yield* step(async () => {
+        try {
+          const transcriptionService = new TranscriptionService(
+            modelService,
+            vadService,
+            settingsService,
+            telemetryService,
+            nativeBridge,
+            onboardingService,
+          );
+          await transcriptionService.initialize();
+          logger.transcription.info("Transcription Service initialized", {
+            client: "Pipeline with Whisper",
+          });
+          up("transcriptionService");
+          return transcriptionService;
+        } catch (error) {
+          telemetryService.captureException(error, {
+            source: "service_manager",
+            stage: "initialize_ai_services",
+          });
+          logger.transcription.error(
+            "Error initializing Transcription Service:",
+            error,
+          );
+          logger.transcription.warn(
+            "Transcription will not work until configuration is fixed",
+          );
+          return null;
+        }
+      });
+      if (service) {
+        // dispose() kills the whisper fork and the cloud provider runtime.
+        yield* addRelease(
+          appScope,
+          "Disposing transcription service...",
+          "transcriptionService",
+          () => service.dispose(),
+        );
+      }
+      return service;
+    }),
+  );
+
+  /**
+   * Test-only escape hatch: a raw, UNINITIALIZED instance for unit tests
+   * that drive internals directly. Production construction goes through
+   * Live, the only path that runs initialize().
+   */
+  static createForTests(
+    modelService: ModelService,
+    vadService: VADService,
+    settingsService: SettingsService,
+    telemetryService: TelemetryService,
+    nativeBridge: NativeBridge | null,
+    onboardingService: OnboardingService | null,
+  ): TranscriptionService {
+    return new TranscriptionService(
+      modelService,
+      vadService,
+      settingsService,
+      telemetryService,
+      nativeBridge,
+      onboardingService,
+    );
+  }
+
+  private async initialize(): Promise<void> {
     // Check if the selected model is a cloud model
     const selectedModelId = await this.modelService.getSelectedModel();
     const model = selectedModelId
