@@ -26,7 +26,7 @@ interface WindowManagerEvents {
   // where their "close" fires (pre-destruction, so the window is still
   // live). The tRPC handler layer subscribes for attach/detach.
   "window-created": (window: BrowserWindow) => void;
-  "window-closed": (window: BrowserWindow) => void;
+  "window-closing": (window: BrowserWindow) => void;
 }
 
 export class WindowManager extends EventEmitter {
@@ -144,7 +144,7 @@ export class WindowManager extends EventEmitter {
     this.notesWindowController = new NotesWindowController({
       settingsService: this.settingsService,
       onWindowCreated: (window) => this.emit("window-created", window),
-      onWindowClosed: (window) => this.emit("window-closed", window),
+      onWindowClosing: (window) => this.emit("window-closing", window),
       getWidgetWindow: () => this.widgetWindow,
       getActiveWidgetDisplayWorkArea: () =>
         this.getActiveWidgetDisplayWorkArea(),
@@ -350,7 +350,7 @@ export class WindowManager extends EventEmitter {
 
     this.mainWindow.on("close", () => {
       // "close" fires before destruction — the window is still live here.
-      this.emit("window-closed", this.mainWindow!);
+      this.emit("window-closing", this.mainWindow!);
     });
 
     this.mainWindow.on("closed", () => {
@@ -434,7 +434,7 @@ export class WindowManager extends EventEmitter {
 
     this.widgetWindow.on("close", () => {
       // "close" fires before destruction — the window is still live here.
-      this.emit("window-closed", this.widgetWindow!);
+      this.emit("window-closing", this.widgetWindow!);
     });
 
     this.widgetWindow.on("closed", () => {
@@ -540,7 +540,7 @@ export class WindowManager extends EventEmitter {
     }
 
     this.onboardingWindow.on("close", () => {
-      this.emit("window-closed", this.onboardingWindow!);
+      this.emit("window-closing", this.onboardingWindow!);
     });
 
     this.onboardingWindow.on("closed", () => {

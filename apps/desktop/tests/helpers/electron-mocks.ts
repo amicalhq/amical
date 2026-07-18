@@ -55,6 +55,9 @@ class FakeBrowserWindow extends EventEmitter {
   }
 
   close() {
+    // Real Electron order: "close" fires pre-destruction (the window is
+    // still live and could preventDefault), then destruction, then "closed".
+    this.emit("close");
     this._isDestroyed = true;
     this.emit("closed");
   }
@@ -142,6 +145,7 @@ class FakeBrowserWindow extends EventEmitter {
   setClosable(closable: boolean) {}
   setAlwaysOnTop(flag: boolean, level?: string) {}
   setVisibleOnAllWorkspaces(visible: boolean) {}
+  setHiddenInMissionControl(hidden: boolean) {}
   setIgnoreMouseEvents(ignore: boolean) {}
   setContentProtection(enable: boolean) {}
   setFocusable(focusable: boolean) {}
@@ -274,6 +278,16 @@ const mockScreen = {
     },
   ]),
   getCursorScreenPoint: vi.fn(() => ({ x: 100, y: 100 })),
+  getDisplayMatching: vi.fn(() => ({
+    id: 1,
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+    workArea: { x: 0, y: 0, width: 1920, height: 1040 },
+    size: { width: 1920, height: 1080 },
+    workAreaSize: { width: 1920, height: 1040 },
+    scaleFactor: 1,
+    rotation: 0,
+    internal: false,
+  })),
   getDisplayNearestPoint: vi.fn(() => ({
     id: 1,
     bounds: { x: 0, y: 0, width: 1920, height: 1080 },

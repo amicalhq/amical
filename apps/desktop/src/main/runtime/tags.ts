@@ -39,10 +39,7 @@ import type { TranscriptionService } from "../../services/transcription-service"
 import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { AutoUpdaterService } from "../services/auto-updater";
-import type {
-  ServiceMap,
-  EarlyServiceRefs,
-} from "../managers/service-manager";
+import type { ServiceMap, EarlyServiceRefs } from "../managers/service-manager";
 import type { WindowManager } from "../core/window-manager";
 import type { createIPCHandler } from "electron-trpc-experimental/main";
 

@@ -275,9 +275,7 @@ describe("app layer graph (pre-cutover)", () => {
       order(spies.recordingCleanup),
     );
     // …the drain completes before the native helper is killed…
-    expect(order(spies.recordingCleanup)).toBeLessThan(
-      order(spies.stopHelper),
-    );
+    expect(order(spies.recordingCleanup)).toBeLessThan(order(spies.stopHelper));
     // …the transcription dispose (step 5) sits between the drain and the
     // helper kill…
     expect(order(spies.recordingCleanup)).toBeLessThan(
@@ -290,9 +288,7 @@ describe("app layer graph (pre-cutover)", () => {
     expect(order(spies.recordingCleanup)).toBeLessThan(
       order(spies.modelCleanup),
     );
-    expect(order(spies.recordingCleanup)).toBeLessThan(
-      order(spies.vadDispose),
-    );
+    expect(order(spies.recordingCleanup)).toBeLessThan(order(spies.vadDispose));
     // …and PostHog flushes last among the capturing services.
     expect(order(spies.featureFlagShutdown)).toBeLessThan(
       order(spies.posthogShutdown),

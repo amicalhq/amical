@@ -75,7 +75,8 @@
  * function would build its service twice.
  */
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Scope } from "effect";
+import type { BrowserWindow } from "electron";
 
 import { logger } from "../logger";
 import { addRelease, up } from "./layer-helpers";
@@ -199,31 +200,41 @@ export const ServicesBundleLive: Layer.Layer<
 );
 
 /**
- * The tRPC IPC handler, built LAST: its only dependency is the bundle, so
- * it cannot exist before the whole graph does. Window attach/detach rides
- * WindowManager's lifecycle events — emitted synchronously at the same
- * statements that used to call attach/detach directly, and windows are only
- * created by AppManager after the build, so the subscription always exists
- * first.
+ * The tRPC IPC handler: its only dependency is the bundle, so it cannot
+ * exist before every ServiceMap service does. (HistoryCleanup sits outside
+ * the bundle and may still be initializing — harmless, since Layer.build
+ * awaits the whole graph before AppManager creates any window.) Window
+ * attach/detach rides WindowManager's lifecycle events — emitted
+ * synchronously at the same statements that used to call attach/detach
+ * directly, and windows are only created by AppManager after the build, so
+ * the subscription always exists first.
  */
 export const TrpcHandlerLive: Layer.Layer<
   TrpcHandlerTag,
   never,
-  ServicesBundleTag
+  ServicesBundleTag | AppScopeTag
 > = Layer.effect(
   TrpcHandlerTag,
   Effect.gen(function* () {
     const services = yield* ServicesBundleTag;
+    const appScope = yield* AppScopeTag;
     const handler = createIPCHandler({
       router,
       windows: [],
       createContext: async () => createContext(services),
     });
-    services.windowManager.on("window-created", (window) =>
-      handler.attachWindow(window),
-    );
-    services.windowManager.on("window-closed", (window) =>
-      handler.detachWindow(window),
+    const onWindowCreated = (window: BrowserWindow) =>
+      handler.attachWindow(window);
+    const onWindowClosing = (window: BrowserWindow) =>
+      handler.detachWindow(window);
+    services.windowManager.on("window-created", onWindowCreated);
+    services.windowManager.on("window-closing", onWindowClosing);
+    yield* Scope.addFinalizer(
+      appScope,
+      Effect.sync(() => {
+        services.windowManager.off("window-created", onWindowCreated);
+        services.windowManager.off("window-closing", onWindowClosing);
+      }),
     );
     logger.main.info("tRPC handler initialized");
     up("trpcHandler");

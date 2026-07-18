@@ -4,10 +4,7 @@ import path from "node:path";
 import { app } from "electron";
 import { EventEmitter } from "events";
 import { Effect, Layer } from "effect";
-import {
-  SettingsServiceTag,
-  EarlyRefsTag,
-} from "../main/runtime/tags";
+import { SettingsServiceTag, EarlyRefsTag } from "../main/runtime/tags";
 import { step, up } from "../main/runtime/layer-helpers";
 import { setApplicationLocale } from "../i18n/application-locale";
 import { logger as mainLogger } from "../main/logger";
@@ -135,25 +132,22 @@ export class SettingsService extends EventEmitter {
    * side effect of applying the persisted locale. Composed into AppLive by
    * src/main/runtime/layers.ts.
    */
-  static readonly Live: Layer.Layer<
-    SettingsServiceTag,
-    never,
-    EarlyRefsTag
-  > = Layer.effect(
-    SettingsServiceTag,
-    Effect.gen(function* () {
-      const earlyRefs = yield* EarlyRefsTag;
-      const service = new SettingsService();
-      yield* Effect.sync(() => {
-        earlyRefs.settingsService = service;
-      });
-      const uiSettings = yield* step(() => service.getUISettings());
-      yield* Effect.sync(() => setApplicationLocale(uiSettings.locale));
-      mainLogger.main.info("Settings service initialized");
-      up("settingsService");
-      return service;
-    }),
-  );
+  static readonly Live: Layer.Layer<SettingsServiceTag, never, EarlyRefsTag> =
+    Layer.effect(
+      SettingsServiceTag,
+      Effect.gen(function* () {
+        const earlyRefs = yield* EarlyRefsTag;
+        const service = new SettingsService();
+        yield* Effect.sync(() => {
+          earlyRefs.settingsService = service;
+        });
+        const uiSettings = yield* step(() => service.getUISettings());
+        yield* Effect.sync(() => setApplicationLocale(uiSettings.locale));
+        mainLogger.main.info("Settings service initialized");
+        up("settingsService");
+        return service;
+      }),
+    );
 
   /**
    * Test-only escape hatch: a raw instance for unit tests that drive the

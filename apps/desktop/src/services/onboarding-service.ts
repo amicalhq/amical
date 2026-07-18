@@ -74,10 +74,7 @@ export class OnboardingService extends EventEmitter {
   static readonly Live: Layer.Layer<
     OnboardingServiceTag,
     never,
-    | SettingsServiceTag
-    | TelemetryServiceTag
-    | ModelServiceTag
-    | EarlyRefsTag
+    SettingsServiceTag | TelemetryServiceTag | ModelServiceTag | EarlyRefsTag
   > = Layer.effect(
     OnboardingServiceTag,
     Effect.gen(function* () {

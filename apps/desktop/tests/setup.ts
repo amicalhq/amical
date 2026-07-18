@@ -35,6 +35,12 @@ g.NOTES_WIDGET_WINDOW_VITE_NAME ??= "notes_widget_window";
 g.ONBOARDING_WINDOW_VITE_NAME ??= "onboarding_window";
 g.WIDGET_WINDOW_VITE_NAME ??= "widget_window";
 
+// Electron extends `process` with getSystemVersion(); plain Node (vitest)
+// doesn't have it, and window creation reads it on macOS for the
+// traffic-light position.
+(process as unknown as Record<string, unknown>).getSystemVersion ??= () =>
+  "15.0.0";
+
 // Global test database instance - will be set by each test
 let currentTestDb: any = null;
 

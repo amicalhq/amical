@@ -14,7 +14,7 @@ interface NotesWindowControllerOptions {
   // WindowManager's lifecycle emits (the tRPC handler subscribes there for
   // attach/detach) — called synchronously at creation / on "close".
   onWindowCreated: (window: BrowserWindow) => void;
-  onWindowClosed: (window: BrowserWindow) => void;
+  onWindowClosing: (window: BrowserWindow) => void;
   getWidgetWindow: () => BrowserWindow | null;
   getActiveWidgetDisplayWorkArea: () => Electron.Rectangle;
   setWidgetIgnoreMouseEvents: (ignore: boolean) => void;
@@ -408,7 +408,7 @@ export class NotesWindowController {
       this.pendingWindowEventsByChannel.clear();
       this.hasPendingDidFinishLoadFlush = false;
       void this.persistNotesWindowBounds();
-      this.options.onWindowClosed(this.notesWindow!);
+      this.options.onWindowClosing(this.notesWindow!);
     });
 
     this.notesWindow.on("closed", () => {
