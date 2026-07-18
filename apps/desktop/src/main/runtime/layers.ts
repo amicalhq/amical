@@ -136,34 +136,6 @@ export const SettingsServiceLive: Layer.Layer<
   }),
 );
 
-export const PostHogClientLive: Layer.Layer<
-  PostHogClientTag,
-  never,
-  SettingsServiceTag | AppScopeTag
-> = Layer.effect(
-  PostHogClientTag,
-  Effect.gen(function* () {
-    // Ordering-only: PostHog's install-id fallback reads the settings DB, so
-    // it must run after settings default-creation/migrations (old init order
-    // steps 1 -> 4; posthog-client.ts:169-174).
-    yield* SettingsServiceTag;
-    const appScope = yield* AppScopeTag;
-    const posthogClient = new PostHogClient();
-    // Registered first so PostHog releases last among capturers — and so a
-    // failed boot still flushes at cleanup() (crash path).
-    yield* addRelease(
-      appScope,
-      "Shutting down PostHog client...",
-      "posthogClient",
-      () => posthogClient.shutdown(),
-    );
-    yield* step(() => posthogClient.initialize());
-    logger.main.info("PostHog client initialized");
-    up("posthogClient");
-    return posthogClient;
-  }),
-);
-
 export const TelemetryServiceLive: Layer.Layer<
   TelemetryServiceTag,
   never,
@@ -541,7 +513,7 @@ export const AppLive: Layer.Layer<
     ),
   ),
   Layer.provideMerge(TelemetryServiceLive),
-  Layer.provideMerge(PostHogClientLive),
+  Layer.provideMerge(PostHogClient.Live),
   Layer.provideMerge(SettingsServiceLive),
   Layer.provideMerge(AuthServiceLive),
 );

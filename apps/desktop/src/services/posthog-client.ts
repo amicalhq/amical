@@ -1,10 +1,17 @@
 import { PostHog } from "posthog-node";
+import { Effect, Layer } from "effect";
 import { machineIdSync } from "node-machine-id";
 import { randomUUID } from "crypto";
 import * as si from "systeminformation";
 import { app } from "electron";
 import { logger } from "../main/logger";
 import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
+import {
+  PostHogClientTag,
+  SettingsServiceTag,
+  AppScopeTag,
+} from "../main/runtime/tags";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 
 export interface SystemInfo {
   // Hardware
@@ -42,7 +49,9 @@ export class PostHogClient {
   private _personProperties: Record<string, string> = {};
   private _identifiedUser: IdentifiedUser | null = null;
 
-  constructor() {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor() {
     const host = process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST;
     const apiKey = process.env.POSTHOG_API_KEY || __BUNDLED_POSTHOG_API_KEY;
 
@@ -66,7 +75,40 @@ export class PostHogClient {
     });
   }
 
-  async initialize(): Promise<void> {
+  /**
+   * The service's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    PostHogClientTag,
+    never,
+    SettingsServiceTag | AppScopeTag
+  > = Layer.effect(
+    PostHogClientTag,
+    Effect.gen(function* () {
+      // Ordering-only: the install-id fallback reads the settings DB, so it
+      // must run after settings default-creation/migrations (old init order
+      // steps 1 -> 4).
+      yield* SettingsServiceTag;
+      const appScope = yield* AppScopeTag;
+      const client = new PostHogClient();
+      // Registered first so PostHog releases last among capturers — and so a
+      // failed boot still flushes at cleanup() (crash path).
+      yield* addRelease(
+        appScope,
+        "Shutting down PostHog client...",
+        "posthogClient",
+        () => client.shutdown(),
+      );
+      yield* step(() => client.initialize());
+      logger.main.info("PostHog client initialized");
+      up("posthogClient");
+      return client;
+    }),
+  );
+
+  private async initialize(): Promise<void> {
     this._machineId = await this.resolveDeviceId();
     logger.main.info("Machine ID resolved", { machineId: this._machineId });
 
