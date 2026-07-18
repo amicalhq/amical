@@ -33,6 +33,15 @@ import {
 import { SettingsService } from "./settings-service";
 import { AuthService } from "./auth-service";
 import { logger } from "../main/logger";
+import { Effect, Layer } from "effect";
+import {
+  ModelServiceTag,
+  SettingsServiceTag,
+  AuthServiceTag,
+  TelemetryServiceTag,
+  AppScopeTag,
+} from "../main/runtime/tags";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 import { getUserAgent } from "../utils/http-client";
 import { type RemoteProvider } from "../constants/remote-providers";
 import {
@@ -160,7 +169,9 @@ class ModelService extends EventEmitter {
   private modelsDirectory: string;
   private settingsService: SettingsService;
 
-  constructor(settingsService: SettingsService) {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor(settingsService: SettingsService) {
     super();
     this.state = {
       activeDownloads: new Map(),
@@ -202,7 +213,44 @@ class ModelService extends EventEmitter {
   }
 
   // Initialize and validate models on startup
-  async initialize(): Promise<void> {
+  /**
+   * The service's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    ModelServiceTag,
+    never,
+    | SettingsServiceTag
+    | AuthServiceTag
+    | TelemetryServiceTag
+    | AppScopeTag
+  > = Layer.effect(
+    ModelServiceTag,
+    Effect.gen(function* () {
+      const settingsService = yield* SettingsServiceTag;
+      // Ordering-only: model init reaches AuthService.getInstance() directly
+      // (cloud-model auth check) — pin the hidden edge.
+      yield* AuthServiceTag;
+      // Ordering-only: model init can write settings sections (selection
+      // normalization); keep it after telemetry's settings reads as in the
+      // old sequential order (steps 5 -> 8).
+      yield* TelemetryServiceTag;
+      const appScope = yield* AppScopeTag;
+      const service = new ModelService(settingsService);
+      yield* addRelease(
+        appScope,
+        "Cleaning up model downloads...",
+        "modelService",
+        () => service.cleanup(),
+      );
+      yield* step(() => service.initialize());
+      up("modelService");
+      return service;
+    }),
+  );
+
+  private async initialize(): Promise<void> {
     try {
       // Sync Whisper models with filesystem
       const whisperModelsData = AVAILABLE_MODELS.map((model) => ({

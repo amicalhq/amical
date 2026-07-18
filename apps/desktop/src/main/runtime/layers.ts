@@ -160,35 +160,6 @@ export const TelemetryServiceLive: Layer.Layer<
   }),
 );
 
-export const ModelServiceLive: Layer.Layer<
-  ModelServiceTag,
-  never,
-  SettingsServiceTag | AuthServiceTag | TelemetryServiceTag | AppScopeTag
-> = Layer.effect(
-  ModelServiceTag,
-  Effect.gen(function* () {
-    const settingsService = yield* SettingsServiceTag;
-    // Ordering-only: model init reaches AuthService.getInstance() directly
-    // (model-service.ts:241, cloud-model auth check) — pin the hidden edge.
-    yield* AuthServiceTag;
-    // Ordering-only: model init can write settings sections (selection
-    // normalization); keep it after telemetry's settings reads as in the old
-    // sequential order (steps 5 -> 8).
-    yield* TelemetryServiceTag;
-    const appScope = yield* AppScopeTag;
-    const modelService = new ModelService(settingsService);
-    yield* addRelease(
-      appScope,
-      "Cleaning up model downloads...",
-      "modelService",
-      () => modelService.cleanup(),
-    );
-    yield* step(() => modelService.initialize());
-    up("modelService");
-    return modelService;
-  }),
-);
-
 export const OnboardingServiceLive: Layer.Layer<
   OnboardingServiceTag,
   never,
@@ -442,7 +413,7 @@ export const AppLive: Layer.Layer<
   Layer.provideMerge(OnboardingServiceLive),
   Layer.provideMerge(
     Layer.mergeAll(
-      ModelServiceLive,
+      ModelService.Live,
       VADService.Live,
       NativeBridgeLive,
       FeatureFlagService.Live,
