@@ -1,27 +1,21 @@
-import type {
-  ServiceManager,
-  ServiceMap,
-} from "@/main/managers/service-manager";
+import { logger } from "@/main/logger";
+import type { ServiceMap } from "@/main/managers/service-manager";
 
 /**
  * Resolved-service access for routers: `ctx.services.x`.
  *
- * createContext runs per tRPC request, and requests can only arrive after a
- * window exists — strictly after the graph builds — so the bundle read here
- * can never observe a partial graph. Pre-build, services() throws,
- * preserving the throw-until-built contract the test harness pins.
+ * The services object is the graph's frozen bundle (ServicesBundleTag) —
+ * the tRPC handler layer depends on it, so a handler (and therefore any
+ * request) structurally cannot exist before the whole graph does.
  * transcriptionService/nativeBridge are honestly `| null` per ServiceMap.
  */
 export type ContextServices = Readonly<ServiceMap>;
 
 export interface Context {
-  logger: ReturnType<ServiceManager["getLogger"]>;
+  logger: typeof logger;
   services: ContextServices;
 }
 
-export function createContext(serviceManager: ServiceManager): Context {
-  return {
-    logger: serviceManager.getLogger(),
-    services: serviceManager.services(),
-  };
+export function createContext(services: Readonly<ServiceMap>): Context {
+  return { logger, services };
 }

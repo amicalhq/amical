@@ -21,8 +21,8 @@
 import { Context, Effect, Exit, Layer, Scope } from "effect";
 
 import { AppLive } from "./layers";
-import { ServiceLocatorTag, AppScopeTag, type AppServices } from "./tags";
-import type { ServiceManager } from "../managers/service-manager";
+import { EarlyRefsTag, AppScopeTag, type AppServices } from "./tags";
+import type { EarlyServiceRefs } from "../managers/service-manager";
 
 export interface AppServicesBuild {
   scope: Scope.CloseableScope;
@@ -30,13 +30,13 @@ export interface AppServicesBuild {
 }
 
 export async function buildAppServices(
-  locator: ServiceManager,
+  earlyRefs: EarlyServiceRefs,
 ): Promise<AppServicesBuild> {
   const scope = Effect.runSync(Scope.make());
   const exit = await Effect.runPromiseExit(
     Layer.build(
       AppLive.pipe(
-        Layer.provideMerge(Layer.succeed(ServiceLocatorTag, locator)),
+        Layer.provide(Layer.succeed(EarlyRefsTag, earlyRefs)),
         Layer.provide(Layer.succeed(AppScopeTag, scope)),
       ),
     ).pipe(Scope.extend(scope)),

@@ -50,11 +50,10 @@ import {
   AutoUpdaterServiceTag,
   TrpcHandlerTag,
   WindowManagerTag,
-  ServiceLocatorTag,
+  ServicesBundleTag,
   type AppServices,
 } from "../../src/main/runtime/tags";
-import type { ServiceManager } from "../../src/main/managers/service-manager";
-import { logger } from "../../src/main/logger";
+import type { EarlyServiceRefs } from "../../src/main/managers/service-manager";
 import { PostHogClient } from "../../src/services/posthog-client";
 import { TelemetryService } from "../../src/services/telemetry-service";
 import { FeatureFlagService } from "../../src/services/feature-flag-service";
@@ -76,18 +75,23 @@ describe("app layer graph (pre-cutover)", () => {
   let testDb: TestDatabase;
   let builtCtx: Context.Context<AppServices> | null = null;
   let openScope: Scope.CloseableScope | null = null;
-  let stubLocator: ServiceManager;
+  let earlyRefs: EarlyServiceRefs;
+  let earlyRefWrites: [string, unknown][];
 
   beforeEach(async () => {
     testDb = await createTestDatabase();
     setTestDatabase(testDb.db);
     builtCtx = null;
-    // The graph's only locator touchpoints are registerEarlyService (in
-    // Lives) and createContext (per tRPC request — never invoked here).
-    stubLocator = {
-      registerEarlyService: vi.fn(),
-      getLogger: () => logger,
-    } as unknown as ServiceManager;
+    // Write-tracking record: the graph's only write-side channel is the
+    // early-ref record (EarlyRefsTag); the Proxy records each acquire's
+    // write so memoization can assert single construction.
+    earlyRefWrites = [];
+    earlyRefs = new Proxy({} as EarlyServiceRefs, {
+      set(target, key, value) {
+        earlyRefWrites.push([String(key), value]);
+        return Reflect.set(target, key, value);
+      },
+    });
   });
 
   afterEach(async () => {
@@ -100,7 +104,7 @@ describe("app layer graph (pre-cutover)", () => {
   });
 
   async function build() {
-    const { scope, exit } = await buildAppServices(stubLocator);
+    const { scope, exit } = await buildAppServices(earlyRefs);
     openScope = scope;
     if (Exit.isSuccess(exit)) {
       builtCtx = exit.value;
@@ -109,8 +113,7 @@ describe("app layer graph (pre-cutover)", () => {
   }
 
   function earlyRefCalls() {
-    return (stubLocator.registerEarlyService as ReturnType<typeof vi.fn>).mock
-      .calls as [string, unknown][];
+    return earlyRefWrites;
   }
 
   it("builds the full graph and every tag resolves", async () => {
@@ -139,16 +142,40 @@ describe("app layer graph (pre-cutover)", () => {
     // Knot 1: the tRPC handler and WindowManager are graph services.
     expect(Context.get(ctx, TrpcHandlerTag)).toBeTruthy();
     expect(Context.get(ctx, WindowManagerTag)).toBeTruthy();
-    expect(Context.get(ctx, ServiceLocatorTag)).toBe(stubLocator);
+    // The summary node holds the SAME instance the tag exposes, for EVERY
+    // ServiceMap field — a duplicated Live or Layer.fresh in a future
+    // composition edit would hand the bundle (and thus every tRPC request)
+    // a different instance than the graph's.
+    const bundle = Context.get(ctx, ServicesBundleTag);
+    const bundlePairs = [
+      ["posthogClient", PostHogClientTag],
+      ["telemetryService", TelemetryServiceTag],
+      ["featureFlagService", FeatureFlagServiceTag],
+      ["remoteConfigService", RemoteConfigServiceTag],
+      ["modelService", ModelServiceTag],
+      ["transcriptionService", TranscriptionServiceTag],
+      ["settingsService", SettingsServiceTag],
+      ["authService", AuthServiceTag],
+      ["vadService", VadServiceTag],
+      ["nativeBridge", NativeBridgeTag],
+      ["autoUpdaterService", AutoUpdaterServiceTag],
+      ["recordingManager", RecordingManagerTag],
+      ["shortcutManager", ShortcutManagerTag],
+      ["windowManager", WindowManagerTag],
+      ["onboardingService", OnboardingServiceTag],
+    ] as const;
+    for (const [field, tag] of bundlePairs) {
+      expect(bundle[field]).toBe(Context.get(ctx, tag as never));
+    }
   });
 
   it("builds each service exactly once (layer memoization)", async () => {
     await build();
     const ctx = builtCtx!;
 
-    // Single acquire per early-ref service: the acquire is the only caller of
-    // registerEarlyService, so a re-built layer would register twice — and
-    // the registered instance must be the one the tag exposes.
+    // Single acquire per early-ref service: the acquire is the only writer
+    // of the early-ref record, so a re-built layer would write twice — and
+    // the written instance must be the one the tag exposes.
     for (const [name, tag] of [
       ["settingsService", SettingsServiceTag],
       ["telemetryService", TelemetryServiceTag],

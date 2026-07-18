@@ -1,7 +1,6 @@
 import { BrowserWindow, screen } from "electron";
 import { logger } from "../../logger";
 import type { SettingsService } from "../../../services/settings-service";
-import type { createIPCHandler } from "electron-trpc-experimental/main";
 
 type NotesWindowLayout = {
   xRatio: number;
@@ -12,7 +11,10 @@ type NotesWindowLayout = {
 
 interface NotesWindowControllerOptions {
   settingsService: SettingsService;
-  trpcHandler: ReturnType<typeof createIPCHandler>;
+  // WindowManager's lifecycle emits (the tRPC handler subscribes there for
+  // attach/detach) — called synchronously at creation / on "close".
+  onWindowCreated: (window: BrowserWindow) => void;
+  onWindowClosed: (window: BrowserWindow) => void;
   getWidgetWindow: () => BrowserWindow | null;
   getActiveWidgetDisplayWorkArea: () => Electron.Rectangle;
   setWidgetIgnoreMouseEvents: (ignore: boolean) => void;
@@ -406,7 +408,7 @@ export class NotesWindowController {
       this.pendingWindowEventsByChannel.clear();
       this.hasPendingDidFinishLoadFlush = false;
       void this.persistNotesWindowBounds();
-      this.options.trpcHandler.detachWindow(this.notesWindow!);
+      this.options.onWindowClosed(this.notesWindow!);
     });
 
     this.notesWindow.on("closed", () => {
@@ -431,7 +433,7 @@ export class NotesWindowController {
       this.notesWindow.setAlwaysOnTop(true, "screen-saver");
     }
 
-    this.options.trpcHandler.attachWindow(this.notesWindow);
+    this.options.onWindowCreated(this.notesWindow);
     return this.notesWindow;
   }
 

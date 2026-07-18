@@ -6,7 +6,7 @@ import {
   TelemetryServiceTag,
   PostHogClientTag,
   SettingsServiceTag,
-  ServiceLocatorTag,
+  EarlyRefsTag,
   AuthServiceTag,
   AppScopeTag,
 } from "../main/runtime/tags";
@@ -90,21 +90,21 @@ export class TelemetryService extends EventEmitter {
     never,
     | PostHogClientTag
     | SettingsServiceTag
-    | ServiceLocatorTag
+    | EarlyRefsTag
     | AuthServiceTag
     | AppScopeTag
   > = Layer.effect(
     TelemetryServiceTag,
     Effect.gen(function* () {
-      const locator = yield* ServiceLocatorTag;
+      const earlyRefs = yield* EarlyRefsTag;
       const client = yield* PostHogClientTag;
       const settingsService = yield* SettingsServiceTag;
       const authService = yield* AuthServiceTag;
       const appScope = yield* AppScopeTag;
       const service = new TelemetryService(client, settingsService);
-      yield* Effect.sync(() =>
-        locator.registerEarlyService("telemetryService", service),
-      );
+      yield* Effect.sync(() => {
+        earlyRefs.telemetryService = service;
+      });
       yield* step(() => service.initialize());
       const onAuthenticated = (authState: AuthState) => {
         if (!authState.userInfo?.sub) return;

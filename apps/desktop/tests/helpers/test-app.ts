@@ -88,7 +88,7 @@ export async function initializeTestApp(
  * Useful for testing specific service methods in isolation
  */
 export function createTestTRPCCaller(serviceManager: ServiceManager) {
-  const ctx = createContext(serviceManager);
+  const ctx = createContext(serviceManager.services());
   return router.createCaller(ctx);
 }
 

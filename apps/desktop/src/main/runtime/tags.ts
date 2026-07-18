@@ -39,7 +39,10 @@ import type { TranscriptionService } from "../../services/transcription-service"
 import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { AutoUpdaterService } from "../services/auto-updater";
-import type { ServiceManager } from "../managers/service-manager";
+import type {
+  ServiceMap,
+  EarlyServiceRefs,
+} from "../managers/service-manager";
 import type { WindowManager } from "../core/window-manager";
 import type { createIPCHandler } from "electron-trpc-experimental/main";
 
@@ -119,15 +122,28 @@ export class WindowManagerTag extends Context.Tag("AmicalApp/WindowManager")<
 >() {}
 
 /**
- * The ServiceManager facade itself, injected into the graph at build time via
- * Layer.succeed. Exists for exactly two legacy consumers: RecordingManager's
- * locator constructor (`new RecordingManager(serviceManager)`) and the
- * early-ref registration done by the Settings/Telemetry/Onboarding acquires.
- * Do NOT add new consumers — new layers must depend on concrete service tags.
+ * The graph's summary node: the frozen bundle of every ServiceMap service,
+ * produced by ServicesBundleLive at the END of the graph. Depending on it
+ * makes "sees a complete graph" a structural guarantee — the tRPC handler
+ * can't exist without every service, and the boot handle's services() reads
+ * this same object.
  */
-export class ServiceLocatorTag extends Context.Tag("AmicalApp/ServiceLocator")<
-  ServiceLocatorTag,
-  ServiceManager
+export class ServicesBundleTag extends Context.Tag("AmicalApp/ServicesBundle")<
+  ServicesBundleTag,
+  Readonly<ServiceMap>
+>() {}
+
+/**
+ * The crash path's early-ref record, injected at build time (build plumbing
+ * like AppScopeTag — NOT part of AppServices). The Settings/Telemetry/
+ * Onboarding acquires write themselves in the moment each instance exists,
+ * so the boot handle's nullable accessors can serve a failed boot. This is
+ * the graph's ONLY write-side channel — there is deliberately no locator to
+ * read arbitrary services through.
+ */
+export class EarlyRefsTag extends Context.Tag("AmicalApp/EarlyRefs")<
+  EarlyRefsTag,
+  EarlyServiceRefs
 >() {}
 
 /**
@@ -164,4 +180,4 @@ export type AppServices =
   | AutoUpdaterServiceTag
   | TrpcHandlerTag
   | WindowManagerTag
-  | ServiceLocatorTag;
+  | ServicesBundleTag;

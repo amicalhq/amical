@@ -6,7 +6,7 @@ import { EventEmitter } from "events";
 import { Effect, Layer } from "effect";
 import {
   SettingsServiceTag,
-  ServiceLocatorTag,
+  EarlyRefsTag,
 } from "../main/runtime/tags";
 import { step, up } from "../main/runtime/layer-helpers";
 import { setApplicationLocale } from "../i18n/application-locale";
@@ -138,15 +138,15 @@ export class SettingsService extends EventEmitter {
   static readonly Live: Layer.Layer<
     SettingsServiceTag,
     never,
-    ServiceLocatorTag
+    EarlyRefsTag
   > = Layer.effect(
     SettingsServiceTag,
     Effect.gen(function* () {
-      const locator = yield* ServiceLocatorTag;
+      const earlyRefs = yield* EarlyRefsTag;
       const service = new SettingsService();
-      yield* Effect.sync(() =>
-        locator.registerEarlyService("settingsService", service),
-      );
+      yield* Effect.sync(() => {
+        earlyRefs.settingsService = service;
+      });
       const uiSettings = yield* step(() => service.getUISettings());
       yield* Effect.sync(() => setApplicationLocale(uiSettings.locale));
       mainLogger.main.info("Settings service initialized");

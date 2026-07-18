@@ -9,8 +9,9 @@
  * - NativeBridgeLive: tests vi.mock the native-bridge-service MODULE with a
  *   spawn-less fake class that has no Live static, so the layer must live
  *   outside that module (the mock boundary).
- * - TrpcHandlerLive: composition-only glue (router + context over the
- *   locator), not a service module.
+ * - ServicesBundleLive / TrpcHandlerLive: composition-only glue (the frozen
+ *   ServiceMap summary node, and the router + context over it), not service
+ *   modules.
  *
  * THE LOAD-BEARING MECHANICS (apply to every Live, converted or central):
  *
@@ -30,7 +31,7 @@
  *
  * Dependency graph (solid = constructor dep, dotted = ordering-only edge):
  *
- *   ServiceLocator + AppScope (Layer.succeed at build)   Auth (Layer.sync)
+ *   EarlyRefs + AppScope (Layer.succeed at build)        Auth (Layer.sync)
  *        │                                                 │
  *   Settings ──► PostHog ──► Telemetry◄────────────────────┤
  *      │  │         │        │  │  │ │                     │
@@ -46,10 +47,17 @@
  *      │   Transcription (◄ Model, VAD, Settings, Telemetry, Auth, Bridge, Onboarding)
  *      │         ╎
  *      │         ▼
- *      └╌╌╌► RecordingManager (◄ locator; ╌╌ Transcription, Bridge, Settings, Model)
+ *        RecordingManager (◄ Transcription, Bridge, Settings, Model)
  *                │                    │
  *                ▼                    ▼
  *          ShortcutManager      AutoUpdater (◄ Settings, Telemetry, RC, Recording)
+ *                │                    │
+ *                └────────┬───────────┘
+ *                         ▼
+ *          ServicesBundle (◄ EVERY ServiceMap tag, incl. WindowManager)
+ *                         │
+ *                         ▼
+ *              TrpcHandler (◄ Bundle; attach/detach via WM window events)
  *
  * Identity flows over events, not calls: auth emits "authenticated" /
  * "logged-out"; telemetry (identify/reset), remote config (reset), and model
@@ -94,11 +102,25 @@ import { router } from "../../trpc/router";
 import { createContext } from "../../trpc/context";
 
 import {
+  SettingsServiceTag,
+  AuthServiceTag,
+  PostHogClientTag,
   TelemetryServiceTag,
+  FeatureFlagServiceTag,
+  RemoteConfigServiceTag,
+  ModelServiceTag,
+  OnboardingServiceTag,
   NativeBridgeTag,
+  VadServiceTag,
+  TranscriptionServiceTag,
+  RecordingManagerTag,
+  ShortcutManagerTag,
+  AutoUpdaterServiceTag,
+  WindowManagerTag,
+  ServicesBundleTag,
   TrpcHandlerTag,
-  ServiceLocatorTag,
   AppScopeTag,
+  type EarlyRefsTag,
   type AppServices,
 } from "./tags";
 
@@ -130,24 +152,79 @@ export const NativeBridgeLive: Layer.Layer<
 );
 
 /**
- * The tRPC IPC handler as a graph service. Context resolution is lazy (per
- * property access through the locator), so building the handler mid-graph is
- * safe: no renderer can call before a window exists, and windows are created
- * by AppManager only after the full build.
+ * The graph's summary node: the frozen bundle of every ServiceMap service.
+ * Depending on all of them makes "the tRPC context sees a complete graph" a
+ * structural guarantee instead of a timing argument — the handler below
+ * (and the boot handle's services()) read this object.
+ */
+export const ServicesBundleLive: Layer.Layer<
+  ServicesBundleTag,
+  never,
+  | SettingsServiceTag
+  | AuthServiceTag
+  | PostHogClientTag
+  | TelemetryServiceTag
+  | FeatureFlagServiceTag
+  | RemoteConfigServiceTag
+  | ModelServiceTag
+  | OnboardingServiceTag
+  | NativeBridgeTag
+  | VadServiceTag
+  | TranscriptionServiceTag
+  | RecordingManagerTag
+  | ShortcutManagerTag
+  | AutoUpdaterServiceTag
+  | WindowManagerTag
+> = Layer.effect(
+  ServicesBundleTag,
+  Effect.gen(function* () {
+    return Object.freeze({
+      posthogClient: yield* PostHogClientTag,
+      telemetryService: yield* TelemetryServiceTag,
+      featureFlagService: yield* FeatureFlagServiceTag,
+      remoteConfigService: yield* RemoteConfigServiceTag,
+      modelService: yield* ModelServiceTag,
+      transcriptionService: yield* TranscriptionServiceTag,
+      settingsService: yield* SettingsServiceTag,
+      authService: yield* AuthServiceTag,
+      vadService: yield* VadServiceTag,
+      nativeBridge: yield* NativeBridgeTag,
+      autoUpdaterService: yield* AutoUpdaterServiceTag,
+      recordingManager: yield* RecordingManagerTag,
+      shortcutManager: yield* ShortcutManagerTag,
+      windowManager: yield* WindowManagerTag,
+      onboardingService: yield* OnboardingServiceTag,
+    });
+  }),
+);
+
+/**
+ * The tRPC IPC handler, built LAST: its only dependency is the bundle, so
+ * it cannot exist before the whole graph does. Window attach/detach rides
+ * WindowManager's lifecycle events — emitted synchronously at the same
+ * statements that used to call attach/detach directly, and windows are only
+ * created by AppManager after the build, so the subscription always exists
+ * first.
  */
 export const TrpcHandlerLive: Layer.Layer<
   TrpcHandlerTag,
   never,
-  ServiceLocatorTag
+  ServicesBundleTag
 > = Layer.effect(
   TrpcHandlerTag,
   Effect.gen(function* () {
-    const locator = yield* ServiceLocatorTag;
+    const services = yield* ServicesBundleTag;
     const handler = createIPCHandler({
       router,
       windows: [],
-      createContext: async () => createContext(locator),
+      createContext: async () => createContext(services),
     });
+    services.windowManager.on("window-created", (window) =>
+      handler.attachWindow(window),
+    );
+    services.windowManager.on("window-closed", (window) =>
+      handler.detachWindow(window),
+    );
     logger.main.info("tRPC handler initialized");
     up("trpcHandler");
     return handler;
@@ -155,23 +232,27 @@ export const TrpcHandlerLive: Layer.Layer<
 );
 
 /**
- * The composed app graph. Requires ServiceLocatorTag and AppScopeTag
- * (provided at build time by app-runtime.ts). Independent branches build
- * CONCURRENTLY — ordering is expressed exclusively through the tag
- * dependencies above, so the spine (Settings -> PostHog -> Telemetry) and the
- * tail (Onboarding -> Transcription -> Recording -> Shortcut) stay sequential
- * while the mid-tier (Model, VAD, NativeBridge, FeatureFlag, RemoteConfig,
- * HistoryCleanup) overlaps. Any race discovered later gets one more ordering
- * edge in the layer above — never a restructure here.
+ * The composed app graph. Requires EarlyRefsTag and AppScopeTag (provided
+ * at build time by app-runtime.ts — plain data, no locator). Independent
+ * branches build CONCURRENTLY — ordering is expressed exclusively through
+ * the tag dependencies above, so the spine (Settings -> PostHog ->
+ * Telemetry) and the tail (Onboarding -> Transcription -> Recording ->
+ * Shortcut -> Bundle -> Handler) stay sequential while the mid-tier (Model,
+ * VAD, NativeBridge, FeatureFlag, RemoteConfig, HistoryCleanup) overlaps.
+ * Any race discovered later gets one more ordering edge in the layer above
+ * — never a restructure here.
  */
 export const AppLive: Layer.Layer<
-  Exclude<AppServices, ServiceLocatorTag>,
+  AppServices,
   never,
-  ServiceLocatorTag | AppScopeTag
-> = Layer.mergeAll(ShortcutManager.Live, AutoUpdaterService.Live).pipe(
+  EarlyRefsTag | AppScopeTag
+> = TrpcHandlerLive.pipe(
+  Layer.provideMerge(ServicesBundleLive),
+  Layer.provideMerge(
+    Layer.mergeAll(ShortcutManager.Live, AutoUpdaterService.Live),
+  ),
   Layer.provideMerge(RecordingManager.Live),
   Layer.provideMerge(WindowManager.Live),
-  Layer.provideMerge(TrpcHandlerLive),
   Layer.provideMerge(TranscriptionService.Live),
   Layer.provideMerge(OnboardingService.Live),
   Layer.provideMerge(

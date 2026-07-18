@@ -7,7 +7,7 @@ import {
   SettingsServiceTag,
   TelemetryServiceTag,
   ModelServiceTag,
-  ServiceLocatorTag,
+  EarlyRefsTag,
 } from "../main/runtime/tags";
 import { up } from "../main/runtime/layer-helpers";
 import type { SettingsService } from "./settings-service";
@@ -77,11 +77,11 @@ export class OnboardingService extends EventEmitter {
     | SettingsServiceTag
     | TelemetryServiceTag
     | ModelServiceTag
-    | ServiceLocatorTag
+    | EarlyRefsTag
   > = Layer.effect(
     OnboardingServiceTag,
     Effect.gen(function* () {
-      const locator = yield* ServiceLocatorTag;
+      const earlyRefs = yield* EarlyRefsTag;
       const settingsService = yield* SettingsServiceTag;
       const telemetryService = yield* TelemetryServiceTag;
       const modelService = yield* ModelServiceTag;
@@ -90,9 +90,9 @@ export class OnboardingService extends EventEmitter {
         telemetryService,
         modelService,
       );
-      yield* Effect.sync(() =>
-        locator.registerEarlyService("onboardingService", onboardingService),
-      );
+      yield* Effect.sync(() => {
+        earlyRefs.onboardingService = onboardingService;
+      });
       logger.main.info("Onboarding service initialized");
       up("onboardingService");
       return onboardingService;

@@ -9,14 +9,10 @@ import {
 import path from "node:path";
 import { logger } from "../logger";
 import type { SettingsService } from "../../services/settings-service";
-import type { createIPCHandler } from "electron-trpc-experimental/main";
 import { NotesWindowController } from "./windows/notes-window-controller";
+import { EventEmitter } from "events";
 import { Effect, Layer } from "effect";
-import {
-  WindowManagerTag,
-  SettingsServiceTag,
-  TrpcHandlerTag,
-} from "../runtime/tags";
+import { WindowManagerTag, SettingsServiceTag } from "../runtime/tags";
 import { up } from "../runtime/layer-helpers";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
@@ -25,7 +21,15 @@ declare const WIDGET_WINDOW_VITE_NAME: string;
 declare const NOTES_WIDGET_WINDOW_VITE_NAME: string;
 declare const ONBOARDING_WINDOW_VITE_NAME: string;
 
-export class WindowManager {
+interface WindowManagerEvents {
+  // Emitted synchronously at the statements where windows are created and
+  // where their "close" fires (pre-destruction, so the window is still
+  // live). The tRPC handler layer subscribes for attach/detach.
+  "window-created": (window: BrowserWindow) => void;
+  "window-closed": (window: BrowserWindow) => void;
+}
+
+export class WindowManager extends EventEmitter {
   private static readonly WIDGET_MAX_WIDTH = 640 as const;
   private static readonly WIDGET_MAX_HEIGHT = 320 as const;
   private mainWindow: BrowserWindow | null = null;
@@ -107,27 +111,40 @@ export class WindowManager {
   static readonly Live: Layer.Layer<
     WindowManagerTag,
     never,
-    SettingsServiceTag | TrpcHandlerTag
+    SettingsServiceTag
   > = Layer.effect(
     WindowManagerTag,
     Effect.gen(function* () {
       const settingsService = yield* SettingsServiceTag;
-      const trpcHandler = yield* TrpcHandlerTag;
-      const manager = new WindowManager(settingsService, trpcHandler);
+      const manager = new WindowManager(settingsService);
       up("windowManager");
       return manager;
     }),
   );
 
+  // Typed event emitter surface (see WindowManagerEvents).
+  on<U extends keyof WindowManagerEvents>(
+    event: U,
+    listener: WindowManagerEvents[U],
+  ): this {
+    return super.on(event, listener);
+  }
+
+  emit<U extends keyof WindowManagerEvents>(
+    event: U,
+    ...args: Parameters<WindowManagerEvents[U]>
+  ): boolean {
+    return super.emit(event, ...args);
+  }
+
   // Construction goes through Live: the graph is the only thing that may
   // build this manager, which also makes single-construction structural.
-  private constructor(
-    private settingsService: SettingsService,
-    private trpcHandler: ReturnType<typeof createIPCHandler>,
-  ) {
+  private constructor(private settingsService: SettingsService) {
+    super();
     this.notesWindowController = new NotesWindowController({
       settingsService: this.settingsService,
-      trpcHandler: this.trpcHandler,
+      onWindowCreated: (window) => this.emit("window-created", window),
+      onWindowClosed: (window) => this.emit("window-closed", window),
       getWidgetWindow: () => this.widgetWindow,
       getActiveWidgetDisplayWorkArea: () =>
         this.getActiveWidgetDisplayWorkArea(),
@@ -332,8 +349,8 @@ export class WindowManager {
     }
 
     this.mainWindow.on("close", () => {
-      // Detach window before it's destroyed
-      this.trpcHandler.detachWindow(this.mainWindow!);
+      // "close" fires before destruction — the window is still live here.
+      this.emit("window-closed", this.mainWindow!);
     });
 
     this.mainWindow.on("closed", () => {
@@ -341,7 +358,7 @@ export class WindowManager {
       this.mainWindow = null;
     });
 
-    this.trpcHandler.attachWindow(this.mainWindow!);
+    this.emit("window-created", this.mainWindow!);
   }
 
   /**
@@ -416,8 +433,8 @@ export class WindowManager {
     }
 
     this.widgetWindow.on("close", () => {
-      // Detach window before it's destroyed
-      this.trpcHandler.detachWindow(this.widgetWindow!);
+      // "close" fires before destruction — the window is still live here.
+      this.emit("window-closed", this.widgetWindow!);
     });
 
     this.widgetWindow.on("closed", () => {
@@ -456,8 +473,7 @@ export class WindowManager {
     // Set up display change notifications for all platforms
     this.setupDisplayChangeNotifications();
 
-    // Update tRPC handler with new window
-    this.trpcHandler.attachWindow(this.widgetWindow!);
+    this.emit("window-created", this.widgetWindow!);
 
     logger.main.info(
       "Widget window created (visibility controlled by AppManager)",
@@ -524,7 +540,7 @@ export class WindowManager {
     }
 
     this.onboardingWindow.on("close", () => {
-      this.trpcHandler.detachWindow(this.onboardingWindow!);
+      this.emit("window-closed", this.onboardingWindow!);
     });
 
     this.onboardingWindow.on("closed", () => {
@@ -536,7 +552,7 @@ export class WindowManager {
       this.mainWindow.setEnabled(false);
     }
 
-    this.trpcHandler.attachWindow(this.onboardingWindow!);
+    this.emit("window-created", this.onboardingWindow!);
     logger.main.info("Onboarding window created");
   }
 

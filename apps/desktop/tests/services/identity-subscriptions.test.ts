@@ -6,7 +6,7 @@ import {
   FeatureFlagServiceTag,
   PostHogClientTag,
   SettingsServiceTag,
-  ServiceLocatorTag,
+  EarlyRefsTag,
   AuthServiceTag,
   AppScopeTag,
 } from "../../src/main/runtime/tags";
@@ -15,7 +15,6 @@ import { FeatureFlagService } from "../../src/services/feature-flag-service";
 import type { AuthService } from "../../src/services/auth-service";
 import type { PostHogClient } from "../../src/services/posthog-client";
 import type { SettingsService } from "../../src/services/settings-service";
-import type { ServiceManager } from "../../src/main/managers/service-manager";
 
 /**
  * The identity inversion (knot 2): auth no longer calls telemetry / feature
@@ -54,9 +53,6 @@ describe("identity subscriptions", () => {
         }),
       } as unknown as PostHogClient;
       const settingsService = {} as unknown as SettingsService;
-      const locator = {
-        registerEarlyService: vi.fn(),
-      } as unknown as ServiceManager;
       const authService = new EventEmitter() as unknown as AuthService;
 
       const scope = Effect.runSync(Scope.make());
@@ -65,7 +61,7 @@ describe("identity subscriptions", () => {
           TelemetryService.Live.pipe(
             Layer.provide(Layer.succeed(PostHogClientTag, client)),
             Layer.provide(Layer.succeed(SettingsServiceTag, settingsService)),
-            Layer.provide(Layer.succeed(ServiceLocatorTag, locator)),
+            Layer.provide(Layer.succeed(EarlyRefsTag, {})),
             Layer.provide(Layer.succeed(AuthServiceTag, authService)),
             Layer.provide(Layer.succeed(AppScopeTag, scope)),
           ),

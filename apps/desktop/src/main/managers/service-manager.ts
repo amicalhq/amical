@@ -3,23 +3,7 @@ import type { Scope } from "effect";
 
 import { logger } from "../logger";
 import { buildAppServices, closeAppScope } from "../runtime/app-runtime";
-import {
-  SettingsServiceTag,
-  AuthServiceTag,
-  PostHogClientTag,
-  TelemetryServiceTag,
-  FeatureFlagServiceTag,
-  RemoteConfigServiceTag,
-  ModelServiceTag,
-  OnboardingServiceTag,
-  NativeBridgeTag,
-  VadServiceTag,
-  TranscriptionServiceTag,
-  RecordingManagerTag,
-  ShortcutManagerTag,
-  AutoUpdaterServiceTag,
-  WindowManagerTag,
-} from "../runtime/tags";
+import { ServicesBundleTag } from "../runtime/tags";
 
 import type { ModelService } from "../../services/model-service";
 import type { TranscriptionService } from "../../services/transcription-service";
@@ -62,9 +46,10 @@ export interface ServiceMap {
 }
 
 /**
- * Early service refs — registered by the layer graph's Settings/Telemetry/
- * Onboarding acquires (src/main/runtime/layers.ts) the moment each instance
- * exists, so the nullable accessors can serve the crash path mid-build.
+ * Early service refs — the record is injected into the graph (EarlyRefsTag)
+ * and the Settings/Telemetry/Onboarding acquires write themselves in the
+ * moment each instance exists, so the nullable accessors can serve the
+ * crash path mid-build.
  */
 export interface EarlyServiceRefs {
   settingsService?: SettingsService;
@@ -83,13 +68,13 @@ export interface EarlyServiceRefs {
  * accessors serve the crash path. Services get their dependencies from the
  * graph, not from here.
  *
- * services() returns the frozen bundle resolved ONCE at the end of
- * initialize() — windows (and thus tRPC requests) can only exist after
- * that, so nothing can observe a partial map. Exactly two callers: the
- * tRPC context (src/trpc/context.ts, per request) and AppManager's
- * post-build resolve. Do not add new ones; take the dependency in your
- * Live layer instead. Behavior is unchanged from the hand-rolled container
- * this replaced, including:
+ * services() returns the graph's frozen bundle (ServicesBundleTag), read
+ * off the built context at the end of initialize(). Its one production
+ * caller is AppManager's post-build resolve — the tRPC context gets the
+ * SAME bundle in-graph through the handler layer, not through here. Do
+ * not add new callers; take the dependency in your Live layer instead.
+ * Behavior is unchanged from the hand-rolled container this replaced,
+ * including:
  * - services() throwing "ServiceManager not initialized..." until the FULL
  *   graph has built (the pre-ready throw window the test harness pins);
  * - a failed initialize() leaving the partial graph ALIVE (no rollback) so
@@ -107,13 +92,6 @@ export class ServiceManager {
   private resolvedServices: Readonly<ServiceMap> | null = null;
   private earlyRefs: EarlyServiceRefs = {};
 
-  registerEarlyService<K extends keyof EarlyServiceRefs>(
-    name: K,
-    service: NonNullable<EarlyServiceRefs[K]>,
-  ): void {
-    this.earlyRefs[name] = service;
-  }
-
   async initialize(): Promise<void> {
     if (this.isInitialized) {
       logger.main.warn(
@@ -122,7 +100,7 @@ export class ServiceManager {
       return;
     }
 
-    const { scope, exit } = await buildAppServices(this);
+    const { scope, exit } = await buildAppServices(this.earlyRefs);
     // The scope is held even on failure: the partial graph stays alive for
     // the crash path, and cleanup() releases it.
     this.scope = scope;
@@ -136,26 +114,9 @@ export class ServiceManager {
       throw Cause.squash(exit.cause);
     }
 
-    // Resolve the full bundle once, and only after the FULL graph builds —
-    // preserving the pre-ready throw window of services().
-    const ctx = exit.value;
-    this.resolvedServices = Object.freeze({
-      posthogClient: Context.get(ctx, PostHogClientTag),
-      telemetryService: Context.get(ctx, TelemetryServiceTag),
-      featureFlagService: Context.get(ctx, FeatureFlagServiceTag),
-      remoteConfigService: Context.get(ctx, RemoteConfigServiceTag),
-      modelService: Context.get(ctx, ModelServiceTag),
-      transcriptionService: Context.get(ctx, TranscriptionServiceTag),
-      settingsService: Context.get(ctx, SettingsServiceTag),
-      authService: Context.get(ctx, AuthServiceTag),
-      vadService: Context.get(ctx, VadServiceTag),
-      nativeBridge: Context.get(ctx, NativeBridgeTag),
-      autoUpdaterService: Context.get(ctx, AutoUpdaterServiceTag),
-      recordingManager: Context.get(ctx, RecordingManagerTag),
-      shortcutManager: Context.get(ctx, ShortcutManagerTag),
-      windowManager: Context.get(ctx, WindowManagerTag),
-      onboardingService: Context.get(ctx, OnboardingServiceTag),
-    });
+    // The graph's own summary node — assigned only after the FULL graph
+    // builds, preserving the pre-ready throw window of services().
+    this.resolvedServices = Context.get(exit.value, ServicesBundleTag);
     this.isInitialized = true;
     logger.main.info("Services initialized successfully");
   }
