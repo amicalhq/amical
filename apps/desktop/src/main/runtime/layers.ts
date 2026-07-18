@@ -1,29 +1,34 @@
 /**
- * Effect Layers for the app service graph (AMIC-42 step 2).
+ * Composition of the app service graph (AMIC-42).
  *
- * Each layer wraps an existing promise-based service class: the acquire runs
- * `new X(...)` + `initialize()` exactly as the old ServiceManager initializeX
- * methods did, and the release runs the class's cleanup/shutdown/dispose.
+ * Converted services own their Live layer (a class-static `Live` colocated
+ * with the implementation — see e.g. services/history-cleanup-service.ts);
+ * this file only composes them into AppLive, plus the four wrappers that
+ * intentionally remain central:
  *
- * TWO LOAD-BEARING MECHANICS:
+ * - AuthServiceLive / OnboardingServiceLive: module singletons
+ *   (getInstance) pending the statics-dissolution phase.
+ * - NativeBridgeLive: tests vi.mock the native-bridge-service MODULE with a
+ *   spawn-less fake class that has no Live static, so the layer must live
+ *   outside that module (the mock boundary).
+ * - RecordingManagerLive: constructor still takes the ServiceManager
+ *   locator; converts in the windowManager/tRPC de-facade phase (knot 1).
  *
- * 1. Releases are registered on the app-owned scope (AppScopeTag) via
- *    Scope.addFinalizer, NOT via Effect.acquireRelease inside the layer.
- *    Layer.build is transactional in effect 3.21: on a partial build failure
- *    it closes each layer's inner scope, which would run acquireRelease
- *    finalizers immediately — tearing down PostHog before the crash path can
- *    flush telemetry (verified empirically; see app-runtime.ts). Finalizers
- *    on the app scope are invisible to Layer.build, so a failed boot leaves
- *    every acquired-so-far service ALIVE exactly like the old field-holding
- *    container, until cleanup() closes the scope.
+ * THE LOAD-BEARING MECHANICS (apply to every Live, converted or central):
  *
- * 2. The release is registered BEFORE initialize() runs, mirroring the old
- *    field-assign-before-await: a service whose constructor succeeded but
- *    whose initialize() rejected still gets torn down at cleanup(). And every
- *    awaited init step is wrapped in Effect.uninterruptible: when a
- *    concurrent sibling layer fails, Effect interrupts this fiber — without
- *    the mask it would abandon the in-flight initialize() promise (detached,
- *    unobservable), which the old sequential boot could never do.
+ * 1. Releases register on the app-owned scope (AppScopeTag) via
+ *    Scope.addFinalizer (layer-helpers.ts addRelease), NOT via
+ *    Effect.acquireRelease: Layer.build is transactional in effect 3.21 and
+ *    closes layer scopes on partial build failure, which would tear down
+ *    PostHog before the crash path can flush telemetry (verified
+ *    empirically; see app-runtime.ts). Finalizers on the app scope are
+ *    invisible to Layer.build, so a failed boot leaves acquired services
+ *    alive until cleanup() closes the scope.
+ *
+ * 2. The release is registered BEFORE initialize() runs (a mid-init
+ *    rejection still gets torn down at cleanup), and every awaited init step
+ *    is Effect.uninterruptible (a failing concurrent sibling must not
+ *    abandon an in-flight initialize() detached).
  *
  * Dependency graph (solid = constructor dep, dotted = ordering-only edge):
  *
@@ -34,7 +39,7 @@
  *      │  │  ┌──────┴─────┬──┤  │  │ └───────┬─────────────┤
  *      │  │  ▼            ▼  ▼  ▼  ▼         ▼             │
  *      │  │ FeatureFlag  RemoteConfig◄───────┼─────────────┤
- *      │  │ Model◄╌╌(auth backdoor :241)╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌┘
+ *      │  │ Model◄╌╌(auth backdoor)╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌┘
  *      │  │ VAD   NativeBridge   HistoryCleanup   (mid-tier: concurrent)
  *      │  │  │     │    │
  *      │  └──┼─────┼────┼────► Onboarding (◄ Settings, Telemetry, Model)
@@ -49,21 +54,19 @@
  *          ShortcutManager      AutoUpdater (◄ Settings, Telemetry, RC, Recording)
  *
  * Finalizer order at scope close is the reverse of registration order, and
- * registration happens at construction — a dependent can only construct after
- * its dependencies finished building, so dependents always release before
- * their dependencies. That makes "PostHog flushes last among capturers" a
- * structural property instead of a comment.
+ * registration happens at construction — dependents always release before
+ * their dependencies, making "PostHog flushes last among capturers"
+ * structural.
  *
- * All layers are MODULE CONSTS and must stay that way: Layer memoization is
- * by reference, so a layer constructed inside a function would build its
- * service twice (two native-helper spawns, duplicate ipcMain.handle throw).
+ * All layers are MODULE CONSTS (class statics count) and must stay that way:
+ * Layer memoization is by reference, so a layer constructed inside a
+ * function would build its service twice.
  */
 
 import { Effect, Layer } from "effect";
 
 import { logger } from "../logger";
-import { addRelease, step, up } from "./layer-helpers";
-import { setApplicationLocale } from "../../i18n/application-locale";
+import { addRelease, up } from "./layer-helpers";
 import { isMacOS, isWindows } from "../../utils/platform";
 
 import { SettingsService } from "../../services/settings-service";
@@ -85,18 +88,12 @@ import { AutoUpdaterService } from "../services/auto-updater";
 import {
   SettingsServiceTag,
   AuthServiceTag,
-  PostHogClientTag,
   TelemetryServiceTag,
-  FeatureFlagServiceTag,
-  RemoteConfigServiceTag,
   ModelServiceTag,
   OnboardingServiceTag,
   NativeBridgeTag,
-  VadServiceTag,
   TranscriptionServiceTag,
   RecordingManagerTag,
-  ShortcutManagerTag,
-  AutoUpdaterServiceTag,
   ServiceLocatorTag,
   AppScopeTag,
   type AppServices,
