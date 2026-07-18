@@ -8,11 +8,12 @@ import type { OnboardingService } from "@/services/onboarding-service";
  * Resolved-service access for routers: `ctx.services.x` instead of the
  * service-locator calls the routers used to make.
  *
- * Properties are LAZY getters over the container, resolving on access — so a
- * partially-initialized container behaves exactly like the old per-call
- * getService (throws until the graph is built; windowManager stays the
- * silent-null late-bound slot). The test harness's failed-init tolerance
- * depends on that laziness; do not eager-resolve these.
+ * Properties are LAZY getters over the boot handle, resolving on access — a
+ * partially-initialized graph behaves exactly like the old per-call
+ * getService (throws until the graph is built). The test harness's
+ * failed-init tolerance depends on that laziness; do not eager-resolve
+ * these. transcriptionService/nativeBridge are honestly `| null` per
+ * ServiceMap.
  */
 export type ContextServices = Readonly<ServiceMap>;
 

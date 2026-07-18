@@ -10,6 +10,9 @@ import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { SettingsService } from "../../services/settings-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
+import type { AuthService } from "../../services/auth-service";
+import type { FeatureFlagService } from "../../services/feature-flag-service";
+import type { AutoUpdaterService } from "../services/auto-updater";
 import type { HelperEvent } from "@amical/types";
 import { runDataMigrations } from "../migrations/data-migrations";
 import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
@@ -17,7 +20,18 @@ import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { getApplicationLocale } from "@/i18n/application-locale";
 
 export class AppManager {
+  // Resolved ONCE in initialize() after the graph builds — AppManager's only
+  // facade access. Definite-assignment: the pre-init entry points
+  // (handleDeepLink, handleSecondInstance) already degrade through their
+  // catch/undefined paths exactly as they did when each call site pulled
+  // from the locator lazily.
   private windowManager!: WindowManager;
+  private settingsService!: SettingsService;
+  private shortcutManager!: ShortcutManager;
+  private recordingManager!: RecordingManager;
+  private featureFlagService!: FeatureFlagService;
+  private autoUpdaterService!: AutoUpdaterService;
+  private authService!: AuthService;
   private serviceManager: ServiceManager;
   private trayManager: TrayManager;
 
@@ -42,9 +56,8 @@ export class AppManager {
         const state = parsedUrl.searchParams.get("state");
 
         if (code) {
-          // Get AuthService and complete the OAuth flow
-          const authService = this.serviceManager.getService("authService");
-          authService.handleAuthCallback(code, state);
+          // Complete the OAuth flow
+          this.authService.handleAuthCallback(code, state);
         }
       }
 
@@ -71,25 +84,30 @@ export class AppManager {
 
     await this.serviceManager.initialize();
 
-    const telemetryService = this.serviceManager.getService("telemetryService");
-    telemetryService.trackAppLaunch();
-
-    // The tRPC handler and WindowManager are graph services now; window
-    // CREATION (below) stays here so window timing is unchanged.
+    // One-time resolution off the built graph; every later use reads these
+    // fields. The tRPC handler and WindowManager are graph services now;
+    // window CREATION (below) stays here so window timing is unchanged.
     this.windowManager = this.serviceManager.getService("windowManager");
-    const settingsService = this.serviceManager.getService("settingsService");
-
-    // Get onboarding service and subscribe to lifecycle events
+    this.settingsService = this.serviceManager.getService("settingsService");
+    this.shortcutManager = this.serviceManager.getService("shortcutManager");
+    this.recordingManager = this.serviceManager.getService("recordingManager");
+    this.featureFlagService =
+      this.serviceManager.getService("featureFlagService");
+    this.autoUpdaterService =
+      this.serviceManager.getService("autoUpdaterService");
+    this.authService = this.serviceManager.getService("authService");
+    const telemetryService = this.serviceManager.getService("telemetryService");
     const onboardingService =
       this.serviceManager.getService("onboardingService");
-    this.setupOnboardingEventListeners(onboardingService);
-
-    // Subscribe to recording state changes for widget visibility
-    const recordingManager = this.serviceManager.getService("recordingManager");
-    this.setupRecordingEventListeners(recordingManager);
-    const shortcutManager = this.serviceManager.getService("shortcutManager");
-    this.setupShortcutEventListeners(shortcutManager);
     const nativeBridge = this.serviceManager.getService("nativeBridge");
+
+    telemetryService.trackAppLaunch();
+
+    // Subscribe to onboarding lifecycle, recording state (widget
+    // visibility), shortcuts, and native bridge events.
+    this.setupOnboardingEventListeners(onboardingService);
+    this.setupRecordingEventListeners(this.recordingManager);
+    this.setupShortcutEventListeners(this.shortcutManager);
     if (nativeBridge) {
       this.setupNativeBridgeEventListeners(nativeBridge);
     }
@@ -98,17 +116,17 @@ export class AppManager {
     const onboardingCheck = await onboardingService.checkNeedsOnboarding();
 
     // Sync auto-launch setting with OS on startup
-    settingsService.syncAutoLaunch();
+    this.settingsService.syncAutoLaunch();
     logger.main.info("Auto-launch setting synced with OS");
 
     // Subscribe to settings changes for window updates
-    this.setupSettingsEventListeners(settingsService);
+    this.setupSettingsEventListeners(this.settingsService);
 
     if (onboardingCheck.needed) {
       // Suppress global shortcut commands while onboarding is open; the
       // dictation try-it steps lift this for their lifetime (see the
       // try-it-active-changed listener above).
-      shortcutManager.setCommandsSuppressed(true);
+      this.shortcutManager.setCommandsSuppressed(true);
       await onboardingService.startOnboardingFlow();
       await this.windowManager.createOrShowOnboardingWindow();
 
@@ -159,9 +177,7 @@ export class AppManager {
       });
 
       // Re-enable global shortcut commands now that onboarding is done.
-      this.serviceManager
-        .getService("shortcutManager")
-        .setCommandsSuppressed(false);
+      this.shortcutManager.setCommandsSuppressed(false);
 
       this.windowManager.closeOnboardingWindow();
 
@@ -190,9 +206,9 @@ export class AppManager {
     // re-suppresses only while the wizard is still open — completion may
     // already have lifted suppression for good.
     onboardingService.on("try-it-active-changed", (active: boolean) => {
-      this.serviceManager
-        .getService("shortcutManager")
-        .setCommandsSuppressed(!active && onboardingService.isInProgress());
+      this.shortcutManager.setCommandsSuppressed(
+        !active && onboardingService.isInProgress(),
+      );
       if (active) {
         // Onboarding boot skips setupWindows, so the widget window doesn't
         // exist yet; production visibility rules take over after creation.
@@ -207,10 +223,8 @@ export class AppManager {
         // result publishes after the step is gone and Enter can insert stale
         // text into whatever is focused on the next screen. Both are no-ops
         // when there's nothing to clean.
-        const recordingManager =
-          this.serviceManager.getService("recordingManager");
-        recordingManager.dismissDraft();
-        recordingManager.dismissCurrentSession().catch((error) => {
+        this.recordingManager.dismissDraft();
+        this.recordingManager.dismissCurrentSession().catch((error) => {
           logger.main.error(
             "Failed to dismiss in-flight take on try-it exit",
             error,
@@ -273,10 +287,8 @@ export class AppManager {
 
   private async handleOpenNotesWindowShortcut(): Promise<void> {
     try {
-      const featureFlagService =
-        this.serviceManager.getService("featureFlagService");
       const noteWindowFlag = await getMainFeatureFlagState(
-        featureFlagService,
+        this.featureFlagService,
         NOTE_WINDOW_FEATURE_FLAG,
       );
 
@@ -311,10 +323,8 @@ export class AppManager {
         showInDockChanged: boolean;
       }) => {
         if (showWidgetWhileInactiveChanged) {
-          const recordingManager =
-            this.serviceManager.getService("recordingManager");
           await this.updateWidgetVisibility(
-            this.isEffectivelyIdle(recordingManager),
+            this.isEffectivelyIdle(this.recordingManager),
           );
         }
         if (showInDockChanged) {
@@ -332,8 +342,7 @@ export class AppManager {
   }
 
   private async updateWidgetVisibility(isIdle: boolean): Promise<void> {
-    const settingsService = this.serviceManager.getService("settingsService");
-    const preferences = await settingsService.getPreferences();
+    const preferences = await this.settingsService.getPreferences();
 
     if (preferences.showWidgetWhileInactive || !isIdle) {
       this.windowManager.showWidget();
@@ -348,8 +357,7 @@ export class AppManager {
     this.windowManager.createOrShowMainWindow();
 
     // Apply dock visibility based on user preference (macOS only)
-    const settingsService = this.serviceManager.getService("settingsService");
-    const preferences = await settingsService.getPreferences();
+    const preferences = await this.settingsService.getPreferences();
     if (app.dock) {
       if (preferences.showInDock) {
         app.dock
@@ -374,11 +382,7 @@ export class AppManager {
         void this.windowManager.navigateMainWindow("/settings/preferences");
       },
       () => {
-        const autoUpdaterService =
-          this.serviceManager.getService("autoUpdaterService");
-        if (autoUpdaterService) {
-          autoUpdaterService.checkForUpdates(true);
-        }
+        this.autoUpdaterService.checkForUpdates(true);
         // Open About and highlight the update card so the user sees the
         // inline status update for their menu-initiated check.
         void this.windowManager.navigateMainWindow(

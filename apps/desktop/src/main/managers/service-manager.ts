@@ -95,15 +95,17 @@ const TAGS = {
 } as const satisfies Record<keyof ServiceMap, unknown>;
 
 /**
- * Manages service initialization and lifecycle.
+ * The boot handle: initialize() builds the Effect layer graph
+ * (src/main/runtime/) into an app-owned scope, cleanup() closes the scope
+ * running the registered finalizers dependents-first, and the early-ref
+ * accessors serve the crash path. Services get their dependencies from the
+ * graph, not from here.
  *
- * Since AMIC-42 the services are constructed and torn down by the Effect
- * layer graph (src/main/runtime/): initialize() builds the graph into an
- * app-owned scope, getService() is a synchronous Context lookup, and
- * cleanup() closes the scope, running the registered finalizers
- * dependents-first. The public surface is unchanged from the hand-rolled
- * container it replaced — consumers, the tRPC context, and the test harness
- * see identical behavior, including:
+ * getService() is a synchronous Context lookup with exactly two callers —
+ * the tRPC context's lazy getters (src/trpc/context.ts) and AppManager's
+ * one-time post-build resolve. Do not add new ones; take the dependency in
+ * your Live layer instead. Behavior is unchanged from the hand-rolled
+ * container this replaced, including:
  * - getService() throwing "ServiceManager not initialized..." until the FULL
  *   graph has built (the lazy tRPC context's failed-init tolerance relies on
  *   the throw);
@@ -182,9 +184,9 @@ export class ServiceManager {
     }
     const scope = this.scope;
     this.scope = null;
-    // context/isInitialized are intentionally NOT reset: RecordingManager's
-    // finalizer calls getService() during its drain, and the old cleaned-up
-    // container kept serving getService too.
+    // context/isInitialized are intentionally NOT reset: renderer tRPC calls
+    // racing teardown still resolve through the lazy context getters, and
+    // the old cleaned-up container kept serving getService too.
     await closeAppScope(scope);
   }
 
