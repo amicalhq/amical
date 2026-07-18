@@ -18,7 +18,7 @@ describe("SettingsService", () => {
   it("defaults labs self correction off when unset", async () => {
     vi.mocked(getSettingsSection).mockResolvedValueOnce(undefined);
 
-    const service = new SettingsService();
+    const service = SettingsService.createForTests();
 
     await expect(service.getLabsSettings()).resolves.toEqual({
       selfCorrection: false,
@@ -26,7 +26,7 @@ describe("SettingsService", () => {
   });
 
   it("persists labs settings as their own section", async () => {
-    const service = new SettingsService();
+    const service = SettingsService.createForTests();
 
     await service.setLabsSettings({ selfCorrection: true });
 
@@ -36,7 +36,7 @@ describe("SettingsService", () => {
   });
 
   it("emits 'recording-settings-changed' when recording settings are saved", async () => {
-    const service = new SettingsService();
+    const service = SettingsService.createForTests();
     const listener = vi.fn();
     service.on("recording-settings-changed", listener);
 

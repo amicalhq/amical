@@ -112,54 +112,6 @@ export const AuthServiceLive: Layer.Layer<AuthServiceTag> = Layer.sync(
   },
 );
 
-export const SettingsServiceLive: Layer.Layer<
-  SettingsServiceTag,
-  never,
-  ServiceLocatorTag
-> = Layer.effect(
-  SettingsServiceTag,
-  Effect.gen(function* () {
-    const locator = yield* ServiceLocatorTag;
-    const settingsService = new SettingsService();
-    // Early ref: visible to the facade's nullable accessor the moment the
-    // instance exists (crash-telemetry path reads it mid-build).
-    yield* Effect.sync(() =>
-      locator.registerEarlyService("settingsService", settingsService),
-    );
-    const uiSettings = yield* step(() => settingsService.getUISettings());
-    // Composition-root side effect owned by settings init today
-    // (service-manager.ts initializeSettingsService).
-    yield* Effect.sync(() => setApplicationLocale(uiSettings.locale));
-    logger.main.info("Settings service initialized");
-    up("settingsService");
-    return settingsService;
-  }),
-);
-
-export const TelemetryServiceLive: Layer.Layer<
-  TelemetryServiceTag,
-  never,
-  PostHogClientTag | SettingsServiceTag | ServiceLocatorTag
-> = Layer.effect(
-  TelemetryServiceTag,
-  Effect.gen(function* () {
-    const locator = yield* ServiceLocatorTag;
-    const posthogClient = yield* PostHogClientTag;
-    const settingsService = yield* SettingsServiceTag;
-    const telemetryService = new TelemetryService(
-      posthogClient,
-      settingsService,
-    );
-    yield* Effect.sync(() =>
-      locator.registerEarlyService("telemetryService", telemetryService),
-    );
-    yield* step(() => telemetryService.initialize());
-    logger.main.info("Telemetry service initialized");
-    up("telemetryService");
-    return telemetryService;
-  }),
-);
-
 export const OnboardingServiceLive: Layer.Layer<
   OnboardingServiceTag,
   never,
@@ -276,8 +228,8 @@ export const AppLive: Layer.Layer<
       HistoryCleanupService.Live,
     ),
   ),
-  Layer.provideMerge(TelemetryServiceLive),
+  Layer.provideMerge(TelemetryService.Live),
   Layer.provideMerge(PostHogClient.Live),
-  Layer.provideMerge(SettingsServiceLive),
+  Layer.provideMerge(SettingsService.Live),
   Layer.provideMerge(AuthServiceLive),
 );

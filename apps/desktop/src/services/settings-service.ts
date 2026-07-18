@@ -3,6 +3,14 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
 import { EventEmitter } from "events";
+import { Effect, Layer } from "effect";
+import {
+  SettingsServiceTag,
+  ServiceLocatorTag,
+} from "../main/runtime/tags";
+import { step, up } from "../main/runtime/layer-helpers";
+import { setApplicationLocale } from "../i18n/application-locale";
+import { logger as mainLogger } from "../main/logger";
 import { FormatterConfig } from "../types/formatter";
 import {
   getSettingsSection,
@@ -115,8 +123,44 @@ export interface LabsSettings {
 }
 
 export class SettingsService extends EventEmitter {
-  constructor() {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor() {
     super();
+  }
+
+  /**
+   * The service's layer. Registers the early ref (the facade's nullable
+   * accessor serves the crash path mid-build) and owns the composition-root
+   * side effect of applying the persisted locale. Composed into AppLive by
+   * src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    SettingsServiceTag,
+    never,
+    ServiceLocatorTag
+  > = Layer.effect(
+    SettingsServiceTag,
+    Effect.gen(function* () {
+      const locator = yield* ServiceLocatorTag;
+      const service = new SettingsService();
+      yield* Effect.sync(() =>
+        locator.registerEarlyService("settingsService", service),
+      );
+      const uiSettings = yield* step(() => service.getUISettings());
+      yield* Effect.sync(() => setApplicationLocale(uiSettings.locale));
+      mainLogger.main.info("Settings service initialized");
+      up("settingsService");
+      return service;
+    }),
+  );
+
+  /**
+   * Test-only escape hatch: a raw instance for unit tests that drive the
+   * settings API directly. Production construction goes through Live.
+   */
+  static createForTests(): SettingsService {
+    return new SettingsService();
   }
 
   /**

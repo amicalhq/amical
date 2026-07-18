@@ -1,5 +1,13 @@
 import { app } from "electron";
 import { logger } from "../main/logger";
+import { Effect, Layer } from "effect";
+import {
+  TelemetryServiceTag,
+  PostHogClientTag,
+  SettingsServiceTag,
+  ServiceLocatorTag,
+} from "../main/runtime/tags";
+import { step, up } from "../main/runtime/layer-helpers";
 import type { SettingsService } from "./settings-service";
 import type { PostHogClient, SystemInfo } from "./posthog-client";
 import type {
@@ -49,9 +57,49 @@ export class TelemetryService {
   private persistedProperties: Record<string, unknown> = {};
   private settingsService: SettingsService;
 
-  constructor(client: PostHogClient, settingsService: SettingsService) {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this service, which also makes single-construction structural.
+  private constructor(client: PostHogClient, settingsService: SettingsService) {
     this.client = client;
     this.settingsService = settingsService;
+  }
+
+  /**
+   * The service's layer. Registers the early ref (the facade's nullable
+   * accessor serves crash telemetry mid-build). Composed into AppLive by
+   * src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    TelemetryServiceTag,
+    never,
+    PostHogClientTag | SettingsServiceTag | ServiceLocatorTag
+  > = Layer.effect(
+    TelemetryServiceTag,
+    Effect.gen(function* () {
+      const locator = yield* ServiceLocatorTag;
+      const client = yield* PostHogClientTag;
+      const settingsService = yield* SettingsServiceTag;
+      const service = new TelemetryService(client, settingsService);
+      yield* Effect.sync(() =>
+        locator.registerEarlyService("telemetryService", service),
+      );
+      yield* step(() => service.initialize());
+      logger.main.info("Telemetry service initialized");
+      up("telemetryService");
+      return service;
+    }),
+  );
+
+  /**
+   * Test-only escape hatch: a raw, UNINITIALIZED instance for unit tests
+   * that drive initialize() with fakes directly. Production construction
+   * goes through Live.
+   */
+  static createForTests(
+    client: PostHogClient,
+    settingsService: SettingsService,
+  ): TelemetryService {
+    return new TelemetryService(client, settingsService);
   }
 
   async initialize(): Promise<void> {

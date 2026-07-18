@@ -84,7 +84,7 @@ function createHarness(auth?: AuthStateFixture) {
   return {
     client,
     posthog,
-    service: new TelemetryService(client, settingsService),
+    service: TelemetryService.createForTests(client, settingsService),
     settingsService,
   };
 }
