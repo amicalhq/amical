@@ -53,7 +53,6 @@ interface RefreshTokenResponse {
 }
 
 export class AuthService extends EventEmitter {
-  private static instance: AuthService | null = null;
   private config: AuthConfig;
   private pendingAuth: PendingAuth | null = null;
   private refreshPromise: Promise<void> | null = null;
@@ -79,19 +78,6 @@ export class AuthService extends EventEmitter {
   }
 
   /**
-   * Static bridge for callers outside the layer graph — today only
-   * amical-cloud-provider's warmup(), which runs long after boot. Everything
-   * else resolves AuthServiceTag; deleting this accessor (and the static) is
-   * the follow-up phase once the provider takes auth as a real dependency.
-   */
-  static getInstance(): AuthService {
-    if (!AuthService.instance) {
-      AuthService.instance = new AuthService();
-    }
-    return AuthService.instance;
-  }
-
-  /**
    * The service's layer. Identity side-effects on auth changes (telemetry
    * identify/reset, feature-flag refresh, remote-config reset) are NOT
    * called from here or from this class — the consumers subscribe to the
@@ -101,7 +87,7 @@ export class AuthService extends EventEmitter {
   static readonly Live: Layer.Layer<AuthServiceTag> = Layer.sync(
     AuthServiceTag,
     () => {
-      const authService = AuthService.getInstance();
+      const authService = new AuthService();
       logger.main.info("Auth service initialized");
       up("authService");
       return authService;

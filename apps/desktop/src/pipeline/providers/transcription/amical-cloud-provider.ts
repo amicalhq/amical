@@ -5,7 +5,7 @@ import {
   TranscriptionOutput,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
-import { AuthService as AuthServiceImpl } from "../../../services/auth-service";
+import type { AuthService } from "../../../services/auth-service";
 import type { SettingsService } from "../../../services/settings-service";
 import type { TelemetryService } from "../../../services/telemetry-service";
 import type { CloudFallbackStage } from "../../../types/telemetry-events";
@@ -181,9 +181,8 @@ const toNetworkAppError = (error: unknown): AppError => {
   );
 };
 
-const CloudAuthLive = Layer.sync(CloudAuth, () => {
-  const authService = AuthServiceImpl.getInstance();
-  return {
+const makeCloudAuthLive = (authService: AuthService) =>
+  Layer.sync(CloudAuth, () => ({
     isAuthenticated: () =>
       Effect.tryPromise({
         try: () => authService.isAuthenticated(),
@@ -199,8 +198,7 @@ const CloudAuthLive = Layer.sync(CloudAuth, () => {
         try: () => authService.refreshTokenIfNeeded(),
         catch: toNetworkAppError,
       }),
-  };
-});
+  }));
 
 const createInitialProviderState = (): ProviderState => ({
   frameBuffer: [],
@@ -286,9 +284,12 @@ const requestSnapshotFromState = (
   enabledLabs: state.currentEnabledLabs,
 });
 
-const createCloudRuntime = (config: CloudConfig) =>
+const createCloudRuntime = (config: CloudConfig, authService: AuthService) =>
   ManagedRuntime.make(
-    Layer.mergeAll(CloudAuthLive, Layer.succeed(CloudConfig, config)),
+    Layer.mergeAll(
+      makeCloudAuthLive(authService),
+      Layer.succeed(CloudConfig, config),
+    ),
   );
 
 type CloudRuntime = ReturnType<typeof createCloudRuntime>;
@@ -334,11 +335,12 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
 
   constructor(
+    private readonly authService: AuthService,
     telemetryService: TelemetryService | null = null,
     settingsService: SettingsService | null = null,
   ) {
     const config = cloudConfigFromEnvironment();
-    this.runtime = createCloudRuntime(config);
+    this.runtime = createCloudRuntime(config, authService);
     this.state = Effect.runSync(Ref.make(createInitialProviderState()));
     this.telemetryService = telemetryService;
     this.settingsService = settingsService;
@@ -412,7 +414,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
    * Does NOT open the gRPC stream — that stays lazy on the first chunk.
    */
   async warmup(): Promise<void> {
-    await AuthServiceImpl.getInstance().refreshTokenIfNeeded();
+    await this.authService.refreshTokenIfNeeded();
   }
 
   async updateSessionContext(context: TranscribeContext): Promise<void> {

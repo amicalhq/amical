@@ -150,10 +150,6 @@ const authMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../src/services/auth-service", () => ({
-  AuthService: { getInstance: () => authMock.instance },
-}));
-
 vi.mock("../../src/utils/http-client", () => ({
   AMICAL_LAB_SELF_CORRECTION: "self-correction",
   AMICAL_LABS_HEADER: "amical-labs",
@@ -201,6 +197,7 @@ import type { TranscribeContext } from "../../src/pipeline/core/pipeline-types";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
+import type { AuthService } from "../../src/services/auth-service";
 
 // ---- Helpers ------------------------------------------------------------
 
@@ -208,7 +205,7 @@ const flush = () => new Promise((r) => setImmediate(r));
 
 const constructProviderWithTransport = (transport: "grpc" | "http") => {
   process.env.CLOUD_DICTATION_TRANSPORT = transport;
-  return new AmicalCloudProvider();
+  return new AmicalCloudProvider(authMock.instance as unknown as AuthService);
 };
 
 const baseContext = (
@@ -588,7 +585,11 @@ describe("AmicalCloudProvider", () => {
       const settingsService = {
         getLabsSettings: vi.fn().mockResolvedValue({ selfCorrection: true }),
       } as unknown as SettingsService;
-      const provider = new AmicalCloudProvider(null, settingsService);
+      const provider = new AmicalCloudProvider(
+        authMock.instance as unknown as AuthService,
+        null,
+        settingsService,
+      );
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "hi" },
@@ -1067,7 +1068,12 @@ describe("AmicalCloudProvider", () => {
           status: 200,
           json: { success: true, transcription: "fallback worked" },
         },
-        { provider: new AmicalCloudProvider(telemetryStub) },
+        {
+          provider: new AmicalCloudProvider(
+            authMock.instance as unknown as AuthService,
+            telemetryStub,
+          ),
+        },
       );
 
       expect(trackCloudGrpcFallback).toHaveBeenCalledTimes(1);
@@ -1087,7 +1093,10 @@ describe("AmicalCloudProvider", () => {
         trackCloudGrpcFallback,
       } as unknown as TelemetryService;
       process.env.CLOUD_DICTATION_TRANSPORT = "grpc";
-      const provider = new AmicalCloudProvider(telemetryStub);
+      const provider = new AmicalCloudProvider(
+        authMock.instance as unknown as AuthService,
+        telemetryStub,
+      );
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "fallback worked" },

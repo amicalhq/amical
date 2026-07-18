@@ -106,8 +106,9 @@ export class RemoteConfigService {
       // subject), and EVERY logout — remote config is functional config,
       // independent of telemetry identity, so a logout always re-fetches
       // anonymously and the server drops any per-user surfaces. The
-      // subscriptions come off when the app scope closes: the auth instance
-      // is a process-wide static that outlives the graph.
+      // subscriptions come off when the app scope closes, so a torn-down
+      // graph stops reacting to late auth events and repeated builds in one
+      // process (tests) can't accumulate listeners.
       const resetForAuthChange = () => {
         service.resetForIdentityChange().catch((error) => {
           logger.main.warn("Remote config reset after auth change failed", {

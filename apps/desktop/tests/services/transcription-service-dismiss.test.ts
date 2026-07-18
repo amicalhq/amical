@@ -90,6 +90,11 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       null as any,
       settingsService as any,
       telemetryService as any,
+      {
+        isAuthenticated: vi.fn(),
+        getIdToken: vi.fn(),
+        refreshTokenIfNeeded: vi.fn(),
+      } as any,
       null,
       null,
     );

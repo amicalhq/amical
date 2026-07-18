@@ -14,6 +14,7 @@ import type { RemoteFormattingProviderType } from "../pipeline/providers/formatt
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
+import type { AuthService } from "./auth-service";
 import type { NativeBridge } from "./platform/native-bridge-service";
 import type { OnboardingService } from "./onboarding-service";
 import {
@@ -51,6 +52,7 @@ import {
   VadServiceTag,
   SettingsServiceTag,
   TelemetryServiceTag,
+  AuthServiceTag,
   NativeBridgeTag,
   OnboardingServiceTag,
   AppScopeTag,
@@ -91,11 +93,13 @@ export class TranscriptionService {
     vadService: VADService,
     settingsService: SettingsService,
     telemetryService: TelemetryService,
+    authService: AuthService,
     private nativeBridge: NativeBridge | null,
     private onboardingService: OnboardingService | null,
   ) {
     this.whisperProvider = new WhisperProvider(modelService);
     this.cloudProvider = new AmicalCloudProvider(
+      authService,
       telemetryService,
       settingsService,
     );
@@ -253,6 +257,7 @@ export class TranscriptionService {
     | VadServiceTag
     | SettingsServiceTag
     | TelemetryServiceTag
+    | AuthServiceTag
     | NativeBridgeTag
     | OnboardingServiceTag
     | AppScopeTag
@@ -263,6 +268,7 @@ export class TranscriptionService {
       const vadService = yield* VadServiceTag;
       const settingsService = yield* SettingsServiceTag;
       const telemetryService = yield* TelemetryServiceTag;
+      const authService = yield* AuthServiceTag;
       const nativeBridge = yield* NativeBridgeTag;
       const onboardingService = yield* OnboardingServiceTag;
       const appScope = yield* AppScopeTag;
@@ -273,6 +279,7 @@ export class TranscriptionService {
             vadService,
             settingsService,
             telemetryService,
+            authService,
             nativeBridge,
             onboardingService,
           );
@@ -320,6 +327,7 @@ export class TranscriptionService {
     vadService: VADService,
     settingsService: SettingsService,
     telemetryService: TelemetryService,
+    authService: AuthService,
     nativeBridge: NativeBridge | null,
     onboardingService: OnboardingService | null,
   ): TranscriptionService {
@@ -328,6 +336,7 @@ export class TranscriptionService {
       vadService,
       settingsService,
       telemetryService,
+      authService,
       nativeBridge,
       onboardingService,
     );

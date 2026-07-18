@@ -43,7 +43,7 @@
  *      │  └──┼─────┼────┼────► Onboarding (◄ Settings, Telemetry, Model)
  *      │     │     │    │          │
  *      │     ▼     ▼    ▼          ▼
- *      │   Transcription (◄ Model, VAD, Settings, Telemetry, Bridge, Onboarding)
+ *      │   Transcription (◄ Model, VAD, Settings, Telemetry, Auth, Bridge, Onboarding)
  *      │         ╎
  *      │         ▼
  *      └╌╌╌► RecordingManager (◄ locator; ╌╌ Transcription, Bridge, Settings, Model)

@@ -80,8 +80,9 @@ export class TelemetryService extends EventEmitter {
    * events that drive identity: identify on "authenticated" (when the token
    * carried a subject), reset on "logged-out" (only if identified — the
    * reset gate keeps "identity-changed" meaning an ACTUAL change). The
-   * subscriptions are removed when the app scope closes: the auth instance
-   * is a process-wide static that outlives the graph. Composed into AppLive
+   * subscriptions are removed when the app scope closes, so a torn-down
+   * graph's consumers stop reacting to late auth events and repeated builds
+   * in one process (tests) can't accumulate listeners. Composed into AppLive
    * by src/main/runtime/layers.ts.
    */
   static readonly Live: Layer.Layer<
