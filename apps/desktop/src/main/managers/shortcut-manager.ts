@@ -10,6 +10,15 @@ import {
   type ShortcutType,
   type ValidationResult,
 } from "@/utils/shortcut-validation";
+import { Effect, Layer } from "effect";
+import {
+  ShortcutManagerTag,
+  SettingsServiceTag,
+  NativeBridgeTag,
+  RecordingManagerTag,
+  AppScopeTag,
+} from "../runtime/tags";
+import { addRelease, step, up } from "../runtime/layer-helpers";
 
 const log = logger.main;
 const PRESSED_KEYS_RECHECK_INTERVAL_MS = 10000;
@@ -87,7 +96,12 @@ export class ShortcutManager extends EventEmitter {
   // RecordingManager in lockstep with the pending draft.
   private draftActive = false;
 
-  constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
+  // Construction goes through Live: the graph is the only thing that may
+  // build this manager, which also makes single-construction structural.
+  private constructor(
+    settingsService: SettingsService,
+    nativeBridge: NativeBridge,
+  ) {
     super();
     this.settingsService = settingsService;
     this.nativeBridge = nativeBridge;
@@ -101,7 +115,62 @@ export class ShortcutManager extends EventEmitter {
     this.draftActive = active;
   }
 
-  async initialize() {
+  /**
+   * The manager's layer: dependencies are the yield* lines, initialization
+   * is the acquire, teardown registers on the app scope. Composed into
+   * AppLive by src/main/runtime/layers.ts.
+   */
+  static readonly Live: Layer.Layer<
+    ShortcutManagerTag,
+    never,
+    SettingsServiceTag | NativeBridgeTag | RecordingManagerTag | AppScopeTag
+  > = Layer.effect(
+    ShortcutManagerTag,
+    Effect.gen(function* () {
+      const settingsService = yield* SettingsServiceTag;
+      const nativeBridge = yield* NativeBridgeTag;
+      const recordingManager = yield* RecordingManagerTag;
+      if (!nativeBridge) {
+        // Unsupported platform (Linux): boot stays fatal with the old
+        // initializeShortcutManager guard's exact message.
+        return yield* Effect.die(
+          new Error(
+            "SettingsService, NativeBridge and RecordingManager must be initialized first",
+          ),
+        );
+      }
+      const appScope = yield* AppScopeTag;
+      const manager = new ShortcutManager(settingsService, nativeBridge);
+      yield* addRelease(
+        appScope,
+        "Cleaning up shortcut manager...",
+        "shortcutManager",
+        () => manager.cleanup(),
+      );
+      yield* step(() => manager.initialize());
+      // Connect shortcut events to recording manager (old init step 14).
+      yield* Effect.sync(() =>
+        recordingManager.setupShortcutListeners(manager),
+      );
+      logger.main.info("Shortcut manager initialized");
+      up("shortcutManager");
+      return manager;
+    }),
+  );
+
+  /**
+   * Test-only escape hatch: a raw, UNINITIALIZED instance for unit tests
+   * that drive key events against internals directly. Production
+   * construction goes through Live.
+   */
+  static createForTests(
+    settingsService: SettingsService,
+    nativeBridge: NativeBridge,
+  ): ShortcutManager {
+    return new ShortcutManager(settingsService, nativeBridge);
+  }
+
+  private async initialize() {
     await this.loadShortcuts();
     this.syncShortcutsToNative(); // fire-and-forget
     this.syncAllowInjectedKeysToNative(); // fire-and-forget

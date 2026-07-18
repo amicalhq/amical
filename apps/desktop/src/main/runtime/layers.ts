@@ -246,44 +246,6 @@ export const RecordingManagerLive: Layer.Layer<
   }),
 );
 
-export const ShortcutManagerLive: Layer.Layer<
-  ShortcutManagerTag,
-  never,
-  SettingsServiceTag | NativeBridgeTag | RecordingManagerTag | AppScopeTag
-> = Layer.effect(
-  ShortcutManagerTag,
-  Effect.gen(function* () {
-    const settingsService = yield* SettingsServiceTag;
-    const nativeBridge = yield* NativeBridgeTag;
-    const recordingManager = yield* RecordingManagerTag;
-    if (!nativeBridge) {
-      // Unsupported platform (Linux): boot stays fatal with the old
-      // initializeShortcutManager guard's exact message.
-      return yield* Effect.die(
-        new Error(
-          "SettingsService, NativeBridge and RecordingManager must be initialized first",
-        ),
-      );
-    }
-    const appScope = yield* AppScopeTag;
-    const shortcutManager = new ShortcutManager(settingsService, nativeBridge);
-    yield* addRelease(
-      appScope,
-      "Cleaning up shortcut manager...",
-      "shortcutManager",
-      () => shortcutManager.cleanup(),
-    );
-    yield* step(() => shortcutManager.initialize());
-    // Connect shortcut events to recording manager (old init step 14).
-    yield* Effect.sync(() =>
-      recordingManager.setupShortcutListeners(shortcutManager),
-    );
-    logger.main.info("Shortcut manager initialized");
-    up("shortcutManager");
-    return shortcutManager;
-  }),
-);
-
 /**
  * The composed app graph. Requires ServiceLocatorTag and AppScopeTag
  * (provided at build time by app-runtime.ts). Independent branches build
@@ -298,7 +260,7 @@ export const AppLive: Layer.Layer<
   Exclude<AppServices, ServiceLocatorTag>,
   never,
   ServiceLocatorTag | AppScopeTag
-> = Layer.mergeAll(ShortcutManagerLive, AutoUpdaterService.Live).pipe(
+> = Layer.mergeAll(ShortcutManager.Live, AutoUpdaterService.Live).pipe(
   Layer.provideMerge(RecordingManagerLive),
   Layer.provideMerge(TranscriptionService.Live),
   Layer.provideMerge(OnboardingServiceLive),

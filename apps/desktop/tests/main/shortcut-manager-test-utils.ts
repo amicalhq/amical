@@ -79,7 +79,10 @@ export const createManager = (
   );
   const nativeBridge = { recheckPressedKeys } as unknown;
 
-  const manager = new ShortcutManager({} as never, nativeBridge as never);
+  const manager = ShortcutManager.createForTests(
+    {} as never,
+    nativeBridge as never,
+  );
   const internals = manager as unknown as ShortcutManagerInternals;
   internals.shortcuts = {
     pushToTalk: [],
