@@ -82,7 +82,8 @@ if (!gotTheLock) {
   app.exit(0);
 }
 
-const appManager = new AppManager();
+const serviceManager = new ServiceManager();
+const appManager = new AppManager(serviceManager);
 
 // Track initialization state for deep link handling
 let isInitialized = false;
@@ -137,7 +138,7 @@ app.whenReady().then(async () => {
     }
   } catch (error) {
     logger.main.error("Application failed to initialize", { error });
-    const telemetryService = ServiceManager.getInstance().getTelemetryService();
+    const telemetryService = serviceManager.getTelemetryService();
     await telemetryService?.captureExceptionImmediateAndShutdown(error, {
       source: "main_process",
       stage: "app_initialize",

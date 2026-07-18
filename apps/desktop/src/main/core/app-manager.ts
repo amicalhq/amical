@@ -4,7 +4,7 @@ import { ensureSeededSkills } from "../../db/skills";
 import { logger } from "../logger";
 import { WindowManager } from "./window-manager";
 import { setupApplicationMenu } from "../menu";
-import { ServiceManager } from "../managers/service-manager";
+import type { ServiceManager } from "../managers/service-manager";
 import { TrayManager } from "../managers/tray-manager";
 import type { OnboardingService } from "../../services/onboarding-service";
 import type { RecordingManager } from "../managers/recording-manager";
@@ -36,8 +36,8 @@ export class AppManager {
   private serviceManager: ServiceManager;
   private trayManager: TrayManager;
 
-  constructor() {
-    this.serviceManager = ServiceManager.getInstance();
+  constructor(serviceManager: ServiceManager) {
+    this.serviceManager = serviceManager;
     this.trayManager = TrayManager.getInstance();
     // WindowManager created in initialize() after deps are ready
   }

@@ -44,15 +44,17 @@ function spyOnMethod(target: object, method: string) {
  */
 describe("ServiceManager boot failure (facade)", () => {
   let testDb: TestDatabase;
+  let serviceManager: ServiceManager;
 
   beforeEach(async () => {
     testDb = await createTestDatabase();
     setTestDatabase(testDb.db);
-    ServiceManager.clearInstanceForTests();
+    serviceManager = new ServiceManager();
   });
 
   afterEach(async () => {
-    await ServiceManager.resetInstanceForTests();
+    // cleanup() is idempotent — a test that already cleaned up is fine.
+    await serviceManager.cleanup();
     await testDb.close();
     vi.restoreAllMocks();
   });
@@ -63,7 +65,6 @@ describe("ServiceManager boot failure (facade)", () => {
     );
     const posthogShutdown = spyOnMethod(PostHogClient.prototype, "shutdown");
 
-    const serviceManager = ServiceManager.getInstance();
     let thrown: unknown;
     try {
       await serviceManager.initialize();
@@ -100,8 +101,6 @@ describe("ServiceManager boot failure (facade)", () => {
   });
 
   it("second initialize is a warn-noop; cleanup before initialize is a no-op", async () => {
-    const serviceManager = ServiceManager.getInstance();
-
     // Pre-init cleanup: nothing to release, no throw.
     await serviceManager.cleanup();
 

@@ -27,8 +27,6 @@ export async function initializeTestApp(
 ): Promise<TestApp> {
   const { skipOnboarding = true, skipWindows = false } = options;
 
-  await ServiceManager.resetInstanceForTests();
-
   // Mock the database module to use our test database
   vi.doMock("@db", () => ({
     db: testDb.db,
@@ -42,8 +40,9 @@ export async function initializeTestApp(
     process.env.FORCE_ONBOARDING = "false";
   }
 
-  // Create AppManager instance
-  const appManager = new AppManager();
+  // Fresh boot handle per test app — no singleton to scrub.
+  const serviceManager = new ServiceManager();
+  const appManager = new AppManager(serviceManager);
 
   // Initialize the app
   // Note: This will try to create windows, which are mocked
@@ -53,9 +52,6 @@ export async function initializeTestApp(
     // Some initialization errors are expected in test environment
     console.warn("AppManager initialization warning:", error);
   }
-
-  // Get service manager
-  const serviceManager = ServiceManager.getInstance()!;
 
   // Create tRPC caller for testing
   const ctx = createContext(serviceManager);
@@ -67,7 +63,6 @@ export async function initializeTestApp(
     trpcCaller,
     cleanup: async () => {
       await appManager.cleanup();
-      ServiceManager.clearInstanceForTests();
     },
   };
 }
@@ -90,8 +85,6 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
   trpcCaller: ReturnType<typeof router.createCaller>;
   cleanup: () => Promise<void>;
 }> {
-  await ServiceManager.resetInstanceForTests();
-
   // Mock the database module
   vi.doMock("@db", () => ({
     db: testDb.db,
@@ -100,8 +93,8 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
     closeDatabase: vi.fn().mockResolvedValue(undefined),
   }));
 
-  // Create and initialize ServiceManager
-  const serviceManager = ServiceManager.getInstance();
+  // Create and initialize a fresh ServiceManager — no singleton to scrub.
+  const serviceManager = new ServiceManager();
 
   try {
     await serviceManager.initialize();
@@ -118,7 +111,6 @@ export async function initializeTestServices(testDb: TestDatabase): Promise<{
     trpcCaller,
     cleanup: async () => {
       await serviceManager.cleanup();
-      ServiceManager.clearInstanceForTests();
     },
   };
 }

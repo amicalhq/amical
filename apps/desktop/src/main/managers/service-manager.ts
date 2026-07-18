@@ -115,8 +115,9 @@ const TAGS = {
  * - cleanup() staying safe and idempotent on a never-initialized or
  *   half-built container.
  */
+// Not a singleton: app.ts constructs the one production instance and hands
+// it to AppManager; tests construct their own.
 export class ServiceManager {
-  private static instance: ServiceManager | null = null;
   private isInitialized = false;
 
   private scope: Scope.CloseableScope | null = null;
@@ -201,23 +202,4 @@ export class ServiceManager {
   getTelemetryService(): TelemetryService | null {
     return this.earlyRefs.telemetryService ?? null;
   }
-
-  static getInstance(): ServiceManager {
-    if (!ServiceManager.instance) {
-      ServiceManager.instance = new ServiceManager();
-    }
-    return ServiceManager.instance;
-  }
-
-  static async resetInstanceForTests(): Promise<void> {
-    if (ServiceManager.instance) {
-      await ServiceManager.instance.cleanup();
-      ServiceManager.instance = null;
-    }
-  }
-
-  static clearInstanceForTests(): void {
-    ServiceManager.instance = null;
-  }
-
 }
