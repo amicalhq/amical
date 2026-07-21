@@ -102,10 +102,8 @@ export class AppManager {
 
     telemetryService.trackAppLaunch();
 
-    // Subscribe to onboarding lifecycle, recording state (widget
-    // visibility), shortcuts, and native bridge events.
+    // Subscribe to onboarding lifecycle, shortcuts, and native bridge events.
     this.setupOnboardingEventListeners(onboardingService);
-    this.setupRecordingEventListeners(this.recordingManager);
     this.setupShortcutEventListeners(this.shortcutManager);
     if (nativeBridge) {
       this.setupNativeBridgeEventListeners(nativeBridge);
@@ -240,34 +238,6 @@ export class AppManager {
     logger.main.info("Onboarding event listeners set up");
   }
 
-  private setupRecordingEventListeners(
-    recordingManager: RecordingManager,
-  ): void {
-    const refresh = () => {
-      this.updateWidgetVisibility(this.isEffectivelyIdle(recordingManager)).catch(
-        (error) => {
-          logger.main.error("Failed to update widget visibility", error);
-        },
-      );
-    };
-
-    recordingManager.on("state-changed", refresh);
-    // A pending draft keeps the widget shown even though the FSM is idle, so the
-    // review box survives until insert/dismiss; re-hide once it's cleared.
-    recordingManager.on("draft-changed", refresh);
-
-    logger.main.info("Recording state listener connected in AppManager");
-  }
-
-  // The widget should be treated as "active" (shown) whenever recording OR while
-  // a draft review is pending — even though the recording FSM is idle then.
-  private isEffectivelyIdle(recordingManager: RecordingManager): boolean {
-    return (
-      recordingManager.getState() === "idle" &&
-      recordingManager.getPendingDraft() === null
-    );
-  }
-
   private setupShortcutEventListeners(shortcutManager: ShortcutManager): void {
     shortcutManager.on("open-notes-window-triggered", () => {
       void this.handleOpenNotesWindowShortcut();
@@ -316,21 +286,10 @@ export class AppManager {
   }
 
   private setupSettingsEventListeners(settingsService: SettingsService): void {
-    // Handle preference changes (widget visibility, dock visibility)
+    // Handle preference changes that affect the Electron shell.
     settingsService.on(
       "preferences-changed",
-      async ({
-        showWidgetWhileInactiveChanged,
-        showInDockChanged,
-      }: {
-        showWidgetWhileInactiveChanged: boolean;
-        showInDockChanged: boolean;
-      }) => {
-        if (showWidgetWhileInactiveChanged) {
-          await this.updateWidgetVisibility(
-            this.isEffectivelyIdle(this.recordingManager),
-          );
-        }
+      ({ showInDockChanged }: { showInDockChanged: boolean }) => {
         if (showInDockChanged) {
           settingsService.syncDockVisibility();
         }
@@ -343,16 +302,6 @@ export class AppManager {
     });
 
     logger.main.info("Settings event listeners set up");
-  }
-
-  private async updateWidgetVisibility(isIdle: boolean): Promise<void> {
-    const preferences = await this.settingsService.getPreferences();
-
-    if (preferences.showWidgetWhileInactive || !isIdle) {
-      this.windowManager.showWidget();
-    } else {
-      this.windowManager.hideWidget();
-    }
   }
 
   private async setupWindows(): Promise<void> {

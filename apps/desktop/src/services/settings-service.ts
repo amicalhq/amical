@@ -507,11 +507,9 @@ export class SettingsService extends EventEmitter {
       this.syncAutoLaunch();
     }
 
-    // Emit event for listeners (AppManager will handle window updates)
+    // Emit change metadata for main-process and renderer listeners.
     this.emit("preferences-changed", {
       changes: preferences,
-      showWidgetWhileInactiveChanged:
-        preferences.showWidgetWhileInactive !== undefined,
       showInDockChanged: preferences.showInDock !== undefined,
       muteSystemAudioChanged: preferences.muteSystemAudio !== undefined,
     });

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/trpc/react";
 import {
@@ -15,10 +15,14 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
   const navigateMainWindow = api.widget.navigateMainWindow.useMutation();
   const trackEvent = api.telemetry.trackEvent.useMutation();
   const activeToastIdsRef = useRef<Set<string | number>>(new Set());
+  const [hasVisibleNotification, setHasVisibleNotification] = useState(false);
+  const [notificationSequence, setNotificationSequence] = useState(0);
   const prevRecordingStateRef = useRef<RecordingState>(recordingState);
 
-  const syncToastPassThrough = () => {
-    setPassThroughReason("toast", activeToastIdsRef.current.size > 0);
+  const syncToastState = () => {
+    const visible = activeToastIdsRef.current.size > 0;
+    setPassThroughReason("toast", visible);
+    setHasVisibleNotification(visible);
   };
 
   const handleActionClick = async (action: WidgetNotificationAction) => {
@@ -49,7 +53,7 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
     // Same cleanup whether the toast is dismissed or auto-closes.
     const handleToastClosed = () => {
       activeToastIdsRef.current.delete(createdToastId);
-      syncToastPassThrough();
+      syncToastState();
     };
     const createdToastId = toast.custom(
       (toastId) => (
@@ -76,7 +80,7 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
       },
     );
     activeToastIdsRef.current.add(createdToastId);
-    syncToastPassThrough();
+    syncToastState();
   };
 
   useEffect(() => {
@@ -109,13 +113,14 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
     ) {
       activeToastIdsRef.current.forEach((id) => toast.dismiss(id));
       activeToastIdsRef.current.clear();
-      setPassThroughReason("toast", false);
+      syncToastState();
     }
   }, [recordingState]);
 
   api.recording.widgetNotifications.useSubscription(undefined, {
     onData: (notification) => {
       showNotificationToast(notification);
+      setNotificationSequence((sequence) => sequence + 1);
       trackEvent.mutate({
         event: "widget_notification_shown",
         payload: {
@@ -129,4 +134,6 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
       console.error("Widget notification subscription error:", error);
     },
   });
+
+  return { hasVisibleNotification, notificationSequence };
 };

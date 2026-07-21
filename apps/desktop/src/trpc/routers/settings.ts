@@ -6,6 +6,7 @@ import path from "node:path";
 import { createRouter, procedure } from "../trpc";
 import { dbPath, closeDatabase } from "../../db";
 import type { AppSettingsData } from "../../db/schema";
+import type { AppPreferences } from "../../services/settings-service";
 import * as fs from "fs/promises";
 import {
   HISTORY_RETENTION_PERIODS,
@@ -383,6 +384,52 @@ export const settingsRouter = createRouter({
     });
   }),
 
+  // Widget visibility preference, including its initial value. The widget
+  // renderer combines this with its recording, draft, and toast state.
+  // eslint-disable-next-line deprecation/deprecation
+  widgetVisibilityPreference: procedure.subscription(({ ctx }) => {
+    return observable<boolean>((emit) => {
+      const settingsService = ctx.services.settingsService;
+      const logger = ctx.logger;
+      let active = true;
+      let receivedVisibilityUpdate = false;
+
+      const handlePreferencesChanged = ({
+        changes,
+      }: {
+        changes: Partial<AppPreferences>;
+      }) => {
+        if (changes.showWidgetWhileInactive !== undefined) {
+          receivedVisibilityUpdate = true;
+          emit.next(changes.showWidgetWhileInactive);
+        }
+      };
+
+      settingsService.on("preferences-changed", handlePreferencesChanged);
+
+      const emitInitialPreference = async () => {
+        try {
+          const preferences = await settingsService.getPreferences();
+          if (active && !receivedVisibilityUpdate) {
+            emit.next(preferences.showWidgetWhileInactive);
+          }
+        } catch (error) {
+          logger?.main.error(
+            "Failed to load widget visibility preference",
+            error,
+          );
+        }
+      };
+
+      void emitInitialPreference();
+
+      return () => {
+        active = false;
+        settingsService.off("preferences-changed", handlePreferencesChanged);
+      };
+    });
+  }),
+
   // Set the ordered microphone fallback chain (index 0 = highest priority)
   setMicrophonePriority: procedure
     .input(
@@ -734,7 +781,7 @@ export const settingsRouter = createRouter({
       }
 
       await settingsService.setPreferences(input);
-      // Window updates are handled via settings events in AppManager
+      // Main-process and renderer listeners apply any resulting window changes.
 
       // Push the injected-keys toggle to the native helper (Windows-only in
       // effect; the macOS helper no-ops). Only when it actually changed hands.

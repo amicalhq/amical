@@ -4,6 +4,7 @@ import { useWidgetNotifications } from "../../hooks/useWidgetNotifications";
 import { useRecordingSettingsSync } from "../../hooks/useRecordingSettingsSync";
 import { useHealPendingMicrophone } from "../../hooks/useHealPendingMicrophone";
 import { useDraftReview } from "../../hooks/useDraftReview";
+import { useWidgetVisibility } from "../../hooks/useWidgetVisibility";
 import { useRecording } from "@/hooks/useRecording";
 
 export function WidgetPage() {
@@ -15,7 +16,14 @@ export function WidgetPage() {
 
   // Pass the live recording state so a new press clears any stale notification
   // toast from the previous session before it can bleed into this recording.
-  useWidgetNotifications(recording.recordingStatus.state);
+  const { hasVisibleNotification, notificationSequence } =
+    useWidgetNotifications(recording.recordingStatus.state);
+  useWidgetVisibility({
+    recordingState: recording.recordingStatus.state,
+    hasPendingDraft: draft.review !== null,
+    hasVisibleNotification,
+    notificationSequence,
+  });
   useRecordingSettingsSync();
   useHealPendingMicrophone();
 

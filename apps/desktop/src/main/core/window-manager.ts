@@ -362,18 +362,14 @@ export class WindowManager extends EventEmitter {
   }
 
   /**
-   * Make sure the widget window exists and apply its initial visibility:
-   * shown only when the user wants it visible while idle (recording-state
-   * changes drive visibility from there). Idempotent — callers are boot,
-   * app activation, and the onboarding try-it.
+   * Make sure the widget window exists. The renderer applies normal visibility
+   * once it has loaded the preference and current widget content state.
    */
   async ensureWidgetWindow(): Promise<void> {
     if (!this.widgetWindow || this.widgetWindow.isDestroyed()) {
       await this.createWidgetWindow();
-    }
-    const preferences = await this.settingsService.getPreferences();
-    if (preferences.showWidgetWhileInactive) {
-      this.showWidget();
+    } else {
+      this.reassertWidgetZOrder();
     }
   }
 
@@ -463,9 +459,10 @@ export class WindowManager extends EventEmitter {
       });
       this.widgetWindow.setHiddenInMissionControl(true);
     } else if (process.platform === "win32") {
-      // On Windows, use "screen-saver" level for maximum z-order priority
-      // to stay above other app toolbars/menus. The widget window is inset
-      // from screen edges to allow taskbar auto-hide detection.
+      // On Windows, "screen-saver" keeps the topmost window above the taskbar.
+      // It still shares one topmost band with other overlays, so content edges
+      // explicitly reassert its ordering. The widget window is inset from screen
+      // edges to allow taskbar auto-hide detection.
       // See: https://github.com/electron/electron/issues/11830
       this.widgetWindow.setAlwaysOnTop(true, "screen-saver");
     }
@@ -476,7 +473,7 @@ export class WindowManager extends EventEmitter {
     this.emit("window-created", this.widgetWindow!);
 
     logger.main.info(
-      "Widget window created (visibility controlled by AppManager)",
+      "Widget window created (visibility controlled by widget renderer)",
     );
   }
 
@@ -572,12 +569,28 @@ export class WindowManager extends EventEmitter {
   showWidget(): void {
     if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
       this.widgetWindow.showInactive();
+      this.reassertWidgetZOrder();
     }
   }
 
   hideWidget(): void {
     if (this.widgetWindow && !this.widgetWindow.isDestroyed()) {
       this.widgetWindow.hide();
+    }
+  }
+
+  /**
+   * Restore a visible widget's native ordering.
+   * Keep the visibility guard: moveTop() can show a hidden window on Windows.
+   */
+  reassertWidgetZOrder(): void {
+    if (
+      process.platform === "win32" &&
+      this.widgetWindow &&
+      !this.widgetWindow.isDestroyed() &&
+      this.widgetWindow.isVisible()
+    ) {
+      this.widgetWindow.moveTop();
     }
   }
 
@@ -713,6 +726,12 @@ export class WindowManager extends EventEmitter {
   }
 
   closeNotesWindow(): void {
+    const notesWindow = this.notesWindowController.getWindow();
+    if (notesWindow && !notesWindow.isDestroyed()) {
+      // Notes closing is a recovery edge for any third-party topmost window
+      // raised during the session. This is a no-op when policy hid the widget.
+      notesWindow.once("closed", () => this.reassertWidgetZOrder());
+    }
     this.notesWindowController.close();
   }
 

@@ -50,6 +50,12 @@ class FakeBrowserWindow extends EventEmitter {
     this._isVisible = true;
   }
 
+  showInactive() {
+    this._isVisible = true;
+  }
+
+  moveTop() {}
+
   hide() {
     this._isVisible = false;
   }

@@ -430,6 +430,8 @@ export class NotesWindowController {
     if (process.platform === "darwin") {
       this.notesWindow.setAlwaysOnTop(true, "floating");
     } else if (process.platform === "win32") {
+      // Keep Notes above the taskbar; it still shares Windows' topmost band
+      // with the widget and third-party overlays.
       this.notesWindow.setAlwaysOnTop(true, "screen-saver");
     }
 

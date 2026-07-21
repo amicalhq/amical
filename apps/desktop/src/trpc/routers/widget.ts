@@ -5,6 +5,19 @@ import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 
 export const widgetRouter = createRouter({
+  setVisible: procedure
+    .input(z.object({ visible: z.boolean() }))
+    .mutation(({ ctx, input }) => {
+      const windowManager = ctx.services.windowManager;
+
+      if (input.visible) {
+        windowManager.showWidget();
+      } else {
+        windowManager.hideWidget();
+      }
+      return true;
+    }),
+
   setIgnoreMouseEvents: procedure
     .input(
       z.object({
@@ -50,22 +63,9 @@ export const widgetRouter = createRouter({
       return true;
     }),
 
-  closeNotesWindow: procedure.mutation(async ({ ctx }) => {
+  closeNotesWindow: procedure.mutation(({ ctx }) => {
     const windowManager = ctx.services.windowManager;
     windowManager.closeNotesWindow();
-
-    // Closing the notes window should immediately return to normal visibility rules.
-    const settingsService = ctx.services.settingsService;
-    const recordingManager = ctx.services.recordingManager;
-    const preferences = await settingsService.getPreferences();
-    const isIdle = recordingManager.getState() === "idle";
-
-    if (preferences.showWidgetWhileInactive || !isIdle) {
-      windowManager.showWidget();
-    } else {
-      windowManager.hideWidget();
-    }
-
     logger.main.info("Closed notes window");
     return true;
   }),
