@@ -3,6 +3,7 @@ import de from "./locales/de.json";
 import en from "./locales/en.json";
 import es from "./locales/es.json";
 import ja from "./locales/ja.json";
+import ko from "./locales/ko.json";
 import zhTW from "./locales/zh-TW.json";
 
 export const resources = {
@@ -18,12 +19,22 @@ export const resources = {
   ja: {
     translation: ja,
   },
+  ko: {
+    translation: ko,
+  },
   "zh-TW": {
     translation: zhTW,
   },
 } as const;
 
-export const supportedLocales = ["en", "de", "es", "ja", "zh-TW"] as const;
+export const supportedLocales = [
+  "en",
+  "de",
+  "es",
+  "ja",
+  "ko",
+  "zh-TW",
+] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
 export const defaultLocale: SupportedLocale = "en";
 

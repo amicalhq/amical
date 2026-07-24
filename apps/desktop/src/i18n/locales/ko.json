@@ -1,0 +1,1112 @@
+{
+  "app": {
+    "loading": "Amical 로딩 중..."
+  },
+  "errors": {
+    "generic": "문제가 발생했습니다. 다시 시도해 주세요."
+  },
+  "menu": {
+    "file": "파일",
+    "edit": "편집",
+    "view": "보기",
+    "window": "윈도우",
+    "help": "도움말",
+    "settings": "설정",
+    "checkForUpdates": "업데이트 확인...",
+    "openAllDevTools": "모든 개발자 도구 열기",
+    "learnMore": "자세히 알아보기",
+    "speech": "음성",
+    "version": "버전 {{version}}"
+  },
+  "tray": {
+    "tooltip": "Amical",
+    "openConsole": "콘솔 열기",
+    "about": "정보",
+    "quit": "종료"
+  },
+  "updater": {
+    "updateAvailable": "업데이트 가능",
+    "requiredUpdate": "필수 업데이트",
+    "versionAvailable": "버전 {{version}}을 사용할 수 있습니다.",
+    "versionRequired": "버전 {{version}}이 필요합니다.",
+    "restartAndUpdate": "재시작 후 업데이트",
+    "later": "나중에"
+  },
+  "onboarding": {
+    "app": {
+      "loading": "준비하는 중…",
+      "unknownScreen": "알 수 없는 화면"
+    },
+    "navigation": {
+      "back": "뒤로",
+      "continue": "계속",
+      "done": "완료",
+      "skip": "건너뛰기"
+    },
+    "toast": {
+      "loadStateFailed": "설정 진행 상황을 불러오지 못했습니다",
+      "savePreferencesFailed": "환경설정을 저장하지 못했습니다. 다시 시도해 주세요.",
+      "completed": "모든 준비가 끝났습니다!",
+      "completeFailed": "설정을 완료하지 못했습니다. 다시 시도해 주세요.",
+      "resetSuccess": "온보딩이 성공적으로 초기화되었습니다",
+      "resetFailed": "온보딩 초기화에 실패했습니다"
+    },
+    "errorBoundary": {
+      "title": "문제가 발생했습니다",
+      "description": "예기치 않은 오류로 설정이 중단되었습니다. 다시 시도해 주세요.",
+      "tryAgain": "다시 시도",
+      "restart": "설정 다시 시작",
+      "supportNote": "문제가 계속되면 지원팀에 문의하세요."
+    },
+    "welcome": {
+      "title": "Amical을 어떻게 사용하실 건가요?",
+      "subtitle": "해당하는 항목을 모두 선택하세요.",
+      "toast": {
+        "selectAtLeastOne": "계속하려면 하나 이상 선택하세요"
+      },
+      "useCases": {
+        "draftingEmails": "이메일 작성",
+        "sendingMessages": "메시지 보내기",
+        "promptingAi": "AI에 프롬프트 입력",
+        "codingWithAi": "AI로 코딩하기",
+        "writingDocuments": "문서 작성",
+        "takingNotes": "메모하기",
+        "postsComments": "게시글 및 댓글 작성",
+        "somethingElse": "기타"
+      },
+      "somethingElsePlaceholder": "더 알려주세요…"
+    },
+    "permissions": {
+      "title": "핵심 기능 활성화",
+      "subtitle": "Amical이 듣고 입력하려면 몇 가지 권한이 필요합니다.",
+      "status": {
+        "granted": "권한이 허용되었습니다"
+      },
+      "actions": {
+        "request": "권한 요청",
+        "requesting": "요청 중…",
+        "openSettings": "설정 열기"
+      },
+      "microphone": {
+        "title": "마이크",
+        "description": "Amical이 받아쓰기를 들을 수 있도록 합니다"
+      },
+      "accessibility": {
+        "title": "손쉬운 사용",
+        "description": "Amical이 어떤 앱에든 텍스트를 붙여넣을 수 있도록 합니다"
+      }
+    },
+    "discovery": {
+      "title": "저희를 어떻게 알게 되셨나요?",
+      "subtitle": "Amical이 더 많은 분들께 다가가는 데 도움이 됩니다.",
+      "sources": {
+        "searchEngine": "검색 엔진 (Google, Bing 등)",
+        "reddit": "Reddit",
+        "xTwitter": "X / Twitter",
+        "socialMedia": "소셜 미디어 (Instagram, LinkedIn 등)",
+        "aiAssistant": "AI 채팅 (ChatGPT, Claude 등)",
+        "wordOfMouth": "지인 또는 동료의 추천",
+        "blogArticle": "블로그 게시글 또는 기사",
+        "github": "GitHub",
+        "other": "기타"
+      },
+      "toast": {
+        "selectSource": "어떻게 알게 되셨는지 선택해 주세요",
+        "otherDetailsRequired": "\"기타\"에 대한 세부 내용을 입력해 주세요"
+      },
+      "other": {
+        "placeholder": "더 알려주세요…",
+        "charCount": "{{count}}/{{max}}자"
+      }
+    },
+    "modelSelection": {
+      "recommended": "추천",
+      "localUnsupported": "macOS 15 이상이 필요합니다",
+      "cards": {
+        "cloud": {
+          "name": "클라우드",
+          "tag": "완전한 Amical 경험",
+          "bullets": [
+            "가장 정확한 전사",
+            "AI 포맷팅 내장",
+            "다운로드나 설정 불필요"
+          ],
+          "caveat": "인터넷과 무료 계정이 필요합니다"
+        },
+        "local": {
+          "name": "로컬",
+          "tag": "비공개 및 오프라인",
+          "bullets": ["기기에서 완전히 실행됩니다", "계정이 필요 없습니다"],
+          "caveats": [
+            "속도와 정확도는 하드웨어에 따라 다릅니다",
+            "1회 다운로드"
+          ],
+          "caveatLead": "AI 포맷팅에는 추가 설정이 필요합니다"
+        }
+      },
+      "title": "Amical 실행 방식 선택",
+      "subtitle": "대부분은 클라우드로 시작합니다. 설정에서 언제든 전환할 수 있습니다."
+    },
+    "signIn": {
+      "title": "Amical에 로그인",
+      "subtitle": "Amical Cloud를 사용하려면 계정이 필요합니다.",
+      "button": "로그인",
+      "fine": "로그인은 브라우저에서 열립니다 · 무료 플랜 포함 · 카드 등록 불필요",
+      "waiting": "브라우저에서 로그인이 완료되기를 기다리는 중…",
+      "verdict": "로그인됨",
+      "switchAccount": "다른 계정 사용",
+      "toast": {
+        "loginInBrowser": "브라우저에서 계속 진행하세요",
+        "authenticated": "로그인됨"
+      },
+      "error": {
+        "loginStartFailed": "로그인 페이지를 열지 못했습니다. 다시 시도해 주세요."
+      }
+    },
+    "download": {
+      "title": "모델 준비 중",
+      "subtitle": "Amical이 음성 모델을 다운로드하고 있습니다. 한 번만 진행되며, 이후 받아쓰기는 완전히 오프라인으로 실행됩니다.",
+      "modelTag": "빠르고 정확하며 기기에서 실행됨",
+      "ready": "모델 준비 완료",
+      "alreadyInstalled": "이미 설치됨",
+      "error": "모델 다운로드 실패: {{message}}",
+      "retry": "재시도"
+    },
+    "micTest": {
+      "title": "마이크 테스트",
+      "subtitle": "평소 목소리 크기로 몇 마디 말해 보세요.",
+      "hint": "헤드폰을 연결하셨나요? 막대는 선택된 마이크를 따라 움직입니다.",
+      "change": "마이크 변경",
+      "caption": "막대가 움직이면 마이크가 정상 작동하는 것입니다"
+    },
+    "shortcut": {
+      "title": "받아쓰기 단축키 설정",
+      "subtitle": "단축키를 눌러 작동하는지 확인하세요.",
+      "changeHotkey": "단축키 변경",
+      "hint": "나중에 설정에서 단축키를 더 추가할 수 있습니다.",
+      "noShortcut": "아직 설정된 단축키가 없습니다. \"단축키 변경\"을 클릭해 선택하세요.",
+      "caption": "키가 밝아지면 단축키가 정상 작동하는 것입니다"
+    },
+    "spokenLanguage": {
+      "title": "어떤 언어를 사용하시나요?",
+      "subtitle": "가장 정확한 인식을 위해 자주 받아쓸 언어를 추가하세요.",
+      "change": "언어 변경",
+      "hint": "전환할 필요 없이 언제든 그중 아무 언어로나 받아쓸 수 있습니다.",
+      "autoDetect": "자동 감지",
+      "none": "아직 선택된 언어가 없습니다"
+    },
+    "dictationTest": {
+      "email": {
+        "title": "첫 메시지 받아쓰기",
+        "subtitle": "단축키를 누른 채 자연스럽게 말하고, 끝나면 손을 떼세요.",
+        "tip": "동료에게 말하듯 이야기하세요. 문장 부호는 Amical이 처리합니다.",
+        "cta": "{{keys}}를 누른 채 말해보세요",
+        "mockHeader": "이메일",
+        "to": "받는 사람: John Doe",
+        "subject": "제목: 간단한 안부 인사",
+        "ghost": "안녕 John, 음, 그냥 확인차 연락했어... 저, 제안서 검토해볼 시간 있었어? 급한 건 아니고, 알려만 줘."
+      },
+      "notes": {
+        "title": "속삭이듯 말해보기",
+        "subtitle": "단축키를 누른 채 속삭여 보세요. Amical이 모든 단어를 정확히 인식합니다.",
+        "tip": "개방형 사무실, 늦은 밤, 조용히 있고 싶은 어디에서나 유용합니다.",
+        "cta": "{{keys}}를 누른 채 속삭여보세요",
+        "mockHeader": "메모",
+        "ghost": "음, 사야 할 게... 물, 우유, 빵, 토스트.",
+        "listTitle": "장보기 목록"
+      },
+      "simple": {
+        "title": "첫 받아쓰기 해보기",
+        "subtitle": "단축키를 누른 채 자연스럽게 말하고, 끝나면 손을 떼세요.",
+        "tip": "나중에 설정에서 AI 모델을 연결하거나 Amical Cloud로 전환하면 AI 포맷팅을 사용할 수 있습니다.",
+        "cta": "{{keys}}를 누른 채 말해보세요",
+        "mockHeader": "메모",
+        "ghost": "집에 가는 길에 물, 우유, 빵, 토스트를 사자."
+      }
+    },
+    "completion": {
+      "title": "모든 준비가 끝났습니다",
+      "subtitle": "어디서든 단축키를 눌러 시작하세요. 설정에서 언제든 변경할 수 있습니다.",
+      "start": "Amical 시작하기",
+      "summary": {
+        "speechModel": "음성 모델",
+        "shortcut": "받아쓰기 단축키",
+        "microphone": "마이크",
+        "cloudModel": "Amical Cloud",
+        "localModel": "{{model}}",
+        "shortcutValue": "{{key}} 누르기"
+      }
+    },
+    "phases": {
+      "getStarted": "시작하기",
+      "setUp": "설정",
+      "configure": "구성",
+      "tryIt": "사용해보기",
+      "done": "완료"
+    }
+  },
+  "widget": {
+    "draft": {
+      "label": "초안",
+      "insert": "삽입",
+      "copy": "복사",
+      "copied": "복사됨",
+      "dismiss": "닫기",
+      "listening": "듣는 중…",
+      "drafting": "작성 중…"
+    },
+    "notifications": {
+      "discordAlt": "Discord",
+      "copyErrorId": "오류 ID 복사",
+      "recordingSaved": "녹음이 저장되었습니다. 기록에서 확인할 수 있습니다.",
+      "dismiss": "알림 닫기",
+      "description": {
+        "noAudio": "\"{{microphone}}\"에서 오디오가 감지되지 않았습니다",
+        "emptyTranscript": "\"{{microphone}}\"에서 음성이 감지되지 않았습니다",
+        "transcriptionFailed": "전사 중 오류가 발생했습니다",
+        "recordingDurationWarning": "Amical은 최대 {{maxMinutes}}분까지 연속 받아쓰기를 지원합니다. 필요하면 새 받아쓰기를 시작하세요.",
+        "recordingAutoStopped": "최대 받아쓰기 시간에 도달했습니다. 필요하면 새 받아쓰기를 시작하세요."
+      },
+      "action": {
+        "logIn": "로그인",
+        "support": "지원",
+        "viewUsage": "사용량 보기",
+        "viewHistory": "기록 보기",
+        "settings": "설정",
+        "aiModels": "AI 모델",
+        "configureMicrophone": "마이크 구성",
+        "upgradePlan": "플랜 업그레이드"
+      },
+      "type": {
+        "noAudio": {
+          "title": "오디오가 감지되지 않음",
+          "description": "마이크 설정을 확인하세요"
+        },
+        "emptyTranscript": {
+          "title": "음성이 감지되지 않음",
+          "description": "더 크게 말하거나 마이크에 가까이서 말해보세요"
+        },
+        "recordingDurationWarning": {
+          "title": "{{minutes}}분 후 받아쓰기가 자동으로 중지됩니다",
+          "description": "Amical은 최대 {{maxMinutes}}분까지 연속 받아쓰기를 지원합니다. 필요하면 새 받아쓰기를 시작하세요."
+        },
+        "recordingAutoStopped": {
+          "title": "받아쓰기가 자동으로 중지되었습니다",
+          "description": "최대 받아쓰기 시간에 도달했습니다. 필요하면 새 받아쓰기를 시작하세요."
+        }
+      },
+      "errorCode": {
+        "authRequired": {
+          "title": "로그인 필요",
+          "description": "클라우드 전사를 사용하려면 로그인하세요"
+        },
+        "rateLimitExceeded": {
+          "title": "요청 한도 초과",
+          "description": "전사 한도에 도달했습니다"
+        },
+        "quotaExceeded": {
+          "title": "플랜 한도 도달",
+          "description": "현재 플랜의 전사 분량을 모두 사용했습니다. 계속 받아쓰려면 업그레이드하세요."
+        },
+        "internalServerError": {
+          "title": "서버 오류",
+          "description": "나중에 다시 시도해 주세요"
+        },
+        "idleTimeout": {
+          "title": "전사 지연됨",
+          "description": "한동안 오디오가 수신되지 않았습니다. 다시 시도해 주세요."
+        },
+        "unknown": {
+          "title": "전사 실패",
+          "description": "문제가 발생했습니다"
+        },
+        "networkError": {
+          "title": "연결 오류",
+          "description": "인터넷 연결을 확인하세요"
+        },
+        "modelMissing": {
+          "title": "모델이 선택되지 않음",
+          "description": "전사 모델을 선택해 주세요."
+        },
+        "workerInitializationFailed": {
+          "title": "초기화 실패",
+          "description": "전사 엔진을 시작하지 못했습니다"
+        },
+        "workerCrashed": {
+          "title": "전사 엔진 충돌",
+          "description": "다시 시도해 주세요"
+        },
+        "localTranscriptionFailed": {
+          "title": "로컬 전사 실패",
+          "description": "Whisper 오디오 처리에 실패했습니다"
+        },
+        "localTranscriptionUnsupported": {
+          "title": "로컬 전사를 사용할 수 없음",
+          "description": "온디바이스 모델은 macOS 15 이상이 필요합니다. Amical Cloud로 전환하세요."
+        }
+      }
+    }
+  },
+  "settings": {
+    "nav": {
+      "notes": {
+        "title": "메모",
+        "description": "메모 관리"
+      },
+      "preferences": {
+        "title": "환경설정",
+        "description": "일반 애플리케이션 환경설정 및 동작 구성"
+      },
+      "dictation": {
+        "title": "받아쓰기",
+        "description": "음성 인식 및 받아쓰기 설정 구성"
+      },
+      "shortcuts": {
+        "title": "단축키",
+        "description": "키보드 단축키 사용자 지정"
+      },
+      "vocabulary": {
+        "title": "어휘",
+        "description": "사용자 지정 어휘 및 단어 인식 관리"
+      },
+      "snippets": {
+        "title": "스니펫",
+        "description": "받아쓰는 동안 짧은 트리거를 긴 텍스트로 확장"
+      },
+      "formatting": {
+        "title": "개인화",
+        "description": "받아쓰기를 위한 앱별 개인화 규칙"
+      },
+      "aiModels": {
+        "title": "AI 모델",
+        "description": "AI 모델 및 제공자 구성"
+      },
+      "labs": {
+        "title": "실험실",
+        "description": "실험적 기능 사용해보기"
+      },
+      "history": {
+        "title": "기록",
+        "description": "받아쓰기 기록 보기 및 관리"
+      },
+      "advanced": {
+        "title": "고급",
+        "description": "고급 구성 옵션"
+      },
+      "about": {
+        "title": "정보",
+        "description": "Amical 및 버전 정보"
+      }
+    },
+    "sidebar": {
+      "docs": "문서",
+      "community": "커뮤니티",
+      "discordAlt": "Discord",
+      "logoAlt": "Amical 로고",
+      "brand": "Amical",
+      "backToApp": "앱으로 돌아가기"
+    },
+    "search": {
+      "buttonLabel": "검색",
+      "buttonPlaceholder": "검색...",
+      "inputPlaceholder": "설정 및 메모 검색...",
+      "noResults": "결과를 찾을 수 없습니다.",
+      "appHeading": "앱",
+      "settingsHeading": "설정",
+      "notesHeading": "메모"
+    },
+    "preferences": {
+      "title": "환경설정",
+      "description": "애플리케이션 동작과 모양을 사용자 지정하세요",
+      "toast": {
+        "updated": "환경설정이 업데이트되었습니다",
+        "updateFailed": "환경설정을 업데이트하지 못했습니다. 다시 시도해 주세요."
+      },
+      "launchAtLogin": {
+        "label": "로그인 시 시작",
+        "description": "로그인할 때 애플리케이션을 자동으로 시작합니다"
+      },
+      "showWidgetWhileInactive": {
+        "label": "비활성 상태에서도 위젯 표시",
+        "description": "녹음 중이 아닐 때도 화면에 위젯을 표시합니다"
+      },
+      "showInDock": {
+        "label": "Dock에 앱 표시",
+        "description": "macOS Dock에 애플리케이션 아이콘을 표시합니다"
+      },
+      "muteSystemAudio": {
+        "label": "녹음 중 시스템 오디오 음소거",
+        "description": "마이크 오디오를 캡처하는 동안 시스템 출력을 음소거합니다"
+      },
+      "muteDictationSounds": {
+        "label": "받아쓰기 소리 음소거",
+        "description": "녹음 시작 및 종료 소리를 비활성화합니다"
+      },
+      "autoDictateOnNewNote": {
+        "label": "새 메모 생성 시 자동 받아쓰기",
+        "description": "새 메모를 만들 때 자동으로 받아쓰기를 시작합니다"
+      },
+      "language": {
+        "label": "표시 언어",
+        "description": "받아쓰기 언어가 아닌 Amical의 인터페이스 언어입니다.",
+        "options": {
+          "system": "시스템",
+          "en": "English",
+          "de": "Deutsch",
+          "es": "Español",
+          "ja": "日本語",
+          "zh-TW": "繁體中文",
+          "ko": "한국어"
+        },
+        "restartDialog": {
+          "title": "재시작 필요",
+          "description": "언어 변경 사항을 적용하려면 Amical을 재시작하세요. 다음 시작 시 적용할 수도 있습니다.",
+          "restartNow": "지금 재시작",
+          "later": "다음 시작 시 적용"
+        },
+        "toast": {
+          "applyNextStart": "언어는 다음 시작 시 적용됩니다.",
+          "restarting": "재시작 중..."
+        }
+      },
+      "theme": {
+        "label": "테마",
+        "description": "선호하는 색상 구성표를 선택하세요"
+      }
+    },
+    "labs": {
+      "title": "실험실",
+      "description": "기본 기능이 되기 전에 실험적 기능을 미리 사용해보세요.",
+      "toast": {
+        "updated": "실험실 설정이 업데이트되었습니다",
+        "updateFailed": "실험실 설정을 업데이트하지 못했습니다. 다시 시도해 주세요."
+      },
+      "selfCorrection": {
+        "label": "자체 수정",
+        "description": "말로 한 수정 및 정정 내용을 적용하여 최종 받아쓰기가 의도한 내용을 반영하도록 합니다.",
+        "cloudOnly": "클라우드 전용",
+        "cloudTooltip": "Amical Cloud 받아쓰기에만 적용됩니다. 로컬 받아쓰기는 변경되지 않습니다.",
+        "ariaLabel": "자체 수정 전환"
+      }
+    },
+    "advanced": {
+      "title": "고급",
+      "description": "고급 구성 옵션 및 실험적 기능",
+      "cardTitle": "고급 설정",
+      "cardDescription": "고급 구성 옵션",
+      "preloadModel": {
+        "label": "Whisper 모델 사전 로드",
+        "description": "빠른 전사를 위해 시작 시 AI 모델을 로드합니다"
+      },
+      "preserveClipboard": {
+        "label": "클립보드 내용 유지",
+        "description": "전사 내용을 붙여넣은 후, 이전에 클립보드에 있던 내용을 복원합니다."
+      },
+      "debugMode": {
+        "label": "디버그 모드",
+        "description": "상세한 로깅을 활성화합니다"
+      },
+      "updateChannel": {
+        "label": "업데이트 채널",
+        "description": "업데이트를 받을 릴리스 채널을 선택하세요",
+        "options": {
+          "stable": "안정 버전",
+          "beta": "베타"
+        },
+        "toast": {
+          "updated": "업데이트 채널이 변경되었습니다",
+          "updateFailed": "업데이트 채널을 변경하지 못했습니다. 다시 시도해 주세요."
+        }
+      },
+      "historyRetention": {
+        "label": "기록 보관 기간",
+        "description": "선택한 기간보다 오래된 받아쓰기 기록을 자동으로 삭제합니다",
+        "options": {
+          "1d": "매일",
+          "7d": "7일",
+          "14d": "14일",
+          "28d": "28일",
+          "never": "안 함"
+        }
+      },
+      "telemetry": {
+        "label": "익명 사용 데이터",
+        "description": "익명 사용 데이터를 공유하여 Amical을 개선하는 데 도움을 주세요.",
+        "learnMore": "자세히 알아보기"
+      },
+      "dataLocation": {
+        "label": "데이터 위치"
+      },
+      "logLocation": {
+        "label": "로그 파일 위치",
+        "download": "다운로드"
+      },
+      "machineId": {
+        "label": "머신 ID",
+        "copy": "복사"
+      },
+      "loadingValue": "로딩 중...",
+      "dangerZone": {
+        "title": "위험 구역",
+        "description": "이곳의 작업은 되돌릴 수 없으며 모든 데이터가 삭제됩니다"
+      },
+      "reset": {
+        "label": "앱 초기화",
+        "description": "모든 데이터를 삭제하고 새로 시작합니다",
+        "button": "앱 초기화",
+        "dialog": {
+          "title": "정말로 확실합니까?",
+          "description": "이 작업은 되돌릴 수 없습니다. 다음이 영구적으로 삭제됩니다:",
+          "items": {
+            "transcriptions": "모든 전사 기록",
+            "notes": "모든 메모",
+            "vocabulary": "어휘",
+            "settings": "모든 설정 및 환경설정",
+            "models": "다운로드한 모델"
+          },
+          "footer": "앱이 재설치된 것처럼 재시작됩니다.",
+          "cancel": "취소",
+          "confirm": "예, 모두 삭제합니다"
+        }
+      },
+      "toast": {
+        "settingsUpdated": "설정이 업데이트되었습니다",
+        "settingsUpdateFailed": "설정을 업데이트하지 못했습니다. 다시 시도해 주세요.",
+        "telemetryUpdated": "텔레메트리 설정이 업데이트되었습니다",
+        "telemetryUpdateFailed": "텔레메트리 설정을 업데이트하지 못했습니다. 다시 시도해 주세요.",
+        "resetting": "앱 초기화 중...",
+        "resetSuccess": "앱이 성공적으로 초기화되었습니다. 재시작 중...",
+        "resetFailed": "앱 초기화에 실패했습니다. 다시 시도해 주세요.",
+        "logSaved": "로그 파일이 성공적으로 저장되었습니다",
+        "logSaveFailed": "로그 파일 저장에 실패했습니다",
+        "machineIdCopied": "머신 ID가 클립보드에 복사되었습니다"
+      }
+    },
+    "about": {
+      "title": "정보",
+      "description": "버전 정보, 참고 자료 및 지원 링크",
+      "update": {
+        "checking": "업데이트 확인 중…",
+        "downloading": "업데이트 다운로드 중…",
+        "upToDate": "최신 버전입니다",
+        "ready": "업데이트 준비 완료 — 설치하려면 재시작하세요",
+        "error": "업데이트 오류, 재시작 후 다시 시도해 주세요",
+        "sidebarCta": "업데이트 준비됨",
+        "checkButton": "업데이트 확인",
+        "restartButton": "재시작 후 설치"
+      },
+      "currentVersion": "현재 버전",
+      "resources": {
+        "title": "참고 자료",
+        "description": "도움을 받고, 문제를 신고하고, 최신 변경 사항을 확인하세요",
+        "changeLog": {
+          "title": "변경 기록",
+          "description": "릴리스 노트 및 업데이트 보기"
+        },
+        "github": {
+          "title": "GitHub 저장소",
+          "description": "소스 코드 및 이슈 트래킹",
+          "alt": "GitHub"
+        },
+        "discord": {
+          "title": "Discord 커뮤니티",
+          "description": "지원과 논의를 위한 커뮤니티에 참여하세요",
+          "alt": "Discord"
+        }
+      },
+      "contact": {
+        "title": "문의",
+        "description": "지원 및 문의 사항은 저희 팀에 연락하세요",
+        "emailCta": "이메일 보내기"
+      }
+    },
+    "history": {
+      "title": "기록",
+      "description": "최근 받아쓰기 기록",
+      "item": {
+        "failed": "전사 실패",
+        "noWords": "감지된 단어 없음",
+        "dismissed": "닫음"
+      },
+      "readMore": "더 보기",
+      "actions": {
+        "copy": "복사",
+        "pauseAudio": "오디오 일시정지",
+        "playAudio": "오디오 재생",
+        "downloadAudio": "오디오 다운로드",
+        "delete": "삭제",
+        "retry": "전사 재시도",
+        "report": "문제 신고",
+        "reportDisabledTelemetry": "문제를 신고하려면 고급 설정에서 텔레메트리를 활성화하세요"
+      },
+      "report": {
+        "title": "전사 문제 신고",
+        "description": "이 전사에서 무엇이 잘못되었는지 설명해 주세요. 여러분의 의견은 개선에 도움이 됩니다.",
+        "placeholder": "예: 단어가 누락됨, 언어가 잘못 감지됨, 알아볼 수 없는 결과 등...",
+        "cancel": "취소",
+        "submit": "제출"
+      },
+      "dialog": {
+        "title": "전사 세부 정보"
+      },
+      "deleteAll": {
+        "menuItem": "모든 기록 삭제",
+        "dialog": {
+          "title": "모든 받아쓰기 기록을 삭제하시겠습니까?",
+          "description": "이 작업은 되돌릴 수 없습니다. 모든 받아쓰기와 관련 오디오 파일이 영구적으로 삭제됩니다.",
+          "cancel": "취소",
+          "confirm": "모두 삭제"
+        }
+      },
+      "toast": {
+        "deleted": "전사가 삭제되었습니다",
+        "deleteFailed": "전사를 삭제하지 못했습니다",
+        "allDeleted": "모든 받아쓰기 기록이 삭제되었습니다",
+        "allDeleteFailed": "받아쓰기 기록 삭제에 실패했습니다",
+        "downloaded": "오디오 파일이 다운로드되었습니다",
+        "downloadFailed": "오디오 파일 다운로드에 실패했습니다",
+        "loadAudioFailed": "오디오 파일을 불러오지 못했습니다",
+        "copied": "클립보드에 복사되었습니다",
+        "retrySuccess": "전사가 성공적으로 재시도되었습니다",
+        "retryFailed": "전사 재시도에 실패했습니다",
+        "reportSuccess": "신고가 성공적으로 제출되었습니다. 의견 주셔서 감사합니다!",
+        "reportFailed": "신고 제출에 실패했습니다. 다시 시도해 주세요."
+      },
+      "search": {
+        "placeholder": "전사 검색..."
+      },
+      "stats": {
+        "wordsDictated": "받아쓴 단어 수"
+      },
+      "empty": {
+        "searchTitle": "전사를 찾을 수 없습니다",
+        "searchDescription": "검색어를 조정해 보세요.",
+        "defaultTitle": "아직 받아쓰기 기록이 없습니다",
+        "defaultDescription": "최근 받아쓰기 기록이 여기에 표시됩니다."
+      },
+      "group": {
+        "today": "오늘",
+        "yesterday": "어제",
+        "earlier": "이전"
+      }
+    },
+    "dictation": {
+      "title": "받아쓰기",
+      "description": "받아쓰기, 언어, 마이크 및 AI 모델 설정을 구성하세요",
+      "language": {
+        "autoDetect": {
+          "label": "언어 자동 감지",
+          "description": "말하는 언어를 자동으로 감지합니다. 특정 언어를 선택하려면 끄세요."
+        },
+        "languagesLabel": "언어",
+        "languagesPlaceholder": "언어 선택...",
+        "noResults": "언어를 찾을 수 없습니다."
+      },
+      "microphone": {
+        "label": "마이크",
+        "description": "선호하는 마이크를 선택하세요.",
+        "placeholder": "마이크 선택",
+        "systemDefault": "시스템 기본값",
+        "systemDefaultWithName": "시스템 기본값 ({{deviceName}})",
+        "noDevices": "사용 가능한 마이크가 없습니다",
+        "noDevicesHelp": "감지된 마이크가 없습니다. 오디오 장치를 확인해 주세요.",
+        "systemDefaultSubtitle": "시스템 기본 마이크를 사용합니다",
+        "disconnected": "연결 끊김",
+        "priorityOrder": "우선순위",
+        "reorder": "순서 변경",
+        "reorderDone": "완료",
+        "reorderHandle": "드래그하여 순서 변경",
+        "reorderHint": "드래그하여 Amical이 대체할 순서를 설정하세요.",
+        "dialog": {
+          "title": "마이크 구성",
+          "description": "Amical은 연결된 마이크 중 가장 우선순위가 높은 것으로 녹음합니다."
+        },
+        "toast": {
+          "changed": "마이크가 {{deviceName}}(으)로 변경되었습니다",
+          "systemDefault": "시스템 기본 마이크를 사용합니다",
+          "changeFailed": "마이크 변경에 실패했습니다"
+        }
+      },
+      "formatting": {
+        "label": "포맷팅",
+        "badge": "알파",
+        "description": "전사 결과에 문장 부호와 구조를 적용합니다.",
+        "cloudOptionLabel": "Amical Cloud (Amical)",
+        "disabledTooltip": "포맷팅을 사용하려면 언어 모델을 동기화하거나 Amical Cloud 전사를 선택하세요.",
+        "disabledReason": {
+          "cloudAndSignIn": "Amical Cloud 전사 및 로그인이 필요합니다",
+          "cloud": "Amical Cloud 전사가 필요합니다",
+          "signIn": "로그인이 필요합니다"
+        },
+        "manageLanguageModels": "언어 모델 관리",
+        "modelLabel": "포맷팅 모델",
+        "modelDescription": "전사 결과를 포맷팅하는 데 사용할 모델을 선택하세요.",
+        "modelPlaceholder": "모델 선택...",
+        "requiresCloudSpeech": "Amical Cloud 전사가 필요합니다.",
+        "switchSpeechModel": "음성 모델 전환",
+        "signInCloud": "Amical Cloud 포맷팅을 사용하려면 로그인하세요.",
+        "signIn": "로그인",
+        "cloudReady": "Amical Cloud 포맷팅을 사용 중입니다.",
+        "noLanguageModels": "사용 가능한 언어 모델이 없어 포맷팅이 실행되지 않습니다.",
+        "syncLanguageModels": "언어 모델 동기화",
+        "toast": {
+          "saveFailed": "포맷팅 설정 저장에 실패했습니다. 다시 시도해 주세요.",
+          "loginInBrowser": "브라우저에서 로그인을 완료하세요",
+          "loginStartFailed": "로그인 시작에 실패했습니다"
+        }
+      }
+    },
+    "shortcuts": {
+      "title": "단축키",
+      "description": "받아쓰기 및 핸즈프리 모드를 위한 키보드 단축키 구성",
+      "toast": {
+        "pushToTalkUpdated": "누르며 말하기 단축키가 업데이트되었습니다",
+        "handsFreeUpdated": "핸즈프리 모드 단축키가 업데이트되었습니다",
+        "pasteLastTranscriptUpdated": "마지막 전사 붙여넣기 단축키가 업데이트되었습니다",
+        "newNoteUpdated": "새 메모 단축키가 업데이트되었습니다",
+        "draftModeUpdated": "초안 단축키가 업데이트되었습니다"
+      },
+      "pushToTalk": {
+        "label": "누르며 말하기",
+        "description": "키를 누르고 있는 동안 받아쓰기를 진행합니다"
+      },
+      "handsFree": {
+        "label": "핸즈프리 모드",
+        "description": "한 번 눌러 시작하고 다시 눌러 중지하여 받아쓰기를 시작/종료합니다"
+      },
+      "pasteLastTranscript": {
+        "label": "마지막 전사 붙여넣기",
+        "description": "가장 최근 전사 내용을 활성 앱에 붙여넣습니다"
+      },
+      "newNote": {
+        "label": "새 메모",
+        "description": "메모 창을 열고 새 메모를 만듭니다"
+      },
+      "draft": {
+        "label": "초안",
+        "description": "누른 채 지시 사항을 말하면, 생성된 텍스트를 검토한 후 삽입합니다"
+      },
+      "allowInjectedKeys": {
+        "label": "주입된 키 입력 허용",
+        "description": "주입된 키 입력으로 단축키를 실행할 수 있도록 합니다.",
+        "callout": "기본적으로 Amical은 원격 데스크톱, KVM 스위치, 키 리매퍼 같은 키 주입 도구로 인한 예기치 않은 간섭을 방지하기 위해 물리적 키 입력에만 반응합니다. 이 때문에 단축키가 작동하지 않는다면 켜세요.",
+        "learnMore": "자세히 알아보기"
+      },
+      "validation": {
+        "noKeysDetected": "감지된 키가 없습니다",
+        "tooManyKeys": "키가 너무 많습니다 - {{max}}개 이하로 사용하세요",
+        "invalidKeyCombination": "잘못된 키 조합입니다",
+        "alreadyAssigned": "다른 동작에 이미 할당된 단축키입니다",
+        "conflictsWithSystem": "{{shortcut}}이(가) 시스템 단축키와 충돌합니다",
+        "addModifier": "Cmd, Ctrl, Fn 같은 보조 키를 추가하세요",
+        "duplicateModifierPairs": "왼쪽과 오른쪽 {{modifier}}를 함께 사용할 수 없습니다",
+        "overlapsWithPushToTalk": "누르며 말하기 단축키와 겹쳐서 문제가 발생할 수 있습니다"
+      },
+      "input": {
+        "pressKeys": "키 누르기..."
+      }
+    },
+    "notes": {
+      "create": "메모 만들기",
+      "defaultTitleWithDate": "메모 - {{date}}",
+      "untitledTitle": "제목 없는 메모",
+      "empty": {
+        "title": "아직 메모가 없습니다",
+        "description": "첫 메모를 만들어 시작하세요"
+      },
+      "notFound": "메모를 찾을 수 없습니다",
+      "backToNotes": "메모로 돌아가기",
+      "toast": {
+        "created": "메모가 생성되었습니다",
+        "createFailed": "메모 생성에 실패했습니다: {{message}}",
+        "emojiUpdated": "이모지가 업데이트되었습니다",
+        "emojiUpdateFailed": "이모지 업데이트에 실패했습니다: {{message}}",
+        "deleted": "메모가 삭제되었습니다",
+        "deleteFailed": "메모 삭제에 실패했습니다: {{message}}",
+        "saveFailed": "변경 사항 저장에 실패했습니다",
+        "upgradedToRichNotes": "메모가 마크다운 서식을 지원하는 리치 메모로 업그레이드되었습니다.",
+        "loadFailed": "메모를 불러오지 못했습니다"
+      },
+      "note": {
+        "removeEmoji": "이모지 제거",
+        "titlePlaceholder": "메모 제목...",
+        "bodyPlaceholder": "메모 작성을 시작하세요...",
+        "edited": "{{date}}에 수정됨",
+        "actions": {
+          "openInNotesWindow": "메모 창에서 열기",
+          "delete": "삭제"
+        },
+        "deleteDialog": {
+          "title": "메모 삭제",
+          "description": "\"{{title}}\"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없으며 메모가 영구적으로 제거됩니다.",
+          "cancel": "취소",
+          "deleting": "삭제 중...",
+          "confirm": "메모 삭제"
+        }
+      },
+      "upcomingEvents": {
+        "title": "예정된 일정",
+        "takeNotes": "메모하기",
+        "empty": "예정된 일정이 없습니다",
+        "connect": {
+          "title": "캘린더 연결",
+          "description": "시작하려면 캘린더를 연결하세요",
+          "button": "캘린더 연결"
+        }
+      }
+    },
+    "vocabulary": {
+      "title": "어휘",
+      "description": "받아쓰기를 위한 사용자 지정 어휘와 단어 치환을 관리하세요.",
+      "addButton": "단어 추가",
+      "loading": "어휘를 불러오는 중...",
+      "empty": "어휘 단어가 없습니다. 첫 단어를 추가해 시작하세요.",
+      "toast": {
+        "added": "어휘에 단어가 추가되었습니다",
+        "addFailed": "단어 추가에 실패했습니다: {{message}}",
+        "updated": "어휘가 업데이트되었습니다",
+        "updateFailed": "단어 업데이트에 실패했습니다: {{message}}",
+        "deleted": "어휘에서 단어가 삭제되었습니다",
+        "deleteFailed": "단어 삭제에 실패했습니다: {{message}}"
+      },
+      "dialog": {
+        "addTitle": "어휘에 추가",
+        "editTitle": "어휘 편집",
+        "replacementLabel": "치환어로 지정",
+        "misspellingPlaceholder": "오타",
+        "correctSpellingPlaceholder": "올바른 철자",
+        "newWordPlaceholder": "새 단어 추가",
+        "cancel": "취소",
+        "saving": "저장 중...",
+        "addWord": "단어 추가",
+        "saveChanges": "변경 사항 저장"
+      },
+      "delete": {
+        "title": "어휘 항목 삭제",
+        "description": "\"{{item}}\"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+        "cancel": "취소",
+        "deleting": "삭제 중...",
+        "confirm": "삭제"
+      }
+    },
+    "snippets": {
+      "title": "스니펫",
+      "description": "받아쓰는 동안 긴 텍스트로 확장되는 짧은 트리거를 만드세요.",
+      "addButton": "새로 추가",
+      "loading": "스니펫을 불러오는 중...",
+      "empty": "아직 스니펫이 없습니다. 첫 스니펫을 추가해 시작하세요.",
+      "noResults": "\"{{query}}\"와(과) 일치하는 스니펫이 없습니다.",
+      "search": {
+        "placeholder": "스니펫 검색"
+      },
+      "toast": {
+        "added": "스니펫이 추가되었습니다",
+        "similarToExisting": "기존 \"{{trigger}}\"와(과) 유사합니다",
+        "addFailed": "스니펫 추가에 실패했습니다: {{message}}",
+        "updated": "스니펫이 업데이트되었습니다",
+        "updateFailed": "스니펫 업데이트에 실패했습니다: {{message}}",
+        "deleted": "스니펫이 삭제되었습니다",
+        "deleteFailed": "스니펫 삭제에 실패했습니다: {{message}}",
+        "duplicateTrigger": "\"{{trigger}}\"이(가) 이미 존재합니다"
+      },
+      "dialog": {
+        "addTitle": "스니펫 추가",
+        "editTitle": "스니펫 편집",
+        "triggerLabel": "트리거",
+        "triggerPlaceholder": "내 회의 링크",
+        "contentLabel": "확장 내용",
+        "contentPlaceholder": "https://meet.example.com/abc-defg-hij",
+        "cancel": "취소",
+        "saving": "저장 중...",
+        "addSnippet": "스니펫 추가",
+        "saveChanges": "변경 사항 저장"
+      },
+      "delete": {
+        "title": "스니펫 삭제",
+        "description": "\"{{trigger}}\" 스니펫을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+        "cancel": "취소",
+        "deleting": "삭제 중...",
+        "confirm": "삭제"
+      }
+    },
+    "aiModels": {
+      "title": "AI 모델",
+      "tabs": {
+        "speech": "음성",
+        "language": "언어",
+        "embedding": "임베딩"
+      },
+      "modelTypes": {
+        "speech": "음성",
+        "language": "언어",
+        "embedding": "임베딩"
+      },
+      "defaultModels": {
+        "default": "기본 모델",
+        "speech": "기본 음성 모델",
+        "language": "기본 언어 모델",
+        "embedding": "기본 임베딩 모델"
+      },
+      "defaultModel": {
+        "toast": {
+          "updated": "기본 {{modelType}} 모델이 업데이트되었습니다!",
+          "updateFailed": "기본 {{modelType}} 모델 설정에 실패했습니다. 다시 시도해 주세요."
+        },
+        "loading": "로딩 중...",
+        "placeholder": "모델 선택..."
+      },
+      "changeDefaultDialog": {
+        "title": "기본 모델 변경",
+        "description": "\"{{modelName}}\"을(를) 기본 {{modelType}} 모델로 설정하시겠습니까?",
+        "cancel": "취소",
+        "confirm": "기본값 변경"
+      },
+      "providers": {
+        "openRouter": "OpenRouter",
+        "ollama": "Ollama",
+        "openAICompatible": "OpenAI 호환"
+      },
+      "provider": {
+        "status": {
+          "connected": "연결됨",
+          "disconnected": "연결 끊김"
+        },
+        "placeholders": {
+          "openRouter": "API 키",
+          "ollama": "Ollama URL (예: http://localhost:11434)",
+          "openAICompatibleApiKey": "API 키",
+          "openAICompatibleBaseURL": "기본 URL (예: http://localhost:1234/v1)"
+        },
+        "buttons": {
+          "connect": "연결",
+          "validating": "확인 중...",
+          "syncModels": "모델 동기화",
+          "removeProvider": "제공자 제거"
+        },
+        "removeDialog": {
+          "title": "제공자 연결 제거",
+          "description": "{{provider}} 연결을 제거하시겠습니까? 이 작업은 연결을 해제하고 이 제공자에서 동기화된 모든 모델을 제거합니다. 되돌릴 수 없습니다.",
+          "cancel": "취소",
+          "confirm": "제공자 제거"
+        },
+        "toast": {
+          "configSaved": "{{provider}} 구성이 성공적으로 저장되었습니다!",
+          "configSaveFailed": "{{provider}} 구성 저장에 실패했습니다. 다시 시도해 주세요.",
+          "validated": "{{provider}} 연결이 성공적으로 확인되었습니다!",
+          "validationFailed": "{{provider}} 확인 실패: {{message}}",
+          "validationError": "{{provider}} 확인 오류: {{message}}",
+          "removed": "{{provider}} 제공자가 성공적으로 제거되었습니다!",
+          "removeFailed": "{{provider}} 제공자 제거에 실패했습니다. 다시 시도해 주세요."
+        },
+        "validationFailed": "확인 실패"
+      },
+      "syncedModels": {
+        "title": "동기화된 모델",
+        "toast": {
+          "removed": "모델이 성공적으로 제거되었습니다!",
+          "removeFailed": "모델 제거에 실패했습니다. 다시 시도해 주세요.",
+          "defaultLanguageUpdated": "기본 언어 모델이 업데이트되었습니다!",
+          "defaultLanguageFailed": "기본 언어 모델 설정에 실패했습니다. 다시 시도해 주세요.",
+          "defaultEmbeddingUpdated": "기본 임베딩 모델이 업데이트되었습니다!",
+          "defaultEmbeddingFailed": "기본 임베딩 모델 설정에 실패했습니다. 다시 시도해 주세요."
+        },
+        "errorDefaultRemove": "이 모델을 제거하기 전에 다른 모델을 기본값으로 선택해 주세요.",
+        "empty": {
+          "title": "아직 동기화된 모델이 없습니다.",
+          "description": "제공자에 연결하고 모델을 동기화하면 여기에 표시됩니다."
+        },
+        "table": {
+          "name": "이름",
+          "provider": "제공자",
+          "size": "크기",
+          "context": "컨텍스트",
+          "actions": "작업",
+          "unknown": "알 수 없음",
+          "currentDefault": "현재 기본 모델",
+          "setDefault": "기본 모델로 설정",
+          "remove": "모델 제거"
+        },
+        "deleteDialog": {
+          "title": "삭제 확인",
+          "description": "동기화된 모델에서 \"{{modelName}}\"을(를) 제거하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+          "cancel": "취소",
+          "confirm": "모델 제거"
+        },
+        "errorDialog": {
+          "title": "모델을 제거할 수 없습니다",
+          "confirm": "확인"
+        }
+      },
+      "syncDialog": {
+        "title": "{{provider}} {{modelType}} 모델 선택",
+        "description": "{{provider}}에서 동기화할 {{modelType}} 모델을 선택하세요.",
+        "fetching": "{{available}}모델 가져오는 중...",
+        "available": "사용 가능 ",
+        "fetchFailed": "모델을 가져오지 못했습니다",
+        "fetchFailedWithMessage": "모델을 가져오지 못했습니다: {{message}}",
+        "searchPlaceholder": "모델 검색...",
+        "clear": "지우기",
+        "size": "크기: {{size}}",
+        "context": "컨텍스트: {{context}}",
+        "cancel": "취소",
+        "syncing": "동기화 중...",
+        "syncButton": "{{count}}개 모델 동기화",
+        "syncButton_other": "{{count}}개 모델 동기화",
+        "toast": {
+          "synced": "모델이 데이터베이스에 성공적으로 동기화되었습니다!",
+          "syncFailed": "모델을 데이터베이스에 동기화하지 못했습니다. 다시 시도해 주세요."
+        }
+      },
+      "speech": {
+        "loading": "모델을 불러오는 중...",
+        "availableModels": "사용 가능한 모델",
+        "localUnsupported": "macOS 15 이상이 필요합니다",
+        "table": {
+          "model": "모델",
+          "features": "기능",
+          "speed": "속도",
+          "accuracy": "정확도"
+        },
+        "providerIconAlt": "{{provider}} 아이콘",
+        "cloudFormatting": {
+          "badge": "포맷팅 사용 가능",
+          "tooltip": "이 모델을 선택하면 클라우드 포맷팅을 사용할 수 있습니다.",
+          "signInTitle": "클라우드 모델을 사용하려면 로그인하세요"
+        },
+        "actions": {
+          "downloadTitle": "클릭하여 다운로드",
+          "cancelDownloadTitle": "클릭하여 다운로드 취소",
+          "cancelDownloadAria": "{{modelName}} 다운로드 취소",
+          "deleteTitle": "클릭하여 모델 삭제",
+          "deleteAria": "{{modelName}} 삭제"
+        },
+        "deleteDialog": {
+          "title": "모델 삭제",
+          "description": "이 모델을 삭제하시겠습니까? 이 작업은 되돌릴 수 없으며 다시 사용하려면 모델을 다시 다운로드해야 합니다.",
+          "cancel": "취소",
+          "confirm": "삭제"
+        },
+        "loginDialog": {
+          "title": "로그인 필요",
+          "description": "Amical Cloud 전사를 사용하려면 Amical 계정으로 로그인해야 합니다. 이를 통해 높은 정확도의 안전한 클라우드 기반 전사를 사용할 수 있습니다.",
+          "browserNotice": "\"로그인\"을 클릭하면 브라우저로 이동하여 로그인 과정을 완료하게 됩니다.",
+          "cloudBenefit": "빠르고 정확한 클라우드 전사",
+          "cancel": "취소",
+          "openingBrowser": "브라우저 여는 중...",
+          "signIn": "로그인"
+        },
+        "toast": {
+          "downloadStartFailed": "다운로드를 시작하지 못했습니다",
+          "downloadCancelFailed": "다운로드 취소에 실패했습니다",
+          "deleteFailed": "모델 삭제에 실패했습니다",
+          "cloudSelected": "Amical Cloud가 선택되었습니다. 클라우드 포맷팅이 활성화되었습니다.",
+          "selectFailed": "모델 선택에 실패했습니다",
+          "loginInBrowser": "브라우저에서 로그인을 완료해 주세요",
+          "loginStartFailed": "로그인 시작에 실패했습니다",
+          "downloadFailed": "다운로드 실패: {{message}}",
+          "loginSuccess": "로그인 성공!"
+        }
+      }
+    }
+  }
+}
