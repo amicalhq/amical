@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import { Mutex } from "async-mutex";
 import { Effect, Layer } from "effect";
 
@@ -134,7 +134,6 @@ export class SettingsSyncService {
       this.scheduleDebouncedWake(),
     );
     ipcMain.on("settings-sync-wake", this.onExternalWake);
-    app.on("browser-window-focus", this.onExternalWake);
 
     this.pollTimer = setInterval(() => this.wake(), POLL_INTERVAL_MS);
     this.pollTimer.unref?.();
@@ -186,7 +185,6 @@ export class SettingsSyncService {
     this.authService.off("authenticated", this.onAuthenticated);
     this.authService.off("token-refreshed", this.onTokenRefreshed);
     ipcMain.removeListener("settings-sync-wake", this.onExternalWake);
-    app.removeListener("browser-window-focus", this.onExternalWake);
     this.unregisterBeforeLogout?.();
     this.unregisterLocalMutation?.();
     this.unregisterBeforeLogout = null;
