@@ -1286,7 +1286,9 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               vadProbs,
               languages: snapshot.currentLanguages,
               vocabulary: snapshot.currentVocabulary,
-              previousTranscription: snapshot.currentAggregatedTranscription,
+              // Not sent: conditioning on the running ASR output can seed a
+              // self-reinforcing repetition loop on the server side too.
+              previousTranscription: undefined,
               formatting: {
                 enabled: enableFormatting,
               },
