@@ -1,6 +1,11 @@
 import { eq, desc, asc, like, count, gt, sql } from "drizzle-orm";
 import { db } from ".";
 import { vocabulary, type Vocabulary, type NewVocabulary } from "./schema";
+import {
+  recordLocalSyncMutation,
+  recordLocalSyncMutations,
+  vocabularySyncPayload,
+} from "./sync";
 
 // Create a new vocabulary word
 export async function createVocabularyWord(
@@ -15,8 +20,16 @@ export async function createVocabularyWord(
     updatedAt: now,
   };
 
-  const result = await db.insert(vocabulary).values(newWord).returning();
-  return result[0];
+  return db.transaction(async (tx) => {
+    const [created] = await tx.insert(vocabulary).values(newWord).returning();
+    await recordLocalSyncMutation(
+      tx,
+      "vocabulary",
+      created.id,
+      vocabularySyncPayload(created),
+    );
+    return created;
+  });
 }
 
 /**
@@ -108,23 +121,47 @@ export async function updateVocabulary(
     updatedAt: new Date(),
   };
 
-  const result = await db
-    .update(vocabulary)
-    .set(updateData)
-    .where(eq(vocabulary.id, id))
-    .returning();
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(vocabulary)
+      .set(updateData)
+      .where(eq(vocabulary.id, id))
+      .returning();
+    if (!updated) return null;
 
-  return result[0] || null;
+    const changesSyncPayload =
+      Object.hasOwn(data, "word") ||
+      Object.hasOwn(data, "replacementWord") ||
+      Object.hasOwn(data, "isReplacement");
+    if (changesSyncPayload) {
+      await recordLocalSyncMutation(
+        tx,
+        "vocabulary",
+        updated.id,
+        vocabularySyncPayload(updated),
+      );
+    }
+    return updated;
+  });
 }
 
 // Delete vocabulary word
 export async function deleteVocabulary(id: number) {
-  const result = await db
-    .delete(vocabulary)
-    .where(eq(vocabulary.id, id))
-    .returning();
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(vocabulary)
+      .where(eq(vocabulary.id, id))
+      .limit(1);
+    if (!existing) return null;
 
-  return result[0] || null;
+    await recordLocalSyncMutation(tx, "vocabulary", existing.id, null);
+    const [deleted] = await tx
+      .delete(vocabulary)
+      .where(eq(vocabulary.id, id))
+      .returning();
+    return deleted ?? null;
+  });
 }
 
 // Get vocabulary count
@@ -189,5 +226,19 @@ export async function bulkImportVocabulary(
     updatedAt: now,
   }));
 
-  return await db.insert(vocabulary).values(vocabularyWords).returning();
+  return db.transaction(async (tx) => {
+    const created = await tx
+      .insert(vocabulary)
+      .values(vocabularyWords)
+      .returning();
+    await recordLocalSyncMutations(
+      tx,
+      created.map((row) => ({
+        collection: "vocabulary",
+        localRowId: row.id,
+        payload: vocabularySyncPayload(row),
+      })),
+    );
+    return created;
+  });
 }

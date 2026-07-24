@@ -1,6 +1,7 @@
 import { shell } from "electron";
 import { randomBytes, createHash } from "crypto";
 import { Layer } from "effect";
+import { Mutex } from "async-mutex";
 import { logger } from "../main/logger";
 import { EventEmitter } from "events";
 import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
@@ -56,6 +57,10 @@ export class AuthService extends EventEmitter {
   private config: AuthConfig;
   private pendingAuth: PendingAuth | null = null;
   private refreshPromise: Promise<void> | null = null;
+  private refreshAbortController: AbortController | null = null;
+  private readonly authStateMutex = new Mutex();
+  private authGeneration = 0;
+  private beforeLogoutHandler: (() => Promise<void>) | null = null;
 
   private constructor() {
     super();
@@ -94,6 +99,20 @@ export class AuthService extends EventEmitter {
     },
   );
 
+  static createForTests(): AuthService {
+    return new AuthService();
+  }
+
+  registerBeforeLogoutHandler(handler: () => Promise<void>): () => void {
+    this.beforeLogoutHandler = handler;
+
+    return () => {
+      if (this.beforeLogoutHandler === handler) {
+        this.beforeLogoutHandler = null;
+      }
+    };
+  }
+
   /**
    * Generate PKCE challenge and verifier
    */
@@ -128,6 +147,9 @@ export class AuthService extends EventEmitter {
    */
   async login(): Promise<void> {
     try {
+      this.authGeneration += 1;
+      this.refreshAbortController?.abort();
+
       // Generate PKCE parameters
       const { verifier, challenge } = this.generatePKCE();
       const state = this.generateState();
@@ -168,23 +190,33 @@ export class AuthService extends EventEmitter {
    * Handle OAuth callback from deep link
    */
   async handleAuthCallback(code: string, state: string | null): Promise<void> {
+    const pendingAuth = this.pendingAuth;
+    const callbackGeneration = this.authGeneration;
+
     try {
       logger.main.info("Handling auth callback");
 
       // Validate state
-      if (!this.pendingAuth) {
+      if (!pendingAuth) {
         throw new Error("No pending authentication request");
       }
 
-      if (state !== this.pendingAuth.state) {
+      if (state !== pendingAuth.state) {
         throw new Error("State mismatch - possible CSRF attack");
       }
 
       // Exchange code for token
       const tokenResponse = await this.exchangeCodeForToken(
         code,
-        this.pendingAuth.codeVerifier,
+        pendingAuth.codeVerifier,
       );
+      if (
+        callbackGeneration !== this.authGeneration ||
+        this.pendingAuth !== pendingAuth
+      ) {
+        logger.main.debug("Ignoring stale authentication callback");
+        return;
+      }
 
       // Store auth data
       const authState: AuthState = {
@@ -211,7 +243,14 @@ export class AuthService extends EventEmitter {
       }
 
       // Save to database
-      await updateSettingsSection("auth", authState);
+      const loginGeneration = ++this.authGeneration;
+      this.refreshAbortController?.abort();
+      const persisted = await this.authStateMutex.runExclusive(async () => {
+        if (loginGeneration !== this.authGeneration) return false;
+        await updateSettingsSection("auth", authState);
+        return loginGeneration === this.authGeneration;
+      });
+      if (!persisted) return;
 
       // Clear pending auth
       this.pendingAuth = null;
@@ -284,7 +323,16 @@ export class AuthService extends EventEmitter {
    * Logout and clear auth state
    */
   async logout(): Promise<void> {
-    await updateSettingsSection("auth", undefined);
+    const logoutGeneration = ++this.authGeneration;
+    this.refreshAbortController?.abort();
+    this.pendingAuth = null;
+    await this.beforeLogoutHandler?.();
+    const cleared = await this.authStateMutex.runExclusive(async () => {
+      if (logoutGeneration !== this.authGeneration) return false;
+      await updateSettingsSection("auth", undefined);
+      return logoutGeneration === this.authGeneration;
+    });
+    if (!cleared) return;
     // Identity consumers (telemetry reset, feature flag refresh, remote
     // config reset, model auto-switch) subscribe in their Live layers. A
     // logout during startup token validation fires before those listeners
@@ -390,14 +438,39 @@ export class AuthService extends EventEmitter {
    * Refresh token if needed
    */
   async refreshTokenIfNeeded(): Promise<void> {
-    // If a refresh is already in progress, wait for it
     if (this.refreshPromise) {
       logger.main.debug("Refresh already in progress, waiting...");
       return this.refreshPromise;
     }
 
+    const generation = this.authGeneration;
+    const controller = new AbortController();
+    this.refreshAbortController = controller;
+    const refreshPromise = this.runTokenRefreshIfNeeded(
+      generation,
+      controller.signal,
+    )
+      .catch((error) => {
+        logger.main.error("Token refresh failed:", error);
+      })
+      .finally(() => {
+        if (this.refreshPromise === refreshPromise) {
+          this.refreshPromise = null;
+        }
+        if (this.refreshAbortController === controller) {
+          this.refreshAbortController = null;
+        }
+      });
+    this.refreshPromise = refreshPromise;
+    return refreshPromise;
+  }
+
+  private async runTokenRefreshIfNeeded(
+    generation: number,
+    signal: AbortSignal,
+  ): Promise<void> {
     const authState = await this.getAuthState();
-    if (!authState) {
+    if (signal.aborted || generation !== this.authGeneration || !authState) {
       // User was never logged in - nothing to refresh
       return;
     }
@@ -417,25 +490,18 @@ export class AuthService extends EventEmitter {
       return;
     }
 
-    // Start refresh and store the promise
     logger.main.info("Token needs refresh, starting refresh flow");
-    this.refreshPromise = this.performTokenRefresh(authState.refreshToken)
-      .catch((error) => {
-        // Handle refresh errors internally - don't throw
-        // performTokenRefresh already handles 401/400 by logging out
-        logger.main.error("Token refresh failed:", error);
-      })
-      .finally(() => {
-        this.refreshPromise = null;
-      });
-
-    return this.refreshPromise;
+    await this.performTokenRefresh(authState.refreshToken, generation, signal);
   }
 
   /**
    * Perform the actual token refresh API call
    */
-  private async performTokenRefresh(refreshToken: string): Promise<void> {
+  private async performTokenRefresh(
+    refreshToken: string,
+    generation: number,
+    signal: AbortSignal,
+  ): Promise<void> {
     try {
       logger.main.info("Refreshing access token");
 
@@ -447,6 +513,7 @@ export class AuthService extends EventEmitter {
 
       const response = await fetch(this.config.tokenEndpoint, {
         method: "POST",
+        signal,
         headers: {
           "Content-Type": "application/json",
           "User-Agent": getUserAgent(),
@@ -454,9 +521,18 @@ export class AuthService extends EventEmitter {
         },
         body: JSON.stringify(body),
       });
+      if (signal.aborted || generation !== this.authGeneration) return;
 
       if (!response.ok) {
         const errorText = await response.text();
+        const currentAuthState = await this.getAuthState();
+        if (
+          signal.aborted ||
+          generation !== this.authGeneration ||
+          currentAuthState?.refreshToken !== refreshToken
+        ) {
+          return;
+        }
         logger.main.error("Token refresh failed:", {
           status: response.status,
           statusText: response.statusText,
@@ -479,6 +555,14 @@ export class AuthService extends EventEmitter {
 
       // Get current auth state to preserve user info
       const currentAuthState = await this.getAuthState();
+      if (
+        signal.aborted ||
+        generation !== this.authGeneration ||
+        currentAuthState?.refreshToken !== refreshToken
+      ) {
+        logger.main.debug("Ignoring stale token refresh response");
+        return;
+      }
 
       // Update auth state with new tokens
       const updatedAuthState: AuthState = {
@@ -493,21 +577,42 @@ export class AuthService extends EventEmitter {
 
       // Update ID token user info if present
       if (updatedAuthState.idToken) {
+        let decodedToken: {
+          sub?: unknown;
+          email?: string;
+          name?: string;
+        } | null = null;
         try {
           const payload = updatedAuthState.idToken.split(".")[1];
-          const decoded = JSON.parse(Buffer.from(payload, "base64").toString());
-          updatedAuthState.userInfo = {
-            sub: decoded.sub,
-            email: decoded.email,
-            name: decoded.name,
-          };
+          decodedToken = JSON.parse(Buffer.from(payload, "base64").toString());
         } catch (error) {
           logger.main.error("Error decoding refreshed ID token:", error);
         }
+
+        if (decodedToken) {
+          if (
+            typeof decodedToken.sub !== "string" ||
+            (currentAuthState?.userInfo?.sub &&
+              decodedToken.sub !== currentAuthState.userInfo.sub)
+          ) {
+            throw new Error("Refreshed ID token subject changed");
+          }
+          updatedAuthState.userInfo = {
+            sub: decodedToken.sub,
+            email: decodedToken.email,
+            name: decodedToken.name,
+          };
+        }
       }
 
-      // Save to database
-      await updateSettingsSection("auth", updatedAuthState);
+      const persisted = await this.authStateMutex.runExclusive(async () => {
+        if (signal.aborted || generation !== this.authGeneration) return false;
+        const latestAuthState = await this.getAuthState();
+        if (latestAuthState?.refreshToken !== refreshToken) return false;
+        await updateSettingsSection("auth", updatedAuthState);
+        return !signal.aborted && generation === this.authGeneration;
+      });
+      if (!persisted) return;
 
       // Emit success event
       this.emit("token-refreshed", updatedAuthState);
@@ -516,6 +621,7 @@ export class AuthService extends EventEmitter {
         expiresAt: new Date(updatedAuthState.expiresAt!).toISOString(),
       });
     } catch (error) {
+      if (signal.aborted || generation !== this.authGeneration) return;
       logger.main.error("Error refreshing token:", error);
       this.emit("token-refresh-failed", error);
       throw error;

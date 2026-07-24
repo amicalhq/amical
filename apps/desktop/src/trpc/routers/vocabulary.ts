@@ -13,6 +13,10 @@ import {
   trackWordUsage,
   getMostUsedWords,
 } from "../../db/vocabulary";
+import {
+  axisSyncKeySchema,
+  axisSyncOptionalTextSchema,
+} from "../../db/sync-payload";
 
 // Input schemas
 const GetVocabularySchema = z.object({
@@ -25,9 +29,9 @@ const GetVocabularySchema = z.object({
 
 const CreateVocabularySchema = z
   .object({
-    word: z.string().min(1),
+    word: axisSyncKeySchema,
     isReplacement: z.boolean().optional(),
-    replacementWord: z.string().optional(),
+    replacementWord: axisSyncOptionalTextSchema.optional(),
   })
   .refine(
     (data) => {
@@ -58,9 +62,9 @@ const CreateVocabularySchema = z
 
 const UpdateVocabularySchema = z
   .object({
-    word: z.string().min(1).optional(),
+    word: axisSyncKeySchema.optional(),
     isReplacement: z.boolean().optional(),
-    replacementWord: z.string().optional(),
+    replacementWord: axisSyncOptionalTextSchema.optional(),
   })
   .refine(
     (data) => {
@@ -91,7 +95,7 @@ const UpdateVocabularySchema = z
 
 const BulkImportSchema = z.array(
   z.object({
-    word: z.string().min(1),
+    word: axisSyncKeySchema,
     dateAdded: z.date().optional(),
   }),
 );

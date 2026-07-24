@@ -36,6 +36,7 @@ import {
   SettingsServiceTag,
   HistoryCleanupServiceTag,
   AuthServiceTag,
+  SettingsSyncServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
   FeatureFlagServiceTag,
@@ -125,6 +126,7 @@ describe("app layer graph (pre-cutover)", () => {
     expect(Context.get(ctx, SettingsServiceTag)).toBeTruthy();
     expect(Context.get(ctx, HistoryCleanupServiceTag)).toBeTruthy();
     expect(Context.get(ctx, AuthServiceTag)).toBeTruthy();
+    expect(Context.get(ctx, SettingsSyncServiceTag)).toBeTruthy();
     expect(Context.get(ctx, PostHogClientTag)).toBeTruthy();
     expect(Context.get(ctx, TelemetryServiceTag)).toBeTruthy();
     expect(Context.get(ctx, FeatureFlagServiceTag)).toBeTruthy();
@@ -156,6 +158,7 @@ describe("app layer graph (pre-cutover)", () => {
       ["transcriptionService", TranscriptionServiceTag],
       ["settingsService", SettingsServiceTag],
       ["authService", AuthServiceTag],
+      ["settingsSyncService", SettingsSyncServiceTag],
       ["vadService", VadServiceTag],
       ["nativeBridge", NativeBridgeTag],
       ["autoUpdaterService", AutoUpdaterServiceTag],

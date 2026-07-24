@@ -1,4 +1,6 @@
 import * as Y from "yjs";
+import { randomUUID } from "node:crypto";
+import { eq, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { db } from "../../db";
 import { getAppSettings, updateAppSettings } from "../../db/app-settings";
@@ -8,7 +10,12 @@ import {
   getYjsUpdatesByNoteId,
   replaceYjsUpdates,
 } from "../../db/notes";
-import { transcriptions } from "../../db/schema";
+import { snippets, transcriptions, vocabulary } from "../../db/schema";
+import {
+  sanitizeLegacySyncText,
+  SYNC_KEY_MAX_LENGTH,
+  SYNC_TEXT_MAX_LENGTH,
+} from "../../db/sync-payload";
 import {
   isLexicalEditorStateJsonString,
   serializePlainTextToLexicalEditorStateJson,
@@ -17,6 +24,7 @@ import { countWords, toLocalStatsDate } from "../../utils/dictation-stats";
 
 const NOTES_LEXICAL_MIGRATION_VERSION = 1;
 const DICTATION_DAILY_STATS_MIGRATION_VERSION = 2;
+const SETTINGS_SYNC_BOUNDS_MIGRATION_VERSION = 1;
 
 async function persistDataMigrationVersion(
   currentDataMigrations: Record<string, number>,
@@ -145,7 +153,147 @@ async function migrateDictationDailyStats(): Promise<{
   };
 }
 
+async function migrateSettingsSyncBounds(): Promise<{
+  vocabularyDeleted: number;
+  snippetsDeleted: number;
+}> {
+  return await db.transaction(async (tx) => {
+    const vocabularyRows = await tx.select().from(vocabulary);
+    const snippetRows = await tx.select().from(snippets);
+
+    const sanitizedVocabulary = vocabularyRows.map((row) => ({
+      ...row,
+      word: sanitizeLegacySyncText(row.word, SYNC_KEY_MAX_LENGTH),
+      replacementWord:
+        row.replacementWord === null
+          ? null
+          : sanitizeLegacySyncText(row.replacementWord, SYNC_TEXT_MAX_LENGTH),
+    }));
+    const sanitizedSnippets = snippetRows.map((row) => ({
+      ...row,
+      trigger: sanitizeLegacySyncText(row.trigger, SYNC_KEY_MAX_LENGTH),
+      content: sanitizeLegacySyncText(row.content, SYNC_TEXT_MAX_LENGTH),
+    }));
+
+    const vocabularyIdsToDelete: number[] = [];
+    const keptVocabulary: typeof sanitizedVocabulary = [];
+    const seenWords = new Set<string>();
+    for (const row of sanitizedVocabulary.sort((a, b) => a.id - b.id)) {
+      if (row.word.trim().length === 0 || seenWords.has(row.word)) {
+        vocabularyIdsToDelete.push(row.id);
+        continue;
+      }
+      seenWords.add(row.word);
+      keptVocabulary.push(row);
+    }
+
+    const snippetIdsToDelete: number[] = [];
+    const keptSnippets: typeof sanitizedSnippets = [];
+    const seenTriggers = new Set<string>();
+    for (const row of sanitizedSnippets.sort((a, b) => a.id - b.id)) {
+      if (
+        row.trigger.trim().length === 0 ||
+        row.content.length === 0 ||
+        seenTriggers.has(row.trigger)
+      ) {
+        snippetIdsToDelete.push(row.id);
+        continue;
+      }
+      seenTriggers.add(row.trigger);
+      keptSnippets.push(row);
+    }
+
+    if (vocabularyIdsToDelete.length > 0) {
+      await tx
+        .delete(vocabulary)
+        .where(inArray(vocabulary.id, vocabularyIdsToDelete));
+    }
+    if (snippetIdsToDelete.length > 0) {
+      await tx.delete(snippets).where(inArray(snippets.id, snippetIdsToDelete));
+    }
+
+    // Move retained keys through unique temporary values so clipping can safely
+    // handle swaps and collisions with another row's original key.
+    for (const row of keptVocabulary) {
+      await tx
+        .update(vocabulary)
+        .set({ word: `\0sync-vocabulary-${row.id}-${randomUUID()}` })
+        .where(eq(vocabulary.id, row.id));
+    }
+    for (const row of keptSnippets) {
+      await tx
+        .update(snippets)
+        .set({ trigger: `\0sync-snippet-${row.id}-${randomUUID()}` })
+        .where(eq(snippets.id, row.id));
+    }
+
+    for (const row of keptVocabulary) {
+      await tx
+        .update(vocabulary)
+        .set({
+          word: row.word,
+          replacementWord: row.replacementWord,
+        })
+        .where(eq(vocabulary.id, row.id));
+    }
+    for (const row of keptSnippets) {
+      await tx
+        .update(snippets)
+        .set({
+          trigger: row.trigger,
+          content: row.content,
+        })
+        .where(eq(snippets.id, row.id));
+    }
+
+    return {
+      vocabularyDeleted: vocabularyIdsToDelete.length,
+      snippetsDeleted: snippetIdsToDelete.length,
+    };
+  });
+}
+
+async function runSettingsSyncBoundsMigration(): Promise<void> {
+  const settings = await getAppSettings();
+  const currentDataMigrations = settings.dataMigrations ?? {};
+
+  if (
+    (currentDataMigrations.settingsSyncBounds ?? 0) >=
+    SETTINGS_SYNC_BOUNDS_MIGRATION_VERSION
+  ) {
+    return;
+  }
+
+  const startTime = Date.now();
+  logger.db.info("Running settings sync bounds data migration", {
+    settingsSyncBoundsFrom: currentDataMigrations.settingsSyncBounds ?? 0,
+    settingsSyncBoundsTo: SETTINGS_SYNC_BOUNDS_MIGRATION_VERSION,
+  });
+
+  const { vocabularyDeleted, snippetsDeleted } =
+    await migrateSettingsSyncBounds();
+
+  await persistDataMigrationVersion(
+    currentDataMigrations,
+    "settingsSyncBounds",
+    SETTINGS_SYNC_BOUNDS_MIGRATION_VERSION,
+  );
+
+  logger.db.info("Settings sync bounds data migration complete", {
+    vocabularyDeleted,
+    snippetsDeleted,
+    durationMs: Date.now() - startTime,
+  });
+}
+
 export async function runDataMigrations(): Promise<void> {
+  try {
+    await runSettingsSyncBoundsMigration();
+  } catch (error) {
+    logger.db.error("Settings sync bounds data migration failed", error);
+    throw error;
+  }
+
   try {
     const settings = await getAppSettings();
     let currentDataMigrations = settings.dataMigrations ?? {};

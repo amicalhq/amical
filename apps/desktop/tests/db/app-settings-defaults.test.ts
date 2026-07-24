@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { app } from "electron";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
-import { getAppSettings } from "../../src/db/app-settings";
+import {
+  getAppSettings,
+  updateSettingsSection,
+} from "../../src/db/app-settings";
 
 /**
  * First-run seeding of dictation defaults: concrete languages (English + the
@@ -70,5 +73,26 @@ describe("default settings seed", () => {
     const settings = await getAppSettings();
 
     expect(settings.dictation?.languages).toEqual(["en", "fr"]);
+  });
+
+  it("preserves concurrent updates to different sections", async () => {
+    await getAppSettings();
+    const auth = {
+      isAuthenticated: true,
+      idToken: "id-token",
+      refreshToken: "refresh-token",
+      accessToken: "access-token",
+      expiresAt: Date.now() + 60_000,
+      userInfo: { sub: "user-1" },
+    };
+
+    await Promise.all([
+      updateSettingsSection("auth", auth),
+      updateSettingsSection("ui", { theme: "dark" }),
+    ]);
+
+    const settings = await getAppSettings();
+    expect(settings.auth).toEqual(auth);
+    expect(settings.ui).toEqual({ theme: "dark" });
   });
 });

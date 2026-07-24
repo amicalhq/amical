@@ -8,11 +8,11 @@ import {
   getSnippets,
   updateSnippet,
 } from "../../db/snippets";
+import { SNIPPET_ERROR_DUPLICATE_TRIGGER } from "../../constants/snippets";
 import {
-  CONTENT_MAX_LENGTH,
-  SNIPPET_ERROR_DUPLICATE_TRIGGER,
-  TRIGGER_MAX_LENGTH,
-} from "../../constants/snippets";
+  axisSyncKeySchema,
+  axisSyncRequiredTextSchema,
+} from "../../db/sync-payload";
 
 const GetSnippetsSchema = z.object({
   limit: z.number().optional(),
@@ -20,13 +20,13 @@ const GetSnippetsSchema = z.object({
 });
 
 const CreateSnippetSchema = z.object({
-  trigger: z.string().min(1).max(TRIGGER_MAX_LENGTH),
-  content: z.string().min(1).max(CONTENT_MAX_LENGTH),
+  trigger: axisSyncKeySchema,
+  content: axisSyncRequiredTextSchema,
 });
 
 const UpdateSnippetSchema = z.object({
-  trigger: z.string().min(1).max(TRIGGER_MAX_LENGTH).optional(),
-  content: z.string().min(1).max(CONTENT_MAX_LENGTH).optional(),
+  trigger: axisSyncKeySchema.optional(),
+  content: axisSyncRequiredTextSchema.optional(),
 });
 
 function isDuplicateTriggerError(err: unknown): boolean {

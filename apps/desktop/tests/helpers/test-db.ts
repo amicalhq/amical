@@ -70,9 +70,14 @@ export async function createTestDatabase(
     },
     clear: async () => {
       // Clear all tables
+      await db.delete(schema.syncOutbox);
+      await db.delete(schema.syncItemState);
+      await db.delete(schema.syncScopeState);
+      await db.delete(schema.syncClientState);
       await db.delete(schema.transcriptions);
       await db.delete(schema.dailyStats);
       await db.delete(schema.vocabulary);
+      await db.delete(schema.snippets);
       await db.delete(schema.models);
       await db.delete(schema.appSettings);
       await db.delete(schema.yjsUpdates);

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api, trpcClient } from "@/trpc/react";
 import { usePostHog } from "../lib/posthog";
 import { UpdatePrompt } from "../components/update-prompt/update-prompt";
+import { useEffect } from "react";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -22,6 +23,18 @@ export const Route = createRootRoute({
 // Inner component that uses hooks requiring provider context
 function AppShell() {
   usePostHog(); // Initialize and sync telemetry
+
+  useEffect(() => {
+    const handleSettingsSync = () => {
+      void queryClient.invalidateQueries();
+    };
+
+    window.electronAPI.on("settings-sync-updated", handleSettingsSync);
+
+    return () => {
+      window.electronAPI.off("settings-sync-updated", handleSettingsSync);
+    };
+  }, []);
 
   return (
     <>

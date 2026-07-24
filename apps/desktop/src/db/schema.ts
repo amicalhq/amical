@@ -67,6 +67,123 @@ export const snippets = sqliteTable("snippets", {
     .default(sql`(unixepoch())`),
 });
 
+export type SyncScopeType = "user" | "org";
+export type SyncCollection = "vocabulary" | "snippet";
+export type VocabularySyncPayload = {
+  word: string;
+  replacement: string | null;
+};
+export type SnippetSyncPayload = {
+  trigger: string;
+  content: string;
+};
+export type SyncPayload = VocabularySyncPayload | SnippetSyncPayload;
+
+// Singleton state shared by every synchronized collection. The current user
+// scope is read inside local edit transactions so logout cannot race an edit
+// into the wrong user's outbox.
+export const syncClientState = sqliteTable("sync_client_state", {
+  id: integer("id").primaryKey(),
+  syncUserScopeId: text("sync_user_scope_id"),
+  sessionEpoch: integer("session_epoch").notNull().default(0),
+});
+
+export const syncScopeState = sqliteTable(
+  "sync_scope_state",
+  {
+    accountId: text("account_id").notNull(),
+    scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
+    scopeId: text("scope_id").notNull(),
+    cursor: integer("cursor").notNull().default(0),
+    responseEpoch: integer("response_epoch").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.accountId, table.scopeType, table.scopeId],
+    }),
+  ],
+);
+
+// Transport identity and last canonical server state live separately from the
+// visible domain row so a physical local delete can still sync a tombstone.
+export const syncItemState = sqliteTable(
+  "sync_item_state",
+  {
+    accountId: text("account_id").notNull(),
+    scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
+    scopeId: text("scope_id").notNull(),
+    collection: text("collection", {
+      enum: ["vocabulary", "snippet"],
+    }).notNull(),
+    syncId: text("sync_id").notNull(),
+    localRowId: integer("local_row_id"),
+    acceptedSyncVersion: integer("accepted_sync_version"),
+    acceptedPayload: text("accepted_payload", {
+      mode: "json",
+    }).$type<SyncPayload | null>(),
+    lastLocalGeneration: integer("last_local_generation").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.accountId,
+        table.scopeType,
+        table.scopeId,
+        table.collection,
+        table.syncId,
+      ],
+    }),
+    uniqueIndex("sync_item_state_local_row_idx").on(
+      table.accountId,
+      table.scopeType,
+      table.scopeId,
+      table.collection,
+      table.localRowId,
+    ),
+  ],
+);
+
+// One generic outbox serves every whole-row CAS collection. `headPresent` is
+// separate because a null payload is a deletion, not an absent request head.
+export const syncOutbox = sqliteTable(
+  "sync_outbox",
+  {
+    accountId: text("account_id").notNull(),
+    scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
+    scopeId: text("scope_id").notNull(),
+    collection: text("collection", {
+      enum: ["vocabulary", "snippet"],
+    }).notNull(),
+    syncId: text("sync_id").notNull(),
+    desiredPayload: text("desired_payload", {
+      mode: "json",
+    }).$type<SyncPayload | null>(),
+    desiredBaseSyncVersion: integer("desired_base_sync_version"),
+    desiredGeneration: integer("desired_generation").notNull(),
+    desiredParentHeadGeneration: integer("desired_parent_head_generation"),
+    desiredParentSyncVersion: integer("desired_parent_sync_version"),
+    headPresent: integer("head_present", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    headPayload: text("head_payload", {
+      mode: "json",
+    }).$type<SyncPayload | null>(),
+    headExpectedSyncVersion: integer("head_expected_sync_version"),
+    headGeneration: integer("head_generation"),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.accountId,
+        table.scopeType,
+        table.scopeId,
+        table.collection,
+        table.syncId,
+      ],
+    }),
+  ],
+);
+
 // App settings table with typed JSON
 export const appSettings = sqliteTable("app_settings", {
   id: integer("id").primaryKey(),
@@ -266,6 +383,7 @@ export interface AppSettingsData {
   dataMigrations?: {
     notesLexical?: number;
     dictationDailyStats?: number;
+    settingsSyncBounds?: number;
   };
 }
 
@@ -387,6 +505,10 @@ export type Vocabulary = typeof vocabulary.$inferSelect;
 export type NewVocabulary = typeof vocabulary.$inferInsert;
 export type Snippet = typeof snippets.$inferSelect;
 export type NewSnippet = typeof snippets.$inferInsert;
+export type SyncClientState = typeof syncClientState.$inferSelect;
+export type SyncScopeState = typeof syncScopeState.$inferSelect;
+export type SyncItemState = typeof syncItemState.$inferSelect;
+export type SyncOutbox = typeof syncOutbox.$inferSelect;
 export type Model = typeof models.$inferSelect;
 export type NewModel = typeof models.$inferInsert;
 export type AppSettings = typeof appSettings.$inferSelect;

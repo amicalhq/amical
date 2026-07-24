@@ -83,6 +83,7 @@ import { addRelease, up } from "./layer-helpers";
 import { isMacOS, isWindows } from "../../utils/platform";
 
 import { SettingsService } from "../../services/settings-service";
+import { SettingsSyncService } from "../../services/settings-sync-service";
 import { AuthService } from "../../services/auth-service";
 import { PostHogClient } from "../../services/posthog-client";
 import { TelemetryService } from "../../services/telemetry-service";
@@ -104,6 +105,7 @@ import { createContext } from "../../trpc/context";
 
 import {
   SettingsServiceTag,
+  SettingsSyncServiceTag,
   AuthServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
@@ -163,6 +165,7 @@ export const ServicesBundleLive: Layer.Layer<
   never,
   | SettingsServiceTag
   | AuthServiceTag
+  | SettingsSyncServiceTag
   | PostHogClientTag
   | TelemetryServiceTag
   | FeatureFlagServiceTag
@@ -188,6 +191,7 @@ export const ServicesBundleLive: Layer.Layer<
       transcriptionService: yield* TranscriptionServiceTag,
       settingsService: yield* SettingsServiceTag,
       authService: yield* AuthServiceTag,
+      settingsSyncService: yield* SettingsSyncServiceTag,
       vadService: yield* VadServiceTag,
       nativeBridge: yield* NativeBridgeTag,
       autoUpdaterService: yield* AutoUpdaterServiceTag,
@@ -260,7 +264,11 @@ export const AppLive: Layer.Layer<
 > = TrpcHandlerLive.pipe(
   Layer.provideMerge(ServicesBundleLive),
   Layer.provideMerge(
-    Layer.mergeAll(ShortcutManager.Live, AutoUpdaterService.Live),
+    Layer.mergeAll(
+      ShortcutManager.Live,
+      AutoUpdaterService.Live,
+      SettingsSyncService.Live,
+    ),
   ),
   Layer.provideMerge(RecordingManager.Live),
   Layer.provideMerge(WindowManager.Live),

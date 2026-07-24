@@ -18,6 +18,7 @@
  */
 
 import { app } from "electron";
+import { Mutex } from "async-mutex";
 import { eq } from "drizzle-orm";
 import { db } from ".";
 import {
@@ -36,6 +37,8 @@ import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention
 
 // Singleton ID for app settings (we only have one settings record)
 const SETTINGS_ID = 1;
+// Every section shares one JSON row, so read/merge/write updates must not overlap.
+const settingsWriteMutex = new Mutex();
 
 // Platform-specific default shortcuts (keycode array format)
 const getDefaultShortcuts = () => {

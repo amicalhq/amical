@@ -112,6 +112,7 @@ const api: ElectronAPI = {
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);
+window.addEventListener("online", () => ipcRenderer.send("settings-sync-wake"));
 
 // Expose tRPC for electron-trpc-experimental
 process.once("loaded", async () => {

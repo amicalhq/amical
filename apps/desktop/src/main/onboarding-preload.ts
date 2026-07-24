@@ -1,4 +1,4 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 import { exposeElectronTRPC } from "electron-trpc-experimental/preload";
 
 /**
@@ -12,6 +12,7 @@ import { exposeElectronTRPC } from "electron-trpc-experimental/preload";
 contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
 });
+window.addEventListener("online", () => ipcRenderer.send("settings-sync-wake"));
 
 // Expose tRPC for electron-trpc-experimental
 process.once("loaded", async () => {

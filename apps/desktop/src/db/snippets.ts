@@ -1,6 +1,7 @@
 import { eq, desc, like, or } from "drizzle-orm";
 import { db } from ".";
 import { snippets, type Snippet, type NewSnippet } from "./schema";
+import { recordLocalSyncMutation, snippetSyncPayload } from "./sync";
 
 /**
  * Find a snippet that is "similar" to the given trigger — both sides are
@@ -34,11 +35,19 @@ export async function createSnippet(
   data: Omit<NewSnippet, "id" | "createdAt" | "updatedAt">,
 ) {
   const now = new Date();
-  const result = await db
-    .insert(snippets)
-    .values({ ...data, createdAt: now, updatedAt: now })
-    .returning();
-  return result[0];
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(snippets)
+      .values({ ...data, createdAt: now, updatedAt: now })
+      .returning();
+    await recordLocalSyncMutation(
+      tx,
+      "snippet",
+      created.id,
+      snippetSyncPayload(created),
+    );
+    return created;
+  });
 }
 
 export async function getSnippets(
@@ -69,18 +78,38 @@ export async function updateSnippet(
   id: number,
   data: Partial<Omit<Snippet, "id" | "createdAt">>,
 ) {
-  const result = await db
-    .update(snippets)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(snippets.id, id))
-    .returning();
-  return result[0] || null;
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(snippets)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(snippets.id, id))
+      .returning();
+    if (!updated) return null;
+
+    await recordLocalSyncMutation(
+      tx,
+      "snippet",
+      updated.id,
+      snippetSyncPayload(updated),
+    );
+    return updated;
+  });
 }
 
 export async function deleteSnippet(id: number) {
-  const result = await db
-    .delete(snippets)
-    .where(eq(snippets.id, id))
-    .returning();
-  return result[0] || null;
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(snippets)
+      .where(eq(snippets.id, id))
+      .limit(1);
+    if (!existing) return null;
+
+    await recordLocalSyncMutation(tx, "snippet", existing.id, null);
+    const [deleted] = await tx
+      .delete(snippets)
+      .where(eq(snippets.id, id))
+      .returning();
+    return deleted ?? null;
+  });
 }
