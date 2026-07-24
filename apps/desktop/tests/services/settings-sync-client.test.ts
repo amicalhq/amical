@@ -74,55 +74,140 @@ describe("SettingsSyncClient", () => {
       json: async () => ({
         scopeType: "user",
         scopeId: "user-1",
-        items: [
-          {
-            collection: "snippet",
-            syncId: SYNC_ID,
-            syncVersion: 2,
-            payload: { trigger: "sig", content: "valid" },
-          },
+        collections: [
           {
             collection: "vocabulary",
-            syncId: "22222222-2222-4222-8222-222222222222",
-            syncVersion: 1,
-            payload: { word: "out-of-order", replacement: null },
+            items: [
+              {
+                collection: "vocabulary",
+                syncId: SYNC_ID,
+                syncVersion: 2,
+                payload: { word: "later", replacement: null },
+              },
+              {
+                collection: "vocabulary",
+                syncId: "22222222-2222-4222-8222-222222222222",
+                syncVersion: 1,
+                payload: { word: "out-of-order", replacement: null },
+              },
+            ],
+            cursor: 2,
+            hasMore: false,
           },
         ],
-        cursor: 2,
-        hasMore: false,
       }),
     });
 
     await expect(
-      client.pull("user", "user-1", 0, 200, new AbortController().signal),
+      client.pull(
+        "user",
+        "user-1",
+        [{ collection: "vocabulary", cursor: 0 }],
+        200,
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("strictly cursor ordered");
   });
 
-  it("ignores unsupported pull collections while advancing the scope cursor", async () => {
+  it("sends and validates independent cursors for both collections", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
         scopeType: "user",
         scopeId: "user-1",
-        items: [
+        collections: [
           {
-            collection: "notes",
-            syncId: SYNC_ID,
-            syncVersion: 1,
-            payload: { content: "unsupported" },
+            collection: "vocabulary",
+            items: [
+              {
+                collection: "vocabulary",
+                syncId: SYNC_ID,
+                syncVersion: 8,
+                payload: { word: "Amical", replacement: null },
+              },
+            ],
+            cursor: 8,
+            hasMore: false,
+          },
+          {
+            collection: "snippet",
+            items: [],
+            cursor: 3,
+            hasMore: false,
           },
         ],
-        cursor: 1,
-        hasMore: false,
       }),
     });
 
     await expect(
-      client.pull("user", "user-1", 0, 200, new AbortController().signal, [
-        "vocabulary",
-        "snippet",
-      ]),
-    ).resolves.toEqual({ items: [], cursor: 1, hasMore: false });
+      client.pull(
+        "user",
+        "user-1",
+        [
+          { collection: "vocabulary", cursor: 7 },
+          { collection: "snippet", cursor: 3 },
+        ],
+        200,
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({
+      collections: [
+        {
+          collection: "vocabulary",
+          items: [
+            {
+              collection: "vocabulary",
+              syncId: SYNC_ID,
+              syncVersion: 8,
+              payload: { word: "Amical", replacement: null },
+            },
+          ],
+          cursor: 8,
+          hasMore: false,
+        },
+        {
+          collection: "snippet",
+          items: [],
+          cursor: 3,
+          hasMore: false,
+        },
+      ],
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [URL];
+    expect(JSON.parse(url.searchParams.get("collections")!)).toEqual([
+      { collection: "vocabulary", cursor: 7, limit: 200 },
+      { collection: "snippet", cursor: 3, limit: 200 },
+    ]);
+    expect(url.searchParams.has("cursor")).toBe(false);
+  });
+
+  it("rejects unrequested pull collection blocks", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        scopeType: "user",
+        scopeId: "user-1",
+        collections: [
+          {
+            collection: "notes",
+            items: [],
+            cursor: 0,
+            hasMore: false,
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      client.pull(
+        "user",
+        "user-1",
+        [{ collection: "vocabulary", cursor: 0 }],
+        200,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("unrequested collection");
   });
 
   it("rejects an empty pull that advances the cursor", async () => {
@@ -131,14 +216,25 @@ describe("SettingsSyncClient", () => {
       json: async () => ({
         scopeType: "user",
         scopeId: "user-1",
-        items: [],
-        cursor: 2,
-        hasMore: false,
+        collections: [
+          {
+            collection: "vocabulary",
+            items: [],
+            cursor: 2,
+            hasMore: false,
+          },
+        ],
       }),
     });
 
     await expect(
-      client.pull("user", "user-1", 1, 200, new AbortController().signal),
+      client.pull(
+        "user",
+        "user-1",
+        [{ collection: "vocabulary", cursor: 1 }],
+        200,
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("Empty pull");
   });
 

@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import {
   snippets,
   syncClientState,
+  syncCollectionState,
   syncItemState,
   syncOutbox,
   syncScopeState,
@@ -11,19 +12,35 @@ import {
 } from "../../src/db/schema";
 import {
   adoptVisibleRows,
-  applyPullPage,
+  applyPullPages,
   applyPushResults,
   beginUserSyncSession,
   capturePushHeads,
   fenceSyncSession,
+  getPullCursors,
   prepareVisibleRowsForFullSync,
   recordLocalSyncMutation,
+  type CanonicalSyncItem,
+  type SyncFence,
 } from "../../src/db/sync";
 import { bulkImportVocabulary } from "../../src/db/vocabulary";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
 
 type DesktopDatabase = typeof import("../../src/db").db;
+
+async function applyPullPage(
+  fence: SyncFence,
+  items: CanonicalSyncItem[],
+  cursor: number,
+  database: DesktopDatabase,
+) {
+  const collection = items[0]?.collection;
+  if (!collection || items.some((item) => item.collection !== collection)) {
+    throw new Error("Test pull page must contain exactly one collection");
+  }
+  return applyPullPages(fence, [{ collection, items, cursor }], database);
+}
 
 describe("settings sync durable store", () => {
   let testDb: TestDatabase;
@@ -37,6 +54,48 @@ describe("settings sync durable store", () => {
 
   afterEach(async () => {
     await testDb.close();
+  });
+
+  it("stores independent cursors for collection pull blocks", async () => {
+    const fence = await beginUserSyncSession("user-1", database);
+
+    expect(
+      await applyPullPages(
+        fence,
+        [
+          {
+            collection: "vocabulary",
+            items: [
+              {
+                collection: "vocabulary",
+                syncId: "01010101-0101-4101-8101-010101010101",
+                syncVersion: 4,
+                payload: { word: "Amical", replacement: null },
+              },
+            ],
+            cursor: 4,
+          },
+          {
+            collection: "snippet",
+            items: [
+              {
+                collection: "snippet",
+                syncId: "02020202-0202-4202-8202-020202020202",
+                syncVersion: 7,
+                payload: { trigger: "sig", content: "Regards" },
+              },
+            ],
+            cursor: 7,
+          },
+        ],
+        database,
+      ),
+    ).toBe(true);
+
+    expect(await getPullCursors(fence, undefined, database)).toEqual([
+      { collection: "vocabulary", cursor: 4 },
+      { collection: "snippet", cursor: 7 },
+    ]);
   });
 
   it("keeps signed-out edits local and adopts them on login", async () => {
@@ -1034,17 +1093,22 @@ describe("settings sync durable store", () => {
     expect(userTwoHead.syncId).not.toBe(oldHead.syncId);
 
     const [client] = await database.select().from(syncClientState);
-    const [scope] = await database
+    const cursors = await database
       .select()
-      .from(syncScopeState)
+      .from(syncCollectionState)
       .where(
         and(
-          eq(syncScopeState.accountId, "user-2"),
-          eq(syncScopeState.scopeId, "user-2"),
+          eq(syncCollectionState.accountId, "user-2"),
+          eq(syncCollectionState.scopeId, "user-2"),
         ),
       );
     expect(client.syncUserScopeId).toBe("user-2");
-    expect(scope.cursor).toBe(0);
+    expect(cursors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ collection: "vocabulary", cursor: 0 }),
+        expect.objectContaining({ collection: "snippet", cursor: 0 }),
+      ]),
+    );
     expect((await database.select().from(snippets))[0].id).toBe(row.id);
   });
 });

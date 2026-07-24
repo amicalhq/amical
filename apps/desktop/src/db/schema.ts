@@ -94,12 +94,34 @@ export const syncScopeState = sqliteTable(
     accountId: text("account_id").notNull(),
     scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
     scopeId: text("scope_id").notNull(),
-    cursor: integer("cursor").notNull().default(0),
     responseEpoch: integer("response_epoch").notNull().default(0),
   },
   (table) => [
     primaryKey({
       columns: [table.accountId, table.scopeType, table.scopeId],
+    }),
+  ],
+);
+
+export const syncCollectionState = sqliteTable(
+  "sync_collection_state",
+  {
+    accountId: text("account_id").notNull(),
+    scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
+    scopeId: text("scope_id").notNull(),
+    collection: text("collection", {
+      enum: ["vocabulary", "snippet"],
+    }).notNull(),
+    cursor: integer("cursor").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.accountId,
+        table.scopeType,
+        table.scopeId,
+        table.collection,
+      ],
     }),
   ],
 );
@@ -507,6 +529,7 @@ export type Snippet = typeof snippets.$inferSelect;
 export type NewSnippet = typeof snippets.$inferInsert;
 export type SyncClientState = typeof syncClientState.$inferSelect;
 export type SyncScopeState = typeof syncScopeState.$inferSelect;
+export type SyncCollectionState = typeof syncCollectionState.$inferSelect;
 export type SyncItemState = typeof syncItemState.$inferSelect;
 export type SyncOutbox = typeof syncOutbox.$inferSelect;
 export type Model = typeof models.$inferSelect;

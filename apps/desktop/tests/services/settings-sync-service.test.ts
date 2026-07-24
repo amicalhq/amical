@@ -12,6 +12,7 @@ import type { CanonicalSyncItem } from "../../src/db/sync";
 import {
   snippets,
   syncClientState,
+  syncCollectionState,
   syncItemState,
   syncOutbox,
   syncScopeState,
@@ -95,19 +96,29 @@ class InMemorySyncClient {
     async (
       _scopeType: "user" | "org",
       _scopeId: string,
-      cursor: number,
+      cursors: ReadonlyArray<{
+        collection: "vocabulary" | "snippet";
+        cursor: number;
+      }>,
       _limit?: number,
       _signal?: AbortSignal,
-      _collections?: readonly ("vocabulary" | "snippet")[],
     ): Promise<SyncPullPage> => {
       this.calls.push("pull");
-      const items = [...this.items.values()]
-        .filter((item) => item.syncVersion > cursor)
-        .sort((left, right) => left.syncVersion - right.syncVersion);
       return {
-        items,
-        cursor: items.at(-1)?.syncVersion ?? cursor,
-        hasMore: false,
+        collections: cursors.map(({ collection, cursor }) => {
+          const items = [...this.items.values()]
+            .filter(
+              (item) =>
+                item.collection === collection && item.syncVersion > cursor,
+            )
+            .sort((left, right) => left.syncVersion - right.syncVersion);
+          return {
+            collection,
+            items,
+            cursor: items.at(-1)?.syncVersion ?? cursor,
+            hasMore: false,
+          };
+        }),
       };
     },
   );
@@ -176,9 +187,24 @@ describe("SettingsSyncService", () => {
       accountId: "user-1",
       scopeType: "user",
       scopeId: "user-1",
-      cursor: 7,
       responseEpoch: 3,
     });
+    await testDb.db.insert(syncCollectionState).values([
+      {
+        accountId: "user-1",
+        scopeType: "user",
+        scopeId: "user-1",
+        collection: "vocabulary",
+        cursor: 7,
+      },
+      {
+        accountId: "user-1",
+        scopeType: "user",
+        scopeId: "user-1",
+        collection: "snippet",
+        cursor: 5,
+      },
+    ]);
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
@@ -189,10 +215,16 @@ describe("SettingsSyncService", () => {
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     expect(client.calls).toEqual(["bootstrap", "pull"]);
-    expect(client.pull.mock.calls[0][2]).toBe(7);
-    expect((await testDb.db.select().from(syncScopeState))[0]).toMatchObject({
-      cursor: 7,
-    });
+    expect(client.pull.mock.calls[0][2]).toEqual([
+      { collection: "vocabulary", cursor: 7 },
+      { collection: "snippet", cursor: 5 },
+    ]);
+    expect(await testDb.db.select().from(syncCollectionState)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ collection: "vocabulary", cursor: 7 }),
+        expect.objectContaining({ collection: "snippet", cursor: 5 }),
+      ]),
+    );
   });
 
   it("preserves the active account binding across clean shutdown", async () => {
@@ -230,7 +262,10 @@ describe("SettingsSyncService", () => {
     });
 
     expect(client.calls.slice(0, 3)).toEqual(["bootstrap", "push", "pull"]);
-    expect(client.pull.mock.calls[0][2]).toBe(0);
+    expect(client.pull.mock.calls[0][2]).toEqual([
+      { collection: "vocabulary", cursor: 0 },
+      { collection: "snippet", cursor: 0 },
+    ]);
   });
 
   it("syncs only collections advertised by bootstrap", async () => {
@@ -254,7 +289,9 @@ describe("SettingsSyncService", () => {
     expect(client.push.mock.calls[0][0]).toEqual([
       expect.objectContaining({ collection: "vocabulary" }),
     ]);
-    expect(client.pull.mock.calls[0][5]).toEqual(["vocabulary"]);
+    expect(client.pull.mock.calls[0][2]).toEqual([
+      { collection: "vocabulary", cursor: 0 },
+    ]);
     expect(await testDb.db.select().from(syncOutbox)).toEqual([
       expect.objectContaining({ collection: "snippet" }),
     ]);
@@ -266,9 +303,24 @@ describe("SettingsSyncService", () => {
       accountId: "user-1",
       scopeType: "user",
       scopeId: "user-1",
-      cursor: 7,
       responseEpoch: 3,
     });
+    await testDb.db.insert(syncCollectionState).values([
+      {
+        accountId: "user-1",
+        scopeType: "user",
+        scopeId: "user-1",
+        collection: "vocabulary",
+        cursor: 7,
+      },
+      {
+        accountId: "user-1",
+        scopeType: "user",
+        scopeId: "user-1",
+        collection: "snippet",
+        cursor: 5,
+      },
+    ]);
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
@@ -280,7 +332,10 @@ describe("SettingsSyncService", () => {
     auth.emit("authenticated", AUTH_STATE);
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
-    expect(client.pull.mock.calls[0][2]).toBe(0);
+    expect(client.pull.mock.calls[0][2]).toEqual([
+      { collection: "vocabulary", cursor: 0 },
+      { collection: "snippet", cursor: 0 },
+    ]);
   });
 
   it.each([401, 403])(
@@ -389,7 +444,10 @@ describe("SettingsSyncService", () => {
         (
           _scopeType: "user" | "org",
           _scopeId: string,
-          _cursor: number,
+          _cursors: ReadonlyArray<{
+            collection: "vocabulary" | "snippet";
+            cursor: number;
+          }>,
           _limit: number,
           signal: AbortSignal,
         ) => {
@@ -416,16 +474,21 @@ describe("SettingsSyncService", () => {
 
     const syncId = "11111111-1111-4111-8111-111111111111";
     pullState.resolve?.({
-      items: [
+      collections: [
         {
           collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "late" },
+          items: [
+            {
+              collection: "snippet",
+              syncId,
+              syncVersion: 1,
+              payload: { trigger: "sig", content: "late" },
+            },
+          ],
+          cursor: 1,
+          hasMore: false,
         },
       ],
-      cursor: 1,
-      hasMore: false,
     });
 
     await service.shutdown();
@@ -482,6 +545,80 @@ describe("SettingsSyncService", () => {
     expect(client.pull).not.toHaveBeenCalled();
   });
 
+  it("sends both collection cursors on every incremental pull page", async () => {
+    const syncId = "22222222-2222-4222-8222-222222222222";
+    const client = {
+      bootstrap: vi.fn().mockResolvedValue({
+        collections: ["vocabulary", "snippet"] as Array<
+          "vocabulary" | "snippet"
+        >,
+        maxPushBatch: 100,
+        maxPushBytes: 524288,
+        pullLimit: 200,
+      }),
+      pull: vi.fn(
+        async (
+          _scopeType: "user" | "org",
+          _scopeId: string,
+          cursors: ReadonlyArray<{
+            collection: "vocabulary" | "snippet";
+            cursor: number;
+          }>,
+        ): Promise<SyncPullPage> => {
+          if (client.pull.mock.calls.length === 1) {
+            return {
+              collections: [
+                {
+                  collection: "vocabulary",
+                  items: [
+                    {
+                      collection: "vocabulary",
+                      syncId,
+                      syncVersion: 1,
+                      payload: { word: "Amical", replacement: null },
+                    },
+                  ],
+                  cursor: 1,
+                  hasMore: true,
+                },
+                {
+                  collection: "snippet",
+                  items: [],
+                  cursor: 0,
+                  hasMore: false,
+                },
+              ],
+            };
+          }
+          return {
+            collections: cursors.map(({ collection, cursor }) => ({
+              collection,
+              items: [],
+              cursor,
+              hasMore: false,
+            })),
+          };
+        },
+      ),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+    expect(client.pull.mock.calls[0][2]).toEqual([
+      { collection: "vocabulary", cursor: 0 },
+      { collection: "snippet", cursor: 0 },
+    ]);
+    expect(client.pull.mock.calls[1][2]).toEqual([
+      { collection: "vocabulary", cursor: 1 },
+      { collection: "snippet", cursor: 0 },
+    ]);
+  });
+
   it("coalesces wakes so only one pull is in flight", async () => {
     let concurrentPulls = 0;
     let maxConcurrentPulls = 0;
@@ -499,7 +636,10 @@ describe("SettingsSyncService", () => {
         async (
           _scopeType: "user" | "org",
           _scopeId: string,
-          cursor: number,
+          cursors: ReadonlyArray<{
+            collection: "vocabulary" | "snippet";
+            cursor: number;
+          }>,
         ): Promise<SyncPullPage> => {
           concurrentPulls += 1;
           maxConcurrentPulls = Math.max(maxConcurrentPulls, concurrentPulls);
@@ -509,7 +649,14 @@ describe("SettingsSyncService", () => {
             });
           }
           concurrentPulls -= 1;
-          return { items: [], cursor, hasMore: false };
+          return {
+            collections: cursors.map(({ collection, cursor }) => ({
+              collection,
+              items: [],
+              cursor,
+              hasMore: false,
+            })),
+          };
         },
       ),
       push: vi.fn(),

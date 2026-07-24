@@ -43,7 +43,15 @@ CREATE TABLE `sync_scope_state` (
 	`account_id` text NOT NULL,
 	`scope_type` text NOT NULL,
 	`scope_id` text NOT NULL,
-	`cursor` integer DEFAULT 0 NOT NULL,
 	`response_epoch` integer DEFAULT 0 NOT NULL,
 	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`)
+);
+--> statement-breakpoint
+CREATE TABLE `sync_collection_state` (
+	`account_id` text NOT NULL,
+	`scope_type` text NOT NULL,
+	`scope_id` text NOT NULL,
+	`collection` text NOT NULL,
+	`cursor` integer DEFAULT 0 NOT NULL,
+	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`, `collection`)
 );

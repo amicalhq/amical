@@ -18,13 +18,13 @@ import {
 } from "./settings-sync-client";
 import {
   adoptVisibleRows,
-  applyPullPage,
+  applyPullPages,
   applyPushResults,
   beginUserSyncSession,
   capturePushHeads,
   fenceSyncSession,
   getActiveSyncFence,
-  getPullCursor,
+  getPullCursors,
   hasPendingSyncWork,
   pauseSyncSession,
   prepareVisibleRowsForFullSync,
@@ -302,10 +302,7 @@ export class SettingsSyncService {
     signal: AbortSignal,
   ): Promise<void> {
     if (!this.capabilities) {
-      const capabilities = await this.client.bootstrap(
-        fence.accountId,
-        signal,
-      );
+      const capabilities = await this.client.bootstrap(fence.accountId, signal);
       if (signal.aborted || this.currentFence !== fence) return;
       this.capabilities = capabilities;
     }
@@ -323,25 +320,28 @@ export class SettingsSyncService {
 
     let changed = false;
     while (!signal.aborted) {
-      const cursor = await this.runLocalTransition(() => getPullCursor(fence));
-      if (cursor === null) return;
+      const cursors = await this.runLocalTransition(() =>
+        getPullCursors(fence, capabilities.collections),
+      );
+      if (cursors === null) return;
       const page = await this.client.pull(
         fence.scopeType,
         fence.scopeId,
-        cursor,
+        cursors,
         capabilities.pullLimit,
         signal,
-        capabilities.collections,
       );
       if (
         !(await this.runLocalTransition(() =>
-          applyPullPage(fence, page.items, page.cursor),
+          applyPullPages(fence, page.collections),
         ))
       ) {
         return;
       }
-      changed ||= page.items.length > 0;
-      if (!page.hasMore) break;
+      changed ||= page.collections.some(
+        (collection) => collection.items.length > 0,
+      );
+      if (page.collections.every((collection) => !collection.hasMore)) break;
     }
     if (changed) this.notifyRenderers();
   }

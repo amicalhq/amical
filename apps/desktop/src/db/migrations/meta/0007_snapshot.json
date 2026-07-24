@@ -754,6 +754,62 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "sync_collection_state": {
+      "name": "sync_collection_state",
+      "columns": {
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_type": {
+          "name": "scope_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "collection": {
+          "name": "collection",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cursor": {
+          "name": "cursor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "sync_collection_state_account_id_scope_type_scope_id_collection_pk": {
+          "columns": [
+            "account_id",
+            "scope_type",
+            "scope_id",
+            "collection"
+          ],
+          "name": "sync_collection_state_account_id_scope_type_scope_id_collection_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "sync_scope_state": {
       "name": "sync_scope_state",
       "columns": {
@@ -777,14 +833,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "cursor": {
-          "name": "cursor",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         },
         "response_epoch": {
           "name": "response_epoch",

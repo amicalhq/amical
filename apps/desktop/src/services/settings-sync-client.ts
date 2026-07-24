@@ -11,7 +11,11 @@ import {
   axisSyncOptionalTextSchema,
   axisSyncRequiredTextSchema,
 } from "../db/sync-payload";
-import type { CanonicalSyncItem, PushSyncResult } from "../db/sync";
+import type {
+  CanonicalSyncItem,
+  PullCollectionCursor,
+  PushSyncResult,
+} from "../db/sync";
 import type { SyncCollection, SyncPayload, SyncScopeType } from "../db/schema";
 
 const uuidSchema = z
@@ -75,13 +79,20 @@ const bootstrapSchema = z
   })
   .strict();
 
+const rawPullCollectionSchema = z
+  .object({
+    collection: z.string().min(1),
+    items: z.array(canonicalEnvelopeSchema),
+    cursor: cursorSchema,
+    hasMore: z.boolean(),
+  })
+  .strict();
+
 const rawPullSchema = z
   .object({
     scopeType: scopeTypeSchema,
     scopeId: z.string().min(1),
-    items: z.array(canonicalEnvelopeSchema),
-    cursor: cursorSchema,
-    hasMore: z.boolean(),
+    collections: z.array(rawPullCollectionSchema),
   })
   .strict();
 
@@ -128,10 +139,15 @@ export interface SyncBootstrap {
   pullLimit: number;
 }
 
-export interface SyncPullPage {
+export interface SyncPullCollectionPage {
+  collection: SyncCollection;
   items: CanonicalSyncItem[];
   cursor: number;
   hasMore: boolean;
+}
+
+export interface SyncPullPage {
+  collections: SyncPullCollectionPage[];
 }
 
 export interface SyncPushMutation {
@@ -211,54 +227,96 @@ export class SettingsSyncClient {
   async pull(
     scopeType: SyncScopeType,
     scopeId: string,
-    cursor: number,
+    cursors: readonly PullCollectionCursor[],
     limit: number,
     signal: AbortSignal,
-    collections: readonly SyncCollection[] = DESKTOP_SYNC_COLLECTIONS,
   ): Promise<SyncPullPage> {
     const url = getCoreApiUrl("/apps/v1/sync/pull");
     url.searchParams.set("scopeType", scopeType);
     url.searchParams.set("scopeId", scopeId);
-    url.searchParams.set("cursor", String(cursor));
-    url.searchParams.set("limit", String(limit));
+    url.searchParams.set(
+      "collections",
+      JSON.stringify(
+        cursors.map(({ collection, cursor }) => ({
+          collection,
+          cursor,
+          limit,
+        })),
+      ),
+    );
 
     const raw = rawPullSchema.parse(await this.requestJson(url, {}, signal));
     if (raw.scopeType !== scopeType || raw.scopeId !== scopeId) {
       throw new Error("Pull response scope does not match request");
     }
-    if (raw.cursor < cursor) {
-      throw new Error("Pull response cursor moved backwards");
+
+    const cursorByCollection = new Map(
+      cursors.map((cursor) => [cursor.collection, cursor.cursor]),
+    );
+    if (cursorByCollection.size !== cursors.length) {
+      throw new Error("Pull request contains duplicate collections");
     }
-    if (raw.hasMore && raw.items.length === 0) {
-      throw new Error("Pull response cannot make cursor progress");
-    }
-    if (raw.items.length === 0 && raw.cursor !== cursor) {
-      throw new Error("Empty pull response advanced the cursor");
+    if (raw.collections.length !== cursors.length) {
+      throw new Error("Pull response collection count does not match request");
     }
 
-    let previousVersion = cursor;
-    for (const item of raw.items) {
-      if (
-        item.syncVersion <= previousVersion ||
-        item.syncVersion > raw.cursor
-      ) {
-        throw new Error("Pull items are not strictly cursor ordered");
+    const pageByCollection = new Map<SyncCollection, SyncPullCollectionPage>();
+    for (const block of raw.collections) {
+      const collection = collectionSchema.safeParse(block.collection);
+      if (!collection.success || !cursorByCollection.has(collection.data)) {
+        throw new Error("Pull response contains an unrequested collection");
       }
-      previousVersion = item.syncVersion;
-    }
-    if (
-      raw.items.length > 0 &&
-      raw.cursor !== raw.items[raw.items.length - 1].syncVersion
-    ) {
-      throw new Error("Pull cursor does not match the last item");
+      if (pageByCollection.has(collection.data)) {
+        throw new Error("Pull response contains a duplicate collection");
+      }
+
+      const inputCursor = cursorByCollection.get(collection.data)!;
+      if (block.cursor < inputCursor) {
+        throw new Error("Pull response cursor moved backwards");
+      }
+      if (block.hasMore && block.items.length === 0) {
+        throw new Error("Pull response cannot make cursor progress");
+      }
+      if (block.items.length === 0 && block.cursor !== inputCursor) {
+        throw new Error("Empty pull response advanced the cursor");
+      }
+
+      let previousVersion = inputCursor;
+      const items = block.items.map((item) => {
+        if (item.collection !== collection.data) {
+          throw new Error("Pull item collection does not match its block");
+        }
+        if (
+          item.syncVersion <= previousVersion ||
+          item.syncVersion > block.cursor
+        ) {
+          throw new Error("Pull items are not strictly cursor ordered");
+        }
+        previousVersion = item.syncVersion;
+        return parseCanonicalItem(item);
+      });
+      if (
+        items.length > 0 &&
+        block.cursor !== items[items.length - 1].syncVersion
+      ) {
+        throw new Error("Pull cursor does not match the last item");
+      }
+
+      pageByCollection.set(collection.data, {
+        collection: collection.data,
+        items,
+        cursor: block.cursor,
+        hasMore: block.hasMore,
+      });
     }
 
-    const enabledCollections = new Set<string>(collections);
-    const items = raw.items
-      .filter((item) => enabledCollections.has(item.collection))
-      .map(parseCanonicalItem);
-
-    return { items, cursor: raw.cursor, hasMore: raw.hasMore };
+    return {
+      collections: cursors.map(({ collection }) => {
+        const page = pageByCollection.get(collection);
+        if (!page) throw new Error("Pull response omitted a collection");
+        return page;
+      }),
+    };
   }
 
   async push(

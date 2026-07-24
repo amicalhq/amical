@@ -6,6 +6,7 @@ import { db } from ".";
 import {
   snippets,
   syncClientState,
+  syncCollectionState,
   syncItemState,
   syncOutbox,
   syncScopeState,
@@ -19,6 +20,11 @@ import {
 } from "./schema";
 
 type SyncDatabase = Pick<typeof db, "select" | "insert" | "update" | "delete">;
+
+const SYNC_COLLECTIONS = [
+  "vocabulary",
+  "snippet",
+] as const satisfies readonly SyncCollection[];
 
 let localMutationHandler: (() => void) | null = null;
 
@@ -82,6 +88,17 @@ const scopeWhere = (
     eq(syncScopeState.accountId, fence.accountId),
     eq(syncScopeState.scopeType, fence.scopeType),
     eq(syncScopeState.scopeId, fence.scopeId),
+  );
+
+const collectionWhere = (
+  fence: Pick<SyncFence, "accountId" | "scopeType" | "scopeId">,
+  collection: SyncCollection,
+) =>
+  and(
+    eq(syncCollectionState.accountId, fence.accountId),
+    eq(syncCollectionState.scopeType, fence.scopeType),
+    eq(syncCollectionState.scopeId, fence.scopeId),
+    eq(syncCollectionState.collection, collection),
   );
 
 const itemWhere = (identity: {
@@ -346,15 +363,34 @@ async function startUserSyncSession(
 
     await tx
       .insert(syncScopeState)
-      .values({ ...identity, cursor: 0, responseEpoch })
+      .values({ ...identity, responseEpoch })
       .onConflictDoUpdate({
         target: [
           syncScopeState.accountId,
           syncScopeState.scopeType,
           syncScopeState.scopeId,
         ],
-        set: resetCursor ? { cursor: 0, responseEpoch } : { responseEpoch },
+        set: { responseEpoch },
       });
+
+    for (const collection of SYNC_COLLECTIONS) {
+      const insert = tx
+        .insert(syncCollectionState)
+        .values({ ...identity, collection, cursor: 0 });
+      if (resetCursor) {
+        await insert.onConflictDoUpdate({
+          target: [
+            syncCollectionState.accountId,
+            syncCollectionState.scopeType,
+            syncCollectionState.scopeId,
+            syncCollectionState.collection,
+          ],
+          set: { cursor: 0 },
+        });
+      } else {
+        await insert.onConflictDoNothing();
+      }
+    }
 
     return { ...identity, sessionEpoch, responseEpoch };
   });
@@ -1346,34 +1382,70 @@ async function applyCanonicalAbsence(
   await applyDomainPayload(database, fence, head.collection, head.syncId, null);
 }
 
-export async function applyPullPage(
+export interface PullCollectionPage {
+  collection: SyncCollection;
+  items: CanonicalSyncItem[];
+  cursor: number;
+}
+
+export interface PullCollectionCursor {
+  collection: SyncCollection;
+  cursor: number;
+}
+
+export async function applyPullPages(
   fence: SyncFence,
-  items: CanonicalSyncItem[],
-  cursor: number,
+  pages: PullCollectionPage[],
   database: typeof db = db,
 ): Promise<boolean> {
   return database.transaction(async (tx) => {
     if (!(await fenceIsCurrent(tx, fence))) return false;
 
-    for (const item of items) {
-      await applyCanonicalItem(tx, fence, item);
+    for (const page of pages) {
+      for (const item of page.items) {
+        await applyCanonicalItem(tx, fence, item);
+      }
+      await tx
+        .update(syncCollectionState)
+        .set({ cursor: page.cursor })
+        .where(collectionWhere(fence, page.collection));
     }
-    await tx.update(syncScopeState).set({ cursor }).where(scopeWhere(fence));
     return true;
   });
 }
 
-export async function getPullCursor(
+export async function getPullCursors(
   fence: SyncFence,
+  collections: readonly SyncCollection[] = SYNC_COLLECTIONS,
   database: SyncDatabase = db,
-): Promise<number | null> {
+): Promise<PullCollectionCursor[] | null> {
   if (!(await fenceIsCurrent(database, fence))) return null;
-  const [scope] = await database
-    .select({ cursor: syncScopeState.cursor })
-    .from(syncScopeState)
-    .where(scopeWhere(fence))
-    .limit(1);
-  return scope?.cursor ?? null;
+  if (collections.length === 0) return [];
+
+  const rows = await database
+    .select({
+      collection: syncCollectionState.collection,
+      cursor: syncCollectionState.cursor,
+    })
+    .from(syncCollectionState)
+    .where(
+      and(
+        eq(syncCollectionState.accountId, fence.accountId),
+        eq(syncCollectionState.scopeType, fence.scopeType),
+        eq(syncCollectionState.scopeId, fence.scopeId),
+        inArray(syncCollectionState.collection, [...collections]),
+      ),
+    );
+  const cursorByCollection = new Map(
+    rows.map((row) => [row.collection, row.cursor]),
+  );
+  if (collections.some((collection) => !cursorByCollection.has(collection))) {
+    return null;
+  }
+  return collections.map((collection) => ({
+    collection,
+    cursor: cursorByCollection.get(collection)!,
+  }));
 }
 
 export async function adoptVisibleRows(

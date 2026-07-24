@@ -72,6 +72,7 @@ export async function createTestDatabase(
       // Clear all tables
       await db.delete(schema.syncOutbox);
       await db.delete(schema.syncItemState);
+      await db.delete(schema.syncCollectionState);
       await db.delete(schema.syncScopeState);
       await db.delete(schema.syncClientState);
       await db.delete(schema.transcriptions);
