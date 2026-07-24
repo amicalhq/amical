@@ -50,7 +50,7 @@ const canonicalEnvelopeSchema = z
     syncVersion: positiveVersionSchema,
     payload: z.unknown().nullable(),
   })
-  .strict();
+  .strip();
 
 const bootstrapSchema = z
   .object({
@@ -63,7 +63,7 @@ const bootstrapSchema = z
           canWrite: z.boolean(),
           latestSyncVersion: cursorSchema,
         })
-        .strict(),
+        .strip(),
     ),
     capabilities: z
       .object({
@@ -75,9 +75,9 @@ const bootstrapSchema = z
         maxPullBytes: z.number().int().positive(),
         oneScopePerPush: z.literal(true),
       })
-      .strict(),
+      .strip(),
   })
-  .strict();
+  .strip();
 
 const rawPullCollectionSchema = z
   .object({
@@ -86,7 +86,7 @@ const rawPullCollectionSchema = z
     cursor: cursorSchema,
     hasMore: z.boolean(),
   })
-  .strict();
+  .strip();
 
 const rawPullSchema = z
   .object({
@@ -94,7 +94,7 @@ const rawPullSchema = z
     scopeId: z.string().min(1),
     collections: z.array(rawPullCollectionSchema),
   })
-  .strict();
+  .strip();
 
 const rawPushResultSchema = z.discriminatedUnion("status", [
   z
@@ -104,7 +104,7 @@ const rawPushResultSchema = z.discriminatedUnion("status", [
       syncVersion: positiveVersionSchema,
       applied: z.boolean(),
     })
-    .strict(),
+    .strip(),
   z
     .object({
       status: z.literal("conflict"),
@@ -113,7 +113,7 @@ const rawPushResultSchema = z.discriminatedUnion("status", [
       canonical: canonicalEnvelopeSchema.nullable(),
       conflictingItem: canonicalEnvelopeSchema.optional(),
     })
-    .strict(),
+    .strip(),
   z
     .object({
       status: z.literal("error"),
@@ -125,12 +125,12 @@ const rawPushResultSchema = z.discriminatedUnion("status", [
       ]),
       message: z.string(),
     })
-    .strict(),
+    .strip(),
 ]);
 
 const rawPushSchema = z
   .object({ results: z.array(rawPushResultSchema) })
-  .strict();
+  .strip();
 
 export interface SyncBootstrap {
   collections: SyncCollection[];

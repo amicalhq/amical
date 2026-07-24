@@ -10,7 +10,6 @@ import type { OnboardingService } from "../../services/onboarding-service";
 import type { RecordingManager } from "../managers/recording-manager";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { SettingsService } from "../../services/settings-service";
-import type { SettingsSyncService } from "../../services/settings-sync-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
 import type { AuthService } from "../../services/auth-service";
 import type { FeatureFlagService } from "../../services/feature-flag-service";
@@ -29,7 +28,6 @@ export class AppManager {
   // from the locator lazily.
   private windowManager!: WindowManager;
   private settingsService!: SettingsService;
-  private settingsSyncService!: SettingsSyncService;
   private shortcutManager!: ShortcutManager;
   private recordingManager!: RecordingManager;
   private featureFlagService!: FeatureFlagService;
@@ -93,7 +91,6 @@ export class AppManager {
     const services = this.serviceManager.services();
     this.windowManager = services.windowManager;
     this.settingsService = services.settingsService;
-    this.settingsSyncService = services.settingsSyncService;
     this.shortcutManager = services.shortcutManager;
     this.recordingManager = services.recordingManager;
     this.featureFlagService = services.featureFlagService;
@@ -155,9 +152,6 @@ export class AppManager {
       logger.main.debug("Opening external URL", { url });
     });
     logger.main.info("Application initialized successfully");
-    void this.settingsSyncService.initialize().catch((error) => {
-      logger.main.error("Failed to initialize settings sync service", error);
-    });
   }
 
   private async initializeDatabase(): Promise<void> {

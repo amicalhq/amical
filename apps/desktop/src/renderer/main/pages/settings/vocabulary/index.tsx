@@ -92,6 +92,7 @@ function VocabularyDialog({
                     "settings.vocabulary.dialog.misspellingPlaceholder",
                   )}
                   value={formData.word}
+                  maxLength={60}
                   onChange={(e) =>
                     onFormDataChange({ ...formData, word: e.target.value })
                   }
@@ -102,6 +103,7 @@ function VocabularyDialog({
                     "settings.vocabulary.dialog.correctSpellingPlaceholder",
                   )}
                   value={formData.replacementWord}
+                  maxLength={4000}
                   onChange={(e) =>
                     onFormDataChange({
                       ...formData,
@@ -115,6 +117,7 @@ function VocabularyDialog({
             <Input
               placeholder={t("settings.vocabulary.dialog.newWordPlaceholder")}
               value={formData.word}
+              maxLength={60}
               onChange={(e) =>
                 onFormDataChange({ ...formData, word: e.target.value })
               }

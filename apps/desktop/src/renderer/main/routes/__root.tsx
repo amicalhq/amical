@@ -23,10 +23,12 @@ export const Route = createRootRoute({
 // Inner component that uses hooks requiring provider context
 function AppShell() {
   usePostHog(); // Initialize and sync telemetry
+  const utils = api.useUtils();
 
   useEffect(() => {
     const handleSettingsSync = () => {
-      void queryClient.invalidateQueries();
+      void utils.vocabulary.getVocabulary.invalidate();
+      void utils.snippets.getSnippets.invalidate();
     };
 
     window.electronAPI.on("settings-sync-updated", handleSettingsSync);
@@ -34,7 +36,7 @@ function AppShell() {
     return () => {
       window.electronAPI.off("settings-sync-updated", handleSettingsSync);
     };
-  }, []);
+  }, [utils]);
 
   return (
     <>

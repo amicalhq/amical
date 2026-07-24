@@ -88,8 +88,8 @@ export class SettingsSyncService {
   }
 
   /**
-   * The graph constructs and owns the service, but deliberately does not
-   * start syncing. AppManager calls initialize() after application startup.
+   * The graph owns the service and starts it without awaiting authentication
+   * or sync I/O, so it does not block graph construction or window startup.
    */
   static readonly Live: Layer.Layer<
     SettingsSyncServiceTag,
@@ -107,6 +107,9 @@ export class SettingsSyncService {
         "settingsSyncService",
         () => service.shutdown(),
       );
+      void service.initialize().catch((error) => {
+        logger.main.error("Failed to initialize settings sync service", error);
+      });
       logger.main.info("Settings sync service created");
       up("settingsSyncService");
       return service;

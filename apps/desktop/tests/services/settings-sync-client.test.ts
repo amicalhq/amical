@@ -37,6 +37,7 @@ describe("SettingsSyncClient", () => {
             role: null,
             canWrite: true,
             latestSyncVersion: 0,
+            displayName: "User",
           },
         ],
         capabilities: {
@@ -47,7 +48,9 @@ describe("SettingsSyncClient", () => {
           maxPullLimit: 500,
           maxPullBytes: 524288,
           oneScopePerPush: true,
+          supportsDeltaCompression: false,
         },
+        protocolVersion: 1,
       }),
     });
 
@@ -124,10 +127,12 @@ describe("SettingsSyncClient", () => {
                 syncId: SYNC_ID,
                 syncVersion: 8,
                 payload: { word: "Amical", replacement: null },
+                etag: "vocabulary-8",
               },
             ],
             cursor: 8,
             hasMore: false,
+            pageBytes: 128,
           },
           {
             collection: "snippet",
@@ -136,6 +141,7 @@ describe("SettingsSyncClient", () => {
             hasMore: false,
           },
         ],
+        serverTime: "2026-07-25T00:00:00.000Z",
       }),
     });
 
@@ -382,9 +388,12 @@ describe("SettingsSyncClient", () => {
               syncId: SYNC_ID,
               syncVersion: 2,
               payload: { trigger: "sig", content: "server" },
+              etag: "snippet-2",
             },
+            serverTraceId: "trace-1",
           },
         ],
+        protocolVersion: 1,
       }),
     });
 

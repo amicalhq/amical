@@ -154,6 +154,19 @@ const localRowKey = (collection: SyncCollection, localRowId: number) =>
 const syncItemKey = (collection: SyncCollection, syncId: string) =>
   `${collection}:${syncId}`;
 
+async function loadVisibleRowIds(
+  database: SyncDatabase,
+): Promise<Record<SyncCollection, Set<number>>> {
+  const vocabularyRows = await database
+    .select({ id: vocabulary.id })
+    .from(vocabulary);
+  const snippetRows = await database.select({ id: snippets.id }).from(snippets);
+  return {
+    vocabulary: new Set(vocabularyRows.map((row) => row.id)),
+    snippet: new Set(snippetRows.map((row) => row.id)),
+  };
+}
+
 async function loadScopeSyncIndex(
   database: SyncDatabase,
   identity: Pick<SyncFence, "accountId" | "scopeType" | "scopeId">,
@@ -519,7 +532,7 @@ async function enqueueLocalMutation(
     notify?: boolean;
   } = {},
 ): Promise<void> {
-  let [sidecar] = await database
+  const [existingSidecar] = await database
     .select()
     .from(syncItemState)
     .where(
@@ -532,55 +545,18 @@ async function enqueueLocalMutation(
       ),
     )
     .limit(1);
+  let sidecar: SyncItemState | undefined = existingSidecar;
 
   if (!sidecar && payload !== null && !options.skipCandidateSearch) {
     const key = payloadKey(collection, payload);
-    const candidates = await database
-      .select()
-      .from(syncItemState)
-      .where(
-        and(
-          eq(syncItemState.accountId, identity.accountId),
-          eq(syncItemState.scopeType, identity.scopeType),
-          eq(syncItemState.scopeId, identity.scopeId),
-          eq(syncItemState.collection, collection),
-        ),
-      );
-    let acceptedMatch: SyncItemState | null = null;
-
-    for (const candidate of candidates) {
-      if (candidate.localRowId !== null) {
-        const [linkedRow] =
-          collection === "vocabulary"
-            ? await database
-                .select({ id: vocabulary.id })
-                .from(vocabulary)
-                .where(eq(vocabulary.id, candidate.localRowId))
-                .limit(1)
-            : await database
-                .select({ id: snippets.id })
-                .from(snippets)
-                .where(eq(snippets.id, candidate.localRowId))
-                .limit(1);
-        if (linkedRow) continue;
-      }
-
-      const [candidateOutbox] = await database
-        .select()
-        .from(syncOutbox)
-        .where(outboxWhere({ ...candidate, collection }))
-        .limit(1);
-      if (
-        payloadKey(collection, candidateOutbox?.desiredPayload ?? null) === key
-      ) {
-        sidecar = candidate;
-        break;
-      }
-      if (payloadKey(collection, candidate.acceptedPayload) === key) {
-        acceptedMatch ??= candidate;
-      }
-    }
-    if (!sidecar && acceptedMatch) sidecar = acceptedMatch;
+    const index = await loadScopeSyncIndex(
+      database,
+      identity,
+      await loadVisibleRowIds(database),
+    );
+    sidecar =
+      (key === null ? null : claimBindingCandidate(index, collection, key)) ??
+      undefined;
     if (sidecar) {
       await database
         .update(syncItemState)
@@ -722,19 +698,7 @@ async function enqueueLocalSyncMutationsBulk(
   if (mutations.length === 0) return;
 
   const visibleRowIds =
-    options.visibleRowIds ??
-    ({
-      vocabulary: new Set(
-        (await database.select({ id: vocabulary.id }).from(vocabulary)).map(
-          (row) => row.id,
-        ),
-      ),
-      snippet: new Set(
-        (await database.select({ id: snippets.id }).from(snippets)).map(
-          (row) => row.id,
-        ),
-      ),
-    } satisfies Record<SyncCollection, Set<number>>);
+    options.visibleRowIds ?? (await loadVisibleRowIds(database));
   const index = await loadScopeSyncIndex(database, identity, visibleRowIds);
 
   for (const mutation of mutations) {
