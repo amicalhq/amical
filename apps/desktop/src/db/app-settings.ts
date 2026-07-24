@@ -109,6 +109,7 @@ const buildDefaultSettings = (): AppSettingsData => ({
   preferences: {
     launchAtLogin: true,
     showWidgetWhileInactive: true,
+    showWidgetWhileActive: true,
     showInDock: true,
     muteSystemAudio: true,
     muteDictationSounds: false,
