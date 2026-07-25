@@ -86,6 +86,7 @@ export const syncClientState = sqliteTable("sync_client_state", {
   id: integer("id").primaryKey(),
   syncUserScopeId: text("sync_user_scope_id"),
   sessionEpoch: integer("session_epoch").notNull().default(0),
+  lastOutboxSequence: integer("last_outbox_sequence").notNull().default(0),
 });
 
 export const syncScopeState = sqliteTable(
@@ -143,7 +144,6 @@ export const syncItemState = sqliteTable(
     acceptedPayload: text("accepted_payload", {
       mode: "json",
     }).$type<SyncPayload | null>(),
-    lastLocalGeneration: integer("last_local_generation").notNull().default(0),
   },
   (table) => [
     primaryKey({
@@ -181,8 +181,8 @@ export const syncOutbox = sqliteTable(
       mode: "json",
     }).$type<SyncPayload | null>(),
     desiredBaseSyncVersion: integer("desired_base_sync_version"),
-    desiredGeneration: integer("desired_generation").notNull(),
-    desiredParentHeadGeneration: integer("desired_parent_head_generation"),
+    desiredSequence: integer("desired_sequence").notNull(),
+    desiredParentHeadSequence: integer("desired_parent_head_sequence"),
     desiredParentSyncVersion: integer("desired_parent_sync_version"),
     headPresent: integer("head_present", { mode: "boolean" })
       .notNull()
@@ -191,7 +191,7 @@ export const syncOutbox = sqliteTable(
       mode: "json",
     }).$type<SyncPayload | null>(),
     headExpectedSyncVersion: integer("head_expected_sync_version"),
-    headGeneration: integer("head_generation"),
+    headSequence: integer("head_sequence"),
   },
   (table) => [
     primaryKey({

@@ -406,13 +406,8 @@ export class SettingsSyncService {
   ): { heads: CapturedSyncHead[]; mutations: SyncPushMutation[] } {
     const selectedHeads: CapturedSyncHead[] = [];
     const mutations: SyncPushMutation[] = [];
-    const orderedHeads = [...heads].sort((left, right) =>
-      `${left.collection}:${left.syncId}`.localeCompare(
-        `${right.collection}:${right.syncId}`,
-      ),
-    );
 
-    for (const head of orderedHeads) {
+    for (const head of heads) {
       if (selectedHeads.length >= maxCount) break;
       const mutation: SyncPushMutation = {
         collection: head.collection,

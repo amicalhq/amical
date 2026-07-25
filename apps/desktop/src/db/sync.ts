@@ -57,7 +57,7 @@ export interface CapturedSyncHead extends SyncFence {
   syncId: string;
   headPayload: SyncPayload | null;
   headExpectedSyncVersion: number | null;
-  headGeneration: number;
+  headSequence: number;
 }
 
 export type PushSyncResult =
@@ -199,20 +199,6 @@ async function loadScopeSyncIndex(
     ]),
   );
   const sidecarByLocalRow = new Map<string, SyncItemState>();
-  const desiredCandidateByKey: Record<
-    SyncCollection,
-    Map<string, SyncItemState[]>
-  > = {
-    vocabulary: new Map(),
-    snippet: new Map(),
-  };
-  const acceptedCandidateByKey: Record<
-    SyncCollection,
-    Map<string, SyncItemState[]>
-  > = {
-    vocabulary: new Map(),
-    snippet: new Map(),
-  };
 
   for (const sidecar of sidecars) {
     if (
@@ -223,28 +209,6 @@ async function loadScopeSyncIndex(
         localRowKey(sidecar.collection, sidecar.localRowId),
         sidecar,
       );
-      continue;
-    }
-
-    const pending = pendingByItem.get(
-      syncItemKey(sidecar.collection, sidecar.syncId),
-    );
-    const desiredKey = payloadKey(
-      sidecar.collection,
-      pending?.desiredPayload ?? null,
-    );
-    const acceptedKey = payloadKey(sidecar.collection, sidecar.acceptedPayload);
-    if (desiredKey !== null) {
-      const candidates = desiredCandidateByKey[sidecar.collection];
-      const matches = candidates.get(desiredKey) ?? [];
-      matches.push(sidecar);
-      candidates.set(desiredKey, matches);
-    }
-    if (acceptedKey !== null) {
-      const candidates = acceptedCandidateByKey[sidecar.collection];
-      const matches = candidates.get(acceptedKey) ?? [];
-      matches.push(sidecar);
-      candidates.set(acceptedKey, matches);
     }
   }
 
@@ -252,47 +216,7 @@ async function loadScopeSyncIndex(
     sidecars,
     pendingByItem,
     sidecarByLocalRow,
-    desiredCandidateByKey,
-    acceptedCandidateByKey,
   };
-}
-
-function claimBindingCandidate(
-  index: Awaited<ReturnType<typeof loadScopeSyncIndex>>,
-  collection: SyncCollection,
-  key: string,
-): SyncItemState | null {
-  const candidate =
-    index.desiredCandidateByKey[collection].get(key)?.[0] ??
-    index.acceptedCandidateByKey[collection].get(key)?.[0];
-  if (!candidate) return null;
-
-  const pending = index.pendingByItem.get(
-    syncItemKey(candidate.collection, candidate.syncId),
-  );
-  const desiredKey = payloadKey(
-    candidate.collection,
-    pending?.desiredPayload ?? null,
-  );
-  const acceptedKey = payloadKey(
-    candidate.collection,
-    candidate.acceptedPayload,
-  );
-  const removeCandidate = (
-    candidatesByKey: Map<string, SyncItemState[]>,
-    candidateKey: string | null,
-  ) => {
-    if (candidateKey === null) return;
-    const candidates = candidatesByKey.get(candidateKey);
-    if (!candidates) return;
-    const candidateIndex = candidates.indexOf(candidate);
-    if (candidateIndex === -1) return;
-    candidates.splice(candidateIndex, 1);
-    if (candidates.length === 0) candidatesByKey.delete(candidateKey);
-  };
-  removeCandidate(index.desiredCandidateByKey[collection], desiredKey);
-  removeCandidate(index.acceptedCandidateByKey[collection], acceptedKey);
-  return candidate;
 }
 
 export function vocabularySyncPayload(row: {
@@ -516,6 +440,18 @@ async function activeUserIdentity(database: SyncDatabase) {
   };
 }
 
+async function allocateOutboxSequence(database: SyncDatabase): Promise<number> {
+  const [client] = await database
+    .update(syncClientState)
+    .set({
+      lastOutboxSequence: sql`${syncClientState.lastOutboxSequence} + 1`,
+    })
+    .where(eq(syncClientState.id, 1))
+    .returning({ sequence: syncClientState.lastOutboxSequence });
+  if (!client) throw new Error("Sync client state is missing");
+  return client.sequence;
+}
+
 async function enqueueLocalMutation(
   database: SyncDatabase,
   identity: {
@@ -528,7 +464,6 @@ async function enqueueLocalMutation(
   payload: SyncPayload | null,
   options: {
     unversioned?: boolean;
-    skipCandidateSearch?: boolean;
     notify?: boolean;
   } = {},
 ): Promise<void> {
@@ -547,25 +482,6 @@ async function enqueueLocalMutation(
     .limit(1);
   let sidecar: SyncItemState | undefined = existingSidecar;
 
-  if (!sidecar && payload !== null && !options.skipCandidateSearch) {
-    const key = payloadKey(collection, payload);
-    const index = await loadScopeSyncIndex(
-      database,
-      identity,
-      await loadVisibleRowIds(database),
-    );
-    sidecar =
-      (key === null ? null : claimBindingCandidate(index, collection, key)) ??
-      undefined;
-    if (sidecar) {
-      await database
-        .update(syncItemState)
-        .set({ localRowId })
-        .where(itemWhere({ ...sidecar, collection }));
-      sidecar = { ...sidecar, localRowId };
-    }
-  }
-
   if (!sidecar) {
     const syncId = randomUUID();
     await database.insert(syncItemState).values({
@@ -575,7 +491,6 @@ async function enqueueLocalMutation(
       localRowId,
       acceptedSyncVersion: null,
       acceptedPayload: null,
-      lastLocalGeneration: 0,
     });
     [sidecar] = await database
       .select()
@@ -601,29 +516,35 @@ async function enqueueLocalMutation(
     .from(syncOutbox)
     .where(outboxWhere(identityWithItem))
     .limit(1);
-  const generation = sidecar.lastLocalGeneration + 1;
 
   let desiredBaseSyncVersion = options.unversioned
     ? null
     : sidecar.acceptedSyncVersion;
-  let desiredParentHeadGeneration: number | null = null;
+  let desiredSequence =
+    pending?.desiredSequence ?? (await allocateOutboxSequence(database));
+  let desiredParentHeadSequence: number | null = null;
   let desiredParentSyncVersion: number | null = null;
 
   if (pending?.headPresent) {
-    // A tail is based on the exact frozen state the head was authored from,
-    // never a mutable accepted sidecar version observed while it is in flight.
-    desiredBaseSyncVersion = pending.headExpectedSyncVersion;
-    desiredParentHeadGeneration = pending.headGeneration;
+    if (pending.headSequence === null) {
+      throw new Error("Sync outbox head is missing its sequence");
+    }
+    if (pending.desiredSequence === pending.headSequence) {
+      desiredSequence = await allocateOutboxSequence(database);
+      // A tail is based on the exact frozen state the head was authored from,
+      // never a mutable accepted sidecar version observed while it is in flight.
+      desiredBaseSyncVersion = pending.headExpectedSyncVersion;
+      desiredParentHeadSequence = pending.headSequence;
+    } else {
+      desiredBaseSyncVersion = pending.desiredBaseSyncVersion;
+      desiredParentHeadSequence = pending.desiredParentHeadSequence;
+      desiredParentSyncVersion = pending.desiredParentSyncVersion;
+    }
   } else if (pending) {
     desiredBaseSyncVersion = pending.desiredBaseSyncVersion;
-    desiredParentHeadGeneration = pending.desiredParentHeadGeneration;
+    desiredParentHeadSequence = pending.desiredParentHeadSequence;
     desiredParentSyncVersion = pending.desiredParentSyncVersion;
   }
-
-  await database
-    .update(syncItemState)
-    .set({ lastLocalGeneration: generation })
-    .where(itemWhere(identityWithItem));
 
   await database
     .insert(syncOutbox)
@@ -631,13 +552,13 @@ async function enqueueLocalMutation(
       ...identityWithItem,
       desiredPayload: payload,
       desiredBaseSyncVersion,
-      desiredGeneration: generation,
-      desiredParentHeadGeneration,
+      desiredSequence,
+      desiredParentHeadSequence,
       desiredParentSyncVersion,
       headPresent: pending?.headPresent ?? false,
       headPayload: pending?.headPayload ?? null,
       headExpectedSyncVersion: pending?.headExpectedSyncVersion ?? null,
-      headGeneration: pending?.headGeneration ?? null,
+      headSequence: pending?.headSequence ?? null,
     })
     .onConflictDoUpdate({
       target: [
@@ -650,8 +571,8 @@ async function enqueueLocalMutation(
       set: {
         desiredPayload: payload,
         desiredBaseSyncVersion,
-        desiredGeneration: generation,
-        desiredParentHeadGeneration,
+        desiredSequence,
+        desiredParentHeadSequence,
         desiredParentSyncVersion,
       },
     });
@@ -707,24 +628,6 @@ async function enqueueLocalSyncMutationsBulk(
       continue;
     }
 
-    if (!index.sidecarByLocalRow.has(rowKey)) {
-      const key = payloadKey(mutation.collection, mutation.payload);
-      const candidate =
-        key === null
-          ? null
-          : claimBindingCandidate(index, mutation.collection, key);
-      if (candidate) {
-        await database
-          .update(syncItemState)
-          .set({ localRowId: mutation.localRowId })
-          .where(itemWhere({ ...candidate, collection: mutation.collection }));
-        index.sidecarByLocalRow.set(rowKey, {
-          ...candidate,
-          localRowId: mutation.localRowId,
-        });
-      }
-    }
-
     await enqueueLocalMutation(
       database,
       identity,
@@ -733,7 +636,6 @@ async function enqueueLocalSyncMutationsBulk(
       mutation.payload,
       {
         unversioned: options.unversioned,
-        skipCandidateSearch: true,
         notify: false,
       },
     );
@@ -793,7 +695,7 @@ export async function prepareVisibleRowsForFullSync(
             collection,
             localRowId,
             payload,
-            { skipCandidateSearch: true, notify: false },
+            { notify: false },
           );
           enqueuedMutation = true;
         }
@@ -805,8 +707,8 @@ export async function prepareVisibleRowsForFullSync(
         payloadKey(collection, payload) !==
           payloadKey(collection, sidecar.acceptedPayload)
       ) {
-        // A changed key is a separate adoption candidate. Same-key differences
-        // stay linked so the login pull can apply the canonical server row.
+        // A changed key is a separate local item. Same-key differences stay
+        // linked so the login pull can apply the canonical server row.
         await tx
           .update(syncItemState)
           .set({ localRowId: null })
@@ -840,7 +742,7 @@ export async function prepareVisibleRowsForFullSync(
           sidecar.collection,
           sidecar.localRowId,
           null,
-          { skipCandidateSearch: true, notify: false },
+          { notify: false },
         );
         enqueuedMutation = true;
       }
@@ -1079,7 +981,6 @@ async function ensureCanonicalSidecar(
     localRowId: null,
     acceptedSyncVersion: null,
     acceptedPayload: null,
-    lastLocalGeneration: 0,
   });
   sidecar = await findSidecar(database, fence, item.collection, item.syncId);
   if (!sidecar) throw new Error("Failed to create canonical sync sidecar");
@@ -1129,7 +1030,7 @@ async function acceptHead(
   if (
     !sidecar ||
     !pending?.headPresent ||
-    pending.headGeneration !== head.headGeneration
+    pending.headSequence !== head.headSequence
   ) {
     return;
   }
@@ -1147,7 +1048,7 @@ async function acceptHead(
     })
     .where(itemWhere(identity));
 
-  if (pending.desiredGeneration === head.headGeneration) {
+  if (pending.desiredSequence === head.headSequence) {
     await database.delete(syncOutbox).where(outboxWhere(identity));
     await applyDomainPayload(
       database,
@@ -1159,7 +1060,7 @@ async function acceptHead(
     return;
   }
 
-  if (pending.desiredParentHeadGeneration !== head.headGeneration) {
+  if (pending.desiredParentHeadSequence !== head.headSequence) {
     throw new Error("Sync tail does not reference its satisfied head");
   }
   await database
@@ -1169,7 +1070,7 @@ async function acceptHead(
       headPresent: false,
       headPayload: null,
       headExpectedSyncVersion: null,
-      headGeneration: null,
+      headSequence: null,
     })
     .where(outboxWhere(identity));
 }
@@ -1185,20 +1086,20 @@ async function permanentlyFailHead(
     .from(syncOutbox)
     .where(outboxWhere(identity))
     .limit(1);
-  if (!pending?.headPresent || pending.headGeneration !== head.headGeneration) {
+  if (!pending?.headPresent || pending.headSequence !== head.headSequence) {
     return;
   }
 
-  if (pending.desiredGeneration !== head.headGeneration) {
+  if (pending.desiredSequence !== head.headSequence) {
     await database
       .update(syncOutbox)
       .set({
-        desiredParentHeadGeneration: null,
+        desiredParentHeadSequence: null,
         desiredParentSyncVersion: null,
         headPresent: false,
         headPayload: null,
         headExpectedSyncVersion: null,
-        headGeneration: null,
+        headSequence: null,
       })
       .where(outboxWhere(identity));
     return;
@@ -1294,7 +1195,7 @@ async function applyCanonicalItem(
   if (
     pending?.headPresent &&
     payloadsEqual(pending.headPayload, item.payload) &&
-    pending.headGeneration !== null
+    pending.headSequence !== null
   ) {
     await acceptHead(
       database,
@@ -1305,7 +1206,7 @@ async function applyCanonicalItem(
         syncId: item.syncId,
         headPayload: pending.headPayload,
         headExpectedSyncVersion: pending.headExpectedSyncVersion,
-        headGeneration: pending.headGeneration,
+        headSequence: pending.headSequence,
       },
       item.syncVersion,
     );
@@ -1478,16 +1379,50 @@ export async function capturePushHeads(
         ),
       );
 
-    for (const pending of pendingRows) {
+    const blockedTailSequence = pendingRows.reduce<number | null>(
+      (earliest, pending) => {
+        if (
+          !pending.headPresent ||
+          pending.headSequence === null ||
+          pending.desiredSequence === pending.headSequence
+        ) {
+          return earliest;
+        }
+        return earliest === null
+          ? pending.desiredSequence
+          : Math.min(earliest, pending.desiredSequence);
+      },
+      null,
+    );
+    const orderedPendingRows = [...pendingRows].sort((left, right) => {
+      const leftSequence = left.headPresent
+        ? (left.headSequence ?? left.desiredSequence)
+        : left.desiredSequence;
+      const rightSequence = right.headPresent
+        ? (right.headSequence ?? right.desiredSequence)
+        : right.desiredSequence;
+      return leftSequence - rightSequence;
+    });
+
+    for (const pending of orderedPendingRows) {
+      const queueSequence = pending.headPresent
+        ? (pending.headSequence ?? pending.desiredSequence)
+        : pending.desiredSequence;
+      if (
+        blockedTailSequence !== null &&
+        queueSequence >= blockedTailSequence
+      ) {
+        break;
+      }
       if (pending.headPresent) continue;
       if (
-        pending.desiredParentHeadGeneration !== null &&
+        pending.desiredParentHeadSequence !== null &&
         pending.desiredParentSyncVersion === null
       ) {
-        continue;
+        break;
       }
       const expectedSyncVersion =
-        pending.desiredParentHeadGeneration === null
+        pending.desiredParentHeadSequence === null
           ? pending.desiredBaseSyncVersion
           : pending.desiredParentSyncVersion;
       await tx
@@ -1496,7 +1431,7 @@ export async function capturePushHeads(
           headPresent: true,
           headPayload: pending.desiredPayload,
           headExpectedSyncVersion: expectedSyncVersion,
-          headGeneration: pending.desiredGeneration,
+          headSequence: pending.desiredSequence,
         })
         .where(outboxWhere(pending));
     }
@@ -1514,20 +1449,24 @@ export async function capturePushHeads(
         ),
       );
 
-    return heads.flatMap((head) =>
-      head.headGeneration === null
-        ? []
-        : [
-            {
-              ...fence,
-              collection: head.collection,
-              syncId: head.syncId,
-              headPayload: head.headPayload,
-              headExpectedSyncVersion: head.headExpectedSyncVersion,
-              headGeneration: head.headGeneration,
-            },
-          ],
-    );
+    return heads
+      .flatMap((head) =>
+        head.headSequence === null ||
+        (blockedTailSequence !== null &&
+          head.headSequence >= blockedTailSequence)
+          ? []
+          : [
+              {
+                ...fence,
+                collection: head.collection,
+                syncId: head.syncId,
+                headPayload: head.headPayload,
+                headExpectedSyncVersion: head.headExpectedSyncVersion,
+                headSequence: head.headSequence,
+              },
+            ],
+      )
+      .sort((left, right) => left.headSequence - right.headSequence);
   });
 }
 
@@ -1551,10 +1490,7 @@ export async function applyPushResults(
         .from(syncOutbox)
         .where(outboxWhere(head))
         .limit(1);
-      if (
-        !current?.headPresent ||
-        current.headGeneration !== head.headGeneration
-      ) {
+      if (!current?.headPresent || current.headSequence !== head.headSequence) {
         continue;
       }
 

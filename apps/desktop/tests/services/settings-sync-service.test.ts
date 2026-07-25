@@ -426,6 +426,36 @@ describe("SettingsSyncService", () => {
     });
   });
 
+  it("preserves durable outbox order across collections", async () => {
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    await createSnippet({ trigger: "first", content: "First" });
+    await createVocabularyWord({
+      word: "Second",
+      isReplacement: false,
+    });
+
+    await vi.waitFor(() => expect(client.push).toHaveBeenCalledOnce(), {
+      timeout: 2_000,
+    });
+    expect(client.push.mock.calls[0][0]).toEqual([
+      expect.objectContaining({
+        collection: "snippet",
+        payload: { trigger: "first", content: "First" },
+      }),
+      expect.objectContaining({
+        collection: "vocabulary",
+        payload: { word: "Second", replacement: null },
+      }),
+    ]);
+  });
+
   it("durably fences logout before a late pull can apply", async () => {
     const pullState: {
       resolve?: (page: SyncPullPage) => void;

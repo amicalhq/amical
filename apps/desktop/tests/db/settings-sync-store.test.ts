@@ -124,14 +124,13 @@ describe("settings sync durable store", () => {
       collection: "vocabulary",
       localRowId: row.id,
       acceptedSyncVersion: null,
-      lastLocalGeneration: 1,
     });
     expect(pending).toMatchObject({
       accountId: "user-1",
       syncId: sidecar.syncId,
       desiredPayload: { word: "Amical", replacement: null },
       desiredBaseSyncVersion: null,
-      desiredGeneration: 1,
+      desiredSequence: 1,
       headPresent: false,
     });
   });
@@ -340,7 +339,7 @@ describe("settings sync durable store", () => {
     });
   });
 
-  it("adopts a detached row into a changed user scope without a base version", async () => {
+  it("assigns a new identity to an unbound row in a changed user scope", async () => {
     const syncId = "99999999-9999-4999-8999-999999999999";
     let fence = await beginUserSyncSession("user-2", database);
     await applyPullPage(
@@ -377,10 +376,10 @@ describe("settings sync durable store", () => {
     const [pending] = await database.select().from(syncOutbox);
     expect(pending).toMatchObject({
       accountId: "user-2",
-      syncId,
       desiredPayload: { trigger: "sig", content: "Visible device row" },
       desiredBaseSyncVersion: null,
     });
+    expect(pending.syncId).not.toBe(syncId);
     const [head] = await capturePushHeads(fence, database);
     expect(head.headExpectedSyncVersion).toBeNull();
   });
@@ -493,7 +492,7 @@ describe("settings sync durable store", () => {
       syncId,
       headPayload: { trigger: "sig", content: "Latest" },
       headExpectedSyncVersion: 1,
-      headGeneration: 2,
+      headSequence: 1,
     });
     expect((await database.select().from(snippets))[0].content).toBe("Latest");
   });
@@ -551,7 +550,7 @@ describe("settings sync durable store", () => {
       syncId,
       headPayload: null,
       headExpectedSyncVersion: 1,
-      headGeneration: 2,
+      headSequence: 1,
     });
   });
 
@@ -598,7 +597,7 @@ describe("settings sync durable store", () => {
       syncId,
       headPayload: null,
       headExpectedSyncVersion: 1,
-      headGeneration: 1,
+      headSequence: 1,
     });
   });
 
@@ -614,7 +613,7 @@ describe("settings sync durable store", () => {
     expect(head).toMatchObject({
       headPayload: { word: "B", replacement: null },
       headExpectedSyncVersion: null,
-      headGeneration: 1,
+      headSequence: 1,
     });
 
     await database.transaction(async (tx) => {
@@ -627,17 +626,42 @@ describe("settings sync durable store", () => {
         replacement: null,
       });
     });
+    await database.transaction(async (tx) => {
+      await tx
+        .update(vocabulary)
+        .set({ word: "D" })
+        .where(eq(vocabulary.id, row.id));
+      await recordLocalSyncMutation(tx, "vocabulary", row.id, {
+        word: "D",
+        replacement: null,
+      });
+    });
+    const [laterRow] = await database
+      .insert(snippets)
+      .values({ trigger: "later", content: "Later" })
+      .returning();
+    await database.transaction(async (tx) => {
+      await recordLocalSyncMutation(tx, "snippet", laterRow.id, {
+        trigger: "later",
+        content: "Later",
+      });
+    });
 
-    let [pending] = await database.select().from(syncOutbox);
+    let [pending] = await database
+      .select()
+      .from(syncOutbox)
+      .where(eq(syncOutbox.syncId, head.syncId));
     expect(pending).toMatchObject({
-      desiredPayload: { word: "C", replacement: null },
+      desiredPayload: { word: "D", replacement: null },
       desiredBaseSyncVersion: null,
-      desiredParentHeadGeneration: 1,
+      desiredSequence: 2,
+      desiredParentHeadSequence: 1,
       desiredParentSyncVersion: null,
       headPayload: { word: "B", replacement: null },
       headExpectedSyncVersion: null,
-      headGeneration: 1,
+      headSequence: 1,
     });
+    expect(await capturePushHeads(fence, database)).toEqual([head]);
 
     await applyPushResults(
       fence,
@@ -653,20 +677,29 @@ describe("settings sync durable store", () => {
       database,
     );
 
-    [pending] = await database.select().from(syncOutbox);
+    [pending] = await database
+      .select()
+      .from(syncOutbox)
+      .where(eq(syncOutbox.syncId, head.syncId));
     expect(pending).toMatchObject({
-      desiredPayload: { word: "C", replacement: null },
+      desiredPayload: { word: "D", replacement: null },
       desiredBaseSyncVersion: null,
-      desiredParentHeadGeneration: 1,
+      desiredSequence: 2,
+      desiredParentHeadSequence: 1,
       desiredParentSyncVersion: 1,
       headPresent: false,
     });
 
-    const [tailHead] = await capturePushHeads(fence, database);
+    const [tailHead, laterHead] = await capturePushHeads(fence, database);
     expect(tailHead).toMatchObject({
-      headPayload: { word: "C", replacement: null },
+      headPayload: { word: "D", replacement: null },
       headExpectedSyncVersion: 1,
-      headGeneration: 2,
+      headSequence: 2,
+    });
+    expect(laterHead).toMatchObject({
+      headPayload: { trigger: "later", content: "Later" },
+      headExpectedSyncVersion: null,
+      headSequence: 3,
     });
   });
 
@@ -844,7 +877,7 @@ describe("settings sync durable store", () => {
     });
   });
 
-  it("reuses a detached identity when a deleted key is recreated", async () => {
+  it("orders a delete before recreating the same key with a new identity", async () => {
     let fence = await beginUserSyncSession("user-1", database);
     const syncId = "55555555-5555-4555-8555-555555555555";
     await applyPullPage(
@@ -875,19 +908,28 @@ describe("settings sync durable store", () => {
     await adoptVisibleRows(fence, database);
 
     const sidecars = await database.select().from(syncItemState);
-    expect(sidecars).toHaveLength(1);
-    expect(sidecars[0]).toMatchObject({
-      syncId,
-      localRowId: recreated.id,
-      lastLocalGeneration: 2,
-    });
-    expect((await database.select().from(syncOutbox))[0]).toMatchObject({
-      syncId,
-      desiredPayload: { trigger: "sig", content: "recreated" },
-      desiredBaseSyncVersion: 1,
-      desiredGeneration: 2,
-      headPresent: false,
-    });
+    expect(sidecars).toHaveLength(2);
+    const recreatedSidecar = sidecars.find(
+      (sidecar) => sidecar.localRowId === recreated.id,
+    );
+    expect(recreatedSidecar?.syncId).toBeDefined();
+    expect(recreatedSidecar?.syncId).not.toBe(syncId);
+
+    const heads = await capturePushHeads(fence, database);
+    expect(heads).toEqual([
+      expect.objectContaining({
+        syncId,
+        headPayload: null,
+        headExpectedSyncVersion: 1,
+        headSequence: 1,
+      }),
+      expect.objectContaining({
+        syncId: recreatedSidecar?.syncId,
+        headPayload: { trigger: "sig", content: "recreated" },
+        headExpectedSyncVersion: null,
+        headSequence: 2,
+      }),
+    ]);
   });
 
   it("retains tombstone identity after a physical local delete", async () => {
@@ -934,7 +976,6 @@ describe("settings sync durable store", () => {
       localRowId: null,
       acceptedSyncVersion: 2,
       acceptedPayload: null,
-      lastLocalGeneration: 1,
     });
   });
 
@@ -1039,8 +1080,8 @@ describe("settings sync durable store", () => {
       syncId: head.syncId,
       desiredPayload: { trigger: "sig", content: "Local B" },
       desiredBaseSyncVersion: null,
-      desiredGeneration: 2,
-      desiredParentHeadGeneration: null,
+      desiredSequence: 2,
+      desiredParentHeadSequence: null,
       desiredParentSyncVersion: null,
       headPresent: false,
     });
@@ -1050,7 +1091,7 @@ describe("settings sync durable store", () => {
       syncId: head.syncId,
       headPayload: { trigger: "sig", content: "Local B" },
       headExpectedSyncVersion: null,
-      headGeneration: 2,
+      headSequence: 2,
     });
   });
 

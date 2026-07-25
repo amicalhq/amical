@@ -529,6 +529,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "last_outbox_sequence": {
+          "name": "last_outbox_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         }
       },
       "indexes": {},
@@ -595,14 +603,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "last_local_generation": {
-          "name": "last_local_generation",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         }
       },
       "indexes": {
@@ -686,15 +686,15 @@
           "notNull": false,
           "autoincrement": false
         },
-        "desired_generation": {
-          "name": "desired_generation",
+        "desired_sequence": {
+          "name": "desired_sequence",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "desired_parent_head_generation": {
-          "name": "desired_parent_head_generation",
+        "desired_parent_head_sequence": {
+          "name": "desired_parent_head_sequence",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -729,8 +729,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "head_generation": {
-          "name": "head_generation",
+        "head_sequence": {
+          "name": "head_sequence",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

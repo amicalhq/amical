@@ -1,11 +1,12 @@
 CREATE TABLE `sync_client_state` (
 	`id` integer PRIMARY KEY NOT NULL,
 	`sync_user_scope_id` text,
-	`session_epoch` integer DEFAULT 0 NOT NULL
+	`session_epoch` integer DEFAULT 0 NOT NULL,
+	`last_outbox_sequence` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-INSERT INTO `sync_client_state` (`id`, `sync_user_scope_id`, `session_epoch`)
-VALUES (1, NULL, 0);
+INSERT INTO `sync_client_state` (`id`, `sync_user_scope_id`, `session_epoch`, `last_outbox_sequence`)
+VALUES (1, NULL, 0, 0);
 --> statement-breakpoint
 CREATE TABLE `sync_item_state` (
 	`account_id` text NOT NULL,
@@ -16,7 +17,6 @@ CREATE TABLE `sync_item_state` (
 	`local_row_id` integer,
 	`accepted_sync_version` integer,
 	`accepted_payload` text,
-	`last_local_generation` integer DEFAULT 0 NOT NULL,
 	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`, `collection`, `sync_id`)
 );
 --> statement-breakpoint
@@ -29,13 +29,13 @@ CREATE TABLE `sync_outbox` (
 	`sync_id` text NOT NULL,
 	`desired_payload` text,
 	`desired_base_sync_version` integer,
-	`desired_generation` integer NOT NULL,
-	`desired_parent_head_generation` integer,
+	`desired_sequence` integer NOT NULL,
+	`desired_parent_head_sequence` integer,
 	`desired_parent_sync_version` integer,
 	`head_present` integer DEFAULT false NOT NULL,
 	`head_payload` text,
 	`head_expected_sync_version` integer,
-	`head_generation` integer,
+	`head_sequence` integer,
 	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`, `collection`, `sync_id`)
 );
 --> statement-breakpoint
