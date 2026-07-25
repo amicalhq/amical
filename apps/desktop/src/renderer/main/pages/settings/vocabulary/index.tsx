@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 type VocabularyItem = {
-  id: number;
+  id: string;
   word: string;
   replacementWord?: string | null;
   isReplacement: boolean | null;

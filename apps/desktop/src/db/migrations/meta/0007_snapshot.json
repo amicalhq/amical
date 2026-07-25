@@ -455,10 +455,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": true
+          "autoincrement": false
         },
         "trigger": {
           "name": "trigger",
@@ -515,21 +515,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "sync_user_scope_id": {
-          "name": "sync_user_scope_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "session_epoch": {
-          "name": "session_epoch",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
         "last_outbox_sequence": {
           "name": "last_outbox_sequence",
           "type": "integer",
@@ -548,13 +533,6 @@
     "sync_item_state": {
       "name": "sync_item_state",
       "columns": {
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "scope_type": {
           "name": "scope_type",
           "type": "text",
@@ -583,13 +561,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "local_row_id": {
-          "name": "local_row_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "accepted_sync_version": {
           "name": "accepted_sync_version",
           "type": "integer",
@@ -605,30 +576,17 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "sync_item_state_local_row_idx": {
-          "name": "sync_item_state_local_row_idx",
-          "columns": [
-            "account_id",
-            "scope_type",
-            "scope_id",
-            "collection",
-            "local_row_id"
-          ],
-          "isUnique": true
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "sync_item_state_account_id_scope_type_scope_id_collection_sync_id_pk": {
+        "sync_item_state_scope_type_scope_id_collection_sync_id_pk": {
           "columns": [
-            "account_id",
             "scope_type",
             "scope_id",
             "collection",
             "sync_id"
           ],
-          "name": "sync_item_state_account_id_scope_type_scope_id_collection_sync_id_pk"
+          "name": "sync_item_state_scope_type_scope_id_collection_sync_id_pk"
         }
       },
       "uniqueConstraints": {},
@@ -637,13 +595,6 @@
     "sync_outbox": {
       "name": "sync_outbox",
       "columns": {
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "scope_type": {
           "name": "scope_type",
           "type": "text",
@@ -740,15 +691,14 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "sync_outbox_account_id_scope_type_scope_id_collection_sync_id_pk": {
+        "sync_outbox_scope_type_scope_id_collection_sync_id_pk": {
           "columns": [
-            "account_id",
             "scope_type",
             "scope_id",
             "collection",
             "sync_id"
           ],
-          "name": "sync_outbox_account_id_scope_type_scope_id_collection_sync_id_pk"
+          "name": "sync_outbox_scope_type_scope_id_collection_sync_id_pk"
         }
       },
       "uniqueConstraints": {},
@@ -757,13 +707,6 @@
     "sync_collection_state": {
       "name": "sync_collection_state",
       "columns": {
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "scope_type": {
           "name": "scope_type",
           "type": "text",
@@ -797,62 +740,13 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "sync_collection_state_account_id_scope_type_scope_id_collection_pk": {
+        "sync_collection_state_scope_type_scope_id_collection_pk": {
           "columns": [
-            "account_id",
             "scope_type",
             "scope_id",
             "collection"
           ],
-          "name": "sync_collection_state_account_id_scope_type_scope_id_collection_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "sync_scope_state": {
-      "name": "sync_scope_state",
-      "columns": {
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "scope_type": {
-          "name": "scope_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "scope_id": {
-          "name": "scope_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "response_epoch": {
-          "name": "response_epoch",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "sync_scope_state_account_id_scope_type_scope_id_pk": {
-          "columns": [
-            "account_id",
-            "scope_type",
-            "scope_id"
-          ],
-          "name": "sync_scope_state_account_id_scope_type_scope_id_pk"
+          "name": "sync_collection_state_scope_type_scope_id_collection_pk"
         }
       },
       "uniqueConstraints": {},
@@ -968,10 +862,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": true
+          "autoincrement": false
         },
         "word": {
           "name": "word",

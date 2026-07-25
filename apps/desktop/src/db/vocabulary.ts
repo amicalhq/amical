@@ -94,7 +94,7 @@ export async function getVocabulary(
 }
 
 // Get vocabulary word by ID
-export async function getVocabularyById(id: number) {
+export async function getVocabularyById(id: string) {
   const result = await db
     .select()
     .from(vocabulary)
@@ -113,7 +113,7 @@ export async function getVocabularyByWord(word: string) {
 
 // Update vocabulary word
 export async function updateVocabulary(
-  id: number,
+  id: string,
   data: Partial<Omit<Vocabulary, "id" | "createdAt">>,
 ) {
   const updateData = {
@@ -146,7 +146,7 @@ export async function updateVocabulary(
 }
 
 // Delete vocabulary word
-export async function deleteVocabulary(id: number) {
+export async function deleteVocabulary(id: string) {
   return db.transaction(async (tx) => {
     const [existing] = await tx
       .select()
@@ -235,7 +235,7 @@ export async function bulkImportVocabulary(
       tx,
       created.map((row) => ({
         collection: "vocabulary",
-        localRowId: row.id,
+        syncId: row.id,
         payload: vocabularySyncPayload(row),
       })),
     );

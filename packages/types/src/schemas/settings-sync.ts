@@ -19,13 +19,13 @@ export type SettingsSyncCollection = z.infer<
 export const SettingsSyncScopeTypeSchema = z.enum(["user", "org"]);
 export type SettingsSyncScopeType = z.infer<typeof SettingsSyncScopeTypeSchema>;
 
-const settingsSyncUuidSchema = z
+export const SettingsSyncUuidSchema = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const settingsSyncRequestUuidSchema = z
   .string()
   .transform((value) => value.toLowerCase())
-  .pipe(settingsSyncUuidSchema);
+  .pipe(SettingsSyncUuidSchema);
 const settingsSyncVersionSchema = z
   .number()
   .int()
@@ -180,7 +180,7 @@ export const SettingsSyncCanonicalItemSchema = z
     // Kept open-ended for additive collection support. The client validates a
     // requested collection's payload after matching the enclosing block.
     collection: z.string().min(1),
-    syncId: settingsSyncUuidSchema,
+    syncId: SettingsSyncUuidSchema,
     syncVersion: settingsSyncVersionSchema,
     payload: z.unknown().nullable(),
   })
@@ -254,7 +254,7 @@ export const SettingsSyncPushResultSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("ok"),
-      syncId: settingsSyncUuidSchema,
+      syncId: SettingsSyncUuidSchema,
       syncVersion: settingsSyncVersionSchema,
       applied: z.boolean(),
     })
@@ -263,7 +263,7 @@ export const SettingsSyncPushResultSchema = z.discriminatedUnion("status", [
     .object({
       status: z.literal("conflict"),
       reason: z.enum(["version_conflict", "duplicate_key_conflict"]),
-      syncId: settingsSyncUuidSchema,
+      syncId: SettingsSyncUuidSchema,
       canonical: SettingsSyncCanonicalItemSchema.nullable(),
       conflictingItem: SettingsSyncCanonicalItemSchema.optional(),
     })
@@ -271,7 +271,7 @@ export const SettingsSyncPushResultSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("error"),
-      syncId: settingsSyncUuidSchema.nullable(),
+      syncId: SettingsSyncUuidSchema.nullable(),
       reason: z.enum([
         "unauthorized_scope",
         "invalid_payload",

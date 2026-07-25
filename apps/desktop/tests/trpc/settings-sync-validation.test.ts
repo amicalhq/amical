@@ -31,6 +31,8 @@ vi.mock("../../src/db/snippets", () => ({
 }));
 
 describe("settings sync editor validation", () => {
+  const rowId = "11111111-1111-4111-8111-111111111111";
+
   beforeEach(() => {
     vi.clearAllMocks();
     dbMocks.createVocabularyWord.mockImplementation(async (input) => input);
@@ -63,7 +65,7 @@ describe("settings sync editor validation", () => {
     ).rejects.toBeDefined();
     await expect(
       caller.updateVocabulary({
-        id: 1,
+        id: rowId,
         data: { replacementWord: "bad\0replacement" },
       }),
     ).rejects.toBeDefined();
@@ -94,7 +96,7 @@ describe("settings sync editor validation", () => {
     ).rejects.toBeDefined();
     await expect(
       caller.updateSnippet({
-        id: 1,
+        id: rowId,
         data: { content: "bad\udc00content" },
       }),
     ).rejects.toBeDefined();

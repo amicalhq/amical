@@ -3,7 +3,7 @@ import { Mutex } from "async-mutex";
 import { Effect, Layer } from "effect";
 
 import { logger } from "../main/logger";
-import { addRelease, up } from "../main/runtime/layer-helpers";
+import { addRelease, step, up } from "../main/runtime/layer-helpers";
 import {
   AppScopeTag,
   AuthServiceTag,
@@ -22,21 +22,19 @@ import {
   applyPushResults,
   beginUserSyncSession,
   capturePushHeads,
-  fenceSyncSession,
-  getActiveSyncFence,
+  clearSyncState,
   getPullCursors,
-  hasPendingSyncWork,
+  hasResumableUserSyncState,
   pauseSyncSession,
   prepareVisibleRowsForFullSync,
   registerLocalSyncMutationHandler,
   resumeUserSyncSession,
   type CapturedSyncHead,
-  type SyncFence,
+  type SyncContext,
 } from "../db/sync";
 
 const POLL_INTERVAL_MS = 5 * 60_000;
 const EDIT_DEBOUNCE_MS = 750;
-const MAX_PUSH_ROUNDS_PER_WAKE = 100;
 
 type SyncClient = Pick<SettingsSyncClient, "bootstrap" | "pull" | "push">;
 
@@ -45,8 +43,7 @@ export class SettingsSyncService {
   private readonly localStateMutex = new Mutex();
   private initialized = false;
   private stopped = false;
-  private identityGeneration = 0;
-  private currentFence: SyncFence | null = null;
+  private currentContext: SyncContext | null = null;
   private abortController: AbortController | null = null;
   private capabilities: SyncBootstrap | null = null;
   private worker: Promise<void> | null = null;
@@ -72,7 +69,7 @@ export class SettingsSyncService {
     if (
       !this.authorizationBlocked ||
       !accountId ||
-      accountId !== this.currentFence?.accountId
+      accountId !== this.currentContext?.accountId
     ) {
       return;
     }
@@ -88,8 +85,8 @@ export class SettingsSyncService {
   }
 
   /**
-   * The graph owns the service and starts it without awaiting authentication
-   * or sync I/O, so it does not block graph construction or window startup.
+   * The graph awaits local account binding before any window is created.
+   * Token refresh and sync I/O run in the background worker.
    */
   static readonly Live: Layer.Layer<
     SettingsSyncServiceTag,
@@ -107,9 +104,7 @@ export class SettingsSyncService {
         "settingsSyncService",
         () => service.shutdown(),
       );
-      void service.initialize().catch((error) => {
-        logger.main.error("Failed to initialize settings sync service", error);
-      });
+      yield* step(() => service.initialize());
       logger.main.info("Settings sync service created");
       up("settingsSyncService");
       return service;
@@ -127,6 +122,9 @@ export class SettingsSyncService {
     if (this.initialized) return;
     this.initialized = true;
     this.stopped = false;
+    const initializationController = new AbortController();
+    this.abortController?.abort();
+    this.abortController = initializationController;
 
     this.unregisterBeforeLogout = this.authService.registerBeforeLogoutHandler(
       () => this.handleBeforeLogout(),
@@ -141,26 +139,31 @@ export class SettingsSyncService {
     this.pollTimer = setInterval(() => this.wake(), POLL_INTERVAL_MS);
     this.pollTimer.unref?.();
 
-    const isAuthenticated = await this.authService.isAuthenticated();
-    const authState = isAuthenticated
-      ? await this.authService.getAuthState()
-      : null;
-    if (this.stopped || !this.initialized) return;
-    if (authState?.userInfo?.sub) {
-      const activeFence = await this.runLocalTransition(() =>
-        getActiveSyncFence(),
+    const authState = await this.authService.getAuthState();
+    if (
+      this.stopped ||
+      !this.initialized ||
+      initializationController.signal.aborted
+    ) {
+      return;
+    }
+    if (authState?.isAuthenticated && authState.userInfo?.sub) {
+      const canResume = await this.runLocalTransition(() =>
+        hasResumableUserSyncState(authState.userInfo!.sub),
       );
+      if (initializationController.signal.aborted) return;
       await this.activateAccount(
         authState.userInfo.sub,
-        activeFence?.accountId === authState.userInfo.sub ? "resume" : "full",
+        canResume ? "resume" : "full",
       );
     } else {
-      await this.runLocalTransition(() => fenceSyncSession());
+      await this.runLocalTransition(() => clearSyncState());
     }
   }
 
   wake(): void {
-    if (this.stopped || this.authorizationBlocked || !this.currentFence) return;
+    if (this.stopped || this.authorizationBlocked || !this.currentContext)
+      return;
     this.rerunRequested = true;
     if (this.worker) return;
 
@@ -178,7 +181,6 @@ export class SettingsSyncService {
     if (!this.initialized) return;
     this.stopped = true;
     this.initialized = false;
-    this.identityGeneration += 1;
 
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -195,69 +197,75 @@ export class SettingsSyncService {
 
     this.abortController?.abort();
     this.abortController = null;
-    this.currentFence = null;
+    this.currentContext = null;
     this.capabilities = null;
     this.authorizationBlocked = false;
-    await this.runLocalTransition(() => pauseSyncSession());
+    pauseSyncSession();
     await this.worker;
   }
 
   private async handleBeforeLogout(): Promise<void> {
-    this.identityGeneration += 1;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = null;
     this.abortController?.abort();
     this.abortController = null;
-    this.currentFence = null;
+    this.currentContext = null;
     this.capabilities = null;
     this.rerunRequested = false;
     this.authorizationBlocked = false;
-    await this.runLocalTransition(() => fenceSyncSession());
+    pauseSyncSession();
+    await this.runLocalTransition(() => clearSyncState());
   }
 
   private async activateAccount(
     accountId: string,
     mode: "full" | "resume",
   ): Promise<void> {
-    const generation = ++this.identityGeneration;
     this.authorizationBlocked = false;
     this.abortController?.abort();
-    this.abortController = null;
-    this.currentFence = null;
+    const controller = new AbortController();
+    this.abortController = controller;
+    this.currentContext = null;
     this.capabilities = null;
-    await this.runLocalTransition(() => fenceSyncSession());
-    if (this.stopped || generation !== this.identityGeneration) return;
+    pauseSyncSession();
+    if (mode === "full") {
+      await this.runLocalTransition(() => clearSyncState());
+    }
+    if (this.stopped || controller.signal.aborted) {
+      if (this.stopped) pauseSyncSession();
+      return;
+    }
 
-    const fence = await this.runLocalTransition(() =>
+    const context = await this.runLocalTransition(() =>
       mode === "full"
         ? beginUserSyncSession(accountId)
         : resumeUserSyncSession(accountId),
     );
-    if (this.stopped || generation !== this.identityGeneration) {
-      await this.runLocalTransition(() => fenceSyncSession());
+    if (this.stopped || controller.signal.aborted) {
+      if (this.stopped) pauseSyncSession();
       return;
     }
 
     if (
       !(await this.runLocalTransition(async () => {
-        if (!(await prepareVisibleRowsForFullSync(fence))) return false;
-        return adoptVisibleRows(fence);
+        if (!(await prepareVisibleRowsForFullSync(context))) return false;
+        return adoptVisibleRows(context);
       }))
     ) {
       return;
     }
-    if (this.stopped || generation !== this.identityGeneration) {
-      await this.runLocalTransition(() => fenceSyncSession());
+    if (this.stopped || controller.signal.aborted) {
+      if (this.stopped) pauseSyncSession();
       return;
     }
 
-    this.currentFence = fence;
-    this.abortController = new AbortController();
+    this.currentContext = context;
     this.wake();
   }
 
   private scheduleDebouncedWake(): void {
-    if (this.stopped || this.authorizationBlocked || !this.currentFence) return;
+    if (this.stopped || this.authorizationBlocked || !this.currentContext)
+      return;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
@@ -268,12 +276,12 @@ export class SettingsSyncService {
   private async runWorker(): Promise<void> {
     while (this.rerunRequested && !this.stopped) {
       this.rerunRequested = false;
-      const fence = this.currentFence;
+      const context = this.currentContext;
       const controller = this.abortController;
-      if (!fence || !controller) return;
+      if (!context || !controller) return;
 
       try {
-        await this.runIncrementalSync(fence, controller.signal);
+        await this.runIncrementalSync(context, controller.signal);
       } catch (error) {
         if (controller.signal.aborted || this.stopped) continue;
         if (
@@ -299,21 +307,25 @@ export class SettingsSyncService {
   }
 
   private async runIncrementalSync(
-    fence: SyncFence,
+    context: SyncContext,
     signal: AbortSignal,
   ): Promise<void> {
     if (!this.capabilities) {
-      const capabilities = await this.client.bootstrap(fence.accountId, signal);
-      if (signal.aborted || this.currentFence !== fence) return;
+      const capabilities = await this.client.bootstrap(
+        context.accountId,
+        signal,
+      );
+      if (signal.aborted) return;
       this.capabilities = capabilities;
     }
     if (this.capabilities.collections.length === 0) return;
-    await this.pushUntilDrained(fence, signal);
-    await this.pullUntilCurrent(fence, signal);
+    await this.pushUntilDrained(context, signal);
+    if (signal.aborted) return;
+    await this.pullUntilCurrent(context, signal);
   }
 
   private async pullUntilCurrent(
-    fence: SyncFence,
+    context: SyncContext,
     signal: AbortSignal,
   ): Promise<void> {
     const capabilities = this.capabilities;
@@ -321,20 +333,23 @@ export class SettingsSyncService {
 
     let changed = false;
     while (!signal.aborted) {
-      const cursors = await this.runLocalTransition(() =>
-        getPullCursors(fence, capabilities.collections),
+      const cursors = await this.runLocalTransition(async () =>
+        signal.aborted
+          ? null
+          : getPullCursors(context, capabilities.collections),
       );
       if (cursors === null) return;
       const page = await this.client.pull(
-        fence.scopeType,
-        fence.scopeId,
+        context.scopeType,
+        context.scopeId,
         cursors,
         capabilities.pullLimit,
         signal,
       );
+      if (signal.aborted) return;
       if (
-        !(await this.runLocalTransition(() =>
-          applyPullPages(fence, page.collections),
+        !(await this.runLocalTransition(async () =>
+          signal.aborted ? false : applyPullPages(context, page.collections),
         ))
       ) {
         return;
@@ -344,23 +359,21 @@ export class SettingsSyncService {
       );
       if (page.collections.every((collection) => !collection.hasMore)) break;
     }
-    if (changed) this.notifyRenderers();
+    if (changed && !signal.aborted) this.notifyRenderers();
   }
 
   private async pushUntilDrained(
-    fence: SyncFence,
+    context: SyncContext,
     signal: AbortSignal,
   ): Promise<void> {
     const capabilities = this.capabilities;
     if (!capabilities) throw new Error("Settings sync is not bootstrapped");
 
-    for (
-      let round = 0;
-      round < MAX_PUSH_ROUNDS_PER_WAKE && !signal.aborted;
-      round++
-    ) {
-      const heads = await this.runLocalTransition(() =>
-        capturePushHeads(fence, undefined, capabilities.collections),
+    while (!signal.aborted) {
+      const heads = await this.runLocalTransition(async () =>
+        signal.aborted
+          ? []
+          : capturePushHeads(context, undefined, capabilities.collections),
       );
       if (heads.length === 0) return;
       const batch = this.buildPushBatch(
@@ -370,6 +383,7 @@ export class SettingsSyncService {
       );
 
       const results = await this.client.push(batch.mutations, signal);
+      if (signal.aborted) return;
       if (
         results.some(
           (result) =>
@@ -379,8 +393,10 @@ export class SettingsSyncService {
         throw new SettingsSyncHttpError("Unauthorized sync scope", 403);
       }
       if (
-        !(await this.runLocalTransition(() =>
-          applyPushResults(fence, batch.heads, results),
+        !(await this.runLocalTransition(async () =>
+          signal.aborted
+            ? false
+            : applyPushResults(context, batch.heads, results),
         ))
       ) {
         return;
@@ -388,14 +404,6 @@ export class SettingsSyncService {
       if (results.some((result) => result.status !== "ok")) {
         this.notifyRenderers();
       }
-    }
-
-    if (
-      await this.runLocalTransition(() =>
-        hasPendingSyncWork(fence, undefined, capabilities.collections),
-      )
-    ) {
-      this.rerunRequested = true;
     }
   }
 

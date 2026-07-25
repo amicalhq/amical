@@ -15,9 +15,11 @@ import {
   syncCollectionState,
   syncItemState,
   syncOutbox,
-  syncScopeState,
+  vocabulary,
 } from "../../src/db/schema";
+import { pauseSyncSession } from "../../src/db/sync";
 import {
+  bulkImportVocabulary,
   createVocabularyWord,
   updateVocabulary,
 } from "../../src/db/vocabulary";
@@ -40,7 +42,6 @@ class FakeAuthService extends EventEmitter {
 
   getAuthState = vi.fn(async () => this.state);
   getIdToken = vi.fn(async () => this.state?.idToken ?? null);
-  isAuthenticated = vi.fn(async () => this.state?.isAuthenticated === true);
 
   registerBeforeLogoutHandler(handler: () => Promise<void>): () => void {
     this.beforeLogout = handler;
@@ -62,6 +63,7 @@ class InMemorySyncClient {
       "vocabulary",
       "snippet",
     ],
+    private readonly maxPushBatch = 100,
   ) {}
 
   readonly calls: string[] = [];
@@ -69,7 +71,7 @@ class InMemorySyncClient {
     this.calls.push("bootstrap");
     return {
       collections: this.collections,
-      maxPushBatch: 100,
+      maxPushBatch: this.maxPushBatch,
       maxPushBytes: 524288,
       pullLimit: 200,
     };
@@ -133,6 +135,7 @@ describe("SettingsSyncService", () => {
   let auth: FakeAuthService;
 
   beforeEach(async () => {
+    pauseSyncSession();
     testDb = await createTestDatabase();
     setTestDatabase(testDb.db);
     auth = new FakeAuthService();
@@ -141,23 +144,26 @@ describe("SettingsSyncService", () => {
 
   afterEach(async () => {
     await service?.shutdown();
+    pauseSyncSession();
     await testDb.close();
     vi.restoreAllMocks();
   });
 
-  it("clears a stale active account when startup is signed out", async () => {
+  it("clears stale sync metadata when startup is signed out", async () => {
     auth.state = null;
     await testDb.db
       .insert(syncClientState)
-      .values({
-        id: 1,
-        syncUserScopeId: "stale-user",
-        sessionEpoch: 1,
-      })
+      .values({ id: 1, lastOutboxSequence: 4 })
       .onConflictDoUpdate({
         target: syncClientState.id,
-        set: { syncUserScopeId: "stale-user", sessionEpoch: 1 },
+        set: { lastOutboxSequence: 4 },
       });
+    await testDb.db.insert(syncCollectionState).values({
+      scopeType: "user",
+      scopeId: "stale-user",
+      collection: "vocabulary",
+      cursor: 3,
+    });
 
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
@@ -165,40 +171,26 @@ describe("SettingsSyncService", () => {
     );
     await service.initialize();
 
-    expect((await testDb.db.select().from(syncClientState))[0]).toMatchObject({
-      syncUserScopeId: null,
-      sessionEpoch: 2,
-    });
+    expect(await testDb.db.select().from(syncClientState)).toEqual([]);
+    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
   });
 
   it("resumes an existing account from its saved cursor on startup", async () => {
     await testDb.db
       .insert(syncClientState)
-      .values({
-        id: 1,
-        syncUserScopeId: "user-1",
-        sessionEpoch: 4,
-      })
+      .values({ id: 1, lastOutboxSequence: 4 })
       .onConflictDoUpdate({
         target: syncClientState.id,
-        set: { syncUserScopeId: "user-1", sessionEpoch: 4 },
+        set: { lastOutboxSequence: 4 },
       });
-    await testDb.db.insert(syncScopeState).values({
-      accountId: "user-1",
-      scopeType: "user",
-      scopeId: "user-1",
-      responseEpoch: 3,
-    });
     await testDb.db.insert(syncCollectionState).values([
       {
-        accountId: "user-1",
         scopeType: "user",
         scopeId: "user-1",
         collection: "vocabulary",
         cursor: 7,
       },
       {
-        accountId: "user-1",
         scopeType: "user",
         scopeId: "user-1",
         collection: "snippet",
@@ -227,7 +219,90 @@ describe("SettingsSyncService", () => {
     );
   });
 
-  it("preserves the active account binding across clean shutdown", async () => {
+  it("binds local edits before startup sync I/O completes", async () => {
+    const row = await createVocabularyWord({
+      word: "Before refresh",
+      isReplacement: false,
+    });
+    await testDb.db
+      .insert(syncClientState)
+      .values({
+        id: 1,
+        lastOutboxSequence: 0,
+      })
+      .onConflictDoUpdate({
+        target: syncClientState.id,
+        set: { lastOutboxSequence: 0 },
+      });
+    await testDb.db.insert(syncCollectionState).values([
+      {
+        scopeType: "user",
+        scopeId: "user-1",
+        collection: "vocabulary",
+        cursor: 1,
+      },
+      {
+        scopeType: "user",
+        scopeId: "user-1",
+        collection: "snippet",
+        cursor: 0,
+      },
+    ]);
+    await testDb.db.insert(syncItemState).values({
+      scopeType: "user",
+      scopeId: "user-1",
+      collection: "vocabulary",
+      syncId: row.id,
+      acceptedSyncVersion: 1,
+      acceptedPayload: { word: "Before refresh", replacement: null },
+    });
+
+    const client = new InMemorySyncClient();
+    let releaseBootstrap!: (value: {
+      collections: Array<"vocabulary" | "snippet">;
+      maxPushBatch: number;
+      maxPushBytes: number;
+      pullLimit: number;
+    }) => void;
+    client.bootstrap.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseBootstrap = resolve;
+        }),
+    );
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+
+    await service.initialize();
+    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
+    await updateVocabulary(row.id, { word: "Edited during refresh" });
+    expect((await testDb.db.select().from(syncOutbox))[0]).toMatchObject({
+      syncId: row.id,
+      desiredBaseSyncVersion: 1,
+      desiredPayload: {
+        word: "Edited during refresh",
+        replacement: null,
+      },
+    });
+
+    releaseBootstrap({
+      collections: ["vocabulary", "snippet"],
+      maxPushBatch: 100,
+      maxPushBytes: 524288,
+      pullLimit: 200,
+    });
+    await vi.waitFor(() => expect(client.push).toHaveBeenCalledOnce());
+
+    expect(client.push.mock.calls[0][0][0]).toMatchObject({
+      syncId: row.id,
+      expectedSyncVersion: 1,
+      payload: { word: "Edited during refresh", replacement: null },
+    });
+  });
+
+  it("preserves durable sync progress across clean shutdown", async () => {
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
@@ -239,9 +314,49 @@ describe("SettingsSyncService", () => {
     await service.shutdown();
     service = null;
 
-    expect((await testDb.db.select().from(syncClientState))[0]).toMatchObject({
-      syncUserScopeId: "user-1",
+    expect(await testDb.db.select().from(syncClientState)).toHaveLength(1);
+    expect(await testDb.db.select().from(syncCollectionState)).toHaveLength(2);
+  });
+
+  it("resumes a pending outbox after restart without logout", async () => {
+    await createVocabularyWord({
+      word: "Pending",
+      isReplacement: false,
     });
+    const unavailableClient = {
+      bootstrap: vi.fn().mockRejectedValue(new Error("offline")),
+      pull: vi.fn(),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      unavailableClient,
+    );
+    await service.initialize();
+    await vi.waitFor(() =>
+      expect(unavailableClient.bootstrap).toHaveBeenCalledOnce(),
+    );
+    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
+
+    await service.shutdown();
+    service = null;
+
+    const resumedClient = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      resumedClient,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(resumedClient.push).toHaveBeenCalledOnce());
+
+    expect(resumedClient.push.mock.calls[0][0][0]).toMatchObject({
+      expectedSyncVersion: null,
+      payload: { word: "Pending", replacement: null },
+    });
+    expect(resumedClient.pull.mock.calls[0][2]).toEqual([
+      { collection: "vocabulary", cursor: 0 },
+      { collection: "snippet", cursor: 0 },
+    ]);
   });
 
   it("adopts local rows before the first startup pull", async () => {
@@ -299,22 +414,14 @@ describe("SettingsSyncService", () => {
 
   it("resets an existing cursor for an explicit login", async () => {
     auth.state = null;
-    await testDb.db.insert(syncScopeState).values({
-      accountId: "user-1",
-      scopeType: "user",
-      scopeId: "user-1",
-      responseEpoch: 3,
-    });
     await testDb.db.insert(syncCollectionState).values([
       {
-        accountId: "user-1",
         scopeType: "user",
         scopeId: "user-1",
         collection: "vocabulary",
         cursor: 7,
       },
       {
-        accountId: "user-1",
         scopeType: "user",
         scopeId: "user-1",
         collection: "snippet",
@@ -366,13 +473,9 @@ describe("SettingsSyncService", () => {
       service.wake();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect((await testDb.db.select().from(syncClientState))[0]).toMatchObject(
-        {
-          syncUserScopeId: "user-1",
-        },
-      );
+      expect(await testDb.db.select().from(syncClientState)).toHaveLength(1);
       expect((await testDb.db.select().from(syncOutbox))[0]).toMatchObject({
-        accountId: "user-1",
+        scopeId: "user-1",
         desiredPayload: { word: "After", replacement: null },
       });
       expect(client.bootstrap).toHaveBeenCalledOnce();
@@ -456,7 +559,33 @@ describe("SettingsSyncService", () => {
     ]);
   });
 
-  it("durably fences logout before a late pull can apply", async () => {
+  it("drains every bounded push batch before pulling", async () => {
+    await bulkImportVocabulary(
+      Array.from({ length: 101 }, (_, index) => ({
+        word: `Word ${index}`,
+        isReplacement: false,
+      })),
+    );
+    const client = new InMemorySyncClient(["vocabulary", "snippet"], 1);
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+
+    await service.initialize();
+    await vi.waitFor(
+      () => {
+        expect(client.push).toHaveBeenCalledTimes(101);
+        expect(client.pull).toHaveBeenCalledOnce();
+      },
+      { timeout: 10_000 },
+    );
+
+    expect(client.calls.indexOf("pull")).toBe(102);
+    expect(client.calls.at(-1)).toBe("pull");
+  });
+
+  it("clears sync state and ignores a pull response after logout", async () => {
     const pullState: {
       resolve?: (page: SyncPullPage) => void;
       signal?: AbortSignal;
@@ -498,9 +627,10 @@ describe("SettingsSyncService", () => {
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
     await auth.logoutForTest();
     expect(pullState.signal?.aborted).toBe(true);
-    expect((await testDb.db.select().from(syncClientState))[0]).toMatchObject({
-      syncUserScopeId: null,
-    });
+    expect(await testDb.db.select().from(syncClientState)).toEqual([]);
+    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+    expect(await testDb.db.select().from(syncItemState)).toEqual([]);
+    expect(await testDb.db.select().from(syncOutbox)).toEqual([]);
 
     const syncId = "11111111-1111-4111-8111-111111111111";
     pullState.resolve?.({
@@ -528,6 +658,10 @@ describe("SettingsSyncService", () => {
   });
 
   it("ignores a bootstrap response that arrives after logout", async () => {
+    const row = await createVocabularyWord({
+      word: "Keep local",
+      isReplacement: false,
+    });
     const bootstrapState: {
       resolve?: (value: {
         collections: Array<"vocabulary" | "snippet">;
@@ -559,8 +693,16 @@ describe("SettingsSyncService", () => {
     await service.initialize();
 
     await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
+    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
     await auth.logoutForTest();
     expect(bootstrapState.signal?.aborted).toBe(true);
+    expect(await testDb.db.select().from(syncClientState)).toEqual([]);
+    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+    expect(await testDb.db.select().from(syncItemState)).toEqual([]);
+    expect(await testDb.db.select().from(syncOutbox)).toEqual([]);
+    expect(await testDb.db.select().from(vocabulary)).toEqual([
+      expect.objectContaining({ id: row.id, word: "Keep local" }),
+    ]);
 
     bootstrapState.resolve?.({
       collections: ["vocabulary", "snippet"],

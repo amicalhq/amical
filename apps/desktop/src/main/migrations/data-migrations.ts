@@ -175,10 +175,12 @@ async function migrateSettingsSyncBounds(): Promise<{
       content: sanitizeLegacySyncText(row.content, SYNC_TEXT_MAX_LENGTH),
     }));
 
-    const vocabularyIdsToDelete: number[] = [];
+    const vocabularyIdsToDelete: string[] = [];
     const keptVocabulary: typeof sanitizedVocabulary = [];
     const seenWords = new Set<string>();
-    for (const row of sanitizedVocabulary.sort((a, b) => a.id - b.id)) {
+    for (const row of sanitizedVocabulary.sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )) {
       if (row.word.trim().length === 0 || seenWords.has(row.word)) {
         vocabularyIdsToDelete.push(row.id);
         continue;
@@ -187,10 +189,12 @@ async function migrateSettingsSyncBounds(): Promise<{
       keptVocabulary.push(row);
     }
 
-    const snippetIdsToDelete: number[] = [];
+    const snippetIdsToDelete: string[] = [];
     const keptSnippets: typeof sanitizedSnippets = [];
     const seenTriggers = new Set<string>();
-    for (const row of sanitizedSnippets.sort((a, b) => a.id - b.id)) {
+    for (const row of sanitizedSnippets.sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )) {
       if (
         row.trigger.trim().length === 0 ||
         row.content.length === 0 ||

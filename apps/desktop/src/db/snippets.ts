@@ -75,7 +75,7 @@ export async function getSnippets(
 }
 
 export async function updateSnippet(
-  id: number,
+  id: string,
   data: Partial<Omit<Snippet, "id" | "createdAt">>,
 ) {
   return db.transaction(async (tx) => {
@@ -96,7 +96,7 @@ export async function updateSnippet(
   });
 }
 
-export async function deleteSnippet(id: number) {
+export async function deleteSnippet(id: string) {
   return db.transaction(async (tx) => {
     const [existing] = await tx
       .select()

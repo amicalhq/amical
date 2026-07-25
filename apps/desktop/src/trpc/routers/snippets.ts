@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { SettingsSyncUuidSchema } from "@amical/types";
 import { createRouter, procedure } from "../trpc";
 import {
   createSnippet,
@@ -73,7 +74,7 @@ export const snippetsRouter = createRouter({
     }),
 
   updateSnippet: procedure
-    .input(z.object({ id: z.number(), data: UpdateSnippetSchema }))
+    .input(z.object({ id: SettingsSyncUuidSchema, data: UpdateSnippetSchema }))
     .mutation(async ({ input }) => {
       try {
         return await updateSnippet(input.id, input.data);
@@ -89,7 +90,7 @@ export const snippetsRouter = createRouter({
     }),
 
   deleteSnippet: procedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: SettingsSyncUuidSchema }))
     .mutation(async ({ input }) => {
       return await deleteSnippet(input.id);
     }),

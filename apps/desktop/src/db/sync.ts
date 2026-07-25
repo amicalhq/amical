@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from ".";
 import {
@@ -9,7 +8,6 @@ import {
   syncCollectionState,
   syncItemState,
   syncOutbox,
-  syncScopeState,
   vocabulary,
   type SnippetSyncPayload,
   type SyncCollection,
@@ -27,6 +25,7 @@ const SYNC_COLLECTIONS = [
 ] as const satisfies readonly SyncCollection[];
 
 let localMutationHandler: (() => void) | null = null;
+let activeUserAccountId: string | null = null;
 
 export function registerLocalSyncMutationHandler(
   handler: () => void,
@@ -37,12 +36,10 @@ export function registerLocalSyncMutationHandler(
   };
 }
 
-export interface SyncFence {
+export interface SyncContext {
   accountId: string;
   scopeType: SyncScopeType;
   scopeId: string;
-  sessionEpoch: number;
-  responseEpoch: number;
 }
 
 export interface CanonicalSyncItem {
@@ -52,7 +49,7 @@ export interface CanonicalSyncItem {
   payload: SyncPayload | null;
 }
 
-export interface CapturedSyncHead extends SyncFence {
+export interface CapturedSyncHead extends SyncContext {
   collection: SyncCollection;
   syncId: string;
   headPayload: SyncPayload | null;
@@ -81,35 +78,23 @@ export type PushSyncResult =
       message: string;
     };
 
-const scopeWhere = (
-  fence: Pick<SyncFence, "accountId" | "scopeType" | "scopeId">,
-) =>
-  and(
-    eq(syncScopeState.accountId, fence.accountId),
-    eq(syncScopeState.scopeType, fence.scopeType),
-    eq(syncScopeState.scopeId, fence.scopeId),
-  );
-
 const collectionWhere = (
-  fence: Pick<SyncFence, "accountId" | "scopeType" | "scopeId">,
+  context: Pick<SyncContext, "scopeType" | "scopeId">,
   collection: SyncCollection,
 ) =>
   and(
-    eq(syncCollectionState.accountId, fence.accountId),
-    eq(syncCollectionState.scopeType, fence.scopeType),
-    eq(syncCollectionState.scopeId, fence.scopeId),
+    eq(syncCollectionState.scopeType, context.scopeType),
+    eq(syncCollectionState.scopeId, context.scopeId),
     eq(syncCollectionState.collection, collection),
   );
 
 const itemWhere = (identity: {
-  accountId: string;
   scopeType: SyncScopeType;
   scopeId: string;
   collection: SyncCollection;
   syncId: string;
 }) =>
   and(
-    eq(syncItemState.accountId, identity.accountId),
     eq(syncItemState.scopeType, identity.scopeType),
     eq(syncItemState.scopeId, identity.scopeId),
     eq(syncItemState.collection, identity.collection),
@@ -117,14 +102,12 @@ const itemWhere = (identity: {
   );
 
 const outboxWhere = (identity: {
-  accountId: string;
   scopeType: SyncScopeType;
   scopeId: string;
   collection: SyncCollection;
   syncId: string;
 }) =>
   and(
-    eq(syncOutbox.accountId, identity.accountId),
     eq(syncOutbox.scopeType, identity.scopeType),
     eq(syncOutbox.scopeId, identity.scopeId),
     eq(syncOutbox.collection, identity.collection),
@@ -138,25 +121,12 @@ function payloadsEqual(
   return isDeepStrictEqual(left, right);
 }
 
-function payloadKey(
-  collection: SyncCollection,
-  payload: SyncPayload | null,
-): string | null {
-  if (payload === null) return null;
-  return collection === "vocabulary"
-    ? (payload as VocabularySyncPayload).word
-    : (payload as SnippetSyncPayload).trigger;
-}
-
-const localRowKey = (collection: SyncCollection, localRowId: number) =>
-  `${collection}:${localRowId}`;
-
 const syncItemKey = (collection: SyncCollection, syncId: string) =>
   `${collection}:${syncId}`;
 
 async function loadVisibleRowIds(
   database: SyncDatabase,
-): Promise<Record<SyncCollection, Set<number>>> {
+): Promise<Record<SyncCollection, Set<string>>> {
   const vocabularyRows = await database
     .select({ id: vocabulary.id })
     .from(vocabulary);
@@ -169,15 +139,14 @@ async function loadVisibleRowIds(
 
 async function loadScopeSyncIndex(
   database: SyncDatabase,
-  identity: Pick<SyncFence, "accountId" | "scopeType" | "scopeId">,
-  visibleRowIds: Record<SyncCollection, Set<number>>,
+  identity: Pick<SyncContext, "scopeType" | "scopeId">,
+  visibleRowIds: Record<SyncCollection, Set<string>>,
 ) {
   const sidecars = await database
     .select()
     .from(syncItemState)
     .where(
       and(
-        eq(syncItemState.accountId, identity.accountId),
         eq(syncItemState.scopeType, identity.scopeType),
         eq(syncItemState.scopeId, identity.scopeId),
       ),
@@ -187,7 +156,6 @@ async function loadScopeSyncIndex(
     .from(syncOutbox)
     .where(
       and(
-        eq(syncOutbox.accountId, identity.accountId),
         eq(syncOutbox.scopeType, identity.scopeType),
         eq(syncOutbox.scopeId, identity.scopeId),
       ),
@@ -198,15 +166,12 @@ async function loadScopeSyncIndex(
       pending,
     ]),
   );
-  const sidecarByLocalRow = new Map<string, SyncItemState>();
+  const sidecarByItem = new Map<string, SyncItemState>();
 
   for (const sidecar of sidecars) {
-    if (
-      sidecar.localRowId !== null &&
-      visibleRowIds[sidecar.collection].has(sidecar.localRowId)
-    ) {
-      sidecarByLocalRow.set(
-        localRowKey(sidecar.collection, sidecar.localRowId),
+    if (visibleRowIds[sidecar.collection].has(sidecar.syncId)) {
+      sidecarByItem.set(
+        syncItemKey(sidecar.collection, sidecar.syncId),
         sidecar,
       );
     }
@@ -215,7 +180,7 @@ async function loadScopeSyncIndex(
   return {
     sidecars,
     pendingByItem,
-    sidecarByLocalRow,
+    sidecarByItem,
   };
 }
 
@@ -240,84 +205,34 @@ export function snippetSyncPayload(row: {
   };
 }
 
-async function fenceIsCurrent(
-  database: SyncDatabase,
-  fence: SyncFence,
-): Promise<boolean> {
-  const [client] = await database
-    .select()
-    .from(syncClientState)
-    .where(eq(syncClientState.id, 1))
-    .limit(1);
-  if (
-    !client ||
-    client.syncUserScopeId !== fence.accountId ||
-    client.sessionEpoch !== fence.sessionEpoch
-  ) {
-    return false;
-  }
-
-  const [scope] = await database
-    .select()
-    .from(syncScopeState)
-    .where(scopeWhere(fence))
-    .limit(1);
-  return scope?.responseEpoch === fence.responseEpoch;
-}
+const contextIsActive = (context: SyncContext): boolean =>
+  context.scopeType === "user" &&
+  context.accountId === activeUserAccountId &&
+  context.scopeId === activeUserAccountId;
 
 async function startUserSyncSession(
   accountId: string,
   resetCursor: boolean,
   database: typeof db = db,
-): Promise<SyncFence> {
-  return database.transaction(async (tx) => {
-    const [client] = await tx
-      .select()
-      .from(syncClientState)
-      .where(eq(syncClientState.id, 1))
-      .limit(1);
-    const sessionEpoch = (client?.sessionEpoch ?? 0) + 1;
-
+): Promise<SyncContext> {
+  const context = await database.transaction(async (tx) => {
     await tx
       .insert(syncClientState)
-      .values({ id: 1, syncUserScopeId: accountId, sessionEpoch })
-      .onConflictDoUpdate({
-        target: syncClientState.id,
-        set: { syncUserScopeId: accountId, sessionEpoch },
-      });
+      .values({ id: 1, lastOutboxSequence: 0 })
+      .onConflictDoNothing();
 
-    const identity = {
-      accountId,
+    const scope = {
       scopeType: "user" as const,
       scopeId: accountId,
     };
-    const [scope] = await tx
-      .select()
-      .from(syncScopeState)
-      .where(scopeWhere(identity))
-      .limit(1);
-    const responseEpoch = (scope?.responseEpoch ?? 0) + 1;
-
-    await tx
-      .insert(syncScopeState)
-      .values({ ...identity, responseEpoch })
-      .onConflictDoUpdate({
-        target: [
-          syncScopeState.accountId,
-          syncScopeState.scopeType,
-          syncScopeState.scopeId,
-        ],
-        set: { responseEpoch },
-      });
 
     for (const collection of SYNC_COLLECTIONS) {
       const insert = tx
         .insert(syncCollectionState)
-        .values({ ...identity, collection, cursor: 0 });
+        .values({ ...scope, collection, cursor: 0 });
       if (resetCursor) {
         await insert.onConflictDoUpdate({
           target: [
-            syncCollectionState.accountId,
             syncCollectionState.scopeType,
             syncCollectionState.scopeId,
             syncCollectionState.collection,
@@ -329,114 +244,63 @@ async function startUserSyncSession(
       }
     }
 
-    return { ...identity, sessionEpoch, responseEpoch };
+    return { accountId, ...scope };
   });
+  activeUserAccountId = accountId;
+  return context;
 }
 
 export async function beginUserSyncSession(
   accountId: string,
   database: typeof db = db,
-): Promise<SyncFence> {
+): Promise<SyncContext> {
   return startUserSyncSession(accountId, true, database);
 }
 
 export async function resumeUserSyncSession(
   accountId: string,
   database: typeof db = db,
-): Promise<SyncFence> {
+): Promise<SyncContext> {
   return startUserSyncSession(accountId, false, database);
 }
 
-async function invalidateSyncSession(
-  clearUserScope: boolean,
-  database: typeof db = db,
-): Promise<void> {
+export function pauseSyncSession(): void {
+  activeUserAccountId = null;
+}
+
+export async function clearSyncState(database: typeof db = db): Promise<void> {
+  activeUserAccountId = null;
   await database.transaction(async (tx) => {
-    const [client] = await tx
-      .select()
-      .from(syncClientState)
-      .where(eq(syncClientState.id, 1))
-      .limit(1);
-    const syncUserScopeId = client?.syncUserScopeId ?? null;
-    const sessionEpoch = (client?.sessionEpoch ?? 0) + 1;
-    const nextSyncUserScopeId = clearUserScope ? null : syncUserScopeId;
-
-    await tx
-      .insert(syncClientState)
-      .values({
-        id: 1,
-        syncUserScopeId: nextSyncUserScopeId,
-        sessionEpoch,
-      })
-      .onConflictDoUpdate({
-        target: syncClientState.id,
-        set: { syncUserScopeId: nextSyncUserScopeId, sessionEpoch },
-      });
-
-    if (syncUserScopeId) {
-      await tx
-        .update(syncScopeState)
-        .set({
-          responseEpoch: sql`${syncScopeState.responseEpoch} + 1`,
-        })
-        .where(eq(syncScopeState.accountId, syncUserScopeId));
-    }
+    await tx.delete(syncOutbox);
+    await tx.delete(syncItemState);
+    await tx.delete(syncCollectionState);
+    await tx.delete(syncClientState);
   });
 }
 
-export async function fenceSyncSession(
-  database: typeof db = db,
-): Promise<void> {
-  return invalidateSyncSession(true, database);
-}
-
-export async function pauseSyncSession(
-  database: typeof db = db,
-): Promise<void> {
-  return invalidateSyncSession(false, database);
-}
-
-export async function getActiveSyncFence(
+export async function hasResumableUserSyncState(
+  accountId: string,
   database: SyncDatabase = db,
-): Promise<SyncFence | null> {
-  const [client] = await database
-    .select()
-    .from(syncClientState)
-    .where(eq(syncClientState.id, 1))
+): Promise<boolean> {
+  const [state] = await database
+    .select({ collection: syncCollectionState.collection })
+    .from(syncCollectionState)
+    .where(
+      and(
+        eq(syncCollectionState.scopeType, "user"),
+        eq(syncCollectionState.scopeId, accountId),
+      ),
+    )
     .limit(1);
-  if (!client?.syncUserScopeId) return null;
-
-  const identity = {
-    accountId: client.syncUserScopeId,
-    scopeType: "user" as const,
-    scopeId: client.syncUserScopeId,
-  };
-  const [scope] = await database
-    .select()
-    .from(syncScopeState)
-    .where(scopeWhere(identity))
-    .limit(1);
-  if (!scope) return null;
-
-  return {
-    ...identity,
-    sessionEpoch: client.sessionEpoch,
-    responseEpoch: scope.responseEpoch,
-  };
+  return Boolean(state);
 }
 
-async function activeUserIdentity(database: SyncDatabase) {
-  const [client] = await database
-    .select()
-    .from(syncClientState)
-    .where(eq(syncClientState.id, 1))
-    .limit(1);
-  if (!client?.syncUserScopeId) return null;
+function activeUserIdentity() {
+  if (!activeUserAccountId) return null;
 
   return {
-    accountId: client.syncUserScopeId,
     scopeType: "user" as const,
-    scopeId: client.syncUserScopeId,
+    scopeId: activeUserAccountId,
   };
 }
 
@@ -455,12 +319,11 @@ async function allocateOutboxSequence(database: SyncDatabase): Promise<number> {
 async function enqueueLocalMutation(
   database: SyncDatabase,
   identity: {
-    accountId: string;
     scopeType: "user";
     scopeId: string;
   },
   collection: SyncCollection,
-  localRowId: number,
+  syncId: string,
   payload: SyncPayload | null,
   options: {
     unversioned?: boolean;
@@ -470,25 +333,15 @@ async function enqueueLocalMutation(
   const [existingSidecar] = await database
     .select()
     .from(syncItemState)
-    .where(
-      and(
-        eq(syncItemState.accountId, identity.accountId),
-        eq(syncItemState.scopeType, identity.scopeType),
-        eq(syncItemState.scopeId, identity.scopeId),
-        eq(syncItemState.collection, collection),
-        eq(syncItemState.localRowId, localRowId),
-      ),
-    )
+    .where(itemWhere({ ...identity, collection, syncId }))
     .limit(1);
   let sidecar: SyncItemState | undefined = existingSidecar;
 
   if (!sidecar) {
-    const syncId = randomUUID();
     await database.insert(syncItemState).values({
       ...identity,
       collection,
       syncId,
-      localRowId,
       acceptedSyncVersion: null,
       acceptedPayload: null,
     });
@@ -562,7 +415,6 @@ async function enqueueLocalMutation(
     })
     .onConflictDoUpdate({
       target: [
-        syncOutbox.accountId,
         syncOutbox.scopeType,
         syncOutbox.scopeId,
         syncOutbox.collection,
@@ -582,30 +434,23 @@ async function enqueueLocalMutation(
 export async function recordLocalSyncMutation(
   database: SyncDatabase,
   collection: SyncCollection,
-  localRowId: number,
+  syncId: string,
   payload: SyncPayload | null,
 ): Promise<void> {
-  const identity = await activeUserIdentity(database);
+  const identity = activeUserIdentity();
   if (!identity) return;
-  await enqueueLocalMutation(
-    database,
-    identity,
-    collection,
-    localRowId,
-    payload,
-  );
+  await enqueueLocalMutation(database, identity, collection, syncId, payload);
 }
 
 export interface LocalSyncMutation {
   collection: SyncCollection;
-  localRowId: number;
+  syncId: string;
   payload: SyncPayload;
 }
 
 async function enqueueLocalSyncMutationsBulk(
   database: SyncDatabase,
   identity: {
-    accountId: string;
     scopeType: "user";
     scopeId: string;
   },
@@ -613,7 +458,7 @@ async function enqueueLocalSyncMutationsBulk(
   options: {
     unversioned?: boolean;
     onlyUnbound?: boolean;
-    visibleRowIds?: Record<SyncCollection, Set<number>>;
+    visibleRowIds?: Record<SyncCollection, Set<string>>;
   } = {},
 ): Promise<void> {
   if (mutations.length === 0) return;
@@ -623,8 +468,8 @@ async function enqueueLocalSyncMutationsBulk(
   const index = await loadScopeSyncIndex(database, identity, visibleRowIds);
 
   for (const mutation of mutations) {
-    const rowKey = localRowKey(mutation.collection, mutation.localRowId);
-    if (options.onlyUnbound && index.sidecarByLocalRow.has(rowKey)) {
+    const itemKey = syncItemKey(mutation.collection, mutation.syncId);
+    if (options.onlyUnbound && index.sidecarByItem.has(itemKey)) {
       continue;
     }
 
@@ -632,7 +477,7 @@ async function enqueueLocalSyncMutationsBulk(
       database,
       identity,
       mutation.collection,
-      mutation.localRowId,
+      mutation.syncId,
       mutation.payload,
       {
         unversioned: options.unversioned,
@@ -648,17 +493,17 @@ export async function recordLocalSyncMutations(
   database: SyncDatabase,
   mutations: LocalSyncMutation[],
 ): Promise<void> {
-  const identity = await activeUserIdentity(database);
+  const identity = activeUserIdentity();
   if (!identity) return;
   await enqueueLocalSyncMutationsBulk(database, identity, mutations);
 }
 
 export async function prepareVisibleRowsForFullSync(
-  fence: SyncFence,
+  fence: SyncContext,
   database: typeof db = db,
 ): Promise<boolean> {
   return database.transaction(async (tx) => {
-    if (!(await fenceIsCurrent(tx, fence))) return false;
+    if (!contextIsActive(fence)) return false;
     if (fence.scopeType !== "user") return false;
 
     const vocabularyRows = await tx.select().from(vocabulary);
@@ -666,10 +511,9 @@ export async function prepareVisibleRowsForFullSync(
     const visibleRowIds = {
       vocabulary: new Set(vocabularyRows.map((row) => row.id)),
       snippet: new Set(snippetRows.map((row) => row.id)),
-    } satisfies Record<SyncCollection, Set<number>>;
+    } satisfies Record<SyncCollection, Set<string>>;
     const index = await loadScopeSyncIndex(tx, fence, visibleRowIds);
     const identity = {
-      accountId: fence.accountId,
       scopeType: "user" as const,
       scopeId: fence.scopeId,
     };
@@ -677,15 +521,13 @@ export async function prepareVisibleRowsForFullSync(
 
     const prepareRow = async (
       collection: SyncCollection,
-      localRowId: number,
+      syncId: string,
       payload: SyncPayload,
     ) => {
-      const rowKey = localRowKey(collection, localRowId);
-      const sidecar = index.sidecarByLocalRow.get(rowKey);
+      const itemKey = syncItemKey(collection, syncId);
+      const sidecar = index.sidecarByItem.get(itemKey);
       if (!sidecar) return;
-      const pending = index.pendingByItem.get(
-        syncItemKey(collection, sidecar.syncId),
-      );
+      const pending = index.pendingByItem.get(itemKey);
 
       if (pending) {
         if (!payloadsEqual(payload, pending.desiredPayload)) {
@@ -693,28 +535,12 @@ export async function prepareVisibleRowsForFullSync(
             tx,
             identity,
             collection,
-            localRowId,
+            syncId,
             payload,
             { notify: false },
           );
           enqueuedMutation = true;
         }
-        return;
-      }
-
-      if (
-        !payloadsEqual(payload, sidecar.acceptedPayload) &&
-        payloadKey(collection, payload) !==
-          payloadKey(collection, sidecar.acceptedPayload)
-      ) {
-        // A changed key is a separate local item. Same-key differences stay
-        // linked so the login pull can apply the canonical server row.
-        await tx
-          .update(syncItemState)
-          .set({ localRowId: null })
-          .where(itemWhere({ ...sidecar, collection }));
-        sidecar.localRowId = null;
-        index.sidecarByLocalRow.delete(rowKey);
       }
     };
 
@@ -726,26 +552,23 @@ export async function prepareVisibleRowsForFullSync(
     }
 
     for (const sidecar of index.sidecars) {
-      if (
-        sidecar.localRowId === null ||
-        visibleRowIds[sidecar.collection].has(sidecar.localRowId)
-      ) {
+      if (visibleRowIds[sidecar.collection].has(sidecar.syncId)) {
         continue;
       }
       const pending = index.pendingByItem.get(
         syncItemKey(sidecar.collection, sidecar.syncId),
       );
-      if (!pending || pending.desiredPayload !== null) {
-        await enqueueLocalMutation(
-          tx,
-          identity,
-          sidecar.collection,
-          sidecar.localRowId,
-          null,
-          { notify: false },
-        );
-        enqueuedMutation = true;
-      }
+      if (pending?.desiredPayload === null) continue;
+      if (!pending && sidecar.acceptedPayload === null) continue;
+      await enqueueLocalMutation(
+        tx,
+        identity,
+        sidecar.collection,
+        sidecar.syncId,
+        null,
+        { notify: false },
+      );
+      enqueuedMutation = true;
     }
 
     if (enqueuedMutation) localMutationHandler?.();
@@ -755,7 +578,7 @@ export async function prepareVisibleRowsForFullSync(
 
 async function findSidecar(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   collection: SyncCollection,
   syncId: string,
 ): Promise<SyncItemState | null> {
@@ -767,60 +590,22 @@ async function findSidecar(
   return sidecar ?? null;
 }
 
-async function clearLocalRowLinks(
-  database: SyncDatabase,
-  collection: SyncCollection,
-  localRowId: number,
-): Promise<void> {
-  await database
-    .update(syncItemState)
-    .set({ localRowId: null })
-    .where(
-      and(
-        eq(syncItemState.collection, collection),
-        eq(syncItemState.localRowId, localRowId),
-      ),
-    );
-}
-
 async function discardCurrentAccountCollision(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   collection: SyncCollection,
-  localRowId: number,
-  winningSyncId: string,
+  losingSyncId: string,
   preservePending: boolean,
 ): Promise<void> {
-  const [loser] = await database
-    .select()
-    .from(syncItemState)
-    .where(
-      and(
-        eq(syncItemState.accountId, fence.accountId),
-        eq(syncItemState.scopeType, fence.scopeType),
-        eq(syncItemState.scopeId, fence.scopeId),
-        eq(syncItemState.collection, collection),
-        eq(syncItemState.localRowId, localRowId),
-        ne(syncItemState.syncId, winningSyncId),
-      ),
-    )
-    .limit(1);
-  if (!loser) return;
-
-  if (!preservePending) {
-    await database
-      .delete(syncOutbox)
-      .where(outboxWhere({ ...loser, collection }));
-  }
+  if (preservePending) return;
   await database
-    .update(syncItemState)
-    .set({ localRowId: null })
-    .where(itemWhere({ ...loser, collection }));
+    .delete(syncOutbox)
+    .where(outboxWhere({ ...fence, collection, syncId: losingSyncId }));
 }
 
 async function applyDomainPayload(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   collection: SyncCollection,
   syncId: string,
   payload: SyncPayload | null,
@@ -830,22 +615,14 @@ async function applyDomainPayload(
   if (!sidecar) throw new Error("Sync sidecar missing during canonical apply");
 
   if (payload === null) {
-    if (sidecar.localRowId !== null) {
-      if (collection === "vocabulary") {
-        await database
-          .delete(vocabulary)
-          .where(eq(vocabulary.id, sidecar.localRowId));
-      } else {
-        await database
-          .delete(snippets)
-          .where(eq(snippets.id, sidecar.localRowId));
-      }
-      await clearLocalRowLinks(database, collection, sidecar.localRowId);
+    if (collection === "vocabulary") {
+      await database.delete(vocabulary).where(eq(vocabulary.id, syncId));
+    } else {
+      await database.delete(snippets).where(eq(snippets.id, syncId));
     }
     return;
   }
 
-  let localRowId = sidecar.localRowId;
   const now = new Date();
 
   if (collection === "vocabulary") {
@@ -856,50 +633,37 @@ async function applyDomainPayload(
       .where(eq(vocabulary.word, value.word))
       .limit(1);
 
-    if (keyRow && keyRow.id !== localRowId) {
+    if (keyRow && keyRow.id !== syncId) {
       await discardCurrentAccountCollision(
         database,
         fence,
         collection,
         keyRow.id,
-        syncId,
         preserveCollidingPending,
       );
-      if (localRowId !== null) {
-        await database.delete(vocabulary).where(eq(vocabulary.id, keyRow.id));
-        await clearLocalRowLinks(database, collection, keyRow.id);
-      } else {
-        localRowId = keyRow.id;
-      }
+      await database.delete(vocabulary).where(eq(vocabulary.id, keyRow.id));
     }
 
-    if (localRowId !== null) {
-      const [updated] = await database
-        .update(vocabulary)
-        .set({
-          word: value.word,
-          replacementWord: value.replacement,
-          isReplacement: value.replacement !== null,
-          updatedAt: now,
-        })
-        .where(eq(vocabulary.id, localRowId))
-        .returning({ id: vocabulary.id });
-      if (!updated) localRowId = null;
-    }
-
-    if (localRowId === null) {
-      const [created] = await database
-        .insert(vocabulary)
-        .values({
-          word: value.word,
-          replacementWord: value.replacement,
-          isReplacement: value.replacement !== null,
-          dateAdded: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning({ id: vocabulary.id });
-      localRowId = created.id;
+    const [updated] = await database
+      .update(vocabulary)
+      .set({
+        word: value.word,
+        replacementWord: value.replacement,
+        isReplacement: value.replacement !== null,
+        updatedAt: now,
+      })
+      .where(eq(vocabulary.id, syncId))
+      .returning({ id: vocabulary.id });
+    if (!updated) {
+      await database.insert(vocabulary).values({
+        id: syncId,
+        word: value.word,
+        replacementWord: value.replacement,
+        isReplacement: value.replacement !== null,
+        dateAdded: now,
+        createdAt: now,
+        updatedAt: now,
+      });
     }
   } else {
     const value = payload as SnippetSyncPayload;
@@ -909,59 +673,41 @@ async function applyDomainPayload(
       .where(eq(snippets.trigger, value.trigger))
       .limit(1);
 
-    if (keyRow && keyRow.id !== localRowId) {
+    if (keyRow && keyRow.id !== syncId) {
       await discardCurrentAccountCollision(
         database,
         fence,
         collection,
         keyRow.id,
-        syncId,
         preserveCollidingPending,
       );
-      if (localRowId !== null) {
-        await database.delete(snippets).where(eq(snippets.id, keyRow.id));
-        await clearLocalRowLinks(database, collection, keyRow.id);
-      } else {
-        localRowId = keyRow.id;
-      }
+      await database.delete(snippets).where(eq(snippets.id, keyRow.id));
     }
 
-    if (localRowId !== null) {
-      const [updated] = await database
-        .update(snippets)
-        .set({
-          trigger: value.trigger,
-          content: value.content,
-          updatedAt: now,
-        })
-        .where(eq(snippets.id, localRowId))
-        .returning({ id: snippets.id });
-      if (!updated) localRowId = null;
-    }
-
-    if (localRowId === null) {
-      const [created] = await database
-        .insert(snippets)
-        .values({
-          trigger: value.trigger,
-          content: value.content,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning({ id: snippets.id });
-      localRowId = created.id;
+    const [updated] = await database
+      .update(snippets)
+      .set({
+        trigger: value.trigger,
+        content: value.content,
+        updatedAt: now,
+      })
+      .where(eq(snippets.id, syncId))
+      .returning({ id: snippets.id });
+    if (!updated) {
+      await database.insert(snippets).values({
+        id: syncId,
+        trigger: value.trigger,
+        content: value.content,
+        createdAt: now,
+        updatedAt: now,
+      });
     }
   }
-
-  await database
-    .update(syncItemState)
-    .set({ localRowId })
-    .where(itemWhere({ ...fence, collection, syncId }));
 }
 
 async function ensureCanonicalSidecar(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   item: CanonicalSyncItem,
 ): Promise<SyncItemState> {
   let sidecar = await findSidecar(
@@ -973,12 +719,10 @@ async function ensureCanonicalSidecar(
   if (sidecar) return sidecar;
 
   await database.insert(syncItemState).values({
-    accountId: fence.accountId,
     scopeType: fence.scopeType,
     scopeId: fence.scopeId,
     collection: item.collection,
     syncId: item.syncId,
-    localRowId: null,
     acceptedSyncVersion: null,
     acceptedPayload: null,
   });
@@ -989,7 +733,7 @@ async function ensureCanonicalSidecar(
 
 async function setAcceptedState(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   item: CanonicalSyncItem,
 ): Promise<boolean> {
   const sidecar = await ensureCanonicalSidecar(database, fence, item);
@@ -1011,7 +755,7 @@ async function setAcceptedState(
 
 async function acceptHead(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   head: CapturedSyncHead,
   syncVersion: number,
 ): Promise<void> {
@@ -1077,7 +821,7 @@ async function acceptHead(
 
 async function permanentlyFailHead(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   head: CapturedSyncHead,
 ): Promise<void> {
   const identity = { ...fence, ...head };
@@ -1123,7 +867,7 @@ async function permanentlyFailHead(
 
 async function applyCanonicalItem(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   item: CanonicalSyncItem,
   preservePending = false,
   discardPendingOnEqual = false,
@@ -1228,7 +972,7 @@ async function applyCanonicalItem(
 
 async function applyCanonicalAbsence(
   database: SyncDatabase,
-  fence: SyncFence,
+  fence: SyncContext,
   head: CapturedSyncHead,
 ): Promise<void> {
   const sidecar = await findSidecar(
@@ -1259,12 +1003,12 @@ export interface PullCollectionCursor {
 }
 
 export async function applyPullPages(
-  fence: SyncFence,
+  fence: SyncContext,
   pages: PullCollectionPage[],
   database: typeof db = db,
 ): Promise<boolean> {
   return database.transaction(async (tx) => {
-    if (!(await fenceIsCurrent(tx, fence))) return false;
+    if (!contextIsActive(fence)) return false;
 
     for (const page of pages) {
       for (const item of page.items) {
@@ -1280,11 +1024,11 @@ export async function applyPullPages(
 }
 
 export async function getPullCursors(
-  fence: SyncFence,
+  fence: SyncContext,
   collections: readonly SyncCollection[] = SYNC_COLLECTIONS,
   database: SyncDatabase = db,
 ): Promise<PullCollectionCursor[] | null> {
-  if (!(await fenceIsCurrent(database, fence))) return null;
+  if (!contextIsActive(fence)) return null;
   if (collections.length === 0) return [];
 
   const rows = await database
@@ -1295,7 +1039,6 @@ export async function getPullCursors(
     .from(syncCollectionState)
     .where(
       and(
-        eq(syncCollectionState.accountId, fence.accountId),
         eq(syncCollectionState.scopeType, fence.scopeType),
         eq(syncCollectionState.scopeId, fence.scopeId),
         inArray(syncCollectionState.collection, [...collections]),
@@ -1314,11 +1057,11 @@ export async function getPullCursors(
 }
 
 export async function adoptVisibleRows(
-  fence: SyncFence,
+  fence: SyncContext,
   database: typeof db = db,
 ): Promise<boolean> {
   return database.transaction(async (tx) => {
-    if (!(await fenceIsCurrent(tx, fence))) return false;
+    if (!contextIsActive(fence)) return false;
 
     // Only unbound rows are adoption candidates. Existing identities are
     // governed by their accepted state or durable outbox, so a same-key
@@ -1328,19 +1071,18 @@ export async function adoptVisibleRows(
     await enqueueLocalSyncMutationsBulk(
       tx,
       {
-        accountId: fence.accountId,
         scopeType: "user",
         scopeId: fence.scopeId,
       },
       [
         ...vocabularyRows.map((row) => ({
           collection: "vocabulary" as const,
-          localRowId: row.id,
+          syncId: row.id,
           payload: vocabularySyncPayload(row),
         })),
         ...snippetRows.map((row) => ({
           collection: "snippet" as const,
-          localRowId: row.id,
+          syncId: row.id,
           payload: snippetSyncPayload(row),
         })),
       ],
@@ -1359,20 +1101,19 @@ export async function adoptVisibleRows(
 }
 
 export async function capturePushHeads(
-  fence: SyncFence,
+  fence: SyncContext,
   database: typeof db = db,
   collections: readonly SyncCollection[] = ["vocabulary", "snippet"],
 ): Promise<CapturedSyncHead[]> {
   if (collections.length === 0) return [];
   return database.transaction(async (tx) => {
-    if (!(await fenceIsCurrent(tx, fence))) return [];
+    if (!contextIsActive(fence)) return [];
 
     const pendingRows = await tx
       .select()
       .from(syncOutbox)
       .where(
         and(
-          eq(syncOutbox.accountId, fence.accountId),
           eq(syncOutbox.scopeType, fence.scopeType),
           eq(syncOutbox.scopeId, fence.scopeId),
           inArray(syncOutbox.collection, [...collections]),
@@ -1441,7 +1182,6 @@ export async function capturePushHeads(
       .from(syncOutbox)
       .where(
         and(
-          eq(syncOutbox.accountId, fence.accountId),
           eq(syncOutbox.scopeType, fence.scopeType),
           eq(syncOutbox.scopeId, fence.scopeId),
           inArray(syncOutbox.collection, [...collections]),
@@ -1471,13 +1211,13 @@ export async function capturePushHeads(
 }
 
 export async function applyPushResults(
-  fence: SyncFence,
+  fence: SyncContext,
   heads: CapturedSyncHead[],
   results: PushSyncResult[],
   database: typeof db = db,
 ): Promise<boolean> {
   return database.transaction(async (tx) => {
-    if (!(await fenceIsCurrent(tx, fence))) return false;
+    if (!contextIsActive(fence)) return false;
 
     for (const [index, result] of results.entries()) {
       const head = heads[index];
@@ -1541,18 +1281,17 @@ export async function applyPushResults(
 }
 
 export async function hasPendingSyncWork(
-  fence: SyncFence,
+  fence: SyncContext,
   database: SyncDatabase = db,
   collections: readonly SyncCollection[] = ["vocabulary", "snippet"],
 ): Promise<boolean> {
   if (collections.length === 0) return false;
-  if (!(await fenceIsCurrent(database, fence))) return false;
+  if (!contextIsActive(fence)) return false;
   const [pending] = await database
     .select({ syncId: syncOutbox.syncId })
     .from(syncOutbox)
     .where(
       and(
-        eq(syncOutbox.accountId, fence.accountId),
         eq(syncOutbox.scopeType, fence.scopeType),
         eq(syncOutbox.scopeId, fence.scopeId),
         inArray(syncOutbox.collection, [...collections]),

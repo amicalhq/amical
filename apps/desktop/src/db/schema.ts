@@ -38,7 +38,9 @@ export const transcriptions = sqliteTable("transcriptions", {
 
 // Vocabulary table
 export const vocabulary = sqliteTable("vocabulary", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
   word: text("word").notNull().unique(),
   replacementWord: text("replacement_word"),
   isReplacement: integer("is_replacement", { mode: "boolean" }).default(false),
@@ -56,7 +58,9 @@ export const vocabulary = sqliteTable("vocabulary", {
 
 // Snippets table — short trigger phrases that expand into longer text during dictation
 export const snippets = sqliteTable("snippets", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
   trigger: text("trigger").notNull().unique(),
   content: text("content").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" })
@@ -79,35 +83,15 @@ export type SnippetSyncPayload = {
 };
 export type SyncPayload = VocabularySyncPayload | SnippetSyncPayload;
 
-// Singleton state shared by every synchronized collection. The current user
-// scope is read inside local edit transactions so logout cannot race an edit
-// into the wrong user's outbox.
+// Singleton sequence allocator shared by every synchronized collection.
 export const syncClientState = sqliteTable("sync_client_state", {
   id: integer("id").primaryKey(),
-  syncUserScopeId: text("sync_user_scope_id"),
-  sessionEpoch: integer("session_epoch").notNull().default(0),
   lastOutboxSequence: integer("last_outbox_sequence").notNull().default(0),
 });
-
-export const syncScopeState = sqliteTable(
-  "sync_scope_state",
-  {
-    accountId: text("account_id").notNull(),
-    scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
-    scopeId: text("scope_id").notNull(),
-    responseEpoch: integer("response_epoch").notNull().default(0),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.accountId, table.scopeType, table.scopeId],
-    }),
-  ],
-);
 
 export const syncCollectionState = sqliteTable(
   "sync_collection_state",
   {
-    accountId: text("account_id").notNull(),
     scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
     scopeId: text("scope_id").notNull(),
     collection: text("collection", {
@@ -117,29 +101,22 @@ export const syncCollectionState = sqliteTable(
   },
   (table) => [
     primaryKey({
-      columns: [
-        table.accountId,
-        table.scopeType,
-        table.scopeId,
-        table.collection,
-      ],
+      columns: [table.scopeType, table.scopeId, table.collection],
     }),
   ],
 );
 
-// Transport identity and last canonical server state live separately from the
-// visible domain row so a physical local delete can still sync a tombstone.
+// The domain row UUID is also its sync ID. Accepted server state remains in a
+// scope-specific sidecar so physical deletion can still sync a tombstone.
 export const syncItemState = sqliteTable(
   "sync_item_state",
   {
-    accountId: text("account_id").notNull(),
     scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
     scopeId: text("scope_id").notNull(),
     collection: text("collection", {
       enum: ["vocabulary", "snippet"],
     }).notNull(),
     syncId: text("sync_id").notNull(),
-    localRowId: integer("local_row_id"),
     acceptedSyncVersion: integer("accepted_sync_version"),
     acceptedPayload: text("accepted_payload", {
       mode: "json",
@@ -147,21 +124,8 @@ export const syncItemState = sqliteTable(
   },
   (table) => [
     primaryKey({
-      columns: [
-        table.accountId,
-        table.scopeType,
-        table.scopeId,
-        table.collection,
-        table.syncId,
-      ],
+      columns: [table.scopeType, table.scopeId, table.collection, table.syncId],
     }),
-    uniqueIndex("sync_item_state_local_row_idx").on(
-      table.accountId,
-      table.scopeType,
-      table.scopeId,
-      table.collection,
-      table.localRowId,
-    ),
   ],
 );
 
@@ -170,7 +134,6 @@ export const syncItemState = sqliteTable(
 export const syncOutbox = sqliteTable(
   "sync_outbox",
   {
-    accountId: text("account_id").notNull(),
     scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
     scopeId: text("scope_id").notNull(),
     collection: text("collection", {
@@ -195,13 +158,7 @@ export const syncOutbox = sqliteTable(
   },
   (table) => [
     primaryKey({
-      columns: [
-        table.accountId,
-        table.scopeType,
-        table.scopeId,
-        table.collection,
-        table.syncId,
-      ],
+      columns: [table.scopeType, table.scopeId, table.collection, table.syncId],
     }),
   ],
 );
@@ -528,7 +485,6 @@ export type NewVocabulary = typeof vocabulary.$inferInsert;
 export type Snippet = typeof snippets.$inferSelect;
 export type NewSnippet = typeof snippets.$inferInsert;
 export type SyncClientState = typeof syncClientState.$inferSelect;
-export type SyncScopeState = typeof syncScopeState.$inferSelect;
 export type SyncCollectionState = typeof syncCollectionState.$inferSelect;
 export type SyncItemState = typeof syncItemState.$inferSelect;
 export type SyncOutbox = typeof syncOutbox.$inferSelect;

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import {
   snippets,
@@ -7,7 +7,6 @@ import {
   syncCollectionState,
   syncItemState,
   syncOutbox,
-  syncScopeState,
   vocabulary,
 } from "../../src/db/schema";
 import {
@@ -16,12 +15,13 @@ import {
   applyPushResults,
   beginUserSyncSession,
   capturePushHeads,
-  fenceSyncSession,
+  clearSyncState,
   getPullCursors,
+  pauseSyncSession,
   prepareVisibleRowsForFullSync,
   recordLocalSyncMutation,
   type CanonicalSyncItem,
-  type SyncFence,
+  type SyncContext,
 } from "../../src/db/sync";
 import { bulkImportVocabulary } from "../../src/db/vocabulary";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
@@ -30,7 +30,7 @@ import { setTestDatabase } from "../setup";
 type DesktopDatabase = typeof import("../../src/db").db;
 
 async function applyPullPage(
-  fence: SyncFence,
+  fence: SyncContext,
   items: CanonicalSyncItem[],
   cursor: number,
   database: DesktopDatabase,
@@ -47,12 +47,14 @@ describe("settings sync durable store", () => {
   let database: DesktopDatabase;
 
   beforeEach(async () => {
+    pauseSyncSession();
     testDb = await createTestDatabase();
     database = testDb.db as unknown as DesktopDatabase;
     setTestDatabase(database);
   });
 
   afterEach(async () => {
+    pauseSyncSession();
     await testDb.close();
   });
 
@@ -118,15 +120,13 @@ describe("settings sync durable store", () => {
     const [sidecar] = await database.select().from(syncItemState);
     const [pending] = await database.select().from(syncOutbox);
     expect(sidecar).toMatchObject({
-      accountId: "user-1",
       scopeType: "user",
       scopeId: "user-1",
       collection: "vocabulary",
-      localRowId: row.id,
+      syncId: row.id,
       acceptedSyncVersion: null,
     });
     expect(pending).toMatchObject({
-      accountId: "user-1",
       syncId: sidecar.syncId,
       desiredPayload: { word: "Amical", replacement: null },
       desiredBaseSyncVersion: null,
@@ -148,7 +148,7 @@ describe("settings sync durable store", () => {
     expect(await database.select().from(syncOutbox)).toHaveLength(2);
   });
 
-  it("keeps a changed signed-out key as a local-only adoption candidate", async () => {
+  it("keeps a stable identity when the server wins a signed-out key edit", async () => {
     let fence = await beginUserSyncSession("user-1", database);
     const syncId = "77777777-7777-4777-8777-777777777777";
     await applyPullPage(
@@ -166,7 +166,7 @@ describe("settings sync durable store", () => {
     );
     const [row] = await database.select().from(snippets);
 
-    await fenceSyncSession(database);
+    await clearSyncState(database);
     await database
       .update(snippets)
       .set({ trigger: "local-key", content: "Local" })
@@ -188,14 +188,17 @@ describe("settings sync durable store", () => {
       1,
       database,
     );
-    const rows = await database.select().from(snippets);
-    expect(rows.map((item) => item.trigger).sort()).toEqual([
-      "local-key",
-      "server-key",
+    expect(await database.select().from(syncOutbox)).toEqual([]);
+    expect(await database.select().from(snippets)).toEqual([
+      expect.objectContaining({
+        id: syncId,
+        trigger: "server-key",
+        content: "Server",
+      }),
     ]);
-    expect((await database.select().from(syncOutbox))[0]).toMatchObject({
-      desiredPayload: { trigger: "local-key", content: "Local" },
-      desiredBaseSyncVersion: null,
+    expect((await database.select().from(syncItemState))[0]).toMatchObject({
+      syncId,
+      acceptedSyncVersion: 1,
     });
   });
 
@@ -217,7 +220,7 @@ describe("settings sync durable store", () => {
     );
     const [row] = await database.select().from(snippets);
 
-    await fenceSyncSession(database);
+    await clearSyncState(database);
     await database
       .update(snippets)
       .set({ content: "Local" })
@@ -226,7 +229,11 @@ describe("settings sync durable store", () => {
     fence = await beginUserSyncSession("user-1", database);
     await prepareVisibleRowsForFullSync(fence, database);
     await adoptVisibleRows(fence, database);
-    expect(await database.select().from(syncOutbox)).toEqual([]);
+    expect((await database.select().from(syncOutbox))[0]).toMatchObject({
+      syncId,
+      desiredBaseSyncVersion: null,
+      desiredPayload: { trigger: "sig", content: "Local" },
+    });
     await applyPullPage(
       fence,
       [
@@ -339,7 +346,7 @@ describe("settings sync durable store", () => {
     });
   });
 
-  it("assigns a new identity to an unbound row in a changed user scope", async () => {
+  it("reuses the row UUID after clearing the previous user's sync state", async () => {
     const syncId = "99999999-9999-4999-8999-999999999999";
     let fence = await beginUserSyncSession("user-2", database);
     await applyPullPage(
@@ -357,34 +364,33 @@ describe("settings sync durable store", () => {
     );
     const [row] = await database.select().from(snippets);
 
-    await fenceSyncSession(database);
-    await beginUserSyncSession("user-1", database);
-    await database
-      .update(syncItemState)
-      .set({ localRowId: null })
-      .where(eq(syncItemState.accountId, "user-2"));
+    await clearSyncState(database);
+    fence = await beginUserSyncSession("user-1", database);
     await database
       .update(snippets)
       .set({ content: "Visible device row" })
       .where(eq(snippets.id, row.id));
-
-    await fenceSyncSession(database);
-    fence = await beginUserSyncSession("user-2", database);
     await prepareVisibleRowsForFullSync(fence, database);
     await adoptVisibleRows(fence, database);
 
     const [pending] = await database.select().from(syncOutbox);
     expect(pending).toMatchObject({
-      accountId: "user-2",
+      syncId,
       desiredPayload: { trigger: "sig", content: "Visible device row" },
       desiredBaseSyncVersion: null,
     });
-    expect(pending.syncId).not.toBe(syncId);
     const [head] = await capturePushHeads(fence, database);
     expect(head.headExpectedSyncVersion).toBeNull();
+    expect(head.syncId).toBe(row.id);
+    expect(await database.select().from(syncItemState)).toEqual([
+      expect.objectContaining({
+        syncId,
+        acceptedSyncVersion: null,
+      }),
+    ]);
   });
 
-  it("keeps identity when an authenticated delete lands before the login pull", async () => {
+  it("lets the server restore a fresh-login deletion that was not pushed", async () => {
     let fence = await beginUserSyncSession("user-1", database);
     const syncId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     await applyPullPage(
@@ -402,7 +408,7 @@ describe("settings sync durable store", () => {
     );
     const [row] = await database.select().from(snippets);
 
-    await fenceSyncSession(database);
+    await clearSyncState(database);
     await database
       .update(snippets)
       .set({ content: "Signed out" })
@@ -428,16 +434,17 @@ describe("settings sync durable store", () => {
       database,
     );
 
-    expect(await database.select().from(snippets)).toEqual([]);
-    const [head] = await capturePushHeads(fence, database);
-    expect(head).toMatchObject({
-      syncId,
-      headPayload: null,
-      headExpectedSyncVersion: 1,
-    });
+    expect(await database.select().from(snippets)).toEqual([
+      expect.objectContaining({
+        id: syncId,
+        trigger: "sig",
+        content: "Server",
+      }),
+    ]);
+    expect(await database.select().from(syncOutbox)).toEqual([]);
   });
 
-  it("keeps the latest visible state when durable work predates logout", async () => {
+  it("rebuilds fresh login work from the visible row after logout", async () => {
     let fence = await beginUserSyncSession("user-1", database);
     const syncId = "99999999-9999-4999-8999-999999999999";
     await applyPullPage(
@@ -465,7 +472,7 @@ describe("settings sync durable store", () => {
       });
     });
 
-    await fenceSyncSession(database);
+    await clearSyncState(database);
     await database
       .update(snippets)
       .set({ content: "Latest" })
@@ -473,6 +480,12 @@ describe("settings sync durable store", () => {
 
     fence = await beginUserSyncSession("user-1", database);
     await prepareVisibleRowsForFullSync(fence, database);
+    await adoptVisibleRows(fence, database);
+    expect((await database.select().from(syncOutbox))[0]).toMatchObject({
+      syncId,
+      desiredPayload: { trigger: "sig", content: "Latest" },
+      desiredBaseSyncVersion: null,
+    });
     await applyPullPage(
       fence,
       [
@@ -487,17 +500,11 @@ describe("settings sync durable store", () => {
       database,
     );
 
-    const [head] = await capturePushHeads(fence, database);
-    expect(head).toMatchObject({
-      syncId,
-      headPayload: { trigger: "sig", content: "Latest" },
-      headExpectedSyncVersion: 1,
-      headSequence: 1,
-    });
-    expect((await database.select().from(snippets))[0].content).toBe("Latest");
+    expect(await database.select().from(syncOutbox)).toEqual([]);
+    expect((await database.select().from(snippets))[0].content).toBe("Server");
   });
 
-  it("turns durable work into a tombstone when the row was deleted signed out", async () => {
+  it("discards a pending deletion on logout", async () => {
     let fence = await beginUserSyncSession("user-1", database);
     const syncId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     await applyPullPage(
@@ -525,7 +532,7 @@ describe("settings sync durable store", () => {
       });
     });
 
-    await fenceSyncSession(database);
+    await clearSyncState(database);
     await database.delete(snippets).where(eq(snippets.id, row.id));
 
     fence = await beginUserSyncSession("user-1", database);
@@ -544,17 +551,13 @@ describe("settings sync durable store", () => {
       database,
     );
 
-    expect(await database.select().from(snippets)).toEqual([]);
-    const [head] = await capturePushHeads(fence, database);
-    expect(head).toMatchObject({
-      syncId,
-      headPayload: null,
-      headExpectedSyncVersion: 1,
-      headSequence: 1,
-    });
+    expect(await database.select().from(snippets)).toEqual([
+      expect.objectContaining({ id: syncId, content: "Server" }),
+    ]);
+    expect(await database.select().from(syncOutbox)).toEqual([]);
   });
 
-  it("turns a clean synced row into a tombstone when it was deleted signed out", async () => {
+  it("does not infer a tombstone from local absence after logout", async () => {
     let fence = await beginUserSyncSession("user-1", database);
     const syncId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     await applyPullPage(
@@ -572,7 +575,7 @@ describe("settings sync durable store", () => {
     );
     const [row] = await database.select().from(snippets);
 
-    await fenceSyncSession(database);
+    await clearSyncState(database);
     await database.delete(snippets).where(eq(snippets.id, row.id));
 
     fence = await beginUserSyncSession("user-1", database);
@@ -591,14 +594,10 @@ describe("settings sync durable store", () => {
       database,
     );
 
-    expect(await database.select().from(snippets)).toEqual([]);
-    const [head] = await capturePushHeads(fence, database);
-    expect(head).toMatchObject({
-      syncId,
-      headPayload: null,
-      headExpectedSyncVersion: 1,
-      headSequence: 1,
-    });
+    expect(await database.select().from(snippets)).toEqual([
+      expect.objectContaining({ id: syncId, content: "Server" }),
+    ]);
+    expect(await database.select().from(syncOutbox)).toEqual([]);
   });
 
   it("freezes a head and chains a newer tail from that exact base", async () => {
@@ -878,7 +877,7 @@ describe("settings sync durable store", () => {
   });
 
   it("orders a delete before recreating the same key with a new identity", async () => {
-    let fence = await beginUserSyncSession("user-1", database);
+    const fence = await beginUserSyncSession("user-1", database);
     const syncId = "55555555-5555-4555-8555-555555555555";
     await applyPullPage(
       fence,
@@ -899,21 +898,19 @@ describe("settings sync durable store", () => {
       await tx.delete(snippets).where(eq(snippets.id, original.id));
     });
 
-    await fenceSyncSession(database);
     const [recreated] = await database
       .insert(snippets)
       .values({ trigger: "sig", content: "recreated" })
       .returning();
-    fence = await beginUserSyncSession("user-1", database);
     await adoptVisibleRows(fence, database);
 
     const sidecars = await database.select().from(syncItemState);
     expect(sidecars).toHaveLength(2);
     const recreatedSidecar = sidecars.find(
-      (sidecar) => sidecar.localRowId === recreated.id,
+      (sidecar) => sidecar.syncId === recreated.id,
     );
-    expect(recreatedSidecar?.syncId).toBeDefined();
-    expect(recreatedSidecar?.syncId).not.toBe(syncId);
+    expect(recreatedSidecar?.syncId).toBe(recreated.id);
+    expect(recreated.id).not.toBe(syncId);
 
     const heads = await capturePushHeads(fence, database);
     expect(heads).toEqual([
@@ -973,7 +970,6 @@ describe("settings sync durable store", () => {
     expect(await database.select().from(syncOutbox)).toEqual([]);
     expect((await database.select().from(syncItemState))[0]).toMatchObject({
       syncId,
-      localRowId: null,
       acceptedSyncVersion: 2,
       acceptedPayload: null,
     });
@@ -1018,17 +1014,16 @@ describe("settings sync durable store", () => {
     expect(
       sidecars.find((sidecar) => sidecar.syncId === head.syncId),
     ).toMatchObject({
-      localRowId: null,
       acceptedSyncVersion: null,
       acceptedPayload: null,
     });
     expect(
       sidecars.find((sidecar) => sidecar.syncId === winnerSyncId),
     ).toMatchObject({
-      localRowId: canonicalRow.id,
       acceptedSyncVersion: 1,
       acceptedPayload: { trigger: "sig", content: "Server" },
     });
+    expect(canonicalRow.id).toBe(winnerSyncId);
   });
 
   it("keeps a newer tail after its head loses a duplicate-key conflict", async () => {
@@ -1095,7 +1090,7 @@ describe("settings sync durable store", () => {
     });
   });
 
-  it("fences late responses and never retargets another account's outbox", async () => {
+  it("ignores an old account response after sync state is reset", async () => {
     const [row] = await database
       .insert(snippets)
       .values({ trigger: "x", content: "device" })
@@ -1104,7 +1099,7 @@ describe("settings sync durable store", () => {
     await adoptVisibleRows(userOne, database);
     const [oldHead] = await capturePushHeads(userOne, database);
 
-    await fenceSyncSession(database);
+    await clearSyncState(database);
     const userTwo = await beginUserSyncSession("user-2", database);
     await adoptVisibleRows(userTwo, database);
 
@@ -1125,25 +1120,17 @@ describe("settings sync durable store", () => {
     ).toBe(false);
 
     const outboxes = await database.select().from(syncOutbox);
-    expect(outboxes.map((pending) => pending.accountId).sort()).toEqual([
-      "user-1",
-      "user-2",
-    ]);
+    expect(outboxes.map((pending) => pending.scopeId)).toEqual(["user-2"]);
     const [userTwoHead] = await capturePushHeads(userTwo, database);
     expect(userTwoHead.accountId).toBe("user-2");
-    expect(userTwoHead.syncId).not.toBe(oldHead.syncId);
+    expect(userTwoHead.syncId).toBe(oldHead.syncId);
 
     const [client] = await database.select().from(syncClientState);
     const cursors = await database
       .select()
       .from(syncCollectionState)
-      .where(
-        and(
-          eq(syncCollectionState.accountId, "user-2"),
-          eq(syncCollectionState.scopeId, "user-2"),
-        ),
-      );
-    expect(client.syncUserScopeId).toBe("user-2");
+      .where(eq(syncCollectionState.scopeId, "user-2"));
+    expect(client.lastOutboxSequence).toBe(1);
     expect(cursors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ collection: "vocabulary", cursor: 0 }),

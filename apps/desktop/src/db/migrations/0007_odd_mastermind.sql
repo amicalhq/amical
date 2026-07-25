@@ -1,28 +1,89 @@
+CREATE TABLE `__new_vocabulary` (
+	`id` text PRIMARY KEY NOT NULL,
+	`word` text NOT NULL,
+	`replacement_word` text,
+	`is_replacement` integer DEFAULT false,
+	`date_added` integer DEFAULT (unixepoch()) NOT NULL,
+	`usage_count` integer DEFAULT 0,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch()) NOT NULL
+);
+--> statement-breakpoint
+INSERT INTO `__new_vocabulary` (
+	`id`,
+	`word`,
+	`replacement_word`,
+	`is_replacement`,
+	`date_added`,
+	`usage_count`,
+	`created_at`,
+	`updated_at`
+)
+SELECT
+	lower(
+		substr(printf('%016x', `id`), -8) || '-' ||
+		hex(randomblob(2)) || '-4' ||
+		substr(hex(randomblob(2)), 2) || '-' ||
+		substr('89ab', abs(random() % 4) + 1, 1) ||
+		substr(hex(randomblob(2)), 2) || '-' ||
+		hex(randomblob(6))
+	),
+	`word`,
+	`replacement_word`,
+	`is_replacement`,
+	`date_added`,
+	`usage_count`,
+	`created_at`,
+	`updated_at`
+FROM `vocabulary`;--> statement-breakpoint
+DROP TABLE `vocabulary`;--> statement-breakpoint
+ALTER TABLE `__new_vocabulary` RENAME TO `vocabulary`;--> statement-breakpoint
+CREATE UNIQUE INDEX `vocabulary_word_unique` ON `vocabulary` (`word`);--> statement-breakpoint
+CREATE TABLE `__new_snippets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`trigger` text NOT NULL,
+	`content` text NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch()) NOT NULL
+);
+--> statement-breakpoint
+INSERT INTO `__new_snippets` (`id`, `trigger`, `content`, `created_at`, `updated_at`)
+SELECT
+	lower(
+		substr(printf('%016x', `id`), -8) || '-' ||
+		hex(randomblob(2)) || '-4' ||
+		substr(hex(randomblob(2)), 2) || '-' ||
+		substr('89ab', abs(random() % 4) + 1, 1) ||
+		substr(hex(randomblob(2)), 2) || '-' ||
+		hex(randomblob(6))
+	),
+	`trigger`,
+	`content`,
+	`created_at`,
+	`updated_at`
+FROM `snippets`;--> statement-breakpoint
+DROP TABLE `snippets`;--> statement-breakpoint
+ALTER TABLE `__new_snippets` RENAME TO `snippets`;--> statement-breakpoint
+CREATE UNIQUE INDEX `snippets_trigger_unique` ON `snippets` (`trigger`);--> statement-breakpoint
 CREATE TABLE `sync_client_state` (
 	`id` integer PRIMARY KEY NOT NULL,
-	`sync_user_scope_id` text,
-	`session_epoch` integer DEFAULT 0 NOT NULL,
 	`last_outbox_sequence` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-INSERT INTO `sync_client_state` (`id`, `sync_user_scope_id`, `session_epoch`, `last_outbox_sequence`)
-VALUES (1, NULL, 0, 0);
+INSERT INTO `sync_client_state` (`id`, `last_outbox_sequence`)
+VALUES (1, 0);
 --> statement-breakpoint
 CREATE TABLE `sync_item_state` (
-	`account_id` text NOT NULL,
 	`scope_type` text NOT NULL,
 	`scope_id` text NOT NULL,
 	`collection` text NOT NULL,
 	`sync_id` text NOT NULL,
-	`local_row_id` integer,
 	`accepted_sync_version` integer,
 	`accepted_payload` text,
-	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`, `collection`, `sync_id`)
+	PRIMARY KEY(`scope_type`, `scope_id`, `collection`, `sync_id`)
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `sync_item_state_local_row_idx` ON `sync_item_state` (`account_id`,`scope_type`,`scope_id`,`collection`,`local_row_id`);--> statement-breakpoint
 CREATE TABLE `sync_outbox` (
-	`account_id` text NOT NULL,
 	`scope_type` text NOT NULL,
 	`scope_id` text NOT NULL,
 	`collection` text NOT NULL,
@@ -36,22 +97,13 @@ CREATE TABLE `sync_outbox` (
 	`head_payload` text,
 	`head_expected_sync_version` integer,
 	`head_sequence` integer,
-	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`, `collection`, `sync_id`)
-);
---> statement-breakpoint
-CREATE TABLE `sync_scope_state` (
-	`account_id` text NOT NULL,
-	`scope_type` text NOT NULL,
-	`scope_id` text NOT NULL,
-	`response_epoch` integer DEFAULT 0 NOT NULL,
-	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`)
+	PRIMARY KEY(`scope_type`, `scope_id`, `collection`, `sync_id`)
 );
 --> statement-breakpoint
 CREATE TABLE `sync_collection_state` (
-	`account_id` text NOT NULL,
 	`scope_type` text NOT NULL,
 	`scope_id` text NOT NULL,
 	`collection` text NOT NULL,
 	`cursor` integer DEFAULT 0 NOT NULL,
-	PRIMARY KEY(`account_id`, `scope_type`, `scope_id`, `collection`)
+	PRIMARY KEY(`scope_type`, `scope_id`, `collection`)
 );

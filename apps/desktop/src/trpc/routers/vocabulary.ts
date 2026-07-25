@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SettingsSyncUuidSchema } from "@amical/types";
 import { createRouter, procedure } from "../trpc";
 import {
   getVocabulary,
@@ -117,7 +118,7 @@ export const vocabularyRouter = createRouter({
 
   // Get vocabulary by ID
   getVocabularyById: procedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: SettingsSyncUuidSchema }))
     .query(async ({ input }) => {
       return await getVocabularyById(input.id);
     }),
@@ -159,7 +160,7 @@ export const vocabularyRouter = createRouter({
   updateVocabulary: procedure
     .input(
       z.object({
-        id: z.number(),
+        id: SettingsSyncUuidSchema,
         data: UpdateVocabularySchema,
       }),
     )
@@ -169,7 +170,7 @@ export const vocabularyRouter = createRouter({
 
   // Delete vocabulary word
   deleteVocabulary: procedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: SettingsSyncUuidSchema }))
     .mutation(async ({ input }) => {
       return await deleteVocabulary(input.id);
     }),
