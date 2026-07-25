@@ -21,9 +21,6 @@ typealias AXElementInfo = FocusedElement
 /// Maps to the generated `Metrics` type (ExtractionMetrics in TypeScript)
 typealias ExtractionMetrics = Metrics
 
-/// Maps to the generated `The0` enum (ExtractionMethod in TypeScript)
-typealias ExtractionMethod = The0
-
 /// Maps to the generated `SelectionRange` type (same name)
 typealias AccessibilitySelectionRange = SelectionRange
 

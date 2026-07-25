@@ -4,7 +4,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { constructFormatterPrompt } from "./formatter-prompt";
 import { extractFormattedText } from "./extract-formatted-text";
 
-import { CoreMessage, generateText } from "ai";
+import { generateText } from "ai";
 import { getUserAgent } from "../../../utils/http-client";
 
 export class OpenRouterProvider implements FormattingProvider {
@@ -36,32 +36,24 @@ export class OpenRouterProvider implements FormattingProvider {
 
       // Build user prompt with context
       const userPromptContent = userPrompt(text);
-      const messages: CoreMessage[] = [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: userPromptContent,
-        },
-      ];
       const requestPayload = {
         provider: this.name,
         endpoint: this.endpoint,
         model: this.model,
         temperature: 0.1,
         maxTokens: 5000,
-        messages,
+        instructions: systemPrompt,
+        prompt: userPromptContent,
       };
 
       logger.pipeline.debug("Formatting LLM request payload", requestPayload);
 
       const { text: aiResponse } = await generateText({
         model: this.provider(this.model),
-        messages: requestPayload.messages,
+        instructions: requestPayload.instructions,
+        prompt: requestPayload.prompt,
         temperature: requestPayload.temperature,
-        maxTokens: requestPayload.maxTokens,
+        maxOutputTokens: requestPayload.maxTokens,
       });
 
       logger.pipeline.debug("Formatting LLM raw response", {

@@ -118,13 +118,13 @@ export interface OnboardingFeatureFlags {
 // Zod Validation Schemas
 // ============================================================================
 
-export const FeatureInterestSchema = z.nativeEnum(FeatureInterest);
+export const FeatureInterestSchema = z.enum(FeatureInterest);
 
-export const DiscoverySourceSchema = z.nativeEnum(DiscoverySource);
+export const DiscoverySourceSchema = z.enum(DiscoverySource);
 
-export const ModelTypeSchema = z.nativeEnum(ModelType);
+export const ModelTypeSchema = z.enum(ModelType);
 
-export const OnboardingScreenSchema = z.nativeEnum(OnboardingScreen);
+export const OnboardingScreenSchema = z.enum(OnboardingScreen);
 
 export const OnboardingStateSchema = z.object({
   completedVersion: z.number().min(1),

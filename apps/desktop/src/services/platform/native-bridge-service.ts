@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { app as electronApp } from "electron";
 import split2 from "split2";
 import { v4 as uuid } from "uuid";
-import type { ZodTypeAny } from "zod";
+import type { ZodType } from "zod";
 import { getNativeHelperName, getNativeHelperDir } from "../../utils/platform";
 import { extractHostnameFromBrowserUrl } from "../../utils/url";
 
@@ -120,7 +120,7 @@ type PendingRpc = {
   reject: (error: Error) => void;
 };
 
-const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodTypeAny> = {
+const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodType> = {
   getAccessibilityTreeDetails: GetAccessibilityTreeDetailsResultSchema,
   getAccessibilityContext: GetAccessibilityContextResultSchema,
   getAccessibilityStatus: GetAccessibilityStatusResultSchema,

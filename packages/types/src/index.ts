@@ -19,3 +19,6 @@ export * from "./schemas/events/helper-events.js";
 
 // Remote config (server-controlled surfaces + future config domains)
 export * from "./schemas/remote-config.js";
+
+// Settings sync HTTP contract
+export * from "./schemas/settings-sync.js";

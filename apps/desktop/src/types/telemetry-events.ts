@@ -11,7 +11,6 @@
 
 import { z } from "zod";
 import { ErrorCodes, type DictationErrorCode, type ErrorCode } from "./error";
-import type { WidgetNotificationType } from "./widget-notification";
 
 // ============================================================================
 // Onboarding Events
@@ -161,10 +160,7 @@ export interface CloudGrpcFallbackEvent {
  * Fired when a widget notification/toast is shown to the user
  */
 export const widgetNotificationShownSchema = z.object({
-  notification_type: z.enum<
-    WidgetNotificationType,
-    [WidgetNotificationType, ...WidgetNotificationType[]]
-  >([
+  notification_type: z.enum([
     "no_audio",
     "empty_transcript",
     "transcription_failed",
@@ -172,10 +168,7 @@ export const widgetNotificationShownSchema = z.object({
     "recording_auto_stopped",
   ]),
   error_code: z
-    .enum<
-      ErrorCode,
-      [ErrorCode, ...ErrorCode[]]
-    >(Object.values(ErrorCodes) as [ErrorCode, ...ErrorCode[]])
+    .enum(Object.values(ErrorCodes) as [ErrorCode, ...ErrorCode[]])
     .optional(),
   trace_id: z.string().optional(),
 });

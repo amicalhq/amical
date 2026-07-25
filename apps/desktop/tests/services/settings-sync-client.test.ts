@@ -244,6 +244,57 @@ describe("SettingsSyncClient", () => {
     ).rejects.toThrow("Empty pull");
   });
 
+  it("applies Axis's null default for an omitted vocabulary replacement", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        scopeType: "user",
+        scopeId: "user-1",
+        collections: [
+          {
+            collection: "vocabulary",
+            items: [
+              {
+                collection: "vocabulary",
+                syncId: SYNC_ID,
+                syncVersion: 1,
+                payload: { word: "Amical" },
+              },
+            ],
+            cursor: 1,
+            hasMore: false,
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      client.pull(
+        "user",
+        "user-1",
+        [{ collection: "vocabulary", cursor: 0 }],
+        200,
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({
+      collections: [
+        {
+          collection: "vocabulary",
+          items: [
+            {
+              collection: "vocabulary",
+              syncId: SYNC_ID,
+              syncVersion: 1,
+              payload: { word: "Amical", replacement: null },
+            },
+          ],
+          cursor: 1,
+          hasMore: false,
+        },
+      ],
+    });
+  });
+
   it("rejects a partial push response as a possible lost acknowledgement", async () => {
     fetchMock.mockResolvedValue({
       ok: true,

@@ -1,4 +1,15 @@
-import { z } from "zod";
+import {
+  SETTINGS_SYNC_COLLECTIONS,
+  SettingsSyncBootstrapResponseSchema,
+  SettingsSyncCollectionSchema,
+  SettingsSyncPullRequestSchema,
+  SettingsSyncPullResponseSchema,
+  SettingsSyncPushRequestSchema,
+  SettingsSyncPushResponseSchema,
+  SnippetSyncPayloadSchema,
+  VocabularySyncPayloadSchema,
+  type SettingsSyncCanonicalItem,
+} from "@amical/types";
 
 import type { AuthService } from "./auth-service";
 import {
@@ -6,11 +17,6 @@ import {
   getCoreApiUrl,
   getUserAgent,
 } from "../utils/http-client";
-import {
-  axisSyncKeySchema,
-  axisSyncOptionalTextSchema,
-  axisSyncRequiredTextSchema,
-} from "../db/sync-payload";
 import type {
   CanonicalSyncItem,
   PullCollectionCursor,
@@ -18,119 +24,8 @@ import type {
 } from "../db/sync";
 import type { SyncCollection, SyncPayload, SyncScopeType } from "../db/schema";
 
-const uuidSchema = z
-  .string()
-  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-const positiveVersionSchema = z.number().int().positive().safe();
-const cursorSchema = z.number().int().nonnegative().safe();
-export const DESKTOP_SYNC_COLLECTIONS = [
-  "vocabulary",
-  "snippet",
-] as const satisfies readonly SyncCollection[];
-const collectionSchema = z.enum(DESKTOP_SYNC_COLLECTIONS);
-const scopeTypeSchema = z.enum(["user", "org"]);
-
-const vocabularyPayloadSchema = z
-  .object({
-    word: axisSyncKeySchema,
-    replacement: axisSyncOptionalTextSchema.nullable(),
-  })
-  .strict();
-const snippetPayloadSchema = z
-  .object({
-    trigger: axisSyncKeySchema,
-    content: axisSyncRequiredTextSchema,
-  })
-  .strict();
-
-const canonicalEnvelopeSchema = z
-  .object({
-    collection: z.string().min(1),
-    syncId: uuidSchema,
-    syncVersion: positiveVersionSchema,
-    payload: z.unknown().nullable(),
-  })
-  .strip();
-
-const bootstrapSchema = z
-  .object({
-    scopes: z.array(
-      z
-        .object({
-          scopeType: scopeTypeSchema,
-          scopeId: z.string().min(1),
-          role: z.string().nullable(),
-          canWrite: z.boolean(),
-          latestSyncVersion: cursorSchema,
-        })
-        .strip(),
-    ),
-    capabilities: z
-      .object({
-        collections: z.array(z.string().min(1)),
-        maxPushBatch: z.number().int().positive().max(100),
-        maxPushBytes: z.number().int().positive(),
-        defaultPullLimit: z.number().int().positive(),
-        maxPullLimit: z.number().int().positive(),
-        maxPullBytes: z.number().int().positive(),
-        oneScopePerPush: z.literal(true),
-      })
-      .strip(),
-  })
-  .strip();
-
-const rawPullCollectionSchema = z
-  .object({
-    collection: z.string().min(1),
-    items: z.array(canonicalEnvelopeSchema),
-    cursor: cursorSchema,
-    hasMore: z.boolean(),
-  })
-  .strip();
-
-const rawPullSchema = z
-  .object({
-    scopeType: scopeTypeSchema,
-    scopeId: z.string().min(1),
-    collections: z.array(rawPullCollectionSchema),
-  })
-  .strip();
-
-const rawPushResultSchema = z.discriminatedUnion("status", [
-  z
-    .object({
-      status: z.literal("ok"),
-      syncId: uuidSchema,
-      syncVersion: positiveVersionSchema,
-      applied: z.boolean(),
-    })
-    .strip(),
-  z
-    .object({
-      status: z.literal("conflict"),
-      reason: z.enum(["version_conflict", "duplicate_key_conflict"]),
-      syncId: uuidSchema,
-      canonical: canonicalEnvelopeSchema.nullable(),
-      conflictingItem: canonicalEnvelopeSchema.optional(),
-    })
-    .strip(),
-  z
-    .object({
-      status: z.literal("error"),
-      syncId: uuidSchema.nullable(),
-      reason: z.enum([
-        "unauthorized_scope",
-        "invalid_payload",
-        "invalid_mutation",
-      ]),
-      message: z.string(),
-    })
-    .strip(),
-]);
-
-const rawPushSchema = z
-  .object({ results: z.array(rawPushResultSchema) })
-  .strip();
+export const DESKTOP_SYNC_COLLECTIONS =
+  SETTINGS_SYNC_COLLECTIONS satisfies readonly SyncCollection[];
 
 export interface SyncBootstrap {
   collections: SyncCollection[];
@@ -168,17 +63,15 @@ export class SettingsSyncHttpError extends Error {
   }
 }
 
-function parseCanonicalItem(
-  raw: z.infer<typeof canonicalEnvelopeSchema>,
-): CanonicalSyncItem {
-  const collection = collectionSchema.parse(raw.collection);
+function parseCanonicalItem(raw: SettingsSyncCanonicalItem): CanonicalSyncItem {
+  const collection = SettingsSyncCollectionSchema.parse(raw.collection);
   if (raw.payload === null) {
     return { ...raw, collection, payload: null };
   }
   const payload =
     collection === "vocabulary"
-      ? vocabularyPayloadSchema.parse(raw.payload)
-      : snippetPayloadSchema.parse(raw.payload);
+      ? VocabularySyncPayloadSchema.parse(raw.payload)
+      : SnippetSyncPayloadSchema.parse(raw.payload);
   return { ...raw, collection, payload };
 }
 
@@ -199,7 +92,7 @@ export class SettingsSyncClient {
     accountId: string,
     signal: AbortSignal,
   ): Promise<SyncBootstrap> {
-    const body = bootstrapSchema.parse(
+    const body = SettingsSyncBootstrapResponseSchema.parse(
       await this.requestJson("/apps/v1/sync/bootstrap", {}, signal),
     );
     const userScope = body.scopes.find(
@@ -231,21 +124,23 @@ export class SettingsSyncClient {
     limit: number,
     signal: AbortSignal,
   ): Promise<SyncPullPage> {
+    const request = SettingsSyncPullRequestSchema.parse({
+      scopeType,
+      scopeId,
+      collections: cursors.map(({ collection, cursor }) => ({
+        collection,
+        cursor,
+        limit,
+      })),
+    });
     const url = getCoreApiUrl("/apps/v1/sync/pull");
-    url.searchParams.set("scopeType", scopeType);
-    url.searchParams.set("scopeId", scopeId);
-    url.searchParams.set(
-      "collections",
-      JSON.stringify(
-        cursors.map(({ collection, cursor }) => ({
-          collection,
-          cursor,
-          limit,
-        })),
-      ),
-    );
+    url.searchParams.set("scopeType", request.scopeType);
+    url.searchParams.set("scopeId", request.scopeId);
+    url.searchParams.set("collections", JSON.stringify(request.collections));
 
-    const raw = rawPullSchema.parse(await this.requestJson(url, {}, signal));
+    const raw = SettingsSyncPullResponseSchema.parse(
+      await this.requestJson(url, {}, signal),
+    );
     if (raw.scopeType !== scopeType || raw.scopeId !== scopeId) {
       throw new Error("Pull response scope does not match request");
     }
@@ -262,7 +157,9 @@ export class SettingsSyncClient {
 
     const pageByCollection = new Map<SyncCollection, SyncPullCollectionPage>();
     for (const block of raw.collections) {
-      const collection = collectionSchema.safeParse(block.collection);
+      const collection = SettingsSyncCollectionSchema.safeParse(
+        block.collection,
+      );
       if (!collection.success || !cursorByCollection.has(collection.data)) {
         throw new Error("Pull response contains an unrequested collection");
       }
@@ -323,13 +220,14 @@ export class SettingsSyncClient {
     mutations: SyncPushMutation[],
     signal: AbortSignal,
   ): Promise<PushSyncResult[]> {
-    const raw = rawPushSchema.parse(
+    const request = SettingsSyncPushRequestSchema.parse({ mutations });
+    const raw = SettingsSyncPushResponseSchema.parse(
       await this.requestJson(
         "/apps/v1/sync/push",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mutations }),
+          body: JSON.stringify(request),
         },
         signal,
       ),
@@ -339,7 +237,7 @@ export class SettingsSyncClient {
     }
 
     return raw.results.map((result, index) => {
-      const mutation = mutations[index];
+      const mutation = request.mutations[index];
       if (result.syncId !== mutation.syncId) {
         throw new Error("Push response result identity does not match request");
       }

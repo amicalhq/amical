@@ -1,6 +1,6 @@
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import path from "path";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
 
 // Import schemas from the types package
 import { RpcRequestSchema } from "../src/schemas/rpc/request.js";
@@ -183,7 +183,14 @@ schemasToGenerate.forEach(({ zod, name, category }) => {
     .replace(/^-/, ""); // Remove leading dash if first letter was uppercase
 
   const outputPath = path.join(schemaOutputDir, `${kebabCaseName}.schema.json`);
-  const jsonSchema = zodToJsonSchema(zod, name);
+  const jsonSchema = z.toJSONSchema(zod, {
+    target: "draft-7",
+    io: "input",
+  });
+  jsonSchema.title = `${name}Schema`;
+  if (jsonSchema.type === "object") {
+    jsonSchema.additionalProperties = false;
+  }
 
   writeFileSync(outputPath, JSON.stringify(jsonSchema, null, 2));
   console.log(`Generated JSON schema for ${name} at ${outputPath}`);

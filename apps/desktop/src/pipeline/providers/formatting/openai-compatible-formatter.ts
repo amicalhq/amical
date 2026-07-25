@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { CoreMessage, generateText } from "ai";
+import { generateText } from "ai";
 import { FormattingProvider, FormatParams } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { getUserAgent } from "../../../utils/http-client";
@@ -21,7 +21,6 @@ export class OpenAICompatibleFormatter implements FormattingProvider {
     this.provider = createOpenAI({
       apiKey,
       baseURL,
-      compatibility: "compatible",
       name: "openai-compatible",
       headers: {
         "User-Agent": getUserAgent(),
@@ -34,32 +33,24 @@ export class OpenAICompatibleFormatter implements FormattingProvider {
       const { text, context } = params;
       const { systemPrompt, userPrompt } = constructFormatterPrompt(context);
       const userPromptContent = userPrompt(text);
-      const messages: CoreMessage[] = [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: userPromptContent,
-        },
-      ];
       const requestPayload = {
         provider: this.name,
         endpoint: `${this.baseURL}/chat/completions`,
         model: this.model,
         temperature: 0.1,
         maxTokens: 5000,
-        messages,
+        instructions: systemPrompt,
+        prompt: userPromptContent,
       };
 
       logger.pipeline.debug("Formatting LLM request payload", requestPayload);
 
       const { text: aiResponse } = await generateText({
-        model: this.provider(this.model),
-        messages: requestPayload.messages,
+        model: this.provider.chat(this.model),
+        instructions: requestPayload.instructions,
+        prompt: requestPayload.prompt,
         temperature: requestPayload.temperature,
-        maxTokens: requestPayload.maxTokens,
+        maxOutputTokens: requestPayload.maxTokens,
       });
 
       logger.pipeline.debug("Formatting LLM raw response", {

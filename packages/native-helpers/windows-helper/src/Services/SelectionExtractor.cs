@@ -68,7 +68,7 @@ namespace WindowsHelper.Services
                         PostSelectionText = "",
                         IsEditable = true,
                         IsPlaceholder = true,
-                        ExtractionMethod = The0.TextMarkerRange
+                        ExtractionMethod = ExtractionMethod.TextMarkerRange
                     }.Build();
                 }
             }
@@ -120,7 +120,7 @@ namespace WindowsHelper.Services
                     builder.FullContent = result.FullContent;
                     builder.HasMultipleRanges = result.HasMultipleRanges;
                     builder.FullContentTruncated = result.FullContentTruncated;
-                    builder.ExtractionMethod = The0.TextMarkerRange;
+                    builder.ExtractionMethod = ExtractionMethod.TextMarkerRange;
                     builder.IsEditable = focusedIsEditable || IsElementEditable(extractionElement);
                     builder.IsPlaceholder = IsPlaceholderShowing(focusedElement) ||
                                            IsPlaceholderShowing(extractionElement);
@@ -140,9 +140,9 @@ namespace WindowsHelper.Services
             var valueResult = ExtractViaValuePattern(extractionElement);
             if (valueResult != null)
             {
-                metricsBuilder.RecordFallback(The0.ValueAttribute);
+                metricsBuilder.RecordFallback(ExtractionMethod.ValueAttribute);
                 builder.FullContent = valueResult;
-                builder.ExtractionMethod = The0.ValueAttribute;
+                builder.ExtractionMethod = ExtractionMethod.ValueAttribute;
                 builder.IsEditable = focusedIsEditable || IsElementEditable(extractionElement);
                 builder.IsPlaceholder = IsPlaceholderShowing(focusedElement) || IsPlaceholderShowing(extractionElement);
                 // ValuePattern provides no caret/selection info. Leave selection
@@ -652,7 +652,7 @@ namespace WindowsHelper.Services
             {
                 var builder = new TextSelectionBuilder();
                 builder.IsEditable = true;
-                builder.ExtractionMethod = The0.TextMarkerRange;
+                builder.ExtractionMethod = ExtractionMethod.TextMarkerRange;
 
                 // Get content from ValuePattern
                 var valuePattern = editElement.GetCurrentPattern(Constants.UIA_ValuePatternId) as IUIAutomationValuePattern;

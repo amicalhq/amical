@@ -17,7 +17,8 @@ namespace WindowsHelper.Models
         public string? PostSelectionText { get; set; } = null;
         public SelectionRange? SelectionRange { get; set; } = null;
         public bool IsEditable { get; set; } = false;
-        public The0 ExtractionMethod { get; set; } = The0.None;
+        public ExtractionMethod ExtractionMethod { get; set; } =
+            global::WindowsHelper.Models.ExtractionMethod.None;
         public bool HasMultipleRanges { get; set; } = false;
         public bool IsPlaceholder { get; set; } = false;
         public bool IsSecure { get; set; } = false;
@@ -74,7 +75,7 @@ namespace WindowsHelper.Models
         {
             return new TextSelection
             {
-                ExtractionMethod = The0.None,
+                ExtractionMethod = global::WindowsHelper.Models.ExtractionMethod.None,
                 FullContent = null,
                 FullContentTruncated = false,
                 HasMultipleRanges = false,
@@ -110,7 +111,7 @@ namespace WindowsHelper.Models
         /// <summary>
         /// List of fallback methods used (enum values will be serialized)
         /// </summary>
-        public List<The0> FallbacksUsed { get; } = new List<The0>();
+        public List<ExtractionMethod> FallbacksUsed { get; } = new List<ExtractionMethod>();
 
         /// <summary>
         /// List of non-PII error messages
@@ -141,7 +142,7 @@ namespace WindowsHelper.Models
         /// <summary>
         /// Record a fallback method being used.
         /// </summary>
-        public void RecordFallback(The0 method)
+        public void RecordFallback(ExtractionMethod method)
         {
             FallbacksUsed.Add(method);
         }

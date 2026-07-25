@@ -10,7 +10,7 @@ export type GetAccessibilityTreeDetailsParams = z.infer<
 
 // Response result
 export const GetAccessibilityTreeDetailsResultSchema = z.object({
-  tree: z.any(), // Replace with your tree schema once defined
+  tree: z.any().optional(), // Replace with your tree schema once defined
 });
 export type GetAccessibilityTreeDetailsResult = z.infer<
   typeof GetAccessibilityTreeDetailsResultSchema

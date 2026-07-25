@@ -186,7 +186,7 @@ namespace WindowsHelper.Models
         public List<string> Errors { get; set; }
 
         [JsonPropertyName("fallbacksUsed")]
-        public List<The0> FallbacksUsed { get; set; }
+        public List<ExtractionMethod> FallbacksUsed { get; set; }
 
         [JsonPropertyName("textMarkerAttempted")]
         public bool TextMarkerAttempted { get; set; }
@@ -214,7 +214,7 @@ namespace WindowsHelper.Models
     public partial class TextSelection
     {
         [JsonPropertyName("extractionMethod")]
-        public The0 ExtractionMethod { get; set; }
+        public ExtractionMethod ExtractionMethod { get; set; }
 
         [JsonPropertyName("fullContent")]
         public string FullContent { get; set; }
@@ -608,7 +608,7 @@ namespace WindowsHelper.Models
 
     public enum Method { GetAccessibilityContext, GetAccessibilityStatus, GetAccessibilityTreeDetails, GetSelectedTextViaCopy, PasteText, RecheckPressedKeys, RequestAccessibilityPermission, SetAllowInjectedKeys, SetDraftEnterCapture, SetShortcuts, StartRecording, StopRecording };
 
-    public enum The0 { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
+    public enum ExtractionMethod { ClipboardCopy, None, SelectedTextRange, SelectedTextRanges, StringForRange, TextMarkerRange, ValueAttribute };
 
     public enum SchemaVersion { The20 };
 
@@ -787,7 +787,7 @@ namespace WindowsHelper.Models
             Converters =
             {
                 MethodConverter.Singleton,
-                The0Converter.Singleton,
+                ExtractionMethodConverter.Singleton,
                 SchemaVersionConverter.Singleton,
                 KeyDownEventTypeConverter.Singleton,
                 KeyUpEventTypeConverter.Singleton,
@@ -884,63 +884,63 @@ namespace WindowsHelper.Models
         public static readonly MethodConverter Singleton = new MethodConverter();
     }
 
-    internal class The0Converter : JsonConverter<The0>
+    internal class ExtractionMethodConverter : JsonConverter<ExtractionMethod>
     {
-        public override bool CanConvert(Type t) => t == typeof(The0);
+        public override bool CanConvert(Type t) => t == typeof(ExtractionMethod);
 
-        public override The0 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override ExtractionMethod Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             var value = reader.GetString();
             switch (value)
             {
                 case "clipboardCopy":
-                    return The0.ClipboardCopy;
+                    return ExtractionMethod.ClipboardCopy;
                 case "none":
-                    return The0.None;
+                    return ExtractionMethod.None;
                 case "selectedTextRange":
-                    return The0.SelectedTextRange;
+                    return ExtractionMethod.SelectedTextRange;
                 case "selectedTextRanges":
-                    return The0.SelectedTextRanges;
+                    return ExtractionMethod.SelectedTextRanges;
                 case "stringForRange":
-                    return The0.StringForRange;
+                    return ExtractionMethod.StringForRange;
                 case "textMarkerRange":
-                    return The0.TextMarkerRange;
+                    return ExtractionMethod.TextMarkerRange;
                 case "valueAttribute":
-                    return The0.ValueAttribute;
+                    return ExtractionMethod.ValueAttribute;
             }
-            throw new Exception("Cannot unmarshal type The0");
+            throw new Exception("Cannot unmarshal type ExtractionMethod");
         }
 
-        public override void Write(Utf8JsonWriter writer, The0 value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, ExtractionMethod value, JsonSerializerOptions options)
         {
             switch (value)
             {
-                case The0.ClipboardCopy:
+                case ExtractionMethod.ClipboardCopy:
                     JsonSerializer.Serialize(writer, "clipboardCopy", options);
                     return;
-                case The0.None:
+                case ExtractionMethod.None:
                     JsonSerializer.Serialize(writer, "none", options);
                     return;
-                case The0.SelectedTextRange:
+                case ExtractionMethod.SelectedTextRange:
                     JsonSerializer.Serialize(writer, "selectedTextRange", options);
                     return;
-                case The0.SelectedTextRanges:
+                case ExtractionMethod.SelectedTextRanges:
                     JsonSerializer.Serialize(writer, "selectedTextRanges", options);
                     return;
-                case The0.StringForRange:
+                case ExtractionMethod.StringForRange:
                     JsonSerializer.Serialize(writer, "stringForRange", options);
                     return;
-                case The0.TextMarkerRange:
+                case ExtractionMethod.TextMarkerRange:
                     JsonSerializer.Serialize(writer, "textMarkerRange", options);
                     return;
-                case The0.ValueAttribute:
+                case ExtractionMethod.ValueAttribute:
                     JsonSerializer.Serialize(writer, "valueAttribute", options);
                     return;
             }
-            throw new Exception("Cannot marshal type The0");
+            throw new Exception("Cannot marshal type ExtractionMethod");
         }
 
-        public static readonly The0Converter Singleton = new The0Converter();
+        public static readonly ExtractionMethodConverter Singleton = new ExtractionMethodConverter();
     }
 
     internal class MinMaxValueCheckConverter : JsonConverter<double>
