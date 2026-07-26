@@ -332,34 +332,37 @@ export class SettingsSyncService {
     if (!capabilities) throw new Error("Settings sync is not bootstrapped");
 
     let changed = false;
-    while (!signal.aborted) {
-      const cursors = await this.runLocalTransition(async () =>
-        signal.aborted
-          ? null
-          : getPullCursors(context, capabilities.collections),
-      );
-      if (cursors === null) return;
-      const page = await this.client.pull(
-        context.scopeType,
-        context.scopeId,
-        cursors,
-        capabilities.pullLimit,
-        signal,
-      );
-      if (signal.aborted) return;
-      if (
-        !(await this.runLocalTransition(async () =>
-          signal.aborted ? false : applyPullPages(context, page.collections),
-        ))
-      ) {
-        return;
+    try {
+      while (!signal.aborted) {
+        const cursors = await this.runLocalTransition(async () =>
+          signal.aborted
+            ? null
+            : getPullCursors(context, capabilities.collections),
+        );
+        if (cursors === null) return;
+        const page = await this.client.pull(
+          context.scopeType,
+          context.scopeId,
+          cursors,
+          capabilities.pullLimit,
+          signal,
+        );
+        if (signal.aborted) return;
+        if (
+          !(await this.runLocalTransition(async () =>
+            signal.aborted ? false : applyPullPages(context, page.collections),
+          ))
+        ) {
+          return;
+        }
+        changed ||= page.collections.some(
+          (collection) => collection.items.length > 0,
+        );
+        if (page.collections.every((collection) => !collection.hasMore)) break;
       }
-      changed ||= page.collections.some(
-        (collection) => collection.items.length > 0,
-      );
-      if (page.collections.every((collection) => !collection.hasMore)) break;
+    } finally {
+      if (changed && !signal.aborted) this.notifyRenderers();
     }
-    if (changed && !signal.aborted) this.notifyRenderers();
   }
 
   private async pushUntilDrained(

@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { BrowserWindow } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthState, AuthService } from "../../src/services/auth-service";
@@ -780,6 +781,63 @@ describe("SettingsSyncService", () => {
       { collection: "vocabulary", cursor: 1 },
       { collection: "snippet", cursor: 0 },
     ]);
+  });
+
+  it("refreshes renderers when a later pull page fails", async () => {
+    const send = vi.fn();
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValueOnce([
+      {
+        isDestroyed: () => false,
+        webContents: { send },
+      } as unknown as BrowserWindow,
+    ]);
+    const client = {
+      bootstrap: vi.fn().mockResolvedValue({
+        collections: ["vocabulary", "snippet"] as Array<
+          "vocabulary" | "snippet"
+        >,
+        maxPushBatch: 100,
+        maxPushBytes: 524288,
+        pullLimit: 200,
+      }),
+      pull: vi
+        .fn()
+        .mockResolvedValueOnce({
+          collections: [
+            {
+              collection: "vocabulary",
+              items: [
+                {
+                  collection: "vocabulary",
+                  syncId: "33333333-3333-4333-8333-333333333333",
+                  syncVersion: 1,
+                  payload: { word: "Amical", replacement: null },
+                },
+              ],
+              cursor: 1,
+              hasMore: true,
+            },
+            {
+              collection: "snippet",
+              items: [],
+              cursor: 0,
+              hasMore: false,
+            },
+          ],
+        } satisfies SyncPullPage)
+        .mockRejectedValueOnce(new Error("pull failed")),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(send).toHaveBeenCalledWith("settings-sync-updated"),
+    );
   });
 
   it("coalesces wakes so only one pull is in flight", async () => {
