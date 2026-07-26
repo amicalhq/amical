@@ -15,8 +15,8 @@ import {
   getMostUsedWords,
 } from "../../db/vocabulary";
 import {
-  axisSyncKeySchema,
   axisSyncOptionalTextSchema,
+  trimmedSyncKeySchema,
 } from "../../db/sync-payload";
 
 // Input schemas
@@ -30,23 +30,9 @@ const GetVocabularySchema = z.object({
 
 const CreateVocabularySchema = z
   .object({
-    word: axisSyncKeySchema,
-    isReplacement: z.boolean().optional(),
-    replacementWord: axisSyncOptionalTextSchema.optional(),
+    word: trimmedSyncKeySchema,
+    replacementWord: axisSyncOptionalTextSchema.nullable().optional(),
   })
-  .refine(
-    (data) => {
-      // If isReplacement is true, replacementWord must be provided
-      if (data.isReplacement === true && !data.replacementWord) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: "replacementWord is required when isReplacement is true",
-      path: ["replacementWord"],
-    },
-  )
   .refine(
     (data) => {
       // If both word and replacementWord are provided, they must be different
@@ -63,23 +49,9 @@ const CreateVocabularySchema = z
 
 const UpdateVocabularySchema = z
   .object({
-    word: axisSyncKeySchema.optional(),
-    isReplacement: z.boolean().optional(),
-    replacementWord: axisSyncOptionalTextSchema.optional(),
+    word: trimmedSyncKeySchema.optional(),
+    replacementWord: axisSyncOptionalTextSchema.nullable().optional(),
   })
-  .refine(
-    (data) => {
-      // If isReplacement is true, replacementWord must be provided
-      if (data.isReplacement === true && !data.replacementWord) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: "replacementWord is required when isReplacement is true",
-      path: ["replacementWord"],
-    },
-  )
   .refine(
     (data) => {
       // If both word and replacementWord are provided, they must be different
@@ -96,7 +68,7 @@ const UpdateVocabularySchema = z
 
 const BulkImportSchema = z.array(
   z.object({
-    word: axisSyncKeySchema,
+    word: trimmedSyncKeySchema,
     dateAdded: z.date().optional(),
   }),
 );

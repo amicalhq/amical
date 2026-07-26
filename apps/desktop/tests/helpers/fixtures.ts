@@ -133,19 +133,16 @@ export const sampleVocabulary: NewVocabulary[] = [
   {
     word: "Amical",
     replacementWord: null,
-    isReplacement: false,
     usageCount: 5,
   },
   {
     word: "API",
     replacementWord: null,
-    isReplacement: false,
     usageCount: 3,
   },
   {
     word: "teh",
     replacementWord: "the",
-    isReplacement: true,
     usageCount: 2,
   },
 ];

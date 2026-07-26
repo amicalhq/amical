@@ -187,11 +187,10 @@ async function loadScopeSyncIndex(
 export function vocabularySyncPayload(row: {
   word: string;
   replacementWord: string | null;
-  isReplacement: boolean | null;
 }): VocabularySyncPayload {
   return {
     word: row.word,
-    replacement: row.isReplacement ? row.replacementWord : null,
+    replacement: row.replacementWord,
   };
 }
 
@@ -649,7 +648,6 @@ async function applyDomainPayload(
       .set({
         word: value.word,
         replacementWord: value.replacement,
-        isReplacement: value.replacement !== null,
         updatedAt: now,
       })
       .where(eq(vocabulary.id, syncId))
@@ -659,7 +657,6 @@ async function applyDomainPayload(
         id: syncId,
         word: value.word,
         replacementWord: value.replacement,
-        isReplacement: value.replacement !== null,
         dateAdded: now,
         createdAt: now,
         updatedAt: now,

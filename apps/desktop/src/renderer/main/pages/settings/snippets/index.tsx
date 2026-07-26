@@ -89,7 +89,9 @@ function SnippetDialog({
             </Button>
             <Button
               onClick={onSubmit}
-              disabled={!formData.trigger || !formData.content || isLoading}
+              disabled={
+                !formData.trigger.trim() || !formData.content || isLoading
+              }
             >
               {isLoading
                 ? t("settings.snippets.dialog.saving")
@@ -241,7 +243,7 @@ export default function SnippetsSettingsPage() {
   const handleAddSnippet = async () => {
     try {
       await createSnippetMutation.mutateAsync({
-        trigger: formData.trigger,
+        trigger: formData.trigger.trim(),
         content: formData.content,
       });
       setFormData({ trigger: "", content: "" });
@@ -258,7 +260,7 @@ export default function SnippetsSettingsPage() {
       await updateSnippetMutation.mutateAsync({
         id: editingItem.id,
         data: {
-          trigger: formData.trigger,
+          trigger: formData.trigger.trim(),
           content: formData.content,
         },
       });

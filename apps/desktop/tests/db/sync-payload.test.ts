@@ -3,9 +3,9 @@ import {
   axisSyncKeySchema,
   axisSyncOptionalTextSchema,
   axisSyncRequiredTextSchema,
-  sanitizeLegacySyncText,
   SYNC_KEY_MAX_LENGTH,
   SYNC_TEXT_MAX_LENGTH,
+  trimmedSyncKeySchema,
 } from "../../src/db/sync-payload";
 
 describe("settings sync payload bounds", () => {
@@ -55,13 +55,11 @@ describe("settings sync payload bounds", () => {
     );
   });
 
-  it("repairs legacy Unicode and never splits a surrogate pair", () => {
-    expect(sanitizeLegacySyncText("ok\0\ud800x\udc00😀", 20)).toBe("okx😀");
-    expect(
-      sanitizeLegacySyncText(
-        `${"a".repeat(SYNC_KEY_MAX_LENGTH - 1)}😀tail`,
-        SYNC_KEY_MAX_LENGTH,
-      ),
-    ).toBe("a".repeat(SYNC_KEY_MAX_LENGTH - 1));
+  it("trims editor keys before applying Axis validation", () => {
+    expect(trimmedSyncKeySchema.parse("  Mixed Case  ")).toBe("Mixed Case");
+    expect(trimmedSyncKeySchema.safeParse("  bad\0key  ").success).toBe(false);
+    expect(trimmedSyncKeySchema.safeParse("  bad\ud800key  ").success).toBe(
+      false,
+    );
   });
 });

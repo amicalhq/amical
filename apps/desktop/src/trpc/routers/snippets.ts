@@ -11,8 +11,8 @@ import {
 } from "../../db/snippets";
 import { SNIPPET_ERROR_DUPLICATE_TRIGGER } from "../../constants/snippets";
 import {
-  axisSyncKeySchema,
   axisSyncRequiredTextSchema,
+  trimmedSyncKeySchema,
 } from "../../db/sync-payload";
 
 const GetSnippetsSchema = z.object({
@@ -21,12 +21,12 @@ const GetSnippetsSchema = z.object({
 });
 
 const CreateSnippetSchema = z.object({
-  trigger: axisSyncKeySchema,
+  trigger: trimmedSyncKeySchema,
   content: axisSyncRequiredTextSchema,
 });
 
 const UpdateSnippetSchema = z.object({
-  trigger: axisSyncKeySchema.optional(),
+  trigger: trimmedSyncKeySchema.optional(),
   content: axisSyncRequiredTextSchema.optional(),
 });
 

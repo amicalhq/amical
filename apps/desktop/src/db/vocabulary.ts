@@ -131,8 +131,7 @@ export async function updateVocabulary(
 
     const changesSyncPayload =
       Object.hasOwn(data, "word") ||
-      Object.hasOwn(data, "replacementWord") ||
-      Object.hasOwn(data, "isReplacement");
+      Object.hasOwn(data, "replacementWord");
     if (changesSyncPayload) {
       await recordLocalSyncMutation(
         tx,

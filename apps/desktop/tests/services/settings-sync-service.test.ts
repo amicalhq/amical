@@ -222,7 +222,6 @@ describe("SettingsSyncService", () => {
   it("binds local edits before startup sync I/O completes", async () => {
     const row = await createVocabularyWord({
       word: "Before refresh",
-      isReplacement: false,
     });
     await testDb.db
       .insert(syncClientState)
@@ -321,7 +320,6 @@ describe("SettingsSyncService", () => {
   it("resumes a pending outbox after restart without logout", async () => {
     await createVocabularyWord({
       word: "Pending",
-      isReplacement: false,
     });
     const unavailableClient = {
       bootstrap: vi.fn().mockRejectedValue(new Error("offline")),
@@ -362,7 +360,6 @@ describe("SettingsSyncService", () => {
   it("adopts local rows before the first startup pull", async () => {
     await createVocabularyWord({
       word: "Amical",
-      isReplacement: false,
     });
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
@@ -386,7 +383,6 @@ describe("SettingsSyncService", () => {
   it("syncs only collections advertised by bootstrap", async () => {
     await createVocabularyWord({
       word: "Amical",
-      isReplacement: false,
     });
     await createSnippet({ trigger: "sig", content: "Regards" });
     const client = new InMemorySyncClient(["vocabulary"]);
@@ -450,7 +446,6 @@ describe("SettingsSyncService", () => {
     async (status) => {
       const row = await createVocabularyWord({
         word: "Before",
-        isReplacement: false,
       });
       const client = {
         bootstrap: vi
@@ -489,7 +484,6 @@ describe("SettingsSyncService", () => {
     auth.state = null;
     const row = await createVocabularyWord({
       word: "Amical",
-      isReplacement: false,
     });
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
@@ -541,7 +535,6 @@ describe("SettingsSyncService", () => {
     await createSnippet({ trigger: "first", content: "First" });
     await createVocabularyWord({
       word: "Second",
-      isReplacement: false,
     });
 
     await vi.waitFor(() => expect(client.push).toHaveBeenCalledOnce(), {
@@ -563,7 +556,6 @@ describe("SettingsSyncService", () => {
     await bulkImportVocabulary(
       Array.from({ length: 101 }, (_, index) => ({
         word: `Word ${index}`,
-        isReplacement: false,
       })),
     );
     const client = new InMemorySyncClient(["vocabulary", "snippet"], 1);
@@ -660,7 +652,6 @@ describe("SettingsSyncService", () => {
   it("ignores a bootstrap response that arrives after logout", async () => {
     const row = await createVocabularyWord({
       word: "Keep local",
-      isReplacement: false,
     });
     const bootstrapState: {
       resolve?: (value: {

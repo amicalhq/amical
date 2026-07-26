@@ -42,7 +42,7 @@ describe("settings sync editor validation", () => {
     dbMocks.updateSnippet.mockImplementation(async (_id, input) => input);
   });
 
-  it("preserves valid vocabulary keys and validates create, update, and import", async () => {
+  it("trims vocabulary keys and validates create, update, and import", async () => {
     const { vocabularyRouter } = await import(
       "../../src/trpc/routers/vocabulary"
     );
@@ -51,17 +51,44 @@ describe("settings sync editor validation", () => {
 
     await caller.createVocabularyWord({
       word: authoredWord,
-      isReplacement: true,
       replacementWord: "replacement",
     });
     expect(dbMocks.createVocabularyWord).toHaveBeenCalledWith({
-      word: authoredWord,
-      isReplacement: true,
+      word: "Mixed Case",
       replacementWord: "replacement",
     });
 
+    await caller.updateVocabulary({
+      id: rowId,
+      data: { word: "  Updated  ", replacementWord: null },
+    });
+    expect(dbMocks.updateVocabulary).toHaveBeenCalledWith(rowId, {
+      word: "Updated",
+      replacementWord: null,
+    });
+
+    await caller.bulkImportVocabulary([{ word: "  Imported  " }]);
+    expect(dbMocks.bulkImportVocabulary).toHaveBeenCalledWith([
+      { word: "Imported" },
+    ]);
+
     await expect(
       caller.createVocabularyWord({ word: " \t " }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createVocabularyWord({ word: "bad\0word" }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createVocabularyWord({ word: "bad\ud800word" }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createVocabularyWord({ word: ` ${"a".repeat(61)} ` }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createVocabularyWord({
+        word: "valid",
+        replacementWord: "r".repeat(4001),
+      }),
     ).rejects.toBeDefined();
     await expect(
       caller.updateVocabulary({
@@ -73,11 +100,11 @@ describe("settings sync editor validation", () => {
       caller.bulkImportVocabulary([{ word: "bad\ud800word" }]),
     ).rejects.toBeDefined();
 
-    expect(dbMocks.updateVocabulary).not.toHaveBeenCalled();
-    expect(dbMocks.bulkImportVocabulary).not.toHaveBeenCalled();
+    expect(dbMocks.updateVocabulary).toHaveBeenCalledTimes(1);
+    expect(dbMocks.bulkImportVocabulary).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves valid snippet keys and rejects invalid text", async () => {
+  it("trims snippet keys and rejects invalid text", async () => {
     const { snippetsRouter } = await import("../../src/trpc/routers/snippets");
     const caller = snippetsRouter.createCaller({} as never);
     const authoredTrigger = "  Mixed Case  ";
@@ -87,12 +114,41 @@ describe("settings sync editor validation", () => {
       content: "content",
     });
     expect(dbMocks.createSnippet).toHaveBeenCalledWith({
-      trigger: authoredTrigger,
+      trigger: "Mixed Case",
       content: "content",
+    });
+
+    await caller.updateSnippet({
+      id: rowId,
+      data: { trigger: "  Updated  " },
+    });
+    expect(dbMocks.updateSnippet).toHaveBeenCalledWith(rowId, {
+      trigger: "Updated",
     });
 
     await expect(
       caller.createSnippet({ trigger: " \t ", content: "content" }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createSnippet({ trigger: "bad\0trigger", content: "content" }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createSnippet({
+        trigger: "bad\udc00trigger",
+        content: "content",
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createSnippet({
+        trigger: ` ${"a".repeat(61)} `,
+        content: "content",
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      caller.createSnippet({
+        trigger: "valid",
+        content: "c".repeat(4001),
+      }),
     ).rejects.toBeDefined();
     await expect(
       caller.updateSnippet({
@@ -101,6 +157,6 @@ describe("settings sync editor validation", () => {
       }),
     ).rejects.toBeDefined();
 
-    expect(dbMocks.updateSnippet).not.toHaveBeenCalled();
+    expect(dbMocks.updateSnippet).toHaveBeenCalledTimes(1);
   });
 });

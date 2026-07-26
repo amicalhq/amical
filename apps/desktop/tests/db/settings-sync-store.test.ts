@@ -23,7 +23,11 @@ import {
   type CanonicalSyncItem,
   type SyncContext,
 } from "../../src/db/sync";
-import { bulkImportVocabulary } from "../../src/db/vocabulary";
+import {
+  bulkImportVocabulary,
+  createVocabularyWord,
+  updateVocabulary,
+} from "../../src/db/vocabulary";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
 
@@ -103,7 +107,7 @@ describe("settings sync durable store", () => {
   it("keeps signed-out edits local and adopts them on login", async () => {
     const [row] = await database
       .insert(vocabulary)
-      .values({ word: "Amical", isReplacement: false })
+      .values({ word: "Amical" })
       .returning();
 
     await database.transaction(async (tx) => {
@@ -139,13 +143,33 @@ describe("settings sync durable store", () => {
     await beginUserSyncSession("user-1", database);
 
     const created = await bulkImportVocabulary([
-      { word: "Alpha", isReplacement: false },
-      { word: "Beta", isReplacement: false },
+      { word: "Alpha" },
+      { word: "Beta" },
     ]);
 
     expect(created).toHaveLength(2);
     expect(await database.select().from(syncItemState)).toHaveLength(2);
     expect(await database.select().from(syncOutbox)).toHaveLength(2);
+  });
+
+  it("clears a vocabulary replacement when it is set to null", async () => {
+    await beginUserSyncSession("user-1", database);
+    const row = await createVocabularyWord({
+      word: "teh",
+      replacementWord: "the",
+    });
+
+    await updateVocabulary(row.id, { replacementWord: null });
+
+    expect(await database.select().from(vocabulary)).toEqual([
+      expect.objectContaining({ id: row.id, replacementWord: null }),
+    ]);
+    expect(await database.select().from(syncOutbox)).toEqual([
+      expect.objectContaining({
+        syncId: row.id,
+        desiredPayload: { word: "teh", replacement: null },
+      }),
+    ]);
   });
 
   it("keeps a stable identity when the server wins a signed-out key edit", async () => {
@@ -603,7 +627,7 @@ describe("settings sync durable store", () => {
   it("freezes a head and chains a newer tail from that exact base", async () => {
     const [row] = await database
       .insert(vocabulary)
-      .values({ word: "B", isReplacement: false })
+      .values({ word: "B" })
       .returning();
     const fence = await beginUserSyncSession("user-1", database);
     await adoptVisibleRows(fence, database);

@@ -20,8 +20,7 @@ import { useTranslation } from "react-i18next";
 type VocabularyItem = {
   id: string;
   word: string;
-  replacementWord?: string | null;
-  isReplacement: boolean | null;
+  replacementWord: string | null;
   dateAdded: Date;
   usageCount: number | null;
   createdAt: Date;
@@ -36,12 +35,12 @@ interface VocabularyDialogProps {
   formData: {
     word: string;
     replacementWord: string;
-    isReplacement: boolean;
+    replacementEnabled: boolean;
   };
   onFormDataChange: (data: {
     word: string;
     replacementWord: string;
-    isReplacement: boolean;
+    replacementEnabled: boolean;
   }) => void;
   onSubmit: () => void;
   isLoading?: boolean;
@@ -77,14 +76,14 @@ function VocabularyDialog({
             </div>
             <Switch
               id="replacement-toggle"
-              checked={formData.isReplacement}
+              checked={formData.replacementEnabled}
               onCheckedChange={(checked) =>
-                onFormDataChange({ ...formData, isReplacement: checked })
+                onFormDataChange({ ...formData, replacementEnabled: checked })
               }
             />
           </div>
 
-          {formData.isReplacement ? (
+          {formData.replacementEnabled ? (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Input
@@ -132,7 +131,8 @@ function VocabularyDialog({
               onClick={onSubmit}
               disabled={
                 !formData.word.trim() ||
-                (formData.isReplacement && !formData.replacementWord.trim()) ||
+                (formData.replacementEnabled &&
+                  !formData.replacementWord.trim()) ||
                 isLoading
               }
             >
@@ -175,7 +175,7 @@ function DeleteDialog({
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {t("settings.vocabulary.delete.description", {
-              item: deletingItem?.isReplacement
+              item: deletingItem?.replacementWord != null
                 ? `${deletingItem?.word} → ${deletingItem?.replacementWord}`
                 : deletingItem?.word,
             })}
@@ -211,7 +211,7 @@ export default function VocabularySettingsPage() {
   const [formData, setFormData] = useState({
     word: "",
     replacementWord: "",
-    isReplacement: false,
+    replacementEnabled: false,
   });
 
   const vocabularyQuery = api.vocabulary.getVocabulary.useQuery({
@@ -268,13 +268,16 @@ export default function VocabularySettingsPage() {
   const handleAddWord = async () => {
     try {
       await createVocabularyMutation.mutateAsync({
-        word: formData.word,
-        isReplacement: formData.isReplacement,
-        replacementWord: formData.isReplacement
+        word: formData.word.trim(),
+        replacementWord: formData.replacementEnabled
           ? formData.replacementWord
-          : undefined,
+          : null,
       });
-      setFormData({ word: "", replacementWord: "", isReplacement: false });
+      setFormData({
+        word: "",
+        replacementWord: "",
+        replacementEnabled: false,
+      });
       setIsAddDialogOpen(false);
     } catch {
       // Error is handled by the mutation's onError callback
@@ -289,14 +292,17 @@ export default function VocabularySettingsPage() {
       await updateVocabularyMutation.mutateAsync({
         id: editingItem.id,
         data: {
-          word: formData.word,
-          isReplacement: formData.isReplacement,
-          replacementWord: formData.isReplacement
+          word: formData.word.trim(),
+          replacementWord: formData.replacementEnabled
             ? formData.replacementWord
-            : undefined,
+            : null,
         },
       });
-      setFormData({ word: "", replacementWord: "", isReplacement: false });
+      setFormData({
+        word: "",
+        replacementWord: "",
+        replacementEnabled: false,
+      });
       setEditingItem(null);
       setIsEditDialogOpen(false);
     } catch {
@@ -324,8 +330,8 @@ export default function VocabularySettingsPage() {
     setEditingItem(item);
     setFormData({
       word: item.word,
-      replacementWord: item.replacementWord || "",
-      isReplacement: item.isReplacement || false,
+      replacementWord: item.replacementWord ?? "",
+      replacementEnabled: item.replacementWord !== null,
     });
     setIsEditDialogOpen(true);
   };
@@ -336,7 +342,11 @@ export default function VocabularySettingsPage() {
   };
 
   const resetForm = () => {
-    setFormData({ word: "", replacementWord: "", isReplacement: false });
+    setFormData({
+      word: "",
+      replacementWord: "",
+      replacementEnabled: false,
+    });
     setEditingItem(null);
   };
 
@@ -386,7 +396,7 @@ export default function VocabularySettingsPage() {
                 >
                   <div className="flex items-center justify-between py-3 px-4 group">
                     <span className="text-sm flex items-center gap-1">
-                      {item.isReplacement ? (
+                      {item.replacementWord !== null ? (
                         <>
                           <span>{item.word}</span>
                           <MoveRight className="w-4 h-4 mx-2" />

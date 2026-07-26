@@ -2,7 +2,6 @@ CREATE TABLE `__new_vocabulary` (
 	`id` text PRIMARY KEY NOT NULL,
 	`word` text NOT NULL,
 	`replacement_word` text,
-	`is_replacement` integer DEFAULT false,
 	`date_added` integer DEFAULT (unixepoch()) NOT NULL,
 	`usage_count` integer DEFAULT 0,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
@@ -13,7 +12,6 @@ INSERT INTO `__new_vocabulary` (
 	`id`,
 	`word`,
 	`replacement_word`,
-	`is_replacement`,
 	`date_added`,
 	`usage_count`,
 	`created_at`,
@@ -29,8 +27,10 @@ SELECT
 		hex(randomblob(6))
 	),
 	`word`,
-	`replacement_word`,
-	`is_replacement`,
+	CASE
+		WHEN `is_replacement` = 1 THEN `replacement_word`
+		ELSE NULL
+	END,
 	`date_added`,
 	`usage_count`,
 	`created_at`,

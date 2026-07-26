@@ -25,7 +25,7 @@ describe("settings sync bounds data migration", () => {
     await testDb.close();
   });
 
-  it("repairs bounds and keeps the lowest-id key after clipping", async () => {
+  it("trims keys, drops out-of-bounds rows, and keeps the lowest-id key", async () => {
     const vocabularyCollision = "v".repeat(60);
     const snippetCollision = "s".repeat(60);
     const vocabularyIds = [
@@ -33,6 +33,8 @@ describe("settings sync bounds data migration", () => {
       "00000002-0000-4000-8000-000000000002",
       "00000003-0000-4000-8000-000000000003",
       "00000004-0000-4000-8000-000000000004",
+      "00000005-0000-4000-8000-000000000005",
+      "00000006-0000-4000-8000-000000000006",
     ];
     const snippetIds = [
       "00000001-0000-4000-9000-000000000001",
@@ -40,37 +42,44 @@ describe("settings sync bounds data migration", () => {
       "00000003-0000-4000-9000-000000000003",
       "00000004-0000-4000-9000-000000000004",
       "00000005-0000-4000-9000-000000000005",
+      "00000006-0000-4000-9000-000000000006",
+      "00000007-0000-4000-9000-000000000007",
     ];
 
     await testDb.db.insert(vocabulary).values([
       {
         id: vocabularyIds[0],
-        word: `${vocabularyCollision} first`,
-        isReplacement: true,
-        replacementWord: `${"r".repeat(3999)}😀tail`,
+        word: `  ${vocabularyCollision}  `,
+        replacementWord: "r".repeat(4000),
       },
       {
         id: vocabularyIds[1],
         word: vocabularyCollision,
-        isReplacement: false,
       },
       {
         id: vocabularyIds[2],
         word: " \0\t ",
-        isReplacement: false,
       },
       {
         id: vocabularyIds[3],
-        word: "keep\0word",
-        isReplacement: true,
-        replacementWord: "keep\0replacement",
+        word: "  keep  ",
+        replacementWord: "keep",
+      },
+      {
+        id: vocabularyIds[4],
+        word: "v".repeat(61),
+      },
+      {
+        id: vocabularyIds[5],
+        word: "overlong-replacement",
+        replacementWord: "r".repeat(4001),
       },
     ]);
     await testDb.db.insert(snippets).values([
       {
         id: snippetIds[0],
-        trigger: `${snippetCollision} first`,
-        content: `${"c".repeat(3999)}😀tail`,
+        trigger: `  ${snippetCollision}  `,
+        content: "c".repeat(4000),
       },
       {
         id: snippetIds[1],
@@ -84,13 +93,23 @@ describe("settings sync bounds data migration", () => {
       },
       {
         id: snippetIds[3],
-        trigger: "keep\0trigger",
-        content: "keep\0content",
+        trigger: "  keep  ",
+        content: "keep",
       },
       {
         id: snippetIds[4],
         trigger: "empty-content",
         content: "",
+      },
+      {
+        id: snippetIds[5],
+        trigger: "s".repeat(61),
+        content: "overlong key",
+      },
+      {
+        id: snippetIds[6],
+        trigger: "overlong-content",
+        content: "c".repeat(4001),
       },
     ]);
 
@@ -115,7 +134,7 @@ describe("settings sync bounds data migration", () => {
       {
         id: vocabularyIds[0],
         word: vocabularyCollision,
-        replacementWord: "r".repeat(3999),
+        replacementWord: "r".repeat(4000),
       },
       {
         id: vocabularyIds[3],
@@ -133,7 +152,7 @@ describe("settings sync bounds data migration", () => {
       {
         id: snippetIds[0],
         trigger: snippetCollision,
-        content: "c".repeat(3999),
+        content: "c".repeat(4000),
       },
       {
         id: snippetIds[3],
@@ -149,7 +168,6 @@ describe("settings sync bounds data migration", () => {
 
     await testDb.db.insert(vocabulary).values({
       word: "z".repeat(61),
-      isReplacement: false,
     });
     await runDataMigrations();
 

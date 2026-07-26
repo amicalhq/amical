@@ -1038,11 +1038,8 @@ export class TranscriptionService {
     // in replacement; caps belong on the create path, not here.
     const vocabEntries = await getAllVocabulary();
     for (const entry of vocabEntries) {
-      if (entry.isReplacement) {
-        context.sharedData.replacements.set(
-          entry.word,
-          entry.replacementWord || "",
-        );
+      if (entry.replacementWord !== null) {
+        context.sharedData.replacements.set(entry.word, entry.replacementWord);
       }
     }
     // Non-replacement vocabulary is sent to the LLM formatter as hints; the

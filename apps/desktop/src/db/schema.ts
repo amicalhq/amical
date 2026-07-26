@@ -43,7 +43,6 @@ export const vocabulary = sqliteTable("vocabulary", {
     .$defaultFn(() => crypto.randomUUID()),
   word: text("word").notNull().unique(),
   replacementWord: text("replacement_word"),
-  isReplacement: integer("is_replacement", { mode: "boolean" }).default(false),
   dateAdded: integer("date_added", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

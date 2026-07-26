@@ -881,14 +881,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "is_replacement": {
-          "name": "is_replacement",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false,
-          "default": false
-        },
         "date_added": {
           "name": "date_added",
           "type": "integer",

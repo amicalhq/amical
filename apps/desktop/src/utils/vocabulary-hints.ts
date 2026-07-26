@@ -18,7 +18,7 @@ export const MAX_VOCABULARY_HINTS = 200;
  */
 export function selectVocabularyHints(entries: Vocabulary[]): string[] {
   return entries
-    .filter((e) => !e.isReplacement)
+    .filter((e) => e.replacementWord === null)
     .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
     .slice(0, MAX_VOCABULARY_HINTS)
     .map((e) => e.word);

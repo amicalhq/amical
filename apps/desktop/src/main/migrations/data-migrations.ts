@@ -12,9 +12,9 @@ import {
 } from "../../db/notes";
 import { snippets, transcriptions, vocabulary } from "../../db/schema";
 import {
-  sanitizeLegacySyncText,
-  SYNC_KEY_MAX_LENGTH,
-  SYNC_TEXT_MAX_LENGTH,
+  axisSyncKeySchema,
+  axisSyncOptionalTextSchema,
+  axisSyncRequiredTextSchema,
 } from "../../db/sync-payload";
 import {
   isLexicalEditorStateJsonString,
@@ -161,27 +161,27 @@ async function migrateSettingsSyncBounds(): Promise<{
     const vocabularyRows = await tx.select().from(vocabulary);
     const snippetRows = await tx.select().from(snippets);
 
-    const sanitizedVocabulary = vocabularyRows.map((row) => ({
+    const normalizedVocabulary = vocabularyRows.map((row) => ({
       ...row,
-      word: sanitizeLegacySyncText(row.word, SYNC_KEY_MAX_LENGTH),
-      replacementWord:
-        row.replacementWord === null
-          ? null
-          : sanitizeLegacySyncText(row.replacementWord, SYNC_TEXT_MAX_LENGTH),
+      word: row.word.trim(),
     }));
-    const sanitizedSnippets = snippetRows.map((row) => ({
+    const normalizedSnippets = snippetRows.map((row) => ({
       ...row,
-      trigger: sanitizeLegacySyncText(row.trigger, SYNC_KEY_MAX_LENGTH),
-      content: sanitizeLegacySyncText(row.content, SYNC_TEXT_MAX_LENGTH),
+      trigger: row.trigger.trim(),
     }));
 
     const vocabularyIdsToDelete: string[] = [];
-    const keptVocabulary: typeof sanitizedVocabulary = [];
+    const keptVocabulary: typeof normalizedVocabulary = [];
     const seenWords = new Set<string>();
-    for (const row of sanitizedVocabulary.sort((a, b) =>
+    for (const row of normalizedVocabulary.sort((a, b) =>
       a.id.localeCompare(b.id),
     )) {
-      if (row.word.trim().length === 0 || seenWords.has(row.word)) {
+      if (
+        !axisSyncKeySchema.safeParse(row.word).success ||
+        (row.replacementWord !== null &&
+          !axisSyncOptionalTextSchema.safeParse(row.replacementWord).success) ||
+        seenWords.has(row.word)
+      ) {
         vocabularyIdsToDelete.push(row.id);
         continue;
       }
@@ -190,14 +190,14 @@ async function migrateSettingsSyncBounds(): Promise<{
     }
 
     const snippetIdsToDelete: string[] = [];
-    const keptSnippets: typeof sanitizedSnippets = [];
+    const keptSnippets: typeof normalizedSnippets = [];
     const seenTriggers = new Set<string>();
-    for (const row of sanitizedSnippets.sort((a, b) =>
+    for (const row of normalizedSnippets.sort((a, b) =>
       a.id.localeCompare(b.id),
     )) {
       if (
-        row.trigger.trim().length === 0 ||
-        row.content.length === 0 ||
+        !axisSyncKeySchema.safeParse(row.trigger).success ||
+        !axisSyncRequiredTextSchema.safeParse(row.content).success ||
         seenTriggers.has(row.trigger)
       ) {
         snippetIdsToDelete.push(row.id);
@@ -216,18 +216,18 @@ async function migrateSettingsSyncBounds(): Promise<{
       await tx.delete(snippets).where(inArray(snippets.id, snippetIdsToDelete));
     }
 
-    // Move retained keys through unique temporary values so clipping can safely
+    // Move retained keys through unique temporary values so trimming can safely
     // handle swaps and collisions with another row's original key.
     for (const row of keptVocabulary) {
       await tx
         .update(vocabulary)
-        .set({ word: `\0sync-vocabulary-${row.id}-${randomUUID()}` })
+        .set({ word: randomUUID() })
         .where(eq(vocabulary.id, row.id));
     }
     for (const row of keptSnippets) {
       await tx
         .update(snippets)
-        .set({ trigger: `\0sync-snippet-${row.id}-${randomUUID()}` })
+        .set({ trigger: randomUUID() })
         .where(eq(snippets.id, row.id));
     }
 

@@ -19,7 +19,7 @@ describe("settings sync schema migration", () => {
     await testDb.close();
   });
 
-  it("preserves legacy rows while replacing integer IDs with UUID sync IDs", async () => {
+  it("migrates legacy replacement state while replacing integer IDs with UUID sync IDs", async () => {
     await testDb.db.$client.executeMultiple(`
       CREATE TABLE vocabulary (
         id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -42,6 +42,8 @@ describe("settings sync schema migration", () => {
       CREATE UNIQUE INDEX snippets_trigger_unique ON snippets (trigger);
       INSERT INTO vocabulary (word, replacement_word, is_replacement, usage_count)
       VALUES ('Amical', 'Amical AI', 1, 3);
+      INSERT INTO vocabulary (word, replacement_word, is_replacement, usage_count)
+      VALUES ('Dormant', 'must be cleared', 0, 1);
       INSERT INTO snippets (trigger, content) VALUES ('sig', 'Regards');
     `);
 
@@ -59,23 +61,39 @@ describe("settings sync schema migration", () => {
       .replaceAll("--> statement-breakpoint", "");
     await testDb.db.$client.executeMultiple(migration);
 
-    const [vocabularyRow] = await testDb.db.select().from(vocabulary);
+    const vocabularyRows = await testDb.db.select().from(vocabulary);
+    const vocabularyRow = vocabularyRows.find((row) => row.word === "Amical");
+    const dormantVocabularyRow = vocabularyRows.find(
+      (row) => row.word === "Dormant",
+    );
     const [snippetRow] = await testDb.db.select().from(snippets);
     expect(vocabularyRow).toMatchObject({
       word: "Amical",
       replacementWord: "Amical AI",
-      isReplacement: true,
       usageCount: 3,
+    });
+    expect(dormantVocabularyRow).toMatchObject({
+      word: "Dormant",
+      replacementWord: null,
+      usageCount: 1,
     });
     expect(snippetRow).toMatchObject({
       trigger: "sig",
       content: "Regards",
     });
-    expect(vocabularyRow.id).toMatch(UUID_PATTERN);
+    expect(vocabularyRow?.id).toMatch(UUID_PATTERN);
+    expect(dormantVocabularyRow?.id).toMatch(UUID_PATTERN);
     expect(snippetRow.id).toMatch(UUID_PATTERN);
-    expect(vocabularyRow.id.startsWith("00000001-")).toBe(true);
+    expect(vocabularyRow?.id.startsWith("00000001-")).toBe(true);
+    expect(dormantVocabularyRow?.id.startsWith("00000002-")).toBe(true);
     expect(snippetRow.id.startsWith("00000001-")).toBe(true);
 
+    const vocabularyColumns = await testDb.db.$client.execute(
+      "PRAGMA table_info(vocabulary)",
+    );
+    expect(vocabularyColumns.rows.map((row) => row.name)).not.toContain(
+      "is_replacement",
+    );
     const syncColumns = await testDb.db.$client.execute(
       "PRAGMA table_info(sync_item_state)",
     );
