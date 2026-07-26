@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  SettingsSyncPullCollectionRequestSchema,
+  SettingsSyncPushRequestSchema,
+} from "@amical/types";
 import type { AuthService } from "../../src/services/auth-service";
 import {
   SettingsSyncClient,
@@ -44,7 +48,7 @@ describe("SettingsSyncClient", () => {
           collections: ["vocabulary", "snippet", "notes"],
           maxPushBatch: 100,
           maxPushBytes: 524288,
-          defaultPullLimit: 200,
+          defaultPullLimit: 600,
           maxPullLimit: 500,
           maxPullBytes: 524288,
           oneScopePerPush: true,
@@ -60,7 +64,7 @@ describe("SettingsSyncClient", () => {
       collections: ["vocabulary", "snippet"],
       maxPushBatch: 100,
       maxPushBytes: 524288,
-      pullLimit: 200,
+      pullLimit: 500,
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [
@@ -69,6 +73,40 @@ describe("SettingsSyncClient", () => {
     ];
     expect(url.toString()).toBe("https://core.test/apps/v1/sync/bootstrap");
     expect(init.headers.Authorization).toBe("Bearer id-token");
+  });
+
+  it("validates request shape without imposing advertised operation limits", () => {
+    expect(
+      SettingsSyncPullCollectionRequestSchema.safeParse({
+        collection: "vocabulary",
+        cursor: 0,
+        limit: 501,
+      }).success,
+    ).toBe(true);
+
+    for (const limit of [undefined, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(
+        SettingsSyncPullCollectionRequestSchema.safeParse({
+          collection: "vocabulary",
+          cursor: 0,
+          limit,
+        }).success,
+      ).toBe(false);
+    }
+
+    const mutation = {
+      collection: "vocabulary" as const,
+      scopeType: "user" as const,
+      scopeId: "user-1",
+      syncId: SYNC_ID,
+      expectedSyncVersion: null,
+      payload: { word: "Amical", replacement: null },
+    };
+    expect(
+      SettingsSyncPushRequestSchema.safeParse({
+        mutations: Array.from({ length: 101 }, () => mutation),
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects a malformed pull before returning any items", async () => {

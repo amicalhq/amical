@@ -1,14 +1,10 @@
 import { z } from "zod";
 
-// Hand-maintained copy of the Axis settings-sync wire contract. Axis remains
-// the source of truth until the two repositories share this package directly.
+// Hand-maintained structural copy of the Axis settings-sync wire contract.
+// Axis owns operational limits and advertises them through bootstrap; only
+// invariant payload limits remain fixed here until both repositories share it.
 export const SETTINGS_SYNC_KEY_MAX_LENGTH = 60;
 export const SETTINGS_SYNC_TEXT_MAX_LENGTH = 4000;
-export const SETTINGS_SYNC_MAX_PUSH_BATCH = 100;
-export const SETTINGS_SYNC_MAX_PUSH_BYTES = 512 * 1024;
-export const SETTINGS_SYNC_DEFAULT_PULL_LIMIT = 200;
-export const SETTINGS_SYNC_MAX_PULL_LIMIT = 500;
-export const SETTINGS_SYNC_MAX_PULL_BYTES = 512 * 1024;
 
 export const SETTINGS_SYNC_COLLECTIONS = ["vocabulary", "snippet"] as const;
 export const SettingsSyncCollectionSchema = z.enum(SETTINGS_SYNC_COLLECTIONS);
@@ -138,13 +134,7 @@ export const SettingsSyncPullCollectionRequestSchema = z
   .object({
     collection: SettingsSyncCollectionSchema,
     cursor: settingsSyncCursorSchema,
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(SETTINGS_SYNC_MAX_PULL_LIMIT)
-      .optional()
-      .default(SETTINGS_SYNC_DEFAULT_PULL_LIMIT),
+    limit: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   })
   .strict();
 
@@ -241,9 +231,7 @@ export type SettingsSyncPushMutation = z.infer<
 
 export const SettingsSyncPushRequestSchema = z
   .object({
-    mutations: z
-      .array(SettingsSyncPushMutationSchema)
-      .max(SETTINGS_SYNC_MAX_PUSH_BATCH),
+    mutations: z.array(SettingsSyncPushMutationSchema),
   })
   .strict();
 export type SettingsSyncPushRequest = z.infer<

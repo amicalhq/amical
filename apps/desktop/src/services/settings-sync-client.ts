@@ -113,7 +113,10 @@ export class SettingsSyncClient {
       collections,
       maxPushBatch: body.capabilities.maxPushBatch,
       maxPushBytes: body.capabilities.maxPushBytes,
-      pullLimit: body.capabilities.defaultPullLimit,
+      pullLimit: Math.min(
+        body.capabilities.defaultPullLimit,
+        body.capabilities.maxPullLimit,
+      ),
     };
   }
 
