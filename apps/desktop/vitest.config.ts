@@ -17,6 +17,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Forge rebuilds an app-local copy for Electron. Tests run in Node, so
+      // always use pnpm's hoisted Node-compatible binding instead.
+      "better-sqlite3": resolve(__dirname, "../../node_modules/better-sqlite3"),
       // Renderer tests (jsdom) can't load the real tRPC React client; point it at
       // a stub. Must precede "@" so it wins over the generic src alias.
       "@/trpc/react": resolve(__dirname, "tests/stubs/trpc-react.ts"),

@@ -1,5 +1,6 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as schema from "@db/schema";
 import path from "node:path";
 import fs from "fs-extra";
@@ -33,7 +34,8 @@ export async function createTestDatabase(
   await fs.ensureDir(path.dirname(dbPath));
 
   // Create drizzle instance
-  const db = drizzle(`file:${dbPath}`, {
+  const client = new Database(dbPath);
+  const db = drizzle(client, {
     schema: {
       ...schema,
     },
@@ -52,7 +54,7 @@ export async function createTestDatabase(
       );
     } else {
       try {
-        await migrate(db, {
+        migrate(db, {
           migrationsFolder: migrationsPath,
         });
       } catch (error) {
@@ -70,18 +72,18 @@ export async function createTestDatabase(
     },
     clear: async () => {
       // Clear all tables
-      await db.delete(schema.syncOutbox);
-      await db.delete(schema.syncItemState);
-      await db.delete(schema.syncCollectionState);
-      await db.delete(schema.syncClientState);
-      await db.delete(schema.transcriptions);
-      await db.delete(schema.dailyStats);
-      await db.delete(schema.vocabulary);
-      await db.delete(schema.snippets);
-      await db.delete(schema.models);
-      await db.delete(schema.appSettings);
-      await db.delete(schema.yjsUpdates);
-      await db.delete(schema.notes);
+      db.delete(schema.syncOutbox).run();
+      db.delete(schema.syncItemState).run();
+      db.delete(schema.syncCollectionState).run();
+      db.delete(schema.syncClientState).run();
+      db.delete(schema.transcriptions).run();
+      db.delete(schema.dailyStats).run();
+      db.delete(schema.vocabulary).run();
+      db.delete(schema.snippets).run();
+      db.delete(schema.models).run();
+      db.delete(schema.appSettings).run();
+      db.delete(schema.yjsUpdates).run();
+      db.delete(schema.notes).run();
     },
   };
 }
@@ -114,7 +116,8 @@ export async function clearAllTestDatabases(): Promise<void> {
  * This bypasses the singleton pattern used in production
  */
 export function createMockDb(dbPath: string) {
-  return drizzle(`file:${dbPath}`, {
+  const client = new Database(dbPath);
+  return drizzle(client, {
     schema: {
       ...schema,
     },

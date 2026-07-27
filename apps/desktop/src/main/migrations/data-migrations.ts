@@ -157,9 +157,9 @@ async function migrateSettingsSyncBounds(): Promise<{
   vocabularyDeleted: number;
   snippetsDeleted: number;
 }> {
-  return await db.transaction(async (tx) => {
-    const vocabularyRows = await tx.select().from(vocabulary);
-    const snippetRows = await tx.select().from(snippets);
+  return db.transaction((tx) => {
+    const vocabularyRows = tx.select().from(vocabulary).all();
+    const snippetRows = tx.select().from(snippets).all();
 
     const normalizedVocabulary = vocabularyRows.map((row) => ({
       ...row,
@@ -208,46 +208,46 @@ async function migrateSettingsSyncBounds(): Promise<{
     }
 
     if (vocabularyIdsToDelete.length > 0) {
-      await tx
-        .delete(vocabulary)
-        .where(inArray(vocabulary.id, vocabularyIdsToDelete));
+      tx.delete(vocabulary)
+        .where(inArray(vocabulary.id, vocabularyIdsToDelete))
+        .run();
     }
     if (snippetIdsToDelete.length > 0) {
-      await tx.delete(snippets).where(inArray(snippets.id, snippetIdsToDelete));
+      tx.delete(snippets).where(inArray(snippets.id, snippetIdsToDelete)).run();
     }
 
     // Move retained keys through unique temporary values so trimming can safely
     // handle swaps and collisions with another row's original key.
     for (const row of keptVocabulary) {
-      await tx
-        .update(vocabulary)
+      tx.update(vocabulary)
         .set({ word: randomUUID() })
-        .where(eq(vocabulary.id, row.id));
+        .where(eq(vocabulary.id, row.id))
+        .run();
     }
     for (const row of keptSnippets) {
-      await tx
-        .update(snippets)
+      tx.update(snippets)
         .set({ trigger: randomUUID() })
-        .where(eq(snippets.id, row.id));
+        .where(eq(snippets.id, row.id))
+        .run();
     }
 
     for (const row of keptVocabulary) {
-      await tx
-        .update(vocabulary)
+      tx.update(vocabulary)
         .set({
           word: row.word,
           replacementWord: row.replacementWord,
         })
-        .where(eq(vocabulary.id, row.id));
+        .where(eq(vocabulary.id, row.id))
+        .run();
     }
     for (const row of keptSnippets) {
-      await tx
-        .update(snippets)
+      tx.update(snippets)
         .set({
           trigger: row.trigger,
           content: row.content,
         })
-        .where(eq(snippets.id, row.id));
+        .where(eq(snippets.id, row.id))
+        .run();
     }
 
     return {

@@ -36,15 +36,13 @@
       "keytar",
       "protobufjs",
       "sharp",
-      "@amical/whisper-wrapper",
-      "drizzle-orm/libsql"
+      "@amical/whisper-wrapper"
     ],
     "onlyBuiltDependencies": [
       "electron",
       "electron-winstaller",
       "@amical/whisper-wrapper",
-      "drizzle-orm/libsql",
-      "@libsql",
+      "better-sqlite3",
       "macos-alias",
       "fs-xattr",
       "onnxruntime-node",

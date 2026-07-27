@@ -20,7 +20,7 @@ describe("settings sync schema migration", () => {
   });
 
   it("migrates legacy replacement state while replacing integer IDs with UUID sync IDs", async () => {
-    await testDb.db.$client.executeMultiple(`
+    testDb.db.$client.exec(`
       CREATE TABLE vocabulary (
         id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
         word text NOT NULL,
@@ -59,14 +59,14 @@ describe("settings sync schema migration", () => {
         "utf8",
       )
       .replaceAll("--> statement-breakpoint", "");
-    await testDb.db.$client.executeMultiple(migration);
+    testDb.db.$client.exec(migration);
 
-    const vocabularyRows = await testDb.db.select().from(vocabulary);
+    const vocabularyRows = testDb.db.select().from(vocabulary).all();
     const vocabularyRow = vocabularyRows.find((row) => row.word === "Amical");
     const dormantVocabularyRow = vocabularyRows.find(
       (row) => row.word === "Dormant",
     );
-    const [snippetRow] = await testDb.db.select().from(snippets);
+    const [snippetRow] = testDb.db.select().from(snippets).all();
     expect(vocabularyRow).toMatchObject({
       word: "Amical",
       replacementWord: "Amical AI",
@@ -88,18 +88,16 @@ describe("settings sync schema migration", () => {
     expect(dormantVocabularyRow?.id.startsWith("00000002-")).toBe(true);
     expect(snippetRow.id.startsWith("00000001-")).toBe(true);
 
-    const vocabularyColumns = await testDb.db.$client.execute(
-      "PRAGMA table_info(vocabulary)",
-    );
-    expect(vocabularyColumns.rows.map((row) => row.name)).not.toContain(
+    const vocabularyColumns = testDb.db.$client
+      .prepare<[], { name: string }>("PRAGMA table_info(vocabulary)")
+      .all();
+    expect(vocabularyColumns.map((row) => row.name)).not.toContain(
       "is_replacement",
     );
-    const syncColumns = await testDb.db.$client.execute(
-      "PRAGMA table_info(sync_item_state)",
-    );
-    expect(syncColumns.rows.map((row) => row.name)).not.toContain(
-      "local_row_id",
-    );
+    const syncColumns = testDb.db.$client
+      .prepare<[], { name: string }>("PRAGMA table_info(sync_item_state)")
+      .all();
+    expect(syncColumns.map((row) => row.name)).not.toContain("local_row_id");
     const expectedSyncPrimaryKeys = {
       sync_item_state: ["scope_type", "scope_id", "collection", "sync_id"],
       sync_outbox: ["scope_type", "scope_id", "collection", "sync_id"],
@@ -108,28 +106,34 @@ describe("settings sync schema migration", () => {
     for (const [table, expectedPrimaryKey] of Object.entries(
       expectedSyncPrimaryKeys,
     )) {
-      const columns = await testDb.db.$client.execute(
-        `PRAGMA table_info(${table})`,
-      );
-      expect(columns.rows.map((row) => row.name)).not.toContain("account_id");
+      const columns = testDb.db.$client
+        .prepare<
+          [],
+          { name: string; pk: number }
+        >(`PRAGMA table_info(${table})`)
+        .all();
+      expect(columns.map((row) => row.name)).not.toContain("account_id");
       expect(
-        columns.rows
+        columns
           .filter((row) => Number(row.pk) > 0)
           .sort((left, right) => Number(left.pk) - Number(right.pk))
           .map((row) => row.name),
       ).toEqual(expectedPrimaryKey);
     }
-    const clientColumns = await testDb.db.$client.execute(
-      "PRAGMA table_info(sync_client_state)",
-    );
-    expect(clientColumns.rows.map((row) => row.name)).toEqual([
+    const clientColumns = testDb.db.$client
+      .prepare<[], { name: string }>("PRAGMA table_info(sync_client_state)")
+      .all();
+    expect(clientColumns.map((row) => row.name)).toEqual([
       "id",
       "last_outbox_sequence",
     ]);
-    const scopeTable = await testDb.db.$client.execute(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_scope_state'",
-    );
-    expect(scopeTable.rows).toEqual([]);
-    expect(await testDb.db.select().from(syncItemState)).toEqual([]);
+    const scopeTable = testDb.db.$client
+      .prepare<
+        [],
+        { name: string }
+      >("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_scope_state'")
+      .all();
+    expect(scopeTable).toEqual([]);
+    expect(testDb.db.select().from(syncItemState).all()).toEqual([]);
   });
 });

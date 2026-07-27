@@ -1,5 +1,5 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { app } from "electron";
 import * as path from "path";
 import * as fs from "fs";
@@ -13,7 +13,7 @@ export const dbPath =
     ? path.join(app.getPath("userData"), "amical.db")
     : path.join(process.cwd(), "amical.db");
 
-export const db = drizzle(`file:${dbPath}`, {
+export const db = drizzle(dbPath, {
   schema: {
     ...schema,
   },
@@ -62,7 +62,7 @@ export async function initializeDatabase() {
     }
 
     // Run migrations to ensure database is up to date
-    await migrate(db, {
+    migrate(db, {
       migrationsFolder: migrationsPath,
     });
 

@@ -154,14 +154,16 @@ export async function replaceYjsUpdates(
 ): Promise<void> {
   const bufferUpdate = Buffer.from(compactedUpdate);
 
-  await db.transaction(async (tx) => {
+  db.transaction((tx) => {
     // Delete all existing updates
-    await tx.delete(yjsUpdates).where(eq(yjsUpdates.noteId, noteId));
+    tx.delete(yjsUpdates).where(eq(yjsUpdates.noteId, noteId)).run();
 
     // Insert the compacted update
-    await tx.insert(yjsUpdates).values({
-      noteId,
-      updateData: bufferUpdate,
-    });
+    tx.insert(yjsUpdates)
+      .values({
+        noteId,
+        updateData: bufferUpdate,
+      })
+      .run();
   });
 }

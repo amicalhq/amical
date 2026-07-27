@@ -35,12 +35,13 @@ export async function createSnippet(
   data: Omit<NewSnippet, "id" | "createdAt" | "updatedAt">,
 ) {
   const now = new Date();
-  return db.transaction(async (tx) => {
-    const [created] = await tx
+  return db.transaction((tx) => {
+    const created = tx
       .insert(snippets)
       .values({ ...data, createdAt: now, updatedAt: now })
-      .returning();
-    await recordLocalSyncMutation(
+      .returning()
+      .get();
+    recordLocalSyncMutation(
       tx,
       "snippet",
       created.id,
@@ -78,15 +79,16 @@ export async function updateSnippet(
   id: string,
   data: Partial<Omit<Snippet, "id" | "createdAt">>,
 ) {
-  return db.transaction(async (tx) => {
-    const [updated] = await tx
+  return db.transaction((tx) => {
+    const updated = tx
       .update(snippets)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(snippets.id, id))
-      .returning();
+      .returning()
+      .get();
     if (!updated) return null;
 
-    await recordLocalSyncMutation(
+    recordLocalSyncMutation(
       tx,
       "snippet",
       updated.id,
@@ -97,19 +99,21 @@ export async function updateSnippet(
 }
 
 export async function deleteSnippet(id: string) {
-  return db.transaction(async (tx) => {
-    const [existing] = await tx
+  return db.transaction((tx) => {
+    const existing = tx
       .select()
       .from(snippets)
       .where(eq(snippets.id, id))
-      .limit(1);
+      .limit(1)
+      .get();
     if (!existing) return null;
 
-    await recordLocalSyncMutation(tx, "snippet", existing.id, null);
-    const [deleted] = await tx
+    recordLocalSyncMutation(tx, "snippet", existing.id, null);
+    const deleted = tx
       .delete(snippets)
       .where(eq(snippets.id, id))
-      .returning();
+      .returning()
+      .get();
     return deleted ?? null;
   });
 }

@@ -25,6 +25,7 @@ import {
   copyFileSync,
 } from "node:fs";
 import { join, normalize } from "node:path";
+import { stageBetterSqlite3ForElectron } from "./scripts/stage-better-sqlite3";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
 // flora-colossus is maintained by MarshallOfSound (a top electron-forge contributor)
 // already included as a dependency of electron-packager/galactus (so we do NOT have to add it to package.json)
@@ -42,13 +43,7 @@ const isBundledNodeBinaryForSigning = (filePath: string): boolean => {
 
 export const EXTERNAL_DEPENDENCIES = [
   "electron-squirrel-startup",
-  "@libsql/client",
-  "@libsql/darwin-arm64",
-  "@libsql/darwin-x64",
-  "@libsql/linux-x64-gnu",
-  "@libsql/linux-x64-musl",
-  "@libsql/win32-x64-msvc",
-  "libsql",
+  "better-sqlite3",
   "onnxruntime-node",
   "@amical/whisper-wrapper",
   // Add any other native modules you need here
@@ -60,6 +55,10 @@ const config: ForgeConfig = {
       const projectRoot = normalize(__dirname);
       // In a monorepo, node_modules are typically at the root level
       const monorepoRoot = join(projectRoot, "../../"); // Go up to monorepo root
+
+      // The start script stages the same physical copy before Forge loads.
+      // Refresh it here too so packaging never reuses stale ABI metadata.
+      stageBetterSqlite3ForElectron();
 
       // Copy platform-specific Node.js binary
       console.log(`Copying Node.js binary for ${platform}-${arch}...`);
@@ -640,9 +639,6 @@ const config: ForgeConfig = {
         // package: Squirrel's releasify signs every .exe/.dll/.node it packs
         // and aborts on Mach-O/ELF files — and they're dead weight anyway.
         if (process.platform === "win32") {
-          if (/^\/node_modules\/@libsql\/(darwin|linux)-/.test(filePath)) {
-            return true;
-          }
           if (
             /^\/node_modules\/onnxruntime-node\/bin\/napi-v\d+\/(darwin|linux)(\/|$)/.test(
               filePath,
@@ -687,7 +683,7 @@ const config: ForgeConfig = {
             // Handle scoped packages: if dep is @scope/package, also keep @scope/ directory
             // But not for our workspace packages
             if (dep.includes("/") && dep.startsWith("@")) {
-              const scopeDir = dep.split("/")[0]; // @libsql/client -> @libsql
+              const scopeDir = dep.split("/")[0];
               // for workspace packages only keep the actual package
               if (scopeDir === "@amical") {
                 if (

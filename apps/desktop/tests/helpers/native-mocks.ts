@@ -61,22 +61,6 @@ export const mockKeytar = {
   findCredentials: vi.fn((service: string) => Promise.resolve([])),
 };
 
-// Mock libsql native module
-export const mockLibsql = {
-  createClient: vi.fn(() => ({
-    execute: vi.fn(() =>
-      Promise.resolve({
-        rows: [],
-        columns: [],
-        rowsAffected: 0,
-      }),
-    ),
-    batch: vi.fn(() => Promise.resolve([])),
-    close: vi.fn(() => Promise.resolve()),
-    sync: vi.fn(() => Promise.resolve()),
-  })),
-};
-
 // Mock native helper modules
 export const mockSwiftHelper = {
   checkAccessibilityPermission: vi.fn(() => true),
@@ -165,7 +149,6 @@ export function createNativeMocks() {
     "onnxruntime-node": mockOnnxRuntime,
     "@amical/whisper-wrapper": mockWhisperWrapper,
     keytar: mockKeytar,
-    libsql: mockLibsql,
     "@amical/swift-helper": mockSwiftHelper,
     "@amical/windows-helper": mockWindowsHelper,
     "node-machine-id": mockMachineId,

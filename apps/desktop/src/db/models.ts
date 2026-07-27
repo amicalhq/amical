@@ -131,15 +131,15 @@ export async function syncModelsForProviderInstance(
   providerInstanceId: string,
   newModels: NewModel[],
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  db.transaction((tx) => {
     // Delete existing models for this provider instance
-    await tx
-      .delete(models)
-      .where(eq(models.providerInstanceId, providerInstanceId));
+    tx.delete(models)
+      .where(eq(models.providerInstanceId, providerInstanceId))
+      .run();
 
     // Insert new models
     if (newModels.length > 0) {
-      await tx.insert(models).values(newModels);
+      tx.insert(models).values(newModels).run();
     }
   });
 }

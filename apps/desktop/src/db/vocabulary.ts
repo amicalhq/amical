@@ -20,9 +20,9 @@ export async function createVocabularyWord(
     updatedAt: now,
   };
 
-  return db.transaction(async (tx) => {
-    const [created] = await tx.insert(vocabulary).values(newWord).returning();
-    await recordLocalSyncMutation(
+  return db.transaction((tx) => {
+    const created = tx.insert(vocabulary).values(newWord).returning().get();
+    recordLocalSyncMutation(
       tx,
       "vocabulary",
       created.id,
@@ -121,19 +121,19 @@ export async function updateVocabulary(
     updatedAt: new Date(),
   };
 
-  return db.transaction(async (tx) => {
-    const [updated] = await tx
+  return db.transaction((tx) => {
+    const updated = tx
       .update(vocabulary)
       .set(updateData)
       .where(eq(vocabulary.id, id))
-      .returning();
+      .returning()
+      .get();
     if (!updated) return null;
 
     const changesSyncPayload =
-      Object.hasOwn(data, "word") ||
-      Object.hasOwn(data, "replacementWord");
+      Object.hasOwn(data, "word") || Object.hasOwn(data, "replacementWord");
     if (changesSyncPayload) {
-      await recordLocalSyncMutation(
+      recordLocalSyncMutation(
         tx,
         "vocabulary",
         updated.id,
@@ -146,19 +146,21 @@ export async function updateVocabulary(
 
 // Delete vocabulary word
 export async function deleteVocabulary(id: string) {
-  return db.transaction(async (tx) => {
-    const [existing] = await tx
+  return db.transaction((tx) => {
+    const existing = tx
       .select()
       .from(vocabulary)
       .where(eq(vocabulary.id, id))
-      .limit(1);
+      .limit(1)
+      .get();
     if (!existing) return null;
 
-    await recordLocalSyncMutation(tx, "vocabulary", existing.id, null);
-    const [deleted] = await tx
+    recordLocalSyncMutation(tx, "vocabulary", existing.id, null);
+    const deleted = tx
       .delete(vocabulary)
       .where(eq(vocabulary.id, id))
-      .returning();
+      .returning()
+      .get();
     return deleted ?? null;
   });
 }
@@ -225,12 +227,13 @@ export async function bulkImportVocabulary(
     updatedAt: now,
   }));
 
-  return db.transaction(async (tx) => {
-    const created = await tx
+  return db.transaction((tx) => {
+    const created = tx
       .insert(vocabulary)
       .values(vocabularyWords)
-      .returning();
-    await recordLocalSyncMutations(
+      .returning()
+      .all();
+    recordLocalSyncMutations(
       tx,
       created.map((row) => ({
         collection: "vocabulary",

@@ -41,13 +41,7 @@ export default defineConfig({
       },
       external: [
         "@amical/whisper-wrapper",
-        "@libsql/client",
-        "@libsql/darwin-arm64",
-        "@libsql/darwin-x64",
-        "@libsql/linux-x64-gnu",
-        "@libsql/linux-x64-musl",
-        "@libsql/win32-x64-msvc",
-        "libsql",
+        "better-sqlite3",
         "onnxruntime-node",
         /^node:/,
         /^electron$/,
@@ -60,11 +54,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: [
-      "better-sqlite3",
-      "@amical/whisper-wrapper",
-      "drizzle-orm",
-      "@libsql/client",
-    ],
+    exclude: ["better-sqlite3", "@amical/whisper-wrapper", "drizzle-orm"],
   },
 });

@@ -28,6 +28,7 @@ import {
   createVocabularyWord,
   updateVocabulary,
 } from "../../src/db/vocabulary";
+import { createSnippet } from "../../src/db/snippets";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
 
@@ -110,8 +111,8 @@ describe("settings sync durable store", () => {
       .values({ word: "Amical" })
       .returning();
 
-    await database.transaction(async (tx) => {
-      await recordLocalSyncMutation(tx, "vocabulary", row.id, {
+    database.transaction((tx) => {
+      recordLocalSyncMutation(tx, "vocabulary", row.id, {
         word: row.word,
         replacement: null,
       });
@@ -150,6 +151,18 @@ describe("settings sync durable store", () => {
     expect(created).toHaveLength(2);
     expect(await database.select().from(syncItemState)).toHaveLength(2);
     expect(await database.select().from(syncOutbox)).toHaveLength(2);
+  });
+
+  it("rolls back domain writes when sync mutation recording fails", async () => {
+    await beginUserSyncSession("user-1", database);
+    database.delete(syncClientState).run();
+
+    await expect(
+      createSnippet({ trigger: "sig", content: "Regards" }),
+    ).rejects.toThrow("Sync client state is missing");
+
+    expect(await database.select().from(snippets)).toEqual([]);
+    expect(await database.select().from(syncItemState)).toEqual([]);
   });
 
   it("clears a vocabulary replacement when it is set to null", async () => {
@@ -335,12 +348,12 @@ describe("settings sync durable store", () => {
       database,
     );
     const [row] = await database.select().from(snippets);
-    await database.transaction(async (tx) => {
-      await tx
-        .update(snippets)
+    database.transaction((tx) => {
+      tx.update(snippets)
         .set({ content: "Local edit" })
-        .where(eq(snippets.id, row.id));
-      await recordLocalSyncMutation(tx, "snippet", row.id, {
+        .where(eq(snippets.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "snippet", row.id, {
         trigger: "sig",
         content: "Local edit",
       });
@@ -440,9 +453,9 @@ describe("settings sync durable store", () => {
 
     fence = await beginUserSyncSession("user-1", database);
     await prepareVisibleRowsForFullSync(fence, database);
-    await database.transaction(async (tx) => {
-      await recordLocalSyncMutation(tx, "snippet", row.id, null);
-      await tx.delete(snippets).where(eq(snippets.id, row.id));
+    database.transaction((tx) => {
+      recordLocalSyncMutation(tx, "snippet", row.id, null);
+      tx.delete(snippets).where(eq(snippets.id, row.id)).run();
     });
     await applyPullPage(
       fence,
@@ -485,12 +498,12 @@ describe("settings sync durable store", () => {
       database,
     );
     const [row] = await database.select().from(snippets);
-    await database.transaction(async (tx) => {
-      await tx
-        .update(snippets)
+    database.transaction((tx) => {
+      tx.update(snippets)
         .set({ content: "Pending" })
-        .where(eq(snippets.id, row.id));
-      await recordLocalSyncMutation(tx, "snippet", row.id, {
+        .where(eq(snippets.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "snippet", row.id, {
         trigger: "sig",
         content: "Pending",
       });
@@ -545,12 +558,12 @@ describe("settings sync durable store", () => {
       database,
     );
     const [row] = await database.select().from(snippets);
-    await database.transaction(async (tx) => {
-      await tx
-        .update(snippets)
+    database.transaction((tx) => {
+      tx.update(snippets)
         .set({ content: "Pending" })
-        .where(eq(snippets.id, row.id));
-      await recordLocalSyncMutation(tx, "snippet", row.id, {
+        .where(eq(snippets.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "snippet", row.id, {
         trigger: "sig",
         content: "Pending",
       });
@@ -639,22 +652,22 @@ describe("settings sync durable store", () => {
       headSequence: 1,
     });
 
-    await database.transaction(async (tx) => {
-      await tx
-        .update(vocabulary)
+    database.transaction((tx) => {
+      tx.update(vocabulary)
         .set({ word: "C" })
-        .where(eq(vocabulary.id, row.id));
-      await recordLocalSyncMutation(tx, "vocabulary", row.id, {
+        .where(eq(vocabulary.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "vocabulary", row.id, {
         word: "C",
         replacement: null,
       });
     });
-    await database.transaction(async (tx) => {
-      await tx
-        .update(vocabulary)
+    database.transaction((tx) => {
+      tx.update(vocabulary)
         .set({ word: "D" })
-        .where(eq(vocabulary.id, row.id));
-      await recordLocalSyncMutation(tx, "vocabulary", row.id, {
+        .where(eq(vocabulary.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "vocabulary", row.id, {
         word: "D",
         replacement: null,
       });
@@ -663,8 +676,8 @@ describe("settings sync durable store", () => {
       .insert(snippets)
       .values({ trigger: "later", content: "Later" })
       .returning();
-    await database.transaction(async (tx) => {
-      await recordLocalSyncMutation(tx, "snippet", laterRow.id, {
+    database.transaction((tx) => {
+      recordLocalSyncMutation(tx, "snippet", laterRow.id, {
         trigger: "later",
         content: "Later",
       });
@@ -746,12 +759,12 @@ describe("settings sync durable store", () => {
     ).toBe(true);
 
     const [row] = await database.select().from(snippets);
-    await database.transaction(async (tx) => {
-      await tx
-        .update(snippets)
+    database.transaction((tx) => {
+      tx.update(snippets)
         .set({ content: "Local B" })
-        .where(eq(snippets.id, row.id));
-      await recordLocalSyncMutation(tx, "snippet", row.id, {
+        .where(eq(snippets.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "snippet", row.id, {
         trigger: "sig",
         content: "Local B",
       });
@@ -799,12 +812,12 @@ describe("settings sync durable store", () => {
       database,
     );
     const [row] = await database.select().from(snippets);
-    await database.transaction(async (tx) => {
-      await tx
-        .update(snippets)
+    database.transaction((tx) => {
+      tx.update(snippets)
         .set({ content: "B" })
-        .where(eq(snippets.id, row.id));
-      await recordLocalSyncMutation(tx, "snippet", row.id, {
+        .where(eq(snippets.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "snippet", row.id, {
         trigger: "sig",
         content: "B",
       });
@@ -861,12 +874,12 @@ describe("settings sync durable store", () => {
       database,
     );
     const [row] = await database.select().from(snippets);
-    await database.transaction(async (tx) => {
-      await tx
-        .update(snippets)
+    database.transaction((tx) => {
+      tx.update(snippets)
         .set({ content: "B" })
-        .where(eq(snippets.id, row.id));
-      await recordLocalSyncMutation(tx, "snippet", row.id, {
+        .where(eq(snippets.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "snippet", row.id, {
         trigger: "sig",
         content: "B",
       });
@@ -917,9 +930,9 @@ describe("settings sync durable store", () => {
       database,
     );
     const [original] = await database.select().from(snippets);
-    await database.transaction(async (tx) => {
-      await recordLocalSyncMutation(tx, "snippet", original.id, null);
-      await tx.delete(snippets).where(eq(snippets.id, original.id));
+    database.transaction((tx) => {
+      recordLocalSyncMutation(tx, "snippet", original.id, null);
+      tx.delete(snippets).where(eq(snippets.id, original.id)).run();
     });
 
     const [recreated] = await database
@@ -971,9 +984,9 @@ describe("settings sync durable store", () => {
     );
     const [row] = await database.select().from(vocabulary);
 
-    await database.transaction(async (tx) => {
-      await recordLocalSyncMutation(tx, "vocabulary", row.id, null);
-      await tx.delete(vocabulary).where(eq(vocabulary.id, row.id));
+    database.transaction((tx) => {
+      recordLocalSyncMutation(tx, "vocabulary", row.id, null);
+      tx.delete(vocabulary).where(eq(vocabulary.id, row.id)).run();
     });
     const [head] = await capturePushHeads(fence, database);
     await applyPushResults(
@@ -1059,12 +1072,12 @@ describe("settings sync durable store", () => {
     await adoptVisibleRows(fence, database);
     const [head] = await capturePushHeads(fence, database);
 
-    await database.transaction(async (tx) => {
-      await tx
-        .update(snippets)
+    database.transaction((tx) => {
+      tx.update(snippets)
         .set({ content: "Local B" })
-        .where(eq(snippets.id, row.id));
-      await recordLocalSyncMutation(tx, "snippet", row.id, {
+        .where(eq(snippets.id, row.id))
+        .run();
+      recordLocalSyncMutation(tx, "snippet", row.id, {
         trigger: "sig",
         content: "Local B",
       });

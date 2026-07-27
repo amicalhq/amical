@@ -65,18 +65,20 @@ export async function getLifetimeStats(): Promise<LifetimeStats> {
 }
 
 export async function seedDailyStats(rows: DailyStatSeed[]): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.delete(dailyStats);
+  db.transaction((tx) => {
+    tx.delete(dailyStats).run();
 
     for (const row of rows) {
-      await tx.insert(dailyStats).values({
-        id: crypto.randomUUID(),
-        date: row.date,
-        wordCount: row.wordCount,
-        transcriptionCount: row.transcriptionCount,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-      });
+      tx.insert(dailyStats)
+        .values({
+          id: crypto.randomUUID(),
+          date: row.date,
+          wordCount: row.wordCount,
+          transcriptionCount: row.transcriptionCount,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        })
+        .run();
     }
   });
 }

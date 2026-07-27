@@ -124,25 +124,26 @@ function payloadsEqual(
 const syncItemKey = (collection: SyncCollection, syncId: string) =>
   `${collection}:${syncId}`;
 
-async function loadVisibleRowIds(
+function loadVisibleRowIds(
   database: SyncDatabase,
-): Promise<Record<SyncCollection, Set<string>>> {
-  const vocabularyRows = await database
+): Record<SyncCollection, Set<string>> {
+  const vocabularyRows = database
     .select({ id: vocabulary.id })
-    .from(vocabulary);
-  const snippetRows = await database.select({ id: snippets.id }).from(snippets);
+    .from(vocabulary)
+    .all();
+  const snippetRows = database.select({ id: snippets.id }).from(snippets).all();
   return {
     vocabulary: new Set(vocabularyRows.map((row) => row.id)),
     snippet: new Set(snippetRows.map((row) => row.id)),
   };
 }
 
-async function loadScopeSyncIndex(
+function loadScopeSyncIndex(
   database: SyncDatabase,
   identity: Pick<SyncContext, "scopeType" | "scopeId">,
   visibleRowIds: Record<SyncCollection, Set<string>>,
 ) {
-  const sidecars = await database
+  const sidecars = database
     .select()
     .from(syncItemState)
     .where(
@@ -150,8 +151,9 @@ async function loadScopeSyncIndex(
         eq(syncItemState.scopeType, identity.scopeType),
         eq(syncItemState.scopeId, identity.scopeId),
       ),
-    );
-  const pendingRows = await database
+    )
+    .all();
+  const pendingRows = database
     .select()
     .from(syncOutbox)
     .where(
@@ -159,7 +161,8 @@ async function loadScopeSyncIndex(
         eq(syncOutbox.scopeType, identity.scopeType),
         eq(syncOutbox.scopeId, identity.scopeId),
       ),
-    );
+    )
+    .all();
   const pendingByItem = new Map(
     pendingRows.map((pending) => [
       syncItemKey(pending.collection, pending.syncId),
@@ -214,11 +217,11 @@ async function startUserSyncSession(
   resetCursor: boolean,
   database: typeof db = db,
 ): Promise<SyncContext> {
-  const context = await database.transaction(async (tx) => {
-    await tx
-      .insert(syncClientState)
+  const context = database.transaction((tx) => {
+    tx.insert(syncClientState)
       .values({ id: 1, lastOutboxSequence: 0 })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .run();
 
     const scope = {
       scopeType: "user" as const,
@@ -230,16 +233,18 @@ async function startUserSyncSession(
         .insert(syncCollectionState)
         .values({ ...scope, collection, cursor: 0 });
       if (resetCursor) {
-        await insert.onConflictDoUpdate({
-          target: [
-            syncCollectionState.scopeType,
-            syncCollectionState.scopeId,
-            syncCollectionState.collection,
-          ],
-          set: { cursor: 0 },
-        });
+        insert
+          .onConflictDoUpdate({
+            target: [
+              syncCollectionState.scopeType,
+              syncCollectionState.scopeId,
+              syncCollectionState.collection,
+            ],
+            set: { cursor: 0 },
+          })
+          .run();
       } else {
-        await insert.onConflictDoNothing();
+        insert.onConflictDoNothing().run();
       }
     }
 
@@ -269,11 +274,11 @@ export function pauseSyncSession(): void {
 
 export async function clearSyncState(database: typeof db = db): Promise<void> {
   activeUserAccountId = null;
-  await database.transaction(async (tx) => {
-    await tx.delete(syncOutbox);
-    await tx.delete(syncItemState);
-    await tx.delete(syncCollectionState);
-    await tx.delete(syncClientState);
+  database.transaction((tx) => {
+    tx.delete(syncOutbox).run();
+    tx.delete(syncItemState).run();
+    tx.delete(syncCollectionState).run();
+    tx.delete(syncClientState).run();
   });
 }
 
@@ -281,7 +286,7 @@ export async function hasResumableUserSyncState(
   accountId: string,
   database: SyncDatabase = db,
 ): Promise<boolean> {
-  const [state] = await database
+  const state = database
     .select({ collection: syncCollectionState.collection })
     .from(syncCollectionState)
     .where(
@@ -290,7 +295,8 @@ export async function hasResumableUserSyncState(
         eq(syncCollectionState.scopeId, accountId),
       ),
     )
-    .limit(1);
+    .limit(1)
+    .get();
   return Boolean(state);
 }
 
@@ -303,19 +309,20 @@ function activeUserIdentity() {
   };
 }
 
-async function allocateOutboxSequence(database: SyncDatabase): Promise<number> {
-  const [client] = await database
+function allocateOutboxSequence(database: SyncDatabase): number {
+  const client = database
     .update(syncClientState)
     .set({
       lastOutboxSequence: sql`${syncClientState.lastOutboxSequence} + 1`,
     })
     .where(eq(syncClientState.id, 1))
-    .returning({ sequence: syncClientState.lastOutboxSequence });
+    .returning({ sequence: syncClientState.lastOutboxSequence })
+    .get();
   if (!client) throw new Error("Sync client state is missing");
   return client.sequence;
 }
 
-async function enqueueLocalMutation(
+function enqueueLocalMutation(
   database: SyncDatabase,
   identity: {
     scopeType: "user";
@@ -328,23 +335,27 @@ async function enqueueLocalMutation(
     unversioned?: boolean;
     notify?: boolean;
   } = {},
-): Promise<void> {
-  const [existingSidecar] = await database
+): void {
+  const existingSidecar = database
     .select()
     .from(syncItemState)
     .where(itemWhere({ ...identity, collection, syncId }))
-    .limit(1);
+    .limit(1)
+    .get();
   let sidecar: SyncItemState | undefined = existingSidecar;
 
   if (!sidecar) {
-    await database.insert(syncItemState).values({
-      ...identity,
-      collection,
-      syncId,
-      acceptedSyncVersion: null,
-      acceptedPayload: null,
-    });
-    [sidecar] = await database
+    database
+      .insert(syncItemState)
+      .values({
+        ...identity,
+        collection,
+        syncId,
+        acceptedSyncVersion: null,
+        acceptedPayload: null,
+      })
+      .run();
+    sidecar = database
       .select()
       .from(syncItemState)
       .where(
@@ -354,7 +365,8 @@ async function enqueueLocalMutation(
           syncId,
         }),
       )
-      .limit(1);
+      .limit(1)
+      .get();
   }
   if (!sidecar) throw new Error("Failed to create sync item sidecar");
 
@@ -363,17 +375,18 @@ async function enqueueLocalMutation(
     collection,
     syncId: sidecar.syncId,
   };
-  const [pending] = await database
+  const pending = database
     .select()
     .from(syncOutbox)
     .where(outboxWhere(identityWithItem))
-    .limit(1);
+    .limit(1)
+    .get();
 
   let desiredBaseSyncVersion = options.unversioned
     ? null
     : sidecar.acceptedSyncVersion;
   let desiredSequence =
-    pending?.desiredSequence ?? (await allocateOutboxSequence(database));
+    pending?.desiredSequence ?? allocateOutboxSequence(database);
   let desiredParentHeadSequence: number | null = null;
   let desiredParentSyncVersion: number | null = null;
 
@@ -382,7 +395,7 @@ async function enqueueLocalMutation(
       throw new Error("Sync outbox head is missing its sequence");
     }
     if (pending.desiredSequence === pending.headSequence) {
-      desiredSequence = await allocateOutboxSequence(database);
+      desiredSequence = allocateOutboxSequence(database);
       // A tail is based on the exact frozen state the head was authored from,
       // never a mutable accepted sidecar version observed while it is in flight.
       desiredBaseSyncVersion = pending.headExpectedSyncVersion;
@@ -398,7 +411,7 @@ async function enqueueLocalMutation(
     desiredParentSyncVersion = pending.desiredParentSyncVersion;
   }
 
-  await database
+  database
     .insert(syncOutbox)
     .values({
       ...identityWithItem,
@@ -426,19 +439,20 @@ async function enqueueLocalMutation(
         desiredParentHeadSequence,
         desiredParentSyncVersion,
       },
-    });
+    })
+    .run();
   if (options.notify !== false) localMutationHandler?.();
 }
 
-export async function recordLocalSyncMutation(
+export function recordLocalSyncMutation(
   database: SyncDatabase,
   collection: SyncCollection,
   syncId: string,
   payload: SyncPayload | null,
-): Promise<void> {
+): void {
   const identity = activeUserIdentity();
   if (!identity) return;
-  await enqueueLocalMutation(database, identity, collection, syncId, payload);
+  enqueueLocalMutation(database, identity, collection, syncId, payload);
 }
 
 export interface LocalSyncMutation {
@@ -447,7 +461,7 @@ export interface LocalSyncMutation {
   payload: SyncPayload;
 }
 
-async function enqueueLocalSyncMutationsBulk(
+function enqueueLocalSyncMutationsBulk(
   database: SyncDatabase,
   identity: {
     scopeType: "user";
@@ -459,12 +473,11 @@ async function enqueueLocalSyncMutationsBulk(
     onlyUnbound?: boolean;
     visibleRowIds?: Record<SyncCollection, Set<string>>;
   } = {},
-): Promise<void> {
+): void {
   if (mutations.length === 0) return;
 
-  const visibleRowIds =
-    options.visibleRowIds ?? (await loadVisibleRowIds(database));
-  const index = await loadScopeSyncIndex(database, identity, visibleRowIds);
+  const visibleRowIds = options.visibleRowIds ?? loadVisibleRowIds(database);
+  const index = loadScopeSyncIndex(database, identity, visibleRowIds);
 
   for (const mutation of mutations) {
     const itemKey = syncItemKey(mutation.collection, mutation.syncId);
@@ -472,7 +485,7 @@ async function enqueueLocalSyncMutationsBulk(
       continue;
     }
 
-    await enqueueLocalMutation(
+    enqueueLocalMutation(
       database,
       identity,
       mutation.collection,
@@ -488,37 +501,37 @@ async function enqueueLocalSyncMutationsBulk(
   localMutationHandler?.();
 }
 
-export async function recordLocalSyncMutations(
+export function recordLocalSyncMutations(
   database: SyncDatabase,
   mutations: LocalSyncMutation[],
-): Promise<void> {
+): void {
   const identity = activeUserIdentity();
   if (!identity) return;
-  await enqueueLocalSyncMutationsBulk(database, identity, mutations);
+  enqueueLocalSyncMutationsBulk(database, identity, mutations);
 }
 
 export async function prepareVisibleRowsForFullSync(
   fence: SyncContext,
   database: typeof db = db,
 ): Promise<boolean> {
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => {
     if (!contextIsActive(fence)) return false;
     if (fence.scopeType !== "user") return false;
 
-    const vocabularyRows = await tx.select().from(vocabulary);
-    const snippetRows = await tx.select().from(snippets);
+    const vocabularyRows = tx.select().from(vocabulary).all();
+    const snippetRows = tx.select().from(snippets).all();
     const visibleRowIds = {
       vocabulary: new Set(vocabularyRows.map((row) => row.id)),
       snippet: new Set(snippetRows.map((row) => row.id)),
     } satisfies Record<SyncCollection, Set<string>>;
-    const index = await loadScopeSyncIndex(tx, fence, visibleRowIds);
+    const index = loadScopeSyncIndex(tx, fence, visibleRowIds);
     const identity = {
       scopeType: "user" as const,
       scopeId: fence.scopeId,
     };
     let enqueuedMutation = false;
 
-    const prepareRow = async (
+    const prepareRow = (
       collection: SyncCollection,
       syncId: string,
       payload: SyncPayload,
@@ -530,24 +543,19 @@ export async function prepareVisibleRowsForFullSync(
 
       if (pending) {
         if (!payloadsEqual(payload, pending.desiredPayload)) {
-          await enqueueLocalMutation(
-            tx,
-            identity,
-            collection,
-            syncId,
-            payload,
-            { notify: false },
-          );
+          enqueueLocalMutation(tx, identity, collection, syncId, payload, {
+            notify: false,
+          });
           enqueuedMutation = true;
         }
       }
     };
 
     for (const row of vocabularyRows) {
-      await prepareRow("vocabulary", row.id, vocabularySyncPayload(row));
+      prepareRow("vocabulary", row.id, vocabularySyncPayload(row));
     }
     for (const row of snippetRows) {
-      await prepareRow("snippet", row.id, snippetSyncPayload(row));
+      prepareRow("snippet", row.id, snippetSyncPayload(row));
     }
 
     for (const sidecar of index.sidecars) {
@@ -559,7 +567,7 @@ export async function prepareVisibleRowsForFullSync(
       );
       if (pending?.desiredPayload === null) continue;
       if (!pending && sidecar.acceptedPayload === null) continue;
-      await enqueueLocalMutation(
+      enqueueLocalMutation(
         tx,
         identity,
         sidecar.collection,
@@ -575,49 +583,51 @@ export async function prepareVisibleRowsForFullSync(
   });
 }
 
-async function findSidecar(
+function findSidecar(
   database: SyncDatabase,
   fence: SyncContext,
   collection: SyncCollection,
   syncId: string,
-): Promise<SyncItemState | null> {
-  const [sidecar] = await database
+): SyncItemState | null {
+  const sidecar = database
     .select()
     .from(syncItemState)
     .where(itemWhere({ ...fence, collection, syncId }))
-    .limit(1);
+    .limit(1)
+    .get();
   return sidecar ?? null;
 }
 
-async function discardCurrentAccountCollision(
+function discardCurrentAccountCollision(
   database: SyncDatabase,
   fence: SyncContext,
   collection: SyncCollection,
   losingSyncId: string,
   preservePending: boolean,
-): Promise<void> {
+): void {
   if (preservePending) return;
-  await database
+  database
     .delete(syncOutbox)
-    .where(outboxWhere({ ...fence, collection, syncId: losingSyncId }));
+    .where(outboxWhere({ ...fence, collection, syncId: losingSyncId }))
+    .run();
 }
 
-async function applyDomainPayload(
+function applyDomainPayload(
   database: SyncDatabase,
   fence: SyncContext,
   collection: SyncCollection,
   syncId: string,
   payload: SyncPayload | null,
   preserveCollidingPending = false,
-): Promise<void> {
-  const sidecar = await findSidecar(database, fence, collection, syncId);
+): void {
+  const sidecar = findSidecar(database, fence, collection, syncId);
   if (!sidecar) throw new Error("Sync sidecar missing during canonical apply");
 
   if (payload === null) {
     if (collection === "vocabulary") {
-      await database.delete(vocabulary).where(eq(vocabulary.id, syncId));
+      database.delete(vocabulary).where(eq(vocabulary.id, syncId)).run();
     } else {
-      await database.delete(snippets).where(eq(snippets.id, syncId));
+      database.delete(snippets).where(eq(snippets.id, syncId)).run();
     }
     return;
   }
@@ -626,24 +636,25 @@ async function applyDomainPayload(
 
   if (collection === "vocabulary") {
     const value = payload as VocabularySyncPayload;
-    const [keyRow] = await database
+    const keyRow = database
       .select()
       .from(vocabulary)
       .where(eq(vocabulary.word, value.word))
-      .limit(1);
+      .limit(1)
+      .get();
 
     if (keyRow && keyRow.id !== syncId) {
-      await discardCurrentAccountCollision(
+      discardCurrentAccountCollision(
         database,
         fence,
         collection,
         keyRow.id,
         preserveCollidingPending,
       );
-      await database.delete(vocabulary).where(eq(vocabulary.id, keyRow.id));
+      database.delete(vocabulary).where(eq(vocabulary.id, keyRow.id)).run();
     }
 
-    const [updated] = await database
+    const updated = database
       .update(vocabulary)
       .set({
         word: value.word,
@@ -651,37 +662,42 @@ async function applyDomainPayload(
         updatedAt: now,
       })
       .where(eq(vocabulary.id, syncId))
-      .returning({ id: vocabulary.id });
+      .returning({ id: vocabulary.id })
+      .get();
     if (!updated) {
-      await database.insert(vocabulary).values({
-        id: syncId,
-        word: value.word,
-        replacementWord: value.replacement,
-        dateAdded: now,
-        createdAt: now,
-        updatedAt: now,
-      });
+      database
+        .insert(vocabulary)
+        .values({
+          id: syncId,
+          word: value.word,
+          replacementWord: value.replacement,
+          dateAdded: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
     }
   } else {
     const value = payload as SnippetSyncPayload;
-    const [keyRow] = await database
+    const keyRow = database
       .select()
       .from(snippets)
       .where(eq(snippets.trigger, value.trigger))
-      .limit(1);
+      .limit(1)
+      .get();
 
     if (keyRow && keyRow.id !== syncId) {
-      await discardCurrentAccountCollision(
+      discardCurrentAccountCollision(
         database,
         fence,
         collection,
         keyRow.id,
         preserveCollidingPending,
       );
-      await database.delete(snippets).where(eq(snippets.id, keyRow.id));
+      database.delete(snippets).where(eq(snippets.id, keyRow.id)).run();
     }
 
-    const [updated] = await database
+    const updated = database
       .update(snippets)
       .set({
         trigger: value.trigger,
@@ -689,85 +705,84 @@ async function applyDomainPayload(
         updatedAt: now,
       })
       .where(eq(snippets.id, syncId))
-      .returning({ id: snippets.id });
+      .returning({ id: snippets.id })
+      .get();
     if (!updated) {
-      await database.insert(snippets).values({
-        id: syncId,
-        trigger: value.trigger,
-        content: value.content,
-        createdAt: now,
-        updatedAt: now,
-      });
+      database
+        .insert(snippets)
+        .values({
+          id: syncId,
+          trigger: value.trigger,
+          content: value.content,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
     }
   }
 }
 
-async function ensureCanonicalSidecar(
+function ensureCanonicalSidecar(
   database: SyncDatabase,
   fence: SyncContext,
   item: CanonicalSyncItem,
-): Promise<SyncItemState> {
-  let sidecar = await findSidecar(
-    database,
-    fence,
-    item.collection,
-    item.syncId,
-  );
+): SyncItemState {
+  let sidecar = findSidecar(database, fence, item.collection, item.syncId);
   if (sidecar) return sidecar;
 
-  await database.insert(syncItemState).values({
-    scopeType: fence.scopeType,
-    scopeId: fence.scopeId,
-    collection: item.collection,
-    syncId: item.syncId,
-    acceptedSyncVersion: null,
-    acceptedPayload: null,
-  });
-  sidecar = await findSidecar(database, fence, item.collection, item.syncId);
+  database
+    .insert(syncItemState)
+    .values({
+      scopeType: fence.scopeType,
+      scopeId: fence.scopeId,
+      collection: item.collection,
+      syncId: item.syncId,
+      acceptedSyncVersion: null,
+      acceptedPayload: null,
+    })
+    .run();
+  sidecar = findSidecar(database, fence, item.collection, item.syncId);
   if (!sidecar) throw new Error("Failed to create canonical sync sidecar");
   return sidecar;
 }
 
-async function setAcceptedState(
+function setAcceptedState(
   database: SyncDatabase,
   fence: SyncContext,
   item: CanonicalSyncItem,
-): Promise<boolean> {
-  const sidecar = await ensureCanonicalSidecar(database, fence, item);
+): boolean {
+  const sidecar = ensureCanonicalSidecar(database, fence, item);
   if (
     sidecar.acceptedSyncVersion !== null &&
     sidecar.acceptedSyncVersion > item.syncVersion
   ) {
     return false;
   }
-  await database
+  database
     .update(syncItemState)
     .set({
       acceptedSyncVersion: item.syncVersion,
       acceptedPayload: item.payload,
     })
-    .where(itemWhere({ ...fence, ...item }));
+    .where(itemWhere({ ...fence, ...item }))
+    .run();
   return true;
 }
 
-async function acceptHead(
+function acceptHead(
   database: SyncDatabase,
   fence: SyncContext,
   head: CapturedSyncHead,
   syncVersion: number,
-): Promise<void> {
+): void {
   const identity = { ...fence, ...head };
-  const sidecar = await findSidecar(
-    database,
-    fence,
-    head.collection,
-    head.syncId,
-  );
-  const [pending] = await database
+  const sidecar = findSidecar(database, fence, head.collection, head.syncId);
+  const pending = database
     .select()
     .from(syncOutbox)
     .where(outboxWhere(identity))
-    .limit(1);
+    .limit(1)
+    .get();
   if (
     !sidecar ||
     !pending?.headPresent ||
@@ -781,17 +796,18 @@ async function acceptHead(
   ) {
     return;
   }
-  await database
+  database
     .update(syncItemState)
     .set({
       acceptedSyncVersion: syncVersion,
       acceptedPayload: head.headPayload,
     })
-    .where(itemWhere(identity));
+    .where(itemWhere(identity))
+    .run();
 
   if (pending.desiredSequence === head.headSequence) {
-    await database.delete(syncOutbox).where(outboxWhere(identity));
-    await applyDomainPayload(
+    database.delete(syncOutbox).where(outboxWhere(identity)).run();
+    applyDomainPayload(
       database,
       fence,
       head.collection,
@@ -804,7 +820,7 @@ async function acceptHead(
   if (pending.desiredParentHeadSequence !== head.headSequence) {
     throw new Error("Sync tail does not reference its satisfied head");
   }
-  await database
+  database
     .update(syncOutbox)
     .set({
       desiredParentSyncVersion: syncVersion,
@@ -813,26 +829,28 @@ async function acceptHead(
       headExpectedSyncVersion: null,
       headSequence: null,
     })
-    .where(outboxWhere(identity));
+    .where(outboxWhere(identity))
+    .run();
 }
 
-async function permanentlyFailHead(
+function permanentlyFailHead(
   database: SyncDatabase,
   fence: SyncContext,
   head: CapturedSyncHead,
-): Promise<void> {
+): void {
   const identity = { ...fence, ...head };
-  const [pending] = await database
+  const pending = database
     .select()
     .from(syncOutbox)
     .where(outboxWhere(identity))
-    .limit(1);
+    .limit(1)
+    .get();
   if (!pending?.headPresent || pending.headSequence !== head.headSequence) {
     return;
   }
 
   if (pending.desiredSequence !== head.headSequence) {
-    await database
+    database
       .update(syncOutbox)
       .set({
         desiredParentHeadSequence: null,
@@ -842,18 +860,14 @@ async function permanentlyFailHead(
         headExpectedSyncVersion: null,
         headSequence: null,
       })
-      .where(outboxWhere(identity));
+      .where(outboxWhere(identity))
+      .run();
     return;
   }
 
-  await database.delete(syncOutbox).where(outboxWhere(identity));
-  const sidecar = await findSidecar(
-    database,
-    fence,
-    head.collection,
-    head.syncId,
-  );
-  await applyDomainPayload(
+  database.delete(syncOutbox).where(outboxWhere(identity)).run();
+  const sidecar = findSidecar(database, fence, head.collection, head.syncId);
+  applyDomainPayload(
     database,
     fence,
     head.collection,
@@ -862,20 +876,21 @@ async function permanentlyFailHead(
   );
 }
 
-async function applyCanonicalItem(
+function applyCanonicalItem(
   database: SyncDatabase,
   fence: SyncContext,
   item: CanonicalSyncItem,
   preservePending = false,
   discardPendingOnEqual = false,
-): Promise<void> {
-  const sidecar = await ensureCanonicalSidecar(database, fence, item);
+): void {
+  const sidecar = ensureCanonicalSidecar(database, fence, item);
   const identity = { ...fence, ...item };
-  const [pending] = await database
+  const pending = database
     .select()
     .from(syncOutbox)
     .where(outboxWhere(identity))
-    .limit(1);
+    .limit(1)
+    .get();
 
   if (
     sidecar.acceptedSyncVersion !== null &&
@@ -884,10 +899,10 @@ async function applyCanonicalItem(
     return;
   }
   if (item.syncVersion === sidecar.acceptedSyncVersion) {
-    await setAcceptedState(database, fence, item);
+    setAcceptedState(database, fence, item);
     if (discardPendingOnEqual && pending) {
-      await database.delete(syncOutbox).where(outboxWhere(identity));
-      await applyDomainPayload(
+      database.delete(syncOutbox).where(outboxWhere(identity)).run();
+      applyDomainPayload(
         database,
         fence,
         item.collection,
@@ -896,7 +911,7 @@ async function applyCanonicalItem(
       );
       return;
     }
-    await applyDomainPayload(
+    applyDomainPayload(
       database,
       fence,
       item.collection,
@@ -907,9 +922,9 @@ async function applyCanonicalItem(
   }
 
   if (preservePending) {
-    const accepted = await setAcceptedState(database, fence, item);
+    const accepted = setAcceptedState(database, fence, item);
     if (!accepted) return;
-    await applyDomainPayload(
+    applyDomainPayload(
       database,
       fence,
       item.collection,
@@ -921,9 +936,9 @@ async function applyCanonicalItem(
   }
 
   if (pending && payloadsEqual(pending.desiredPayload, item.payload)) {
-    await setAcceptedState(database, fence, item);
-    await database.delete(syncOutbox).where(outboxWhere(identity));
-    await applyDomainPayload(
+    setAcceptedState(database, fence, item);
+    database.delete(syncOutbox).where(outboxWhere(identity)).run();
+    applyDomainPayload(
       database,
       fence,
       item.collection,
@@ -938,7 +953,7 @@ async function applyCanonicalItem(
     payloadsEqual(pending.headPayload, item.payload) &&
     pending.headSequence !== null
   ) {
-    await acceptHead(
+    acceptHead(
       database,
       fence,
       {
@@ -954,11 +969,11 @@ async function applyCanonicalItem(
     return;
   }
 
-  await setAcceptedState(database, fence, item);
+  setAcceptedState(database, fence, item);
   if (pending) {
-    await database.delete(syncOutbox).where(outboxWhere(identity));
+    database.delete(syncOutbox).where(outboxWhere(identity)).run();
   }
-  await applyDomainPayload(
+  applyDomainPayload(
     database,
     fence,
     item.collection,
@@ -967,25 +982,24 @@ async function applyCanonicalItem(
   );
 }
 
-async function applyCanonicalAbsence(
+function applyCanonicalAbsence(
   database: SyncDatabase,
   fence: SyncContext,
   head: CapturedSyncHead,
-): Promise<void> {
-  const sidecar = await findSidecar(
-    database,
-    fence,
-    head.collection,
-    head.syncId,
-  );
+): void {
+  const sidecar = findSidecar(database, fence, head.collection, head.syncId);
   if (!sidecar) return;
 
-  await database
+  database
     .update(syncItemState)
     .set({ acceptedSyncVersion: null, acceptedPayload: null })
-    .where(itemWhere({ ...fence, ...head }));
-  await database.delete(syncOutbox).where(outboxWhere({ ...fence, ...head }));
-  await applyDomainPayload(database, fence, head.collection, head.syncId, null);
+    .where(itemWhere({ ...fence, ...head }))
+    .run();
+  database
+    .delete(syncOutbox)
+    .where(outboxWhere({ ...fence, ...head }))
+    .run();
+  applyDomainPayload(database, fence, head.collection, head.syncId, null);
 }
 
 export interface PullCollectionPage {
@@ -1004,17 +1018,17 @@ export async function applyPullPages(
   pages: PullCollectionPage[],
   database: typeof db = db,
 ): Promise<boolean> {
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => {
     if (!contextIsActive(fence)) return false;
 
     for (const page of pages) {
       for (const item of page.items) {
-        await applyCanonicalItem(tx, fence, item);
+        applyCanonicalItem(tx, fence, item);
       }
-      await tx
-        .update(syncCollectionState)
+      tx.update(syncCollectionState)
         .set({ cursor: page.cursor })
-        .where(collectionWhere(fence, page.collection));
+        .where(collectionWhere(fence, page.collection))
+        .run();
     }
     return true;
   });
@@ -1028,7 +1042,7 @@ export async function getPullCursors(
   if (!contextIsActive(fence)) return null;
   if (collections.length === 0) return [];
 
-  const rows = await database
+  const rows = database
     .select({
       collection: syncCollectionState.collection,
       cursor: syncCollectionState.cursor,
@@ -1040,7 +1054,8 @@ export async function getPullCursors(
         eq(syncCollectionState.scopeId, fence.scopeId),
         inArray(syncCollectionState.collection, [...collections]),
       ),
-    );
+    )
+    .all();
   const cursorByCollection = new Map(
     rows.map((row) => [row.collection, row.cursor]),
   );
@@ -1057,15 +1072,15 @@ export async function adoptVisibleRows(
   fence: SyncContext,
   database: typeof db = db,
 ): Promise<boolean> {
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => {
     if (!contextIsActive(fence)) return false;
 
     // Only unbound rows are adoption candidates. Existing identities are
     // governed by their accepted state or durable outbox, so a same-key
     // signed-out edit is not promoted before the login pull.
-    const vocabularyRows = await tx.select().from(vocabulary);
-    const snippetRows = await tx.select().from(snippets);
-    await enqueueLocalSyncMutationsBulk(
+    const vocabularyRows = tx.select().from(vocabulary).all();
+    const snippetRows = tx.select().from(snippets).all();
+    enqueueLocalSyncMutationsBulk(
       tx,
       {
         scopeType: "user",
@@ -1103,10 +1118,10 @@ export async function capturePushHeads(
   collections: readonly SyncCollection[] = ["vocabulary", "snippet"],
 ): Promise<CapturedSyncHead[]> {
   if (collections.length === 0) return [];
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => {
     if (!contextIsActive(fence)) return [];
 
-    const pendingRows = await tx
+    const pendingRows = tx
       .select()
       .from(syncOutbox)
       .where(
@@ -1115,7 +1130,8 @@ export async function capturePushHeads(
           eq(syncOutbox.scopeId, fence.scopeId),
           inArray(syncOutbox.collection, [...collections]),
         ),
-      );
+      )
+      .all();
 
     const blockedTailSequence = pendingRows.reduce<number | null>(
       (earliest, pending) => {
@@ -1163,18 +1179,18 @@ export async function capturePushHeads(
         pending.desiredParentHeadSequence === null
           ? pending.desiredBaseSyncVersion
           : pending.desiredParentSyncVersion;
-      await tx
-        .update(syncOutbox)
+      tx.update(syncOutbox)
         .set({
           headPresent: true,
           headPayload: pending.desiredPayload,
           headExpectedSyncVersion: expectedSyncVersion,
           headSequence: pending.desiredSequence,
         })
-        .where(outboxWhere(pending));
+        .where(outboxWhere(pending))
+        .run();
     }
 
-    const heads = await tx
+    const heads = tx
       .select()
       .from(syncOutbox)
       .where(
@@ -1184,7 +1200,8 @@ export async function capturePushHeads(
           inArray(syncOutbox.collection, [...collections]),
           eq(syncOutbox.headPresent, true),
         ),
-      );
+      )
+      .all();
 
     return heads
       .flatMap((head) =>
@@ -1213,7 +1230,7 @@ export async function applyPushResults(
   results: PushSyncResult[],
   database: typeof db = db,
 ): Promise<boolean> {
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => {
     if (!contextIsActive(fence)) return false;
 
     for (const [index, result] of results.entries()) {
@@ -1222,55 +1239,51 @@ export async function applyPushResults(
         throw new Error("Push result does not match captured head");
       }
 
-      const [current] = await tx
+      const current = tx
         .select()
         .from(syncOutbox)
         .where(outboxWhere(head))
-        .limit(1);
+        .limit(1)
+        .get();
       if (!current?.headPresent || current.headSequence !== head.headSequence) {
         continue;
       }
 
       if (result.status === "ok") {
-        await acceptHead(tx, fence, head, result.syncVersion);
+        acceptHead(tx, fence, head, result.syncVersion);
         continue;
       }
 
       if (result.status === "error") {
         if (result.reason === "unauthorized_scope") continue;
-        await permanentlyFailHead(tx, fence, head);
+        permanentlyFailHead(tx, fence, head);
         continue;
       }
 
       if (result.reason === "version_conflict") {
         if (result.canonical) {
-          await applyCanonicalItem(tx, fence, result.canonical, false, true);
+          applyCanonicalItem(tx, fence, result.canonical, false, true);
         } else {
-          await applyCanonicalAbsence(tx, fence, head);
+          applyCanonicalAbsence(tx, fence, head);
         }
         continue;
       }
 
       if (result.canonical) {
-        await setAcceptedState(tx, fence, result.canonical);
+        setAcceptedState(tx, fence, result.canonical);
       } else {
-        const sidecar = await findSidecar(
-          tx,
-          fence,
-          head.collection,
-          head.syncId,
-        );
+        const sidecar = findSidecar(tx, fence, head.collection, head.syncId);
         if (sidecar) {
-          await tx
-            .update(syncItemState)
+          tx.update(syncItemState)
             .set({ acceptedSyncVersion: null, acceptedPayload: null })
-            .where(itemWhere(head));
+            .where(itemWhere(head))
+            .run();
         }
       }
-      await permanentlyFailHead(tx, fence, head);
+      permanentlyFailHead(tx, fence, head);
 
       if (result.conflictingItem) {
-        await applyCanonicalItem(tx, fence, result.conflictingItem, true);
+        applyCanonicalItem(tx, fence, result.conflictingItem, true);
       }
     }
     return true;
@@ -1284,7 +1297,7 @@ export async function hasPendingSyncWork(
 ): Promise<boolean> {
   if (collections.length === 0) return false;
   if (!contextIsActive(fence)) return false;
-  const [pending] = await database
+  const pending = database
     .select({ syncId: syncOutbox.syncId })
     .from(syncOutbox)
     .where(
@@ -1294,6 +1307,7 @@ export async function hasPendingSyncWork(
         inArray(syncOutbox.collection, [...collections]),
       ),
     )
-    .limit(1);
+    .limit(1)
+    .get();
   return Boolean(pending);
 }
