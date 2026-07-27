@@ -253,11 +253,21 @@ jobs:
           $installScript = Join-Path $env:RUNNER_TEMP "dotnet-install.ps1"
           Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile $installScript
           & $installScript -Runtime dotnet -Channel 8.0 -Architecture x64 -InstallDir $installDir -NoPath
-          if ($LASTEXITCODE -ne 0) {
-            throw "x64 .NET runtime installation failed with exit code $LASTEXITCODE"
+
+          $dotnet = Join-Path $installDir "dotnet.exe"
+          if (-not (Test-Path $dotnet)) {
+            throw "x64 dotnet executable was not installed at $dotnet"
           }
 
-          & (Join-Path $installDir "dotnet.exe") --list-runtimes
+          $runtimes = @(& $dotnet --list-runtimes)
+          if ($LASTEXITCODE -ne 0) {
+            throw "x64 dotnet runtime check failed with exit code $LASTEXITCODE"
+          }
+          $runtimes | Write-Output
+          if (($runtimes -join "`n") -notmatch "(?m)^Microsoft\.NETCore\.App 8\.") {
+            throw "x64 .NET 8 runtime was not found under $installDir"
+          }
+
           "DOTNET_ROOT_X64=$installDir" >> $env:GITHUB_ENV
 
       - name: Prepare Windows signing (Artifact Signing dlib)
