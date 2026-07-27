@@ -42,11 +42,20 @@ if (!fs.existsSync(homeDir)) fs.mkdirSync(homeDir);
 
 function resolveLibExecutable(env, arch) {
   const archDir = arch === "ia32" ? "x86" : arch === "arm64" ? "arm64" : "x64";
-  const hostDir = arch === "ia32" ? "Hostx86" : "Hostx64";
+  const hostDirs =
+    arch === "ia32"
+      ? ["Hostx86", "Hostx64"]
+      : arch === "arm64"
+        ? ["Hostarm64", "Hostx64"]
+        : ["Hostx64"];
   const candidates = [];
 
   const addIfExists = (candidate) => {
-    if (candidate && fs.existsSync(candidate) && !candidates.includes(candidate)) {
+    if (
+      candidate &&
+      fs.existsSync(candidate) &&
+      !candidates.includes(candidate)
+    ) {
       candidates.push(candidate);
     }
   };
@@ -73,12 +82,23 @@ function resolveLibExecutable(env, arch) {
       .readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
-      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: "base" }));
+      .sort((a, b) =>
+        b.localeCompare(a, undefined, { numeric: true, sensitivity: "base" }),
+      );
     for (const entry of entries) {
-      const candidate = path.join(dir, entry, "bin", hostDir, archDir, "lib.exe");
-      if (fs.existsSync(candidate)) {
-        addIfExists(candidate);
-        break;
+      for (const hostDir of hostDirs) {
+        const candidate = path.join(
+          dir,
+          entry,
+          "bin",
+          hostDir,
+          archDir,
+          "lib.exe",
+        );
+        if (fs.existsSync(candidate)) {
+          addIfExists(candidate);
+          return;
+        }
       }
     }
   };
@@ -90,8 +110,9 @@ function resolveLibExecutable(env, arch) {
       return;
     }
 
-    const directCandidate = path.join(installDir, "bin", hostDir, archDir, "lib.exe");
-    addIfExists(directCandidate);
+    for (const hostDir of hostDirs) {
+      addIfExists(path.join(installDir, "bin", hostDir, archDir, "lib.exe"));
+    }
 
     const toolsDir = path.join(installDir, "Tools", "MSVC");
     probeVersionedDir(toolsDir);
@@ -124,7 +145,9 @@ function resolveLibExecutable(env, arch) {
             "-version",
             "[17.0,18.0)",
             "-requires",
-            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            arch === "arm64"
+              ? "Microsoft.VisualStudio.Component.VC.Tools.ARM64"
+              : "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
             "-property",
             "installationPath",
           ],
@@ -185,7 +208,11 @@ function ensureWindowsNodeImportLib(buildVariantDir, arch, env) {
     );
   }
 
-  const defPath = path.join(path.dirname(headersPackageJson), "def", "node_api.def");
+  const defPath = path.join(
+    path.dirname(headersPackageJson),
+    "def",
+    "node_api.def",
+  );
   if (!fs.existsSync(defPath)) {
     throw new Error(`node_api.def not found at ${defPath}`);
   }
@@ -204,9 +231,12 @@ function ensureWindowsNodeImportLib(buildVariantDir, arch, env) {
     `[build-addon] Generating node import library using ${libExecutable} for ${machine} into ${nodeImportLib}`,
   );
   try {
-    run(`"${libExecutable}" /def:"${defPath}" /machine:${machine} /out:"${nodeImportLib}"`, {
-      env,
-    });
+    run(
+      `"${libExecutable}" /def:"${defPath}" /machine:${machine} /out:"${nodeImportLib}"`,
+      {
+        env,
+      },
+    );
   } catch (error) {
     const message =
       "Failed to generate node import library. Ensure Visual Studio build tools are installed.";
@@ -286,13 +316,18 @@ const { platform, arch } = process;
 const variants = computeVariants(platform, arch);
 
 if (variants.length === 0) {
-  console.warn("[build-addon] No variants requested, building default cpu-fallback.");
+  console.warn(
+    "[build-addon] No variants requested, building default cpu-fallback.",
+  );
   const fallback = variantFromName("cpu-fallback", platform, arch);
   if (fallback) variants.push(fallback);
 }
 
 for (const variant of variants) {
-  const buildVariantDir = path.join(buildDir, variant.name.replace(/[\\/]/g, "_"));
+  const buildVariantDir = path.join(
+    buildDir,
+    variant.name.replace(/[\\/]/g, "_"),
+  );
   fs.rmSync(buildVariantDir, { recursive: true, force: true });
   fs.mkdirSync(buildVariantDir, { recursive: true });
 
@@ -317,6 +352,13 @@ for (const variant of variants) {
     "--CD node_runtime=node",
   ];
 
+  if (platform === "win32" && arch === "arm64") {
+    cmakeParts.push("--toolset ClangCL");
+    // Avoid a runtime dependency on LLVM's libomp.dll, which is available on
+    // the build runner but is not part of the packaged desktop application.
+    cmakeParts.push("--CDGGML_OPENMP=OFF");
+  }
+
   const propagateCMakeBool = (key) => {
     const value = env[key];
     if (typeof value === "string" && value.length > 0) {
@@ -339,7 +381,9 @@ for (const variant of variants) {
 
   const builtBinary = path.join(buildVariantDir, "Release", "whisper.node");
   if (!fs.existsSync(builtBinary)) {
-    throw new Error(`Build succeeded but whisper.node not found for variant ${variant.name}`);
+    throw new Error(
+      `Build succeeded but whisper.node not found for variant ${variant.name}`,
+    );
   }
 
   const targetDir = path.join(pkgDir, "native", variant.name);

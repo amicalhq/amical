@@ -12,6 +12,8 @@ node-binaries/
 │   └── node
 ├── win32-x64/
 │   └── node.exe
+├── win32-arm64/
+│   └── node.exe
 └── linux-x64/
     └── node
 ```

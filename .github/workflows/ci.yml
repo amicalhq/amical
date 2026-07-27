@@ -42,7 +42,7 @@ jobs:
         run: pnpm type:check
 
   build_desktop:
-    name: Build Desktop (${{ matrix.os }})
+    name: Build Desktop (${{ matrix.os }} ${{ matrix.arch }})
     needs: typecheck
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -52,9 +52,14 @@ jobs:
       matrix:
         include:
           - os: macos
+            arch: arm64
             runner: macos-latest
           - os: windows
+            arch: x64
             runner: windows-2022
+          - os: windows
+            arch: arm64
+            runner: windows-11-arm
 
     steps:
       - name: Checkout
@@ -72,6 +77,7 @@ jobs:
         with:
           # Keep aligned with .github/workflows/release.yml
           node-version: "24.1.0"
+          architecture: ${{ matrix.arch }}
           cache: pnpm
 
       - name: Install dependencies
@@ -79,9 +85,14 @@ jobs:
           GGML_NATIVE: OFF
         run: pnpm install --frozen-lockfile
 
+      - name: Smoke test Windows native dependencies
+        if: matrix.os == 'windows'
+        working-directory: apps/desktop
+        run: pnpm test:native-dependencies
+
       - name: Test Windows helper
         if: matrix.os == 'windows'
-        run: dotnet test packages/native-helpers/windows-helper-tests/WindowsHelper.Tests.csproj -c Release --arch x64 -- RunConfiguration.TreatNoTestsAsError=true
+        run: dotnet test packages/native-helpers/windows-helper-tests/WindowsHelper.Tests.csproj -c Release --arch ${{ matrix.arch }} -- RunConfiguration.TreatNoTestsAsError=true
 
       - name: Build whisper wrapper JS
         run: pnpm --filter @amical/whisper-wrapper build
@@ -91,6 +102,9 @@ jobs:
           GGML_NATIVE: OFF
         run: pnpm --filter @amical/whisper-wrapper build:native
 
+      - name: Smoke test whisper native binary
+        run: pnpm --filter @amical/whisper-wrapper test:load
+
       - name: Download Node.js binaries
         working-directory: apps/desktop
         run: pnpm download-node
@@ -98,6 +112,7 @@ jobs:
       - name: Package desktop app (no signing)
         working-directory: apps/desktop
         env:
+          AMICAL_E2E_PACKAGE: "1"
           SKIP_CODESIGNING: "true"
           SKIP_NOTARIZATION: "true"
           TELEMETRY_ENABLED: "false"
@@ -111,3 +126,12 @@ jobs:
           AUTH_REDIRECT_URI: ""
           CORE_API_URL: ""
         run: pnpm package
+
+      - name: Verify packaged Windows architecture
+        if: matrix.os == 'windows'
+        working-directory: apps/desktop
+        run: pnpm verify:windows-package ${{ matrix.arch }}
+
+      - name: Test packaged desktop app
+        working-directory: apps/desktop
+        run: pnpm test:e2e

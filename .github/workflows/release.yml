@@ -34,6 +34,9 @@ jobs:
           - os: windows
             arch: x64
             runner: windows-2022
+          - os: windows
+            arch: arm64
+            runner: windows-11-arm
 
     steps:
       - name: Checkout code
@@ -75,10 +78,11 @@ jobs:
         with:
           # 24.2 to at least 24.6 (atm of writing this) has issues with symlink deref in nested directories
           node-version: "24.1.0"
+          architecture: ${{ matrix.arch }}
           cache: "pnpm"
 
       - name: Install Vulkan SDK
-        if: matrix.os == 'windows'
+        if: matrix.os == 'windows' && matrix.arch == 'x64'
         uses: humbletim/install-vulkan-sdk@v1.2
         with:
           version: 1.3.290.0
@@ -96,6 +100,11 @@ jobs:
           GGML_NATIVE: OFF # ensure postinstall builds avoid i8mm on CI runners
         run: pnpm install --frozen-lockfile
 
+      - name: Smoke test Windows native dependencies
+        if: matrix.os == 'windows'
+        working-directory: apps/desktop
+        run: pnpm test:native-dependencies
+
       - name: Build whisper wrapper JS
         run: pnpm --filter @amical/whisper-wrapper build
 
@@ -105,10 +114,13 @@ jobs:
         run: pnpm --filter @amical/whisper-wrapper build:native
 
       - name: Build whisper native binaries (vulkan)
-        if: matrix.os == 'windows'
+        if: matrix.os == 'windows' && matrix.arch == 'x64'
         env:
           GGML_NATIVE: OFF
         run: pnpm --filter @amical/whisper-wrapper build:native:vulkan
+
+      - name: Smoke test whisper native binary
+        run: pnpm --filter @amical/whisper-wrapper test:load
 
       - name: Download Node.js binaries
         working-directory: apps/desktop
@@ -186,8 +198,13 @@ jobs:
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
           CORE_API_URL: ${{ secrets.CORE_API_URL }}
         run: |
-          echo "Packaging unsigned Windows x64 app"
-          pnpm package:windows
+          echo "Packaging unsigned Windows ${{ matrix.arch }} app"
+          pnpm package:windows:${{ matrix.arch }}
+
+      - name: Verify packaged Windows architecture (release)
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        working-directory: apps/desktop
+        run: pnpm verify:windows-package ${{ matrix.arch }}
 
       - name: Build Windows package signing catalog
         if: matrix.os == 'windows' && github.event_name != 'pull_request'
@@ -226,32 +243,35 @@ jobs:
 
           "catalog_path=$catalogPath" >> $env:GITHUB_OUTPUT
 
-      - name: Sign packaged Windows app
-        if: matrix.os == 'windows' && github.event_name != 'pull_request'
-        uses: azure/artifact-signing-action@v1
-        with:
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          endpoint: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
-          signing-account-name: ${{ secrets.AZURE_CODESIGN_ACCOUNT_NAME }}
-          certificate-profile-name: ${{ secrets.AZURE_CODESIGN_PROFILE_NAME }}
-          correlation-id: ${{ secrets.AZURE_CODESIGN_CORRELATION_ID || github.run_id }}
-          files-catalog: ${{ steps.windows_package_catalog.outputs.catalog_path }}
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: Amical
-          description-url: https://amical.ai
-
-      - name: Prepare Squirrel signing (Trusted Signing dlib)
-        if: matrix.os == 'windows' && github.event_name != 'pull_request'
-        id: squirrel_signing
+      - name: Install x64 .NET runtime for Windows Arm signing
+        if: matrix.os == 'windows' && matrix.arch == 'arm64' && github.event_name != 'pull_request'
         shell: pwsh
         run: |
+          # The Artifact Signing dlib is x64 and needs an x64 .NET 8 runtime,
+          # even though Windows 11 Arm can emulate the x64 signing process.
+          $installDir = Join-Path $env:ProgramFiles "dotnet\x64"
+          $installScript = Join-Path $env:RUNNER_TEMP "dotnet-install.ps1"
+          Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile $installScript
+          & $installScript -Runtime dotnet -Channel 8.0 -Architecture x64 -InstallDir $installDir -NoPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "x64 .NET runtime installation failed with exit code $LASTEXITCODE"
+          }
+
+          & (Join-Path $installDir "dotnet.exe") --list-runtimes
+          "DOTNET_ROOT_X64=$installDir" >> $env:GITHUB_ENV
+
+      - name: Prepare Windows signing (Artifact Signing dlib)
+        if: matrix.os == 'windows' && github.event_name != 'pull_request'
+        id: windows_signing
+        shell: pwsh
+        run: |
+          # Microsoft's artifact-signing-action does not support Windows Arm
+          # runners. Use its supported signtool integration directly; the x64
+          # signing client runs under Windows 11 Arm emulation and signs either
+          # x64 or Arm64 PE files.
           # Squirrel's releasify generates the app-launcher stub and Update.exe
           # during make, so those must be signed inside releasify (windowsSign in
-          # forge.config.ts). Fetch the Trusted Signing dlib and point signtool at it.
+          # forge.config.ts). The same dlib is reused for that pass.
           $client = Join-Path $env:RUNNER_TEMP "trusted-signing-client"
           # Microsoft.Trusted.Signing.Client was renamed; the dlib inside kept its name
           nuget install Microsoft.ArtifactSigning.Client -x -NonInteractive -Source https://api.nuget.org/v3/index.json -OutputDirectory $client | Out-Null
@@ -272,7 +292,51 @@ jobs:
           if (-not $signtool) { throw "signtool.exe not found in the Windows SDK" }
 
           "signtool_path=$signtool" >> $env:GITHUB_OUTPUT
+          "dlib_path=$dlib" >> $env:GITHUB_OUTPUT
+          "metadata_path=$metadata" >> $env:GITHUB_OUTPUT
           "sign_params=/v /dlib $dlib /dmdf $metadata" >> $env:GITHUB_OUTPUT
+
+      - name: Sign packaged Windows app (x64)
+        if: matrix.os == 'windows' && matrix.arch == 'x64' && github.event_name != 'pull_request'
+        uses: azure/artifact-signing-action@v1
+        with:
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          endpoint: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_CODESIGN_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CODESIGN_PROFILE_NAME }}
+          correlation-id: ${{ secrets.AZURE_CODESIGN_CORRELATION_ID || github.run_id }}
+          files-catalog: ${{ steps.windows_package_catalog.outputs.catalog_path }}
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Amical
+          description-url: https://amical.ai
+
+      - name: Sign packaged Windows app (ARM64)
+        if: matrix.os == 'windows' && matrix.arch == 'arm64' && github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\out\Amical-win32-${{ matrix.arch }}"
+          $targets = @(
+            Get-Content "${{ steps.windows_package_catalog.outputs.catalog_path }}" |
+              Where-Object { $_ } |
+              ForEach-Object { Join-Path $packageRoot $_ }
+          )
+          if ($targets.Count -eq 0) { throw "Windows signing catalog is empty" }
+
+          $signtool = "${{ steps.windows_signing.outputs.signtool_path }}"
+          $dlib = "${{ steps.windows_signing.outputs.dlib_path }}"
+          $metadata = "${{ steps.windows_signing.outputs.metadata_path }}"
+          & $signtool sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /d Amical /du https://amical.ai /dlib $dlib /dmdf $metadata $targets
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool failed with exit code $LASTEXITCODE"
+          }
 
       - name: Build Windows installer from signed package
         if: matrix.os == 'windows' && github.event_name != 'pull_request'
@@ -280,8 +344,8 @@ jobs:
         env:
           # Consumed by windowsSign in forge.config.ts to sign the
           # Squirrel-generated binaries (stub launcher, Update.exe) in-releasify.
-          WINDOWS_SIGN_WITH_PARAMS: ${{ steps.squirrel_signing.outputs.sign_params }}
-          WINDOWS_SIGNTOOL_PATH: ${{ steps.squirrel_signing.outputs.signtool_path }}
+          WINDOWS_SIGN_WITH_PARAMS: ${{ steps.windows_signing.outputs.sign_params }}
+          WINDOWS_SIGNTOOL_PATH: ${{ steps.windows_signing.outputs.signtool_path }}
           # The Trusted Signing dlib authenticates via EnvironmentCredential.
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -361,8 +425,13 @@ jobs:
           API_ENDPOINT: ""
           AUTH_REDIRECT_URI: ""
         run: |
-          echo "Building Windows x64 PR artifacts"
-          pnpm make:windows
+          echo "Building Windows ${{ matrix.arch }} PR artifacts"
+          pnpm make:windows:${{ matrix.arch }}
+
+      - name: Verify packaged Windows architecture (PR)
+        if: matrix.os == 'windows' && github.event_name == 'pull_request'
+        working-directory: apps/desktop
+        run: pnpm verify:windows-package ${{ matrix.arch }}
 
       - name: Get version from package.json
         id: package_version
@@ -615,6 +684,7 @@ jobs:
             echo ""
             echo "#### Windows"
             echo "- **Windows (x64)**: Download the .exe installer for 64-bit Windows"
+            echo "- **Windows (ARM64)**: Download the ARM64 .exe installer for Windows on Arm"
             echo ""
             echo "### Installation"
             echo ""
@@ -755,6 +825,7 @@ jobs:
             artifacts/windows-x64/*.exe
             artifacts/windows-x64/*.nupkg
             artifacts/windows-x64/RELEASES
+            artifacts/windows-arm64/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -810,5 +881,6 @@ jobs:
             artifacts/macos-x64/*.dmg
             artifacts/macos-x64/zip/darwin/x64/*.zip
             artifacts/windows-x64/*.exe
+            artifacts/windows-arm64/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

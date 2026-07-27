@@ -56,6 +56,16 @@ const config: ForgeConfig = {
       // In a monorepo, node_modules are typically at the root level
       const monorepoRoot = join(projectRoot, "../../"); // Go up to monorepo root
 
+      if (
+        platform === "win32" &&
+        (process.platform !== "win32" || arch !== process.arch)
+      ) {
+        throw new Error(
+          `Windows packages must be built natively for the target architecture ` +
+            `(host: ${process.platform}-${process.arch}, target: ${platform}-${arch}).`,
+        );
+      }
+
       // The start script stages the same physical copy before Forge loads.
       // Refresh it here too so packaging never reuses stale ABI metadata.
       stageBetterSqlite3ForElectron();

@@ -42,6 +42,12 @@ const PLATFORMS: PlatformConfig[] = [
     binary: "node.exe",
   },
   {
+    platform: "win32",
+    arch: "arm64",
+    url: `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-arm64.zip`,
+    binary: "node.exe",
+  },
+  {
     platform: "linux",
     arch: "x64",
     url: `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz`,
