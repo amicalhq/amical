@@ -491,6 +491,39 @@ jobs:
             echo "Renamed $exe → Amical-windows-${{ matrix.arch }}.exe"
           done
 
+          nupkgs=(*.nupkg)
+          if [ ${#nupkgs[@]} -ne 1 ]; then
+            echo "::error::Expected exactly one .nupkg in $make_dir, found ${#nupkgs[@]}."
+            exit 1
+          fi
+          source_nupkg="${nupkgs[0]}"
+          if [[ "$source_nupkg" != Amical-*-full.nupkg ]]; then
+            echo "::error::Unexpected Squirrel package name: $source_nupkg"
+            exit 1
+          fi
+
+          named_nupkg="Amical-windows-${{ matrix.arch }}-${source_nupkg#Amical-}"
+          named_releases="RELEASES-windows-${{ matrix.arch }}"
+          source_entries=$(awk -v package="$source_nupkg" '
+            $2 == package { count++ }
+            END { print count + 0 }
+          ' RELEASES)
+          if [ "$source_entries" -ne 1 ]; then
+            echo "::error::Expected RELEASES to reference $source_nupkg exactly once, found $source_entries entries."
+            exit 1
+          fi
+
+          awk -v old="$source_nupkg" -v new="$named_nupkg" '
+            $2 == old { $2 = new; print }
+          ' RELEASES > "$named_releases"
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            mv "$source_nupkg" "$named_nupkg"
+            rm RELEASES
+          else
+            cp "$source_nupkg" "$named_nupkg"
+          fi
+          echo "Created $named_nupkg and $named_releases"
+
       - name: Upload artifacts (macOS)
         if: matrix.os == 'macos'
         uses: actions/upload-artifact@v4
@@ -508,7 +541,7 @@ jobs:
           path: |
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/Amical-windows-${{ matrix.arch }}.exe
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.nupkg
-            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/RELEASES
+            apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/RELEASES*
 
   release:
     name: Create Release
@@ -812,10 +845,10 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== Full artifacts directory structure ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) | sort
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES*" \) | sort
           echo ""
           echo "=== Detailed file listing ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) -exec ls -la {} \;
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES*" \) -exec ls -la {} \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -835,7 +868,10 @@ jobs:
             artifacts/windows-x64/*.exe
             artifacts/windows-x64/*.nupkg
             artifacts/windows-x64/RELEASES
+            artifacts/windows-x64/RELEASES-windows-x64
             artifacts/windows-arm64/*.exe
+            artifacts/windows-arm64/Amical-windows-arm64-*-full.nupkg
+            artifacts/windows-arm64/RELEASES-windows-arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -891,6 +927,11 @@ jobs:
             artifacts/macos-x64/*.dmg
             artifacts/macos-x64/zip/darwin/x64/*.zip
             artifacts/windows-x64/*.exe
+            artifacts/windows-x64/*.nupkg
+            artifacts/windows-x64/RELEASES
+            artifacts/windows-x64/RELEASES-windows-x64
             artifacts/windows-arm64/*.exe
+            artifacts/windows-arm64/Amical-windows-arm64-*-full.nupkg
+            artifacts/windows-arm64/RELEASES-windows-arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
