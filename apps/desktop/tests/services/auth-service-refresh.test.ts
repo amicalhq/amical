@@ -70,6 +70,32 @@ describe("AuthService refresh fencing", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("forces a refresh even when the token is not near expiry", async () => {
+    const authState = await getSettingsSection("auth");
+    await updateSettingsSection("auth", {
+      ...authState!,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id_token: idToken("user-1"),
+        refresh_token: "refresh-user-1-next",
+        access_token: "access-user-1-next",
+        expires_in: 3600,
+      }),
+    });
+
+    await authService.refreshTokenIfNeeded();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await authService.refreshTokenIfNeeded(true);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect((await getSettingsSection("auth"))?.refreshToken).toBe(
+      "refresh-user-1-next",
+    );
+  });
+
   it("ignores a successful refresh response that arrives after logout", async () => {
     let resolveFetch:
       | ((response: {

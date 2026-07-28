@@ -136,7 +136,9 @@ vi.mock("@grpc/grpc-js", () => grpcMock.module);
 const authMock = vi.hoisted(() => {
   const isAuthenticated = vi.fn(async () => true);
   const getIdToken = vi.fn(async () => "test-id-token");
-  const refreshTokenIfNeeded = vi.fn(async () => undefined);
+  const refreshTokenIfNeeded = vi
+    .fn<(force?: boolean) => Promise<void>>()
+    .mockResolvedValue(undefined);
   return {
     instance: { isAuthenticated, getIdToken, refreshTokenIfNeeded },
     reset: () => {
@@ -752,7 +754,8 @@ describe("AmicalCloudProvider", () => {
 
       expect(result.text).toBe("ok");
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalled();
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalledOnce();
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalledWith(true);
     });
 
     it("surfaces AUTH_REQUIRED when the retried request also returns 401", async () => {
@@ -791,7 +794,7 @@ describe("AmicalCloudProvider", () => {
     });
   });
 
-  describe("gRPC error categorization (no fallback)", () => {
+  describe("gRPC error categorization", () => {
     const driveGrpcThenSettleError = async (errorCode: number) => {
       const provider = constructProviderWithTransport("grpc");
       await provider.transcribe({
@@ -805,14 +808,38 @@ describe("AmicalCloudProvider", () => {
       return { provider, flushPromise };
     };
 
-    it("surfaces UNAUTHENTICATED as AUTH_REQUIRED without falling back", async () => {
+    it("falls back to HTTP on UNAUTHENTICATED and force-refreshes after HTTP 401", async () => {
+      let token = "stale-id-token";
+      authMock.instance.getIdToken.mockImplementation(async () => token);
+      authMock.instance.refreshTokenIfNeeded.mockImplementation(
+        async (force = false) => {
+          if (force) token = "fresh-id-token";
+        },
+      );
+      mockFetchOnce({ status: 401, json: { error: {} } });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "refreshed fallback" },
+      });
       const { flushPromise } = await driveGrpcThenSettleError(
         grpcMock.status.UNAUTHENTICATED,
       );
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.AUTH_REQUIRED,
+      await expect(flushPromise).resolves.toEqual({
+        text: "refreshed fallback",
       });
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(httpRequestSampleCount(0)).toBe(512);
+      expect(httpRequestSampleCount(1)).toBe(512);
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalledOnce();
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalledWith(true);
+      expect(
+        (fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>)
+          .Authorization,
+      ).toBe("Bearer stale-id-token");
+      expect(
+        (fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>)
+          .Authorization,
+      ).toBe("Bearer fresh-id-token");
     });
 
     // Compatibility fallback for servers that do not send ErrorInfo yet.
@@ -930,6 +957,7 @@ describe("AmicalCloudProvider", () => {
         uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
       });
       expect(fetchMock).not.toHaveBeenCalled();
+      expect(authMock.instance.refreshTokenIfNeeded).not.toHaveBeenCalled();
     });
 
     it("does not fall back on CANCELLED (user-initiated, e.g. reset during flush)", async () => {

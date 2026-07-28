@@ -66,7 +66,7 @@ type CloudTranscriptionResponse =
 interface CloudAuth {
   isAuthenticated(): Effect.Effect<boolean, AppError>;
   getIdToken(): Effect.Effect<string | null, AppError>;
-  refreshTokenIfNeeded(): Effect.Effect<void, AppError>;
+  refreshTokenIfNeeded(force?: boolean): Effect.Effect<void, AppError>;
 }
 
 const CloudAuth = Context.GenericTag<CloudAuth>(
@@ -193,9 +193,9 @@ const makeCloudAuthLive = (authService: AuthService) =>
         try: () => authService.getIdToken(),
         catch: toNetworkAppError,
       }),
-    refreshTokenIfNeeded: () =>
+    refreshTokenIfNeeded: (force = false) =>
       Effect.tryPromise({
-        try: () => authService.refreshTokenIfNeeded(),
+        try: () => authService.refreshTokenIfNeeded(force),
         catch: toNetworkAppError,
       }),
   }));
@@ -232,7 +232,8 @@ const createInitialProviderState = (): ProviderState => ({
  * and a separate handler, so it may succeed where gRPC didn't.
  *
  * Carve-outs that surface instead:
- *   - AUTH_REQUIRED (401/403): HTTP would surface the same auth failure.
+ *   - AUTH_REQUIRED other than gRPC UNAUTHENTICATED: HTTP would surface the
+ *     same auth failure.
  *   - RATE_LIMIT_EXCEEDED (429): account-level throttle, same backend.
  *   - QUOTA_EXCEEDED (402): plan/word-limit cap, same backend — retry won't help.
  *   - IDLE_TIMEOUT: orchestrator stopped feeding chunks; HTTP would also be starved.
@@ -257,6 +258,11 @@ const NO_HTTP_FALLBACK_APPLICATION_CODES: ReadonlySet<DictationErrorCode> =
   ]);
 
 const shouldFallbackToHttp = (error: AppError): boolean => {
+  // TODO: Remove this exception once gRPC can force-refresh and retry
+  // UNAUTHENTICATED on a fresh stream. Until then, HTTP owns the 401 retry flow.
+  if (error.grpcStatus === GrpcStatus.UNAUTHENTICATED) {
+    return true;
+  }
   if (NO_HTTP_FALLBACK_CODES.has(error.errorCode)) {
     return false;
   }
@@ -1209,10 +1215,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
-  private refreshTokenEffect(): CloudProviderEffect<void> {
+  private refreshTokenEffect(force = false): CloudProviderEffect<void> {
     return Effect.gen(this, function* () {
       const auth = yield* CloudAuth;
-      yield* auth.refreshTokenIfNeeded();
+      yield* auth.refreshTokenIfNeeded(force);
     });
   }
 
@@ -1477,7 +1483,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
         // Force token refresh, then retry once. Retry failures should surface as
         // their own errors instead of being collapsed into auth failure.
-        yield* this.refreshTokenEffect().pipe(
+        yield* this.refreshTokenEffect(true).pipe(
           Effect.catchAll((refreshError) =>
             Effect.gen(this, function* () {
               yield* Effect.sync(() => {

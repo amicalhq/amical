@@ -437,7 +437,7 @@ export class AuthService extends EventEmitter {
   /**
    * Refresh token if needed
    */
-  async refreshTokenIfNeeded(): Promise<void> {
+  async refreshTokenIfNeeded(force = false): Promise<void> {
     if (this.refreshPromise) {
       logger.main.debug("Refresh already in progress, waiting...");
       return this.refreshPromise;
@@ -449,6 +449,7 @@ export class AuthService extends EventEmitter {
     const refreshPromise = this.runTokenRefreshIfNeeded(
       generation,
       controller.signal,
+      force,
     )
       .catch((error) => {
         logger.main.error("Token refresh failed:", error);
@@ -468,6 +469,7 @@ export class AuthService extends EventEmitter {
   private async runTokenRefreshIfNeeded(
     generation: number,
     signal: AbortSignal,
+    force: boolean,
   ): Promise<void> {
     const authState = await this.getAuthState();
     if (signal.aborted || generation !== this.authGeneration || !authState) {
@@ -483,6 +485,7 @@ export class AuthService extends EventEmitter {
 
     // Check if token needs refresh (10 minutes before expiry)
     if (
+      !force &&
       authState.expiresAt &&
       authState.expiresAt - Date.now() > 10 * 60 * 1000
     ) {
