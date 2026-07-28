@@ -30,6 +30,7 @@
 - [🔮 Overview](#-overview)
 - [✨ Features](#-features)
 - [🔰 Tech Stack](#-tech-stack)
+- [Local Development](#local-development)
 - [🤗 Contributing](#-contributing)
 - [🎗 License](#-license)
 
@@ -95,14 +96,85 @@ Context-aware dictation that adapts to what you're doing: drafting an email, cha
 - 🦙 [Ollama](https://ollama.ai)
 - 🧑‍💻 [Typescript](https://www.typescriptlang.org/)
 - 🖥️ [Electron](https://electronjs.org/)
-- ☘️ [Next.js](https://nextjs.org/)
 - 🎨 [TailwindCSS](https://tailwindcss.com/)
 - 🧑🏼‍🎨 [Shadcn](https://ui.shadcn.com/)
 - 🔒 [Better-Auth](https://better-auth.com/)
 - 🧘‍♂️ [Zod](https://zod.dev/)
-- 🐞 [Jest](https://jestjs.io/)
-- 📚 [Fumadocs](https://github.com/fuma-nama/fumadocs)
+- 🐞 [Vitest](https://vitest.dev/)
 - 🌀 [Turborepo](https://turbo.build/)
+
+## Local Development
+
+These steps run the desktop app, which currently supports macOS and Windows.
+Linux is not supported because the app does not yet have a Linux native helper.
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 24.x
+- pnpm 10.15.0 (the version pinned in `package.json`)
+- CMake 3.20 or later
+- **macOS:** Xcode or the Xcode Command Line Tools with Swift 5.9 or later
+  (`xcode-select --install`). Local Whisper transcription requires macOS 15 or
+  later.
+- **Windows:** Visual Studio 2022 Build Tools with the **Desktop development with
+  C++** workload, plus the .NET 8 SDK. Git Bash is recommended because some
+  development scripts use POSIX utilities.
+
+### Set up the repository
+
+Clone with submodules so the Whisper sources are available:
+
+```bash
+git clone --recurse-submodules https://github.com/amicalhq/amical.git
+cd amical
+```
+
+If you already cloned without `--recurse-submodules`, initialize them now:
+
+```bash
+git submodule update --init --recursive
+```
+
+Enable Corepack so it uses the pinned pnpm version, install dependencies, and
+download the Node.js binary used by the local Whisper worker:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm --filter @amical/desktop download-node
+```
+
+`pnpm install` compiles the native Whisper addon, so it can take a few minutes.
+It also applies the repository's patches inside the `whisper.cpp` submodule.
+Seeing that submodule marked as modified in `git status` afterward is expected.
+
+### Start the desktop app
+
+Quit any installed copy of Amical first; Electron allows only one Amical
+instance at a time. Then run:
+
+```bash
+pnpm turbo run dev --filter=@amical/desktop
+```
+
+When finished, quit the development app from its tray menu and then press
+<kbd>Ctrl</kbd>+<kbd>C</kbd>. Stopping the terminal command alone may leave the
+Electron app running.
+
+No `.env` file is required for local transcription. The first-run onboarding
+downloads a local model and requests the required microphone and OS
+permissions. Only configure `apps/desktop/.env` from
+`apps/desktop/.env.example` when working on optional cloud, authentication, or
+telemetry integrations, and replace its placeholder values before use.
+
+### Run checks
+
+Before opening a pull request, run:
+
+```bash
+pnpm type:check
+pnpm test
+```
 
 ## 🤗 Contributing
 
