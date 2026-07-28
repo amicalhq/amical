@@ -848,7 +848,11 @@
         "overlapsWithPushToTalk": "Esto se superpone con tu atajo de Pulsar para hablar y puede causar problemas"
       },
       "input": {
-        "pressKeys": "Presiona las teclas..."
+        "pressKeys": "Presiona las teclas...",
+        "unassigned": "Sin asignar",
+        "edit": "Editar atajo",
+        "clear": "Quitar atajo",
+        "cancel": "Cancelar edición"
       }
     },
     "notes": {

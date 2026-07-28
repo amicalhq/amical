@@ -845,7 +845,11 @@
         "overlapsWithPushToTalk": "This overlaps with your Push-to-talk shortcut and may cause issues"
       },
       "input": {
-        "pressKeys": "Press keys..."
+        "pressKeys": "Press keys...",
+        "unassigned": "Not assigned",
+        "edit": "Edit shortcut",
+        "clear": "Clear shortcut",
+        "cancel": "Cancel editing"
       }
     },
     "notes": {

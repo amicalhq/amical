@@ -238,6 +238,12 @@ export function validateShortcutComprehensive(
   const { candidateShortcut, candidateType, shortcutsByType, platform } =
     context;
 
+  // An empty chord intentionally means "unassigned". It is produced by the
+  // clear button, not by the shortcut recorder (which still rejects no input).
+  if (candidateShortcut.length === 0) {
+    return { valid: true };
+  }
+
   const otherShortcuts = Object.entries(shortcutsByType)
     .filter(([shortcutType]) => shortcutType !== candidateType)
     .map(([, shortcutKeys]) => shortcutKeys);

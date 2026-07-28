@@ -848,7 +848,11 @@
         "overlapsWithPushToTalk": "Dies überschneidet sich mit deinem Push-to-Talk-Tastenkürzel und kann zu Problemen führen"
       },
       "input": {
-        "pressKeys": "Tasten drücken..."
+        "pressKeys": "Tasten drücken...",
+        "unassigned": "Nicht zugewiesen",
+        "edit": "Tastenkürzel bearbeiten",
+        "clear": "Tastenkürzel entfernen",
+        "cancel": "Bearbeitung abbrechen"
       }
     },
     "notes": {
