@@ -153,7 +153,15 @@ describe("identity subscriptions", () => {
   });
 
   describe("FeatureFlagService.Live identity subscription", () => {
-    const build = async () => {
+    const build = async ({
+      telemetryEnabled = true,
+      distinctId = "machine-1",
+      personProperties,
+    }: {
+      telemetryEnabled?: boolean;
+      distinctId?: string;
+      personProperties?: Record<string, string>;
+    } = {}) => {
       const posthog = {
         getAllFlagsAndPayloads: vi.fn().mockResolvedValue({
           featureFlags: { "some-flag": true },
@@ -162,8 +170,8 @@ describe("identity subscriptions", () => {
       };
       const client = {
         posthog,
-        distinctId: "machine-1",
-        personProperties: undefined,
+        distinctId,
+        personProperties,
       } as unknown as PostHogClient;
       // Fresh persisted flags, so initialize() triggers no startup refresh —
       // every getAllFlagsAndPayloads call is attributable to the event.
@@ -172,6 +180,9 @@ describe("identity subscriptions", () => {
           flags: {},
           payloads: {},
           lastFetchedAt: new Date().toISOString(),
+        })),
+        getTelemetrySettings: vi.fn(async () => ({
+          enabled: telemetryEnabled,
         })),
         setFeatureFlags: vi.fn(async () => undefined),
       } as unknown as SettingsService;
@@ -212,6 +223,25 @@ describe("identity subscriptions", () => {
       await vi.waitFor(() =>
         expect(posthog.getAllFlagsAndPayloads).toHaveBeenCalledTimes(2),
       );
+    });
+
+    it("omits person properties when anonymous telemetry is disabled", async () => {
+      const { posthog, telemetryEmitter } = await build({
+        telemetryEnabled: false,
+        distinctId: "user-1",
+        personProperties: {
+          cpu_model: "Private CPU",
+          memory_total_gb: "32",
+          gpu_model: "Private GPU",
+        },
+      });
+
+      telemetryEmitter.emit("identity-changed");
+      await vi.waitFor(() =>
+        expect(posthog.getAllFlagsAndPayloads).toHaveBeenCalledOnce(),
+      );
+
+      expect(posthog.getAllFlagsAndPayloads).toHaveBeenCalledWith("user-1");
     });
 
     it("drops the subscription when the scope closes", async () => {

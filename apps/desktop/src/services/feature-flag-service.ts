@@ -134,12 +134,19 @@ export class FeatureFlagService {
 
   private async doRefresh(): Promise<void> {
     try {
-      const result = await this.client.posthog!.getAllFlagsAndPayloads(
-        this.client.distinctId,
-        {
-          personProperties: this.client.personProperties,
-        },
-      );
+      const telemetrySettings =
+        await this.settingsService.getTelemetrySettings();
+      const result =
+        telemetrySettings.enabled === false
+          ? await this.client.posthog!.getAllFlagsAndPayloads(
+              this.client.distinctId,
+            )
+          : await this.client.posthog!.getAllFlagsAndPayloads(
+              this.client.distinctId,
+              {
+                personProperties: this.client.personProperties,
+              },
+            );
       this.flags = result.featureFlags ?? {};
       this.payloads = result.featureFlagPayloads ?? {};
 
