@@ -3,8 +3,9 @@ dotenv.config();
 
 import tls from "node:tls";
 import { X509Certificate } from "node:crypto";
-import { app, dialog, ipcMain } from "electron";
+import { app, ipcMain } from "electron";
 import { logger } from "./logger";
+import { showFatalStartupDialog } from "./fatal-startup-dialog";
 
 import { AppManager } from "./core/app-manager";
 import { isWindows } from "../utils/platform";
@@ -139,14 +140,17 @@ app.whenReady().then(async () => {
   } catch (error) {
     logger.main.error("Application failed to initialize", { error });
     const telemetryService = serviceManager.getTelemetryService();
-    await telemetryService?.captureExceptionImmediateAndShutdown(error, {
-      source: "main_process",
-      stage: "app_initialize",
-    });
-    dialog.showErrorBox(
-      "Amical failed to start",
-      error instanceof Error ? (error.stack ?? error.message) : String(error),
-    );
+    try {
+      await telemetryService?.captureExceptionImmediateAndShutdown(error, {
+        source: "main_process",
+        stage: "app_initialize",
+      });
+    } catch (telemetryError) {
+      logger.main.error("Failed to flush startup failure telemetry", {
+        error: telemetryError,
+      });
+    }
+    await showFatalStartupDialog(error, "app_initialize");
     app.quit();
   }
 });

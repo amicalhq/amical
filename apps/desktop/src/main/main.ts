@@ -1,5 +1,6 @@
-import { app, dialog } from "electron";
+import { app } from "electron";
 import started from "electron-squirrel-startup";
+import { showFatalStartupDialog } from "./fatal-startup-dialog";
 
 // E2E harness hook (see e2e/): give each test run an isolated profile. Must
 // happen before ./app loads — requestSingleInstanceLock() there keys its lock
@@ -23,13 +24,11 @@ if (started) {
   // failure anywhere in its graph (broken native binding, quarantined file)
   // rejects here — where the user can still be told — instead of crashing the
   // process before any error handling exists. Keep this entry's own imports
-  // minimal for the same reason. showErrorBox is safe before the ready event.
-  import("./app").catch((error: unknown) => {
+  // minimal for the same reason. The fatal-dialog helper retains showErrorBox
+  // as its pre-ready-safe fallback.
+  import("./app").catch(async (error: unknown) => {
     console.error("Failed to load application", error);
-    dialog.showErrorBox(
-      "Amical failed to start",
-      error instanceof Error ? (error.stack ?? error.message) : String(error),
-    );
+    await showFatalStartupDialog(error, "module_load");
     app.exit(1);
   });
 }

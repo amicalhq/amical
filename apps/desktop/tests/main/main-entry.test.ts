@@ -36,7 +36,7 @@ describe("main entry", () => {
     const { app, dialog } = await importEntry();
 
     expect(appModuleLoaded).toBe(true);
-    expect(dialog.showErrorBox).not.toHaveBeenCalled();
+    expect(dialog.showMessageBox).not.toHaveBeenCalled();
     expect(app.exit).not.toHaveBeenCalled();
   });
 
@@ -46,9 +46,12 @@ describe("main entry", () => {
     });
 
     expect(appModuleLoaded).toBe(false);
-    expect(dialog.showErrorBox).toHaveBeenCalledWith(
-      "Amical failed to start",
-      expect.any(String),
+    expect(dialog.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        title: "Amical failed to start",
+        detail: expect.stringContaining("Stage: module_load"),
+      }),
     );
     expect(app.exit).toHaveBeenCalledWith(1);
   });
