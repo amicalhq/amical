@@ -82,6 +82,7 @@ export function OnboardingShortcutInput({
           onChange={handleShortcutChange}
           isRecordingShortcut={isRecording}
           onRecordingShortcutChange={setIsRecording}
+          allowUnassign={false}
         />
       </div>
     </div>
