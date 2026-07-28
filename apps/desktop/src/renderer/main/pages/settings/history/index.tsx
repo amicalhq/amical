@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Transcription } from "@/db/schema";
 import {
   Card,
@@ -12,7 +12,6 @@ import { Table, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
@@ -102,6 +101,41 @@ function groupHistoryByDate(history: Transcription[]) {
   return grouped;
 }
 
+function getActionBarWidth(item: Transcription) {
+  const actionCount =
+    2 +
+    (item.audioFile ? 3 : 0) +
+    (item.audioFile && item.speechModel === "amical-cloud" ? 1 : 0);
+
+  return actionCount * 36 + (actionCount - 1) * 8;
+}
+
+function InteractiveHistoryRow({
+  children,
+}: {
+  children: (showActions: boolean) => ReactNode;
+}) {
+  const [isPointerHovered, setIsPointerHovered] = useState(false);
+  const [hasFocusWithin, setHasFocusWithin] = useState(false);
+
+  return (
+    <TableRow
+      tabIndex={0}
+      onPointerEnter={() => setIsPointerHovered(true)}
+      onPointerLeave={() => setIsPointerHovered(false)}
+      onFocusCapture={() => setHasFocusWithin(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setHasFocusWithin(false);
+        }
+      }}
+      className="group hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none transition px-4"
+    >
+      {children(isPointerHovered || hasFocusWithin)}
+    </TableRow>
+  );
+}
+
 interface HistoryTableCardProps {
   items: Transcription[];
   onCopy: (text: string) => void;
@@ -111,8 +145,6 @@ interface HistoryTableCardProps {
   onRetry: (id: number) => void;
   onReport: (id: number, feedbackText: string) => void;
   isTelemetryEnabled: boolean;
-  hovered: number | null;
-  setHovered: (id: number | null) => void;
   currentPlayingId: number | null;
   isPlaying: boolean;
   retryingId: number | null;
@@ -127,7 +159,6 @@ function HistoryTableCard({
   onRetry,
   onReport,
   isTelemetryEnabled,
-  setHovered,
   currentPlayingId,
   isPlaying,
   retryingId,
@@ -166,183 +197,218 @@ function HistoryTableCard({
           <Table>
             <TableBody>
               {items.map((item) => (
-                <TableRow
-                  key={item.id}
-                  onMouseEnter={() => setHovered(item.id)}
-                  onMouseLeave={() => setHovered(null)}
-                  className="group hover:bg-muted/40 transition px-4"
-                >
-                  <TableCell className="align-top text-xs text-muted-foreground pt-4.5 px-4">
-                    {formatDate(item.timestamp)}
-                  </TableCell>
-                  <TableCell className="align-top py-4 px-4">
-                    <div className="text-foreground max-w-[500px]">
-                      <div
-                        className={`line-clamp-3 whitespace-pre-line ${
-                          !item.text.trim()
-                            ? (item.meta as { status?: string })?.status ===
-                              "failed"
-                              ? "font-mono text-destructive"
-                              : "font-mono text-muted-foreground"
-                            : ""
-                        }`}
-                      >
-                        {getTitle(item.text, item.meta as { status?: string })}
-                      </div>
-                      {item.text.split("\n").length > 3 ||
-                      item.text.length > 200 ? (
-                        <Button
-                          variant="link"
-                          size="sm"
-                          className="p-0 h-auto text-xs text-muted-foreground hover:text-foreground mt-1"
-                          onClick={() => handleReadMore(item.text)}
-                        >
-                          {t("settings.history.readMore")}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="w-32 align-top text-right">
-                    <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
+                <InteractiveHistoryRow key={item.id}>
+                  {(showActions) => (
+                    <>
+                      <TableCell className="align-top text-xs text-muted-foreground pt-4.5 px-4">
+                        {formatDate(item.timestamp)}
+                      </TableCell>
+                      <TableCell className="align-top py-4 px-4">
+                        <div className="text-foreground max-w-[500px]">
+                          <div
+                            className={`line-clamp-3 whitespace-pre-line ${
+                              !item.text.trim()
+                                ? (item.meta as { status?: string })?.status ===
+                                  "failed"
+                                  ? "font-mono text-destructive"
+                                  : "font-mono text-muted-foreground"
+                                : ""
+                            }`}
+                          >
+                            {getTitle(
+                              item.text,
+                              item.meta as { status?: string },
+                            )}
+                          </div>
+                          {item.text.split("\n").length > 3 ||
+                          item.text.length > 200 ? (
                             <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => onCopy(item.text)}
+                              variant="link"
+                              size="sm"
+                              className="p-0 h-auto text-xs text-muted-foreground hover:text-foreground mt-1"
+                              onClick={() => handleReadMore(item.text)}
                             >
-                              <Copy className="w-4 h-4" />
+                              {t("settings.history.readMore")}
                             </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{t("settings.history.actions.copy")}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      {item.audioFile && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => onPlay(item.id)}
-                              >
-                                {currentPlayingId === item.id && isPlaying ? (
-                                  <Pause className="w-4 h-4" />
-                                ) : (
-                                  <Play className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                {currentPlayingId === item.id && isPlaying
-                                  ? t("settings.history.actions.pauseAudio")
-                                  : t("settings.history.actions.playAudio")}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                      {item.audioFile && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => onDownload(item.id)}
-                              >
-                                <Download className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                {t("settings.history.actions.downloadAudio")}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                      {item.audioFile && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                disabled={retryingId === item.id}
-                                onClick={() => onRetry(item.id)}
-                              >
-                                {retryingId === item.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <RotateCcw className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t("settings.history.actions.retry")}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                      {item.audioFile &&
-                        item.speechModel === "amical-cloud" && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex">
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="w-32 align-top text-right">
+                        <div
+                          className="flex h-9 gap-2 justify-end"
+                          style={{ width: getActionBarWidth(item) }}
+                        >
+                          {showActions ? (
+                            <>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    disabled={!isTelemetryEnabled}
-                                    onClick={() => {
-                                      if (!isTelemetryEnabled) {
-                                        return;
-                                      }
-                                      setReportTranscriptionId(item.id);
-                                      setReportText("");
-                                      setReportDialogOpen(true);
-                                    }}
+                                    aria-label={t(
+                                      "settings.history.actions.copy",
+                                    )}
+                                    onClick={() => onCopy(item.text)}
                                   >
-                                    <Flag className="w-4 h-4" />
+                                    <Copy className="w-4 h-4" />
                                   </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>
-                                  {isTelemetryEnabled
-                                    ? t("settings.history.actions.report")
-                                    : t(
-                                        "settings.history.actions.reportDisabledTelemetry",
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{t("settings.history.actions.copy")}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                              {item.audioFile ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      aria-label={
+                                        currentPlayingId === item.id &&
+                                        isPlaying
+                                          ? t(
+                                              "settings.history.actions.pauseAudio",
+                                            )
+                                          : t(
+                                              "settings.history.actions.playAudio",
+                                            )
+                                      }
+                                      onClick={() => onPlay(item.id)}
+                                    >
+                                      {currentPlayingId === item.id &&
+                                      isPlaying ? (
+                                        <Pause className="w-4 h-4" />
+                                      ) : (
+                                        <Play className="w-4 h-4" />
                                       )}
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => onDelete(item.id)}
-                            >
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{t("settings.history.actions.delete")}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      {currentPlayingId === item.id && isPlaying
+                                        ? t(
+                                            "settings.history.actions.pauseAudio",
+                                          )
+                                        : t(
+                                            "settings.history.actions.playAudio",
+                                          )}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                              {item.audioFile ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      aria-label={t(
+                                        "settings.history.actions.downloadAudio",
+                                      )}
+                                      onClick={() => onDownload(item.id)}
+                                    >
+                                      <Download className="w-4 h-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      {t(
+                                        "settings.history.actions.downloadAudio",
+                                      )}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                              {item.audioFile ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      aria-label={t(
+                                        "settings.history.actions.retry",
+                                      )}
+                                      disabled={retryingId === item.id}
+                                      onClick={() => onRetry(item.id)}
+                                    >
+                                      {retryingId === item.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <RotateCcw className="w-4 h-4" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{t("settings.history.actions.retry")}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                              {item.audioFile &&
+                              item.speechModel === "amical-cloud" ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        aria-label={
+                                          isTelemetryEnabled
+                                            ? t(
+                                                "settings.history.actions.report",
+                                              )
+                                            : t(
+                                                "settings.history.actions.reportDisabledTelemetry",
+                                              )
+                                        }
+                                        disabled={!isTelemetryEnabled}
+                                        onClick={() => {
+                                          if (!isTelemetryEnabled) {
+                                            return;
+                                          }
+                                          setReportTranscriptionId(item.id);
+                                          setReportText("");
+                                          setReportDialogOpen(true);
+                                        }}
+                                      >
+                                        <Flag className="w-4 h-4" />
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      {isTelemetryEnabled
+                                        ? t("settings.history.actions.report")
+                                        : t(
+                                            "settings.history.actions.reportDisabledTelemetry",
+                                          )}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    aria-label={t(
+                                      "settings.history.actions.delete",
+                                    )}
+                                    onClick={() => onDelete(item.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{t("settings.history.actions.delete")}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </>
+                  )}
+                </InteractiveHistoryRow>
               ))}
             </TableBody>
           </Table>
@@ -403,7 +469,6 @@ function HistoryTableCard({
 export default function HistorySettingsPage() {
   const { t, i18n } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
-  const [hovered, setHovered] = useState<number | null>(null);
   const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
   const audioPlayer = useAudioPlayer();
   const telemetrySettingsQuery = api.settings.getTelemetrySettings.useQuery();
@@ -689,8 +754,6 @@ export default function HistorySettingsPage() {
                   onRetry={handleRetry}
                   onReport={handleReport}
                   isTelemetryEnabled={isTelemetryEnabled}
-                  hovered={hovered}
-                  setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   retryingId={retryingId}
@@ -713,8 +776,6 @@ export default function HistorySettingsPage() {
                   onRetry={handleRetry}
                   onReport={handleReport}
                   isTelemetryEnabled={isTelemetryEnabled}
-                  hovered={hovered}
-                  setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   retryingId={retryingId}
@@ -737,8 +798,6 @@ export default function HistorySettingsPage() {
                   onRetry={handleRetry}
                   onReport={handleReport}
                   isTelemetryEnabled={isTelemetryEnabled}
-                  hovered={hovered}
-                  setHovered={setHovered}
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   retryingId={retryingId}
