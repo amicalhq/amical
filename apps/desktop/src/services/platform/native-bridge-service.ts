@@ -450,7 +450,13 @@ export class NativeBridge extends EventEmitter {
         }
 
         // If it's neither a recognized RPC response nor a helper event
-        this.logger.warn("Received unknown message from helper", { message });
+        this.logger.warn("Received unknown message from helper", {
+          message,
+          rpcResponseValidationIssues: responseValidation.success
+            ? undefined
+            : responseValidation.error.issues,
+          helperEventValidationIssues: eventValidation.error.issues,
+        });
       } catch (e) {
         this.logger.error("Error parsing JSON from helper", { error: e, line });
         this.telemetryService?.captureException(e, {
