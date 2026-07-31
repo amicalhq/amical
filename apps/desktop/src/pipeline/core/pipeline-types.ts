@@ -78,9 +78,11 @@ export interface FormatParams {
   };
 }
 
-// Legacy provider contract retained until callers move to openSession().
+// Transitional provider contract. Legacy methods remain temporarily for
+// compatibility tests while application work uses explicit sessions.
 export interface TranscriptionProvider {
   readonly name: string;
+  openSession(options: OpenTranscriptionSessionOptions): TranscriptionSession;
   transcribe(params: TranscribeParams): Promise<TranscriptionOutput>;
   flush(
     context: TranscribeContext,
@@ -132,6 +134,8 @@ export interface StreamingPipelineContext extends PipelineContext {
 // Session data for streaming transcription
 export interface StreamingSession {
   context: StreamingPipelineContext;
+  providerSession: TranscriptionSession;
+  speechModelId: string;
   transcriptionResults: string[]; // Accumulate all transcription chunks
   // Per-session aborter. abort() = dismiss: it flags finalizeSession's gates
   // (.signal.aborted) and cancels an in-flight flush. Lives on the session so it

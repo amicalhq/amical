@@ -282,9 +282,7 @@ export class WhisperProvider implements TranscriptionProvider {
     });
   }
 
-  /**
-   * Temporary compatibility path until TranscriptionService opens sessions.
-   */
+  /** Temporary compatibility path for legacy callers and tests. */
   transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
     const sessionId =
       params.context.sessionId ?? this.legacySessionId ?? LEGACY_SESSION_ID;

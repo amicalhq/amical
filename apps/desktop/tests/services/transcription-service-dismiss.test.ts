@@ -11,9 +11,9 @@ vi.mock("../../src/db/daily-stats", () => ({
   incrementDailyStats: vi.fn(async () => undefined),
 }));
 
-// The real providers are never exercised here (selectProvider is overridden to
-// return a fake), so stub their modules to keep construction trivial and free of
-// grpc/auth import side effects.
+// The real providers are never exercised here because each test injects a fake
+// provider session, so stub their modules to keep construction trivial and free
+// of grpc/auth import side effects.
 vi.mock("../../src/pipeline/providers/transcription/whisper-provider", () => ({
   WhisperProvider: vi.fn(function () {
     return {
@@ -45,9 +45,11 @@ import type { StreamingSession } from "../../src/pipeline/core/pipeline-types";
 
 const makeProvider = () => ({
   name: "fake-local",
+  sessionId: "s1",
   transcribe: vi.fn(async () => ({ text: "" })),
   flush: vi.fn(async () => ({ text: " world" })),
-  reset: vi.fn(),
+  cancel: vi.fn(),
+  updateSessionContext: vi.fn(async () => undefined),
 });
 
 describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
@@ -58,6 +60,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
   // Inject a valid streaming session (with its on-session aborter) directly,
   // bypassing processStreamingChunk/buildContext.
   const seedSession = (sessionId: string): StreamingSession => {
+    provider.sessionId = sessionId;
     const base = createDefaultContext(sessionId);
     const context: any = {
       ...base,
@@ -69,6 +72,8 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     context.metadata.set("cloudFormattingEnabled", false);
     const session: StreamingSession = {
       context,
+      providerSession: provider,
+      speechModelId: "fake-local-model",
       transcriptionResults: ["hello"],
       firstChunkReceivedAt: 1,
       recordingStartedAt: 0,
@@ -79,6 +84,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
   };
 
   beforeEach(() => {
+    vi.clearAllMocks();
     const modelService = { getSelectedModel: vi.fn(async () => undefined) };
     const telemetryService = new Proxy({}, { get: () => vi.fn() });
     const settingsService = new Proxy(
@@ -99,7 +105,6 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       null,
     );
     provider = makeProvider();
-    vi.spyOn(svc, "selectProvider").mockResolvedValue(provider);
     // Stub formatting (a possibly-remote LLM call) so the success/late-dismiss
     // paths are deterministic; individual tests assert whether it ran.
     applyFmt = vi
@@ -126,14 +131,15 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       meta: { sessionId: "s1", status: "dismissed" },
     });
     expect(vi.mocked(incrementDailyStats)).not.toHaveBeenCalled();
-    // The catch removes the session.
+    expect(provider.cancel).toHaveBeenCalledOnce();
+    // Final cleanup removes the session.
     expect(svc.streamingSessions.has("s1")).toBe(false);
   });
 
   it("a flush rejected by the dismiss-cancel becomes a silent dismissed row, not a failed one", async () => {
     const session = seedSession("s1");
     provider.flush.mockImplementation(async () => {
-      // Dismiss lands mid-flush; in production reset() rejects the awaited flush.
+      // Dismiss lands mid-flush; provider-session cancellation rejects the flush.
       session.abortController.abort();
       throw new AppError("cancelled", ErrorCodes.NETWORK_ERROR);
     });
@@ -153,6 +159,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     );
     // NOT the failed-transcription branch: no failed row, no stats bump.
     expect(vi.mocked(incrementDailyStats)).not.toHaveBeenCalled();
+    expect(provider.cancel).toHaveBeenCalledOnce();
     expect(svc.streamingSessions.has("s1")).toBe(false);
   });
 
@@ -221,6 +228,34 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(arg.text.trim()).toBe("hello world");
     expect(arg.meta?.status).not.toBe("dismissed");
     expect(vi.mocked(incrementDailyStats)).toHaveBeenCalledTimes(1);
+    expect(provider.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("a provider failure writes a failed row and retires the session", async () => {
+    seedSession("s1");
+    const failure = new AppError(
+      "local decode failed",
+      ErrorCodes.LOCAL_TRANSCRIPTION_FAILED,
+    );
+    provider.flush.mockRejectedValue(failure);
+
+    await expect(
+      svc.finalizeSession({ sessionId: "s1", audioFilePath: "/tmp/a.wav" }),
+    ).rejects.toBe(failure);
+
+    expect(applyFmt).not.toHaveBeenCalled();
+    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "",
+        meta: expect.objectContaining({
+          sessionId: "s1",
+          status: "failed",
+          failureReason: ErrorCodes.LOCAL_TRANSCRIPTION_FAILED,
+        }),
+      }),
+    );
+    expect(provider.cancel).toHaveBeenCalledOnce();
+    expect(svc.streamingSessions.has("s1")).toBe(false);
   });
 
   it("saveDismissedTranscription writes empty text + dismissed status + the audio file", async () => {

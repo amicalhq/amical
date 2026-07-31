@@ -1777,8 +1777,8 @@ export class RecordingManager extends EventEmitter {
   /**
    * Abort an in-flight finalize (FSM abortFinalization command, emitted when
    * dismiss arrives during STOP_N). One signal does both jobs: it flags
-   * finalizeSession's dismiss gates AND cancels the in-flight flush (off-mutex,
-   * via flush() → provider.reset()), so finalizeSession persists a dismissed row
+   * finalizeSession's dismiss gates AND cancels the in-flight provider-session
+   * flush, so finalizeSession persists a dismissed row
    * instead of pasting and a slow/hung finalize returns to idle immediately
    * instead of waiting for the network call. We deliberately do NOT delete the
    * streaming session here: that would race finalizeSession and drop the audio.

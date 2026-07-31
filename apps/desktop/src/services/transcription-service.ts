@@ -70,7 +70,6 @@ type StreamingSessionUpdate = {
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private cloudProvider: AmicalCloudProvider;
-  private currentProvider: TranscriptionProvider | null = null;
   private streamingSessions = new Map<string, StreamingSession>();
   private pendingStreamingSessionUpdates = new Map<
     string,
@@ -145,17 +144,6 @@ export class TranscriptionService {
     };
   }
 
-  private async pushProviderSessionContext(
-    context: TranscribeContext,
-  ): Promise<void> {
-    const provider = this.currentProvider;
-    if (!provider?.updateSessionContext) {
-      return;
-    }
-
-    await provider.updateSessionContext(context);
-  }
-
   private applyStreamingSessionUpdate(
     session: StreamingSession,
     update: StreamingSessionUpdate,
@@ -187,6 +175,7 @@ export class TranscriptionService {
     }
 
     let providerContext: TranscribeContext | null = null;
+    let providerSession: StreamingSession["providerSession"] | null = null;
 
     await this.transcriptionMutex.acquire();
     try {
@@ -207,12 +196,15 @@ export class TranscriptionService {
         options.sessionId,
         session,
       );
+      providerSession = session.providerSession;
     } finally {
       this.transcriptionMutex.release();
     }
 
-    if (providerContext) {
-      await this.pushProviderSessionContext(providerContext);
+    // Keep the provider call outside the global mutex so network backpressure
+    // cannot block stop/cancel. Final flush receives the latest context again.
+    if (providerContext && providerSession) {
+      await providerSession.updateSessionContext?.(providerContext);
     }
   }
 
@@ -221,10 +213,14 @@ export class TranscriptionService {
    */
   private async selectProvider(): Promise<TranscriptionProvider> {
     const selectedModelId = await this.modelService.getSelectedModel();
+    return this.providerForSelectedModel(selectedModelId);
+  }
 
+  private providerForSelectedModel(
+    selectedModelId: string | null,
+  ): TranscriptionProvider {
     if (!selectedModelId) {
       // Default to whisper if no model selected
-      this.currentProvider = this.whisperProvider;
       return this.whisperProvider;
     }
 
@@ -233,12 +229,10 @@ export class TranscriptionService {
 
     // Use cloud provider for Amical Cloud models
     if (model?.provider === "Amical Cloud") {
-      this.currentProvider = this.cloudProvider;
       return this.cloudProvider;
     }
 
     // Default to whisper for all other models
-    this.currentProvider = this.whisperProvider;
     return this.whisperProvider;
   }
 
@@ -562,8 +556,20 @@ export class TranscriptionService {
             ? pendingUpdate.accessibilityContext
             : (this.nativeBridge?.getAccessibilityContext() ?? null);
 
+        const selectedModelId = await this.modelService.getSelectedModel();
+        const provider = this.providerForSelectedModel(selectedModelId);
+        const providerSession = provider.openSession({
+          sessionId,
+          modelId: selectedModelId,
+        });
+
         session = {
           context: streamingContext,
+          providerSession,
+          speechModelId:
+            providerSession.name === "amical-cloud"
+              ? "amical-cloud"
+              : selectedModelId || "whisper-local",
           transcriptionResults: [],
           firstChunkReceivedAt: performance.now(),
           recordingStartedAt: recordingStartedAt,
@@ -581,11 +587,8 @@ export class TranscriptionService {
         session.context.metadata.set("isInstruct", !!isInstruct);
       }
 
-      // Select the appropriate provider
-      const provider = await this.selectProvider();
-
       // Transcribe chunk (flush is done separately in finalizeSession)
-      const chunkResult = await provider.transcribe({
+      const chunkResult = await session.providerSession.transcribe({
         audioData: audioChunk,
         speechProbability: speechProbability,
         context: this.buildTranscribeContextForSession(sessionId, session),
@@ -600,7 +603,7 @@ export class TranscriptionService {
       this.accumulateTranscriptionResult(
         session.transcriptionResults,
         chunkResult.text,
-        provider.name === "amical-cloud",
+        session.providerSession.name === "amical-cloud",
       );
       if (chunkResult.text.trim()) {
         logger.transcription.info("Whisper returned transcription", {
@@ -632,13 +635,12 @@ export class TranscriptionService {
     await this.transcriptionMutex.acquire();
     try {
       this.pendingStreamingSessionUpdates.delete(sessionId);
-      if (!this.streamingSessions.has(sessionId)) {
+      const session = this.streamingSessions.get(sessionId);
+      if (!session) {
         return;
       }
 
-      // Clear provider buffers to prevent audio bleed into next session
-      this.currentProvider?.reset();
-
+      session.providerSession.cancel();
       this.streamingSessions.delete(sessionId);
       logger.transcription.info("Streaming session cancelled", { sessionId });
     } finally {
@@ -650,7 +652,7 @@ export class TranscriptionService {
    * Dismiss a session by aborting its signal. This both (a) flags
    * finalizeSession's cooperative gates so it writes a dismissed row instead of
    * pasting, and (b) cancels an in-flight flush: flush() reacts to the abort by
-   * calling provider.reset(), which synchronously cancels the gRPC stream /
+   * cancelling the provider session, which synchronously cancels the gRPC stream /
    * aborts the HTTP fetch off the transcription mutex, rejecting the awaited
    * flush so the recording machine returns to idle immediately. No-op effect for
    * the local whisper worker (an in-flight decode isn't interruptible) — its
@@ -738,32 +740,15 @@ export class TranscriptionService {
       const shouldUseCloudFormatting =
         formatterConfig?.enabled &&
         isAmicalCloudSelectionValue(formatterConfig.modelId);
-      let usedCloudProvider = false;
+      const usedCloudProvider = session.providerSession.name === "amical-cloud";
 
       // Flush provider to get any remaining buffered audio
       await this.transcriptionMutex.acquire();
       try {
-        const previousChunk =
-          session.transcriptionResults.length > 0
-            ? session.transcriptionResults[
-                session.transcriptionResults.length - 1
-              ]
-            : undefined;
-        const aggregatedTranscription = session.transcriptionResults.join("");
-
-        const provider = await this.selectProvider();
-        usedCloudProvider = provider.name === "amical-cloud";
-        const finalResult = await provider.flush(
+        const finalResult = await session.providerSession.flush(
           {
-            sessionId,
-            vocabulary: session.context.sharedData.vocabulary,
-            accessibilityContext:
-              session.context.sharedData.accessibilityContext,
-            previousChunk,
-            aggregatedTranscription: aggregatedTranscription || undefined,
-            languages: session.context.sharedData.userPreferences?.languages,
+            ...this.buildTranscribeContextForSession(sessionId, session),
             formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
-            isInstruct: session.context.metadata.get("isInstruct") === true,
           },
           signal,
         );
@@ -847,13 +832,8 @@ export class TranscriptionService {
         hasAudioFile: !!audioFilePath,
       });
 
-      const selectedModelId = await this.modelService.getSelectedModel();
-      const speechModelId = usedCloudProvider
-        ? "amical-cloud"
-        : selectedModelId || "whisper-local";
-
-      // Late dismiss: the user dismissed while formatting / model lookup was in
-      // flight (after the post-flush check). Discard the now-formatted transcript
+      // Late dismiss: the user dismissed while formatting was in flight (after
+      // the post-flush check). Discard the now-formatted transcript
       // — the catch persists the dismissed row and rethrows USER_DISMISSED, so
       // there's no paste, no stats, no completion telemetry.
       //
@@ -871,7 +851,7 @@ export class TranscriptionService {
         language: requestedLanguage,
         detectedLanguage,
         duration: session.context.sharedData.audioMetadata?.duration,
-        speechModel: speechModelId,
+        speechModel: session.speechModelId,
         formattingModel,
         audioFile: audioFilePath,
         meta: {
@@ -926,7 +906,7 @@ export class TranscriptionService {
 
       this.telemetryService.trackTranscriptionCompleted({
         session_id: sessionId,
-        model_id: speechModelId,
+        model_id: session.speechModelId,
         model_preloaded: this.modelWasPreloaded,
         whisper_native_binding: whisperNativeBinding,
         total_duration_ms: totalDuration || 0,
@@ -947,9 +927,6 @@ export class TranscriptionService {
         vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
       });
 
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      this.streamingSessions.delete(sessionId);
-
       logger.transcription.info("Streaming session completed", { sessionId });
       return completeTranscription;
     } catch (error) {
@@ -962,8 +939,6 @@ export class TranscriptionService {
           sessionId,
           audioFilePath: audioFilePath || undefined,
         });
-        this.pendingStreamingSessionUpdates.delete(sessionId);
-        this.streamingSessions.delete(sessionId);
         logger.transcription.info("Dismissed transcription during finalize", {
           sessionId,
         });
@@ -1012,12 +987,14 @@ export class TranscriptionService {
         );
       }
 
-      // Clean up session
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      this.streamingSessions.delete(sessionId);
-
       // Re-throw for RecordingManager to handle notifications
       throw error;
+    } finally {
+      session.providerSession.cancel();
+      this.pendingStreamingSessionUpdates.delete(sessionId);
+      if (this.streamingSessions.get(sessionId) === session) {
+        this.streamingSessions.delete(sessionId);
+      }
     }
   }
 
@@ -1324,12 +1301,16 @@ export class TranscriptionService {
       record.detectedLanguage,
     );
     let usedCloudProvider = false;
+    let providerSession: StreamingSession["providerSession"] | null = null;
 
     await this.transcriptionMutex.acquire();
     try {
-      const provider = await this.selectProvider();
-      usedCloudProvider = provider.name === "amical-cloud";
-      provider.reset();
+      const provider = this.providerForSelectedModel(selectedModelId);
+      providerSession = provider.openSession({
+        sessionId: retrySessionId,
+        modelId: selectedModelId,
+      });
+      usedCloudProvider = providerSession.name === "amical-cloud";
 
       // Feed each frame with its computed VAD probability
       for (let i = 0; i < frames.length; i++) {
@@ -1339,7 +1320,7 @@ export class TranscriptionService {
             : undefined;
         const aggregatedTranscription = transcriptionResults.join("");
 
-        const chunkResult = await provider.transcribe({
+        const chunkResult = await providerSession.transcribe({
           audioData: frames[i],
           speechProbability: vadProbs[i],
           context: {
@@ -1365,7 +1346,7 @@ export class TranscriptionService {
 
       // Flush to get remaining buffered audio
       const aggregatedTranscription = transcriptionResults.join("");
-      const finalResult = await provider.flush({
+      const finalResult = await providerSession.flush({
         sessionId: retrySessionId,
         vocabulary,
         languages,
@@ -1383,6 +1364,7 @@ export class TranscriptionService {
         usedCloudProvider,
       );
     } finally {
+      providerSession?.cancel();
       this.transcriptionMutex.release();
     }
 
@@ -1543,6 +1525,11 @@ export class TranscriptionService {
    * Cleanup method
    */
   async dispose(): Promise<void> {
+    for (const session of this.streamingSessions.values()) {
+      session.providerSession.cancel();
+    }
+    this.streamingSessions.clear();
+    this.pendingStreamingSessionUpdates.clear();
     await this.whisperProvider.dispose();
     await this.cloudProvider.dispose();
     // VAD service is managed by ServiceManager
