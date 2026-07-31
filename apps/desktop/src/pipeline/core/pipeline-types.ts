@@ -33,6 +33,37 @@ export interface TranscriptionOutput {
   detectedLanguage?: string;
 }
 
+export interface OpenTranscriptionSessionOptions {
+  sessionId: string;
+  /**
+   * Model selected for this operation. Local providers use it to keep the
+   * session on that model even if the application selection changes later.
+   */
+  modelId?: string | null;
+}
+
+/**
+ * Mutable state for exactly one transcription operation.
+ *
+ * Providers own reusable resources such as the Whisper worker and loaded
+ * model. Sessions own operation state such as audio buffers and cancellation,
+ * so one operation cannot reset another.
+ */
+export interface TranscriptionSession {
+  readonly name: string;
+  readonly sessionId: string;
+  transcribe(params: TranscribeParams): Promise<TranscriptionOutput>;
+  flush(
+    context: TranscribeContext,
+    signal?: AbortSignal,
+  ): Promise<TranscriptionOutput>;
+  /**
+   * Permanently close this operation. Implementations must make cancellation
+   * idempotent and no-throw; callers open a new session for later work.
+   */
+  cancel(): void;
+}
+
 // Formatting input parameters
 export interface FormatParams {
   text: string;
@@ -45,7 +76,7 @@ export interface FormatParams {
   };
 }
 
-// Transcription provider interface
+// Legacy provider contract retained until callers move to openSession().
 export interface TranscriptionProvider {
   readonly name: string;
   transcribe(params: TranscribeParams): Promise<TranscriptionOutput>;

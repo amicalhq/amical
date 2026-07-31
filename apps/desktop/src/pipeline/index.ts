@@ -4,6 +4,8 @@
 
 // Core types
 export type {
+  TranscriptionSession,
+  OpenTranscriptionSessionOptions,
   TranscriptionProvider,
   FormattingProvider,
   PipelineResult,
