@@ -1,5 +1,7 @@
 import {
+  OpenTranscriptionSessionOptions,
   TranscriptionProvider,
+  TranscriptionSession,
   TranscribeParams,
   TranscribeContext,
   TranscriptionOutput,
@@ -311,6 +313,7 @@ const resetGrpcState = (state: ProviderState): ProviderState => ({
 });
 
 const resetProviderState = (): ProviderState => createInitialProviderState();
+const LEGACY_CLOUD_SESSION_ID = "legacy-cloud";
 
 const cloudConfigFromEnvironment = (): CloudConfig => {
   const apiEndpoint = process.env.API_ENDPOINT || __BUNDLED_API_ENDPOINT;
@@ -329,16 +332,12 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   readonly name = "amical-cloud";
 
   private readonly runtime: CloudRuntime;
-  private readonly state: Ref.Ref<ProviderState>;
   private readonly telemetryService: TelemetryService | null;
   private readonly settingsService: SettingsService | null;
-
-  // Configuration
-  private readonly FRAME_SIZE = 512; // 32ms at 16kHz
-  private readonly MIN_AUDIO_DURATION_MS = 500; // Minimum buffered audio duration before silence-based transcription
-  private readonly MAX_SILENCE_DURATION_MS = 3000; // Max silence before cutting
-  private readonly SAMPLE_RATE = 16000;
-  private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
+  private readonly sessions = new Set<AmicalCloudSession>();
+  private legacySession: AmicalCloudSession | null = null;
+  private disposed = false;
+  private disposalPromise: Promise<void> | null = null;
 
   constructor(
     private readonly authService: AuthService,
@@ -347,7 +346,6 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   ) {
     const config = cloudConfigFromEnvironment();
     this.runtime = createCloudRuntime(config, authService);
-    this.state = Effect.runSync(Ref.make(createInitialProviderState()));
     this.telemetryService = telemetryService;
     this.settingsService = settingsService;
 
@@ -357,15 +355,146 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
+  openSession(options: OpenTranscriptionSessionOptions): TranscriptionSession {
+    return this.createSession(options.sessionId);
+  }
+
+  private createSession(sessionId: string): AmicalCloudSession {
+    this.assertNotDisposed();
+    const session = new AmicalCloudSession(
+      sessionId,
+      this.runtime,
+      this.telemetryService,
+      this.settingsService,
+      (closedSession) => this.retireSession(closedSession),
+    );
+    this.sessions.add(session);
+    return session;
+  }
+
+  async transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
+    const sessionId =
+      params.context.sessionId ??
+      this.legacySession?.sessionId ??
+      LEGACY_CLOUD_SESSION_ID;
+    return this.legacySessionFor(sessionId).transcribe(params);
+  }
+
+  async flush(
+    context: TranscribeContext,
+    signal?: AbortSignal,
+  ): Promise<TranscriptionOutput> {
+    const sessionId =
+      context.sessionId ??
+      this.legacySession?.sessionId ??
+      LEGACY_CLOUD_SESSION_ID;
+    return this.legacySessionFor(sessionId).flush(context, signal);
+  }
+
+  async updateSessionContext(context: TranscribeContext): Promise<void> {
+    this.assertNotDisposed();
+    const sessionId =
+      context.sessionId ??
+      this.legacySession?.sessionId ??
+      LEGACY_CLOUD_SESSION_ID;
+    if (!this.legacySession || this.legacySession.sessionId !== sessionId) {
+      return;
+    }
+    await this.legacySession.updateSessionContext(context);
+  }
+
+  reset(): void {
+    this.legacySession?.cancel();
+    this.legacySession = null;
+  }
+
+  /**
+   * Warm the provider for an upcoming session: refresh auth if it's expiring
+   * so the first transcribe() doesn't pay a token-refresh roundtrip.
+   * Does not open a transport connection.
+   */
+  async warmup(): Promise<void> {
+    this.assertNotDisposed();
+    await this.authService.refreshTokenIfNeeded();
+    this.assertNotDisposed();
+  }
+
+  dispose(): Promise<void> {
+    if (!this.disposalPromise) {
+      this.disposed = true;
+      this.disposalPromise = this.disposeInternal();
+    }
+    return this.disposalPromise;
+  }
+
+  private legacySessionFor(sessionId: string): AmicalCloudSession {
+    this.assertNotDisposed();
+    if (!this.legacySession || this.legacySession.sessionId !== sessionId) {
+      this.reset();
+      this.legacySession = this.createSession(sessionId);
+    }
+    return this.legacySession;
+  }
+
+  private retireSession(session: AmicalCloudSession): void {
+    this.sessions.delete(session);
+    if (this.legacySession === session) {
+      this.legacySession = null;
+    }
+  }
+
+  private async disposeInternal(): Promise<void> {
+    for (const session of [...this.sessions]) {
+      session.cancel();
+    }
+    this.sessions.clear();
+    await this.runtime.dispose();
+  }
+
+  private assertNotDisposed(): void {
+    if (this.disposed) {
+      throw new Error("Amical cloud transcription provider has been disposed");
+    }
+  }
+}
+
+/** Mutable Cloud transport state for exactly one transcription operation. */
+class AmicalCloudSession implements TranscriptionSession {
+  readonly name = "amical-cloud";
+
+  private readonly state: Ref.Ref<ProviderState>;
+  private closed = false;
+
+  // Configuration
+  private readonly FRAME_SIZE = 512; // 32ms at 16kHz
+  private readonly MIN_AUDIO_DURATION_MS = 500; // Minimum buffered audio duration before silence-based transcription
+  private readonly MAX_SILENCE_DURATION_MS = 3000; // Max silence before cutting
+  private readonly SAMPLE_RATE = 16000;
+  private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
+
+  constructor(
+    readonly sessionId: string,
+    private readonly runtime: CloudRuntime,
+    private readonly telemetryService: TelemetryService | null,
+    private readonly settingsService: SettingsService | null,
+    private readonly onCancel: (session: AmicalCloudSession) => void,
+  ) {
+    this.state = Effect.runSync(Ref.make(createInitialProviderState()));
+  }
+
   /**
    * Process an audio chunk - buffers and conditionally transcribes
    */
   async transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
-    return this.runProviderEffect(
-      this.transcribeEffect(params).pipe(
-        Effect.tapError((error) => this.logCloudErrorEffect(error)),
-      ),
+    this.assertOpen();
+    const result = await this.runProviderEffect(
+      this.transcribeEffect({
+        ...params,
+        context: this.contextForSession(params.context),
+      }).pipe(Effect.tapError((error) => this.logCloudErrorEffect(error))),
     );
+    this.assertOpen();
+    return result;
   }
 
   private transcribeEffect(
@@ -374,8 +503,10 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     return Effect.gen(this, function* () {
       const { audioData, speechProbability = 1, context } = params;
 
+      yield* this.failIfClosedEffect();
       yield* this.storeContextEffect(context);
       yield* this.ensureAuthenticatedEffect();
+      yield* this.failIfClosedEffect();
 
       const transport = yield* this.effectiveTransportEffect();
 
@@ -403,9 +534,11 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   ): CloudProviderEffect<A> {
     return grpcEffect.pipe(
       Effect.catchAll((error) =>
-        shouldFallbackToHttp(error)
+        !this.closed && shouldFallbackToHttp(error)
           ? Effect.gen(this, function* () {
+              yield* this.failIfClosedEffect();
               yield* this.engageHttpFallbackEffect(error, stage);
+              yield* this.failIfClosedEffect();
               return yield* httpRoute();
             })
           : Effect.fail(error),
@@ -413,29 +546,23 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     );
   }
 
-  /**
-   * Warm the provider for an upcoming session: refresh auth if it's expiring
-   * so the first transcribe() doesn't pay a token-refresh roundtrip.
-   * Idempotent and cheap when the token is already fresh; safe to fire-and-forget.
-   * Does NOT open the gRPC stream — that stays lazy on the first chunk.
-   */
-  async warmup(): Promise<void> {
-    await this.authService.refreshTokenIfNeeded();
-  }
-
   async updateSessionContext(context: TranscribeContext): Promise<void> {
+    this.assertOpen();
     await this.runProviderEffect(
-      this.updateSessionContextEffect(context).pipe(
+      this.updateSessionContextEffect(this.contextForSession(context)).pipe(
         Effect.tapError((error) => this.logCloudErrorEffect(error)),
       ),
     );
+    this.assertOpen();
   }
 
   private updateSessionContextEffect(
     context: TranscribeContext,
   ): CloudProviderEffect<void> {
     return Effect.gen(this, function* () {
+      yield* this.failIfClosedEffect();
       yield* this.storeContextEffect(context);
+      yield* this.failIfClosedEffect();
       const transport = yield* this.effectiveTransportEffect();
       if (transport !== "grpc") {
         return;
@@ -489,26 +616,35 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     context: TranscribeContext,
     signal?: AbortSignal,
   ): Promise<TranscriptionOutput> {
-    // Dismiss/cancel arrives as an aborted signal. reset() synchronously cancels
+    this.assertOpen();
+    const sessionContext = this.contextForSession(context);
+    // Dismiss/cancel arrives as an aborted signal. cancel() synchronously cancels
     // the in-flight gRPC stream and aborts the HTTP fetch, rejecting this flush so
     // finalizeSession's catch persists the row and returns to idle immediately.
     // (No-op for the local worker; that path lives in WhisperProvider.) Checked
     // up-front too because addEventListener won't fire for an already-aborted
     // signal.
     if (signal?.aborted) {
-      this.reset();
+      this.cancel();
+      throw this.cancellationError();
     }
-    const onAbort = () => this.reset();
+    const onAbort = () => this.cancel();
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
-      return await this.runProviderEffect(
-        this.flushEffect(context).pipe(
+      const result = await this.runProviderEffect(
+        this.flushEffect(sessionContext).pipe(
           Effect.tapError((error) => this.logCloudErrorEffect(error)),
         ),
       );
+      this.assertOpen();
+      return result;
     } finally {
       signal?.removeEventListener("abort", onAbort);
     }
+  }
+
+  private contextForSession(context: TranscribeContext): TranscribeContext {
+    return { ...context, sessionId: this.sessionId };
   }
 
   /**
@@ -530,16 +666,15 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     context: TranscribeContext,
   ): CloudProviderEffect<TranscriptionOutput> {
     return Effect.gen(this, function* () {
+      yield* this.failIfClosedEffect();
       yield* this.storeContextEffect(context);
       yield* this.ensureAuthenticatedEffect();
+      yield* this.failIfClosedEffect();
 
       const enableFormatting = context.formattingEnabled ?? false;
       const transport = yield* this.effectiveTransportEffect();
 
       if (transport === "grpc") {
-        // Note: audio sent over the failed gRPC stream is lost; the HTTP
-        // fallback surfaces whatever HTTP-buffered audio (likely none) +
-        // formatting-only output if enabled.
         return yield* this.withHttpFallbackEffect(
           this.flushGrpcEffect(enableFormatting),
           () => this.doTranscriptionEffect(enableFormatting, true),
@@ -674,6 +809,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       // per-chunk HTTP snapshot doesn't re-read settings from disk on every
       // transcribe()/flush(). null = keep the value already cached in state.
       const enabledLabs = isNewSession ? yield* this.enabledLabsEffect() : null;
+      yield* this.failIfClosedEffect();
 
       yield* Ref.update(this.state, (state) => ({
         ...state,
@@ -749,33 +885,38 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
-  /**
-   * Clear internal buffers without transcribing
-   * Called when cancelling a session to prevent audio bleed
-   */
-  reset(): void {
-    this.runtime.runSync(this.resetEffect());
-  }
+  cancel(): void {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
 
-  async dispose(): Promise<void> {
-    await this.runtime.runPromise(this.resetEffect());
-    await this.runtime.dispose();
-  }
-
-  private resetEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
-      const inFlight = yield* Ref.modify(this.state, (state) => [
+    const inFlight = Effect.runSync(
+      Ref.modify(this.state, (state) => [
         {
           stream: state.grpcStream,
           httpAbortController: state.httpAbortController,
         },
         resetProviderState(),
-      ]);
-      yield* Effect.sync(() => {
-        inFlight.stream?.cancel();
-        inFlight.httpAbortController?.abort();
+      ]),
+    );
+    try {
+      inFlight.stream?.cancel();
+    } catch (error) {
+      logger.transcription.warn("Failed to cancel cloud gRPC stream", {
+        sessionId: this.sessionId,
+        error,
       });
-    });
+    }
+    try {
+      inFlight.httpAbortController?.abort();
+    } catch (error) {
+      logger.transcription.warn("Failed to abort cloud HTTP request", {
+        sessionId: this.sessionId,
+        error,
+      });
+    }
+    this.onCancel(this);
   }
 
   private transcribeGrpcEffect(
@@ -843,6 +984,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     enableFormatting: boolean,
   ): CloudProviderEffect<CloudDictationGrpcStream> {
     return Effect.gen(this, function* () {
+      yield* this.failIfClosedEffect();
       const existingStream = yield* Ref.get(this.state).pipe(
         Effect.map((state) => state.grpcStream),
       );
@@ -857,6 +999,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       const config = yield* CloudConfig;
       const snapshot = yield* this.requestSnapshotEffect();
       const idToken = yield* this.getIdTokenEffect();
+      yield* this.failIfClosedEffect();
       const sessionId =
         snapshot.currentSessionId || `cloud-${Date.now().toString(36)}`;
       // Instruct uses its preset; formatting off produces no skills. Otherwise
@@ -869,6 +1012,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           accessibilityContext: snapshot.currentAccessibilityContext,
         }),
       );
+      yield* this.failIfClosedEffect();
       const streamContext = this.buildGrpcStreamContext(snapshot);
       const sentContextKey = contextSnapshotKey(streamContext);
       const sentSkillsKey = snapshotKey(resolvedSkills);
@@ -948,6 +1092,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         }));
       }
 
+      yield* this.failIfClosedEffect();
       const resolvedSkills = yield* Effect.promise(() =>
         resolveSessionSkills({
           isInstruct: snapshot.currentIsInstruct,
@@ -955,6 +1100,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
           accessibilityContext: snapshot.currentAccessibilityContext,
         }),
       );
+      yield* this.failIfClosedEffect();
       const nextSkillsKey = snapshotKey(resolvedSkills);
       const sentSkillsKey = yield* Ref.get(this.state).pipe(
         Effect.map((state) => state.grpcSentSkillsKey),
@@ -1197,6 +1343,23 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
+  private cancellationError(): AppError {
+    return new AppError(
+      "Cloud transcription was cancelled",
+      ErrorCodes.NETWORK_ERROR,
+    );
+  }
+
+  private assertOpen(): void {
+    if (this.closed) {
+      throw this.cancellationError();
+    }
+  }
+
+  private failIfClosedEffect(): Effect.Effect<void, AppError> {
+    return this.closed ? Effect.fail(this.cancellationError()) : Effect.void;
+  }
+
   private getIdTokenEffect(): CloudProviderEffect<string> {
     return Effect.gen(this, function* () {
       const auth = yield* CloudAuth;
@@ -1253,6 +1416,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     enableFormatting: boolean,
     isFinal: boolean,
     skills: DictationSkill[] | undefined,
+    signal: AbortSignal,
   ): CloudProviderEffect<Response> {
     // Empty audio is the text-only finalize path; preserve the
     // original "" wire shape so the server's default float32 path keeps working.
@@ -1263,22 +1427,11 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         ? Buffer.from(float32ToPcmS16le(audioData)).toString("base64")
         : "";
       const labsHeader = buildAmicalLabsHeader(snapshot.enabledLabs);
-      // Register an aborter so reset() (finalize-phase dismiss) can cancel this
-      // in-flight HTTP request; gRPC uses stream.cancel() for the same purpose.
-      // INVARIANT: this signal is scoped to the /transcribe request ONLY. Never
-      // widen it to cover getIdTokenEffect/refreshTokenEffect — aborting a token
-      // refresh mid-flight could drop a freshly-minted refresh token. Auth calls
-      // deliberately carry no signal, and reset() never touches AuthService.
-      const abortController = new AbortController();
-      yield* Ref.update(this.state, (state) => ({
-        ...state,
-        httpAbortController: abortController,
-      }));
       return yield* Effect.tryPromise({
         try: () =>
           fetch(`${config.apiEndpoint}/transcribe`, {
             method: "POST",
-            signal: abortController.signal,
+            signal,
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${idToken}`,
@@ -1314,15 +1467,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         // shouldFallbackToHttp only inspects the gRPC attempt, never this HTTP
         // route, so an aborted fetch can't spawn a phantom fallback.)
         catch: toNetworkAppError,
-      }).pipe(
-        Effect.ensuring(
-          Ref.update(this.state, (state) =>
-            state.httpAbortController === abortController
-              ? { ...state, httpAbortController: null }
-              : state,
-          ),
-        ),
-      );
+      });
     });
   }
 
@@ -1399,7 +1544,15 @@ export class AmicalCloudProvider implements TranscriptionProvider {
       snapshot,
       skills: preResolvedSkills,
     } = request;
+    const abortController = new AbortController();
+    const releaseRequest = Ref.update(this.state, (state) =>
+      state.httpAbortController === abortController
+        ? { ...state, httpAbortController: null }
+        : state,
+    );
+
     return Effect.gen(this, function* () {
+      yield* this.failIfClosedEffect();
       const requestSnapshot = snapshot ?? (yield* this.requestSnapshotEffect());
       const hasPriorText =
         !!requestSnapshot.currentAggregatedTranscription?.trim();
@@ -1421,6 +1574,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
               }),
             )
           : undefined);
+      yield* this.failIfClosedEffect();
       if (audioData.length === 0) {
         const shouldSendTextOnlyFinal =
           isFinal && (enableFormatting || (skills?.length ?? 0) > 0);
@@ -1429,7 +1583,14 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         }
       }
 
+      // Register before token lookup. Auth remains non-interruptible, but a
+      // cancelled session cannot install a fetch after that lookup completes.
+      yield* Ref.update(this.state, (state) => ({
+        ...state,
+        httpAbortController: abortController,
+      }));
       const idToken = yield* this.getIdTokenEffect();
+      yield* this.failIfClosedEffect();
       const duration = audioData.length / this.SAMPLE_RATE;
 
       yield* Effect.sync(() => {
@@ -1452,6 +1613,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         enableFormatting,
         isFinal,
         skills,
+        abortController.signal,
       );
 
       if (response.status === 401) {
@@ -1502,6 +1664,7 @@ export class AmicalCloudProvider implements TranscriptionProvider {
             }),
           ),
         );
+        yield* this.failIfClosedEffect();
 
         return yield* this.makeTranscriptionRequestEffect({
           audioData,
@@ -1563,6 +1726,6 @@ export class AmicalCloudProvider implements TranscriptionProvider {
         text: result.transcription,
         detectedLanguage: result.language,
       };
-    });
+    }).pipe(Effect.ensuring(releaseRequest));
   }
 }

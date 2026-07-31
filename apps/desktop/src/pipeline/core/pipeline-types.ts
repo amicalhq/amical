@@ -57,6 +57,8 @@ export interface TranscriptionSession {
     context: TranscribeContext,
     signal?: AbortSignal,
   ): Promise<TranscriptionOutput>;
+  /** Push a newer context snapshot to an already-open streaming transport. */
+  updateSessionContext?(context: TranscribeContext): Promise<void>;
   /**
    * Permanently close this operation. Implementations must make cancellation
    * idempotent and no-throw; callers open a new session for later work.

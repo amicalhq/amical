@@ -1401,6 +1401,495 @@ describe("AmicalCloudProvider", () => {
     });
   });
 
+  describe("legacy session adapter", () => {
+    it("retires unflushed audio when transcribe rotates to a new session ID", async () => {
+      const provider = constructProviderWithTransport("http");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "session-A" }),
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "session-A" }),
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "session-B" }),
+      });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "session B" },
+      });
+
+      await provider.flush(baseContext({ sessionId: "session-B" }));
+
+      expect(httpRequestSampleCount()).toBe(512);
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(JSON.parse(init.body as string)).toMatchObject({
+        sessionId: "session-B",
+      });
+    });
+
+    it("preserves flush-only finals while retiring another active session", async () => {
+      const provider = constructProviderWithTransport("http");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "session-A" }),
+      });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "formatted B" },
+      });
+
+      await provider.flush(
+        baseContext({
+          sessionId: "session-B",
+          aggregatedTranscription: "raw B",
+          formattingEnabled: true,
+        }),
+      );
+
+      expect(httpRequestSampleCount()).toBe(0);
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(JSON.parse(init.body as string)).toMatchObject({
+        sessionId: "session-B",
+        audioData: "",
+        previousTranscription: "raw B",
+      });
+    });
+
+    it("opens clean state when an aborted legacy session ID is reused", async () => {
+      const provider = constructProviderWithTransport("http");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "reused" }),
+      });
+      fetchMock.mockImplementationOnce(
+        (_url: unknown, init: { signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener(
+              "abort",
+              () => reject(new Error("aborted")),
+              { once: true },
+            );
+          }),
+      );
+      const controller = new AbortController();
+      const oldFinalization = provider.flush(
+        baseContext({ sessionId: "reused" }),
+        controller.signal,
+      );
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+      controller.abort();
+      await expect(oldFinalization).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "reused" }),
+      });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "fresh" },
+      });
+      await provider.flush(baseContext({ sessionId: "reused" }));
+
+      expect(httpRequestSampleCount(1)).toBe(512);
+    });
+  });
+
+  describe("explicit session ownership", () => {
+    it("isolates HTTP buffers and cancellation between sessions", async () => {
+      const provider = constructProviderWithTransport("http");
+      const sessionA = provider.openSession({ sessionId: "session-A" });
+      const sessionB = provider.openSession({ sessionId: "session-B" });
+
+      await sessionA.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "caller-A" }),
+      });
+      await sessionA.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "caller-A" }),
+      });
+      await sessionB.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "caller-B" }),
+      });
+
+      sessionA.cancel();
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "session B" },
+      });
+
+      await expect(
+        sessionB.flush(baseContext({ sessionId: "wrong-id" })),
+      ).resolves.toMatchObject({ text: "session B" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(httpRequestSampleCount()).toBe(512);
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(JSON.parse(init.body as string)).toMatchObject({
+        sessionId: "session-B",
+      });
+      await expect(sessionA.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+    });
+
+    it("keeps gRPC streams independent when one session is cancelled", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const sessionA = provider.openSession({ sessionId: "session-A" });
+      const sessionB = provider.openSession({ sessionId: "session-B" });
+
+      await sessionA.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const streamA = grpcMock.getLastStream()!;
+      await sessionB.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const streamB = grpcMock.getLastStream()!;
+      expect(streamB).not.toBe(streamA);
+
+      sessionA.cancel();
+      await flush();
+      expect(streamA.end).toHaveBeenCalled();
+      expect(streamB.end).not.toHaveBeenCalled();
+
+      const finalB = sessionB.flush(baseContext());
+      await flush();
+      settleGrpcOk("session B");
+      await expect(finalB).resolves.toMatchObject({ text: "session B" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps gRPC fallback sticky to only the failed session", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const sessionA = provider.openSession({ sessionId: "session-A" });
+      const sessionB = provider.openSession({ sessionId: "session-B" });
+
+      await sessionA.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const clientA = grpcMock.getLastClient();
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "session A over HTTP" },
+      });
+      const finalA = sessionA.flush(baseContext());
+      await flush();
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+
+      await expect(finalA).resolves.toMatchObject({
+        text: "session A over HTTP",
+      });
+      expect(httpRequestSampleCount()).toBe(512);
+
+      await sessionB.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      expect(grpcMock.getLastClient()).not.toBe(clientA);
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      const finalB = sessionB.flush(baseContext());
+      await flush();
+      settleGrpcOk("session B");
+      await expect(finalB).resolves.toMatchObject({ text: "session B" });
+    });
+
+    it("starts clean when an application session ID is reused", async () => {
+      const provider = constructProviderWithTransport("http");
+      const first = provider.openSession({ sessionId: "reused" });
+      await first.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await first.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      first.cancel();
+
+      const second = provider.openSession({ sessionId: "reused" });
+      await second.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "fresh" },
+      });
+
+      await expect(second.flush(baseContext())).resolves.toMatchObject({
+        text: "fresh",
+      });
+      expect(httpRequestSampleCount()).toBe(512);
+    });
+
+    it("makes cancellation idempotent and permanently closes the handle", async () => {
+      const provider = constructProviderWithTransport("http");
+      const session = provider.openSession({ sessionId: "session-A" });
+
+      expect(() => {
+        session.cancel();
+        session.cancel();
+      }).not.toThrow();
+
+      await expect(
+        session.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        }),
+      ).rejects.toMatchObject({ errorCode: ErrorCodes.NETWORK_ERROR });
+      await expect(session.flush(baseContext())).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+      expect(session.updateSessionContext).toBeDefined();
+      await expect(
+        session.updateSessionContext!(baseContext()),
+      ).rejects.toMatchObject({ errorCode: ErrorCodes.NETWORK_ERROR });
+      expect(authMock.instance.isAuthenticated).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not let legacy reset cancel an explicit session", async () => {
+      const provider = constructProviderWithTransport("http");
+      const session = provider.openSession({ sessionId: "explicit" });
+      await session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "legacy" }),
+      });
+
+      provider.reset();
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "still active" },
+      });
+
+      await expect(session.flush(baseContext())).resolves.toMatchObject({
+        text: "still active",
+      });
+      expect(httpRequestSampleCount()).toBe(512);
+    });
+
+    it("ignores a legacy context update for a different session", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "session-A" }),
+      });
+      const stream = grpcMock.getLastStream()!;
+      const writesBefore = stream.write.mock.calls.length;
+
+      await provider.updateSessionContext(
+        baseContext({
+          sessionId: "session-B",
+          accessibilityContext: accessibilityContext("com.example.other"),
+        }),
+      );
+
+      expect(grpcMock.getLastStream()).toBe(stream);
+      expect(stream.write).toHaveBeenCalledTimes(writesBefore);
+      expect(stream.end).not.toHaveBeenCalled();
+    });
+
+    it("cannot open a late gRPC stream after cancellation during token lookup", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const session = provider.openSession({ sessionId: "session-A" });
+      let resolveToken!: (token: string) => void;
+      authMock.instance.getIdToken.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveToken = resolve;
+          }),
+      );
+
+      const transcribe = session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await vi.waitFor(() => {
+        expect(authMock.instance.getIdToken).toHaveBeenCalledOnce();
+      });
+
+      session.cancel();
+      resolveToken("late-token");
+
+      await expect(transcribe).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+      expect(grpcMock.getLastClient()).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("cannot start HTTP after cancellation during authentication", async () => {
+      const provider = constructProviderWithTransport("http");
+      const session = provider.openSession({ sessionId: "session-A" });
+      let releaseAuthentication!: () => void;
+      const authenticationGate = new Promise<void>((resolve) => {
+        releaseAuthentication = resolve;
+      });
+      authMock.instance.isAuthenticated.mockImplementationOnce(async () => {
+        await authenticationGate;
+        return true;
+      });
+
+      const transcribe = session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await vi.waitFor(() => {
+        expect(authMock.instance.isAuthenticated).toHaveBeenCalledOnce();
+      });
+
+      session.cancel();
+      releaseAuthentication();
+
+      await expect(transcribe).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+      expect(authMock.instance.getIdToken).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("cannot restore session state after cancellation during settings lookup", async () => {
+      // eslint-disable-next-line turbo/no-undeclared-env-vars
+      process.env.CLOUD_DICTATION_TRANSPORT = "http";
+      let resolveLabs!: (settings: { selfCorrection: boolean }) => void;
+      const settingsService = {
+        getLabsSettings: vi.fn(
+          () =>
+            new Promise<{ selfCorrection: boolean }>((resolve) => {
+              resolveLabs = resolve;
+            }),
+        ),
+      } as unknown as SettingsService;
+      const provider = new AmicalCloudProvider(
+        authMock.instance as unknown as AuthService,
+        null,
+        settingsService,
+      );
+      const session = provider.openSession({ sessionId: "session-A" });
+
+      const transcribe = session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await vi.waitFor(() => {
+        expect(settingsService.getLabsSettings).toHaveBeenCalledOnce();
+      });
+
+      session.cancel();
+      resolveLabs({ selfCorrection: true });
+
+      await expect(transcribe).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+      expect(authMock.instance.isAuthenticated).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("cannot start HTTP after cancellation during token lookup", async () => {
+      const provider = constructProviderWithTransport("http");
+      const session = provider.openSession({ sessionId: "session-A" });
+      await session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      let resolveToken!: (token: string) => void;
+      authMock.instance.getIdToken.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveToken = resolve;
+          }),
+      );
+
+      const finalization = session.flush(baseContext());
+      await vi.waitFor(() => {
+        expect(authMock.instance.getIdToken).toHaveBeenCalledOnce();
+      });
+
+      session.cancel();
+      resolveToken("late-token");
+
+      await expect(finalization).rejects.toMatchObject({
+        errorCode: ErrorCodes.NETWORK_ERROR,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("disposes legacy and explicit sessions once and rejects later work", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const first = provider.openSession({ sessionId: "first" });
+      const second = provider.openSession({ sessionId: "second" });
+      const cancelFirst = vi.spyOn(first, "cancel");
+      const cancelSecond = vi.spyOn(second, "cancel");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext({ sessionId: "legacy" }),
+      });
+      const legacyStream = grpcMock.getLastStream()!;
+
+      const firstDisposal = provider.dispose();
+      const secondDisposal = provider.dispose();
+      expect(secondDisposal).toBe(firstDisposal);
+      await firstDisposal;
+      await flush();
+
+      expect(cancelFirst).toHaveBeenCalledOnce();
+      expect(cancelSecond).toHaveBeenCalledOnce();
+      expect(legacyStream.end).toHaveBeenCalled();
+      await expect(
+        first.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        }),
+      ).rejects.toMatchObject({ errorCode: ErrorCodes.NETWORK_ERROR });
+      expect(() =>
+        provider.openSession({ sessionId: "after-dispose" }),
+      ).toThrow("disposed");
+      await expect(provider.warmup()).rejects.toThrow("disposed");
+      expect(authMock.instance.refreshTokenIfNeeded).not.toHaveBeenCalled();
+    });
+  });
+
   describe("reset / dispose", () => {
     it("reset() clears state and tears down the in-flight gRPC stream", async () => {
       const provider = constructProviderWithTransport("grpc");
@@ -1473,26 +1962,26 @@ describe("AmicalCloudProvider", () => {
       expect(capturedSignal!.aborted).toBe(true);
     });
 
-    it("cancels the in-flight gRPC flush via reset() and does not fall back to HTTP", async () => {
+    it("cancels the in-flight gRPC flush through the session and does not fall back to HTTP", async () => {
       const provider = constructProviderWithTransport("grpc");
-      const resetSpy = vi.spyOn(provider, "reset");
 
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
         context: baseContext(),
       });
+      const stream = grpcMock.getLastStream()!;
       const controller = new AbortController();
       const flushPromise = provider.flush(baseContext(), controller.signal);
       await flush();
 
-      controller.abort(); // dismiss → reset() → stream.cancel()
+      controller.abort(); // dismiss → session.cancel() → stream.cancel()
 
       await expect(flushPromise).rejects.toMatchObject({
         errorCode: ErrorCodes.NETWORK_ERROR,
         grpcStatus: grpcMock.status.CANCELLED,
       });
-      expect(resetSpy).toHaveBeenCalled();
+      expect(stream.end).toHaveBeenCalled();
       // A user-initiated cancel must NOT spawn a phantom HTTP fallback.
       expect(fetchMock).not.toHaveBeenCalled();
     });
