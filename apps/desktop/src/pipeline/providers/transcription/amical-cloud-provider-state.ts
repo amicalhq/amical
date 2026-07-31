@@ -1,6 +1,7 @@
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { Context, Effect, Ref } from "effect";
 import { AppError, ErrorCodes } from "../../../types/error";
+import type { CloudFallbackStage } from "../../../types/telemetry-events";
 import { detectApplicationType } from "../formatting/formatter-prompt";
 import type {
   CloudDictationGrpcStream,
@@ -63,6 +64,7 @@ export interface ProviderState {
   grpcPendingFrames: Float32Array[];
   grpcPendingSampleCount: number;
   grpcNextSeq: bigint;
+  grpcFallbackStage: CloudFallbackStage;
   // In-flight HTTP-fallback fetch aborter; reset() aborts it so a finalize-phase
   // dismiss can cancel an HTTP flush mid-request (gRPC uses stream.cancel()).
   httpAbortController: AbortController | null;
@@ -133,6 +135,7 @@ export const createInitialProviderState = (): ProviderState => ({
   grpcPendingFrames: [],
   grpcPendingSampleCount: 0,
   grpcNextSeq: 1n,
+  grpcFallbackStage: "transcribe",
   transportOverride: null,
   httpAbortController: null,
 });
@@ -173,3 +176,14 @@ export const getIdTokenEffect = (): CloudProviderEffect<string> =>
 
 export const resetProviderState = (): ProviderState =>
   createInitialProviderState();
+
+export const resetGrpcState = (state: ProviderState): ProviderState => ({
+  ...state,
+  grpcStream: null,
+  grpcSentContextKey: null,
+  grpcSentSkillsKey: null,
+  grpcPendingFrames: [],
+  grpcPendingSampleCount: 0,
+  grpcNextSeq: 1n,
+  grpcFallbackStage: "transcribe",
+});

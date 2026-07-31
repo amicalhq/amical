@@ -311,12 +311,17 @@ const mockFetchOnce = (response: {
 };
 
 let fetchMock: Mock;
+const HTTP_AUTO_FLUSH_SAMPLES = 28 * 16_000;
+
+const httpRequestBody = (callIndex = 0): Record<string, unknown> => {
+  const [, init] = fetchMock.mock.calls[callIndex]!;
+  return JSON.parse(init.body as string) as Record<string, unknown>;
+};
 
 // Decode the number of audio samples sent in an HTTP transcription request.
 // Body audioData is base64 pcm_s16le → 2 bytes per sample.
 const httpRequestSampleCount = (callIndex = 0): number => {
-  const [, init] = fetchMock.mock.calls[callIndex]!;
-  const body = JSON.parse(init.body as string);
+  const body = httpRequestBody(callIndex);
   return Buffer.from(body.audioData as string, "base64").length / 2;
 };
 
@@ -498,6 +503,52 @@ describe("AmicalCloudProvider", () => {
       expect((body.audioData as string).length).toBeGreaterThan(1000);
     });
 
+    it("auto-flushes the whole buffer at 28 seconds without client VAD data", async () => {
+      const provider = constructProviderWithTransport("http");
+
+      // More than three seconds of silence used to trigger the client-VAD cut.
+      for (let index = 0; index < 94; index++) {
+        await provider.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 0,
+          context: baseContext(),
+        });
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const bufferedSamples = 94 * 512;
+      await provider.transcribe({
+        audioData: audioFrame(HTTP_AUTO_FLUSH_SAMPLES - bufferedSamples - 1),
+        speechProbability: 0,
+        context: baseContext(),
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "28 seconds" },
+      });
+      await expect(
+        provider.transcribe({
+          audioData: audioFrame(1),
+          speechProbability: 0,
+          context: baseContext(),
+        }),
+      ).resolves.toMatchObject({ text: "28 seconds" });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(httpRequestSampleCount()).toBe(HTTP_AUTO_FLUSH_SAMPLES);
+      expect(httpRequestBody()).toMatchObject({ isFinal: false });
+      expect(httpRequestBody()).not.toHaveProperty("vadProbs");
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 0,
+        context: baseContext({ aggregatedTranscription: "28 seconds" }),
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
     it("omits audioFormat and sends empty audioData on format-only flush", async () => {
       const provider = constructProviderWithTransport("http");
       mockFetchOnce({
@@ -519,8 +570,12 @@ describe("AmicalCloudProvider", () => {
       expect(body.audioFormat).toBeUndefined();
     });
 
-    it("skips text-only final flush when formatting is off and no final skill applies", async () => {
+    it("sends a text-only final when prior text exists without formatting or skills", async () => {
       const provider = constructProviderWithTransport("http");
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "raw text" },
+      });
 
       const result = await provider.flush(
         baseContext({
@@ -529,7 +584,23 @@ describe("AmicalCloudProvider", () => {
         }),
       );
 
-      expect(result).toEqual({ text: "" });
+      expect(result).toMatchObject({ text: "raw text" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(httpRequestBody()).toMatchObject({
+        isFinal: true,
+        audioData: "",
+        previousTranscription: "raw text",
+        formatting: { enabled: false },
+      });
+      expect(httpRequestBody()).not.toHaveProperty("audioFormat");
+    });
+
+    it("keeps a final with no audio and no prior text as a no-op", async () => {
+      const provider = constructProviderWithTransport("http");
+
+      await expect(provider.flush(baseContext())).resolves.toEqual({
+        text: "",
+      });
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -1059,6 +1130,66 @@ describe("AmicalCloudProvider", () => {
       expect(sampleCount).toBe(512);
     });
 
+    it("switches to HTTP between chunks and sends a multi-chunk oversized mirror whole", async () => {
+      const trackCloudGrpcFallback = vi.fn();
+      const telemetryStub = {
+        trackCloudGrpcFallback,
+      } as unknown as TelemetryService;
+      process.env.CLOUD_DICTATION_TRANSPORT = "grpc";
+      const provider = new AmicalCloudProvider(
+        authMock.instance as unknown as AuthService,
+        telemetryStub,
+      );
+      const mirroredSamples = HTTP_AUTO_FLUSH_SAMPLES + 512;
+
+      await provider.transcribe({
+        audioData: audioFrame(HTTP_AUTO_FLUSH_SAMPLES),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      await provider.transcribe({
+        audioData: audioFrame(512),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const grpcClient = grpcMock.getLastClient();
+      const stream = grpcMock.getLastStream()!;
+
+      // No transcribe or flush is pending when the stream reports auth failure.
+      settleGrpcError(grpcMock.status.UNAUTHENTICATED, "expired token");
+      await flush();
+      // The observer switches routes but leaves the request to the next
+      // serialized audio operation, which can return the cumulative result.
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(trackCloudGrpcFallback).toHaveBeenCalledOnce();
+      expect(trackCloudGrpcFallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grpc_status: grpcMock.status.UNAUTHENTICATED,
+          fallback_stage: "transcribe",
+        }),
+      );
+      const writesAfterFailure = stream.write.mock.calls.length;
+
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "whole fallback" },
+      });
+      await expect(
+        provider.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        }),
+      ).resolves.toMatchObject({ text: "whole fallback" });
+
+      expect(grpcMock.getLastClient()).toBe(grpcClient);
+      expect(stream.write).toHaveBeenCalledTimes(writesAfterFailure);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(httpRequestSampleCount()).toBe(mirroredSamples + 512);
+      expect(httpRequestBody()).toMatchObject({ isFinal: false });
+      expect(trackCloudGrpcFallback).toHaveBeenCalledOnce();
+    });
+
     it("a new session re-attempts gRPC after a previous session fell back to HTTP", async () => {
       const { provider, grpcClient: clientForSessionA } =
         await driveGrpcAndFallback(
@@ -1209,35 +1340,6 @@ describe("AmicalCloudProvider", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it("HTTP fallback re-transcribes the full session audio buffered during gRPC", async () => {
-      const provider = constructProviderWithTransport("grpc");
-      mockFetchOnce({
-        status: 200,
-        json: { success: true, transcription: "full audio" },
-      });
-
-      // Three chunks streamed over gRPC: opens the stream and accumulates
-      // the session mirror. Each transcribe returns "" (gRPC streams silently).
-      for (let i = 0; i < 3; i++) {
-        await provider.transcribe({
-          audioData: audioFrame(),
-          speechProbability: 1,
-          context: baseContext(),
-        });
-      }
-
-      const flushPromise = provider.flush(baseContext());
-      await flush();
-      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
-      const result = await flushPromise;
-
-      expect(result.text).toBe("full audio");
-
-      // The HTTP request must carry all three frames, not zero (pre-fix) or one.
-      const sampleCount = httpRequestSampleCount();
-      expect(sampleCount).toBe(3 * 512);
-    });
-
     it("transcribe-stage fallback buffers the current chunk exactly once", async () => {
       const provider = constructProviderWithTransport("grpc");
       // Force gRPC stream construction to throw → fallback during transcribe().
@@ -1301,6 +1403,44 @@ describe("AmicalCloudProvider", () => {
       // Only session B's single frame — session A's two frames must be gone.
       const sampleCount = httpRequestSampleCount();
       expect(sampleCount).toBe(512);
+    });
+
+    it("releases the gRPC mirror after a successful final on the same session", async () => {
+      const provider = constructProviderWithTransport("grpc");
+      const context = baseContext({ sessionId: "reused-session" });
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context,
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context,
+      });
+      const firstFinalization = provider.flush(context);
+      await flush();
+      settleGrpcOk("first final");
+      await firstFinalization;
+
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context,
+      });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "second final" },
+      });
+      const secondFinalization = provider.flush(context);
+      await flush();
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+
+      await expect(secondFinalization).resolves.toMatchObject({
+        text: "second final",
+      });
+      expect(httpRequestSampleCount()).toBe(512);
     });
 
     it("reset() discards mirrored audio so it cannot leak into a later fallback", async () => {

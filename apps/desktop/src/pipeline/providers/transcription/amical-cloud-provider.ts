@@ -21,12 +21,16 @@ import {
   type ErrorCode,
 } from "../../../types/error";
 import { AMICAL_LAB_SELF_CORRECTION } from "../../../utils/http-client";
-import { AmicalCloudGrpcTransport } from "./amical-cloud-grpc-transport";
+import {
+  AmicalCloudGrpcTransport,
+  type ObservedGrpcStreamFailure,
+} from "./amical-cloud-grpc-transport";
 import { AmicalCloudHttpTransport } from "./amical-cloud-http-transport";
 import {
   CloudAuth,
   CloudConfig,
   createInitialProviderState,
+  resetGrpcState,
   resetProviderState,
   toNetworkAppError,
   type CloudProviderEffect,
@@ -283,6 +287,7 @@ class AmicalCloudSession implements TranscriptionSession {
     this.grpcTransport = new AmicalCloudGrpcTransport(
       this.state,
       failIfClosedEffect,
+      (failure) => this.handleObservedGrpcFailure(failure),
     );
     this.httpTransport = new AmicalCloudHttpTransport(
       this.state,
@@ -345,14 +350,22 @@ class AmicalCloudSession implements TranscriptionSession {
   ): CloudProviderEffect<A> {
     return grpcEffect.pipe(
       Effect.catchAll((error) =>
-        !this.closed && shouldFallbackToHttp(error)
-          ? Effect.gen(this, function* () {
-              yield* this.failIfClosedEffect();
-              yield* this.engageHttpFallbackEffect(error, stage);
-              yield* this.failIfClosedEffect();
-              return yield* httpRoute();
-            })
-          : Effect.fail(error),
+        Effect.gen(this, function* () {
+          if (this.closed) {
+            return yield* Effect.fail(error);
+          }
+          const state = yield* Ref.get(this.state);
+          if (state.transportOverride === "http") {
+            return yield* httpRoute();
+          }
+          if (!shouldFallbackToHttp(error)) {
+            return yield* Effect.fail(error);
+          }
+
+          yield* this.engageHttpFallbackEffect(error, stage);
+          yield* this.failIfClosedEffect();
+          return yield* httpRoute();
+        }),
       ),
     );
   }
@@ -474,50 +487,94 @@ class AmicalCloudSession implements TranscriptionSession {
   private engageHttpFallbackEffect(
     error: AppError,
     stage: CloudFallbackStage,
+    expectedStream?: NonNullable<ProviderState["grpcStream"]>,
   ): Effect.Effect<void> {
     return Effect.gen(this, function* () {
-      yield* this.grpcTransport.resetGrpcStreamEffect();
-      const sessionId = yield* Ref.modify(this.state, (state) => [
-        state.currentSessionId,
-        {
-          ...state,
-          transportOverride: "http" as const,
-          // Recover the full utterance: prepend everything streamed over the
-          // (now failed) gRPC stream ahead of any HTTP-buffered audio.
-          frameBuffer: [...state.sessionAudioBuffer, ...state.frameBuffer],
-          frameBufferSpeechProbabilities: [
-            ...state.sessionAudioVadProbs,
-            ...state.frameBufferSpeechProbabilities,
-          ],
-          sessionAudioBuffer: [],
-          sessionAudioVadProbs: [],
-        },
-      ]);
-      yield* Effect.sync(() => {
-        logger.transcription.warn(
-          "Cloud transcription falling back to HTTP after gRPC failure",
+      const fallback = yield* Ref.modify(this.state, (state) => {
+        if (
+          state.transportOverride === "http" ||
+          (expectedStream !== undefined && state.grpcStream !== expectedStream)
+        ) {
+          return [null, state] as const;
+        }
+
+        return [
           {
-            errorCode: error.errorCode,
-            applicationCode: error.applicationCode,
-            grpcStatus: error.grpcStatus,
-            httpStatus: error.httpStatus,
-            message: error.message,
-            traceId: error.traceId,
-            stage,
-            sessionId,
+            sessionId: state.currentSessionId,
+            stage:
+              expectedStream !== undefined ? state.grpcFallbackStage : stage,
+            stream: state.grpcStream,
           },
-        );
-        this.telemetryService?.trackCloudGrpcFallback({
-          error_code: error.errorCode,
-          application_code: error.applicationCode,
-          grpc_status: error.grpcStatus,
-          http_status: error.httpStatus,
-          message: error.message,
-          trace_id: error.traceId,
-          session_id: sessionId,
-          fallback_stage: stage,
-        });
+          this.moveGrpcAudioToHttpState(state),
+        ] as const;
       });
+      if (!fallback) {
+        return;
+      }
+
+      yield* Effect.sync(() => {
+        fallback.stream?.cancel();
+        this.reportHttpFallback(error, fallback.stage, fallback.sessionId);
+      });
+    });
+  }
+
+  private moveGrpcAudioToHttpState(state: ProviderState): ProviderState {
+    return {
+      ...resetGrpcState(state),
+      transportOverride: "http",
+      // Recover the full utterance in one HTTP buffer. The 28-second threshold
+      // starts a flush; it does not slice an already larger fallback backlog.
+      frameBuffer: [...state.sessionAudioBuffer, ...state.frameBuffer],
+      frameBufferSpeechProbabilities: [
+        ...state.sessionAudioVadProbs,
+        ...state.frameBufferSpeechProbabilities,
+      ],
+      sessionAudioBuffer: [],
+      sessionAudioVadProbs: [],
+    };
+  }
+
+  private handleObservedGrpcFailure({
+    stream,
+    error,
+  }: ObservedGrpcStreamFailure): void {
+    if (this.closed || !shouldFallbackToHttp(error)) {
+      return;
+    }
+
+    // Only switch routes here. The next serialized chunk or final flush owns
+    // the HTTP request and can return its cumulative transcript to the service.
+    Effect.runSync(this.engageHttpFallbackEffect(error, "transcribe", stream));
+  }
+
+  private reportHttpFallback(
+    error: AppError,
+    stage: CloudFallbackStage,
+    sessionId: string | undefined,
+  ): void {
+    logger.transcription.warn(
+      "Cloud transcription falling back to HTTP after gRPC failure",
+      {
+        errorCode: error.errorCode,
+        applicationCode: error.applicationCode,
+        grpcStatus: error.grpcStatus,
+        httpStatus: error.httpStatus,
+        message: error.message,
+        traceId: error.traceId,
+        stage,
+        sessionId,
+      },
+    );
+    this.telemetryService?.trackCloudGrpcFallback({
+      error_code: error.errorCode,
+      application_code: error.applicationCode,
+      grpc_status: error.grpcStatus,
+      http_status: error.httpStatus,
+      message: error.message,
+      trace_id: error.traceId,
+      session_id: sessionId,
+      fallback_stage: stage,
     });
   }
 

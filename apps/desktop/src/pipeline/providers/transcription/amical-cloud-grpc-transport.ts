@@ -19,6 +19,7 @@ import {
   getIdTokenEffect,
   projectAccessibilityContext,
   requestSnapshotEffect,
+  resetGrpcState,
   type CloudProviderEffect,
   type ProviderRequestSnapshot,
   type ProviderState,
@@ -37,21 +38,19 @@ const contextSnapshotKey = (
   context: GrpcStreamContext | undefined,
 ): string | null => (context ? snapshotKey(context) : null);
 
-const resetGrpcState = (state: ProviderState): ProviderState => ({
-  ...state,
-  grpcStream: null,
-  grpcSentContextKey: null,
-  grpcSentSkillsKey: null,
-  grpcPendingFrames: [],
-  grpcPendingSampleCount: 0,
-  grpcNextSeq: 1n,
-});
+export interface ObservedGrpcStreamFailure {
+  stream: CloudDictationGrpcStream;
+  error: AppError;
+}
 
 /** Owns the mechanics of the cloud gRPC route for one provider session. */
 export class AmicalCloudGrpcTransport {
   constructor(
     private readonly state: Ref.Ref<ProviderState>,
     private readonly failIfClosedEffect: () => Effect.Effect<void, AppError>,
+    private readonly onStreamFailure: (
+      failure: ObservedGrpcStreamFailure,
+    ) => void,
   ) {}
 
   transcribeGrpcEffect(
@@ -91,7 +90,11 @@ export class AmicalCloudGrpcTransport {
     enableFormatting: boolean,
   ): CloudProviderEffect<TranscriptionOutput> {
     return Effect.gen(this, function* () {
+      yield* this.markGrpcFlushStageEffect();
       const state = yield* Ref.get(this.state);
+      if (state.transportOverride === "http") {
+        return yield* Effect.fail(this.routeChangedError());
+      }
       if (!state.grpcStream && state.grpcPendingSampleCount === 0) {
         return { text: "" };
       }
@@ -121,10 +124,12 @@ export class AmicalCloudGrpcTransport {
       yield* this.sendGrpcSessionUpdatesEffect(stream, enableFormatting);
       yield* this.sendReadyGrpcPacketsEffect(true);
 
-      return yield* Effect.tryPromise({
+      const result = yield* Effect.tryPromise({
         try: () => stream.finalize(),
         catch: (error) => this.toAppError(error),
       });
+      yield* this.clearSuccessfulGrpcMirrorEffect(stream);
+      return result;
     });
   }
 
@@ -133,9 +138,11 @@ export class AmicalCloudGrpcTransport {
   ): CloudProviderEffect<CloudDictationGrpcStream> {
     return Effect.gen(this, function* () {
       yield* this.failIfClosedEffect();
-      const existingStream = yield* Ref.get(this.state).pipe(
-        Effect.map((state) => state.grpcStream),
-      );
+      const initialState = yield* Ref.get(this.state);
+      if (initialState.transportOverride === "http") {
+        return yield* Effect.fail(this.routeChangedError());
+      }
+      const existingStream = initialState.grpcStream;
       // Pure get-or-create: mid-session context/skills changes are pushed by
       // updateSessionContext, and a final re-sync happens in
       // finalizeGrpcStreamEffect. Don't re-send snapshots from here, or every
@@ -183,6 +190,9 @@ export class AmicalCloudGrpcTransport {
         catch: (error) => this.toAppError(error),
       });
       const selectedStream = yield* Ref.modify(this.state, (state) => {
+        if (state.transportOverride === "http") {
+          return [null, state] as const;
+        }
         if (state.grpcStream) {
           return [state.grpcStream, state] as const;
         }
@@ -192,15 +202,22 @@ export class AmicalCloudGrpcTransport {
           {
             ...state,
             grpcStream: stream,
+            grpcFallbackStage: "transcribe",
             grpcSentContextKey: sentContextKey,
             grpcSentSkillsKey: sentSkillsKey,
           },
         ] as const;
       });
+      if (!selectedStream) {
+        yield* Effect.sync(() => stream.cancel());
+        return yield* Effect.fail(this.routeChangedError());
+      }
       if (selectedStream !== stream) {
         yield* Effect.sync(() => stream.cancel());
         return selectedStream;
       }
+
+      this.observeStreamFailure(stream);
 
       yield* Effect.sync(() => {
         logger.transcription.info("Cloud gRPC stream opened", {
@@ -364,7 +381,7 @@ export class AmicalCloudGrpcTransport {
     return projectAccessibilityContext(snapshot.currentAccessibilityContext);
   }
 
-  resetGrpcStreamEffect(): Effect.Effect<void> {
+  private resetGrpcStreamEffect(): Effect.Effect<void> {
     return Effect.gen(this, function* () {
       const stream = yield* Ref.modify(this.state, (state) => [
         state.grpcStream,
@@ -376,6 +393,50 @@ export class AmicalCloudGrpcTransport {
 
   private clearGrpcAudioStateEffect(): Effect.Effect<void> {
     return Ref.update(this.state, resetGrpcState);
+  }
+
+  private observeStreamFailure(stream: CloudDictationGrpcStream): void {
+    void stream.finalTranscript.catch((error) => {
+      try {
+        this.onStreamFailure({ stream, error: this.toAppError(error) });
+      } catch (observerError) {
+        logger.transcription.error(
+          "Failed to observe cloud gRPC stream failure",
+          observerError,
+        );
+      }
+    });
+  }
+
+  private markGrpcFlushStageEffect(): CloudProviderEffect<void> {
+    return Ref.update(
+      this.state,
+      (state): ProviderState =>
+        state.transportOverride === "http"
+          ? state
+          : { ...state, grpcFallbackStage: "flush" },
+    );
+  }
+
+  private clearSuccessfulGrpcMirrorEffect(
+    stream: CloudDictationGrpcStream,
+  ): Effect.Effect<void> {
+    return Ref.update(this.state, (state) =>
+      state.grpcStream === stream
+        ? {
+            ...state,
+            sessionAudioBuffer: [],
+            sessionAudioVadProbs: [],
+          }
+        : state,
+    );
+  }
+
+  private routeChangedError(): AppError {
+    return new AppError(
+      "gRPC route changed before the operation completed",
+      ErrorCodes.NETWORK_ERROR,
+    );
   }
 
   private toAppError(error: unknown): AppError {

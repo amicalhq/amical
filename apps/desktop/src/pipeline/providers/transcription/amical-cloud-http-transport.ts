@@ -70,7 +70,11 @@ export class AmicalCloudHttpTransport {
   private readonly MIN_AUDIO_DURATION_MS = 500; // Minimum buffered audio duration before silence-based transcription
   private readonly MAX_SILENCE_DURATION_MS = 3000; // Max silence before cutting
   private readonly SAMPLE_RATE = 16000;
+  private readonly HTTP_AUTO_FLUSH_SAMPLE_COUNT = 28 * this.SAMPLE_RATE;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
+  // Axis computes VAD server-side. Keep the client path available for a
+  // controlled re-enable without sending client probabilities by default.
+  private readonly CLOUD_CLIENT_VAD_ENABLED = false;
 
   constructor(
     private readonly state: Ref.Ref<ProviderState>,
@@ -186,17 +190,21 @@ export class AmicalCloudHttpTransport {
   private shouldTranscribeEffect(): CloudProviderEffect<boolean> {
     return Ref.get(this.state).pipe(
       Effect.map((state) => {
+        const bufferedSampleCount = state.frameBuffer.reduce(
+          (sampleCount, frame) => sampleCount + frame.length,
+          0,
+        );
         const silenceDuration =
           ((state.currentSilenceFrameCount * this.FRAME_SIZE) /
             this.SAMPLE_RATE) *
           1000;
-        const audioDuration =
-          ((state.frameBuffer.length * this.FRAME_SIZE) / this.SAMPLE_RATE) *
-          1000;
+        const audioDuration = (bufferedSampleCount / this.SAMPLE_RATE) * 1000;
 
         return (
-          audioDuration >= this.MIN_AUDIO_DURATION_MS &&
-          silenceDuration >= this.MAX_SILENCE_DURATION_MS
+          bufferedSampleCount >= this.HTTP_AUTO_FLUSH_SAMPLE_COUNT ||
+          (this.CLOUD_CLIENT_VAD_ENABLED &&
+            audioDuration >= this.MIN_AUDIO_DURATION_MS &&
+            silenceDuration >= this.MAX_SILENCE_DURATION_MS)
         );
       }),
     );
@@ -245,7 +253,7 @@ export class AmicalCloudHttpTransport {
               isFinal,
               audioData: audioPayload,
               audioFormat: hasAudio ? "pcm_s16le" : undefined,
-              vadProbs,
+              vadProbs: this.CLOUD_CLIENT_VAD_ENABLED ? vadProbs : undefined,
               languages: snapshot.currentLanguages,
               vocabulary: snapshot.currentVocabulary,
               previousTranscription: snapshot.currentAggregatedTranscription,
@@ -358,12 +366,12 @@ export class AmicalCloudHttpTransport {
         snapshot ?? (yield* requestSnapshotEffect(this.state));
       const hasPriorText =
         !!requestSnapshot.currentAggregatedTranscription?.trim();
-      if (audioData.length === 0 && !hasPriorText) {
+      if (audioData.length === 0 && (!isFinal || !hasPriorText)) {
         return { text: "" };
       }
 
-      // Resolve final skills before the empty-audio no-op check so text-only
-      // instruct behaves the same as gRPC even when formatting is toggled off.
+      // Resolve skills for text-only finals too, so instruct matches the gRPC
+      // final path even when formatting is toggled off.
       const skills =
         preResolvedSkills ??
         (isFinal
@@ -377,13 +385,6 @@ export class AmicalCloudHttpTransport {
             )
           : undefined);
       yield* this.failIfClosedEffect();
-      if (audioData.length === 0) {
-        const shouldSendTextOnlyFinal =
-          isFinal && (enableFormatting || (skills?.length ?? 0) > 0);
-        if (!shouldSendTextOnlyFinal) {
-          return { text: "" };
-        }
-      }
 
       // Register before token lookup. Auth remains non-interruptible, but a
       // cancelled session cannot install a fetch after that lookup completes.
