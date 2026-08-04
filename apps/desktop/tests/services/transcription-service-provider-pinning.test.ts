@@ -111,6 +111,7 @@ import type { ModelService } from "../../src/services/model-service";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 import { TranscriptionService } from "../../src/services/transcription-service";
+import type { VADService } from "../../src/services/vad-service";
 import * as fs from "node:fs";
 
 type MockProvider = typeof providerMocks.cloud;
@@ -136,9 +137,15 @@ const historyRecord = () =>
     meta: {},
   }) as unknown as Awaited<ReturnType<typeof getTranscriptionById>>;
 
+const deferred = <T>() => {
+  const { promise, resolve, reject } = Promise.withResolvers<T>();
+  return { promise, resolve, reject };
+};
+
 describe("TranscriptionService — provider session pinning", () => {
   let service: TranscriptionService;
   let selectedModelId: string | null;
+  let processVadFrame: ReturnType<typeof vi.fn>;
 
   const processChunk = (sessionId: string, sample: number) =>
     service.processStreamingChunk({
@@ -170,10 +177,17 @@ describe("TranscriptionService — provider session pinning", () => {
       getFormatterConfig: vi.fn(async () => ({ enabled: false })),
     };
     const telemetryService = new Proxy({}, { get: () => vi.fn() });
+    processVadFrame = vi.fn(async () => ({
+      probability: 1,
+      isSpeaking: true,
+    }));
 
     service = TranscriptionService.createForTests(
       modelService as unknown as ModelService,
-      null as never,
+      {
+        processAudioFrame: processVadFrame,
+        reset: vi.fn(),
+      } as unknown as VADService,
       settingsService as unknown as SettingsService,
       telemetryService as unknown as TelemetryService,
       {
@@ -217,6 +231,7 @@ describe("TranscriptionService — provider session pinning", () => {
     });
 
     selectedModelId = "amical-cloud";
+    service.beginStreamingSession("cloud-session");
     await expect(processChunk("cloud-session", 0.1)).resolves.toBe("first");
 
     selectedModelId = "whisper-tiny";
@@ -249,6 +264,7 @@ describe("TranscriptionService — provider session pinning", () => {
 
   it("keeps a local recording and model pinned after selection changes", async () => {
     selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("local-session");
     await processChunk("local-session", 0.1);
 
     selectedModelId = "amical-cloud";
@@ -270,6 +286,144 @@ describe("TranscriptionService — provider session pinning", () => {
     );
   });
 
+  it("drains audio admitted in VAD before the final provider flush", async () => {
+    const secondVadStarted = deferred<void>();
+    const secondVad = deferred<{ probability: number; isSpeaking: boolean }>();
+    processVadFrame
+      .mockResolvedValueOnce({ probability: 1, isSpeaking: true })
+      .mockImplementationOnce(async () => {
+        secondVadStarted.resolve();
+        return secondVad.promise;
+      });
+    providerMocks.local.setupSession("local-session", (session) => {
+      session.transcribe
+        .mockResolvedValueOnce({ text: "first" })
+        .mockResolvedValueOnce({ text: " second" });
+      session.flush.mockResolvedValueOnce({ text: " final" });
+    });
+
+    selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("local-session");
+    await processChunk("local-session", 0.1);
+
+    const secondChunk = processChunk("local-session", 0.2);
+    await secondVadStarted.promise;
+    const finalization = service.finalizeSession({
+      sessionId: "local-session",
+    });
+
+    const localSession = sessionFor(providerMocks.local, "local-session");
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(localSession.flush).not.toHaveBeenCalled();
+
+      secondVad.resolve({ probability: 1, isSpeaking: true });
+      await expect(secondChunk).resolves.toBe("first second");
+      expect((await finalization).trim()).toBe("first second final");
+
+      expect(localSession.flush).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aggregatedTranscription: "first second",
+        }),
+        expect.any(AbortSignal),
+      );
+      expect(localSession.cancel).toHaveBeenCalledOnce();
+    } finally {
+      secondVad.resolve({ probability: 1, isSpeaking: true });
+      await Promise.allSettled([secondChunk, finalization]);
+    }
+  });
+
+  it("keeps a newer pre-open context update ahead of an admitted chunk", async () => {
+    const vadStarted = deferred<void>();
+    const vadGate = deferred<{ probability: number; isSpeaking: boolean }>();
+    processVadFrame.mockImplementationOnce(async () => {
+      vadStarted.resolve();
+      return vadGate.promise;
+    });
+    const accessibilityContext = { context: null };
+
+    selectedModelId = "amical-cloud";
+    service.beginStreamingSession("cloud-session");
+    const chunk = service.processStreamingChunk({
+      sessionId: "cloud-session",
+      audioChunk: new Float32Array([0.1]),
+      isInstruct: false,
+    });
+    await vadStarted.promise;
+
+    await service.updateStreamingSession({
+      sessionId: "cloud-session",
+      accessibilityContext,
+      isInstruct: true,
+    });
+    expect(providerMocks.cloud.openSession).not.toHaveBeenCalled();
+
+    try {
+      vadGate.resolve({ probability: 1, isSpeaking: true });
+      await chunk;
+
+      const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
+      expect(cloudSession.transcribe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            accessibilityContext,
+            isInstruct: true,
+          }),
+        }),
+      );
+      expect(cloudSession.updateSessionContext).not.toHaveBeenCalled();
+
+      await service.finalizeSession({ sessionId: "cloud-session" });
+      expect(cloudSession.flush).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessibilityContext,
+          isInstruct: true,
+        }),
+        expect.any(AbortSignal),
+      );
+    } finally {
+      vadGate.resolve({ probability: 1, isSpeaking: true });
+      await Promise.allSettled([chunk]);
+    }
+  });
+
+  it("closes chunk admission synchronously when finalization is claimed", async () => {
+    const flushStarted = deferred<void>();
+    const flushGate = deferred<void>();
+    providerMocks.local.setupSession("local-session", (session) => {
+      session.flush.mockImplementationOnce(async () => {
+        flushStarted.resolve();
+        await flushGate.promise;
+        return { text: " final" };
+      });
+    });
+
+    selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("local-session");
+    await processChunk("local-session", 0.1);
+    const localSession = sessionFor(providerMocks.local, "local-session");
+
+    const finalization = service.finalizeSession({
+      sessionId: "local-session",
+    });
+    try {
+      await expect(processChunk("local-session", 0.2)).resolves.toBe("");
+      expect(processVadFrame).toHaveBeenCalledOnce();
+      expect(localSession.transcribe).toHaveBeenCalledOnce();
+
+      await flushStarted.promise;
+      flushGate.resolve();
+      await finalization;
+
+      await expect(processChunk("local-session", 0.3)).resolves.toBe("");
+      expect(processVadFrame).toHaveBeenCalledOnce();
+      expect(providerMocks.local.openSession).toHaveBeenCalledOnce();
+    } finally {
+      flushGate.resolve();
+    }
+  });
+
   it("routes updates to the pinned session without blocking cancellation", async () => {
     let releaseUpdate!: () => void;
     const updateGate = new Promise<void>((resolve) => {
@@ -287,6 +441,7 @@ describe("TranscriptionService — provider session pinning", () => {
     });
 
     selectedModelId = "amical-cloud";
+    service.beginStreamingSession("cloud-session");
     await processChunk("cloud-session", 0.1);
     const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
 
@@ -319,8 +474,175 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(providerMocks.cloud.reset).not.toHaveBeenCalled();
   });
 
+  it("does not start a queued context push after cancellation", async () => {
+    selectedModelId = "amical-cloud";
+    service.beginStreamingSession("cloud-session");
+    await processChunk("cloud-session", 0.1);
+    const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
+
+    const update = service.updateStreamingSession({
+      sessionId: "cloud-session",
+      isInstruct: true,
+    });
+    const cancellation = service.cancelStreamingSession("cloud-session");
+
+    expect(cloudSession.cancel).toHaveBeenCalledOnce();
+    await Promise.all([update, cancellation]);
+    await Promise.resolve();
+    expect(cloudSession.updateSessionContext).not.toHaveBeenCalled();
+  });
+
+  it("does not let a hanging context push block audio or finalization", async () => {
+    const updateStarted = deferred<void>();
+    const updateGate = deferred<void>();
+    providerMocks.cloud.setupSession("cloud-session", (session) => {
+      session.transcribe
+        .mockResolvedValueOnce({ text: "first" })
+        .mockResolvedValueOnce({ text: "first second" });
+      session.flush.mockResolvedValueOnce({ text: "first second final" });
+      session.updateSessionContext.mockImplementationOnce(async () => {
+        updateStarted.resolve();
+        await updateGate.promise;
+      });
+    });
+
+    selectedModelId = "amical-cloud";
+    service.beginStreamingSession("cloud-session");
+    await processChunk("cloud-session", 0.1);
+    const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
+
+    try {
+      await service.updateStreamingSession({
+        sessionId: "cloud-session",
+        isInstruct: true,
+      });
+      await updateStarted.promise;
+
+      await expect(processChunk("cloud-session", 0.2)).resolves.toBe(
+        "first second",
+      );
+      await expect(
+        service.finalizeSession({ sessionId: "cloud-session" }),
+      ).resolves.toBe("first second final");
+
+      expect(cloudSession.transcribe).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({ isInstruct: true }),
+        }),
+      );
+      expect(cloudSession.flush).toHaveBeenCalledWith(
+        expect.objectContaining({ isInstruct: true }),
+        expect.any(AbortSignal),
+      );
+      expect(cloudSession.cancel).toHaveBeenCalledOnce();
+    } finally {
+      updateGate.resolve();
+    }
+  });
+
+  it("cancels in-flight provider work immediately and rejects late chunks", async () => {
+    const transcribeStarted = deferred<void>();
+    const transcribeGate = deferred<void>();
+    providerMocks.local.setupSession("local-session", (session) => {
+      session.transcribe.mockImplementationOnce(async () => {
+        transcribeStarted.resolve();
+        await transcribeGate.promise;
+        return { text: "late" };
+      });
+    });
+
+    selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("local-session");
+    const inFlightChunk = processChunk("local-session", 0.1);
+    await transcribeStarted.promise;
+    const localSession = sessionFor(providerMocks.local, "local-session");
+
+    try {
+      const cancellation = service.cancelStreamingSession("local-session");
+      expect(localSession.cancel).toHaveBeenCalledOnce();
+
+      await expect(processChunk("local-session", 0.2)).resolves.toBe("");
+      expect(processVadFrame).toHaveBeenCalledOnce();
+      await cancellation;
+
+      transcribeGate.resolve();
+      await expect(inFlightChunk).resolves.toBe("");
+      await expect(processChunk("local-session", 0.3)).resolves.toBe("");
+
+      expect(providerMocks.local.openSession).toHaveBeenCalledOnce();
+      expect(localSession.transcribe).toHaveBeenCalledOnce();
+      expect(localSession.cancel).toHaveBeenCalledOnce();
+    } finally {
+      transcribeGate.resolve();
+    }
+  });
+
+  it("cancellation during VAD cannot materialize or recreate a provider session", async () => {
+    const vadStarted = deferred<void>();
+    const vadGate = deferred<{ probability: number; isSpeaking: boolean }>();
+    processVadFrame.mockImplementationOnce(async () => {
+      vadStarted.resolve();
+      return vadGate.promise;
+    });
+
+    selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("local-session");
+    const inFlightChunk = processChunk("local-session", 0.1);
+    await vadStarted.promise;
+
+    try {
+      const cancellation = service.cancelStreamingSession("local-session");
+      expect(providerMocks.local.openSession).not.toHaveBeenCalled();
+
+      await expect(processChunk("local-session", 0.2)).resolves.toBe("");
+      await cancellation;
+      vadGate.resolve({ probability: 1, isSpeaking: true });
+      await expect(inFlightChunk).resolves.toBe("");
+      await expect(processChunk("local-session", 0.3)).resolves.toBe("");
+
+      expect(providerMocks.local.openSession).not.toHaveBeenCalled();
+      expect(processVadFrame).toHaveBeenCalledOnce();
+    } finally {
+      vadGate.resolve({ probability: 1, isSpeaking: true });
+    }
+  });
+
+  it("rejects chunks from a retired session while a new session is active", async () => {
+    selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("old-session");
+    await service.cancelStreamingSession("old-session");
+
+    service.beginStreamingSession("current-session");
+    await processChunk("current-session", 0.1);
+    const currentSession = sessionFor(providerMocks.local, "current-session");
+
+    await expect(processChunk("old-session", 0.2)).resolves.toBe("");
+    expect(processVadFrame).toHaveBeenCalledOnce();
+    expect(currentSession.transcribe).toHaveBeenCalledOnce();
+    expect(providerMocks.local.openSession).toHaveBeenCalledOnce();
+
+    await service.cancelStreamingSession("current-session");
+  });
+
+  it("retires a reserved session that finalizes without any chunks", async () => {
+    selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("empty-session");
+
+    await expect(
+      service.finalizeSession({ sessionId: "empty-session" }),
+    ).resolves.toBe("");
+    expect(providerMocks.local.openSession).not.toHaveBeenCalled();
+    expect(processVadFrame).not.toHaveBeenCalled();
+    await expect(processChunk("empty-session", 0.1)).resolves.toBe("");
+    expect(processVadFrame).not.toHaveBeenCalled();
+
+    expect(() => service.beginStreamingSession("next-session")).not.toThrow();
+    await service.cancelStreamingSession("next-session");
+  });
+
   it("retires live provider sessions when the service is disposed", async () => {
     selectedModelId = "whisper-tiny";
+    service.beginStreamingSession("local-session");
     await processChunk("local-session", 0.1);
     const localSession = sessionFor(providerMocks.local, "local-session");
 

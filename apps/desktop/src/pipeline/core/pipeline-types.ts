@@ -137,10 +137,6 @@ export interface StreamingSession {
   providerSession: TranscriptionSession;
   speechModelId: string;
   transcriptionResults: string[]; // Accumulate all transcription chunks
-  // Per-session aborter. abort() = dismiss: it flags finalizeSession's gates
-  // (.signal.aborted) and cancels an in-flight flush. Lives on the session so it
-  // is freed with the session — no separate cleanup.
-  abortController: AbortController;
   detectedLanguage?: string;
   firstChunkReceivedAt?: number; // When first audio chunk arrived at transcription service
   recordingStartedAt?: number; // When user pressed record button (from RecordingManager)

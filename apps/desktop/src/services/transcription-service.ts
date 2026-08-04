@@ -31,7 +31,6 @@ import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
-import type { GetAccessibilityContextResult } from "@amical/types";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
 import { normalizeTranscriptionBoundaries } from "../utils/boundary-spacing";
@@ -58,10 +57,23 @@ import {
   AppScopeTag,
 } from "../main/runtime/tags";
 import { addRelease, step, up } from "../main/runtime/layer-helpers";
+import {
+  LiveTranscriptionSession,
+  type StreamingSessionUpdate,
+} from "./transcription/live-transcription-session";
 
-type StreamingSessionUpdate = {
-  accessibilityContext?: GetAccessibilityContextResult | null;
+type StreamingChunkOptions = {
+  sessionId: string;
+  audioChunk: Float32Array;
+  recordingStartedAt?: number;
   isInstruct?: boolean;
+};
+
+type FinalizeSessionOptions = {
+  sessionId: string;
+  audioFilePath?: string;
+  recordingStartedAt?: number;
+  recordingStoppedAt?: number;
 };
 
 /**
@@ -70,11 +82,7 @@ type StreamingSessionUpdate = {
 export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private cloudProvider: AmicalCloudProvider;
-  private streamingSessions = new Map<string, StreamingSession>();
-  private pendingStreamingSessionUpdates = new Map<
-    string,
-    StreamingSessionUpdate
-  >();
+  private activeLiveSession: LiveTranscriptionSession | null = null;
   private vadService: VADService | null;
   private settingsService: SettingsService;
   private vadMutex: Mutex;
@@ -121,6 +129,14 @@ export class TranscriptionService {
     await provider.warmup?.();
   }
 
+  beginStreamingSession(sessionId: string): void {
+    if (this.activeLiveSession) {
+      throw new Error("Another live transcription session is already active");
+    }
+
+    this.activeLiveSession = new LiveTranscriptionSession(sessionId);
+  }
+
   private buildTranscribeContextForSession(
     sessionId: string,
     session: StreamingSession,
@@ -144,19 +160,6 @@ export class TranscriptionService {
     };
   }
 
-  private applyStreamingSessionUpdate(
-    session: StreamingSession,
-    update: StreamingSessionUpdate,
-  ): void {
-    if (update.accessibilityContext !== undefined) {
-      session.context.sharedData.accessibilityContext =
-        update.accessibilityContext;
-    }
-    if (update.isInstruct !== undefined) {
-      session.context.metadata.set("isInstruct", update.isInstruct);
-    }
-  }
-
   async updateStreamingSession(
     options: { sessionId: string } & StreamingSessionUpdate,
   ): Promise<void> {
@@ -174,38 +177,37 @@ export class TranscriptionService {
       return;
     }
 
-    let providerContext: TranscribeContext | null = null;
-    let providerSession: StreamingSession["providerSession"] | null = null;
-
-    await this.transcriptionMutex.acquire();
-    try {
-      const session = this.streamingSessions.get(options.sessionId);
-      if (!session) {
-        const pending =
-          this.pendingStreamingSessionUpdates.get(options.sessionId) ?? {};
-        this.pendingStreamingSessionUpdates.set(options.sessionId, {
-          ...pending,
-          ...update,
-        });
-        return;
-      }
-
-      this.applyStreamingSessionUpdate(session, update);
-
-      providerContext = this.buildTranscribeContextForSession(
-        options.sessionId,
-        session,
-      );
-      providerSession = session.providerSession;
-    } finally {
-      this.transcriptionMutex.release();
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== options.sessionId) {
+      return;
     }
 
-    // Keep the provider call outside the global mutex so network backpressure
-    // cannot block stop/cancel. Final flush receives the latest context again.
-    if (providerContext && providerSession) {
-      await providerSession.updateSessionContext?.(providerContext);
+    const session = liveSession.updateSnapshot(update);
+    if (!session?.providerSession.updateSessionContext) {
+      return;
     }
+
+    const providerContext = this.buildTranscribeContextForSession(
+      options.sessionId,
+      session,
+    );
+    // The in-memory snapshot is immediate. Provider sync is best-effort and
+    // must not block audio or finalization; flush sends the latest snapshot.
+    void Promise.resolve()
+      .then(() => {
+        if (!liveSession.canPushContextTo(session)) {
+          return;
+        }
+        return session.providerSession.updateSessionContext?.(providerContext);
+      })
+      .catch((error) => {
+        if (liveSession.canPushContextTo(session)) {
+          logger.transcription.warn(
+            "Failed to update streaming provider context",
+            { sessionId: options.sessionId, error },
+          );
+        }
+      });
   }
 
   /**
@@ -477,13 +479,30 @@ export class TranscriptionService {
    * Process a single audio chunk in streaming mode
    * For finalization, use finalizeSession() instead
    */
-  async processStreamingChunk(options: {
-    sessionId: string;
-    audioChunk: Float32Array;
-    recordingStartedAt?: number;
-    isInstruct?: boolean;
-  }): Promise<string> {
-    const { sessionId, audioChunk, recordingStartedAt, isInstruct } = options;
+  async processStreamingChunk(options: StreamingChunkOptions): Promise<string> {
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== options.sessionId) {
+      logger.transcription.debug(
+        "Ignoring chunk for inactive streaming session",
+        { sessionId: options.sessionId },
+      );
+      return "";
+    }
+
+    if (options.isInstruct !== undefined) {
+      liveSession.updateSnapshot({ isInstruct: options.isInstruct });
+    }
+
+    return liveSession.processChunk(() =>
+      this.processAdmittedStreamingChunk(liveSession, options),
+    );
+  }
+
+  private async processAdmittedStreamingChunk(
+    liveSession: LiveTranscriptionSession,
+    options: StreamingChunkOptions,
+  ): Promise<string> {
+    const { sessionId, audioChunk, recordingStartedAt } = options;
 
     // Run VAD on the audio chunk
     let speechProbability = this.vadService ? 0 : 1;
@@ -500,6 +519,9 @@ export class TranscriptionService {
       // Acquire VAD mutex
       await this.vadMutex.acquire();
       try {
+        if (!liveSession.canCompleteAdmittedWork()) {
+          return "";
+        }
         // Pass Float32Array directly to VAD
         const vadResult = await this.vadService.processAudioFrame(audioChunk);
 
@@ -516,17 +538,23 @@ export class TranscriptionService {
       });
     }
 
+    if (!liveSession.canCompleteAdmittedWork()) {
+      return "";
+    }
+
     // Acquire transcription mutex
     await this.transcriptionMutex.acquire();
-
-    // Auto-create session if it doesn't exist
-    let session = this.streamingSessions.get(sessionId);
-
     try {
+      if (!liveSession.canCompleteAdmittedWork()) {
+        return "";
+      }
+
+      let session = liveSession.materializedSession;
       if (!session) {
-        const pendingUpdate =
-          this.pendingStreamingSessionUpdates.get(sessionId);
         const context = await this.buildContext();
+        if (!liveSession.canCompleteAdmittedWork()) {
+          return "";
+        }
         const streamingContext: StreamingPipelineContext = {
           ...context,
           sessionId,
@@ -535,6 +563,9 @@ export class TranscriptionService {
           accumulatedTranscription: [],
         };
         const formatterConfig = await this.settingsService.getFormatterConfig();
+        if (!liveSession.canCompleteAdmittedWork()) {
+          return "";
+        }
         streamingContext.metadata.set(
           "cloudFormattingEnabled",
           !!(
@@ -542,21 +573,17 @@ export class TranscriptionService {
             isAmicalCloudSelectionValue(formatterConfig.modelId)
           ),
         );
-        // Instruct rides the per-session metadata (like cloudFormattingEnabled)
-        // so it persists across chunks and into finalize. Drives the "instruct"
-        // preset sent to the cloud at stream open.
-        streamingContext.metadata.set(
-          "isInstruct",
-          pendingUpdate?.isInstruct ?? !!isInstruct,
-        );
+        // Live-session updates are applied when this context is attached.
+        streamingContext.metadata.set("isInstruct", false);
 
         // Get accessibility context from NativeBridge
         streamingContext.sharedData.accessibilityContext =
-          pendingUpdate?.accessibilityContext !== undefined
-            ? pendingUpdate.accessibilityContext
-            : (this.nativeBridge?.getAccessibilityContext() ?? null);
+          this.nativeBridge?.getAccessibilityContext() ?? null;
 
         const selectedModelId = await this.modelService.getSelectedModel();
+        if (!liveSession.canCompleteAdmittedWork()) {
+          return "";
+        }
         const provider = this.providerForSelectedModel(selectedModelId);
         const providerSession = provider.openSession({
           sessionId,
@@ -573,26 +600,25 @@ export class TranscriptionService {
           transcriptionResults: [],
           firstChunkReceivedAt: performance.now(),
           recordingStartedAt: recordingStartedAt,
-          abortController: new AbortController(),
         };
 
-        this.streamingSessions.set(sessionId, session);
-        this.pendingStreamingSessionUpdates.delete(sessionId);
+        if (!liveSession.attach(session)) {
+          return "";
+        }
 
         logger.transcription.info("Started streaming session", {
           sessionId,
         });
       }
-      if (isInstruct !== undefined) {
-        session.context.metadata.set("isInstruct", !!isInstruct);
-      }
-
       // Transcribe chunk (flush is done separately in finalizeSession)
       const chunkResult = await session.providerSession.transcribe({
         audioData: audioChunk,
         speechProbability: speechProbability,
         context: this.buildTranscribeContextForSession(sessionId, session),
       });
+      if (!liveSession.canCompleteAdmittedWork()) {
+        return "";
+      }
       session.detectedLanguage = this.mergeDetectedLanguage(
         session.detectedLanguage,
         chunkResult.detectedLanguage,
@@ -618,12 +644,11 @@ export class TranscriptionService {
         frameSize: audioChunk.length,
         hadTranscription: chunkResult.text.length > 0,
       });
+      return session.transcriptionResults.join("");
     } finally {
       // Release transcription mutex - always release even on error
       this.transcriptionMutex.release();
     }
-
-    return session.transcriptionResults.join("");
   }
 
   /**
@@ -631,41 +656,37 @@ export class TranscriptionService {
    * Used when recording is cancelled (e.g., quick tap, accidental activation)
    */
   async cancelStreamingSession(sessionId: string): Promise<void> {
-    // Acquire mutex to prevent race with processStreamingChunk
-    await this.transcriptionMutex.acquire();
-    try {
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      const session = this.streamingSessions.get(sessionId);
-      if (!session) {
-        return;
-      }
-
-      session.providerSession.cancel();
-      this.streamingSessions.delete(sessionId);
-      logger.transcription.info("Streaming session cancelled", { sessionId });
-    } finally {
-      this.transcriptionMutex.release();
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== sessionId) {
+      return;
     }
+
+    liveSession.requestAbort();
+    this.retireLiveSession(liveSession);
+    logger.transcription.info("Streaming session cancelled", { sessionId });
   }
 
   /**
-   * Dismiss a session by aborting its signal. This both (a) flags
-   * finalizeSession's cooperative gates so it writes a dismissed row instead of
-   * pasting, and (b) cancels an in-flight flush: flush() reacts to the abort by
-   * cancelling the provider session, which synchronously cancels the gRPC stream /
-   * aborts the HTTP fetch off the transcription mutex, rejecting the awaited
-   * flush so the recording machine returns to idle immediately. No-op effect for
-   * the local whisper worker (an in-flight decode isn't interruptible) — its
-   * cooperative checkpoints discard the result. No-op if the session is already
-   * gone (nothing left to dismiss).
+   * Dismiss a session by aborting its signal and cancelling its provider. The
+   * signal drives finalizeSession's cooperative gates, while provider cancel
+   * interrupts gRPC/HTTP work immediately. Local Whisper decode is not
+   * interruptible, so its result is discarded at the next lifecycle check.
+   * No-op if the session is already gone.
    */
   abortSession(sessionId: string): void {
-    const session = this.streamingSessions.get(sessionId);
-    if (!session) {
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== sessionId) {
       return;
     }
-    session.abortController.abort();
+    liveSession.requestAbort();
     logger.transcription.info("Aborted session", { sessionId });
+  }
+
+  private retireLiveSession(liveSession: LiveTranscriptionSession): void {
+    liveSession.retire();
+    if (this.activeLiveSession === liveSession) {
+      this.activeLiveSession = null;
+    }
   }
 
   /**
@@ -702,24 +723,49 @@ export class TranscriptionService {
    * Finalize a streaming session - flush provider, format, save to DB
    * Call this instead of processStreamingChunk with isFinal=true
    */
-  async finalizeSession(options: {
-    sessionId: string;
-    audioFilePath?: string;
-    recordingStartedAt?: number;
-    recordingStoppedAt?: number;
-  }): Promise<string> {
+  async finalizeSession(options: FinalizeSessionOptions): Promise<string> {
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== options.sessionId) {
+      logger.transcription.warn("No session found to finalize", {
+        sessionId: options.sessionId,
+      });
+      return "";
+    }
+
+    // Closing admission is synchronous: every chunk accepted before this call
+    // is now visible to the drain, and later chunks are rejected.
+    liveSession.closeChunkAdmission();
+    return this.finalizeLiveSession(liveSession, options);
+  }
+
+  private async finalizeLiveSession(
+    liveSession: LiveTranscriptionSession,
+    options: FinalizeSessionOptions,
+  ): Promise<string> {
     const { sessionId, audioFilePath, recordingStartedAt, recordingStoppedAt } =
       options;
 
-    const session = this.streamingSessions.get(sessionId);
+    await liveSession.drainAdmittedChunks();
+    const session = liveSession.materializedSession;
     if (!session) {
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      logger.transcription.warn("No session found to finalize", { sessionId });
-      return "";
+      try {
+        if (liveSession.signal.aborted) {
+          await this.saveDismissedTranscription({
+            sessionId,
+            audioFilePath: audioFilePath || undefined,
+          });
+          throw this.userDismissedError();
+        }
+
+        logger.transcription.warn("No materialized session to finalize", {
+          sessionId,
+        });
+        return "";
+      } finally {
+        this.retireLiveSession(liveSession);
+      }
     }
-    // The session's aborter — its signal drives every dismiss gate below and is
-    // handed to provider.flush() so a dismiss can cancel the in-flight call.
-    const { signal } = session.abortController;
+    const { signal } = liveSession;
 
     try {
       // Early dismiss: the user dismissed before the flush started — skip the
@@ -990,11 +1036,7 @@ export class TranscriptionService {
       // Re-throw for RecordingManager to handle notifications
       throw error;
     } finally {
-      session.providerSession.cancel();
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      if (this.streamingSessions.get(sessionId) === session) {
-        this.streamingSessions.delete(sessionId);
-      }
+      this.retireLiveSession(liveSession);
     }
   }
 
@@ -1227,7 +1269,7 @@ export class TranscriptionService {
     const retryStartedAt = performance.now();
 
     // Guard: reject if a recording session is active
-    if (this.streamingSessions.size > 0) {
+    if (this.activeLiveSession) {
       throw new Error("Cannot retry while recording is in progress");
     }
 
@@ -1525,11 +1567,11 @@ export class TranscriptionService {
    * Cleanup method
    */
   async dispose(): Promise<void> {
-    for (const session of this.streamingSessions.values()) {
-      session.providerSession.cancel();
+    const liveSession = this.activeLiveSession;
+    if (liveSession) {
+      liveSession.requestAbort();
+      this.retireLiveSession(liveSession);
     }
-    this.streamingSessions.clear();
-    this.pendingStreamingSessionUpdates.clear();
     await this.whisperProvider.dispose();
     await this.cloudProvider.dispose();
     // VAD service is managed by ServiceManager

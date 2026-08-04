@@ -516,7 +516,9 @@ export class RecordingManager extends EventEmitter {
       if (hasSpeechModel) {
         // Missing-model starts stay IDLE; STARTING means we have a model and
         // have allocated the session identity used by the interpreter.
-        this.currentSessionId = uuid();
+        const sessionId = uuid();
+        this.transcriptionService?.beginStreamingSession(sessionId);
+        this.currentSessionId = sessionId;
         this.activeMicrophoneName = null;
         // Tag this as a draft session up front (the draft chord is held now) so
         // the recording/processing FAB can show the draft indicator immediately,
@@ -1776,9 +1778,9 @@ export class RecordingManager extends EventEmitter {
 
   /**
    * Abort an in-flight finalize (FSM abortFinalization command, emitted when
-   * dismiss arrives during STOP_N). One signal does both jobs: it flags
-   * finalizeSession's dismiss gates AND cancels the in-flight provider-session
-   * flush, so finalizeSession persists a dismissed row
+   * dismiss arrives during STOP_N). One synchronous abort request flags
+   * finalizeSession's dismiss gates and cancels the provider session, so
+   * finalizeSession persists a dismissed row
    * instead of pasting and a slow/hung finalize returns to idle immediately
    * instead of waiting for the network call. We deliberately do NOT delete the
    * streaming session here: that would race finalizeSession and drop the audio.

@@ -278,6 +278,7 @@ describe("recording manager FSM interpreter", () => {
       getSelectedModel: vi.fn().mockResolvedValue({ id: "model-1" }),
     };
     const transcriptionService = {
+      beginStreamingSession: vi.fn(),
       resetVadForNewSession: vi.fn().mockResolvedValue(undefined),
       warmupActiveProvider: vi.fn().mockResolvedValue(undefined),
       cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
@@ -318,6 +319,18 @@ describe("recording manager FSM interpreter", () => {
     expect(transcriptionService.cancelStreamingSession).toHaveBeenCalledTimes(
       1,
     );
+    expect(transcriptionService.beginStreamingSession).toHaveBeenCalledOnce();
+    expect(transcriptionService.cancelStreamingSession).toHaveBeenCalledWith(
+      transcriptionService.beginStreamingSession.mock.calls[0]![0],
+    );
+    expect(
+      transcriptionService.beginStreamingSession.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      transcriptionService.resetVadForNewSession.mock.invocationCallOrder[0]!,
+    );
+    expect(
+      transcriptionService.beginStreamingSession.mock.invocationCallOrder[0],
+    ).toBeLessThan(nativeBridge.call.mock.invocationCallOrder[0]!);
     expect(manager.getState()).toBe("idle");
   });
 

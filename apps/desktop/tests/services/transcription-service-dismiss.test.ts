@@ -57,8 +57,8 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
   let provider: ReturnType<typeof makeProvider>;
   let applyFmt: ReturnType<typeof vi.spyOn>;
 
-  // Inject a valid streaming session (with its on-session aborter) directly,
-  // bypassing processStreamingChunk/buildContext.
+  // Inject a valid materialized session directly, bypassing
+  // processStreamingChunk/buildContext.
   const seedSession = (sessionId: string): StreamingSession => {
     provider.sessionId = sessionId;
     const base = createDefaultContext(sessionId);
@@ -77,9 +77,9 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       transcriptionResults: ["hello"],
       firstChunkReceivedAt: 1,
       recordingStartedAt: 0,
-      abortController: new AbortController(),
     };
-    svc.streamingSessions.set(sessionId, session);
+    svc.beginStreamingSession(sessionId);
+    svc.activeLiveSession.attach(session);
     return session;
   };
 
@@ -116,8 +116,8 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
   });
 
   it("early dismiss (before flush): throws USER_DISMISSED, skips the flush, writes a dismissed row", async () => {
-    const session = seedSession("s1");
-    session.abortController.abort();
+    seedSession("s1");
+    svc.abortSession("s1");
 
     await expect(
       svc.finalizeSession({ sessionId: "s1", audioFilePath: "/tmp/a.wav" }),
@@ -133,14 +133,14 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(vi.mocked(incrementDailyStats)).not.toHaveBeenCalled();
     expect(provider.cancel).toHaveBeenCalledOnce();
     // Final cleanup removes the session.
-    expect(svc.streamingSessions.has("s1")).toBe(false);
+    expect(svc.activeLiveSession).toBeNull();
   });
 
   it("a flush rejected by the dismiss-cancel becomes a silent dismissed row, not a failed one", async () => {
-    const session = seedSession("s1");
+    seedSession("s1");
     provider.flush.mockImplementation(async () => {
       // Dismiss lands mid-flush; provider-session cancellation rejects the flush.
-      session.abortController.abort();
+      svc.abortSession("s1");
       throw new AppError("cancelled", ErrorCodes.NETWORK_ERROR);
     });
 
@@ -160,15 +160,15 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     // NOT the failed-transcription branch: no failed row, no stats bump.
     expect(vi.mocked(incrementDailyStats)).not.toHaveBeenCalled();
     expect(provider.cancel).toHaveBeenCalledOnce();
-    expect(svc.streamingSessions.has("s1")).toBe(false);
+    expect(svc.activeLiveSession).toBeNull();
   });
 
   it("post-flush dismiss (non-interruptible provider): discards the transcript instead of pasting", async () => {
-    const session = seedSession("s1");
+    seedSession("s1");
     provider.flush.mockImplementation(async () => {
       // Dismiss landed during a decode that couldn't be interrupted; the flush
       // still returns a transcript, which the post-flush gate must discard.
-      session.abortController.abort();
+      svc.abortSession("s1");
       return { text: " world" };
     });
 
@@ -185,14 +185,15 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       }),
     );
     expect(vi.mocked(incrementDailyStats)).not.toHaveBeenCalled();
+    expect(provider.cancel).toHaveBeenCalledOnce();
   });
 
   it("late dismiss during formatting: the final gate discards the formatted transcript", async () => {
-    const session = seedSession("s1");
+    seedSession("s1");
     provider.flush.mockResolvedValue({ text: " world" });
     applyFmt.mockImplementation(async ({ text }: { text: string }) => {
       // Dismiss while the (possibly-remote) formatting call is in flight.
-      session.abortController.abort();
+      svc.abortSession("s1");
       return { text, textBeforeReplacements: text };
     });
 
@@ -211,6 +212,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       }),
     );
     expect(vi.mocked(incrementDailyStats)).not.toHaveBeenCalled();
+    expect(provider.cancel).toHaveBeenCalledOnce();
   });
 
   it("no dismiss (control): finalize writes a normal row, increments stats, returns the transcript", async () => {
@@ -255,7 +257,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
       }),
     );
     expect(provider.cancel).toHaveBeenCalledOnce();
-    expect(svc.streamingSessions.has("s1")).toBe(false);
+    expect(svc.activeLiveSession).toBeNull();
   });
 
   it("saveDismissedTranscription writes empty text + dismissed status + the audio file", async () => {
@@ -273,9 +275,9 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
   it("abortSession is lookup-only: no-op for an unknown session, aborts an existing one", () => {
     expect(() => svc.abortSession("does-not-exist")).not.toThrow();
 
-    const session = seedSession("s2");
-    expect(session.abortController.signal.aborted).toBe(false);
+    seedSession("s2");
+    expect(svc.activeLiveSession.signal.aborted).toBe(false);
     svc.abortSession("s2");
-    expect(session.abortController.signal.aborted).toBe(true);
+    expect(svc.activeLiveSession.signal.aborted).toBe(true);
   });
 });
