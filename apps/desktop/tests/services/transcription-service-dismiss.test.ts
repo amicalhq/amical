@@ -11,6 +11,17 @@ vi.mock("../../src/db/daily-stats", () => ({
   incrementDailyStats: vi.fn(async () => undefined),
 }));
 
+const prepareTranscriptText = vi.hoisted(() => vi.fn());
+vi.mock(
+  "../../src/services/transcription/prepare-transcript-text",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../src/services/transcription/prepare-transcript-text")
+    >()),
+    prepareTranscriptText,
+  }),
+);
+
 // The real providers are never exercised here because each test injects a fake
 // provider session, so stub their modules to keep construction trivial and free
 // of grpc/auth import side effects.
@@ -39,9 +50,11 @@ vi.mock("../../src/pipeline/providers/transcription/amical-cloud-provider", () =
 import { TranscriptionService } from "../../src/services/transcription-service";
 import { createTranscription } from "../../src/db/transcriptions";
 import { incrementDailyStats } from "../../src/db/daily-stats";
-import { createDefaultContext } from "../../src/pipeline/core/context";
 import { ErrorCodes, AppError } from "../../src/types/error";
-import type { StreamingSession } from "../../src/pipeline/core/pipeline-types";
+import type {
+  DictationContext,
+  MaterializedTranscriptionSession,
+} from "../../src/services/transcription/types";
 
 const makeProvider = () => ({
   name: "fake-local",
@@ -55,23 +68,28 @@ const makeProvider = () => ({
 describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
   let svc: any;
   let provider: ReturnType<typeof makeProvider>;
-  let applyFmt: ReturnType<typeof vi.spyOn>;
+  let applyFmt: typeof prepareTranscriptText;
+  let trackTranscriptionCompleted: ReturnType<typeof vi.fn>;
 
   // Inject a valid materialized session directly, bypassing
-  // processStreamingChunk/buildContext.
-  const seedSession = (sessionId: string): StreamingSession => {
+  // processStreamingChunk/context loading.
+  const seedSession = (
+    sessionId: string,
+    contextOverrides: Partial<DictationContext> = {},
+  ): MaterializedTranscriptionSession => {
     provider.sessionId = sessionId;
-    const base = createDefaultContext(sessionId);
-    const context: any = {
-      ...base,
-      sessionId,
-      isPartial: true,
-      isFinal: false,
-      accumulatedTranscription: [],
-    };
-    context.metadata.set("cloudFormattingEnabled", false);
-    const session: StreamingSession = {
-      context,
+    const session: MaterializedTranscriptionSession = {
+      context: {
+        sessionId,
+        vocabulary: [],
+        replacements: new Map(),
+        formattingStyle: "formal",
+        audio: { source: "microphone" },
+        accessibilityContext: null,
+        cloudFormattingEnabled: false,
+        isInstruct: false,
+        ...contextOverrides,
+      },
       providerSession: provider,
       speechModelId: "fake-local-model",
       transcriptionResults: ["hello"],
@@ -86,7 +104,11 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     const modelService = { getSelectedModel: vi.fn(async () => undefined) };
-    const telemetryService = new Proxy({}, { get: () => vi.fn() });
+    trackTranscriptionCompleted = vi.fn();
+    const telemetryService = new Proxy(
+      { trackTranscriptionCompleted },
+      { get: (target, property) => Reflect.get(target, property) ?? vi.fn() },
+    );
     const settingsService = new Proxy(
       {},
       { get: () => vi.fn(async () => undefined) },
@@ -107,12 +129,13 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     provider = makeProvider();
     // Stub formatting (a possibly-remote LLM call) so the success/late-dismiss
     // paths are deterministic; individual tests assert whether it ran.
-    applyFmt = vi
-      .spyOn(svc, "applyFormattingAndReplacements")
-      .mockResolvedValue({
-        text: "hello world",
-        textBeforeReplacements: "hello world",
-      });
+    prepareTranscriptText.mockResolvedValue({
+      text: "hello world",
+      language: "auto",
+      wordCount: 2,
+      formattingUsed: false,
+    });
+    applyFmt = prepareTranscriptText;
   });
 
   it("early dismiss (before flush): throws USER_DISMISSED, skips the flush, writes a dismissed row", async () => {
@@ -194,7 +217,12 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     applyFmt.mockImplementation(async ({ text }: { text: string }) => {
       // Dismiss while the (possibly-remote) formatting call is in flight.
       svc.abortSession("s1");
-      return { text, textBeforeReplacements: text };
+      return {
+        text,
+        language: "auto",
+        wordCount: 2,
+        formattingUsed: false,
+      };
     });
 
     await expect(
@@ -231,6 +259,46 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(arg.meta?.status).not.toBe("dismissed");
     expect(vi.mocked(incrementDailyStats)).toHaveBeenCalledTimes(1);
     expect(provider.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("maps the live context into persistence and completion telemetry", async () => {
+    seedSession("s1", {
+      vocabulary: ["Amical", "Zeus"],
+      languages: ["de"],
+      formattingStyle: "technical",
+      audio: { source: "file", duration: 2.5 },
+    });
+    provider.flush.mockResolvedValue({ text: " world" });
+    applyFmt.mockResolvedValue({
+      text: "hello world",
+      language: "de",
+      detectedLanguage: "de",
+      wordCount: 2,
+      formattingUsed: false,
+    });
+
+    await svc.finalizeSession({ sessionId: "s1", audioFilePath: "/tmp/a.wav" });
+
+    expect(createTranscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "hello world",
+        language: "de",
+        detectedLanguage: "de",
+        duration: 2.5,
+        meta: expect.objectContaining({
+          source: "file",
+          vocabularySize: 2,
+          formattingStyle: "technical",
+        }),
+      }),
+    );
+    expect(trackTranscriptionCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audio_duration_seconds: 2.5,
+        languages: ["de"],
+        vocabulary_size: 2,
+      }),
+    );
   });
 
   it("a provider failure writes a failed row and retires the session", async () => {

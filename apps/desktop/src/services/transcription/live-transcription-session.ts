@@ -1,10 +1,7 @@
-import type { GetAccessibilityContextResult } from "@amical/types";
-import type { StreamingSession } from "../../pipeline/core/pipeline-types";
-
-export type StreamingSessionUpdate = {
-  accessibilityContext?: GetAccessibilityContextResult | null;
-  isInstruct?: boolean;
-};
+import type {
+  MaterializedTranscriptionSession,
+  StreamingSessionUpdate,
+} from "./types";
 
 type LiveSessionPhase = "open" | "finishing" | "aborted" | "retired";
 
@@ -12,15 +9,14 @@ const isEmptyUpdate = (update: StreamingSessionUpdate): boolean =>
   update.accessibilityContext === undefined && update.isInstruct === undefined;
 
 const applyUpdate = (
-  session: StreamingSession,
+  session: MaterializedTranscriptionSession,
   update: StreamingSessionUpdate,
 ): void => {
   if (update.accessibilityContext !== undefined) {
-    session.context.sharedData.accessibilityContext =
-      update.accessibilityContext;
+    session.context.accessibilityContext = update.accessibilityContext;
   }
   if (update.isInstruct !== undefined) {
-    session.context.metadata.set("isInstruct", update.isInstruct);
+    session.context.isInstruct = update.isInstruct;
   }
 };
 
@@ -30,7 +26,7 @@ export class LiveTranscriptionSession {
   private phase: LiveSessionPhase = "open";
   private chunkTail: Promise<void> = Promise.resolve();
   private pendingUpdate: StreamingSessionUpdate = {};
-  private materialized: StreamingSession | null = null;
+  private materialized: MaterializedTranscriptionSession | null = null;
   private providerCancelled = false;
   private terminalError: Error | null = null;
 
@@ -43,7 +39,7 @@ export class LiveTranscriptionSession {
     return this.abortController.signal;
   }
 
-  get materializedSession(): StreamingSession | null {
+  get materializedSession(): MaterializedTranscriptionSession | null {
     return this.materialized;
   }
 
@@ -103,7 +99,9 @@ export class LiveTranscriptionSession {
     }
   }
 
-  updateSnapshot(update: StreamingSessionUpdate): StreamingSession | null {
+  updateSnapshot(
+    update: StreamingSessionUpdate,
+  ): MaterializedTranscriptionSession | null {
     if (!this.acceptsChunks() || isEmptyUpdate(update)) {
       return null;
     }
@@ -117,7 +115,7 @@ export class LiveTranscriptionSession {
     return this.materialized;
   }
 
-  attach(session: StreamingSession): boolean {
+  attach(session: MaterializedTranscriptionSession): boolean {
     if (!this.canCompleteAdmittedWork()) {
       session.providerSession.cancel();
       return false;
@@ -129,7 +127,7 @@ export class LiveTranscriptionSession {
     return true;
   }
 
-  canPushContextTo(session: StreamingSession): boolean {
+  canPushContextTo(session: MaterializedTranscriptionSession): boolean {
     return this.acceptsChunks() && this.materialized === session;
   }
 

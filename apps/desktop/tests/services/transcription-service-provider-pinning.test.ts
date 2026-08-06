@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   OpenTranscriptionSessionOptions,
-  PipelineContext,
   TranscribeContext,
   TranscribeParams,
   TranscriptionOutput,
@@ -87,6 +86,20 @@ vi.mock("../../src/db/daily-stats", () => ({
   incrementDailyStats: vi.fn(async () => undefined),
 }));
 
+vi.mock("../../src/services/transcription/load-dictation-context", () => ({
+  loadDictationContext: vi.fn(),
+}));
+
+vi.mock(
+  "../../src/services/transcription/prepare-transcript-text",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../src/services/transcription/prepare-transcript-text")
+    >()),
+    prepareTranscriptText: vi.fn(),
+  }),
+);
+
 vi.mock("../../src/pipeline/providers/transcription/whisper-provider", () => ({
   WhisperProvider: vi.fn(function () {
     return providerMocks.local;
@@ -107,27 +120,30 @@ import {
   getTranscriptionById,
   updateTranscription,
 } from "../../src/db/transcriptions";
-import { createDefaultContext } from "../../src/pipeline/core/context";
 import type { AuthService } from "../../src/services/auth-service";
 import type { ModelService } from "../../src/services/model-service";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 import { TranscriptionService } from "../../src/services/transcription-service";
+import { loadDictationContext } from "../../src/services/transcription/load-dictation-context";
+import { prepareTranscriptText } from "../../src/services/transcription/prepare-transcript-text";
+import type { DictationContext } from "../../src/services/transcription/types";
 import type { VADService } from "../../src/services/vad-service";
 import * as fs from "node:fs";
 
 type MockProvider = typeof providerMocks.cloud;
 type MockProviderSession = ReturnType<MockProvider["openSession"]>;
 
-interface TestServiceInternals {
-  buildContext(): Promise<PipelineContext>;
-  applyFormattingAndReplacements(input: { text: string }): Promise<{
-    text: string;
-    textBeforeReplacements: string;
-    formattingUsed: boolean;
-  }>;
-  readWavAsFloat32(filePath: string): Promise<Float32Array>;
-}
+const dictationContext = (sessionId: string): DictationContext => ({
+  sessionId,
+  vocabulary: [],
+  replacements: new Map(),
+  formattingStyle: "formal",
+  audio: { source: "microphone" },
+  accessibilityContext: null,
+  cloudFormattingEnabled: false,
+  isInstruct: false,
+});
 
 const historyRecord = () =>
   ({
@@ -200,23 +216,23 @@ describe("TranscriptionService — provider session pinning", () => {
       null,
       null,
     );
-    const serviceInternals = service as unknown as TestServiceInternals;
-
-    vi.spyOn(serviceInternals, "buildContext").mockImplementation(async () =>
-      createDefaultContext("retry-session"),
+    vi.mocked(loadDictationContext).mockImplementation(async (options) =>
+      dictationContext(options.sessionId ?? "retry-session"),
     );
-    vi.spyOn(
-      serviceInternals,
-      "applyFormattingAndReplacements",
-    ).mockImplementation(async ({ text }) => ({
-      text,
-      textBeforeReplacements: text,
-      formattingUsed: false,
-    }));
-    vi.spyOn(serviceInternals, "readWavAsFloat32").mockResolvedValue(
-      new Float32Array([0.1]),
+    vi.mocked(prepareTranscriptText).mockImplementation(
+      async ({ text, context, detectedLanguage }) => ({
+        text,
+        language:
+          context.languages?.length === 1 ? context.languages[0] : "auto",
+        detectedLanguage: detectedLanguage?.trim() || undefined,
+        wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+        formattingUsed: false,
+      }),
     );
     vi.spyOn(fs.promises, "access").mockResolvedValue(undefined);
+    const wav = Buffer.alloc(46);
+    wav.writeInt16LE(3277, 44);
+    vi.spyOn(fs.promises, "readFile").mockResolvedValue(wav);
     vi.mocked(getTranscriptionById).mockResolvedValue(historyRecord());
   });
 
@@ -764,10 +780,7 @@ describe("TranscriptionService — provider session pinning", () => {
   it("persists a terminal failure that occurs before provider materialization", async () => {
     selectedModelId = "amical-cloud";
     const terminalError = new Error("Context lookup failed");
-    const serviceInternals = service as unknown as TestServiceInternals;
-    vi.mocked(serviceInternals.buildContext).mockRejectedValueOnce(
-      terminalError,
-    );
+    vi.mocked(loadDictationContext).mockRejectedValueOnce(terminalError);
     const listener = vi.fn();
     expect(service.beginStreamingSession("cloud-session", listener)).toBe(true);
 

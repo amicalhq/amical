@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  OpenTranscriptionSessionOptions,
-  PipelineContext,
-} from "../../src/pipeline/core/pipeline-types";
+import type { OpenTranscriptionSessionOptions } from "../../src/pipeline/core/pipeline-types";
 
 const cloudMocks = vi.hoisted(() => {
   const sessions: Array<{
@@ -58,11 +55,15 @@ vi.mock("../../src/db/daily-stats", () => ({
   incrementDailyStats: vi.fn(async () => undefined),
 }));
 
+vi.mock("../../src/services/transcription/load-dictation-context", () => ({
+  loadDictationContext: vi.fn(),
+}));
+
 import { createTranscription } from "../../src/db/transcriptions";
 import { incrementDailyStats } from "../../src/db/daily-stats";
-import { createDefaultContext } from "../../src/pipeline/core/context";
 import { RecordingManager } from "../../src/main/managers/recording-manager";
 import { TranscriptionService } from "../../src/services/transcription-service";
+import { loadDictationContext } from "../../src/services/transcription/load-dictation-context";
 import type { AuthService } from "../../src/services/auth-service";
 import type { ModelService } from "../../src/services/model-service";
 import type { NativeBridge } from "../../src/services/platform/native-bridge-service";
@@ -78,10 +79,6 @@ type RecordingManagerInternals = {
     sessionId: string,
     chunks: Float32Array[],
   ): Promise<string | null>;
-};
-
-type TranscriptionServiceInternals = {
-  buildContext(): Promise<PipelineContext>;
 };
 
 describe("RecordingManager terminal transcription flow", () => {
@@ -114,10 +111,16 @@ describe("RecordingManager terminal transcription flow", () => {
       null,
       null,
     );
-    vi.spyOn(
-      transcriptionService as unknown as TranscriptionServiceInternals,
-      "buildContext",
-    ).mockResolvedValue(createDefaultContext("terminal-context"));
+    vi.mocked(loadDictationContext).mockResolvedValue({
+      sessionId: "terminal-context",
+      vocabulary: [],
+      replacements: new Map(),
+      formattingStyle: "formal",
+      audio: { source: "microphone" },
+      accessibilityContext: null,
+      cloudFormattingEnabled: false,
+      isInstruct: false,
+    });
 
     let finalChunkPromise: Promise<void> | null = null;
     const nativeCall =
