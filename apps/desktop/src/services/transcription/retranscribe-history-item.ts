@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import type { TranscriptionProvider } from "../../pipeline/core/pipeline-types";
+import type { TranscriptionEngine } from "../../pipeline/core/pipeline-types";
 import {
   getTranscriptionById,
   updateTranscription,
@@ -26,9 +26,7 @@ export interface RetranscribeHistoryItemDependencies {
   modelService: ModelService;
   telemetryService: TelemetryService;
   processVadFrames(frames: Float32Array[]): Promise<number[]>;
-  providerForSelectedModel(
-    selectedModelId: string | null,
-  ): TranscriptionProvider;
+  engineForSelectedModel(selectedModelId: string | null): TranscriptionEngine;
   withTranscriptionLock<T>(work: () => Promise<T>): Promise<T>;
   wasModelPreloaded(): boolean;
   isVadEnabled(): boolean;
@@ -80,13 +78,13 @@ export async function retranscribeHistoryItem(
   let usedCloudProvider = false;
 
   await dependencies.withTranscriptionLock(async () => {
-    const provider = dependencies
-      .providerForSelectedModel(selectedModelId)
+    const providerSession = dependencies
+      .engineForSelectedModel(selectedModelId)
       .openSession({
         sessionId: retrySessionId,
         modelId: selectedModelId,
       });
-    usedCloudProvider = provider.name === "amical-cloud";
+    usedCloudProvider = providerSession.name === "amical-cloud";
 
     try {
       for (let index = 0; index < frames.length; index++) {
@@ -95,7 +93,7 @@ export async function retranscribeHistoryItem(
             ? transcriptionResults[transcriptionResults.length - 1]
             : undefined;
         const aggregatedTranscription = transcriptionResults.join("");
-        const chunkResult = await provider.transcribe({
+        const chunkResult = await providerSession.transcribe({
           audioData: frames[index],
           speechProbability: vadProbabilities[index],
           context: {
@@ -120,7 +118,7 @@ export async function retranscribeHistoryItem(
       }
 
       const aggregatedTranscription = transcriptionResults.join("");
-      const finalResult = await provider.flush({
+      const finalResult = await providerSession.flush({
         sessionId: retrySessionId,
         vocabulary,
         languages,
@@ -137,7 +135,7 @@ export async function retranscribeHistoryItem(
         usedCloudProvider,
       );
     } finally {
-      provider.cancel();
+      providerSession.cancel();
     }
   });
 

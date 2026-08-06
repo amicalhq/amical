@@ -611,9 +611,9 @@ describe("WhisperProvider sessions", () => {
         sessionId: "after-dispose",
         modelId: "model-a",
       }),
-    ).toThrow("Whisper provider has been disposed");
+    ).toThrow("Whisper transcription engine has been disposed");
     await expect(provider.warmup()).rejects.toThrow(
-      "Whisper provider has been disposed",
+      "Whisper transcription engine has been disposed",
     );
     await expect(provider.getBindingInfo()).resolves.toBeNull();
 
@@ -628,118 +628,10 @@ describe("WhisperProvider sessions", () => {
         audioData: new Float32Array([2]),
         context: { sessionId: "session" },
       }),
-    ).rejects.toThrow("Whisper provider has been disposed");
+    ).rejects.toThrow("Whisper transcription engine has been disposed");
     expect(workerMocks.exec).toHaveBeenCalledWith("dispose", []);
     expect(workerMocks.terminate).toHaveBeenCalledOnce();
     expect(workerMocks.construct).toHaveBeenCalledOnce();
-  });
-
-  it("preserves normal legacy sessions until final flush", async () => {
-    const { provider } = createProvider();
-
-    await provider.transcribe({
-      audioData: new Float32Array([1]),
-      context: { sessionId: "first" },
-    });
-    await expect(provider.flush({ sessionId: "first" })).resolves.toEqual({
-      text: "1",
-    });
-
-    await provider.transcribe({
-      audioData: new Float32Array([9]),
-      context: { sessionId: "second" },
-    });
-
-    await expect(provider.flush({ sessionId: "second" })).resolves.toEqual({
-      text: "9",
-    });
-  });
-
-  it("retires an unflushed legacy session when its ID changes", async () => {
-    const { provider } = createProvider();
-
-    await provider.transcribe({
-      audioData: new Float32Array([1]),
-      context: { sessionId: "first" },
-    });
-    await provider.transcribe({
-      audioData: new Float32Array([9]),
-      context: { sessionId: "second" },
-    });
-
-    await expect(provider.flush({ sessionId: "second" })).resolves.toEqual({
-      text: "9",
-    });
-  });
-
-  it("clears a cancelled legacy session before the next one", async () => {
-    const { provider } = createProvider();
-
-    await provider.transcribe({
-      audioData: new Float32Array([1]),
-      context: { sessionId: "cancelled" },
-    });
-    provider.reset();
-
-    await expect(provider.flush({ sessionId: "cancelled" })).resolves.toEqual({
-      text: "",
-    });
-
-    await provider.transcribe({
-      audioData: new Float32Array([9]),
-      context: { sessionId: "next" },
-    });
-    await expect(provider.flush({ sessionId: "next" })).resolves.toEqual({
-      text: "9",
-    });
-  });
-
-  it("keeps the legacy session on its selected model until retirement", async () => {
-    const { provider, selectBestAvailableModel } = createProvider();
-    selectBestAvailableModel("/models/a.bin");
-
-    await provider.transcribe({
-      audioData: new Float32Array([1]),
-      context: { sessionId: "first" },
-    });
-    selectBestAvailableModel("/models/b.bin");
-    await provider.flush({ sessionId: "first" });
-
-    provider.reset();
-    await provider.transcribe({
-      audioData: new Float32Array([2]),
-      context: { sessionId: "second" },
-    });
-    await provider.flush({ sessionId: "second" });
-
-    expect(modelByDecodedFirstSample()).toEqual(
-      new Map([
-        [1, "/models/a.bin"],
-        [2, "/models/b.bin"],
-      ]),
-    );
-  });
-
-  it("legacy reset does not cancel explicitly opened sessions", async () => {
-    const { provider } = createProvider();
-    const explicit = provider.openSession({
-      sessionId: "explicit",
-      modelId: "model-a",
-    });
-    await explicit.transcribe({
-      audioData: new Float32Array([9]),
-      context: { sessionId: "explicit" },
-    });
-    await provider.transcribe({
-      audioData: new Float32Array([1]),
-      context: { sessionId: "legacy" },
-    });
-
-    provider.reset();
-
-    await expect(explicit.flush({ sessionId: "explicit" })).resolves.toEqual({
-      text: "9",
-    });
   });
 
   it.each([

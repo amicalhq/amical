@@ -3,8 +3,8 @@ import type {
   OpenTranscriptionSessionOptions,
   TranscribeContext,
   TranscribeParams,
+  TranscriptionEngine,
   TranscriptionOutput,
-  TranscriptionProvider,
 } from "../../src/pipeline/core/pipeline-types";
 
 vi.mock("../../src/db/transcriptions", () => ({
@@ -61,7 +61,7 @@ function wavWithSamples(sampleCount: number): Buffer {
   return wav;
 }
 
-function makeProvider(name = "whisper-local") {
+function makeEngine(name = "whisper-local") {
   const session = {
     name,
     sessionId: "history-session",
@@ -73,18 +73,19 @@ function makeProvider(name = "whisper-local") {
     ),
     cancel: vi.fn(),
   };
-  const provider = {
+  const engine = {
     name,
     openSession: vi.fn((options: OpenTranscriptionSessionOptions) => {
       session.sessionId = options.sessionId;
       return session;
     }),
-  } as unknown as TranscriptionProvider;
-  return { provider, session };
+    dispose: vi.fn(async () => undefined),
+  } as unknown as TranscriptionEngine;
+  return { engine, session };
 }
 
 function makeDependencies(
-  provider: TranscriptionProvider,
+  engine: TranscriptionEngine,
 ): RetranscribeHistoryItemDependencies {
   return {
     settingsService: {
@@ -99,7 +100,7 @@ function makeDependencies(
     processVadFrames: vi.fn(async (frames: Float32Array[]) =>
       frames.map((_, index) => index / 10),
     ),
-    providerForSelectedModel: vi.fn(() => provider),
+    engineForSelectedModel: vi.fn(() => engine),
     withTranscriptionLock: vi.fn(async (work) => work()),
     wasModelPreloaded: () => true,
     isVadEnabled: () => true,
@@ -137,13 +138,13 @@ describe("retranscribeHistoryItem", () => {
     vi.spyOn(fs.promises, "readFile").mockResolvedValue(
       wavWithSamples(1025) as never,
     );
-    const { provider, session } = makeProvider();
+    const { engine, session } = makeEngine();
     session.transcribe
       .mockResolvedValueOnce({ text: "one" })
       .mockResolvedValueOnce({ text: " two" })
       .mockResolvedValueOnce({ text: " three", detectedLanguage: " en " });
     session.flush.mockResolvedValueOnce({ text: " final" });
-    const dependencies = makeDependencies(provider);
+    const dependencies = makeDependencies(engine);
 
     await expect(retranscribeHistoryItem(7, dependencies)).resolves.toBe(
       "one two three final",
@@ -197,10 +198,10 @@ describe("retranscribeHistoryItem", () => {
     vi.spyOn(fs.promises, "readFile").mockResolvedValue(
       wavWithSamples(1) as never,
     );
-    const { provider, session } = makeProvider();
+    const { engine, session } = makeEngine();
     const failure = new Error("decode failed");
     session.transcribe.mockRejectedValueOnce(failure);
-    const dependencies = makeDependencies(provider);
+    const dependencies = makeDependencies(engine);
 
     await expect(retranscribeHistoryItem(7, dependencies)).rejects.toBe(
       failure,
@@ -216,12 +217,12 @@ describe("retranscribeHistoryItem", () => {
     vi.spyOn(fs.promises, "readFile").mockResolvedValue(
       wavWithSamples(513) as never,
     );
-    const { provider, session } = makeProvider("amical-cloud");
+    const { engine, session } = makeEngine("amical-cloud");
     session.transcribe
       .mockResolvedValueOnce({ text: "first" })
       .mockResolvedValueOnce({ text: "first second" });
     session.flush.mockResolvedValueOnce({ text: "first second final" });
-    const dependencies = makeDependencies(provider);
+    const dependencies = makeDependencies(engine);
 
     await retranscribeHistoryItem(7, dependencies);
 
@@ -246,9 +247,9 @@ describe("retranscribeHistoryItem", () => {
     vi.spyOn(fs.promises, "readFile").mockResolvedValue(
       wavWithSamples(1) as never,
     );
-    const { provider, session } = makeProvider();
+    const { engine, session } = makeEngine();
     session.transcribe.mockResolvedValueOnce({ text: "replacement" });
-    const dependencies = makeDependencies(provider);
+    const dependencies = makeDependencies(engine);
 
     await retranscribeHistoryItem(7, dependencies);
 

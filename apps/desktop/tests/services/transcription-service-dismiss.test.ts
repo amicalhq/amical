@@ -29,23 +29,24 @@ vi.mock("../../src/pipeline/providers/transcription/whisper-provider", () => ({
   WhisperProvider: vi.fn(function () {
     return {
       name: "whisper-local",
-      transcribe: vi.fn(),
-      flush: vi.fn(),
-      reset: vi.fn(),
+      openSession: vi.fn(),
+      dispose: vi.fn(async () => undefined),
     };
   }),
 }));
-vi.mock("../../src/pipeline/providers/transcription/amical-cloud-provider", () => ({
-  AmicalCloudProvider: vi.fn(function () {
-    return {
-      name: "amical-cloud",
-      transcribe: vi.fn(),
-      flush: vi.fn(),
-      reset: vi.fn(),
-      warmup: vi.fn(),
-    };
+vi.mock(
+  "../../src/pipeline/providers/transcription/amical-cloud-provider",
+  () => ({
+    AmicalCloudProvider: vi.fn(function () {
+      return {
+        name: "amical-cloud",
+        openSession: vi.fn(),
+        warmup: vi.fn(),
+        dispose: vi.fn(async () => undefined),
+      };
+    }),
   }),
-}));
+);
 
 import { TranscriptionService } from "../../src/services/transcription-service";
 import { createTranscription } from "../../src/db/transcriptions";

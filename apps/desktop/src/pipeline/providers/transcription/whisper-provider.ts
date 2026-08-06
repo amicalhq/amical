@@ -2,9 +2,9 @@ import type {
   OpenTranscriptionSessionOptions,
   TranscribeContext,
   TranscribeParams,
+  TranscriptionEngine,
   TranscriptionOutput,
-  TranscriptionProvider,
-  TranscriptionSession,
+  TranscriptionProviderSession,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { ModelService } from "../../../services/model-service";
@@ -22,7 +22,6 @@ const MIN_AUDIO_DURATION_MS = 500;
 const MAX_SILENCE_DURATION_MS = 3000;
 const SAMPLE_RATE = 16000;
 const SPEECH_PROBABILITY_THRESHOLD = 0.2;
-const LEGACY_SESSION_ID = "legacy-whisper-session";
 
 type WhisperSessionRuntime = {
   assertAvailable(): void;
@@ -34,7 +33,7 @@ type WhisperSessionRuntime = {
   ): Promise<TranscriptionOutput>;
 };
 
-class WhisperSession implements TranscriptionSession {
+class WhisperProviderSession implements TranscriptionProviderSession {
   readonly name = "whisper-local";
 
   private frameBuffer: Float32Array[] = [];
@@ -50,7 +49,7 @@ class WhisperSession implements TranscriptionSession {
   ) {}
 
   /**
-   * Process one audio chunk. Buffering belongs to this session; the provider only
+   * Process one audio chunk. Buffering belongs to this session; the engine only
    * owns the shared worker and loaded model.
    */
   async transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
@@ -250,31 +249,31 @@ class WhisperSession implements TranscriptionSession {
 }
 
 /**
- * Long-lived local transcription provider.
+ * Long-lived local transcription engine.
  *
- * The provider owns the reusable worker and loaded model. Each opened session
+ * The engine owns the reusable worker and loaded model. Each opened session
  * owns its own audio/VAD buffers and cancellation state.
  */
-export class WhisperProvider implements TranscriptionProvider {
+export class WhisperProvider implements TranscriptionEngine {
   readonly name = "whisper-local";
 
   private readonly resourceMutex = new Mutex();
   private workerWrapper: SimpleForkWrapper | null = null;
-  private legacySession: TranscriptionSession | null = null;
-  private legacySessionId: string | null = null;
   private disposed = false;
   private disposalPromise: Promise<void> | null = null;
 
   constructor(private readonly modelService: ModelService) {}
 
-  openSession(options: OpenTranscriptionSessionOptions): TranscriptionSession {
+  openSession(
+    options: OpenTranscriptionSessionOptions,
+  ): TranscriptionProviderSession {
     this.assertNotDisposed();
     const modelPath = this.resolveModelPath(options.modelId);
     // Resolution starts when the session opens, which pins null/default
     // selection too. The session still observes the rejection on first use.
     void modelPath.catch(() => undefined);
 
-    return new WhisperSession(options.sessionId, modelPath, {
+    return new WhisperProviderSession(options.sessionId, modelPath, {
       assertAvailable: () => this.assertNotDisposed(),
       initialize: (path) => this.initializeModel(path),
       transcribeAudio: (path, audio, context) =>
@@ -282,44 +281,8 @@ export class WhisperProvider implements TranscriptionProvider {
     });
   }
 
-  /** Temporary compatibility path for legacy callers and tests. */
-  transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
-    const sessionId =
-      params.context.sessionId ?? this.legacySessionId ?? LEGACY_SESSION_ID;
-    return this.legacySessionFor(sessionId).transcribe(params);
-  }
-
-  flush(
-    context: TranscribeContext,
-    signal?: AbortSignal,
-  ): Promise<TranscriptionOutput> {
-    this.assertNotDisposed();
-    const sessionId =
-      context.sessionId ?? this.legacySessionId ?? LEGACY_SESSION_ID;
-    if (!this.legacySession || this.legacySessionId !== sessionId) {
-      this.reset();
-      return Promise.resolve({ text: "" });
-    }
-    return this.legacySession.flush(context, signal);
-  }
-
-  reset(): void {
-    this.legacySession?.cancel();
-    this.legacySession = null;
-    this.legacySessionId = null;
-  }
-
-  private legacySessionFor(sessionId: string): TranscriptionSession {
-    if (!this.legacySession || this.legacySessionId !== sessionId) {
-      this.reset();
-      this.legacySession = this.openSession({ sessionId });
-      this.legacySessionId = sessionId;
-    }
-    return this.legacySession;
-  }
-
   /**
-   * Preload the model into the provider-owned worker.
+   * Preload the model into the engine-owned worker.
    */
   async preloadModel(): Promise<void> {
     await this.initializeWhisper();
@@ -491,7 +454,7 @@ export class WhisperProvider implements TranscriptionProvider {
   private assertNotDisposed(): void {
     if (this.disposed) {
       throw new AppError(
-        "Whisper provider has been disposed",
+        "Whisper transcription engine has been disposed",
         ErrorCodes.WORKER_INITIALIZATION_FAILED,
       );
     }
@@ -540,7 +503,6 @@ export class WhisperProvider implements TranscriptionProvider {
       return this.disposalPromise;
     }
 
-    this.reset();
     // Terminal from the moment disposal is requested. Queued resource work
     // will observe this after the current operation releases the mutex.
     this.disposed = true;

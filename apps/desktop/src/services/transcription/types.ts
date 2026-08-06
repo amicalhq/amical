@@ -1,5 +1,5 @@
 import type { GetAccessibilityContextResult } from "@amical/types";
-import type { TranscriptionSession } from "../../pipeline/core/pipeline-types";
+import type { TranscriptionProviderSession } from "../../pipeline/core/pipeline-types";
 
 export interface DictationContext {
   sessionId: string;
@@ -23,7 +23,7 @@ export interface StreamingSessionUpdate {
 
 export interface MaterializedTranscriptionSession {
   context: DictationContext;
-  providerSession: TranscriptionSession;
+  providerSession: TranscriptionProviderSession;
   speechModelId: string;
   transcriptionResults: string[];
   detectedLanguage?: string;

@@ -65,14 +65,15 @@ export interface ProviderState {
   grpcPendingSampleCount: number;
   grpcNextSeq: bigint;
   grpcFallbackStage: CloudFallbackStage;
-  // In-flight HTTP-fallback fetch aborter; reset() aborts it so a finalize-phase
-  // dismiss can cancel an HTTP flush mid-request (gRPC uses stream.cancel()).
+  // In-flight HTTP-fallback fetch aborter; cancellation aborts it so a
+  // finalize-phase dismiss can cancel an HTTP flush mid-request (gRPC uses
+  // stream.cancel()).
   httpAbortController: AbortController | null;
   // Sticky-within-session override: once gRPC fails with a transport-level
   // error, every subsequent transcribe()/flush() in the *same* dictation
   // session takes the HTTP path. Cleared when storeContextEffect sees a new
-  // sessionId, and on reset()/dispose() — so a transient drop does not stick
-  // for the rest of the app run.
+  // sessionId, and on cancellation/disposal — so a transient drop does not
+  // stick for the rest of the app run.
   transportOverride: "http" | null;
 }
 

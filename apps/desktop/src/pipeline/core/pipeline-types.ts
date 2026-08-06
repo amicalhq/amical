@@ -2,10 +2,7 @@
  * Core pipeline types - Simple interfaces without over-engineering
  */
 
-// Re-export context types from dedicated file
-import { PipelineContext } from "./context";
 import { GetAccessibilityContextResult } from "@amical/types";
-export { PipelineContext, SharedPipelineData } from "./context";
 
 // Context for transcription operations (shared between transcribe and flush)
 export interface TranscribeContext {
@@ -36,22 +33,22 @@ export interface TranscriptionOutput {
 export interface OpenTranscriptionSessionOptions {
   sessionId: string;
   /**
-   * Model selected for this operation. Local providers use it to keep the
+   * Model selected for this operation. Local engines use it to keep the
    * session on that model even if the application selection changes later.
    */
   modelId?: string | null;
-  /** Reports an out-of-band failure after provider-local recovery is exhausted. */
+  /** Reports an out-of-band failure after session-local recovery is exhausted. */
   onTerminalFailure?: (error: Error) => void;
 }
 
 /**
  * Mutable state for exactly one transcription operation.
  *
- * Providers own reusable resources such as the Whisper worker and loaded
+ * Engines own reusable resources such as the Whisper worker and loaded
  * model. Sessions own operation state such as audio buffers and cancellation,
  * so one operation cannot reset another.
  */
-export interface TranscriptionSession {
+export interface TranscriptionProviderSession {
   readonly name: string;
   readonly sessionId: string;
   transcribe(params: TranscribeParams): Promise<TranscriptionOutput>;
@@ -80,75 +77,26 @@ export interface FormatParams {
   };
 }
 
-// Transitional provider contract. Legacy methods remain temporarily for
-// compatibility tests while application work uses explicit sessions.
-export interface TranscriptionProvider {
+export interface TranscriptionEngine {
   readonly name: string;
-  openSession(options: OpenTranscriptionSessionOptions): TranscriptionSession;
-  transcribe(params: TranscribeParams): Promise<TranscriptionOutput>;
-  flush(
-    context: TranscribeContext,
-    signal?: AbortSignal,
-  ): Promise<TranscriptionOutput>;
-  reset(): void; // Clear internal buffers without transcribing
+  openSession(
+    options: OpenTranscriptionSessionOptions,
+  ): TranscriptionProviderSession;
   /**
-   * Prepare the provider for upcoming work. Called at app boot and on each
+   * Prepare the engine for upcoming work. Called at app boot and on each
    * recording start. Must be idempotent and cheap when already warm.
    *
-   * Local providers: load model weights into memory if not already loaded.
-   * Cloud providers: refresh auth tokens if expiring (do NOT open transport
+   * Local engines: load model weights into memory if not already loaded.
+   * Cloud engines: refresh auth tokens if expiring (do NOT open transport
    * connections — those should stay lazy on first chunk so cancelled-before-
    * first-chunk sessions don't waste a connection).
    */
   warmup?(): Promise<void>;
-  /**
-   * Push updated per-session context to providers that support live updates.
-   * Cloud gRPC consumes this to send full snapshot context/skills updates.
-   */
-  updateSessionContext?(context: TranscribeContext): Promise<void>;
+  dispose(): Promise<void>;
 }
 
 // Formatting provider interface
 export interface FormattingProvider {
   readonly name: string;
   format(params: FormatParams): Promise<string>;
-}
-
-// Pipeline execution result
-export interface PipelineResult {
-  transcription: string;
-  sessionId: string;
-  metadata: {
-    duration?: number;
-    provider: string;
-    formatted: boolean;
-  };
-}
-
-// Streaming context for pipeline processing
-export interface StreamingPipelineContext extends PipelineContext {
-  sessionId: string;
-  isPartial: boolean;
-  isFinal: boolean;
-  accumulatedTranscription?: string[]; // Store all partial results
-}
-
-// Session data for streaming transcription
-export interface StreamingSession {
-  context: StreamingPipelineContext;
-  providerSession: TranscriptionSession;
-  speechModelId: string;
-  transcriptionResults: string[]; // Accumulate all transcription chunks
-  detectedLanguage?: string;
-  firstChunkReceivedAt?: number; // When first audio chunk arrived at transcription service
-  recordingStartedAt?: number; // When user pressed record button (from RecordingManager)
-  recordingStoppedAt?: number; // When user released record button (from RecordingManager)
-  finalizationStartedAt?: number; // When finalizeSession() was called
-}
-
-// Simple pipeline configuration
-export interface PipelineConfig {
-  transcriptionProvider: TranscriptionProvider;
-  formattingProvider?: FormattingProvider;
-  saveToDatabase: boolean;
 }

@@ -2,8 +2,8 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 import { Effect, Either, Layer, ManagedRuntime, Ref } from "effect";
 import {
   OpenTranscriptionSessionOptions,
-  TranscriptionProvider,
-  TranscriptionSession,
+  TranscriptionEngine,
+  TranscriptionProviderSession,
   TranscribeParams,
   TranscribeContext,
   TranscriptionOutput,
@@ -80,7 +80,7 @@ type CloudRuntime = ReturnType<typeof createCloudRuntime>;
  *   - RATE_LIMIT_EXCEEDED (429): account-level throttle, same backend.
  *   - QUOTA_EXCEEDED (402): plan/word-limit cap, same backend — retry won't help.
  *   - IDLE_TIMEOUT: orchestrator stopped feeding chunks; HTTP would also be starved.
- *   - CANCELLED: user-initiated (e.g., reset() during flush) — falling
+ *   - CANCELLED: user-initiated (for example, cancel() during flush) — falling
  *     back would trigger a phantom HTTP transcription right after the user
  *     tried to stop.
  */
@@ -121,8 +121,6 @@ const shouldFallbackToHttp = (error: AppError): boolean => {
   return true;
 };
 
-const LEGACY_CLOUD_SESSION_ID = "legacy-cloud";
-
 const cloudConfigFromEnvironment = (): CloudConfig => {
   const apiEndpoint = process.env.API_ENDPOINT || __BUNDLED_API_ENDPOINT;
   // Runtime-only escape hatch; the bundled default is intentionally gRPC.
@@ -136,14 +134,13 @@ const cloudConfigFromEnvironment = (): CloudConfig => {
   };
 };
 
-export class AmicalCloudProvider implements TranscriptionProvider {
+export class AmicalCloudProvider implements TranscriptionEngine {
   readonly name = "amical-cloud";
 
   private readonly runtime: CloudRuntime;
   private readonly telemetryService: TelemetryService | null;
   private readonly settingsService: SettingsService | null;
   private readonly sessions = new Set<AmicalCloudSession>();
-  private legacySession: AmicalCloudSession | null = null;
   private disposed = false;
   private disposalPromise: Promise<void> | null = null;
 
@@ -163,65 +160,24 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     });
   }
 
-  openSession(options: OpenTranscriptionSessionOptions): TranscriptionSession {
-    return this.createSession(options.sessionId, options.onTerminalFailure);
-  }
-
-  private createSession(
-    sessionId: string,
-    onTerminalFailure?: (error: Error) => void,
-  ): AmicalCloudSession {
+  openSession(
+    options: OpenTranscriptionSessionOptions,
+  ): TranscriptionProviderSession {
     this.assertNotDisposed();
     const session = new AmicalCloudSession(
-      sessionId,
+      options.sessionId,
       this.runtime,
       this.telemetryService,
       this.settingsService,
-      onTerminalFailure,
-      (closedSession) => this.retireSession(closedSession),
+      options.onTerminalFailure,
+      (closedSession) => this.sessions.delete(closedSession),
     );
     this.sessions.add(session);
     return session;
   }
 
-  async transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
-    const sessionId =
-      params.context.sessionId ??
-      this.legacySession?.sessionId ??
-      LEGACY_CLOUD_SESSION_ID;
-    return this.legacySessionFor(sessionId).transcribe(params);
-  }
-
-  async flush(
-    context: TranscribeContext,
-    signal?: AbortSignal,
-  ): Promise<TranscriptionOutput> {
-    const sessionId =
-      context.sessionId ??
-      this.legacySession?.sessionId ??
-      LEGACY_CLOUD_SESSION_ID;
-    return this.legacySessionFor(sessionId).flush(context, signal);
-  }
-
-  async updateSessionContext(context: TranscribeContext): Promise<void> {
-    this.assertNotDisposed();
-    const sessionId =
-      context.sessionId ??
-      this.legacySession?.sessionId ??
-      LEGACY_CLOUD_SESSION_ID;
-    if (!this.legacySession || this.legacySession.sessionId !== sessionId) {
-      return;
-    }
-    await this.legacySession.updateSessionContext(context);
-  }
-
-  reset(): void {
-    this.legacySession?.cancel();
-    this.legacySession = null;
-  }
-
   /**
-   * Warm the provider for an upcoming session: refresh auth if it's expiring
+   * Warm the engine for an upcoming session: refresh auth if it's expiring
    * so the first transcribe() doesn't pay a token-refresh roundtrip.
    * Does not open a transport connection.
    */
@@ -239,22 +195,6 @@ export class AmicalCloudProvider implements TranscriptionProvider {
     return this.disposalPromise;
   }
 
-  private legacySessionFor(sessionId: string): AmicalCloudSession {
-    this.assertNotDisposed();
-    if (!this.legacySession || this.legacySession.sessionId !== sessionId) {
-      this.reset();
-      this.legacySession = this.createSession(sessionId);
-    }
-    return this.legacySession;
-  }
-
-  private retireSession(session: AmicalCloudSession): void {
-    this.sessions.delete(session);
-    if (this.legacySession === session) {
-      this.legacySession = null;
-    }
-  }
-
   private async disposeInternal(): Promise<void> {
     for (const session of [...this.sessions]) {
       session.cancel();
@@ -265,13 +205,17 @@ export class AmicalCloudProvider implements TranscriptionProvider {
 
   private assertNotDisposed(): void {
     if (this.disposed) {
-      throw new Error("Amical cloud transcription provider has been disposed");
+      throw new Error("Amical cloud transcription engine has been disposed");
     }
   }
 }
 
-/** Mutable Cloud transport state for exactly one transcription operation. */
-class AmicalCloudSession implements TranscriptionSession {
+/**
+ * Mutable cloud state for exactly one transcription operation. The engine owns
+ * only reusable auth/config resources; transport buffers and cancellation are
+ * never shared across sessions.
+ */
+class AmicalCloudSession implements TranscriptionProviderSession {
   readonly name = "amical-cloud";
 
   private readonly state: Ref.Ref<ProviderState>;

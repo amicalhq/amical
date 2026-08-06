@@ -49,10 +49,6 @@ const providerMocks = vi.hoisted(() => {
       name,
       sessions,
       openSession,
-      transcribe: vi.fn(),
-      flush: vi.fn(),
-      reset: vi.fn(),
-      updateSessionContext: vi.fn(),
       warmup: vi.fn(async () => undefined),
       dispose: vi.fn(async () => undefined),
       preloadModel: vi.fn(async () => undefined),
@@ -490,10 +486,6 @@ describe("TranscriptionService — provider session pinning", () => {
       }),
     );
     expect(providerMocks.local.openSession).not.toHaveBeenCalled();
-    expect(providerMocks.local.updateSessionContext).not.toHaveBeenCalled();
-    expect(providerMocks.cloud.updateSessionContext).not.toHaveBeenCalled();
-    expect(providerMocks.local.reset).not.toHaveBeenCalled();
-    expect(providerMocks.cloud.reset).not.toHaveBeenCalled();
   });
 
   it("does not start a queued context push after cancellation", async () => {
@@ -689,9 +681,6 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(retrySession.transcribe).toHaveBeenCalledOnce();
     expect(retrySession.flush).toHaveBeenCalledOnce();
     expect(retrySession.cancel).toHaveBeenCalledOnce();
-    expect(providerMocks.local.reset).not.toHaveBeenCalled();
-    expect(providerMocks.local.transcribe).not.toHaveBeenCalled();
-    expect(providerMocks.local.flush).not.toHaveBeenCalled();
     expect(vi.mocked(updateTranscription)).toHaveBeenCalledOnce();
   });
 

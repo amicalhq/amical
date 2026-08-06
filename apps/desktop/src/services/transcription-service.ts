@@ -1,6 +1,6 @@
 import {
   TranscribeContext,
-  TranscriptionProvider,
+  TranscriptionEngine,
 } from "../pipeline/core/pipeline-types";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
@@ -65,8 +65,8 @@ type FinalizeSessionOptions = {
  * Service for audio transcription and optional formatting
  */
 export class TranscriptionService {
-  private whisperProvider: WhisperProvider;
-  private cloudProvider: AmicalCloudProvider;
+  private whisperEngine: WhisperProvider;
+  private cloudEngine: AmicalCloudProvider;
   private activeLiveSession: LiveTranscriptionSession | null = null;
   private historyRetryInProgress = false;
   private vadService: VADService | null;
@@ -90,8 +90,8 @@ export class TranscriptionService {
     private nativeBridge: NativeBridge | null,
     private onboardingService: OnboardingService | null,
   ) {
-    this.whisperProvider = new WhisperProvider(modelService);
-    this.cloudProvider = new AmicalCloudProvider(
+    this.whisperEngine = new WhisperProvider(modelService);
+    this.cloudEngine = new AmicalCloudProvider(
       authService,
       telemetryService,
       settingsService,
@@ -111,8 +111,8 @@ export class TranscriptionService {
    * Idempotent and cheap when already warm. Safe to fire-and-forget.
    */
   async warmupActiveProvider(): Promise<void> {
-    const provider = await this.selectProvider();
-    await provider.warmup?.();
+    const engine = await this.selectEngine();
+    await engine.warmup?.();
   }
 
   beginStreamingSession(
@@ -214,19 +214,19 @@ export class TranscriptionService {
   }
 
   /**
-   * Select the appropriate transcription provider based on the selected model
+   * Select the appropriate transcription engine based on the selected model.
    */
-  private async selectProvider(): Promise<TranscriptionProvider> {
+  private async selectEngine(): Promise<TranscriptionEngine> {
     const selectedModelId = await this.modelService.getSelectedModel();
-    return this.providerForSelectedModel(selectedModelId);
+    return this.engineForSelectedModel(selectedModelId);
   }
 
-  private providerForSelectedModel(
+  private engineForSelectedModel(
     selectedModelId: string | null,
-  ): TranscriptionProvider {
+  ): TranscriptionEngine {
     if (!selectedModelId) {
       // Default to whisper if no model selected
-      return this.whisperProvider;
+      return this.whisperEngine;
     }
 
     // Find the model in AVAILABLE_MODELS
@@ -234,11 +234,11 @@ export class TranscriptionService {
 
     // Use cloud provider for Amical Cloud models
     if (model?.provider === "Amical Cloud") {
-      return this.cloudProvider;
+      return this.cloudEngine;
     }
 
     // Default to whisper for all other models
-    return this.whisperProvider;
+    return this.whisperEngine;
   }
 
   /**
@@ -304,7 +304,7 @@ export class TranscriptionService {
         }
       });
       if (service) {
-        // dispose() kills the whisper fork and the cloud provider runtime.
+        // dispose() kills the Whisper fork and the cloud engine runtime.
         yield* addRelease(
           appScope,
           "Disposing transcription service...",
@@ -391,7 +391,7 @@ export class TranscriptionService {
       // Cloud model selected: warm auth so the first dictation's first chunk
       // doesn't block on a token-refresh roundtrip.
       try {
-        await this.cloudProvider.warmup?.();
+        await this.cloudEngine.warmup?.();
         logger.transcription.info("Cloud auth warmed up");
       } catch (error) {
         logger.transcription.warn("Cloud auth warmup failed (non-fatal)", {
@@ -409,7 +409,7 @@ export class TranscriptionService {
   async preloadWhisperModel(): Promise<void> {
     try {
       // This will trigger the model initialization in WhisperProvider
-      await this.whisperProvider.preloadModel();
+      await this.whisperEngine.preloadModel();
       logger.transcription.info("Whisper model preloaded successfully");
     } catch (error) {
       logger.transcription.error("Failed to preload Whisper model:", error);
@@ -432,7 +432,7 @@ export class TranscriptionService {
       }
 
       // For local models, check if any are downloaded
-      const modelService = this.whisperProvider["modelService"];
+      const modelService = this.whisperEngine["modelService"];
       const availableModels = await modelService.getValidDownloadedModels();
       return Object.keys(availableModels).length > 0;
     } catch (error) {
@@ -463,7 +463,7 @@ export class TranscriptionService {
               logger.transcription.info(
                 "Loading Whisper model after model change...",
               );
-              await this.whisperProvider.preloadModel();
+              await this.whisperEngine.preloadModel();
               this.modelWasPreloaded = true;
               logger.transcription.info("Whisper model loaded successfully");
             } else {
@@ -578,8 +578,8 @@ export class TranscriptionService {
         if (!liveSession.canCompleteAdmittedWork()) {
           return "";
         }
-        const provider = this.providerForSelectedModel(selectedModelId);
-        const providerSession = provider.openSession({
+        const engine = this.engineForSelectedModel(selectedModelId);
+        const providerSession = engine.openSession({
           sessionId,
           modelId: selectedModelId,
           onTerminalFailure: (error) =>
@@ -663,8 +663,8 @@ export class TranscriptionService {
   }
 
   /**
-   * Dismiss a session by aborting its signal and cancelling its provider. The
-   * signal drives finalizeSession's cooperative gates, while provider cancel
+   * Dismiss a session by aborting its signal and cancelling its provider
+   * session. The signal drives finalizeSession's cooperative gates, while cancel
    * interrupts gRPC/HTTP work immediately. Local Whisper decode is not
    * interruptible, so its result is discarded at the next lifecycle check.
    * No-op if the session is already gone.
@@ -761,7 +761,7 @@ export class TranscriptionService {
   }
 
   /**
-   * Finalize a streaming session - flush provider, format, save to DB
+   * Finalize a streaming session - flush the provider session, format, save to DB
    * Call this instead of processStreamingChunk with isFinal=true
    */
   async finalizeSession(options: FinalizeSessionOptions): Promise<string> {
@@ -841,7 +841,7 @@ export class TranscriptionService {
         isAmicalCloudSelectionValue(formatterConfig.modelId);
       const usedCloudProvider = session.providerSession.name === "amical-cloud";
 
-      // Flush provider to get any remaining buffered audio
+      // Flush the provider session to get any remaining buffered audio
       await this.transcriptionMutex.acquire();
       try {
         liveSession.throwIfTerminalFailure();
@@ -972,8 +972,8 @@ export class TranscriptionService {
 
       // Get native binding info if using local whisper
       let whisperNativeBinding: string | undefined;
-      if (this.whisperProvider && "getBindingInfo" in this.whisperProvider) {
-        const bindingInfo = await this.whisperProvider.getBindingInfo();
+      if (this.whisperEngine && "getBindingInfo" in this.whisperEngine) {
+        const bindingInfo = await this.whisperEngine.getBindingInfo();
         whisperNativeBinding = bindingInfo?.type;
         logger.transcription.info(
           "whisper native binding used",
@@ -1051,8 +1051,8 @@ export class TranscriptionService {
         modelService: this.modelService,
         telemetryService: this.telemetryService,
         processVadFrames: (frames) => this.processHistoryVadFrames(frames),
-        providerForSelectedModel: (selectedModelId) =>
-          this.providerForSelectedModel(selectedModelId),
+        engineForSelectedModel: (selectedModelId) =>
+          this.engineForSelectedModel(selectedModelId),
         withTranscriptionLock: (work) =>
           this.transcriptionMutex.runExclusive(work),
         wasModelPreloaded: () => this.modelWasPreloaded,
@@ -1099,8 +1099,8 @@ export class TranscriptionService {
       liveSession.requestAbort();
       this.retireLiveSession(liveSession);
     }
-    await this.whisperProvider.dispose();
-    await this.cloudProvider.dispose();
+    await this.whisperEngine.dispose();
+    await this.cloudEngine.dispose();
     // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }
