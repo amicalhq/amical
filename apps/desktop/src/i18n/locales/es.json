@@ -374,6 +374,10 @@
           "title": "No hay modelo seleccionado",
           "description": "Selecciona un modelo de transcripción."
         },
+        "retryInProgress": {
+          "title": "Reintento en curso",
+          "description": "Espera a que termine el reintento antes de iniciar una nueva grabación."
+        },
         "workerInitializationFailed": {
           "title": "Error de inicialización",
           "description": "No se pudo iniciar el motor de transcripción"
@@ -681,6 +685,8 @@
         "downloadAudio": "Descargar audio",
         "delete": "Eliminar",
         "retry": "Reintentar transcripción",
+        "retryDisabledRecording": "Finaliza la grabación actual antes de volver a intentar la transcripción.",
+        "retryDisabledInProgress": "Espera a que termine el reintento actual.",
         "report": "Reportar problema",
         "reportDisabledTelemetry": "Activa la telemetría en Configuración avanzada para reportar problemas"
       },

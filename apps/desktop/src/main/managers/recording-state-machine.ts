@@ -42,6 +42,7 @@ export type RecordingMachineEvent =
   | { type: "pttRelease"; quick: boolean }
   | { type: "toggle"; quick: boolean }
   | { type: "signalStop" }
+  | { type: "sessionFailure" }
   | { type: "dismiss" }
   | { type: "quickReleaseTimeout" }
   | { type: "noAudioTimeout" }
@@ -243,6 +244,19 @@ export function transitionRecordingMachine(
         };
       }
 
+      if (!isRecordingState(state)) {
+        return { state, commands: [] };
+      }
+
+      return {
+        state: { tag: "STOP_N" },
+        commands: [
+          ...clearPttQTimerIfNeeded(state),
+          { type: "stopSession", code: null },
+        ],
+      };
+
+    case "sessionFailure":
       if (!isRecordingState(state)) {
         return { state, commands: [] };
       }

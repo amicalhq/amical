@@ -188,7 +188,10 @@ vi.mock("../../src/main/logger", () => ({
 // ---- Imports come AFTER mocks -------------------------------------------
 
 import { AmicalCloudProvider } from "../../src/pipeline/providers/transcription/amical-cloud-provider";
-import { GrpcDictationError } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
+import {
+  CloudDictationGrpcStream,
+  GrpcDictationError,
+} from "../../src/pipeline/providers/transcription/grpc-dictation-client";
 import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
 import {
   AppError,
@@ -878,6 +881,85 @@ describe("AmicalCloudProvider", () => {
       settleGrpcError(errorCode, "");
       return { provider, flushPromise };
     };
+
+    it("reports a non-fallback gRPC failure for the active explicit session once", async () => {
+      const cancelStream = vi.spyOn(
+        CloudDictationGrpcStream.prototype,
+        "cancel",
+      );
+      const onTerminalFailure = vi.fn();
+      const provider = constructProviderWithTransport("grpc");
+      const session = provider.openSession({
+        sessionId: "session-1",
+        onTerminalFailure,
+      });
+      await session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      const stream = grpcMock.getLastStream()!;
+      stream.emit(
+        "error",
+        new GrpcDictationError(
+          "Word limit exceeded",
+          grpcMock.status.RESOURCE_EXHAUSTED,
+          undefined,
+          "trace-terminal",
+          false,
+          DictationErrorCodes.QUOTA_EXCEEDED,
+          "Quota reached.",
+        ),
+      );
+
+      await vi.waitFor(() => {
+        expect(onTerminalFailure).toHaveBeenCalledOnce();
+      });
+      expect(cancelStream).toHaveBeenCalledOnce();
+      expect(onTerminalFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorCode: ErrorCodes.QUOTA_EXCEEDED,
+          applicationCode: DictationErrorCodes.QUOTA_EXCEEDED,
+          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+          traceId: "trace-terminal",
+        }),
+      );
+
+      stream.emit("status", {
+        code: grpcMock.status.RESOURCE_EXHAUSTED,
+        details: "Word limit exceeded",
+        metadata: grpcMock.metadata(),
+      });
+      await flush();
+      expect(onTerminalFailure).toHaveBeenCalledOnce();
+      expect(fetchMock).not.toHaveBeenCalled();
+      cancelStream.mockRestore();
+    });
+
+    it("keeps fallback-eligible observed failures inside the explicit session", async () => {
+      const onTerminalFailure = vi.fn();
+      const provider = constructProviderWithTransport("grpc");
+      const session = provider.openSession({
+        sessionId: "session-1",
+        onTerminalFailure,
+      });
+      await session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      settleGrpcError(
+        grpcMock.status.UNAUTHENTICATED,
+        "stale call credentials",
+      );
+      await flush();
+
+      expect(onTerminalFailure).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      session.cancel();
+    });
 
     it("falls back to HTTP on UNAUTHENTICATED and force-refreshes after HTTP 401", async () => {
       let token = "stale-id-token";
@@ -1647,6 +1729,51 @@ describe("AmicalCloudProvider", () => {
   });
 
   describe("explicit session ownership", () => {
+    it("ignores a late terminal failure from a cancelled explicit session", async () => {
+      const onSessionAFailure = vi.fn();
+      const onSessionBFailure = vi.fn();
+      const provider = constructProviderWithTransport("grpc");
+      const sessionA = provider.openSession({
+        sessionId: "session-A",
+        onTerminalFailure: onSessionAFailure,
+      });
+      await sessionA.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const streamA = grpcMock.getLastStream()!;
+      sessionA.cancel();
+      await flush();
+
+      const sessionB = provider.openSession({
+        sessionId: "session-B",
+        onTerminalFailure: onSessionBFailure,
+      });
+      await sessionB.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      streamA.emit(
+        "error",
+        new GrpcDictationError(
+          "late quota",
+          grpcMock.status.RESOURCE_EXHAUSTED,
+          undefined,
+          undefined,
+          false,
+          DictationErrorCodes.QUOTA_EXCEEDED,
+        ),
+      );
+      await flush();
+
+      expect(onSessionAFailure).not.toHaveBeenCalled();
+      expect(onSessionBFailure).not.toHaveBeenCalled();
+      sessionB.cancel();
+    });
+
     it("isolates HTTP buffers and cancellation between sessions", async () => {
       const provider = constructProviderWithTransport("http");
       const sessionA = provider.openSession({ sessionId: "session-A" });

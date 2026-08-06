@@ -58,3 +58,48 @@ describe("transcriptionsRouter.deleteAllTranscriptions", () => {
     });
   });
 });
+
+describe("transcriptionsRouter.retryTranscription", () => {
+  it.each(["starting", "recording", "stopping"] as const)(
+    "rejects retry while the recording manager is %s",
+    async (state) => {
+      const retryTranscription = vi.fn();
+      const { transcriptionsRouter } = await import(
+        "../../src/trpc/routers/transcriptions"
+      );
+      const caller = transcriptionsRouter.createCaller({
+        services: {
+          recordingManager: { getState: vi.fn(() => state) },
+          transcriptionService: { retryTranscription },
+        },
+      } as never);
+
+      await expect(caller.retryTranscription({ id: 42 })).rejects.toMatchObject(
+        {
+          code: "CONFLICT",
+          message: "Cannot retry while a recording is in progress",
+        },
+      );
+      expect(retryTranscription).not.toHaveBeenCalled();
+    },
+  );
+
+  it("delegates retry while the recording manager is idle", async () => {
+    const retryTranscription = vi.fn().mockResolvedValue("retried text");
+    const { transcriptionsRouter } = await import(
+      "../../src/trpc/routers/transcriptions"
+    );
+    const caller = transcriptionsRouter.createCaller({
+      services: {
+        recordingManager: { getState: vi.fn(() => "idle") },
+        transcriptionService: { retryTranscription },
+      },
+    } as never);
+
+    await expect(caller.retryTranscription({ id: 42 })).resolves.toBe(
+      "retried text",
+    );
+    expect(retryTranscription).toHaveBeenCalledOnce();
+    expect(retryTranscription).toHaveBeenCalledWith(42);
+  });
+});

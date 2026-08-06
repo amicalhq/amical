@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { dialog } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -184,6 +185,13 @@ export const transcriptionsRouter = createRouter({
   retryTranscription: procedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
+      if (ctx.services.recordingManager.getState() !== "idle") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Cannot retry while a recording is in progress",
+        });
+      }
+
       const transcriptionService = ctx.services.transcriptionService;
       if (!transcriptionService) {
         throw new Error("Transcription service not available");

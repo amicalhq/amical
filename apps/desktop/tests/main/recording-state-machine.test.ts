@@ -165,6 +165,33 @@ describe("recording state machine", () => {
     },
   );
 
+  it.each(activeStates().map((state) => [state.tag, state] as const))(
+    "uses a normal stop for terminal session failure from %s",
+    (_tag, activeState) => {
+      const [state, commands] = step(activeState, {
+        type: "sessionFailure",
+      });
+
+      expect(state).toEqual({ tag: "STOP_N" });
+      expect(commands).toEqual(
+        activeState.tag === "PTT_Q"
+          ? [
+              { type: "clearQuickReleaseTimer" },
+              { type: "stopSession", code: null },
+            ]
+          : [{ type: "stopSession", code: null }],
+      );
+    },
+  );
+
+  it.each([
+    ["IDLE", { tag: "IDLE" }],
+    ["STOP_N", { tag: "STOP_N" }],
+    ["STOP_C", { tag: "STOP_C", code: "no_audio" }],
+  ] as const)("ignores terminal session failure from %s", (_tag, state) => {
+    expect(step(state, { type: "sessionFailure" })).toEqual([state, []]);
+  });
+
   it("switches toggle from PTT to hands-free", () => {
     const [state, commands] = step(startPtt(), {
       type: "toggle",
@@ -444,6 +471,7 @@ describe("recording state machine", () => {
       { type: "pttRelease", quick: true },
       { type: "toggle", quick: true },
       { type: "signalStop" },
+      { type: "sessionFailure" },
       { type: "quickReleaseTimeout" },
       { type: "noAudioTimeout" },
       { type: "durationWarningTimeout" },

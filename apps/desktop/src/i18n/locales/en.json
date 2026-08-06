@@ -371,6 +371,10 @@
           "title": "No Model Selected",
           "description": "Please select a transcription model."
         },
+        "retryInProgress": {
+          "title": "Retry in progress",
+          "description": "Wait for the retry to finish before starting a new recording."
+        },
         "workerInitializationFailed": {
           "title": "Initialization failed",
           "description": "Failed to start transcription engine"
@@ -678,6 +682,8 @@
         "downloadAudio": "Download Audio",
         "delete": "Delete",
         "retry": "Retry transcription",
+        "retryDisabledRecording": "Finish the current recording before retrying a transcription.",
+        "retryDisabledInProgress": "Wait for the current retry to finish.",
         "report": "Report issue",
         "reportDisabledTelemetry": "Enable telemetry in Advanced settings to report issues"
       },

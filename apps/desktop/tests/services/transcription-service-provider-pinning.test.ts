@@ -6,6 +6,7 @@ import type {
   TranscribeParams,
   TranscriptionOutput,
 } from "../../src/pipeline/core/pipeline-types";
+import { AppError, ErrorCodes } from "../../src/types/error";
 
 const providerMocks = vi.hoisted(() => {
   const makeSession = (
@@ -28,6 +29,7 @@ const providerMocks = vi.hoisted(() => {
     updateSessionContext: vi.fn<(context: TranscribeContext) => Promise<void>>(
       async () => undefined,
     ),
+    emitTerminalFailure: (error: Error) => options.onTerminalFailure?.(error),
   });
 
   const makeProvider = (name: string, defaultFinalText: string) => {
@@ -244,10 +246,12 @@ describe("TranscriptionService — provider session pinning", () => {
 
     const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
     expect(providerMocks.cloud.openSession).toHaveBeenCalledOnce();
-    expect(providerMocks.cloud.openSession).toHaveBeenCalledWith({
-      sessionId: "cloud-session",
-      modelId: "amical-cloud",
-    });
+    expect(providerMocks.cloud.openSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "cloud-session",
+        modelId: "amical-cloud",
+      }),
+    );
     expect(providerMocks.local.openSession).not.toHaveBeenCalled();
     expect(cloudSession.transcribe).toHaveBeenCalledTimes(2);
     expect(cloudSession.flush).toHaveBeenCalledWith(
@@ -273,10 +277,12 @@ describe("TranscriptionService — provider session pinning", () => {
 
     const localSession = sessionFor(providerMocks.local, "local-session");
     expect(providerMocks.local.openSession).toHaveBeenCalledOnce();
-    expect(providerMocks.local.openSession).toHaveBeenCalledWith({
-      sessionId: "local-session",
-      modelId: "whisper-tiny",
-    });
+    expect(providerMocks.local.openSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "local-session",
+        modelId: "whisper-tiny",
+      }),
+    );
     expect(providerMocks.cloud.openSession).not.toHaveBeenCalled();
     expect(localSession.transcribe).toHaveBeenCalledTimes(2);
     expect(localSession.flush).toHaveBeenCalledOnce();
@@ -685,5 +691,168 @@ describe("TranscriptionService — provider session pinning", () => {
     const retrySession = sessionFor(providerMocks.local, "retry-session");
     expect(retrySession.cancel).toHaveBeenCalledOnce();
     expect(vi.mocked(updateTranscription)).not.toHaveBeenCalled();
+
+    expect(service.beginStreamingSession("after-failed-retry")).toBe(true);
+    await service.cancelStreamingSession("after-failed-retry");
+  });
+
+  it("keeps live admission blocked until retry persistence completes", async () => {
+    selectedModelId = "whisper-tiny";
+    const persistence =
+      deferred<Awaited<ReturnType<typeof updateTranscription>>>();
+    vi.mocked(updateTranscription).mockImplementationOnce(
+      async () => persistence.promise,
+    );
+
+    const retry = service.retryTranscription(1);
+    await vi.waitFor(() => {
+      expect(updateTranscription).toHaveBeenCalledOnce();
+    });
+
+    expect(service.beginStreamingSession("blocked-during-persistence")).toBe(
+      false,
+    );
+
+    persistence.resolve(
+      historyRecord() as Awaited<ReturnType<typeof updateTranscription>>,
+    );
+    await retry;
+
+    expect(service.beginStreamingSession("after-persistence")).toBe(true);
+    await service.cancelStreamingSession("after-persistence");
+  });
+
+  it("latches and reports the first terminal failure for the active live session", async () => {
+    selectedModelId = "amical-cloud";
+    const listener = vi.fn();
+    expect(service.beginStreamingSession("cloud-session", listener)).toBe(true);
+    await processChunk("cloud-session", 0.1);
+    const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
+    const terminalError = new AppError(
+      "Cloud quota exhausted",
+      ErrorCodes.QUOTA_EXCEEDED,
+    );
+
+    cloudSession.emitTerminalFailure(terminalError);
+    cloudSession.emitTerminalFailure(
+      new AppError("Later failure", ErrorCodes.RATE_LIMIT_EXCEEDED),
+    );
+
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith(terminalError);
+    await expect(
+      service.finalizeSession({
+        sessionId: "cloud-session",
+        audioFilePath: "/tmp/cloud-session.wav",
+      }),
+    ).rejects.toBe(terminalError);
+    expect(cloudSession.flush).not.toHaveBeenCalled();
+    expect(cloudSession.cancel).toHaveBeenCalledOnce();
+    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "",
+        audioFile: "/tmp/cloud-session.wav",
+        meta: expect.objectContaining({
+          sessionId: "cloud-session",
+          status: "failed",
+          failureReason: ErrorCodes.QUOTA_EXCEEDED,
+        }),
+      }),
+    );
+  });
+
+  it("persists a terminal failure that occurs before provider materialization", async () => {
+    selectedModelId = "amical-cloud";
+    const terminalError = new Error("Context lookup failed");
+    const serviceInternals = service as unknown as TestServiceInternals;
+    vi.mocked(serviceInternals.buildContext).mockRejectedValueOnce(
+      terminalError,
+    );
+    const listener = vi.fn();
+    expect(service.beginStreamingSession("cloud-session", listener)).toBe(true);
+
+    await expect(processChunk("cloud-session", 0.1)).rejects.toBe(
+      terminalError,
+    );
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith(terminalError);
+
+    await expect(
+      service.finalizeSession({
+        sessionId: "cloud-session",
+        audioFilePath: "/tmp/cloud-session.wav",
+      }),
+    ).rejects.toBe(terminalError);
+    expect(providerMocks.cloud.openSession).not.toHaveBeenCalled();
+    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "",
+        audioFile: "/tmp/cloud-session.wav",
+        meta: expect.objectContaining({
+          sessionId: "cloud-session",
+          status: "failed",
+          failureReason: ErrorCodes.UNKNOWN,
+        }),
+      }),
+    );
+  });
+
+  it("ignores a retired session callback while a newer live session is active", async () => {
+    selectedModelId = "amical-cloud";
+    const oldListener = vi.fn();
+    expect(service.beginStreamingSession("old-session", oldListener)).toBe(
+      true,
+    );
+    await processChunk("old-session", 0.1);
+    const oldSession = sessionFor(providerMocks.cloud, "old-session");
+    await service.cancelStreamingSession("old-session");
+
+    const currentListener = vi.fn();
+    expect(
+      service.beginStreamingSession("current-session", currentListener),
+    ).toBe(true);
+    await processChunk("current-session", 0.2);
+    const currentSession = sessionFor(providerMocks.cloud, "current-session");
+
+    oldSession.emitTerminalFailure(
+      new AppError("Late old failure", ErrorCodes.QUOTA_EXCEEDED),
+    );
+
+    expect(oldListener).not.toHaveBeenCalled();
+    expect(currentListener).not.toHaveBeenCalled();
+    await expect(
+      service.finalizeSession({ sessionId: "current-session" }),
+    ).resolves.toBe("cloud final");
+    expect(currentSession.flush).toHaveBeenCalledOnce();
+    expect(currentSession.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("excludes live recording and History retry in both directions", async () => {
+    selectedModelId = "whisper-tiny";
+    expect(service.beginStreamingSession("live-session")).toBe(true);
+
+    await expect(service.retryTranscription(1)).rejects.toThrow(
+      "Cannot retry while recording is in progress",
+    );
+    expect(vi.mocked(getTranscriptionById)).not.toHaveBeenCalled();
+    await service.cancelStreamingSession("live-session");
+
+    const lookup = deferred<Awaited<ReturnType<typeof getTranscriptionById>>>();
+    vi.mocked(getTranscriptionById).mockImplementationOnce(
+      async () => lookup.promise,
+    );
+    const retry = service.retryTranscription(1);
+
+    expect(service.beginStreamingSession("blocked-live-session")).toBe(false);
+    await expect(service.retryTranscription(2)).rejects.toThrow(
+      "Another transcription retry is already in progress",
+    );
+    expect(vi.mocked(getTranscriptionById)).toHaveBeenCalledOnce();
+
+    lookup.resolve(historyRecord());
+    expect((await retry).trim()).toBe("local final");
+
+    expect(service.beginStreamingSession("next-live-session")).toBe(true);
+    await service.cancelStreamingSession("next-live-session");
   });
 });

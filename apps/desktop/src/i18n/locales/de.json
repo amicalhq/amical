@@ -374,6 +374,10 @@
           "title": "Kein Modell ausgewählt",
           "description": "Bitte wähle ein Transkriptionsmodell aus."
         },
+        "retryInProgress": {
+          "title": "Transkription wird wiederholt",
+          "description": "Warte, bis der Wiederholungsversuch abgeschlossen ist, bevor du eine neue Aufnahme startest."
+        },
         "workerInitializationFailed": {
           "title": "Initialisierung fehlgeschlagen",
           "description": "Die Transkriptions-Engine konnte nicht gestartet werden"
@@ -681,6 +685,8 @@
         "downloadAudio": "Audio herunterladen",
         "delete": "Löschen",
         "retry": "Transkription wiederholen",
+        "retryDisabledRecording": "Beende die aktuelle Aufnahme, bevor du die Transkription erneut versuchst.",
+        "retryDisabledInProgress": "Warte, bis der aktuelle Wiederholungsversuch abgeschlossen ist.",
         "report": "Problem melden",
         "reportDisabledTelemetry": "Aktiviere die Telemetrie in den erweiterten Einstellungen, um Probleme zu melden"
       },

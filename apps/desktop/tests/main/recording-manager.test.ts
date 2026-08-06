@@ -23,6 +23,7 @@ type RecordingManagerInternals = {
   initializeSession(): Promise<void>;
   handleAudioChunk(chunk: Float32Array, isFinalChunk: boolean): Promise<void>;
   handleFinalChunk(): Promise<void>;
+  handleStreamingSessionFailure(sessionId: string, error: Error): Promise<void>;
   notifyNoAudio(): void;
   forceIdle(): Promise<void>;
   pasteTranscription(transcription: string): Promise<void>;
@@ -30,8 +31,7 @@ type RecordingManagerInternals = {
 
 const createRecordingManager = (
   services: Record<string, unknown> = {},
-): RecordingManager =>
-  RecordingManager.createForTests(services as never);
+): RecordingManager => RecordingManager.createForTests(services as never);
 
 const internalsOf = (manager: RecordingManager): RecordingManagerInternals =>
   manager as unknown as RecordingManagerInternals;
@@ -54,6 +54,174 @@ describe("nullable dependencies", () => {
 });
 
 describe("recording manager FSM interpreter", () => {
+  it("starts the live session before awaiting speech-model lookup", async () => {
+    const modelLookup = Promise.withResolvers<string>();
+    const getSelectedModel = vi.fn(() => modelLookup.promise);
+    const beginStreamingSession = vi.fn(() => true);
+    const manager = createRecordingManager({
+      modelService: { getSelectedModel },
+      transcriptionService: { beginStreamingSession },
+    });
+    const internals = internalsOf(manager);
+    vi.spyOn(internals, "performStartSession").mockResolvedValue(undefined);
+
+    const start = manager.signalStart();
+    await vi.waitFor(() => {
+      expect(getSelectedModel).toHaveBeenCalledOnce();
+    });
+
+    expect(beginStreamingSession).toHaveBeenCalledOnce();
+    expect(beginStreamingSession.mock.invocationCallOrder[0]).toBeLessThan(
+      getSelectedModel.mock.invocationCallOrder[0]!,
+    );
+
+    modelLookup.resolve("whisper-tiny");
+    await start;
+  });
+
+  it("ends the empty live session when no speech model is selected", async () => {
+    const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
+      () => true,
+    );
+    const cancelStreamingSession = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn().mockResolvedValue(null),
+      },
+      transcriptionService: {
+        beginStreamingSession,
+        cancelStreamingSession,
+      },
+    });
+    const widgetNotifications: Array<{
+      type: string;
+      errorCode?: string;
+    }> = [];
+    manager.on("widget-notification", (notification) => {
+      widgetNotifications.push(notification);
+    });
+
+    await manager.signalStart();
+
+    const sessionId = beginStreamingSession.mock.calls[0]![0];
+    expect(cancelStreamingSession).toHaveBeenCalledWith(sessionId);
+    expect(manager.getState()).toBe("idle");
+    expect(widgetNotifications).toEqual([
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.MODEL_MISSING,
+      },
+    ]);
+  });
+
+  it("ends the empty live session when speech-model lookup fails", async () => {
+    const lookupError = new Error("model lookup failed");
+    const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
+      () => true,
+    );
+    const cancelStreamingSession = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn().mockRejectedValue(lookupError),
+      },
+      transcriptionService: {
+        beginStreamingSession,
+        cancelStreamingSession,
+      },
+    });
+
+    await expect(manager.signalStart()).rejects.toBe(lookupError);
+
+    const sessionId = beginStreamingSession.mock.calls[0]![0];
+    expect(cancelStreamingSession).toHaveBeenCalledWith(sessionId);
+    expect(manager.getState()).toBe("idle");
+  });
+
+  it("reports a terminal error when a History retry blocks recording admission", async () => {
+    const beginStreamingSession = vi.fn(() => false);
+    const nativeBridge = {
+      call: vi.fn(),
+    };
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn().mockResolvedValue("whisper-tiny"),
+      },
+      transcriptionService: {
+        beginStreamingSession,
+      },
+      nativeBridge,
+    });
+    const widgetNotifications: Array<{
+      type: string;
+      errorCode?: string;
+    }> = [];
+    manager.on("widget-notification", (notification) => {
+      widgetNotifications.push(notification);
+    });
+
+    await expect(manager.signalStart()).resolves.toBeUndefined();
+
+    expect(beginStreamingSession).toHaveBeenCalledOnce();
+    expect(nativeBridge.call).not.toHaveBeenCalled();
+    expect(manager.getState()).toBe("idle");
+    expect(widgetNotifications).toEqual([
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+      },
+    ]);
+  });
+
+  it("stops only the matching active session on terminal transcription failure", async () => {
+    let reportFailure: ((error: Error) => void) | undefined;
+    const beginStreamingSession = vi.fn(
+      (_sessionId: string, onTerminalFailure?: (error: Error) => void) => {
+        reportFailure = onTerminalFailure;
+        return true;
+      },
+    );
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn().mockResolvedValue("whisper-tiny"),
+      },
+      transcriptionService: {
+        beginStreamingSession,
+      },
+    });
+    const internals = internalsOf(manager);
+    vi.spyOn(internals, "performStartSession").mockResolvedValue(undefined);
+
+    await manager.signalStart();
+    const activeSessionId = internals.currentSessionId;
+    expect(activeSessionId).not.toBeNull();
+    expect(reportFailure).toEqual(expect.any(Function));
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: true,
+    });
+    const stop = vi
+      .spyOn(internals, "performEndRecording")
+      .mockResolvedValue(undefined);
+    const failure = new AppError(
+      "Word limit exceeded",
+      ErrorCodes.QUOTA_EXCEEDED,
+    );
+
+    await internals.handleStreamingSessionFailure("stale-session", failure);
+    expect(internals.machine.currentState).toEqual({
+      tag: "REC_HF",
+      firstChunkReceived: true,
+    });
+    expect(stop).not.toHaveBeenCalled();
+
+    reportFailure?.(failure);
+
+    await vi.waitFor(() => {
+      expect(stop).toHaveBeenCalledWith(null);
+    });
+    expect(internals.machine.currentState).toEqual({ tag: "STOP_N" });
+  });
+
   it("sets stop intent before broadcasting stopping", () => {
     const manager = createRecordingManager();
     const internals = internalsOf(manager);
@@ -278,7 +446,7 @@ describe("recording manager FSM interpreter", () => {
       getSelectedModel: vi.fn().mockResolvedValue({ id: "model-1" }),
     };
     const transcriptionService = {
-      beginStreamingSession: vi.fn(),
+      beginStreamingSession: vi.fn<(sessionId: string) => boolean>(() => true),
       resetVadForNewSession: vi.fn().mockResolvedValue(undefined),
       warmupActiveProvider: vi.fn().mockResolvedValue(undefined),
       cancelStreamingSession: vi.fn().mockResolvedValue(undefined),

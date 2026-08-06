@@ -83,6 +83,7 @@ export class TranscriptionService {
   private whisperProvider: WhisperProvider;
   private cloudProvider: AmicalCloudProvider;
   private activeLiveSession: LiveTranscriptionSession | null = null;
+  private historyRetryInProgress = false;
   private vadService: VADService | null;
   private settingsService: SettingsService;
   private vadMutex: Mutex;
@@ -129,12 +130,30 @@ export class TranscriptionService {
     await provider.warmup?.();
   }
 
-  beginStreamingSession(sessionId: string): void {
+  beginStreamingSession(
+    sessionId: string,
+    onTerminalFailure?: (error: Error) => void,
+  ): boolean {
     if (this.activeLiveSession) {
       throw new Error("Another live transcription session is already active");
     }
 
-    this.activeLiveSession = new LiveTranscriptionSession(sessionId);
+    if (this.historyRetryInProgress) {
+      return false;
+    }
+
+    const liveSession = new LiveTranscriptionSession(sessionId, (error) => {
+      try {
+        onTerminalFailure?.(error);
+      } catch (callbackError) {
+        logger.transcription.error(
+          "Failed to handle terminal streaming session failure",
+          { sessionId, error: callbackError },
+        );
+      }
+    });
+    this.activeLiveSession = liveSession;
+    return true;
   }
 
   private buildTranscribeContextForSession(
@@ -588,6 +607,8 @@ export class TranscriptionService {
         const providerSession = provider.openSession({
           sessionId,
           modelId: selectedModelId,
+          onTerminalFailure: (error) =>
+            liveSession.reportTerminalFailure(error),
         });
 
         session = {
@@ -719,6 +740,53 @@ export class TranscriptionService {
     });
   }
 
+  private async saveFailedTranscription(options: {
+    sessionId: string;
+    audioFilePath?: string;
+    error: unknown;
+    session?: StreamingSession;
+  }): Promise<void> {
+    const { sessionId, audioFilePath, error, session } = options;
+    const errorCode =
+      error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    await createTranscription({
+      text: "",
+      audioFile: audioFilePath,
+      language: session
+        ? this.singleRequestedLanguage(
+            session.context.sharedData.userPreferences?.languages,
+          )
+        : undefined,
+      detectedLanguage: session
+        ? this.sanitizeDetectedLanguage(session.detectedLanguage)
+        : undefined,
+      meta: {
+        sessionId,
+        status: "failed",
+        failureReason: errorCode,
+        errorMessage,
+      },
+    });
+    logger.transcription.info("Saved failed transcription record", {
+      sessionId,
+      errorCode,
+      audioFilePath,
+    });
+
+    try {
+      // Failed rows still appear in History, so they intentionally contribute
+      // to totalTranscriptions even though they add zero dictated words.
+      await incrementDailyStats(0);
+    } catch (statsError) {
+      logger.transcription.error("Failed to increment failed dictation stats", {
+        sessionId,
+        error: statsError,
+      });
+    }
+  }
+
   /**
    * Finalize a streaming session - flush provider, format, save to DB
    * Call this instead of processStreamingChunk with isFinal=true
@@ -757,6 +825,17 @@ export class TranscriptionService {
           throw this.userDismissedError();
         }
 
+        try {
+          liveSession.throwIfTerminalFailure();
+        } catch (error) {
+          await this.saveFailedTranscription({
+            sessionId,
+            audioFilePath: audioFilePath || undefined,
+            error,
+          });
+          throw error;
+        }
+
         logger.transcription.warn("No materialized session to finalize", {
           sessionId,
         });
@@ -774,6 +853,7 @@ export class TranscriptionService {
       if (signal.aborted) {
         throw this.userDismissedError();
       }
+      liveSession.throwIfTerminalFailure();
 
       // Update session timestamps
       session.finalizationStartedAt = performance.now();
@@ -791,6 +871,7 @@ export class TranscriptionService {
       // Flush provider to get any remaining buffered audio
       await this.transcriptionMutex.acquire();
       try {
+        liveSession.throwIfTerminalFailure();
         const finalResult = await session.providerSession.flush(
           {
             ...this.buildTranscribeContextForSession(sessionId, session),
@@ -798,6 +879,7 @@ export class TranscriptionService {
           },
           signal,
         );
+        liveSession.throwIfTerminalFailure();
         session.detectedLanguage = this.mergeDetectedLanguage(
           session.detectedLanguage,
           finalResult.detectedLanguage,
@@ -891,6 +973,7 @@ export class TranscriptionService {
       if (signal.aborted) {
         throw this.userDismissedError();
       }
+      liveSession.throwIfTerminalFailure();
 
       await createTranscription({
         text: completeTranscription,
@@ -991,47 +1074,12 @@ export class TranscriptionService {
         throw this.userDismissedError();
       }
 
-      // Save failed transcription record
-      const errorCode =
-        error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      await createTranscription({
-        text: "",
-        audioFile: audioFilePath || undefined,
-        language: this.singleRequestedLanguage(
-          session.context.sharedData.userPreferences?.languages,
-        ),
-        detectedLanguage: this.sanitizeDetectedLanguage(
-          session.detectedLanguage,
-        ),
-        meta: {
-          sessionId,
-          status: "failed",
-          failureReason: errorCode,
-          errorMessage,
-        },
-      });
-      logger.transcription.info("Saved failed transcription record", {
+      await this.saveFailedTranscription({
         sessionId,
-        errorCode,
-        audioFilePath,
+        audioFilePath: audioFilePath || undefined,
+        error,
+        session,
       });
-
-      try {
-        // Failed rows still appear in History, so they intentionally contribute
-        // to totalTranscriptions even though they add zero dictated words.
-        await incrementDailyStats(0);
-      } catch (statsError) {
-        logger.transcription.error(
-          "Failed to increment failed dictation stats",
-          {
-            sessionId,
-            error: statsError,
-          },
-        );
-      }
 
       // Re-throw for RecordingManager to handle notifications
       throw error;
@@ -1266,12 +1314,25 @@ export class TranscriptionService {
    * Bypasses RecordingManager entirely — works directly with providers.
    */
   async retryTranscription(transcriptionId: number): Promise<string> {
-    const retryStartedAt = performance.now();
-
-    // Guard: reject if a recording session is active
     if (this.activeLiveSession) {
       throw new Error("Cannot retry while recording is in progress");
     }
+    if (this.historyRetryInProgress) {
+      throw new Error("Another transcription retry is already in progress");
+    }
+
+    this.historyRetryInProgress = true;
+    try {
+      return await this.performTranscriptionRetry(transcriptionId);
+    } finally {
+      this.historyRetryInProgress = false;
+    }
+  }
+
+  private async performTranscriptionRetry(
+    transcriptionId: number,
+  ): Promise<string> {
+    const retryStartedAt = performance.now();
 
     // Fetch the existing transcription record
     const record = await getTranscriptionById(transcriptionId);

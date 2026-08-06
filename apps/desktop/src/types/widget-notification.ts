@@ -238,6 +238,12 @@ export const ERROR_CODE_CONFIG: Record<
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  [ErrorCodes.RETRY_IN_PROGRESS]: {
+    title: { key: "widget.notifications.errorCode.retryInProgress.title" },
+    description: {
+      key: "widget.notifications.errorCode.retryInProgress.description",
+    },
+  },
   [ErrorCodes.WORKER_INITIALIZATION_FAILED]: {
     title: {
       key: "widget.notifications.errorCode.workerInitializationFailed.title",

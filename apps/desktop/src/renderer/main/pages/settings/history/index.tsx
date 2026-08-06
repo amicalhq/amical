@@ -57,6 +57,7 @@ import { api } from "@/trpc/react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { format } from "date-fns";
 import { useTranslation } from "react-i18next";
+import type { RecordingState } from "@/types/recording";
 
 function formatDate(timestamp: Date) {
   return format(timestamp, "MMM d, h:mm a");
@@ -148,9 +149,10 @@ interface HistoryTableCardProps {
   currentPlayingId: number | null;
   isPlaying: boolean;
   retryingId: number | null;
+  retryDisabledByRecording: boolean;
 }
 
-function HistoryTableCard({
+export function HistoryTableCard({
   items,
   onCopy,
   onPlay,
@@ -162,6 +164,7 @@ function HistoryTableCard({
   currentPlayingId,
   isPlaying,
   retryingId,
+  retryDisabledByRecording,
 }: HistoryTableCardProps) {
   const { t } = useTranslation();
   const [selectedText, setSelectedText] = useState<string | null>(null);
@@ -171,6 +174,12 @@ function HistoryTableCard({
     number | null
   >(null);
   const [reportText, setReportText] = useState("");
+  const retryInProgress = retryingId !== null;
+  const retryTooltipKey = retryDisabledByRecording
+    ? "settings.history.actions.retryDisabledRecording"
+    : retryInProgress
+      ? "settings.history.actions.retryDisabledInProgress"
+      : "settings.history.actions.retry";
 
   const handleReadMore = (text: string) => {
     setSelectedText(text);
@@ -322,24 +331,29 @@ function HistoryTableCard({
                               {item.audioFile ? (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      aria-label={t(
-                                        "settings.history.actions.retry",
-                                      )}
-                                      disabled={retryingId === item.id}
-                                      onClick={() => onRetry(item.id)}
-                                    >
-                                      {retryingId === item.id ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                      ) : (
-                                        <RotateCcw className="w-4 h-4" />
-                                      )}
-                                    </Button>
+                                    <span className="inline-flex">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        aria-label={t(
+                                          "settings.history.actions.retry",
+                                        )}
+                                        disabled={
+                                          retryDisabledByRecording ||
+                                          retryInProgress
+                                        }
+                                        onClick={() => onRetry(item.id)}
+                                      >
+                                        {retryingId === item.id ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                          <RotateCcw className="w-4 h-4" />
+                                        )}
+                                      </Button>
+                                    </span>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>{t("settings.history.actions.retry")}</p>
+                                    <p>{t(retryTooltipKey)}</p>
                                   </TooltipContent>
                                 </Tooltip>
                               ) : null}
@@ -470,9 +484,24 @@ export default function HistorySettingsPage() {
   const { t, i18n } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [recordingState, setRecordingState] = useState<RecordingState | null>(
+    null,
+  );
   const audioPlayer = useAudioPlayer();
   const telemetrySettingsQuery = api.settings.getTelemetrySettings.useQuery();
   const isTelemetryEnabled = telemetrySettingsQuery.data?.enabled !== false;
+  const retryDisabledByRecording = recordingState !== "idle";
+
+  api.recording.stateUpdates.useSubscription(undefined, {
+    onData: (update) => {
+      setRecordingState(update.state);
+    },
+    onError: (error) => {
+      setRecordingState(null);
+      console.error("Error subscribing to recording state updates", error);
+    },
+  });
+
   const lifetimeStatsQuery = api.transcriptions.getLifetimeStats.useQuery(
     undefined,
     {
@@ -757,6 +786,7 @@ export default function HistorySettingsPage() {
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   retryingId={retryingId}
+                  retryDisabledByRecording={retryDisabledByRecording}
                 />
               </>
             )}
@@ -779,6 +809,7 @@ export default function HistorySettingsPage() {
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   retryingId={retryingId}
+                  retryDisabledByRecording={retryDisabledByRecording}
                 />
               </>
             )}
@@ -801,6 +832,7 @@ export default function HistorySettingsPage() {
                   currentPlayingId={audioPlayer.currentPlayingId}
                   isPlaying={audioPlayer.isPlaying}
                   retryingId={retryingId}
+                  retryDisabledByRecording={retryDisabledByRecording}
                 />
               </>
             )}

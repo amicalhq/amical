@@ -40,6 +40,8 @@ export interface OpenTranscriptionSessionOptions {
    * session on that model even if the application selection changes later.
    */
   modelId?: string | null;
+  /** Reports an out-of-band failure after provider-local recovery is exhausted. */
+  onTerminalFailure?: (error: Error) => void;
 }
 
 /**

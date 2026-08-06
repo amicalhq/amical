@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildNotificationDescription,
+  ERROR_CODE_CONFIG,
   getNotificationDescription,
   WIDGET_NOTIFICATION_CONFIG,
 } from "../../src/types/widget-notification";
+import { ErrorCodes } from "../../src/types/error";
 
 describe("buildNotificationDescription", () => {
   it("returns an explicit uiMessage verbatim, even for mic types", () => {
@@ -82,5 +84,16 @@ describe("buildNotificationDescription", () => {
         params: { microphone: 42 },
       }),
     ).toEqual({ ...base, params: { microphone: 42 } });
+  });
+});
+
+describe("retry-in-progress notification", () => {
+  it("uses the dedicated localized widget copy", () => {
+    expect(ERROR_CODE_CONFIG[ErrorCodes.RETRY_IN_PROGRESS]).toEqual({
+      title: { key: "widget.notifications.errorCode.retryInProgress.title" },
+      description: {
+        key: "widget.notifications.errorCode.retryInProgress.description",
+      },
+    });
   });
 });

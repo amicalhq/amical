@@ -512,12 +512,44 @@ export class RecordingManager extends EventEmitter {
       // can't insert the about-to-be-replaced text mid-dictation.
       const supersedingDraft = this.pendingDraft !== null;
 
-      const hasSpeechModel = await this.hasSpeechModelSelected();
+      // Start the live session before the first asynchronous lookup. This makes
+      // live recording and History retry admission first-come-first-served.
+      const sessionId = uuid();
+      const sessionStarted =
+        this.transcriptionService?.beginStreamingSession(sessionId, (error) => {
+          void this.handleStreamingSessionFailure(sessionId, error).catch(
+            (handlerError) => {
+              logger.audio.error(
+                "Failed to stop terminal transcription session",
+                { sessionId, error: handlerError },
+              );
+            },
+          );
+        }) ?? true;
+      if (!sessionStarted) {
+        this.recordingInitiatedAt = null;
+        this.emit("widget-notification", {
+          type: "transcription_failed",
+          errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+        });
+        logger.audio.info("Recording start rejected during history retry", {
+          errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+        });
+        return;
+      }
+
+      let hasSpeechModel = false;
+      try {
+        hasSpeechModel = await this.hasSpeechModelSelected();
+      } finally {
+        if (!hasSpeechModel) {
+          await this.transcriptionService?.cancelStreamingSession(sessionId);
+        }
+      }
+
       if (hasSpeechModel) {
         // Missing-model starts stay IDLE; STARTING means we have a model and
         // have allocated the session identity used by the interpreter.
-        const sessionId = uuid();
-        this.transcriptionService?.beginStreamingSession(sessionId);
         this.currentSessionId = sessionId;
         this.activeMicrophoneName = null;
         // Tag this as a draft session up front (the draft chord is held now) so
@@ -541,6 +573,24 @@ export class RecordingManager extends EventEmitter {
 
       await this.machine.runCommands(commands);
     });
+  }
+
+  private async handleStreamingSessionFailure(
+    sessionId: string,
+    error: Error,
+  ): Promise<void> {
+    if (
+      sessionId !== this.currentSessionId ||
+      this.getState() !== "recording"
+    ) {
+      return;
+    }
+
+    logger.audio.error("Streaming transcription session failed", {
+      sessionId,
+      error,
+    });
+    await this.machine.handleEvent({ type: "sessionFailure" });
   }
 
   private async performStartSession(mode: ActiveRecordingMode): Promise<void> {

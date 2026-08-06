@@ -164,16 +164,20 @@ export class AmicalCloudProvider implements TranscriptionProvider {
   }
 
   openSession(options: OpenTranscriptionSessionOptions): TranscriptionSession {
-    return this.createSession(options.sessionId);
+    return this.createSession(options.sessionId, options.onTerminalFailure);
   }
 
-  private createSession(sessionId: string): AmicalCloudSession {
+  private createSession(
+    sessionId: string,
+    onTerminalFailure?: (error: Error) => void,
+  ): AmicalCloudSession {
     this.assertNotDisposed();
     const session = new AmicalCloudSession(
       sessionId,
       this.runtime,
       this.telemetryService,
       this.settingsService,
+      onTerminalFailure,
       (closedSession) => this.retireSession(closedSession),
     );
     this.sessions.add(session);
@@ -280,6 +284,7 @@ class AmicalCloudSession implements TranscriptionSession {
     private readonly runtime: CloudRuntime,
     private readonly telemetryService: TelemetryService | null,
     private readonly settingsService: SettingsService | null,
+    private readonly onTerminalFailure: ((error: Error) => void) | undefined,
     private readonly onCancel: (session: AmicalCloudSession) => void,
   ) {
     this.state = Effect.runSync(Ref.make(createInitialProviderState()));
@@ -539,13 +544,26 @@ class AmicalCloudSession implements TranscriptionSession {
     stream,
     error,
   }: ObservedGrpcStreamFailure): void {
-    if (this.closed || !shouldFallbackToHttp(error)) {
+    if (this.closed) {
       return;
     }
 
-    // Only switch routes here. The next serialized chunk or final flush owns
-    // the HTTP request and can return its cumulative transcript to the service.
-    Effect.runSync(this.engageHttpFallbackEffect(error, "transcribe", stream));
+    if (shouldFallbackToHttp(error)) {
+      // Only switch routes here. The next serialized chunk or final flush owns
+      // the HTTP request and can return its cumulative transcript to the service.
+      Effect.runSync(
+        this.engageHttpFallbackEffect(error, "transcribe", stream),
+      );
+      return;
+    }
+
+    const currentStream = Effect.runSync(Ref.get(this.state)).grpcStream;
+    if (currentStream !== stream) {
+      return;
+    }
+
+    stream.cancel();
+    this.onTerminalFailure?.(error);
   }
 
   private reportHttpFallback(

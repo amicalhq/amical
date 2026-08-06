@@ -32,8 +32,12 @@ export class LiveTranscriptionSession {
   private pendingUpdate: StreamingSessionUpdate = {};
   private materialized: StreamingSession | null = null;
   private providerCancelled = false;
+  private terminalError: Error | null = null;
 
-  constructor(readonly id: string) {}
+  constructor(
+    readonly id: string,
+    private readonly onTerminalFailure?: (error: Error) => void,
+  ) {}
 
   get signal(): AbortSignal {
     return this.abortController.signal;
@@ -44,11 +48,14 @@ export class LiveTranscriptionSession {
   }
 
   private acceptsChunks(): boolean {
-    return this.phase === "open";
+    return this.phase === "open" && !this.terminalError;
   }
 
   canCompleteAdmittedWork(): boolean {
-    return this.phase === "open" || this.phase === "finishing";
+    return (
+      !this.terminalError &&
+      (this.phase === "open" || this.phase === "finishing")
+    );
   }
 
   processChunk(work: () => Promise<string>): Promise<string> {
@@ -57,9 +64,11 @@ export class LiveTranscriptionSession {
     }
 
     const admittedWork = work().catch((error: unknown) => {
-      if (!this.canCompleteAdmittedWork()) {
+      if (this.phase === "aborted" || this.phase === "retired") {
         return "";
       }
+
+      this.reportTerminalFailure(error);
       throw error;
     });
     const settledWork = admittedWork.then(
@@ -95,7 +104,7 @@ export class LiveTranscriptionSession {
   }
 
   updateSnapshot(update: StreamingSessionUpdate): StreamingSession | null {
-    if (this.phase !== "open" || isEmptyUpdate(update)) {
+    if (!this.acceptsChunks() || isEmptyUpdate(update)) {
       return null;
     }
 
@@ -121,7 +130,29 @@ export class LiveTranscriptionSession {
   }
 
   canPushContextTo(session: StreamingSession): boolean {
-    return this.phase === "open" && this.materialized === session;
+    return this.acceptsChunks() && this.materialized === session;
+  }
+
+  /** Latch the first unrecoverable failure for this recording. */
+  reportTerminalFailure(error: unknown): void {
+    if (
+      this.terminalError ||
+      this.phase === "aborted" ||
+      this.phase === "retired"
+    ) {
+      return;
+    }
+
+    const terminalError =
+      error instanceof Error ? error : new Error(String(error));
+    this.terminalError = terminalError;
+    this.onTerminalFailure?.(terminalError);
+  }
+
+  throwIfTerminalFailure(): void {
+    if (this.terminalError) {
+      throw this.terminalError;
+    }
   }
 
   requestAbort(): void {

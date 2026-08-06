@@ -374,6 +374,10 @@
           "title": "尚未選擇模型",
           "description": "請選擇一個轉錄模型"
         },
+        "retryInProgress": {
+          "title": "正在重試轉錄",
+          "description": "請等待重試完成後再開始新的錄音。"
+        },
         "workerInitializationFailed": {
           "title": "初始化失敗",
           "description": "無法啟動轉錄引擎"
@@ -681,6 +685,8 @@
         "downloadAudio": "下載音訊",
         "delete": "刪除",
         "retry": "重試轉錄",
+        "retryDisabledRecording": "請先結束目前的錄音，再重試轉錄。",
+        "retryDisabledInProgress": "請等待目前的重試完成。",
         "report": "回報問題",
         "reportDisabledTelemetry": "請先在進階設定中啟用遙測，才能回報問題"
       },
