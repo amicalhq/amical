@@ -42,7 +42,7 @@ export interface ProviderState {
   // Mirror of all audio fed during the gRPC path, so an HTTP fallback can
   // re-transcribe the full utterance (gRPC-streamed audio is otherwise lost
   // when the stream fails). Independent of frameBuffer; seeded into it on
-  // fallback. Bounded to one session — see storeContextEffect / reset.
+  // fallback. This state belongs to exactly one AmicalCloudSession.
   sessionAudioBuffer: Float32Array[];
   sessionAudioVadProbs: number[];
   currentSilenceFrameCount: number;
@@ -71,9 +71,8 @@ export interface ProviderState {
   httpAbortController: AbortController | null;
   // Sticky-within-session override: once gRPC fails with a transport-level
   // error, every subsequent transcribe()/flush() in the *same* dictation
-  // session takes the HTTP path. Cleared when storeContextEffect sees a new
-  // sessionId, and on cancellation/disposal — so a transient drop does not
-  // stick for the rest of the app run.
+  // session takes the HTTP path. The state is discarded on cancellation or
+  // disposal, so a transient drop does not stick for the rest of the app run.
   transportOverride: "http" | null;
 }
 

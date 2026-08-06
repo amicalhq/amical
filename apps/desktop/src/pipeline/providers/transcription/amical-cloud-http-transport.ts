@@ -28,7 +28,7 @@ import {
   type ProviderState,
 } from "./amical-cloud-provider-state";
 import type { DictationSkill } from "./dictation-skill";
-import { float32ToPcmS16le } from "./grpc-dictation-client";
+import { float32ToPcmS16le } from "../../utils/pcm-encoding";
 import { resolveSessionSkills } from "./skill-resolution";
 
 // Success response from cloud API (HTTP 200)

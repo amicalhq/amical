@@ -237,7 +237,7 @@ const constructEngineWithTransport = (transport: "grpc" | "http") => {
   return new AmicalCloudProvider(authMock.instance as unknown as AuthService);
 };
 
-const constructProviderWithTransport = (
+const openCloudSessionWithTransport = (
   transport: "grpc" | "http",
   options: {
     sessionId?: string;
@@ -383,7 +383,7 @@ afterEach(() => {
 describe("AmicalCloudProvider", () => {
   describe("transport selection", () => {
     it("defaults to gRPC and constructs a grpc client on first transcribe", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       const transcribe = provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -401,7 +401,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("uses HTTP path when CLOUD_DICTATION_TRANSPORT=http", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "hello world" },
@@ -421,7 +421,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("gRPC live session updates", () => {
     it("sends late accessibility context to an open stream", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
 
       await provider.transcribe({
         audioData: audioFrame(),
@@ -452,7 +452,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("sends instruct skills when draft state arrives after stream open", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
 
       await provider.transcribe({
         audioData: audioFrame(),
@@ -480,7 +480,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("sends context before skills and suppresses duplicate snapshots", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       const liveContext = baseContext({
         formattingEnabled: false,
         accessibilityContext: accessibilityContext("com.hnc.Discord"),
@@ -517,7 +517,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("HTTP path body shape", () => {
     it('sends pcm_s16le base64 with audioFormat="pcm_s16le"', async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "hi" },
@@ -541,7 +541,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("auto-flushes the whole buffer at 28 seconds without client VAD data", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
 
       // More than three seconds of silence used to trigger the client-VAD cut.
       for (let index = 0; index < 94; index++) {
@@ -587,7 +587,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("omits audioFormat and sends empty audioData on format-only flush", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "Formatted!" },
@@ -608,7 +608,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("sends a text-only final when prior text exists without formatting or skills", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "raw text" },
@@ -633,7 +633,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("keeps a final with no audio and no prior text as a no-op", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
 
       await expect(provider.flush(baseContext())).resolves.toEqual({
         text: "",
@@ -642,7 +642,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("sends text-only final flush for instruct even when formatting is off", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "Drafted!" },
@@ -666,7 +666,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("sends explicit Amical client headers", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "hi" },
@@ -714,6 +714,7 @@ describe("AmicalCloudProvider", () => {
       });
       await provider.flush(baseContext());
 
+      expect(settingsService.getLabsSettings).toHaveBeenCalledOnce();
       const [, init] = fetchMock.mock.calls[0]!;
       expect(init.headers).toMatchObject({
         "amical-labs": "self-correction",
@@ -724,7 +725,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("HTTP error surfacing", () => {
     it("surfaces 500 as INTERNAL_SERVER_ERROR", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 500,
         json: { error: { code: undefined, message: "boom" } },
@@ -743,7 +744,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("uses only localizedMessage as the user-facing HTTP override", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 402,
         json: {
@@ -775,7 +776,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("maps a validated FORBIDDEN code independently of its HTTP status", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 403,
         json: {
@@ -804,7 +805,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("does not trust desktop-only codes or localized text from HTTP", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 500,
         json: {
@@ -833,7 +834,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("surfaces a thrown network error as NETWORK_ERROR", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       fetchMock.mockImplementationOnce(async () => {
         throw new Error("ECONNREFUSED");
       });
@@ -848,7 +849,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("retries once on 401 with a refreshed token, then succeeds", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({ status: 401, json: { error: {} } });
       mockFetchOnce({
         status: 200,
@@ -869,7 +870,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("surfaces AUTH_REQUIRED when the retried request also returns 401", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({ status: 401, json: { error: {} } });
       mockFetchOnce({ status: 401, json: { error: {} } });
 
@@ -887,7 +888,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("surfaces AUTH_REQUIRED when token refresh fails after 401", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({ status: 401, json: { error: {} } });
       authMock.instance.refreshTokenIfNeeded.mockRejectedValueOnce(
         new Error("refresh failed"),
@@ -906,7 +907,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("gRPC error categorization", () => {
     const driveGrpcThenSettleError = async (errorCode: number) => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -924,7 +925,7 @@ describe("AmicalCloudProvider", () => {
         "cancel",
       );
       const onTerminalFailure = vi.fn();
-      const session = constructProviderWithTransport("grpc", {
+      const session = openCloudSessionWithTransport("grpc", {
         onTerminalFailure,
       });
       await session.transcribe({
@@ -973,7 +974,7 @@ describe("AmicalCloudProvider", () => {
 
     it("keeps fallback-eligible observed failures inside the explicit session", async () => {
       const onTerminalFailure = vi.fn();
-      const session = constructProviderWithTransport("grpc", {
+      const session = openCloudSessionWithTransport("grpc", {
         onTerminalFailure,
       });
       await session.transcribe({
@@ -1040,7 +1041,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("prefers a structured quota reason and localized message", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -1079,7 +1080,7 @@ describe("AmicalCloudProvider", () => {
         status: 200,
         json: { success: true, transcription: "http fallback" },
       });
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -1110,7 +1111,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("maps structured FORBIDDEN the same way as HTTP without falling back", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -1169,7 +1170,7 @@ describe("AmicalCloudProvider", () => {
     ) => {
       const provider =
         options.provider ??
-        constructProviderWithTransport("grpc", {
+        openCloudSessionWithTransport("grpc", {
           sessionId: options.sessionId,
         });
       const sessionOverride = options.sessionId
@@ -1216,7 +1217,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("falls back to HTTP on UNAVAILABLE and includes the audio streamed before the failure", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "fallback with audio" },
@@ -1424,7 +1425,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("transport switch is sticky: subsequent calls go via HTTP without a new gRPC client", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
 
       // Open a gRPC stream then trigger fallback on flush.
       await provider.transcribe({
@@ -1468,7 +1469,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("transcribe-stage fallback buffers the current chunk exactly once", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       // Force gRPC stream construction to throw → fallback during transcribe().
       grpcMock.failNextStreamConstruction();
 
@@ -1535,7 +1536,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("releases the gRPC mirror after a successful final on the same session", async () => {
-      const provider = constructProviderWithTransport("grpc", {
+      const provider = openCloudSessionWithTransport("grpc", {
         sessionId: "reused-session",
       });
       const context = baseContext({ sessionId: "reused-session" });
@@ -1619,7 +1620,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("AppError passthrough", () => {
     it("AppError thrown internally is not double-wrapped", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       authMock.instance.isAuthenticated.mockResolvedValueOnce(false);
       const promise = provider.transcribe({
         audioData: audioFrame(),
@@ -1635,7 +1636,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("idle timeout", () => {
     it("surfaces leaf idle-timeout as IDLE_TIMEOUT (not NETWORK_ERROR) and does not fall back to HTTP", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
 
       // Open a gRPC stream by transcribing once.
       await provider.transcribe({
@@ -1869,7 +1870,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("makes cancellation idempotent and permanently closes the handle", async () => {
-      const session = constructProviderWithTransport("http", {
+      const session = openCloudSessionWithTransport("http", {
         sessionId: "session-A",
       });
 
@@ -1897,7 +1898,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("cannot open a late gRPC stream after cancellation during token lookup", async () => {
-      const session = constructProviderWithTransport("grpc", {
+      const session = openCloudSessionWithTransport("grpc", {
         sessionId: "session-A",
       });
       let resolveToken!: (token: string) => void;
@@ -1928,7 +1929,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("cannot start HTTP after cancellation during authentication", async () => {
-      const session = constructProviderWithTransport("http", {
+      const session = openCloudSessionWithTransport("http", {
         sessionId: "session-A",
       });
       let releaseAuthentication!: () => void;
@@ -1998,7 +1999,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("cannot start HTTP after cancellation during token lookup", async () => {
-      const session = constructProviderWithTransport("http", {
+      const session = openCloudSessionWithTransport("http", {
         sessionId: "session-A",
       });
       await session.transcribe({
@@ -2067,7 +2068,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("cancel", () => {
     it("cancel() clears state and tears down the in-flight gRPC stream", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
       await provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -2086,7 +2087,7 @@ describe("AmicalCloudProvider", () => {
 
   describe("dismiss / abort wiring", () => {
     it("aborts the in-flight HTTP /transcribe request when the dismiss signal fires", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       let capturedSignal: AbortSignal | undefined;
       // Real fetch rejects when its signal aborts; model that so the in-flight
       // request actually resolves on abort.
@@ -2125,7 +2126,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("cancels the in-flight gRPC flush through the session and does not fall back to HTTP", async () => {
-      const provider = constructProviderWithTransport("grpc");
+      const provider = openCloudSessionWithTransport("grpc");
 
       await provider.transcribe({
         audioData: audioFrame(),
@@ -2149,7 +2150,7 @@ describe("AmicalCloudProvider", () => {
     });
 
     it("scopes the abort signal to /transcribe only — auth calls carry no signal", async () => {
-      const provider = constructProviderWithTransport("http");
+      const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
         status: 200,
         json: { success: true, transcription: "ok" },

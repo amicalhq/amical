@@ -27,9 +27,9 @@ import {
 import {
   CloudDictationGrpcStream,
   GrpcDictationError,
-  float32ToPcmS16le,
   type GrpcStreamContext,
 } from "./grpc-dictation-client";
+import { float32ToPcmS16le } from "../../utils/pcm-encoding";
 import { resolveSessionSkills } from "./skill-resolution";
 
 const snapshotKey = (value: unknown): string => JSON.stringify(value);

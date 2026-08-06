@@ -544,16 +544,15 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     context: TranscribeContext,
   ): CloudProviderEffect<void> {
     return Effect.gen(this, function* () {
-      // Each new session is a fresh chance to retry gRPC; clear any sticky
-      // HTTP override left over from a drop in the previous session.
-      const prevSessionId = (yield* Ref.get(this.state)).currentSessionId;
-      const isNewSession =
-        context.sessionId !== undefined && context.sessionId !== prevSessionId;
+      const isFirstContext =
+        (yield* Ref.get(this.state)).currentSessionId === undefined;
 
       // Resolve labs once per session here rather than per request, so the
       // per-chunk HTTP snapshot doesn't re-read settings from disk on every
       // transcribe()/flush(). null = keep the value already cached in state.
-      const enabledLabs = isNewSession ? yield* this.enabledLabsEffect() : null;
+      const enabledLabs = isFirstContext
+        ? yield* this.enabledLabsEffect()
+        : null;
       yield* this.failIfClosedEffect();
 
       yield* Ref.update(this.state, (state) => ({
@@ -565,9 +564,6 @@ class AmicalCloudSession implements TranscriptionProviderSession {
         currentSessionId: context.sessionId,
         currentIsInstruct: context.isInstruct ?? false,
         currentEnabledLabs: enabledLabs ?? state.currentEnabledLabs,
-        transportOverride: isNewSession ? null : state.transportOverride,
-        sessionAudioBuffer: isNewSession ? [] : state.sessionAudioBuffer,
-        sessionAudioVadProbs: isNewSession ? [] : state.sessionAudioVadProbs,
       }));
     });
   }

@@ -5,6 +5,7 @@ import type {
   TranscribeParams,
   TranscriptionEngine,
   TranscriptionOutput,
+  TranscriptionProviderSession,
 } from "../../src/pipeline/core/pipeline-types";
 
 vi.mock("../../src/db/transcriptions", () => ({
@@ -72,7 +73,7 @@ function makeEngine(name = "whisper-local") {
       async () => ({ text: "" }),
     ),
     cancel: vi.fn(),
-  };
+  } satisfies TranscriptionProviderSession;
   const engine = {
     name,
     openSession: vi.fn((options: OpenTranscriptionSessionOptions) => {
@@ -80,7 +81,7 @@ function makeEngine(name = "whisper-local") {
       return session;
     }),
     dispose: vi.fn(async () => undefined),
-  } as unknown as TranscriptionEngine;
+  } satisfies TranscriptionEngine;
   return { engine, session };
 }
 
