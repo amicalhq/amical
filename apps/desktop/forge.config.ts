@@ -25,6 +25,10 @@ import {
   copyFileSync,
 } from "node:fs";
 import { join, normalize } from "node:path";
+import {
+  downloadNodeBinary,
+  getCurrentPlatform,
+} from "./scripts/download-node-binaries";
 import { stageBetterSqlite3ForElectron } from "./scripts/stage-better-sqlite3";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
 // flora-colossus is maintained by MarshallOfSound (a top electron-forge contributor)
@@ -65,6 +69,16 @@ const config: ForgeConfig = {
             `(host: ${process.platform}-${process.arch}, target: ${platform}-${arch}).`,
         );
       }
+
+      // extraResource below selects the host-specific binary. Refresh that
+      // exact resource before Forge verifies and copies it into the package.
+      const nodePlatform = getCurrentPlatform();
+      if (!nodePlatform) {
+        throw new Error(
+          `Unsupported Node.js binary host: ${process.platform}-${process.arch}`,
+        );
+      }
+      await downloadNodeBinary(nodePlatform);
 
       // The start script stages the same physical copy before Forge loads.
       // Refresh it here too so packaging never reuses stale ABI metadata.
