@@ -296,9 +296,15 @@ export class WhisperProvider implements TranscriptionProvider {
     aggregatedTranscription?: string,
     accessibilityContext?: TranscribeContext["accessibilityContext"],
   ): string {
+    // NOTE: previousTranscription (the running ASR output) is intentionally not
+    // fed back as the initial prompt. Conditioning Whisper on its own prior
+    // output lets a single hallucinated phrase self-reinforce into a repetition
+    // loop across windows. Vocabulary and cursor context are static, so they
+    // stay. See whisper repetition-hallucination behavior.
+    void aggregatedTranscription;
     const prompt = buildWhisperPrompt({
       vocabulary,
-      previousTranscription: aggregatedTranscription,
+      previousTranscription: undefined,
       beforeText:
         accessibilityContext?.context?.textSelection?.preSelectionText,
     });
