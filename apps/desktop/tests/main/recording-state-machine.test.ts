@@ -184,6 +184,15 @@ describe("recording state machine", () => {
     },
   );
 
+  it.each(["ptt", "hands-free"] as const)(
+    "uses a normal stop for terminal session failure while starting %s",
+    (mode) => {
+      expect(
+        step({ tag: "STARTING", mode }, { type: "sessionFailure" }),
+      ).toEqual([{ tag: "STOP_N" }, [{ type: "stopSession", code: null }]]);
+    },
+  );
+
   it.each([
     ["IDLE", { tag: "IDLE" }],
     ["STOP_N", { tag: "STOP_N" }],

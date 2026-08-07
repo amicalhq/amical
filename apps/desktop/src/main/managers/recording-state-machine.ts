@@ -257,7 +257,7 @@ export function transitionRecordingMachine(
       };
 
     case "sessionFailure":
-      if (!isRecordingState(state)) {
+      if (state.tag !== "STARTING" && !isRecordingState(state)) {
         return { state, commands: [] };
       }
 
