@@ -59,6 +59,11 @@ export function sanitizeWhisperPrompt(prompt: string): string {
 }
 
 export interface BuildWhisperPromptOptions {
+  /** Candidate language codes passed to Whisper. Exactly one entry forces
+   * that language; in that mode target-app text is excluded because it can
+   * override the explicit language token. */
+  languages?: readonly string[];
+
   /** Domain vocabulary / hotwords (proper nouns, jargon). Joined with ", ".
    * Placed at the START of the prompt: less critical for continuity than the
    * prior-transcript tail, and if byte truncation hits, the start gets dropped
@@ -97,7 +102,8 @@ export function buildWhisperPrompt(
     if (vocab) parts.push(vocab);
   }
 
-  const source = opts.previousTranscription || opts.beforeText;
+  const beforeText = opts.languages?.length === 1 ? undefined : opts.beforeText;
+  const source = opts.previousTranscription || beforeText;
   if (source) {
     const words = source.trim().split(/\s+/).filter(Boolean);
     const n = opts.previousWordCount ?? DEFAULT_PREVIOUS_WORD_COUNT;
