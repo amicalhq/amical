@@ -733,6 +733,40 @@ describe("recording manager FSM interpreter", () => {
     }
   });
 
+  it("recovers automatically when native stop completes without a final chunk", async () => {
+    vi.useFakeTimers();
+    try {
+      const nativeBridge = {
+        call: vi.fn().mockResolvedValue({ success: true }),
+      };
+      const transcriptionService = {
+        cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
+      };
+      const manager = createRecordingManager({
+        nativeBridge,
+        transcriptionService,
+      });
+      const internals = internalsOf(manager);
+      internals.currentSessionId = "session-1";
+      internals.machine.__setStateForTesting({
+        tag: "REC_HF",
+        firstChunkReceived: true,
+      });
+
+      await manager.signalStop();
+      expect(manager.getState()).toBe("stopping");
+
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(manager.getState()).toBe("idle");
+      expect(transcriptionService.cancelStreamingSession).toHaveBeenCalledWith(
+        "session-1",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps stopping while an already-received final chunk is finalizing", async () => {
     vi.useFakeTimers();
     try {
