@@ -1,3 +1,5 @@
+import type { RecordingState } from "../../types/recording";
+
 export type RecordingMode = "idle" | "ptt" | "hands-free";
 
 export type ActiveRecordingMode = Exclude<RecordingMode, "idle">;
@@ -30,6 +32,11 @@ export type RecordingMachineState =
     }
   | { tag: "STOP_N" }
   | { tag: "STOP_C"; code: TerminationCode };
+
+export type StoppingRecordingMachineState = Extract<
+  RecordingMachineState,
+  { tag: "STOP_N" | "STOP_C" }
+>;
 
 export type RecordingMachineEvent =
   | {
@@ -80,6 +87,72 @@ const isRecordingState = (
   RecordingMachineState,
   { tag: "REC_PTT" | "PTT_Q" | "REC_HF" }
 > => state.tag === "REC_PTT" || state.tag === "PTT_Q" || state.tag === "REC_HF";
+
+export const isStoppingState = (
+  state: RecordingMachineState,
+): state is StoppingRecordingMachineState =>
+  state.tag === "STOP_N" || state.tag === "STOP_C";
+
+export const shouldFinalizeWithoutFinalChunk = (
+  state: StoppingRecordingMachineState,
+): boolean => state.tag === "STOP_C" && state.code === "interrupted_start";
+
+export const shouldTransitionOnAudioChunk = (
+  state: RecordingMachineState,
+  hasAudio: boolean,
+): boolean => hasAudio && isRecordingState(state) && !state.firstChunkReceived;
+
+export const describeState = (state: RecordingMachineState): string => {
+  if (state.tag === "STARTING") {
+    return `${state.tag}:${state.mode}`;
+  }
+
+  if (state.tag === "STOP_C") {
+    return `${state.tag}:${state.code}`;
+  }
+
+  if (isRecordingState(state)) {
+    return `${state.tag}:${state.firstChunkReceived ? "has_audio" : "no_audio_yet"}`;
+  }
+
+  return state.tag;
+};
+
+export const recordingStateForMachine = (
+  state: RecordingMachineState,
+): RecordingState => {
+  if (state.tag === "IDLE") {
+    return "idle";
+  }
+
+  if (state.tag === "STARTING") {
+    return "starting";
+  }
+
+  if (isStoppingState(state)) {
+    return "stopping";
+  }
+
+  return "recording";
+};
+
+export const recordingModeForMachine = (
+  state: RecordingMachineState,
+): RecordingMode => {
+  if (state.tag === "STARTING") {
+    return state.mode;
+  }
+
+  if (state.tag === "REC_PTT" || state.tag === "PTT_Q") {
+    return "ptt";
+  }
+
+  if (state.tag === "REC_HF") {
+    return "hands-free";
+  }
+
+  return "idle";
+};
 
 const withFirstChunkReceived = (
   state: RecordingMachineState,

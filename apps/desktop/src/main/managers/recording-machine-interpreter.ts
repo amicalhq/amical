@@ -1,13 +1,18 @@
 import { logger } from "../logger";
 import type { RecordingState } from "../../types/recording";
 import {
+  describeState,
   initialRecordingMachineState,
+  isStoppingState,
+  recordingModeForMachine,
+  recordingStateForMachine,
   transitionRecordingMachine,
   type ActiveRecordingMode,
   type RecordingMachineCommand,
   type RecordingMachineEvent,
   type RecordingMachineState,
   type RecordingMode,
+  type StoppingRecordingMachineState,
   type TerminationCode,
 } from "./recording-state-machine";
 
@@ -22,10 +27,6 @@ type SyncRecordingMachineCommand = Exclude<
 type StopRecordingMachineCommand = Extract<
   RecordingMachineCommand,
   { type: "stopSession" }
->;
-export type StoppingRecordingMachineState = Extract<
-  RecordingMachineState,
-  { tag: "STOP_N" | "STOP_C" }
 >;
 export type PendingStopWaitResult = "none" | "resolved" | "timeout";
 export type PendingStopSession = {
@@ -84,17 +85,11 @@ export class RecordingMachineInterpreter {
   }
 
   getPublicState(): RecordingState {
-    return this.recordingStateForMachine(this.machineState);
+    return recordingStateForMachine(this.machineState);
   }
 
   getPublicMode(): RecordingMode {
-    return this.recordingModeForMachine(this.machineState);
-  }
-
-  isStoppingState(
-    state: RecordingMachineState,
-  ): state is StoppingRecordingMachineState {
-    return state.tag === "STOP_N" || state.tag === "STOP_C";
+    return recordingModeForMachine(this.machineState);
   }
 
   effectiveStopCodeForState(
@@ -105,7 +100,7 @@ export class RecordingMachineInterpreter {
       if (commandCode !== null) {
         this.delegate.logInvariant("Recording stop code mismatch", {
           commandCode,
-          stopState: this.describeState(stopState),
+          stopState: describeState(stopState),
         });
       }
 
@@ -115,52 +110,15 @@ export class RecordingMachineInterpreter {
     if (commandCode !== stopState.code) {
       this.delegate.logInvariant("Recording stop code mismatch", {
         commandCode,
-        stopState: this.describeState(stopState),
+        stopState: describeState(stopState),
       });
     }
 
     return stopState.code;
   }
 
-  shouldFinalizeWithoutFinalChunk(
-    stopState: StoppingRecordingMachineState,
-  ): boolean {
-    return stopState.tag === "STOP_C" && stopState.code === "interrupted_start";
-  }
-
-  shouldTransitionOnAudioChunk(hasAudio: boolean): boolean {
-    const state = this.machineState;
-    return (
-      hasAudio &&
-      (state.tag === "REC_PTT" ||
-        state.tag === "PTT_Q" ||
-        state.tag === "REC_HF") &&
-      !state.firstChunkReceived
-    );
-  }
-
   describeCurrentState(): string {
-    return this.describeState(this.machineState);
-  }
-
-  describeState(state: RecordingMachineState): string {
-    if (state.tag === "STARTING") {
-      return `${state.tag}:${state.mode}`;
-    }
-
-    if (state.tag === "STOP_C") {
-      return `${state.tag}:${state.code}`;
-    }
-
-    if (
-      state.tag === "REC_PTT" ||
-      state.tag === "PTT_Q" ||
-      state.tag === "REC_HF"
-    ) {
-      return `${state.tag}:${state.firstChunkReceived ? "has_audio" : "no_audio_yet"}`;
-    }
-
-    return state.tag;
+    return describeState(this.machineState);
   }
 
   transition(event: RecordingMachineEvent): RecordingMachineCommand[] {
@@ -172,8 +130,8 @@ export class RecordingMachineInterpreter {
     if (previousState.tag !== next.state.tag || next.commands.length > 0) {
       logger.audio.info("Recording FSM transition", {
         event,
-        previousState: this.describeState(previousState),
-        nextState: this.describeState(next.state),
+        previousState: describeState(previousState),
+        nextState: describeState(next.state),
         commands: next.commands.map((command) => command.type),
         sessionId: this.delegate.getSessionId(),
       });
@@ -351,40 +309,6 @@ export class RecordingMachineInterpreter {
     }
   }
 
-  private recordingStateForMachine(
-    state: RecordingMachineState,
-  ): RecordingState {
-    if (state.tag === "IDLE") {
-      return "idle";
-    }
-
-    if (state.tag === "STARTING") {
-      return "starting";
-    }
-
-    if (this.isStoppingState(state)) {
-      return "stopping";
-    }
-
-    return "recording";
-  }
-
-  private recordingModeForMachine(state: RecordingMachineState): RecordingMode {
-    if (state.tag === "STARTING") {
-      return state.mode;
-    }
-
-    if (state.tag === "REC_PTT" || state.tag === "PTT_Q") {
-      return "ptt";
-    }
-
-    if (state.tag === "REC_HF") {
-      return "hands-free";
-    }
-
-    return "idle";
-  }
-
   private prepareStopSessionIntent(
     stopState: RecordingMachineState,
     commands: RecordingMachineCommand[],
@@ -394,12 +318,12 @@ export class RecordingMachineInterpreter {
       return;
     }
 
-    if (!this.isStoppingState(stopState)) {
+    if (!isStoppingState(stopState)) {
       this.delegate.logInvariant(
         "Recording stop command emitted outside stopping state",
         {
           command: stopCommand,
-          machineState: this.describeState(stopState),
+          machineState: describeState(stopState),
         },
       );
       return;
@@ -410,7 +334,7 @@ export class RecordingMachineInterpreter {
         "Recording stop command emitted while another stop is pending",
         {
           command: stopCommand,
-          machineState: this.describeState(stopState),
+          machineState: describeState(stopState),
         },
       );
       this.resolvePendingStopSession();
@@ -438,14 +362,14 @@ export class RecordingMachineInterpreter {
     }
 
     const previousRecordingState =
-      this.recordingStateForMachine(previousMachineState);
-    const nextRecordingState = this.recordingStateForMachine(nextMachineState);
+      recordingStateForMachine(previousMachineState);
+    const nextRecordingState = recordingStateForMachine(nextMachineState);
     if (previousRecordingState !== nextRecordingState) {
       this.delegate.emitStateChange(nextRecordingState, previousRecordingState);
     }
 
-    const previousMode = this.recordingModeForMachine(previousMachineState);
-    const nextMode = this.recordingModeForMachine(nextMachineState);
+    const previousMode = recordingModeForMachine(previousMachineState);
+    const nextMode = recordingModeForMachine(nextMachineState);
     if (previousMode !== nextMode) {
       this.delegate.emitModeChange(nextMode, previousMode);
     }

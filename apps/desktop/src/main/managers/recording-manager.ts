@@ -25,11 +25,15 @@ import {
   RecordingMachineInterpreter,
   RECORDING_STOP_RECOVERY_TIMEOUT,
 } from "./recording-machine-interpreter";
-import type {
-  ActiveRecordingMode,
-  RecordingMachineEvent,
-  RecordingMode,
-  TerminationCode,
+import {
+  describeState,
+  isStoppingState,
+  shouldFinalizeWithoutFinalChunk,
+  shouldTransitionOnAudioChunk,
+  type ActiveRecordingMode,
+  type RecordingMachineEvent,
+  type RecordingMode,
+  type TerminationCode,
 } from "./recording-state-machine";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -600,13 +604,13 @@ export class RecordingManager extends EventEmitter {
 
     if (
       stateAtStart.tag !== "STARTING" &&
-      !this.machine.isStoppingState(stateAtStart)
+      !isStoppingState(stateAtStart)
     ) {
       this.logRecordingInvariant(
         "Recording start session command received outside STARTING",
         {
           mode,
-          machineState: this.machine.describeState(stateAtStart),
+          machineState: describeState(stateAtStart),
         },
       );
       return;
@@ -619,7 +623,7 @@ export class RecordingManager extends EventEmitter {
       // immediate handshake during interrupted starts.
       logger.audio.info("Recording stop requested before start session ready", {
         mode,
-        machineState: this.machine.describeState(stateAtStart),
+        machineState: describeState(stateAtStart),
       });
 
       this.audioChunks = [];
@@ -864,11 +868,11 @@ export class RecordingManager extends EventEmitter {
     await this.lifecycleMutex.runExclusive(async () => {
       try {
         const stopState = this.machine.currentState;
-        if (!this.machine.isStoppingState(stopState)) {
+        if (!isStoppingState(stopState)) {
           this.logRecordingInvariant(
             "Cannot end recording - FSM is not stopping",
             {
-              machineState: this.machine.describeState(stopState),
+              machineState: describeState(stopState),
               recordingState: this.getState(),
               code,
             },
@@ -935,12 +939,12 @@ export class RecordingManager extends EventEmitter {
           }
         }
 
-        if (this.machine.shouldFinalizeWithoutFinalChunk(stopState)) {
+        if (shouldFinalizeWithoutFinalChunk(stopState)) {
           if (!sessionId) {
             this.logRecordingInvariant(
               "Cannot finalize interrupted start without a session ID",
               {
-                machineState: this.machine.describeState(stopState),
+                machineState: describeState(stopState),
                 code: effectiveCode,
               },
             );
@@ -1037,7 +1041,9 @@ export class RecordingManager extends EventEmitter {
     // Hot path: every chunk hits this. Only enter the FSM when the audioChunk
     // event could actually transition state (first audio chunk into a recording
     // state). Subsequent chunks would be a self-transition that just allocates.
-    if (this.machine.shouldTransitionOnAudioChunk(chunk.length > 0)) {
+    if (
+      shouldTransitionOnAudioChunk(this.machine.currentState, chunk.length > 0)
+    ) {
       await this.machine.handleEvent({ type: "audioChunk", hasAudio: true });
     }
 
