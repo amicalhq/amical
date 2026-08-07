@@ -29,6 +29,8 @@
     "src/**/*",
     "tests/**/*",
     "e2e/**/*",
+    "scripts/recording-machine-contract.ts",
+    "scripts/generate-recording-machine-vectors.ts",
     "forge.config.ts",
     "playwright.config.ts",
     "vite.*.config.mts",

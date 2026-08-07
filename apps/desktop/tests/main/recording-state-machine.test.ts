@@ -456,51 +456,6 @@ describe("recording state machine", () => {
     expect(commands).toEqual([]);
   });
 
-  it("returns a transition for every state and event pairing", () => {
-    const states: RecordingMachineState[] = [
-      { tag: "IDLE" },
-      { tag: "STARTING", mode: "ptt" },
-      { tag: "STARTING", mode: "hands-free" },
-      { tag: "REC_PTT", firstChunkReceived: false },
-      { tag: "REC_PTT", firstChunkReceived: true },
-      { tag: "PTT_Q", firstChunkReceived: false },
-      { tag: "PTT_Q", firstChunkReceived: true },
-      { tag: "REC_HF", firstChunkReceived: false },
-      { tag: "REC_HF", firstChunkReceived: true },
-      { tag: "STOP_N" },
-      { tag: "STOP_C", code: "quick_release" },
-      { tag: "STOP_C", code: "no_audio" },
-      { tag: "STOP_C", code: "interrupted_start" },
-    ];
-    const events: RecordingMachineEvent[] = [
-      { type: "start", mode: "ptt", hasSpeechModel: true },
-      { type: "start", mode: "hands-free", hasSpeechModel: false },
-      { type: "startSessionReady" },
-      { type: "pttPress", quick: true },
-      { type: "pttRelease", quick: true },
-      { type: "toggle", quick: true },
-      { type: "signalStop" },
-      { type: "sessionFailure" },
-      { type: "quickReleaseTimeout" },
-      { type: "noAudioTimeout" },
-      { type: "durationWarningTimeout" },
-      { type: "maxDurationTimeout" },
-      { type: "audioChunk", hasAudio: true },
-      { type: "audioChunk", hasAudio: false },
-      { type: "reset" },
-      { type: "forceReset" },
-    ];
-
-    for (const state of states) {
-      for (const event of events) {
-        const result = transitionRecordingMachine(state, event);
-
-        expect(result).toHaveProperty("state");
-        expect(Array.isArray(result.commands)).toBe(true);
-      }
-    }
-  });
-
   describe("dismiss event", () => {
     it("dismisses an active PTT recording to STOP_C(user_dismissed)", () => {
       const [state, commands] = step(
