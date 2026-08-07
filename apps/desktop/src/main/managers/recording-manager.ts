@@ -542,19 +542,27 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
+      // The live session is admitted before model lookup, so expose that same
+      // admission to cleanup before the first await.
+      this.currentSessionId = sessionId;
+
       let hasSpeechModel = false;
       try {
         hasSpeechModel = await this.hasSpeechModelSelected();
       } finally {
         if (!hasSpeechModel) {
+          if (this.currentSessionId === sessionId) {
+            this.currentSessionId = null;
+          }
           await this.transcriptionService?.cancelStreamingSession(sessionId);
         }
       }
 
+      if (hasSpeechModel && this.currentSessionId !== sessionId) {
+        return;
+      }
+
       if (hasSpeechModel) {
-        // Missing-model starts stay IDLE; STARTING means we have a model and
-        // have allocated the session identity used by the interpreter.
-        this.currentSessionId = sessionId;
         this.activeMicrophoneName = null;
         // Tag this as a draft session up front (the draft chord is held now) so
         // the recording/processing FAB can show the draft indicator immediately,
@@ -1130,6 +1138,14 @@ export class RecordingManager extends EventEmitter {
     if (pendingStopResult === "timeout") {
       await this.forceIdle();
       return;
+    }
+
+    // The stop command can arm this timer while the final chunk is waiting on
+    // pendingStopSession. The chunk has arrived, so it must not fire during
+    // transcription finalization.
+    if (this.stuckStateTimer) {
+      clearTimeout(this.stuckStateTimer);
+      this.stuckStateTimer = null;
     }
 
     if (this.getState() !== "stopping") {
@@ -1846,10 +1862,25 @@ export class RecordingManager extends EventEmitter {
 
   // Clean up resources
   async cleanup(): Promise<void> {
+    const sessionId = this.currentSessionId;
     this.clearTimers();
 
     // Stop recording if active (performEndRecording handles stopRecording RPC)
     const state = this.getState();
+    if (state === "idle" && sessionId) {
+      // A live session is admitted before model lookup while the FSM remains
+      // idle. Revoke it synchronously so the lookup cannot resume into capture.
+      this.resetSessionState();
+      try {
+        await this.transcriptionService?.cancelStreamingSession(sessionId);
+      } catch (error) {
+        logger.audio.warn("Failed to cancel pending recording start", {
+          error,
+        });
+      }
+      return;
+    }
+
     if (state === "recording" || state === "starting") {
       const commands = this.machine.transition({ type: "signalStop" });
       if (commands.length > 0) {

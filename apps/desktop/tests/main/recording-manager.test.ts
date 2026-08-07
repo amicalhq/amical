@@ -79,6 +79,42 @@ describe("recording manager FSM interpreter", () => {
     await start;
   });
 
+  it("cleanup revokes a live session admitted during model lookup", async () => {
+    const modelLookup = Promise.withResolvers<string>();
+    const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
+      () => true,
+    );
+    const cancelStreamingSession = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn(() => modelLookup.promise),
+      },
+      transcriptionService: {
+        beginStreamingSession,
+        cancelStreamingSession,
+      },
+    });
+    const internals = internalsOf(manager);
+    const startSession = vi
+      .spyOn(internals, "performStartSession")
+      .mockResolvedValue(undefined);
+
+    const start = manager.signalStart();
+    await vi.waitFor(() => {
+      expect(beginStreamingSession).toHaveBeenCalledOnce();
+    });
+
+    const sessionId = beginStreamingSession.mock.calls[0]![0];
+    await manager.cleanup();
+    modelLookup.resolve("whisper-tiny");
+    await start;
+
+    expect(cancelStreamingSession).toHaveBeenCalledOnce();
+    expect(cancelStreamingSession).toHaveBeenCalledWith(sessionId);
+    expect(startSession).not.toHaveBeenCalled();
+    expect(manager.getState()).toBe("idle");
+  });
+
   it("ends the empty live session when no speech model is selected", async () => {
     const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
       () => true,
@@ -691,6 +727,58 @@ describe("recording manager FSM interpreter", () => {
         wasMuted: true,
         muteSounds: true,
       });
+      expect(manager.getState()).toBe("idle");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps stopping while an already-received final chunk is finalizing", async () => {
+    vi.useFakeTimers();
+    try {
+      const nativeStop = Promise.withResolvers<{ success: boolean }>();
+      const finalTranscript = Promise.withResolvers<string>();
+      const nativeBridge = {
+        call: vi.fn(() => nativeStop.promise),
+      };
+      const transcriptionService = {
+        finalizeSession: vi.fn(() => finalTranscript.promise),
+        cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
+      };
+      const manager = createRecordingManager({
+        nativeBridge,
+        transcriptionService,
+      });
+      const internals = internalsOf(manager);
+      internals.currentSessionId = "session-1";
+      internals.machine.__setStateForTesting({
+        tag: "REC_HF",
+        firstChunkReceived: true,
+      });
+
+      const stop = manager.signalStop();
+      await vi.waitFor(() => {
+        expect(nativeBridge.call).toHaveBeenCalledWith("stopRecording", {
+          wasMuted: false,
+          muteSounds: false,
+        });
+      });
+
+      const finalization = internals.handleFinalChunk();
+      nativeStop.resolve({ success: true });
+      await vi.waitFor(() => {
+        expect(transcriptionService.finalizeSession).toHaveBeenCalledOnce();
+      });
+
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(manager.getState()).toBe("stopping");
+      expect(
+        transcriptionService.cancelStreamingSession,
+      ).not.toHaveBeenCalled();
+
+      finalTranscript.resolve("");
+      await Promise.all([stop, finalization]);
       expect(manager.getState()).toBe("idle");
     } finally {
       vi.useRealTimers();

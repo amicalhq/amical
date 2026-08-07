@@ -239,6 +239,7 @@ export class NativeBridge extends EventEmitter {
   private helperPath: string;
   private logger = createScopedLogger("native-bridge");
   private accessibilityContext: AppContext | null = null;
+  private accessibilityContextRefreshId = 0;
 
   // Auto-restart configuration
   private static readonly MAX_RESTARTS = 3;
@@ -811,11 +812,15 @@ export class NativeBridge extends EventEmitter {
    * session or the draft copy-capture.
    */
   async refreshAccessibilityContext(): Promise<void> {
+    const refreshId = ++this.accessibilityContextRefreshId;
     this.accessibilityContext = null;
     try {
       const result = await this.call("getAccessibilityContext", {
         editableOnly: false,
       });
+      if (refreshId !== this.accessibilityContextRefreshId) {
+        return;
+      }
       this.accessibilityContext = normalizeAccessibilityContext(result.context);
       this.logger.debug("Accessibility context refreshed", {
         hasApplication: !!this.accessibilityContext?.application?.name,
