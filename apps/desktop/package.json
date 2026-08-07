@@ -50,6 +50,7 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
     "generate:recording-contract": "tsx scripts/generate-recording-machine-vectors.ts",
+    "verify:recording-contract-version": "tsx scripts/verify-recording-machine-contract-version.ts",
     "build:deps": "pnpm build:types && pnpm build:native-helper",
     "build:types": "pnpm --filter @amical/types build",
     "build:swift-helper": "pnpm --filter @amical/swift-helper build",

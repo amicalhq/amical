@@ -31,6 +31,7 @@
     "e2e/**/*",
     "scripts/recording-machine-contract.ts",
     "scripts/generate-recording-machine-vectors.ts",
+    "scripts/verify-recording-machine-contract-version.ts",
     "forge.config.ts",
     "playwright.config.ts",
     "vite.*.config.mts",

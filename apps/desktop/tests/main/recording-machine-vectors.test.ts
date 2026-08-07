@@ -14,6 +14,7 @@ import {
   renderRecordingMachineVectorArtifact,
 } from "../../scripts/recording-machine-contract";
 import { RECORDING_MACHINE_VECTOR_ARTIFACT_PATH } from "../../scripts/generate-recording-machine-vectors";
+import { verifyRecordingMachineContractVersion } from "../../scripts/verify-recording-machine-contract-version";
 
 const readCheckedArtifact = () => {
   const serialized = readFileSync(
@@ -127,5 +128,19 @@ describe("recording machine contract vectors", () => {
         contractVersion: current.contractVersion + 1,
       }),
     ).not.toThrow();
+  });
+
+  it("starts a new contract artifact at version 1", () => {
+    const current = buildRecordingMachineVectorArtifact();
+
+    expect(() =>
+      verifyRecordingMachineContractVersion(current, null),
+    ).not.toThrow();
+    expect(() =>
+      verifyRecordingMachineContractVersion(
+        { ...current, contractVersion: 2 },
+        null,
+      ),
+    ).toThrow("must use contractVersion 1");
   });
 });

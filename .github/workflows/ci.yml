@@ -21,6 +21,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Fetch pull request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -40,6 +46,15 @@ jobs:
 
       - name: Type check
         run: pnpm type:check
+
+      - name: Verify recording contract artifact
+        run: pnpm --filter @amical/desktop test:recording-contract
+
+      - name: Verify recording contract version
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: pnpm --filter @amical/desktop verify:recording-contract-version "$BASE_SHA"
 
   build_desktop:
     name: Build Desktop (${{ matrix.os }} ${{ matrix.arch }})
