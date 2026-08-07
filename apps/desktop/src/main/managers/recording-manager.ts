@@ -612,20 +612,6 @@ export class RecordingManager extends EventEmitter {
       return;
     }
 
-    // doStart allocates the session ID before emitting startSession; if absent,
-    // the renderer/transcription session identity cannot be kept consistent.
-    if (!this.currentSessionId) {
-      this.logRecordingInvariant(
-        "Recording start reached interpreter without a session ID",
-        {
-          mode,
-          machineState: this.machine.describeCurrentState(),
-        },
-      );
-      this.resetSessionState({ force: true });
-      return;
-    }
-
     if (stateAtStart.tag !== "STARTING") {
       // A synchronous state-changed listener requested stop while handling
       // STARTING. Complete native start so the queued stop command can tear

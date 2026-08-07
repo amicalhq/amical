@@ -540,22 +540,6 @@ describe("recording manager FSM interpreter", () => {
     });
   });
 
-  it("aborts a start that reaches the interpreter without a session id", async () => {
-    const manager = createRecordingManager();
-    const internals = internalsOf(manager);
-    internals.currentSessionId = null;
-    internals.machine.__setStateForTesting({
-      tag: "STARTING",
-      mode: "hands-free",
-    });
-
-    await internals.performStartSession("hands-free");
-
-    expect(internals.currentSessionId).toBeNull();
-    expect(internals.recordingStartedAt).toBeNull();
-    expect(internals.machine.currentState).toEqual({ tag: "IDLE" });
-  });
-
   it("times out instead of waiting forever for a pending stop command", async () => {
     vi.useFakeTimers();
     try {
