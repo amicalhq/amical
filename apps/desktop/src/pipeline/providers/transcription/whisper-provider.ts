@@ -185,6 +185,7 @@ export class WhisperProvider implements TranscriptionProvider {
 
       // Generate initial prompt from recent context only (align with cloud)
       const initialPrompt = this.generateInitialPrompt(
+        languages,
         context.vocabulary,
         aggregatedTranscription,
         context.accessibilityContext,
@@ -292,11 +293,13 @@ export class WhisperProvider implements TranscriptionProvider {
   }
 
   private generateInitialPrompt(
+    languages?: readonly string[],
     vocabulary?: readonly string[],
     aggregatedTranscription?: string,
     accessibilityContext?: TranscribeContext["accessibilityContext"],
   ): string {
     const prompt = buildWhisperPrompt({
+      languages,
       vocabulary,
       previousTranscription: aggregatedTranscription,
       beforeText:
