@@ -107,6 +107,22 @@ export const buildNotificationDescription = (
 export const DISCORD_SUPPORT_URL = "https://amical.ai/community";
 export const APP_PLAN_URL = "https://app.amical.ai/plan";
 
+const MICROPHONE_NOTIFICATION_CONFIG: WidgetNotificationConfig = {
+  title: { key: "widget.notifications.type.noAudio.title" },
+  // Fallback description; no_audio replaces it with the microphone template,
+  // while capture failures can replace it with the browser's exact message.
+  description: { key: "widget.notifications.type.noAudio.description" },
+  primaryAction: {
+    label: { key: "widget.notifications.action.configureMicrophone" },
+    navigateTo: "/settings/dictation",
+  },
+  secondaryAction: {
+    label: { key: "widget.notifications.action.support" },
+    icon: "discord",
+    externalUrl: DISCORD_SUPPORT_URL,
+  },
+};
+
 // Config keyed by error code. USER_DISMISSED is intentionally excluded — it's a
 // control signal (the user dismissed the dictation), never a user-facing notification.
 export const ERROR_CODE_CONFIG: Record<
@@ -306,25 +322,14 @@ export const ERROR_CODE_CONFIG: Record<
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  [ErrorCodes.MICROPHONE_CAPTURE_FAILED]: MICROPHONE_NOTIFICATION_CONFIG,
 };
 
 export const WIDGET_NOTIFICATION_CONFIG: Record<
   WidgetNotificationType,
   WidgetNotificationConfig
 > = {
-  no_audio: {
-    title: { key: "widget.notifications.type.noAudio.title" },
-    description: { key: "widget.notifications.type.noAudio.description" }, // Fallback, replaced by template
-    primaryAction: {
-      label: { key: "widget.notifications.action.configureMicrophone" },
-      navigateTo: "/settings/dictation",
-    },
-    secondaryAction: {
-      label: { key: "widget.notifications.action.support" },
-      icon: "discord",
-      externalUrl: DISCORD_SUPPORT_URL,
-    },
-  },
+  no_audio: MICROPHONE_NOTIFICATION_CONFIG,
   empty_transcript: {
     title: { key: "widget.notifications.type.emptyTranscript.title" },
     description: {

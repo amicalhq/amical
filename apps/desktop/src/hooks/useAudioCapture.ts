@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import audioWorkletUrl from "@/assets/audio-recorder-processor.js?url";
 import { api } from "@/trpc/react";
+import type { CaptureStartFailure } from "@/types/recording";
 import { Mutex } from "async-mutex";
 import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
 import {
@@ -38,6 +39,28 @@ const ANALYSER_MIN_DB = -70; // bottom of the byte range (quiet)
 const ANALYSER_MAX_DB = -30; // top of the byte range (loud)
 const EMPTY_BARS: number[] = new Array(WAVEFORM_BAR_SLOTS).fill(0);
 
+const normalizeCaptureStartFailure = (
+  error: unknown,
+): Omit<CaptureStartFailure, "sessionId"> => {
+  if (typeof error === "object" && error !== null) {
+    const errorLike = error as { name?: unknown; message?: unknown };
+    const name =
+      typeof errorLike.name === "string" && errorLike.name
+        ? errorLike.name
+        : undefined;
+    const message =
+      typeof errorLike.message === "string" && errorLike.message
+        ? errorLike.message
+        : name;
+
+    if (message) {
+      return { name, message };
+    }
+  }
+
+  return { message: String(error) || "Microphone capture failed" };
+};
+
 export interface UseAudioCaptureParams {
   onAudioChunk: (
     arrayBuffer: ArrayBuffer,
@@ -47,6 +70,8 @@ export interface UseAudioCaptureParams {
   onCaptureStarted?: (
     microphone: AcquiredMicrophoneMetadata,
   ) => Promise<void> | void;
+  onCaptureStartFailure?: (failure: CaptureStartFailure) => void;
+  sessionId: string | null;
   enabled: boolean;
   idle: boolean;
 }
@@ -59,6 +84,8 @@ export interface UseAudioCaptureOutput {
 export const useAudioCapture = ({
   onAudioChunk,
   onCaptureStarted,
+  onCaptureStartFailure,
+  sessionId,
   enabled,
   idle,
 }: UseAudioCaptureParams): UseAudioCaptureOutput => {
@@ -79,6 +106,7 @@ export const useAudioCapture = ({
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleRef = useRef(idle);
   const onCaptureStartedRef = useRef(onCaptureStarted);
+  const onCaptureStartFailureRef = useRef(onCaptureStartFailure);
   const pendingWorkletFlushRef = useRef<WorkletFlushRequest | null>(null);
   // performance.now() when the current AudioContext was constructed (for max-age).
   const contextCreatedAtRef = useRef(0);
@@ -90,6 +118,7 @@ export const useAudioCapture = ({
 
   idleRef.current = idle;
   onCaptureStartedRef.current = onCaptureStarted;
+  onCaptureStartFailureRef.current = onCaptureStartFailure;
 
   // Get the user's microphone fallback chain from settings.
   const { data: settings } = api.settings.getSettings.useQuery();
@@ -459,20 +488,34 @@ export const useAudioCapture = ({
 
   // Start/stop based on enabled state
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !sessionId) {
       return;
     }
 
+    let isCurrentAttempt = true;
     startCapture().catch((error) => {
       console.error("AudioCapture: Failed to start:", error);
+
+      if (!isCurrentAttempt) {
+        return;
+      }
+
+      const reportCaptureStartFailure = onCaptureStartFailureRef.current;
+      if (reportCaptureStartFailure) {
+        reportCaptureStartFailure({
+          sessionId,
+          ...normalizeCaptureStartFailure(error),
+        });
+      }
     });
 
     return () => {
+      isCurrentAttempt = false;
       stopCapture().catch((error) => {
         console.error("AudioCapture: Failed to stop:", error);
       });
     };
-  }, [enabled, startCapture, stopCapture]);
+  }, [enabled, sessionId, startCapture, stopCapture]);
 
   useEffect(() => {
     if (!idle) {

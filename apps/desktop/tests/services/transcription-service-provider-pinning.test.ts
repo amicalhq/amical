@@ -766,6 +766,44 @@ describe("TranscriptionService — provider session pinning", () => {
     );
   });
 
+  it("latches a renderer failure without re-entering the provider callback", async () => {
+    const listener = vi.fn();
+    const terminalError = new AppError(
+      "NotAllowedError: Permission denied",
+      ErrorCodes.MICROPHONE_CAPTURE_FAILED,
+      { uiMessage: "Permission denied" },
+    );
+    expect(service.beginStreamingSession("capture-session", listener)).toBe(
+      true,
+    );
+
+    service.latchStreamingSessionFailure("older-session", terminalError);
+    service.latchStreamingSessionFailure("capture-session", terminalError);
+    service.latchStreamingSessionFailure(
+      "capture-session",
+      new Error("later failure"),
+    );
+    expect(listener).not.toHaveBeenCalled();
+
+    await expect(
+      service.finalizeSession({
+        sessionId: "capture-session",
+        audioFilePath: "/tmp/capture-session.wav",
+      }),
+    ).rejects.toBe(terminalError);
+    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "",
+        audioFile: "/tmp/capture-session.wav",
+        meta: expect.objectContaining({
+          sessionId: "capture-session",
+          status: "failed",
+          failureReason: ErrorCodes.MICROPHONE_CAPTURE_FAILED,
+        }),
+      }),
+    );
+  });
+
   it("persists a terminal failure that occurs before provider materialization", async () => {
     selectedModelId = "amical-cloud";
     const terminalError = new Error("Context lookup failed");

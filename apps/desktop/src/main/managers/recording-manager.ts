@@ -16,7 +16,10 @@ import {
   AppScopeTag,
 } from "../runtime/tags";
 import { addRelease, up } from "../runtime/layer-helpers";
-import type { RecordingState } from "../../types/recording";
+import type {
+  CaptureStartFailure,
+  RecordingState,
+} from "../../types/recording";
 import type { ShortcutManager } from "./shortcut-manager";
 import { StreamingWavWriter } from "../../utils/streaming-wav-writer";
 import { AppError, ErrorCodes, type ErrorCode } from "../../types/error";
@@ -105,6 +108,14 @@ export class RecordingManager extends EventEmitter {
   private currentSessionId: string | null = null;
   private initPromise: Promise<void> | null = null;
   private forceIdlePromise: Promise<void> | null = null;
+  private activeFinalization: {
+    sessionId: string | null;
+    promise: Promise<void>;
+  } | null = null;
+  private captureFailureWithoutTranscription: {
+    sessionId: string;
+    error: AppError;
+  } | null = null;
 
   // In-memory audio buffer - written to file only in handleFinalChunk
   private audioChunks: Float32Array[] = [];
@@ -368,6 +379,10 @@ export class RecordingManager extends EventEmitter {
     return this.machine.getPublicState();
   }
 
+  public getCurrentSessionId(): string | null {
+    return this.currentSessionId;
+  }
+
   public getRecordingMode(): RecordingMode {
     return this.machine.getPublicMode();
   }
@@ -405,6 +420,55 @@ export class RecordingManager extends EventEmitter {
       deviceId: input.deviceId?.trim() || null,
       captureSource: input.captureSource ?? null,
     });
+  }
+
+  public async handleCaptureStartFailure(
+    failure: CaptureStartFailure,
+  ): Promise<void> {
+    if (
+      failure.sessionId !== this.currentSessionId ||
+      this.getState() !== "recording"
+    ) {
+      logger.audio.debug("Ignoring microphone capture start failure", {
+        state: this.getState(),
+        currentSessionId: this.currentSessionId,
+        failure,
+      });
+      return;
+    }
+
+    const { sessionId } = failure;
+    logger.audio.error("Microphone capture failed to start", {
+      sessionId,
+      failure,
+    });
+    const captureError = new AppError(
+      failure.name ? `${failure.name}: ${failure.message}` : failure.message,
+      ErrorCodes.MICROPHONE_CAPTURE_FAILED,
+      { uiMessage: failure.message },
+    );
+    if (this.transcriptionService) {
+      this.transcriptionService.latchStreamingSessionFailure(
+        sessionId,
+        captureError,
+      );
+    } else {
+      // Recording admission deliberately survives non-fatal transcription
+      // service initialization failure. Preserve the renderer cause so the
+      // normal STOP_N notification does not degrade it to UNKNOWN.
+      this.captureFailureWithoutTranscription = {
+        sessionId,
+        error: captureError,
+      };
+    }
+
+    await this.machine.handleEvent({ type: "sessionFailure" });
+
+    if (this.currentSessionId === sessionId && this.getState() === "stopping") {
+      // startCapture released the failed graph, so no renderer final frame can
+      // arrive for this attempt. Complete the normal STOP_N resolve path here.
+      await this.handleFinalChunk();
+    }
   }
 
   private getActiveMicrophoneNotificationParams():
@@ -1120,7 +1184,25 @@ export class RecordingManager extends EventEmitter {
   /**
    * Handle the final chunk - unified termination logic
    */
-  private async handleFinalChunk(): Promise<void> {
+  private handleFinalChunk(): Promise<void> {
+    const sessionId = this.currentSessionId;
+    if (this.activeFinalization?.sessionId === sessionId) {
+      return this.activeFinalization.promise;
+    }
+
+    const promise = this.performFinalChunk();
+    const activeFinalization = { sessionId, promise };
+    this.activeFinalization = activeFinalization;
+    const release = () => {
+      if (this.activeFinalization === activeFinalization) {
+        this.activeFinalization = null;
+      }
+    };
+    void promise.then(release, release);
+    return promise;
+  }
+
+  private async performFinalChunk(): Promise<void> {
     // Clear stuck state timer
     if (this.stuckStateTimer) {
       clearTimeout(this.stuckStateTimer);
@@ -1225,7 +1307,14 @@ export class RecordingManager extends EventEmitter {
         return;
       }
 
-      logger.audio.error("Failed to get final transcription", { error });
+      const reportedError =
+        this.captureFailureWithoutTranscription?.sessionId === sessionId
+          ? this.captureFailureWithoutTranscription.error
+          : error;
+
+      logger.audio.error("Failed to get final transcription", {
+        error: reportedError,
+      });
 
       // Extract error properties for notification (DB write handled by TranscriptionService)
       let errorCode: ErrorCode = ErrorCodes.UNKNOWN;
@@ -1233,11 +1322,11 @@ export class RecordingManager extends EventEmitter {
       let uiMessage: string | undefined;
       let traceId: string | undefined;
 
-      if (error instanceof AppError) {
-        errorCode = error.errorCode;
-        uiTitle = error.uiTitle;
-        uiMessage = error.uiMessage;
-        traceId = error.traceId;
+      if (reportedError instanceof AppError) {
+        errorCode = reportedError.errorCode;
+        uiTitle = reportedError.uiTitle;
+        uiMessage = reportedError.uiMessage;
+        traceId = reportedError.traceId;
       }
 
       // Notify user with error code and optional UI overrides
@@ -1599,6 +1688,7 @@ export class RecordingManager extends EventEmitter {
     }
     this.currentSessionId = null;
     this.initPromise = null;
+    this.captureFailureWithoutTranscription = null;
     this.recordingInitiatedAt = null;
     this.audioChunks = [];
     this.terminationCode = null;

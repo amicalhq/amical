@@ -18,6 +18,7 @@ import {
 import { ErrorCodes, type ErrorCode } from "../../types/error";
 
 interface RecordingStateUpdate {
+  sessionId: string | null;
   state: RecordingState;
   mode: RecordingMode;
   isDraft: boolean;
@@ -81,6 +82,23 @@ export const recordingRouter = createRouter({
       recordingManager.setActiveMicrophoneForCurrentSession(input);
     }),
 
+  captureStartFailed: procedure
+    .input(
+      z.object({
+        sessionId: z.string(),
+        name: z.string().optional(),
+        message: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const recordingManager = ctx.services.recordingManager;
+      if (!recordingManager) {
+        throw new Error("Recording manager not available");
+      }
+
+      await recordingManager.handleCaptureStartFailure(input);
+    }),
+
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
   // Modern Node.js (20+) adds Symbol.asyncDispose to async generators natively,
   // which conflicts with electron-trpc's attempt to add the same symbol.
@@ -93,10 +111,14 @@ export const recordingRouter = createRouter({
       if (!recordingManager) {
         throw new Error("Recording manager not available");
       }
+      const sessionIdForState = (state: RecordingState) =>
+        state === "idle" ? null : recordingManager.getCurrentSessionId();
 
       // Emit initial state
+      const initialState = recordingManager.getState();
       emit.next({
-        state: recordingManager.getState(),
+        sessionId: sessionIdForState(initialState),
+        state: initialState,
         mode: recordingManager.getRecordingMode(),
         isDraft: recordingManager.getIsDraftSession(),
       });
@@ -104,6 +126,7 @@ export const recordingRouter = createRouter({
       // Set up listener for state changes
       const handleStateChange = (status: RecordingState) => {
         emit.next({
+          sessionId: sessionIdForState(status),
           state: status,
           mode: recordingManager.getRecordingMode(),
           isDraft: recordingManager.getIsDraftSession(),
@@ -111,8 +134,10 @@ export const recordingRouter = createRouter({
       };
 
       const handleModeChange = (mode: RecordingMode) => {
+        const state = recordingManager.getState();
         emit.next({
-          state: recordingManager.getState(),
+          sessionId: sessionIdForState(state),
+          state,
           mode,
           isDraft: recordingManager.getIsDraftSession(),
         });
@@ -122,8 +147,10 @@ export const recordingRouter = createRouter({
       // state change, so re-push the current state with the now-true isDraft so
       // the FAB shows the draft glyph while still recording.
       const handleDraftLatched = () => {
+        const state = recordingManager.getState();
         emit.next({
-          state: recordingManager.getState(),
+          sessionId: sessionIdForState(state),
+          state,
           mode: recordingManager.getRecordingMode(),
           isDraft: recordingManager.getIsDraftSession(),
         });

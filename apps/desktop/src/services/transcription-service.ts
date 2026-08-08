@@ -141,6 +141,16 @@ export class TranscriptionService {
     return true;
   }
 
+  /** Latch a renderer-originated failure; the caller owns the FSM transition. */
+  latchStreamingSessionFailure(sessionId: string, error: unknown): void {
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== sessionId) {
+      return;
+    }
+
+    liveSession.latchTerminalFailure(error);
+  }
+
   private buildTranscribeContextForSession(
     sessionId: string,
     session: MaterializedTranscriptionSession,

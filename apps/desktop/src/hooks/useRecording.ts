@@ -2,10 +2,11 @@ import { useCallback, useState } from "react";
 import { useAudioCapture } from "./useAudioCapture";
 import type { AcquiredMicrophoneMetadata } from "./audioCaptureDevice";
 import { api } from "@/trpc/react";
-import type { RecordingState } from "@/types/recording";
+import type { CaptureStartFailure, RecordingState } from "@/types/recording";
 import type { RecordingMode } from "@/main/managers/recording-manager";
 
 export interface RecordingStatus {
+  sessionId: string | null;
   state: RecordingState;
   mode: RecordingMode;
   isDraft: boolean;
@@ -22,6 +23,7 @@ export interface UseRecordingOutput {
 
 export const useRecording = (): UseRecordingOutput => {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>({
+    sessionId: null,
     state: "idle",
     mode: "idle",
     isDraft: false,
@@ -31,6 +33,8 @@ export const useRecording = (): UseRecordingOutput => {
   const stopRecordingMutation = api.recording.signalStop.useMutation();
   const dismissRecordingMutation = api.recording.dismiss.useMutation();
   const captureStartedMutation = api.recording.captureStarted.useMutation();
+  const captureStartFailedMutation =
+    api.recording.captureStartFailed.useMutation();
 
   // Subscribe to recording state updates via tRPC
   api.recording.stateUpdates.useSubscription(undefined, {
@@ -86,6 +90,17 @@ export const useRecording = (): UseRecordingOutput => {
     [captureStartedMutation],
   );
 
+  const handleCaptureStartFailure = useCallback(
+    (failure: CaptureStartFailure) => {
+      captureStartFailedMutation.mutate(failure, {
+        onError: (error) => {
+          console.warn("Failed to report microphone capture failure", error);
+        },
+      });
+    },
+    [captureStartFailedMutation],
+  );
+
   // Manage audio capture when recording is active
   const isActive = recordingStatus.state === "recording";
   const isIdle = recordingStatus.state === "idle";
@@ -93,6 +108,8 @@ export const useRecording = (): UseRecordingOutput => {
   const { audioLevels } = useAudioCapture({
     onAudioChunk: handleAudioChunk,
     onCaptureStarted: handleCaptureStarted,
+    onCaptureStartFailure: handleCaptureStartFailure,
+    sessionId: recordingStatus.sessionId,
     enabled: isActive,
     idle: isIdle,
   });

@@ -132,18 +132,27 @@ export class LiveTranscriptionSession {
   }
 
   /** Latch the first unrecoverable failure for this recording. */
-  reportTerminalFailure(error: unknown): void {
+  latchTerminalFailure(error: unknown): Error | null {
     if (
       this.terminalError ||
       this.phase === "aborted" ||
       this.phase === "retired"
     ) {
-      return;
+      return null;
     }
 
     const terminalError =
       error instanceof Error ? error : new Error(String(error));
     this.terminalError = terminalError;
+    return terminalError;
+  }
+
+  reportTerminalFailure(error: unknown): void {
+    const terminalError = this.latchTerminalFailure(error);
+    if (!terminalError) {
+      return;
+    }
+
     this.onTerminalFailure?.(terminalError);
   }
 

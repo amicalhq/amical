@@ -28,6 +28,7 @@ vi.mock("@/hooks/audioCaptureRecycle", () => ({
 }));
 
 import { useAudioCapture } from "@/hooks/useAudioCapture";
+import type { CaptureStartFailure } from "@/types/recording";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
 interface FakeTrack {
@@ -168,20 +169,76 @@ async function settle() {
   });
 }
 
+interface AudioCaptureHookProps {
+  enabled: boolean;
+  idle: boolean;
+  sessionId: string | null;
+}
+
 function mountHook() {
   const onAudioChunk = vi.fn();
+  const onCaptureStartFailure = vi.fn<(failure: CaptureStartFailure) => void>();
+  const initialProps: AudioCaptureHookProps = {
+    enabled: false,
+    idle: true,
+    sessionId: null,
+  };
   const view = renderHook(
-    ({ enabled, idle }: { enabled: boolean; idle: boolean }) =>
-      useAudioCapture({ onAudioChunk, enabled, idle }),
-    { initialProps: { enabled: false, idle: true } },
+    ({ enabled, idle, sessionId }: AudioCaptureHookProps) =>
+      useAudioCapture({
+        onAudioChunk,
+        onCaptureStartFailure,
+        sessionId,
+        enabled,
+        idle,
+      }),
+    { initialProps },
   );
-  return { onAudioChunk, ...view };
+  return { onAudioChunk, onCaptureStartFailure, ...view };
 }
 
 describe("useAudioCapture lifecycle", () => {
+  it("reports a microphone start failure with its original cause", async () => {
+    const failure = new DOMException("Permission denied", "NotAllowedError");
+    getUserMedia.mockRejectedValueOnce(failure);
+    const { onCaptureStartFailure, rerender } = mountHook();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+
+    expect(onCaptureStartFailure).toHaveBeenCalledOnce();
+    expect(onCaptureStartFailure).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      name: "NotAllowedError",
+      message: "Permission denied",
+    });
+    expect(audioContexts).toHaveLength(0);
+  });
+
+  it("does not report a failure from a capture attempt replaced by a new session", async () => {
+    const pendingMicrophone = Promise.withResolvers<FakeStream>();
+    getUserMedia.mockReturnValueOnce(pendingMicrophone.promise);
+    const { onCaptureStartFailure, rerender } = mountHook();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(getUserMedia).toHaveBeenCalledOnce();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    pendingMicrophone.reject(
+      new DOMException("Permission dismissed", "NotAllowedError"),
+    );
+    await settle();
+
+    expect(onCaptureStartFailure).not.toHaveBeenCalled();
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
   it("opens the mic and wires source -> worklet on start", async () => {
     const { rerender } = mountHook();
-    rerender({ enabled: true, idle: false });
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
 
     expect(getUserMedia).toHaveBeenCalledTimes(1);
@@ -199,10 +256,10 @@ describe("useAudioCapture lifecycle", () => {
     const { rerender } = mountHook();
 
     // First dictation.
-    rerender({ enabled: true, idle: false });
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     // Stop WITHOUT going idle (transient), so the context is suspended, not recycled.
-    rerender({ enabled: false, idle: false });
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
     await settle();
 
     expect(audioContexts[0].suspend).toHaveBeenCalled();
@@ -212,7 +269,7 @@ describe("useAudioCapture lifecycle", () => {
     expect(sources[0].disconnect).toHaveBeenCalledWith();
 
     // Second dictation reuses the same (warm) context.
-    rerender({ enabled: true, idle: false });
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
     await settle();
 
     // Warm reuse: no new AudioContext, no second addModule, context resumed.
@@ -226,11 +283,11 @@ describe("useAudioCapture lifecycle", () => {
 
   it("stops the mic track on stop while keeping the context for reuse", async () => {
     const { rerender } = mountHook();
-    rerender({ enabled: true, idle: false });
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     const track = streams[0].track;
 
-    rerender({ enabled: false, idle: false });
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
     await settle();
 
     expect(track.stop).toHaveBeenCalled();
@@ -239,10 +296,10 @@ describe("useAudioCapture lifecycle", () => {
 
   it("recycles (closes) the warm context once idle for the recycle delay", async () => {
     const { rerender } = mountHook();
-    rerender({ enabled: true, idle: false });
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     // Stop and go idle -> idle effect schedules the (mocked-short) recycle timer.
-    rerender({ enabled: false, idle: true });
+    rerender({ enabled: false, idle: true, sessionId: null });
     await settle();
     // Wait past the 5ms mocked recycle delay.
     await act(async () => {
@@ -255,7 +312,7 @@ describe("useAudioCapture lifecycle", () => {
 
   it("releases the mic and context on unmount", async () => {
     const { rerender, unmount } = mountHook();
-    rerender({ enabled: true, idle: false });
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     const track = streams[0].track;
 

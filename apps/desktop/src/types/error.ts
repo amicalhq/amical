@@ -70,6 +70,9 @@ export const ErrorCodes = {
   LOCAL_TRANSCRIPTION_FAILED: "LOCAL_TRANSCRIPTION_FAILED",
   LOCAL_TRANSCRIPTION_UNSUPPORTED: "LOCAL_TRANSCRIPTION_UNSUPPORTED",
 
+  // Renderer microphone or audio graph could not start.
+  MICROPHONE_CAPTURE_FAILED: "MICROPHONE_CAPTURE_FAILED",
+
   // A History retry currently owns the shared transcription resources.
   RETRY_IN_PROGRESS: "RETRY_IN_PROGRESS",
 

@@ -23,6 +23,10 @@ type RecordingManagerInternals = {
   initializeSession(): Promise<void>;
   handleAudioChunk(chunk: Float32Array, isFinalChunk: boolean): Promise<void>;
   handleFinalChunk(): Promise<void>;
+  writeAudioFile(
+    sessionId: string,
+    chunks: Float32Array[],
+  ): Promise<string | null>;
   handleStreamingSessionFailure(sessionId: string, error: Error): Promise<void>;
   notifyNoAudio(): void;
   forceIdle(): Promise<void>;
@@ -298,6 +302,180 @@ describe("recording manager FSM interpreter", () => {
         hasPendingStop: true,
       },
     ]);
+  });
+
+  it("ends a failed microphone restart without waiting for a final chunk", async () => {
+    const priorFinalChunkProcessing = Promise.withResolvers<void>();
+    const finalTranscript = Promise.withResolvers<string>();
+    let terminalError: Error | undefined;
+    const nativeBridge = {
+      call: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const transcriptionService = {
+      latchStreamingSessionFailure: vi.fn(
+        (_sessionId: string, error: Error) => {
+          terminalError = error;
+        },
+      ),
+      processStreamingChunk: vi.fn(() => priorFinalChunkProcessing.promise),
+      finalizeSession: vi.fn(() => finalTranscript.promise),
+    };
+    const manager = createRecordingManager({
+      nativeBridge,
+      transcriptionService,
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: true,
+    });
+    const priorFinalChunk = new Float32Array([0.25, -0.25]);
+    const writeAudioFile = vi
+      .spyOn(internals, "writeAudioFile")
+      .mockResolvedValue("/tmp/session-1.wav");
+    const handleFinalChunk = vi.spyOn(internals, "handleFinalChunk");
+    const forceIdle = vi.spyOn(internals, "forceIdle");
+    const pasteTranscription = vi.spyOn(internals, "pasteTranscription");
+    const notifications: Array<{
+      type: string;
+      errorCode?: string;
+      params?: Record<string, string>;
+      uiMessage?: string;
+    }> = [];
+    manager.on("widget-notification", (notification) => {
+      notifications.push(notification);
+    });
+
+    // A capture restart flushes the previous worklet before the replacement
+    // attempt starts. Main can still be processing that final IPC when the
+    // replacement attempt fails.
+    const priorFinal = internals.handleAudioChunk(priorFinalChunk, true);
+    await vi.waitFor(() => {
+      expect(transcriptionService.processStreamingChunk).toHaveBeenCalledOnce();
+    });
+
+    const captureFailure = manager.handleCaptureStartFailure({
+      sessionId: "session-1",
+      name: "NotAllowedError",
+      message: "Permission denied",
+    });
+    await vi.waitFor(() => {
+      expect(transcriptionService.finalizeSession).toHaveBeenCalledOnce();
+    });
+
+    priorFinalChunkProcessing.resolve();
+    await vi.waitFor(() => {
+      expect(handleFinalChunk).toHaveBeenCalledTimes(2);
+    });
+    expect(writeAudioFile).toHaveBeenCalledOnce();
+    expect(transcriptionService.finalizeSession).toHaveBeenCalledOnce();
+
+    finalTranscript.reject(terminalError);
+    await Promise.all([priorFinal, captureFailure]);
+
+    expect(nativeBridge.call).toHaveBeenCalledWith("stopRecording", {
+      wasMuted: false,
+      muteSounds: false,
+    });
+    expect(
+      transcriptionService.latchStreamingSessionFailure,
+    ).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        errorCode: ErrorCodes.MICROPHONE_CAPTURE_FAILED,
+        uiMessage: "Permission denied",
+      }),
+    );
+    expect(notifications).toEqual([
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.MICROPHONE_CAPTURE_FAILED,
+        uiMessage: "Permission denied",
+        uiTitle: undefined,
+        traceId: undefined,
+      },
+    ]);
+    expect(transcriptionService.finalizeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        audioFilePath: "/tmp/session-1.wav",
+      }),
+    );
+    expect(writeAudioFile).toHaveBeenCalledWith("session-1", [priorFinalChunk]);
+    expect(pasteTranscription).not.toHaveBeenCalled();
+    expect(forceIdle).not.toHaveBeenCalled();
+    expect(manager.getState()).toBe("idle");
+  });
+
+  it("reports the microphone cause when transcription service initialization failed", async () => {
+    const nativeBridge = {
+      call: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const manager = createRecordingManager({
+      nativeBridge,
+      transcriptionService: null,
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+    const pasteTranscription = vi.spyOn(internals, "pasteTranscription");
+    const notifications: Array<{
+      type: string;
+      errorCode?: string;
+      uiMessage?: string;
+    }> = [];
+    manager.on("widget-notification", (notification) => {
+      notifications.push(notification);
+    });
+
+    await manager.handleCaptureStartFailure({
+      sessionId: "session-1",
+      name: "NotAllowedError",
+      message: "Permission denied",
+    });
+
+    expect(notifications).toEqual([
+      expect.objectContaining({
+        type: "transcription_failed",
+        errorCode: ErrorCodes.MICROPHONE_CAPTURE_FAILED,
+        uiMessage: "Permission denied",
+      }),
+    ]);
+    expect(pasteTranscription).not.toHaveBeenCalled();
+    expect(manager.getState()).toBe("idle");
+  });
+
+  it("ignores a microphone start failure from an older session", async () => {
+    const nativeBridge = { call: vi.fn() };
+    const transcriptionService = {
+      latchStreamingSessionFailure: vi.fn(),
+    };
+    const manager = createRecordingManager({
+      nativeBridge,
+      transcriptionService,
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-2";
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+
+    await manager.handleCaptureStartFailure({
+      sessionId: "session-1",
+      name: "NotAllowedError",
+      message: "Permission denied",
+    });
+
+    expect(
+      transcriptionService.latchStreamingSessionFailure,
+    ).not.toHaveBeenCalled();
+    expect(nativeBridge.call).not.toHaveBeenCalled();
+    expect(manager.getState()).toBe("recording");
   });
 
   it("drops audio captured during the start-sound window so the beep isn't recorded", async () => {
