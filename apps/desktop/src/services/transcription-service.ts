@@ -925,11 +925,9 @@ export class TranscriptionService {
       // — the catch persists the dismissed row and rethrows USER_DISMISSED, so
       // there's no paste, no stats, no completion telemetry.
       //
-      // This is the FINAL dismiss gate. A dismiss arriving after this point
-      // (during the DB write / return / the caller's paste) is an accepted
-      // single-ms race we deliberately do NOT guard: the transcription has
-      // effectively committed, and once handleFinalChunk hands the text to the
-      // native paste there is nothing left to abort. See handleFinalChunk.
+      // This is the final gate for selecting the persisted outcome. A dismiss
+      // after this point cannot rewrite the successful row. RecordingManager
+      // separately checks delivery authority before dispatching native paste.
       if (signal.aborted) {
         throw this.userDismissedError();
       }

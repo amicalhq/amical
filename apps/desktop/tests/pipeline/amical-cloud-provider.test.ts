@@ -1273,7 +1273,7 @@ describe("AmicalCloudProvider", () => {
       expect(sampleCount).toBe(512);
     });
 
-    it("I-51: exposes a failed HTTP request only after gRPC fallback is engaged", async () => {
+    it("I-51: keeps the gRPC failure internal and rejects the caller when HTTP fallback is exhausted", async () => {
       const onTerminalFailure = vi.fn();
       const session = openCloudSessionWithTransport("grpc", {
         onTerminalFailure,

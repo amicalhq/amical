@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 
 describe("useRecording trigger forwarding", () => {
-  it("I-51 forwards stop and dismiss to their distinct main procedures", async () => {
+  it("I-51 forwards stop and dismiss to their distinct recording mutations", async () => {
     const { result } = renderHook(() => useRecording());
 
     await act(async () => {

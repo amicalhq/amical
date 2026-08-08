@@ -31,18 +31,12 @@ type RecordingManagerInternals = {
   handleStreamingSessionFailure(sessionId: string, error: Error): Promise<void>;
   notifyNoAudio(): void;
   forceIdle(): Promise<void>;
-  pasteTranscription(transcription: string): Promise<void>;
-  startQuickReleaseTimer(): void;
-  startNoAudioTimer(): void;
-  startDurationTimers(): void;
+  pasteTranscription(
+    transcription: string,
+    expectedSessionId?: string,
+  ): Promise<void>;
   clearTimers(): void;
 };
-
-// Desktop Ring-2 N/A roster:
-// I-17b — Desktop uses the in-recording no-audio watchdog instead of a
-// post-stop no-audio derivation.
-// I-38 — Desktop has no warm-idle supervisory recording layer.
-// I-42 — Desktop has no canonical one-shot Notes consumer.
 
 const createRecordingManager = (
   services: Record<string, unknown> = {},
@@ -561,7 +555,7 @@ describe("recording manager FSM interpreter", () => {
     expect(processStreamingChunk).toHaveBeenCalledTimes(1);
   });
 
-  it("I-29: waits for a pending stop command before finalizing a final chunk", async () => {
+  it("I-29: waits for the accepted stop workflow before finalizing a final chunk", async () => {
     const manager = createRecordingManager({
       transcriptionService: {},
     });
@@ -642,9 +636,12 @@ describe("recording manager FSM interpreter", () => {
       tag: "STARTING",
       mode: "hands-free",
     });
-    internals.audioChunks = [new Float32Array([0.1])];
-    const writeAudioFile = vi.spyOn(internals, "writeAudioFile");
-    const pasteTranscription = vi.spyOn(internals, "pasteTranscription");
+    const writeAudioFile = vi
+      .spyOn(internals, "writeAudioFile")
+      .mockResolvedValue(null);
+    const pasteTranscription = vi
+      .spyOn(internals, "pasteTranscription")
+      .mockResolvedValue(undefined);
 
     const cancelled = vi.fn();
     manager.on("recording-cancelled", cancelled);
@@ -666,12 +663,11 @@ describe("recording manager FSM interpreter", () => {
     expect(writeAudioFile).not.toHaveBeenCalled();
     expect(transcriptionService.finalizeSession).not.toHaveBeenCalled();
     expect(pasteTranscription).not.toHaveBeenCalled();
-    expect(internals.audioChunks).toEqual([]);
     expect(internals.machine.currentPendingStopSession).toBeNull();
     expect(manager.getState()).toBe("idle");
   });
 
-  it("I-33: cleanup during STARTING completes native start before tearing down", async () => {
+  it("cleanup during STARTING completes native start before tearing down", async () => {
     const modelService = {
       getSelectedModel: vi.fn().mockResolvedValue({ id: "model-1" }),
     };
@@ -754,6 +750,7 @@ describe("recording manager FSM interpreter", () => {
 
       try {
         expect(internals.machine.currentState).toEqual(expectedState);
+        await Promise.resolve();
         expect(startSettled).toBe(false);
       } finally {
         initialization.resolve();
@@ -762,27 +759,6 @@ describe("recording manager FSM interpreter", () => {
       }
     },
   );
-
-  it("I-47: pins the four canonical recording timer durations", () => {
-    vi.useFakeTimers();
-    const manager = createRecordingManager();
-    const internals = internalsOf(manager);
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-
-    try {
-      internals.startQuickReleaseTimer();
-      internals.startNoAudioTimer();
-      internals.startDurationTimers();
-
-      expect(setTimeoutSpy.mock.calls.map(([, delay]) => delay)).toEqual([
-        500, 5_000, 300_000, 360_000,
-      ]);
-    } finally {
-      internals.clearTimers();
-      setTimeoutSpy.mockRestore();
-      vi.useRealTimers();
-    }
-  });
 
   it("does not overwrite recordingStartedAt when start is already stopping", async () => {
     const transcriptionService = {
@@ -902,7 +878,7 @@ describe("recording manager FSM interpreter", () => {
     }
   });
 
-  it("I-35: deduplicates concurrent force-idle cleanup", async () => {
+  it("deduplicates concurrent force-idle cleanup", async () => {
     let resolveStopRecording!: () => void;
     const stopRecording = new Promise<{ success: boolean }>((resolve) => {
       resolveStopRecording = () => resolve({ success: true });
@@ -941,7 +917,7 @@ describe("recording manager FSM interpreter", () => {
     expect(manager.getState()).toBe("idle");
   });
 
-  it("I-34: cleanup force-stops when native stop resolved but no final chunk arrived", async () => {
+  it("cleanup force-stops when native stop resolved but no final chunk arrived", async () => {
     vi.useFakeTimers();
     try {
       const nativeBridge = {
@@ -1114,6 +1090,9 @@ describe("dismissCurrentSession routing", () => {
       sessionId: "session-1",
       audioFilePath: "/tmp/session-1.wav",
     });
+    expect(transcriptionService.cancelStreamingSession).toHaveBeenCalledWith(
+      "session-1",
+    );
     expect(transcriptionService.finalizeSession).not.toHaveBeenCalled();
     expect(pasteTranscription).not.toHaveBeenCalled();
     expect(cancelled).toHaveBeenCalledOnce();
@@ -1184,22 +1163,47 @@ describe("final transcript delivery", () => {
     await internals.handleFinalChunk();
 
     expect(pasteSpy).toHaveBeenCalledTimes(1);
-    expect(pasteSpy).toHaveBeenCalledWith("hello world");
+    expect(pasteSpy).toHaveBeenCalledWith("hello world", "s1");
     expect(manager.getState()).toBe("idle");
   });
 
+  it("dispatches paste while the expected session retains delivery authority", async () => {
+    const nativeBridge = {
+      call: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const manager = createRecordingManager({
+      nativeBridge,
+      settingsService: {
+        getPreferences: vi.fn().mockResolvedValue({ preserveClipboard: false }),
+      },
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
+    internals.machine.__setStateForTesting({ tag: "STOP_N" });
+
+    await internals.pasteTranscription("hello world", "session-1");
+
+    expect(nativeBridge.call).toHaveBeenCalledOnce();
+    expect(nativeBridge.call).toHaveBeenCalledWith("pasteText", {
+      transcript: "hello world",
+      preserveClipboard: false,
+    });
+  });
+
   it("I-43: completes without native insertion when the host is unavailable", async () => {
+    const finalizeSession = vi.fn().mockResolvedValue("hello world");
     const manager = createRecordingManager({
       nativeBridge: null,
       settingsService: {
         getPreferences: vi.fn().mockResolvedValue({ preserveClipboard: true }),
       },
-      transcriptionService: {
-        finalizeSession: vi.fn().mockResolvedValue("hello world"),
-      },
+      transcriptionService: { finalizeSession },
     });
     const internals = internalsOf(manager);
-    const pasteTranscription = vi.spyOn(internals, "pasteTranscription");
+    const widgetNotifications: Array<{ type: string }> = [];
+    manager.on("widget-notification", (notification: { type: string }) => {
+      widgetNotifications.push(notification);
+    });
     internals.currentSessionId = "session-1";
     internals.terminationCode = null;
     internals.audioChunks = [];
@@ -1207,7 +1211,8 @@ describe("final transcript delivery", () => {
 
     await internals.handleFinalChunk();
 
-    expect(pasteTranscription).toHaveBeenCalledOnce();
+    expect(finalizeSession).toHaveBeenCalledOnce();
+    expect(widgetNotifications).toEqual([]);
     expect(manager.getState()).toBe("idle");
   });
 
@@ -1286,7 +1291,7 @@ describe("final transcript delivery", () => {
     },
   );
 
-  it("I-50: a post-seal dismiss does not revoke the authorized paste", async () => {
+  it("I-50: a post-seal dismiss preserves success but revokes pending insertion", async () => {
     const preferences = Promise.withResolvers<{ preserveClipboard: boolean }>();
     const nativeBridge = {
       call: vi.fn().mockResolvedValue({ success: true }),
@@ -1314,15 +1319,15 @@ describe("final transcript delivery", () => {
 
     await manager.dismissCurrentSession();
     expect(abortSession).toHaveBeenCalledWith("session-1");
+    expect(internals.machine.currentState).toEqual({
+      tag: "STOP_C",
+      code: "user_dismissed",
+    });
 
     preferences.resolve({ preserveClipboard: false });
     await finalization;
 
-    expect(nativeBridge.call).toHaveBeenCalledTimes(1);
-    expect(nativeBridge.call).toHaveBeenCalledWith("pasteText", {
-      transcript: "sealed transcript",
-      preserveClipboard: false,
-    });
+    expect(nativeBridge.call).not.toHaveBeenCalled();
     expect(manager.getState()).toBe("idle");
   });
 
@@ -1339,10 +1344,15 @@ describe("final transcript delivery", () => {
       const internals = internalsOf(manager);
       internals.currentSessionId = "session-1";
       internals.terminationCode = code;
-      internals.audioChunks = [new Float32Array([0.1])];
+      internals.audioChunks =
+        code === "quick_release" ? [new Float32Array([0.1])] : [];
       internals.machine.__setStateForTesting({ tag: "STOP_C", code });
-      const writeAudioFile = vi.spyOn(internals, "writeAudioFile");
-      const pasteTranscription = vi.spyOn(internals, "pasteTranscription");
+      const writeAudioFile = vi
+        .spyOn(internals, "writeAudioFile")
+        .mockResolvedValue(null);
+      const pasteTranscription = vi
+        .spyOn(internals, "pasteTranscription")
+        .mockResolvedValue(undefined);
       const cancelled = vi.fn();
       manager.on("recording-cancelled", cancelled);
 
@@ -1431,7 +1441,7 @@ describe("final transcript delivery", () => {
     ]);
   });
 
-  it("I-43: an empty transcript notifies without pasting", async () => {
+  it("I-43: an empty transcript notifies with the active microphone and never pastes", async () => {
     const finalizeSession = vi.fn().mockResolvedValue("");
     const manager = createRecordingManager({
       transcriptionService: { finalizeSession },

@@ -354,10 +354,10 @@ export function transitionRecordingMachine(
       }
 
       // Dismiss during an in-flight finalize (STOP_N). The session is already
-      // stopping and finalizeSession is running, so we must NOT re-stop it —
-      // instead abort the transcription so it persists a dismissed row rather
-      // than pasting. A STOP_C (cancel already in flight) falls through to the
-      // no-op below.
+      // stopping, so we must NOT re-stop it. abortFinalization selects dismissed
+      // persistence before the semantic seal; after the seal, the selected
+      // outcome stands while STOP_C revokes pending insertion. A STOP_C (cancel
+      // already in flight) falls through to the no-op below.
       if (state.tag === "STOP_N") {
         return {
           state: { tag: "STOP_C", code: "user_dismissed" },

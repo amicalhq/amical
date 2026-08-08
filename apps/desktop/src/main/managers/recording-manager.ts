@@ -674,10 +674,7 @@ export class RecordingManager extends EventEmitter {
     logger.audio.info("RecordingManager: performStartSession called", { mode });
     const stateAtStart = this.machine.currentState;
 
-    if (
-      stateAtStart.tag !== "STARTING" &&
-      !isStoppingState(stateAtStart)
-    ) {
+    if (stateAtStart.tag !== "STARTING" && !isStoppingState(stateAtStart)) {
       this.logRecordingInvariant(
         "Recording start session command received outside STARTING",
         {
@@ -1033,7 +1030,11 @@ export class RecordingManager extends EventEmitter {
         // stop so the rec-stop sound and unmute aren't blocked; ordering is
         // still safe because the final chunk's finalize waits on
         // pendingStopSession, which only resolves in the finally below.
-        if (!shouldCancelStreamingEarly && this.currentIsInstruct && sessionId) {
+        if (
+          !shouldCancelStreamingEarly &&
+          this.currentIsInstruct &&
+          sessionId
+        ) {
           await Promise.race([
             this.captureDraftSelectionViaCopy(sessionId),
             new Promise<void>((resolve) =>
@@ -1354,11 +1355,9 @@ export class RecordingManager extends EventEmitter {
       resultLength: result?.length || 0,
     });
 
-    // A non-empty result means finalizeSession committed (its final dismiss gate
-    // passed before the DB write). We deliberately do NOT re-check the dismiss
-    // flag here: a dismiss landing in this single-ms tail is an accepted race —
-    // the transcript is already saved, and pasteTranscription hands off to the
-    // native helper, so by the time the paste fires it is too late to abort.
+    // A non-empty result means finalizeSession committed its selected outcome.
+    // Delivery remains revocable until pasteTranscription hands the text to the
+    // native helper; persistence and delivery authority are separate stages.
     if (result) {
       if (this.currentIsInstruct) {
         // Draft: hold the generated text for review instead of auto-pasting. The
@@ -1373,7 +1372,7 @@ export class RecordingManager extends EventEmitter {
         this.resetSessionState();
         return;
       }
-      await this.pasteTranscription(result);
+      await this.pasteTranscription(result, sessionId);
     } else {
       // Check for empty transcript notification
       const sessionDurationMs =
@@ -1801,7 +1800,10 @@ export class RecordingManager extends EventEmitter {
     this.setPendingDraft(null);
   }
 
-  private async pasteTranscription(transcription: string): Promise<void> {
+  private async pasteTranscription(
+    transcription: string,
+    expectedSessionId?: string,
+  ): Promise<void> {
     if (!transcription || typeof transcription !== "string") {
       logger.main.warn("Invalid transcription, not pasting");
       return;
@@ -1812,6 +1814,19 @@ export class RecordingManager extends EventEmitter {
       const settingsService = this.settingsService;
       const preferences = await settingsService.getPreferences();
       const preserveClipboard = preferences.preserveClipboard;
+
+      if (
+        expectedSessionId !== undefined &&
+        (this.currentSessionId !== expectedSessionId ||
+          this.machine.currentState.tag !== "STOP_N")
+      ) {
+        logger.main.info("Skipping transcription paste after authority loss", {
+          expectedSessionId,
+          currentSessionId: this.currentSessionId,
+          machineState: this.machine.describeCurrentState(),
+        });
+        return;
+      }
 
       logger.main.info("Pasting transcription to active application", {
         textLength: transcription.length,
@@ -1912,9 +1927,10 @@ export class RecordingManager extends EventEmitter {
   }
 
   /**
-   * Dismiss the current dictation: abort transcription/paste and persist the
-   * captured audio to History with reason "dismissed". Called by ESC and the
-   * widget ✗ button. No-op when idle.
+   * Dismiss the current dictation. Before the semantic outcome is sealed this
+   * selects dismissed persistence; after the seal it preserves the selected
+   * outcome but still revokes pending insertion. Called by ESC and the widget
+   * ✗ button. No-op when idle.
    */
   public async dismissCurrentSession(): Promise<void> {
     // The FSM decides what dismiss means per state: STARTING → interrupted_start,
@@ -1925,12 +1941,11 @@ export class RecordingManager extends EventEmitter {
   }
 
   /**
-   * Abort an in-flight finalize (FSM abortFinalization command, emitted when
-   * dismiss arrives during STOP_N). One synchronous abort request flags
-   * finalizeSession's dismiss gates and cancels the provider session, so
-   * finalizeSession persists a dismissed row
-   * instead of pasting and a slow/hung finalize returns to idle immediately
-   * instead of waiting for the network call. We deliberately do NOT delete the
+   * Request cancellation of an in-flight finalize (FSM abortFinalization
+   * command, emitted when dismiss arrives during STOP_N). Before the semantic
+   * seal, finalizeSession observes the request and persists dismissed. After
+   * the seal, the selected persisted outcome stands while the FSM's STOP_C
+   * state revokes pending insertion. We deliberately do NOT delete the
    * streaming session here: that would race finalizeSession and drop the audio.
    */
   private abortCurrentFinalization(): void {
