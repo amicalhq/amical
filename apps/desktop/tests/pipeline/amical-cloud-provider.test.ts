@@ -919,7 +919,7 @@ describe("AmicalCloudProvider", () => {
       return { provider, flushPromise };
     };
 
-    it("reports a non-fallback gRPC failure for the active explicit session once", async () => {
+    it("I-51: reports a non-fallback gRPC failure for the active explicit session once", async () => {
       const cancelStream = vi.spyOn(
         CloudDictationGrpcStream.prototype,
         "cancel",
@@ -972,7 +972,32 @@ describe("AmicalCloudProvider", () => {
       cancelStream.mockRestore();
     });
 
-    it("keeps fallback-eligible observed failures inside the explicit session", async () => {
+    it("I-51: reports an unstructured non-fallback gRPC failure", async () => {
+      const onTerminalFailure = vi.fn();
+      const session = openCloudSessionWithTransport("grpc", {
+        onTerminalFailure,
+      });
+      await session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      settleGrpcError(grpcMock.status.RESOURCE_EXHAUSTED, "resource exhausted");
+
+      await vi.waitFor(() => {
+        expect(onTerminalFailure).toHaveBeenCalledOnce();
+      });
+      expect(onTerminalFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorCode: ErrorCodes.QUOTA_EXCEEDED,
+          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+        }),
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("I-51: keeps fallback-eligible observed failures inside the explicit session", async () => {
       const onTerminalFailure = vi.fn();
       const session = openCloudSessionWithTransport("grpc", {
         onTerminalFailure,
@@ -994,7 +1019,7 @@ describe("AmicalCloudProvider", () => {
       session.cancel();
     });
 
-    it("falls back to HTTP on UNAUTHENTICATED and force-refreshes after HTTP 401", async () => {
+    it("I-51: falls back to HTTP on UNAUTHENTICATED and force-refreshes after HTTP 401", async () => {
       let token = "stale-id-token";
       authMock.instance.getIdToken.mockImplementation(async () => token);
       authMock.instance.refreshTokenIfNeeded.mockImplementation(
@@ -1246,6 +1271,39 @@ describe("AmicalCloudProvider", () => {
       // Post-fix: the single pre-failure frame is recovered, not dropped.
       const sampleCount = httpRequestSampleCount();
       expect(sampleCount).toBe(512);
+    });
+
+    it("I-51: exposes a failed HTTP request only after gRPC fallback is engaged", async () => {
+      const onTerminalFailure = vi.fn();
+      const session = openCloudSessionWithTransport("grpc", {
+        onTerminalFailure,
+      });
+
+      await session.transcribe({
+        audioData: audioFrame(HTTP_AUTO_FLUSH_SAMPLES),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      settleGrpcError(grpcMock.status.UNAVAILABLE, "transport down");
+      await flush();
+
+      mockFetchOnce({
+        status: 500,
+        json: { error: { message: "fallback failed" } },
+      });
+      await expect(
+        session.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        }),
+      ).rejects.toMatchObject({
+        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
+        httpStatus: 500,
+      });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(onTerminalFailure).not.toHaveBeenCalled();
     });
 
     it("switches to HTTP between chunks and sends a multi-chunk oversized mirror whole", async () => {

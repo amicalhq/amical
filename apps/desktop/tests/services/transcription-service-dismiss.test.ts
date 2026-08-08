@@ -139,7 +139,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     applyFmt = prepareTranscriptText;
   });
 
-  it("early dismiss (before flush): throws USER_DISMISSED, skips the flush, writes a dismissed row", async () => {
+  it("I-36/I-50: early dismiss (before flush) throws USER_DISMISSED, skips the flush, and writes a dismissed row", async () => {
     seedSession("s1");
     svc.abortSession("s1");
 
@@ -160,7 +160,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(svc.activeLiveSession).toBeNull();
   });
 
-  it("a flush rejected by the dismiss-cancel becomes a silent dismissed row, not a failed one", async () => {
+  it("I-36/I-50: a flush rejected by the dismiss-cancel becomes a silent dismissed row, not a failed one", async () => {
     seedSession("s1");
     provider.flush.mockImplementation(async () => {
       // Dismiss lands mid-flush; provider-session cancellation rejects the flush.
@@ -187,7 +187,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(svc.activeLiveSession).toBeNull();
   });
 
-  it("post-flush dismiss (non-interruptible provider): discards the transcript instead of pasting", async () => {
+  it("I-36/I-50: post-flush dismiss from a non-interruptible provider discards the transcript", async () => {
     seedSession("s1");
     provider.flush.mockImplementation(async () => {
       // Dismiss landed during a decode that couldn't be interrupted; the flush
@@ -212,7 +212,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(provider.cancel).toHaveBeenCalledOnce();
   });
 
-  it("late dismiss during formatting: the final gate discards the formatted transcript", async () => {
+  it("I-36/I-50: a pre-seal dismiss during formatting discards the formatted transcript", async () => {
     seedSession("s1");
     provider.flush.mockResolvedValue({ text: " world" });
     applyFmt.mockImplementation(async ({ text }: { text: string }) => {
@@ -244,7 +244,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(provider.cancel).toHaveBeenCalledOnce();
   });
 
-  it("no dismiss (control): finalize writes a normal row, increments stats, returns the transcript", async () => {
+  it("I-37: an undiscarded result writes a normal row, increments stats, and returns the transcript", async () => {
     seedSession("s1");
     provider.flush.mockResolvedValue({ text: " world" });
 
@@ -260,6 +260,42 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(arg.meta?.status).not.toBe("dismissed");
     expect(vi.mocked(incrementDailyStats)).toHaveBeenCalledTimes(1);
     expect(provider.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("I-50: a post-seal dismiss cannot replace the selected successful outcome", async () => {
+    seedSession("s1");
+    provider.flush.mockResolvedValue({ text: " world" });
+
+    const writeStarted = Promise.withResolvers<void>();
+    const writePaused = Promise.withResolvers<void>();
+    const createNormally = vi
+      .mocked(createTranscription)
+      .getMockImplementation()!;
+    vi.mocked(createTranscription).mockImplementationOnce(async (data) => {
+      writeStarted.resolve();
+      await writePaused.promise;
+      return createNormally(data);
+    });
+
+    const finalization = svc.finalizeSession({
+      sessionId: "s1",
+      audioFilePath: "/tmp/a.wav",
+    });
+    await writeStarted.promise;
+
+    // createTranscription starts after the final dismiss/failure gate. A
+    // dismissal accepted now must not replace the already-selected outcome.
+    svc.abortSession("s1");
+    writePaused.resolve();
+
+    const result = await finalization;
+    expect(result.trim()).toBe("hello world");
+    expect(vi.mocked(createTranscription)).toHaveBeenCalledTimes(1);
+    const arg = vi.mocked(createTranscription).mock.calls[0]![0];
+    expect(arg.text.trim()).toBe("hello world");
+    expect(arg.meta).not.toEqual(
+      expect.objectContaining({ status: "dismissed" }),
+    );
   });
 
   it("maps the live context into persistence and completion telemetry", async () => {
@@ -302,7 +338,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     );
   });
 
-  it("a provider failure writes a failed row and retires the session", async () => {
+  it("I-37: a provider failure writes a failed row and retires the session", async () => {
     seedSession("s1");
     const failure = new AppError(
       "local decode failed",
@@ -329,7 +365,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     expect(svc.activeLiveSession).toBeNull();
   });
 
-  it("saveDismissedTranscription writes empty text + dismissed status + the audio file", async () => {
+  it("I-37: saveDismissedTranscription writes empty text, dismissed status, and the audio file", async () => {
     await svc.saveDismissedTranscription({
       sessionId: "s9",
       audioFilePath: "/tmp/x.wav",
@@ -341,7 +377,7 @@ describe("TranscriptionService — dismiss (finalizeSession gates)", () => {
     });
   });
 
-  it("abortSession is lookup-only: no-op for an unknown session, aborts an existing one", () => {
+  it("I-36: abortSession is lookup-only for the active session", () => {
     expect(() => svc.abortSession("does-not-exist")).not.toThrow();
 
     seedSession("s2");

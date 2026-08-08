@@ -727,7 +727,7 @@ describe("TranscriptionService — provider session pinning", () => {
     await service.cancelStreamingSession("after-persistence");
   });
 
-  it("latches and reports the first terminal failure for the active live session", async () => {
+  it("I-51: latches and reports the first terminal failure for the active live session", async () => {
     selectedModelId = "amical-cloud";
     const listener = vi.fn();
     expect(service.beginStreamingSession("cloud-session", listener)).toBe(true);
@@ -764,6 +764,35 @@ describe("TranscriptionService — provider session pinning", () => {
         }),
       }),
     );
+  });
+
+  it("I-51: projects a rejected provider chunk as one terminal session failure", async () => {
+    const terminalError = new AppError(
+      "HTTP fallback failed",
+      ErrorCodes.INTERNAL_SERVER_ERROR,
+      { httpStatus: 500 },
+    );
+    providerMocks.cloud.setupSession("cloud-session", (session) => {
+      session.transcribe.mockRejectedValueOnce(terminalError);
+    });
+    selectedModelId = "amical-cloud";
+    const listener = vi.fn();
+    expect(service.beginStreamingSession("cloud-session", listener)).toBe(true);
+
+    await expect(processChunk("cloud-session", 0.1)).rejects.toBe(
+      terminalError,
+    );
+
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith(terminalError);
+    const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
+    await expect(
+      service.finalizeSession({
+        sessionId: "cloud-session",
+        audioFilePath: "/tmp/cloud-session.wav",
+      }),
+    ).rejects.toBe(terminalError);
+    expect(cloudSession.flush).not.toHaveBeenCalled();
   });
 
   it("latches a renderer failure without re-entering the provider callback", async () => {

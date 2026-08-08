@@ -87,7 +87,7 @@ describe("RecordingManager terminal transcription flow", () => {
     cloudMocks.sessions.length = 0;
   });
 
-  it("stops capture, persists the failure, retires the provider, and reaches IDLE", async () => {
+  it("I-37/I-51 stops capture, persists the provider failure, retires it, and reaches IDLE", async () => {
     const modelService = {
       getSelectedModel: vi.fn(async () => "amical-cloud"),
     };

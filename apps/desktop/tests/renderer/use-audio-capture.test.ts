@@ -198,7 +198,7 @@ function mountHook() {
 }
 
 describe("useAudioCapture lifecycle", () => {
-  it("reports a microphone start failure with its original cause", async () => {
+  it("I-55 reports a microphone start failure with its original cause", async () => {
     const failure = new DOMException("Permission denied", "NotAllowedError");
     getUserMedia.mockRejectedValueOnce(failure);
     const { onCaptureStartFailure, rerender } = mountHook();
@@ -215,7 +215,7 @@ describe("useAudioCapture lifecycle", () => {
     expect(audioContexts).toHaveLength(0);
   });
 
-  it("does not report a failure from a capture attempt replaced by a new session", async () => {
+  it("I-55 ignores a capture failure from a replaced session", async () => {
     const pendingMicrophone = Promise.withResolvers<FakeStream>();
     getUserMedia.mockReturnValueOnce(pendingMicrophone.promise);
     const { onCaptureStartFailure, rerender } = mountHook();

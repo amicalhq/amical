@@ -166,7 +166,7 @@ describe("recording state machine", () => {
   );
 
   it.each(activeStates().map((state) => [state.tag, state] as const))(
-    "uses a normal stop for terminal session failure from %s",
+    "R-28: uses a normal stop for terminal session failure from %s",
     (_tag, activeState) => {
       const [state, commands] = step(activeState, {
         type: "sessionFailure",
@@ -185,7 +185,7 @@ describe("recording state machine", () => {
   );
 
   it.each(["ptt", "hands-free"] as const)(
-    "uses a normal stop for terminal session failure while starting %s",
+    "R-28: uses a normal stop for terminal session failure while starting %s",
     (mode) => {
       expect(
         step({ tag: "STARTING", mode }, { type: "sessionFailure" }),
@@ -197,9 +197,12 @@ describe("recording state machine", () => {
     ["IDLE", { tag: "IDLE" }],
     ["STOP_N", { tag: "STOP_N" }],
     ["STOP_C", { tag: "STOP_C", code: "no_audio" }],
-  ] as const)("ignores terminal session failure from %s", (_tag, state) => {
-    expect(step(state, { type: "sessionFailure" })).toEqual([state, []]);
-  });
+  ] as const)(
+    "R-28: ignores terminal session failure from %s",
+    (_tag, state) => {
+      expect(step(state, { type: "sessionFailure" })).toEqual([state, []]);
+    },
+  );
 
   it("switches toggle from PTT to hands-free", () => {
     const [state, commands] = step(startPtt(), {
@@ -230,6 +233,38 @@ describe("recording state machine", () => {
     });
     expect(commands).toEqual([{ type: "clearQuickReleaseTimer" }]);
   });
+
+  it.each([
+    [
+      "REC_PTT + toggle",
+      { tag: "REC_PTT", firstChunkReceived: true },
+      { type: "toggle", quick: false },
+      [],
+    ],
+    [
+      "PTT_Q + pttPress",
+      { tag: "PTT_Q", firstChunkReceived: true },
+      { type: "pttPress", quick: true },
+      [{ type: "clearQuickReleaseTimer" }],
+    ],
+    [
+      "PTT_Q + toggle",
+      { tag: "PTT_Q", firstChunkReceived: true },
+      { type: "toggle", quick: true },
+      [{ type: "clearQuickReleaseTimer" }],
+    ],
+  ] as const)(
+    "R-27: carries firstChunkReceived from %s into hands-free",
+    (_case, source, event, expectedCommands) => {
+      const [state, commands] = step(source, event);
+
+      expect(state).toEqual({
+        tag: "REC_HF",
+        firstChunkReceived: true,
+      });
+      expect(commands).toEqual(expectedCommands);
+    },
+  );
 
   it.each([
     ["quick", true, { tag: "STOP_C", code: "quick_release" }, "quick_release"],

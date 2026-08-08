@@ -5,6 +5,8 @@ import type { UseAudioCaptureParams } from "@/hooks/useAudioCapture";
 
 const mocks = vi.hoisted(() => ({
   captureStartFailed: vi.fn(),
+  dismiss: vi.fn(),
+  signalStop: vi.fn(),
   stateUpdates: vi.fn(),
   useAudioCapture: vi.fn(),
 }));
@@ -19,8 +21,10 @@ vi.mock("@/trpc/react", () => {
     api: {
       recording: {
         signalStart: { useMutation: asyncMutation },
-        signalStop: { useMutation: asyncMutation },
-        dismiss: { useMutation: asyncMutation },
+        signalStop: {
+          useMutation: () => ({ mutateAsync: mocks.signalStop }),
+        },
+        dismiss: { useMutation: () => ({ mutateAsync: mocks.dismiss }) },
         captureStarted: {
           useMutation: () => ({ mutate: vi.fn() }),
         },
@@ -37,13 +41,37 @@ import { useRecording } from "@/hooks/useRecording";
 
 beforeEach(() => {
   mocks.captureStartFailed.mockReset();
+  mocks.dismiss.mockReset();
+  mocks.dismiss.mockResolvedValue(undefined);
+  mocks.signalStop.mockReset();
+  mocks.signalStop.mockResolvedValue(undefined);
   mocks.stateUpdates.mockReset();
   mocks.useAudioCapture.mockReset();
   mocks.useAudioCapture.mockReturnValue({ audioLevels: [] });
 });
 
+describe("useRecording trigger forwarding", () => {
+  it("I-51 forwards stop and dismiss to their distinct main procedures", async () => {
+    const { result } = renderHook(() => useRecording());
+
+    await act(async () => {
+      await result.current.stopRecording();
+    });
+
+    expect(mocks.signalStop).toHaveBeenCalledOnce();
+    expect(mocks.dismiss).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.dismissRecording();
+    });
+
+    expect(mocks.signalStop).toHaveBeenCalledOnce();
+    expect(mocks.dismiss).toHaveBeenCalledOnce();
+  });
+});
+
 describe("useRecording capture failure wiring", () => {
-  it("forwards a capture failure to main", () => {
+  it("I-55 forwards a capture failure to main", () => {
     renderHook(() => useRecording());
     const subscription = mocks.stateUpdates.mock.calls[0]?.[1] as
       | {

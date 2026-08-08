@@ -4,7 +4,25 @@ import type { RecordingState } from "../../src/types/recording";
 import { recordingRouter } from "../../src/trpc/routers/recording";
 
 describe("recordingRouter capture lifecycle", () => {
-  it("publishes the active session ID and delegates its capture failure", async () => {
+  it("I-51 forwards dismiss and signalStop to their distinct manager methods", async () => {
+    const signalStop = vi.fn().mockResolvedValue(undefined);
+    const dismissCurrentSession = vi.fn().mockResolvedValue(undefined);
+    const caller = recordingRouter.createCaller({
+      services: {
+        recordingManager: { signalStop, dismissCurrentSession },
+      },
+    } as never);
+
+    await caller.dismiss();
+    expect(dismissCurrentSession).toHaveBeenCalledOnce();
+    expect(signalStop).not.toHaveBeenCalled();
+
+    await caller.signalStop();
+    expect(dismissCurrentSession).toHaveBeenCalledOnce();
+    expect(signalStop).toHaveBeenCalledOnce();
+  });
+
+  it("I-55 publishes the active session ID and delegates its capture failure", async () => {
     let state: RecordingState = "recording";
     const recordingManager = Object.assign(new EventEmitter(), {
       getState: vi.fn(() => state),
