@@ -7,6 +7,7 @@ import { ipcRenderer } from "electron";
  */
 export const audioBridge = {
   sendAudioChunk: (
+    sessionId: string,
     chunk: Float32Array,
     isFinalChunk: boolean = false,
   ): Promise<void> => {
@@ -15,7 +16,12 @@ export const audioBridge = {
       chunk.byteOffset,
       chunk.byteOffset + chunk.byteLength,
     );
-    return ipcRenderer.invoke("audio-data-chunk", buffer, isFinalChunk);
+    return ipcRenderer.invoke(
+      "audio-data-chunk",
+      sessionId,
+      buffer,
+      isFinalChunk,
+    );
   },
 
   onForceStopMediaRecorder: (callback: () => void) => {

@@ -19,11 +19,16 @@ type RecordingManagerInternals = {
   soundsMuted: boolean;
   audioChunks: Float32Array[];
   initPromise: Promise<void> | null;
+  shortcutManager: { isPTTDraftActive(): boolean } | null;
   performStartSession(mode: ActiveRecordingMode): Promise<void>;
   performEndRecording(code?: TerminationCode | null): Promise<void>;
-  initializeSession(): Promise<void>;
-  handleAudioChunk(chunk: Float32Array, isFinalChunk: boolean): Promise<void>;
-  handleFinalChunk(): Promise<void>;
+  initializeSession(sessionId: string): Promise<void>;
+  handleAudioChunk(
+    sessionId: string,
+    chunk: Float32Array,
+    isFinalChunk: boolean,
+  ): Promise<void>;
+  handleFinalChunk(sessionId: string): Promise<void>;
   writeAudioFile(
     sessionId: string,
     chunks: Float32Array[],
@@ -31,6 +36,10 @@ type RecordingManagerInternals = {
   handleStreamingSessionFailure(sessionId: string, error: Error): Promise<void>;
   notifyNoAudio(): void;
   forceIdle(): Promise<void>;
+  resetSessionState(
+    expectedSessionId: string | null,
+    options?: { force?: boolean },
+  ): void;
   pasteTranscription(
     transcription: string,
     expectedSessionId?: string,
@@ -55,9 +64,12 @@ describe("nullable dependencies", () => {
       nativeBridge: null,
     });
     const internals = internalsOf(manager);
+    internals.currentSessionId = "session-1";
     internals.systemAudioMuted = true;
 
-    await expect(internals.initializeSession()).resolves.toBeUndefined();
+    await expect(
+      internals.initializeSession("session-1"),
+    ).resolves.toBeUndefined();
     expect(internals.systemAudioMuted).toBe(false);
   });
 });
@@ -66,7 +78,9 @@ describe("recording manager FSM interpreter", () => {
   it("starts the live session before awaiting speech-model lookup", async () => {
     const modelLookup = Promise.withResolvers<string>();
     const getSelectedModel = vi.fn(() => modelLookup.promise);
-    const beginStreamingSession = vi.fn(() => true);
+    const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
+      () => true,
+    );
     const manager = createRecordingManager({
       modelService: { getSelectedModel },
       transcriptionService: { beginStreamingSession },
@@ -88,40 +102,275 @@ describe("recording manager FSM interpreter", () => {
     await start;
   });
 
-  it("cleanup revokes a live session admitted during model lookup", async () => {
-    const modelLookup = Promise.withResolvers<string>();
+  it.each(["whisper-tiny", null])(
+    "cleanup revokes a live session when model lookup resolves to %s",
+    async (selectedModel) => {
+      const modelLookup = Promise.withResolvers<string | null>();
+      const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
+        () => true,
+      );
+      const cancelStreamingSession = vi.fn().mockResolvedValue(undefined);
+      const manager = createRecordingManager({
+        modelService: {
+          getSelectedModel: vi.fn(() => modelLookup.promise),
+        },
+        transcriptionService: {
+          beginStreamingSession,
+          cancelStreamingSession,
+        },
+      });
+      const internals = internalsOf(manager);
+      const startSession = vi
+        .spyOn(internals, "performStartSession")
+        .mockResolvedValue(undefined);
+      const notifications = vi.fn();
+      manager.on("widget-notification", notifications);
+
+      const start = manager.signalStart();
+      await vi.waitFor(() => {
+        expect(beginStreamingSession).toHaveBeenCalledOnce();
+      });
+
+      const sessionId = beginStreamingSession.mock.calls[0]![0];
+      await manager.cleanup();
+      modelLookup.resolve(selectedModel);
+      await start;
+
+      expect(cancelStreamingSession).toHaveBeenCalledOnce();
+      expect(cancelStreamingSession).toHaveBeenCalledWith(sessionId);
+      expect(startSession).not.toHaveBeenCalled();
+      expect(notifications).not.toHaveBeenCalled();
+      expect(manager.getState()).toBe("idle");
+    },
+  );
+
+  it("I-49/I-52: retired initialization cannot start capture for a replacement", async () => {
+    const firstVadReset = Promise.withResolvers<void>();
     const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
       () => true,
     );
-    const cancelStreamingSession = vi.fn().mockResolvedValue(undefined);
+    const resetVadForNewSession = vi
+      .fn()
+      .mockImplementationOnce(() => firstVadReset.promise)
+      .mockResolvedValue(undefined);
+    const nativeBridge = {
+      refreshAccessibilityContext: vi.fn().mockResolvedValue(undefined),
+      getAccessibilityContext: vi.fn().mockReturnValue(null),
+      call: vi.fn().mockResolvedValue({ success: true }),
+    };
     const manager = createRecordingManager({
       modelService: {
-        getSelectedModel: vi.fn(() => modelLookup.promise),
+        getSelectedModel: vi.fn().mockResolvedValue("whisper-tiny"),
       },
+      settingsService: {
+        getPreferences: vi.fn().mockResolvedValue({
+          muteSystemAudio: false,
+          muteDictationSounds: false,
+        }),
+      },
+      nativeBridge,
       transcriptionService: {
         beginStreamingSession,
-        cancelStreamingSession,
+        cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
+        resetVadForNewSession,
+        warmupActiveProvider: vi.fn().mockResolvedValue(undefined),
       },
     });
     const internals = internalsOf(manager);
-    const startSession = vi
-      .spyOn(internals, "performStartSession")
-      .mockResolvedValue(undefined);
+
+    const firstStart = manager.signalStart();
+    await vi.waitFor(() => {
+      expect(resetVadForNewSession).toHaveBeenCalledOnce();
+    });
+
+    await internals.forceIdle();
+    const replacementStart = manager.signalStart();
+    firstVadReset.resolve();
+    await Promise.all([firstStart, replacementStart]);
+
+    const methods = nativeBridge.call.mock.calls.map(([method]) => method);
+    expect(methods).toEqual(["stopRecording", "startRecording"]);
+    expect(beginStreamingSession).toHaveBeenCalledTimes(2);
+    expect(internals.currentSessionId).toBe(
+      beginStreamingSession.mock.calls[1]![0],
+    );
+    expect(manager.getState()).toBe("recording");
+    internals.clearTimers();
+  });
+
+  it("I-49/I-52: a retired native start is stopped before replacement capture starts", async () => {
+    const firstNativeStart = Promise.withResolvers<{ success: boolean }>();
+    const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
+      () => true,
+    );
+    let nativeStartCount = 0;
+    const nativeBridge = {
+      refreshAccessibilityContext: vi.fn().mockResolvedValue(undefined),
+      getAccessibilityContext: vi.fn().mockReturnValue(null),
+      call: vi.fn((method: string) => {
+        if (method === "startRecording" && nativeStartCount++ === 0) {
+          return firstNativeStart.promise;
+        }
+        return Promise.resolve({ success: true });
+      }),
+    };
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn().mockResolvedValue("whisper-tiny"),
+      },
+      settingsService: {
+        getPreferences: vi.fn().mockResolvedValue({
+          muteSystemAudio: false,
+          muteDictationSounds: false,
+        }),
+      },
+      nativeBridge,
+      transcriptionService: {
+        beginStreamingSession,
+        cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
+        resetVadForNewSession: vi.fn().mockResolvedValue(undefined),
+        warmupActiveProvider: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const internals = internalsOf(manager);
+
+    const firstStart = manager.signalStart();
+    await vi.waitFor(() => {
+      expect(nativeBridge.call).toHaveBeenCalledWith("startRecording", {
+        muteSystemAudio: false,
+        muteSounds: false,
+      });
+    });
+
+    await internals.forceIdle();
+    const replacementStart = manager.signalStart();
+    firstNativeStart.resolve({ success: true });
+    await Promise.all([firstStart, replacementStart]);
+
+    expect(nativeBridge.call.mock.calls.map(([method]) => method)).toEqual([
+      "startRecording",
+      "stopRecording",
+      "stopRecording",
+      "startRecording",
+    ]);
+    expect(beginStreamingSession).toHaveBeenCalledTimes(2);
+    expect(internals.currentSessionId).toBe(
+      beginStreamingSession.mock.calls[1]![0],
+    );
+    expect(manager.getState()).toBe("recording");
+    internals.clearTimers();
+  });
+
+  it("I-41/I-49: a queued stop performs no work after its session is force-idled", async () => {
+    const vadReset = Promise.withResolvers<void>();
+    const cancelStreamingSession = vi.fn().mockResolvedValue(undefined);
+    const nativeBridge = {
+      refreshAccessibilityContext: vi.fn().mockResolvedValue(undefined),
+      getAccessibilityContext: vi.fn().mockReturnValue(null),
+      call: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn().mockResolvedValue("whisper-tiny"),
+      },
+      nativeBridge,
+      transcriptionService: {
+        beginStreamingSession: vi.fn(() => true),
+        cancelStreamingSession,
+        resetVadForNewSession: vi.fn(() => vadReset.promise),
+      },
+    });
+    const internals = internalsOf(manager);
 
     const start = manager.signalStart();
     await vi.waitFor(() => {
-      expect(beginStreamingSession).toHaveBeenCalledOnce();
+      expect(manager.getState()).toBe("recording");
+    });
+    const stop = manager.signalStop();
+    expect(manager.getState()).toBe("stopping");
+
+    await internals.forceIdle();
+    vadReset.resolve();
+    await Promise.all([start, stop]);
+
+    expect(nativeBridge.call.mock.calls.map(([method]) => method)).toEqual([
+      "stopRecording",
+    ]);
+    expect(cancelStreamingSession).toHaveBeenCalledOnce();
+    expect(manager.getState()).toBe("idle");
+  });
+
+  it("I-49/I-52: replacement native start waits for an in-flight force-idle stop", async () => {
+    const nativeStop = Promise.withResolvers<{ success: boolean }>();
+    const beginStreamingSession = vi.fn<(sessionId: string) => boolean>(
+      () => true,
+    );
+    const nativeBridge = {
+      call: vi.fn((method: string) =>
+        method === "stopRecording"
+          ? nativeStop.promise
+          : Promise.resolve({ success: true }),
+      ),
+      refreshAccessibilityContext: vi.fn().mockResolvedValue(undefined),
+      getAccessibilityContext: vi.fn().mockReturnValue(null),
+    };
+    const manager = createRecordingManager({
+      modelService: {
+        getSelectedModel: vi.fn().mockResolvedValue("whisper-tiny"),
+      },
+      settingsService: {
+        getPreferences: vi.fn().mockResolvedValue({
+          muteSystemAudio: true,
+          muteDictationSounds: false,
+        }),
+      },
+      nativeBridge,
+      transcriptionService: {
+        beginStreamingSession,
+        cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
+        resetVadForNewSession: vi.fn().mockResolvedValue(undefined),
+        warmupActiveProvider: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "retired-session";
+    internals.systemAudioMuted = true;
+    internals.soundsMuted = true;
+    internals.machine.__setStateForTesting({ tag: "STOP_N" });
+
+    const forceIdle = internals.forceIdle();
+    await vi.waitFor(() => {
+      expect(nativeBridge.call).toHaveBeenCalledWith("stopRecording", {
+        wasMuted: true,
+        muteSounds: true,
+      });
     });
 
-    const sessionId = beginStreamingSession.mock.calls[0]![0];
-    await manager.cleanup();
-    modelLookup.resolve("whisper-tiny");
-    await start;
+    // The old finalization can reach IDLE while the recovery stop is pending.
+    internals.resetSessionState("retired-session");
+    const replacementStart = manager.signalStart();
+    await vi.waitFor(() => {
+      expect(manager.getState()).toBe("starting");
+    });
 
-    expect(cancelStreamingSession).toHaveBeenCalledOnce();
-    expect(cancelStreamingSession).toHaveBeenCalledWith(sessionId);
-    expect(startSession).not.toHaveBeenCalled();
-    expect(manager.getState()).toBe("idle");
+    expect(beginStreamingSession).toHaveBeenCalledOnce();
+    expect(nativeBridge.call.mock.calls.map(([method]) => method)).toEqual([
+      "stopRecording",
+    ]);
+
+    nativeStop.resolve({ success: true });
+    await Promise.all([forceIdle, replacementStart]);
+
+    expect(internals.currentSessionId).toBe(
+      beginStreamingSession.mock.calls[0]![0],
+    );
+    expect(internals.systemAudioMuted).toBe(true);
+    expect(manager.getState()).toBe("recording");
+    expect(nativeBridge.call.mock.calls.map(([method]) => method)).toEqual([
+      "stopRecording",
+      "startRecording",
+    ]);
+    internals.clearTimers();
   });
 
   it("I-55: ends the empty live session and reports a missing speech model", async () => {
@@ -355,7 +604,11 @@ describe("recording manager FSM interpreter", () => {
     // A capture restart flushes the previous worklet before the replacement
     // attempt starts. Main can still be processing that final IPC when the
     // replacement attempt fails.
-    const priorFinal = internals.handleAudioChunk(priorFinalChunk, true);
+    const priorFinal = internals.handleAudioChunk(
+      "session-1",
+      priorFinalChunk,
+      true,
+    );
     await vi.waitFor(() => {
       expect(transcriptionService.processStreamingChunk).toHaveBeenCalledOnce();
     });
@@ -483,6 +736,137 @@ describe("recording manager FSM interpreter", () => {
     expect(manager.getState()).toBe("recording");
   });
 
+  it("I-49/I-52/I-54: discards a delayed chunk from a retired capture session", async () => {
+    const processStreamingChunk = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      transcriptionService: { processStreamingChunk },
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "replacement-session";
+    internals.audioChunks = [];
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+
+    await internals.handleAudioChunk(
+      "retired-session",
+      new Float32Array([0.1, 0.2]),
+      false,
+    );
+
+    expect(internals.audioChunks).toEqual([]);
+    expect(processStreamingChunk).not.toHaveBeenCalled();
+    expect(internals.machine.currentState).toEqual({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+  });
+
+  it("I-49/I-52: a retired session cannot reset its replacement", () => {
+    const manager = createRecordingManager();
+    const internals = internalsOf(manager);
+    const replacementChunk = new Float32Array([0.2]);
+    internals.currentSessionId = "replacement-session";
+    internals.currentIsInstruct = true;
+    internals.audioChunks = [replacementChunk];
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: true,
+    });
+
+    internals.resetSessionState("retired-session", { force: true });
+
+    expect(internals.currentSessionId).toBe("replacement-session");
+    expect(internals.currentIsInstruct).toBe(true);
+    expect(internals.audioChunks).toEqual([replacementChunk]);
+    expect(internals.machine.currentState).toEqual({
+      tag: "REC_HF",
+      firstChunkReceived: true,
+    });
+  });
+
+  it("I-49/I-52/I-54: discards an admitted chunk when its session retires during initialization", async () => {
+    const initialization = Promise.withResolvers<void>();
+    const processStreamingChunk = vi.fn().mockResolvedValue(undefined);
+    const manager = createRecordingManager({
+      transcriptionService: { processStreamingChunk },
+    });
+    const internals = internalsOf(manager);
+    internals.currentSessionId = "retired-session";
+    internals.initPromise = initialization.promise;
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+
+    const oldChunk = internals.handleAudioChunk(
+      "retired-session",
+      new Float32Array([0.1]),
+      false,
+    );
+    internals.currentSessionId = "replacement-session";
+    internals.audioChunks = [new Float32Array([0.2])];
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+    initialization.resolve();
+    await oldChunk;
+
+    expect(internals.audioChunks).toEqual([new Float32Array([0.2])]);
+    expect(processStreamingChunk).not.toHaveBeenCalled();
+    expect(internals.machine.currentState).toEqual({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
+  });
+
+  it.each([
+    { name: "non-final", isFinal: false },
+    { name: "final", isFinal: true },
+  ])(
+    "I-49/I-52/I-54: stops a retired $name chunk after an asynchronous draft latch",
+    async ({ isFinal }) => {
+      const draftUpdate = Promise.withResolvers<void>();
+      const updateStreamingSession = vi.fn(() => draftUpdate.promise);
+      const processStreamingChunk = vi.fn().mockResolvedValue(undefined);
+      const manager = createRecordingManager({
+        transcriptionService: {
+          updateStreamingSession,
+          processStreamingChunk,
+        },
+      });
+      const internals = internalsOf(manager);
+      const replacementChunk = new Float32Array([0.2]);
+      internals.currentSessionId = "retired-session";
+      internals.shortcutManager = { isPTTDraftActive: () => true };
+      internals.machine.__setStateForTesting({
+        tag: "REC_HF",
+        firstChunkReceived: true,
+      });
+
+      const oldChunk = internals.handleAudioChunk(
+        "retired-session",
+        new Float32Array([0.1]),
+        isFinal,
+      );
+      await vi.waitFor(() => {
+        expect(updateStreamingSession).toHaveBeenCalledOnce();
+      });
+
+      internals.currentSessionId = "replacement-session";
+      internals.currentIsInstruct = false;
+      internals.audioChunks = [replacementChunk];
+      draftUpdate.resolve();
+      await oldChunk;
+
+      expect(processStreamingChunk).not.toHaveBeenCalled();
+      expect(internals.currentIsInstruct).toBe(false);
+      expect(internals.audioChunks).toEqual([replacementChunk]);
+    },
+  );
+
   it("I-28: drops audio captured during the start-sound window so the beep isn't recorded", async () => {
     const processStreamingChunk = vi.fn().mockResolvedValue(undefined);
     const manager = createRecordingManager({
@@ -507,7 +891,11 @@ describe("recording manager FSM interpreter", () => {
     });
 
     const beepWindowChunk = new Float32Array([0.1, 0.2]);
-    const pending = internals.handleAudioChunk(beepWindowChunk, false);
+    const pending = internals.handleAudioChunk(
+      "session-1",
+      beepWindowChunk,
+      false,
+    );
     resolveInit();
     await pending;
 
@@ -518,7 +906,7 @@ describe("recording manager FSM interpreter", () => {
     // A chunk captured after native start completed (initPromise cleared) is kept.
     internals.initPromise = null;
     const postBeepChunk = new Float32Array([0.3, 0.4]);
-    await internals.handleAudioChunk(postBeepChunk, false);
+    await internals.handleAudioChunk("session-1", postBeepChunk, false);
 
     expect(internals.audioChunks.length).toBe(1);
     expect(processStreamingChunk).toHaveBeenCalledTimes(1);
@@ -546,7 +934,7 @@ describe("recording manager FSM interpreter", () => {
     });
 
     const chunk = new Float32Array([0.1, 0.2]);
-    const pending = internals.handleAudioChunk(chunk, false);
+    const pending = internals.handleAudioChunk("session-1", chunk, false);
     resolveInit();
     await pending;
 
@@ -568,7 +956,7 @@ describe("recording manager FSM interpreter", () => {
     internals.machine.transition({ type: "pttPress", quick: true });
 
     let finalized = false;
-    const finalization = internals.handleFinalChunk().then(() => {
+    const finalization = internals.handleFinalChunk("session-1").then(() => {
       finalized = true;
     });
     await Promise.resolve();
@@ -819,7 +1207,7 @@ describe("recording manager FSM interpreter", () => {
       });
       internals.machine.transition({ type: "pttPress", quick: true });
 
-      const finalization = internals.handleFinalChunk();
+      const finalization = internals.handleFinalChunk("session-1");
       await vi.advanceTimersByTimeAsync(10_000);
       await finalization;
 
@@ -1020,7 +1408,7 @@ describe("recording manager FSM interpreter", () => {
         });
       });
 
-      const finalization = internals.handleFinalChunk();
+      const finalization = internals.handleFinalChunk("session-1");
       nativeStop.resolve({ success: true });
       await vi.waitFor(() => {
         expect(transcriptionService.finalizeSession).toHaveBeenCalledOnce();
@@ -1078,7 +1466,7 @@ describe("dismissCurrentSession routing", () => {
       tag: "STOP_C",
       code: "user_dismissed",
     });
-    await internals.handleAudioChunk(finalChunk, true);
+    await internals.handleAudioChunk("session-1", finalChunk, true);
 
     expect(writeAudioFile).toHaveBeenCalledWith("session-1", [
       capturedChunk,
@@ -1160,7 +1548,7 @@ describe("final transcript delivery", () => {
     internals.audioChunks = [];
     internals.machine.__setStateForTesting({ tag: "STOP_N" });
 
-    await internals.handleFinalChunk();
+    await internals.handleFinalChunk("s1");
 
     expect(pasteSpy).toHaveBeenCalledTimes(1);
     expect(pasteSpy).toHaveBeenCalledWith("hello world", "s1");
@@ -1209,7 +1597,7 @@ describe("final transcript delivery", () => {
     internals.audioChunks = [];
     internals.machine.__setStateForTesting({ tag: "STOP_N" });
 
-    await internals.handleFinalChunk();
+    await internals.handleFinalChunk("session-1");
 
     expect(finalizeSession).toHaveBeenCalledOnce();
     expect(widgetNotifications).toEqual([]);
@@ -1231,7 +1619,7 @@ describe("final transcript delivery", () => {
     internals.audioChunks = [];
     internals.machine.__setStateForTesting({ tag: "STOP_N" });
 
-    await internals.handleFinalChunk();
+    await internals.handleFinalChunk("draft-session");
 
     expect(manager.getPendingDraft()).toEqual({
       sessionId: "draft-session",
@@ -1240,6 +1628,158 @@ describe("final transcript delivery", () => {
     expect(pasteTranscription).not.toHaveBeenCalled();
     expect(manager.getState()).toBe("idle");
   });
+
+  it("I-49/I-52/I-54: retired WAV completion cannot clear replacement audio", async () => {
+    const wavWrite = Promise.withResolvers<string | null>();
+    const finalizeSession = vi.fn().mockResolvedValue("");
+    const manager = createRecordingManager({
+      nativeBridge: {
+        call: vi.fn().mockResolvedValue({ success: true }),
+      },
+      transcriptionService: {
+        cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
+        finalizeSession,
+      },
+    });
+    const internals = internalsOf(manager);
+    const replacementChunk = new Float32Array([0.2]);
+    internals.currentSessionId = "retired-session";
+    internals.audioChunks = [new Float32Array([0.1])];
+    internals.machine.__setStateForTesting({ tag: "STOP_N" });
+    vi.spyOn(internals, "writeAudioFile").mockReturnValue(wavWrite.promise);
+
+    const finalization = internals.handleFinalChunk("retired-session");
+    await vi.waitFor(() => {
+      expect(internals.writeAudioFile).toHaveBeenCalledOnce();
+    });
+
+    await internals.forceIdle();
+    internals.currentSessionId = "replacement-session";
+    internals.audioChunks = [replacementChunk];
+    internals.machine.__setStateForTesting({
+      tag: "STARTING",
+      mode: "hands-free",
+    });
+    wavWrite.resolve("/tmp/retired.wav");
+    await finalization;
+
+    expect(finalizeSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "retired-session" }),
+    );
+    expect(internals.currentSessionId).toBe("replacement-session");
+    expect(internals.audioChunks).toEqual([replacementChunk]);
+    expect(internals.machine.currentState).toEqual({
+      tag: "STARTING",
+      mode: "hands-free",
+    });
+  });
+
+  it.each([
+    { name: "draft staging", isDraft: true, rejects: false, dismissed: false },
+    { name: "native paste", isDraft: false, rejects: false, dismissed: false },
+    {
+      name: "failure notification",
+      isDraft: false,
+      rejects: true,
+      dismissed: false,
+    },
+    {
+      name: "dismiss cancellation",
+      isDraft: false,
+      rejects: false,
+      dismissed: true,
+    },
+  ])(
+    "I-49/I-52/I-54: retired finalization cannot perform $name or reset its replacement",
+    async ({ isDraft, rejects, dismissed }) => {
+      const finalResult = Promise.withResolvers<string>();
+      const dismissedSave = Promise.withResolvers<void>();
+      const beginStreamingSession = vi.fn(() => true);
+      const finalizeSession = vi.fn(() => finalResult.promise);
+      const saveDismissedTranscription = vi.fn(() => dismissedSave.promise);
+      const nativeBridge = {
+        call: vi.fn().mockResolvedValue({ success: true }),
+      };
+      const manager = createRecordingManager({
+        modelService: {
+          getSelectedModel: vi.fn().mockResolvedValue("whisper-tiny"),
+        },
+        settingsService: {
+          getPreferences: vi.fn().mockResolvedValue({
+            preserveClipboard: false,
+          }),
+        },
+        nativeBridge,
+        transcriptionService: {
+          beginStreamingSession,
+          cancelStreamingSession: vi.fn().mockResolvedValue(undefined),
+          finalizeSession,
+          saveDismissedTranscription,
+        },
+      });
+      const internals = internalsOf(manager);
+      const oldChunk = new Float32Array([0.1]);
+      const replacementChunk = new Float32Array([0.2]);
+      internals.currentSessionId = "retired-session";
+      internals.currentIsInstruct = false;
+      internals.audioChunks = [oldChunk];
+      internals.terminationCode = dismissed ? "user_dismissed" : null;
+      internals.machine.__setStateForTesting(
+        dismissed
+          ? { tag: "STOP_C", code: "user_dismissed" }
+          : { tag: "STOP_N" },
+      );
+      vi.spyOn(internals, "writeAudioFile").mockResolvedValue(
+        "/tmp/retired.wav",
+      );
+      const notifications: Array<{ type: string }> = [];
+      manager.on("widget-notification", (notification) => {
+        notifications.push(notification);
+      });
+      const cancelled = vi.fn();
+      manager.on("recording-cancelled", cancelled);
+
+      const finalization = internals.handleFinalChunk("retired-session");
+      await vi.waitFor(() => {
+        expect(
+          dismissed ? saveDismissedTranscription : finalizeSession,
+        ).toHaveBeenCalledOnce();
+      });
+
+      await internals.forceIdle();
+      vi.spyOn(internals, "performStartSession").mockResolvedValue(undefined);
+      await manager.signalStart();
+      const replacementSessionId = internals.currentSessionId;
+      expect(replacementSessionId).not.toBe("retired-session");
+      internals.currentIsInstruct = isDraft;
+      internals.audioChunks = [replacementChunk];
+
+      if (dismissed) {
+        dismissedSave.resolve();
+      } else if (rejects) {
+        finalResult.reject(new Error("old finalization failed"));
+      } else {
+        finalResult.resolve("old transcript");
+      }
+      await finalization;
+
+      expect(internals.currentSessionId).toBe(replacementSessionId);
+      expect(internals.currentIsInstruct).toBe(isDraft);
+      expect(internals.audioChunks).toEqual([replacementChunk]);
+      expect(internals.machine.currentState).toEqual({
+        tag: "STARTING",
+        mode: "hands-free",
+      });
+      expect(manager.getPendingDraft()).toBeNull();
+      expect(notifications).toEqual([]);
+      expect(cancelled).not.toHaveBeenCalled();
+      expect(
+        nativeBridge.call.mock.calls.filter(
+          ([method]) => method === "pasteText",
+        ),
+      ).toEqual([]);
+    },
+  );
 
   it.each(["success", "dismissed"] as const)(
     "I-40: returns to IDLE after %s and accepts the next start",
@@ -1271,7 +1811,7 @@ describe("final transcript delivery", () => {
       internals.audioChunks = [];
       internals.machine.__setStateForTesting({ tag: "STOP_N" });
 
-      await internals.handleFinalChunk();
+      await internals.handleFinalChunk("completed-session");
       expect(manager.getState()).toBe("idle");
       expect(pasteTranscription).toHaveBeenCalledTimes(
         outcome === "success" ? 1 : 0,
@@ -1312,7 +1852,7 @@ describe("final transcript delivery", () => {
     internals.audioChunks = [];
     internals.machine.__setStateForTesting({ tag: "STOP_N" });
 
-    const finalization = internals.handleFinalChunk();
+    const finalization = internals.handleFinalChunk("session-1");
     await vi.waitFor(() => {
       expect(getPreferences).toHaveBeenCalledOnce();
     });
@@ -1356,7 +1896,7 @@ describe("final transcript delivery", () => {
       const cancelled = vi.fn();
       manager.on("recording-cancelled", cancelled);
 
-      await internals.handleFinalChunk();
+      await internals.handleFinalChunk("session-1");
 
       expect(cancelled).toHaveBeenCalledWith({
         sessionId: "session-1",
@@ -1401,7 +1941,7 @@ describe("final transcript delivery", () => {
     internals.audioChunks = [];
     internals.machine.__setStateForTesting({ tag: "STOP_N" });
 
-    await internals.handleFinalChunk();
+    await internals.handleFinalChunk("s1");
 
     expect(finalizeSession).toHaveBeenCalledTimes(1);
     expect(widgetNotifications).toEqual([]);
@@ -1426,6 +1966,7 @@ describe("final transcript delivery", () => {
       firstChunkReceived: false,
     });
     manager.setActiveMicrophoneForCurrentSession({
+      sessionId: "s1",
       microphoneName: "External USB Mic",
       deviceId: "usb-mic",
       captureSource: "preferred",
@@ -1465,6 +2006,7 @@ describe("final transcript delivery", () => {
       firstChunkReceived: true,
     });
     manager.setActiveMicrophoneForCurrentSession({
+      sessionId: "s1",
       microphoneName: "External USB Mic",
       deviceId: "usb-mic",
       captureSource: "preferred",
@@ -1475,7 +2017,7 @@ describe("final transcript delivery", () => {
     internals.terminationCode = null;
     internals.machine.resolvePendingStopSession();
 
-    await internals.handleFinalChunk();
+    await internals.handleFinalChunk("s1");
 
     expect(finalizeSession).toHaveBeenCalledTimes(1);
     expect(pasteTranscription).not.toHaveBeenCalled();
@@ -1487,7 +2029,7 @@ describe("final transcript delivery", () => {
     ]);
   });
 
-  it("ignores active microphone reports when there is no active session", () => {
+  it("I-54 ignores active microphone reports from a retired session", () => {
     const manager = createRecordingManager();
     const internals = internalsOf(manager);
     const widgetNotifications: Array<{
@@ -1498,22 +2040,18 @@ describe("final transcript delivery", () => {
       widgetNotifications.push(n);
     });
 
-    // A report that arrives with no session in flight (e.g. after the session
-    // ended and currentSessionId was cleared) must be dropped, so it can't leak
-    // a stale mic name into the next session.
-    internals.currentSessionId = null;
+    internals.currentSessionId = "replacement-session";
+    internals.machine.__setStateForTesting({
+      tag: "REC_HF",
+      firstChunkReceived: false,
+    });
     manager.setActiveMicrophoneForCurrentSession({
+      sessionId: "retired-session",
       microphoneName: "Stale Mic",
       deviceId: "stale",
       captureSource: "preferred",
     });
 
-    // A genuine recording session that never reported a mic emits no mic param.
-    internals.currentSessionId = "s1";
-    internals.machine.__setStateForTesting({
-      tag: "REC_HF",
-      firstChunkReceived: false,
-    });
     internals.notifyNoAudio();
 
     expect(widgetNotifications).toEqual([

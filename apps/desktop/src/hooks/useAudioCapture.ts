@@ -63,12 +63,14 @@ const normalizeCaptureStartFailure = (
 
 export interface UseAudioCaptureParams {
   onAudioChunk: (
+    sessionId: string,
     arrayBuffer: ArrayBuffer,
     speechProbability: number,
     isFinalChunk: boolean,
   ) => Promise<void> | void;
   onCaptureStarted?: (
     microphone: AcquiredMicrophoneMetadata,
+    sessionId: string,
   ) => Promise<void> | void;
   onCaptureStartFailure?: (failure: CaptureStartFailure) => void;
   sessionId: string | null;
@@ -203,6 +205,7 @@ export const useAudioCapture = ({
   }, [resetBars]);
 
   const startCapture = useCallback(async () => {
+    const captureSessionId = sessionId!;
     // StrictMode can remount and call us before the teardown effect's cleanup is
     // reverted, so clear disposed here. pendingStartRef is read by closeIdleContext.
     disposedRef.current = false;
@@ -237,14 +240,14 @@ export const useAudioCapture = ({
 
           const reportCaptureStarted = onCaptureStartedRef.current;
           if (reportCaptureStarted) {
-            void Promise.resolve(reportCaptureStarted(microphone)).catch(
-              (error) => {
-                console.warn(
-                  "AudioCapture: Failed to report active microphone:",
-                  error,
-                );
-              },
-            );
+            void Promise.resolve(
+              reportCaptureStarted(microphone, captureSessionId),
+            ).catch((error) => {
+              console.warn(
+                "AudioCapture: Failed to report active microphone:",
+                error,
+              );
+            });
           }
 
           const { audioContext, createdAt } = await createOrResumeAudioContext({
@@ -280,7 +283,12 @@ export const useAudioCapture = ({
                   error,
                 );
               }
-              return onAudioChunk(arrayBuffer, speechProbability, isFinalChunk);
+              return onAudioChunk(
+                captureSessionId,
+                arrayBuffer,
+                speechProbability,
+                isFinalChunk,
+              );
             },
             finishPendingFlush: (didFlush) =>
               pendingWorkletFlushRef.current?.finish(didFlush),
@@ -323,6 +331,7 @@ export const useAudioCapture = ({
     releaseAll,
     clearIdleTimer,
     updateBars,
+    sessionId,
   ]);
 
   // Device-change diagnostics are only attached while dictation is active, so

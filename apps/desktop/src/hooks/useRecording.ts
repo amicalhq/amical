@@ -49,6 +49,7 @@ export const useRecording = (): UseRecordingOutput => {
   // Handle audio frames by sending them to the main process
   const handleAudioChunk = useCallback(
     async (
+      sessionId: string,
       arrayBuffer: ArrayBuffer,
       speechProbability: number,
       isFinalChunk: boolean,
@@ -58,7 +59,11 @@ export const useRecording = (): UseRecordingOutput => {
 
       // Send frame directly to main process
       // TODO: We need to update the IPC to include speech detection info
-      await window.electronAPI.sendAudioChunk(float32Array, isFinalChunk);
+      await window.electronAPI.sendAudioChunk(
+        sessionId,
+        float32Array,
+        isFinalChunk,
+      );
       console.debug(`Sent audio frame`, {
         samples: float32Array.length,
         speechProbability: speechProbability.toFixed(3),
@@ -73,9 +78,10 @@ export const useRecording = (): UseRecordingOutput => {
   );
 
   const handleCaptureStarted = useCallback(
-    (microphone: AcquiredMicrophoneMetadata) => {
+    (microphone: AcquiredMicrophoneMetadata, sessionId: string) => {
       captureStartedMutation.mutate(
         {
+          sessionId,
           microphoneName: microphone.name,
           deviceId: microphone.deviceId,
           captureSource: microphone.captureSource,

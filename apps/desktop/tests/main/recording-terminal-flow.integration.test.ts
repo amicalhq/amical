@@ -74,7 +74,11 @@ import { AppError, ErrorCodes } from "../../src/types/error";
 
 type RecordingManagerInternals = {
   currentSessionId: string | null;
-  handleAudioChunk(chunk: Float32Array, isFinalChunk: boolean): Promise<void>;
+  handleAudioChunk(
+    sessionId: string,
+    chunk: Float32Array,
+    isFinalChunk: boolean,
+  ): Promise<void>;
   writeAudioFile(
     sessionId: string,
     chunks: Float32Array[],
@@ -123,6 +127,7 @@ describe("RecordingManager terminal transcription flow", () => {
     });
 
     let finalChunkPromise: Promise<void> | null = null;
+    let sessionId: string | null = null;
     const nativeCall =
       vi.fn<(method: string) => Promise<{ success: boolean }>>();
     const nativeBridge = {
@@ -140,7 +145,7 @@ describe("RecordingManager terminal transcription flow", () => {
     nativeCall.mockImplementation(async (method) => {
       if (method === "stopRecording") {
         finalChunkPromise = Promise.resolve().then(() =>
-          internals.handleAudioChunk(new Float32Array([0.2]), true),
+          internals.handleAudioChunk(sessionId!, new Float32Array([0.2]), true),
         );
       }
       return { success: true };
@@ -158,10 +163,14 @@ describe("RecordingManager terminal transcription flow", () => {
 
     await manager.signalStart();
     expect(manager.getState()).toBe("recording");
-    const sessionId = internals.currentSessionId;
+    sessionId = internals.currentSessionId;
     expect(sessionId).not.toBeNull();
 
-    await internals.handleAudioChunk(new Float32Array([0.1]), false);
+    await internals.handleAudioChunk(
+      sessionId!,
+      new Float32Array([0.1]),
+      false,
+    );
     const providerSession = cloudMocks.sessions[0];
     expect(providerSession).toBeDefined();
 

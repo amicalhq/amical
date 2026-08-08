@@ -68,6 +68,7 @@ export const recordingRouter = createRouter({
   captureStarted: procedure
     .input(
       z.object({
+        sessionId: z.string(),
         microphoneName: z.string().optional(),
         deviceId: z.string().optional(),
         captureSource: z.enum(["preferred", "default"]).optional(),

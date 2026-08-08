@@ -29,6 +29,7 @@ describe("recordingRouter capture lifecycle", () => {
       getCurrentSessionId: vi.fn(() => "session-1"),
       getRecordingMode: vi.fn(() => "hands-free" as const),
       getIsDraftSession: vi.fn(() => false),
+      setActiveMicrophoneForCurrentSession: vi.fn(),
       handleCaptureStartFailure: vi.fn().mockResolvedValue(undefined),
     });
     const caller = recordingRouter.createCaller({
@@ -47,6 +48,17 @@ describe("recordingRouter capture lifecycle", () => {
         state: "recording",
       }),
     ]);
+
+    const microphone = {
+      sessionId: "session-1",
+      microphoneName: "External Mic",
+      deviceId: "external-mic",
+      captureSource: "preferred" as const,
+    };
+    await caller.captureStarted(microphone);
+    expect(
+      recordingManager.setActiveMicrophoneForCurrentSession,
+    ).toHaveBeenCalledWith(microphone);
 
     const failure = {
       sessionId: "session-1",

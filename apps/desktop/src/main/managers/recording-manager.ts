@@ -109,7 +109,7 @@ export class RecordingManager extends EventEmitter {
   private initPromise: Promise<void> | null = null;
   private forceIdlePromise: Promise<void> | null = null;
   private activeFinalization: {
-    sessionId: string | null;
+    sessionId: string;
     promise: Promise<void>;
   } | null = null;
   private captureFailureWithoutTranscription: {
@@ -322,7 +322,11 @@ export class RecordingManager extends EventEmitter {
    * the cloud stream is already open, the transcription service pushes an
    * updated skills snapshot before the next chunk is processed.
    */
-  private async latchDraftTag(): Promise<void> {
+  private async latchDraftTag(sessionId: string): Promise<void> {
+    if (this.currentSessionId !== sessionId) {
+      return;
+    }
+
     if (!this.currentIsInstruct && this.shortcutManager?.isPTTDraftActive()) {
       this.currentIsInstruct = true;
       // Latching happens on the first audio chunk — an internal FSM transition
@@ -330,19 +334,17 @@ export class RecordingManager extends EventEmitter {
       // "state-changed" fires. Emit so the widget FAB picks up isDraft=true
       // *during* recording, not only when it later transitions to stopping.
       this.emit("draft-latched");
-      if (this.currentSessionId) {
-        try {
-          const transcriptionService = requireService(
-            this.transcriptionService,
-            "transcriptionService",
-          );
-          await transcriptionService.updateStreamingSession({
-            sessionId: this.currentSessionId,
-            isInstruct: this.currentIsInstruct,
-          });
-        } catch (error) {
-          logger.audio.warn("Failed to propagate draft latch", { error });
-        }
+      try {
+        const transcriptionService = requireService(
+          this.transcriptionService,
+          "transcriptionService",
+        );
+        await transcriptionService.updateStreamingSession({
+          sessionId,
+          isInstruct: this.currentIsInstruct,
+        });
+      } catch (error) {
+        logger.audio.warn("Failed to propagate draft latch", { error });
       }
     }
   }
@@ -394,18 +396,20 @@ export class RecordingManager extends EventEmitter {
   }
 
   public setActiveMicrophoneForCurrentSession(input: {
+    sessionId: string;
     microphoneName?: string;
     deviceId?: string;
     captureSource?: "preferred" | "default";
   }): void {
     const state = this.getState();
     if (
-      !this.currentSessionId ||
+      input.sessionId !== this.currentSessionId ||
       (state !== "starting" && state !== "recording")
     ) {
       logger.audio.debug("Ignoring active microphone update", {
         state,
-        hasSession: Boolean(this.currentSessionId),
+        currentSessionId: this.currentSessionId,
+        reportedSessionId: input.sessionId,
       });
       return;
     }
@@ -415,7 +419,7 @@ export class RecordingManager extends EventEmitter {
     this.activeMicrophoneName = microphoneName;
 
     logger.audio.info("Active microphone resolved for recording session", {
-      sessionId: this.currentSessionId,
+      sessionId: input.sessionId,
       microphoneName,
       deviceId: input.deviceId?.trim() || null,
       captureSource: input.captureSource ?? null,
@@ -467,7 +471,7 @@ export class RecordingManager extends EventEmitter {
     if (this.currentSessionId === sessionId && this.getState() === "stopping") {
       // startCapture released the failed graph, so no renderer final frame can
       // arrive for this attempt. Complete the normal STOP_N resolve path here.
-      await this.handleFinalChunk();
+      await this.handleFinalChunk(sessionId);
     }
   }
 
@@ -490,7 +494,7 @@ export class RecordingManager extends EventEmitter {
       chunksDiscarded: this.audioChunks.length,
     });
     this.emit("recording-cancelled", { sessionId, code });
-    this.resetSessionState();
+    this.resetSessionState(sessionId);
   }
 
   private logRecordingInvariant(
@@ -611,18 +615,23 @@ export class RecordingManager extends EventEmitter {
       this.currentSessionId = sessionId;
 
       let hasSpeechModel = false;
+      let shouldReportMissingModel = false;
       try {
         hasSpeechModel = await this.hasSpeechModelSelected();
       } finally {
-        if (!hasSpeechModel) {
-          if (this.currentSessionId === sessionId) {
+        if (!hasSpeechModel && this.currentSessionId === sessionId) {
+          await this.transcriptionService?.cancelStreamingSession(sessionId);
+          shouldReportMissingModel = this.currentSessionId === sessionId;
+          if (shouldReportMissingModel) {
             this.currentSessionId = null;
           }
-          await this.transcriptionService?.cancelStreamingSession(sessionId);
         }
       }
 
-      if (hasSpeechModel && this.currentSessionId !== sessionId) {
+      if (
+        (hasSpeechModel && this.currentSessionId !== sessionId) ||
+        (!hasSpeechModel && !shouldReportMissingModel)
+      ) {
         return;
       }
 
@@ -671,6 +680,15 @@ export class RecordingManager extends EventEmitter {
 
   private async performStartSession(mode: ActiveRecordingMode): Promise<void> {
     const startTime = performance.now();
+    const sessionId = this.currentSessionId!;
+    const pendingForceIdle = this.forceIdlePromise;
+    if (pendingForceIdle) {
+      await pendingForceIdle;
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
+    }
+
     logger.audio.info("RecordingManager: performStartSession called", { mode });
     const stateAtStart = this.machine.currentState;
 
@@ -696,13 +714,17 @@ export class RecordingManager extends EventEmitter {
       });
 
       this.audioChunks = [];
-      this.initPromise = this.initializeSession();
+      this.initPromise = this.initializeSession(sessionId);
       await this.initPromise;
       this.initPromise = null;
 
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
+
       const totalDuration = performance.now() - startTime;
       logger.audio.info("Recording session initialized after stop requested", {
-        sessionId: this.currentSessionId,
+        sessionId,
         duration: `${totalDuration.toFixed(2)}ms`,
         machineState: this.machine.describeCurrentState(),
       });
@@ -723,13 +745,17 @@ export class RecordingManager extends EventEmitter {
     this.startDurationTimers();
 
     // Async init inside mutex
-    this.initPromise = this.initializeSession();
+    this.initPromise = this.initializeSession(sessionId);
     await this.initPromise;
     this.initPromise = null;
 
+    if (this.currentSessionId !== sessionId) {
+      return;
+    }
+
     const totalDuration = performance.now() - startTime;
     logger.audio.info("Recording started", {
-      sessionId: this.currentSessionId,
+      sessionId,
       duration: `${totalDuration.toFixed(2)}ms`,
     });
   }
@@ -738,7 +764,7 @@ export class RecordingManager extends EventEmitter {
    * Initialize session asynchronously
    * No file operations here - chunks accumulate in memory
    */
-  private async initializeSession(): Promise<void> {
+  private async initializeSession(sessionId: string): Promise<void> {
     try {
       // Reset VAD state for fresh speech detection (mutex-protected to avoid
       // interleaving with retry VAD computation)
@@ -747,6 +773,10 @@ export class RecordingManager extends EventEmitter {
         "transcriptionService",
       );
       await transcriptionService.resetVadForNewSession();
+
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
 
       // Warm the active provider in parallel with native startRecording so
       // first-chunk latency doesn't include token refresh (cloud) or model
@@ -761,7 +791,6 @@ export class RecordingManager extends EventEmitter {
       // transcription service stores it for stream-open; otherwise it pushes a
       // live gRPC session update.
       const nativeBridge = requireService(this.nativeBridge, "nativeBridge");
-      const sessionId = this.currentSessionId;
       void nativeBridge
         .refreshAccessibilityContext()
         .then(async () => {
@@ -770,11 +799,7 @@ export class RecordingManager extends EventEmitter {
           // usable focused-app/text context. The gRPC client currently only
           // sends concrete context snapshots, so clearing a previously sent
           // context is intentionally left unsupported here.
-          if (
-            !sessionId ||
-            !accessibilityContext ||
-            this.currentSessionId !== sessionId
-          ) {
+          if (!accessibilityContext || this.currentSessionId !== sessionId) {
             return;
           }
 
@@ -792,16 +817,33 @@ export class RecordingManager extends EventEmitter {
       // Always call startRecording, conditionally mute system audio and play sounds
       const settingsService = this.settingsService;
       const preferences = await settingsService.getPreferences();
+
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
+
       const shouldMute = preferences.muteSystemAudio;
-      this.soundsMuted = preferences.muteDictationSounds;
+      const muteSounds = preferences.muteDictationSounds;
+      this.soundsMuted = muteSounds;
 
       const result = await nativeBridge.call("startRecording", {
         muteSystemAudio: shouldMute,
-        muteSounds: this.soundsMuted,
+        muteSounds,
       });
+
+      if (this.currentSessionId !== sessionId) {
+        await nativeBridge.call("stopRecording", {
+          wasMuted: shouldMute && !!result?.success,
+          muteSounds,
+        });
+        return;
+      }
+
       this.systemAudioMuted = shouldMute && !!result?.success;
     } catch (error) {
-      this.systemAudioMuted = false;
+      if (this.currentSessionId === sessionId) {
+        this.systemAudioMuted = false;
+      }
       logger.audio.error("Failed to initialize session", { error });
     }
   }
@@ -919,6 +961,7 @@ export class RecordingManager extends EventEmitter {
   private async performEndRecording(
     code: TerminationCode | null = null,
   ): Promise<void> {
+    const sessionId = this.currentSessionId;
     // transition() creates this synchronously before the stopSession command is
     // dispatched, so final chunks can wait for the native stop command below.
     // If a later stop replaces it before the mutex runs, resolving this stale
@@ -937,6 +980,10 @@ export class RecordingManager extends EventEmitter {
     await this.lifecycleMutex.runExclusive(async () => {
       try {
         const stopState = this.machine.currentState;
+        if (this.currentSessionId !== sessionId) {
+          return;
+        }
+
         if (!isStoppingState(stopState)) {
           this.logRecordingInvariant(
             "Cannot end recording - FSM is not stopping",
@@ -961,7 +1008,12 @@ export class RecordingManager extends EventEmitter {
           this.initPromise = null;
         }
 
-        const sessionId = this.currentSessionId;
+        if (
+          this.currentSessionId !== sessionId ||
+          !isStoppingState(this.machine.currentState)
+        ) {
+          return;
+        }
 
         logger.audio.info("Ending recording", {
           sessionId,
@@ -995,6 +1047,10 @@ export class RecordingManager extends EventEmitter {
           });
         }
 
+        if (this.currentSessionId !== sessionId) {
+          return;
+        }
+
         // Cancel streaming immediately for true cancellations.
         if (shouldCancelStreamingEarly && sessionId) {
           try {
@@ -1006,6 +1062,10 @@ export class RecordingManager extends EventEmitter {
           } catch (error) {
             logger.audio.warn("Failed to cancel streaming session", { error });
           }
+        }
+
+        if (this.currentSessionId !== sessionId) {
+          return;
         }
 
         if (shouldFinalizeWithoutFinalChunk(stopState)) {
@@ -1041,11 +1101,18 @@ export class RecordingManager extends EventEmitter {
               setTimeout(resolve, DRAFT_CAPTURE_BARRIER_TIMEOUT),
             ),
           ]);
+
+          if (this.currentSessionId !== sessionId) {
+            return;
+          }
         }
 
         // Safety timeout for stuck state
         this.stuckStateTimer = setTimeout(() => {
-          if (this.getState() === "stopping") {
+          if (
+            this.currentSessionId === sessionId &&
+            this.getState() === "stopping"
+          ) {
             logger.audio.warn("No final chunk received, forcing idle");
             void this.forceIdle().catch((error) => {
               logger.audio.error(
@@ -1069,9 +1136,19 @@ export class RecordingManager extends EventEmitter {
   // ═══════════════════════════════════════════════════════════════════
 
   private async handleAudioChunk(
+    sessionId: string,
     chunk: Float32Array,
     isFinalChunk: boolean,
   ): Promise<void> {
+    if (this.currentSessionId !== sessionId) {
+      logger.audio.debug("Discarding audio chunk from inactive session", {
+        sessionId,
+        currentSessionId: this.currentSessionId,
+        isFinalChunk,
+      });
+      return;
+    }
+
     const recordingState = this.getState();
 
     // Only process if recording or stopping
@@ -1093,8 +1170,13 @@ export class RecordingManager extends EventEmitter {
     }
 
     const stateAfterInit = this.getState();
-    if (stateAfterInit !== "recording" && stateAfterInit !== "stopping") {
+    if (
+      this.currentSessionId !== sessionId ||
+      (stateAfterInit !== "recording" && stateAfterInit !== "stopping")
+    ) {
       logger.audio.debug("Discarding audio chunk - inactive after init", {
+        sessionId,
+        currentSessionId: this.currentSessionId,
         state: stateAfterInit,
         isFinalChunk,
       });
@@ -1120,6 +1202,10 @@ export class RecordingManager extends EventEmitter {
       await this.machine.handleEvent({ type: "audioChunk", hasAudio: true });
     }
 
+    if (this.currentSessionId !== sessionId) {
+      return;
+    }
+
     // Handle final chunk
     if (isFinalChunk) {
       // Add final chunk to buffer before processing (it may contain audio data)
@@ -1127,15 +1213,18 @@ export class RecordingManager extends EventEmitter {
         this.audioChunks.push(chunk);
 
         // Also send to transcription if we have a session and not terminated
-        if (this.currentSessionId && !this.terminationCode) {
+        if (!this.terminationCode) {
           try {
             const transcriptionService = requireService(
               this.transcriptionService,
               "transcriptionService",
             );
-            await this.latchDraftTag();
+            await this.latchDraftTag(sessionId);
+            if (this.currentSessionId !== sessionId) {
+              return;
+            }
             await transcriptionService.processStreamingChunk({
-              sessionId: this.currentSessionId,
+              sessionId,
               audioChunk: chunk,
               recordingStartedAt: this.recordingStartedAt || undefined,
               isInstruct: this.currentIsInstruct,
@@ -1145,7 +1234,7 @@ export class RecordingManager extends EventEmitter {
           }
         }
       }
-      await this.handleFinalChunk();
+      await this.handleFinalChunk(sessionId);
       return;
     }
 
@@ -1154,8 +1243,7 @@ export class RecordingManager extends EventEmitter {
       return;
     }
 
-    const sessionId = this.currentSessionId;
-    if (!sessionId || chunk.length === 0) {
+    if (chunk.length === 0) {
       return;
     }
 
@@ -1169,7 +1257,10 @@ export class RecordingManager extends EventEmitter {
           this.transcriptionService,
           "transcriptionService",
         );
-        await this.latchDraftTag();
+        await this.latchDraftTag(sessionId);
+        if (this.currentSessionId !== sessionId) {
+          return;
+        }
         await transcriptionService.processStreamingChunk({
           sessionId,
           audioChunk: chunk,
@@ -1185,13 +1276,16 @@ export class RecordingManager extends EventEmitter {
   /**
    * Handle the final chunk - unified termination logic
    */
-  private handleFinalChunk(): Promise<void> {
-    const sessionId = this.currentSessionId;
+  private handleFinalChunk(sessionId: string): Promise<void> {
+    if (this.currentSessionId !== sessionId) {
+      return Promise.resolve();
+    }
+
     if (this.activeFinalization?.sessionId === sessionId) {
       return this.activeFinalization.promise;
     }
 
-    const promise = this.performFinalChunk();
+    const promise = this.performFinalChunk(sessionId);
     const activeFinalization = { sessionId, promise };
     this.activeFinalization = activeFinalization;
     const release = () => {
@@ -1203,7 +1297,11 @@ export class RecordingManager extends EventEmitter {
     return promise;
   }
 
-  private async performFinalChunk(): Promise<void> {
+  private async performFinalChunk(sessionId: string): Promise<void> {
+    if (this.currentSessionId !== sessionId) {
+      return;
+    }
+
     // Clear stuck state timer
     if (this.stuckStateTimer) {
       clearTimeout(this.stuckStateTimer);
@@ -1219,7 +1317,13 @@ export class RecordingManager extends EventEmitter {
 
     const pendingStopResult = await this.machine.waitForPendingStopSession();
     if (pendingStopResult === "timeout") {
-      await this.forceIdle();
+      if (this.currentSessionId === sessionId) {
+        await this.forceIdle();
+      }
+      return;
+    }
+
+    if (this.currentSessionId !== sessionId) {
       return;
     }
 
@@ -1240,9 +1344,12 @@ export class RecordingManager extends EventEmitter {
       return;
     }
 
-    const sessionId = this.currentSessionId || "";
     const chunks = this.audioChunks;
     const code = this.terminationCode;
+    const isInstruct = this.currentIsInstruct;
+    const recordingStartedAt = this.recordingStartedAt;
+    const recordingStoppedAt = this.recordingStoppedAt;
+    const activeMicrophoneName = this.activeMicrophoneName;
 
     // Discard codes (quick_release, no_audio, interrupted_start) drop the buffer.
     // user_dismissed is NOT a discard — it keeps the audio, like a normal stop.
@@ -1252,13 +1359,14 @@ export class RecordingManager extends EventEmitter {
         chunksDiscarded: chunks.length,
       });
       this.emit("recording-cancelled", { sessionId, code });
-      this.resetSessionState();
+      this.resetSessionState(sessionId);
       return;
     }
 
     // Normal + dismissed both persist the captured audio — written once, here.
+    // Session-scoped reset clears this buffer. Do not clear it after this await:
+    // force-idle may have already installed a replacement session's buffer.
     const audioFilePath = await this.writeAudioFile(sessionId, chunks);
-    this.audioChunks = [];
 
     if (code === "user_dismissed") {
       logger.audio.info("Recording dismissed", {
@@ -1278,8 +1386,13 @@ export class RecordingManager extends EventEmitter {
           error,
         });
       }
+
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
+
       this.emit("recording-cancelled", { sessionId, code });
-      this.resetSessionState();
+      this.resetSessionState(sessionId);
       return;
     }
 
@@ -1293,8 +1406,8 @@ export class RecordingManager extends EventEmitter {
       result = await transcriptionService.finalizeSession({
         sessionId,
         audioFilePath: audioFilePath || undefined,
-        recordingStartedAt: this.recordingStartedAt || undefined,
-        recordingStoppedAt: this.recordingStoppedAt || undefined,
+        recordingStartedAt: recordingStartedAt || undefined,
+        recordingStoppedAt: recordingStoppedAt || undefined,
       });
     } catch (error) {
       // User dismissed during finalize — TranscriptionService already persisted
@@ -1304,7 +1417,7 @@ export class RecordingManager extends EventEmitter {
         error.errorCode === ErrorCodes.USER_DISMISSED
       ) {
         logger.audio.info("Recording dismissed during finalize", { sessionId });
-        this.resetSessionState();
+        this.resetSessionState(sessionId);
         return;
       }
 
@@ -1316,6 +1429,10 @@ export class RecordingManager extends EventEmitter {
       logger.audio.error("Failed to get final transcription", {
         error: reportedError,
       });
+
+      if (this.currentSessionId !== sessionId) {
+        return;
+      }
 
       // Extract error properties for notification (DB write handled by TranscriptionService)
       let errorCode: ErrorCode = ErrorCodes.UNKNOWN;
@@ -1346,7 +1463,7 @@ export class RecordingManager extends EventEmitter {
         hasTraceId: !!traceId,
       });
 
-      this.resetSessionState();
+      this.resetSessionState(sessionId);
       return;
     }
 
@@ -1355,11 +1472,20 @@ export class RecordingManager extends EventEmitter {
       resultLength: result?.length || 0,
     });
 
+    if (this.currentSessionId !== sessionId) {
+      return;
+    }
+
     // A non-empty result means finalizeSession committed its selected outcome.
     // Delivery remains revocable until pasteTranscription hands the text to the
     // native helper; persistence and delivery authority are separate stages.
     if (result) {
-      if (this.currentIsInstruct) {
+      if (this.machine.currentState.tag !== "STOP_N") {
+        this.resetSessionState(sessionId);
+        return;
+      }
+
+      if (isInstruct) {
         // Draft: hold the generated text for review instead of auto-pasting. The
         // result lives in pendingDraft, independent of the recording session, so
         // the FSM resets to idle as normal below and a new dictation can start
@@ -1369,29 +1495,34 @@ export class RecordingManager extends EventEmitter {
           sessionId,
           textLength: result.length,
         });
-        this.resetSessionState();
+        this.resetSessionState(sessionId);
         return;
       }
       await this.pasteTranscription(result, sessionId);
     } else {
       // Check for empty transcript notification
       const sessionDurationMs =
-        this.recordingStoppedAt && this.recordingStartedAt
-          ? this.recordingStoppedAt - this.recordingStartedAt
+        recordingStoppedAt && recordingStartedAt
+          ? recordingStoppedAt - recordingStartedAt
           : 0;
-      if (sessionDurationMs > 3500) {
+      if (
+        this.machine.currentState.tag === "STOP_N" &&
+        sessionDurationMs > 3500
+      ) {
         this.emit("widget-notification", {
           type: "empty_transcript",
-          params: this.getActiveMicrophoneNotificationParams(),
+          params: activeMicrophoneName
+            ? { microphone: activeMicrophoneName }
+            : undefined,
         });
         logger.audio.info("Emitted widget notification", {
           type: "empty_transcript",
-          microphoneName: this.activeMicrophoneName,
+          microphoneName: activeMicrophoneName,
         });
       }
     }
 
-    this.resetSessionState();
+    this.resetSessionState(sessionId);
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -1639,28 +1770,33 @@ export class RecordingManager extends EventEmitter {
 
   private async performForceIdle(): Promise<void> {
     logger.audio.warn("Forcing idle due to stuck state");
+    const sessionId = this.currentSessionId;
+    const wasMuted = this.systemAudioMuted;
+    const muteSounds = this.soundsMuted;
 
     // Cancel streaming session if one exists to prevent memory leak and audio bleed
-    if (this.currentSessionId) {
+    if (sessionId) {
       try {
         const transcriptionService = requireService(
           this.transcriptionService,
           "transcriptionService",
         );
-        await transcriptionService.cancelStreamingSession(
-          this.currentSessionId,
-        );
+        await transcriptionService.cancelStreamingSession(sessionId);
       } catch (error) {
         logger.audio.warn("Failed to cancel streaming session", { error });
       }
+    }
+
+    if (this.currentSessionId !== sessionId) {
+      return;
     }
 
     // Always call stopRecording, conditionally restore system audio and play sounds
     try {
       const nativeBridge = requireService(this.nativeBridge, "nativeBridge");
       await nativeBridge.call("stopRecording", {
-        wasMuted: this.systemAudioMuted,
-        muteSounds: this.soundsMuted,
+        wasMuted,
+        muteSounds,
       });
     } catch (error) {
       logger.main.warn(
@@ -1669,14 +1805,24 @@ export class RecordingManager extends EventEmitter {
           error,
         },
       );
-    } finally {
-      this.systemAudioMuted = false;
     }
 
-    this.resetSessionState({ force: true });
+    if (this.currentSessionId !== sessionId) {
+      return;
+    }
+
+    this.systemAudioMuted = false;
+    this.resetSessionState(sessionId, { force: true });
   }
 
-  private resetSessionState(options: { force?: boolean } = {}): void {
+  private resetSessionState(
+    expectedSessionId: string | null,
+    options: { force?: boolean } = {},
+  ): void {
+    if (this.currentSessionId !== expectedSessionId) {
+      return;
+    }
+
     // Clear the draft tag before the FSM reset: machine.resetSession fires the
     // state-changed("idle") emit synchronously, and the recording status reads
     // getIsDraftSession() from it — so this must be false by then to avoid a
@@ -1880,7 +2026,12 @@ export class RecordingManager extends EventEmitter {
     // Handle audio data chunks from renderer
     ipcMain.handle(
       "audio-data-chunk",
-      async (_event, chunk: ArrayBuffer, isFinalChunk: boolean) => {
+      async (
+        _event,
+        sessionId: string,
+        chunk: ArrayBuffer,
+        isFinalChunk: boolean,
+      ) => {
         if (!(chunk instanceof ArrayBuffer)) {
           logger.audio.error("Received invalid audio chunk type", {
             type: typeof chunk,
@@ -1891,11 +2042,12 @@ export class RecordingManager extends EventEmitter {
         // Convert ArrayBuffer back to Float32Array
         const float32Array = new Float32Array(chunk);
         logger.audio.debug("Received audio chunk", {
+          sessionId,
           samples: float32Array.length,
           isFinalChunk,
         });
 
-        await this.handleAudioChunk(float32Array, isFinalChunk);
+        await this.handleAudioChunk(sessionId, float32Array, isFinalChunk);
       },
     );
   }
@@ -1975,7 +2127,7 @@ export class RecordingManager extends EventEmitter {
     if (state === "idle" && sessionId) {
       // A live session is admitted before model lookup while the FSM remains
       // idle. Revoke it synchronously so the lookup cannot resume into capture.
-      this.resetSessionState();
+      this.resetSessionState(sessionId);
       try {
         await this.transcriptionService?.cancelStreamingSession(sessionId);
       } catch (error) {
@@ -2025,6 +2177,6 @@ export class RecordingManager extends EventEmitter {
     }
 
     // Clear any active session
-    this.resetSessionState();
+    this.resetSessionState(sessionId);
   }
 }

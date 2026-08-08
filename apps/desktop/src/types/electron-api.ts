@@ -16,7 +16,11 @@ export interface ElectronAPI {
   onForceStopMediaRecorder: (callback: () => void) => (() => void) | void;
 
   // Methods called from renderer to main become async (invoke/handle)
-  sendAudioChunk: (chunk: Float32Array, isFinalChunk: boolean) => Promise<void>;
+  sendAudioChunk: (
+    sessionId: string,
+    chunk: Float32Array,
+    isFinalChunk: boolean,
+  ) => Promise<void>;
 
   // Model Management API (moved to tRPC)
   // Transcription Database API (moved to tRPC)

@@ -177,6 +177,7 @@ interface AudioCaptureHookProps {
 
 function mountHook() {
   const onAudioChunk = vi.fn();
+  const onCaptureStarted = vi.fn();
   const onCaptureStartFailure = vi.fn<(failure: CaptureStartFailure) => void>();
   const initialProps: AudioCaptureHookProps = {
     enabled: false,
@@ -187,6 +188,7 @@ function mountHook() {
     ({ enabled, idle, sessionId }: AudioCaptureHookProps) =>
       useAudioCapture({
         onAudioChunk,
+        onCaptureStarted,
         onCaptureStartFailure,
         sessionId,
         enabled,
@@ -194,7 +196,7 @@ function mountHook() {
       }),
     { initialProps },
   );
-  return { onAudioChunk, onCaptureStartFailure, ...view };
+  return { onAudioChunk, onCaptureStarted, onCaptureStartFailure, ...view };
 }
 
 describe("useAudioCapture lifecycle", () => {
@@ -250,6 +252,48 @@ describe("useAudioCapture lifecycle", () => {
     // and tapped by an analyser for the waveform visualiser
     expect(analysers).toHaveLength(1);
     expect(sources[0].connect).toHaveBeenCalledWith(analysers[0]);
+  });
+
+  it("I-54 keeps delayed capture callbacks bound to their original session", async () => {
+    const { onAudioChunk, onCaptureStarted, rerender } = mountHook();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    const retiredFrameHandler = workletNodes[0].port.onmessage;
+
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    await settle();
+
+    expect(onCaptureStarted).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ captureSource: "default" }),
+      "session-1",
+    );
+    expect(onCaptureStarted).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ captureSource: "default" }),
+      "session-2",
+    );
+
+    onAudioChunk.mockClear();
+    await act(async () => {
+      retiredFrameHandler?.({
+        data: {
+          type: "audioFrame",
+          frame: new Float32Array([0.1]),
+          isFinal: false,
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(onAudioChunk).toHaveBeenCalledWith(
+      "session-1",
+      expect.any(ArrayBuffer),
+      0,
+      false,
+    );
   });
 
   it("keeps the AudioContext warm across dictations but creates a fresh worklet node each time", async () => {

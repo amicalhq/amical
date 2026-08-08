@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseAudioCaptureParams } from "@/hooks/useAudioCapture";
 
 const mocks = vi.hoisted(() => ({
+  captureStarted: vi.fn(),
   captureStartFailed: vi.fn(),
   dismiss: vi.fn(),
+  sendAudioChunk: vi.fn(),
   signalStop: vi.fn(),
   stateUpdates: vi.fn(),
   useAudioCapture: vi.fn(),
@@ -26,7 +28,7 @@ vi.mock("@/trpc/react", () => {
         },
         dismiss: { useMutation: () => ({ mutateAsync: mocks.dismiss }) },
         captureStarted: {
-          useMutation: () => ({ mutate: vi.fn() }),
+          useMutation: () => ({ mutate: mocks.captureStarted }),
         },
         captureStartFailed: {
           useMutation: () => ({ mutate: mocks.captureStartFailed }),
@@ -40,14 +42,21 @@ vi.mock("@/trpc/react", () => {
 import { useRecording } from "@/hooks/useRecording";
 
 beforeEach(() => {
+  mocks.captureStarted.mockReset();
   mocks.captureStartFailed.mockReset();
   mocks.dismiss.mockReset();
   mocks.dismiss.mockResolvedValue(undefined);
   mocks.signalStop.mockReset();
   mocks.signalStop.mockResolvedValue(undefined);
+  mocks.sendAudioChunk.mockReset();
+  mocks.sendAudioChunk.mockResolvedValue(undefined);
   mocks.stateUpdates.mockReset();
   mocks.useAudioCapture.mockReset();
   mocks.useAudioCapture.mockReturnValue({ audioLevels: [] });
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: { sendAudioChunk: mocks.sendAudioChunk },
+  });
 });
 
 describe("useRecording trigger forwarding", () => {
@@ -116,6 +125,50 @@ describe("useRecording capture failure wiring", () => {
     expect(mocks.captureStartFailed).toHaveBeenCalledWith(
       failure,
       expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+});
+
+describe("useRecording capture identity wiring", () => {
+  it("I-54 forwards the capture session ID with microphone and audio reports", async () => {
+    renderHook(() => useRecording());
+    const captureParams = mocks.useAudioCapture.mock.lastCall?.[0] as
+      | UseAudioCaptureParams
+      | undefined;
+    act(() => {
+      captureParams?.onCaptureStarted?.(
+        {
+          name: "External Mic",
+          deviceId: "external-mic",
+          captureSource: "preferred",
+        },
+        "session-1",
+      );
+    });
+
+    const frame = new Float32Array([0.1, 0.2]);
+    await act(async () => {
+      await captureParams?.onAudioChunk(
+        "session-1",
+        frame.buffer as ArrayBuffer,
+        0,
+        false,
+      );
+    });
+
+    expect(mocks.captureStarted).toHaveBeenCalledWith(
+      {
+        sessionId: "session-1",
+        microphoneName: "External Mic",
+        deviceId: "external-mic",
+        captureSource: "preferred",
+      },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+    expect(mocks.sendAudioChunk).toHaveBeenCalledWith(
+      "session-1",
+      expect.any(Float32Array),
+      false,
     );
   });
 });
