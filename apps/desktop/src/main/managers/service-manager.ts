@@ -10,7 +10,7 @@ import type { TranscriptionService } from "../../services/transcription-service"
 import type { SettingsService } from "../../services/settings-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
 import type { AutoUpdaterService } from "../services/auto-updater";
-import type { RecordingManager } from "./recording-manager";
+import type { DesktopRecordingLifecycle } from "../lifecycle/live";
 import type { VADService } from "../../services/vad-service";
 import type { ShortcutManager } from "./shortcut-manager";
 import type { WindowManager } from "../core/window-manager";
@@ -41,7 +41,7 @@ export interface ServiceMap {
   vadService: VADService;
   nativeBridge: NativeBridge | null;
   autoUpdaterService: AutoUpdaterService;
-  recordingManager: RecordingManager;
+  recordingLifecycle: DesktopRecordingLifecycle;
   shortcutManager: ShortcutManager;
   windowManager: WindowManager;
   onboardingService: OnboardingService;

@@ -185,7 +185,10 @@ export const transcriptionsRouter = createRouter({
   retryTranscription: procedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      if (ctx.services.recordingManager.getState() !== "idle") {
+      if (
+        ctx.services.recordingLifecycle.getSnapshot().projection.publicState !==
+        "idle"
+      ) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "Cannot retry while a recording is in progress",

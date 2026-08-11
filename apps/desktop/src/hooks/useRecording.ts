@@ -2,8 +2,11 @@ import { useCallback, useState } from "react";
 import { useAudioCapture } from "./useAudioCapture";
 import type { AcquiredMicrophoneMetadata } from "./audioCaptureDevice";
 import { api } from "@/trpc/react";
-import type { CaptureStartFailure, RecordingState } from "@/types/recording";
-import type { RecordingMode } from "@/main/managers/recording-manager";
+import type {
+  CaptureStartFailure,
+  RecordingMode,
+  RecordingState,
+} from "@/types/recording";
 
 export interface RecordingStatus {
   sessionId: string | null;
@@ -25,7 +28,7 @@ export const useRecording = (): UseRecordingOutput => {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>({
     sessionId: null,
     state: "idle",
-    mode: "idle",
+    mode: "ptt",
     isDraft: false,
   });
 
@@ -107,8 +110,11 @@ export const useRecording = (): UseRecordingOutput => {
     [captureStartFailedMutation],
   );
 
-  // Manage audio capture when recording is active
-  const isActive = recordingStatus.state === "recording";
+  // Capture spins up at "starting" and confirms via captureStarted —
+  // public "recording" means capture-confirmed.
+  const isActive =
+    recordingStatus.state === "starting" ||
+    recordingStatus.state === "recording";
   const isIdle = recordingStatus.state === "idle";
 
   const { audioLevels } = useAudioCapture({

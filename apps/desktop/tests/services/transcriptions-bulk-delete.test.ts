@@ -59,9 +59,20 @@ describe("transcriptionsRouter.deleteAllTranscriptions", () => {
   });
 });
 
+const lifecycleSnapshotFor = (state: string) => ({
+  sessionId: state === "idle" ? null : "session-1",
+  projection: {
+    publicState: state,
+    stopKind: "none",
+    stopOrigin: "none",
+    terminal: null,
+  },
+  metadata: null,
+});
+
 describe("transcriptionsRouter.retryTranscription", () => {
   it.each(["starting", "recording", "stopping"] as const)(
-    "rejects retry while the recording manager is %s",
+    "rejects retry while the recording lifecycle is %s",
     async (state) => {
       const retryTranscription = vi.fn();
       const { transcriptionsRouter } = await import(
@@ -69,7 +80,9 @@ describe("transcriptionsRouter.retryTranscription", () => {
       );
       const caller = transcriptionsRouter.createCaller({
         services: {
-          recordingManager: { getState: vi.fn(() => state) },
+          recordingLifecycle: {
+            getSnapshot: vi.fn(() => lifecycleSnapshotFor(state)),
+          },
           transcriptionService: { retryTranscription },
         },
       } as never);
@@ -84,14 +97,16 @@ describe("transcriptionsRouter.retryTranscription", () => {
     },
   );
 
-  it("delegates retry while the recording manager is idle", async () => {
+  it("delegates retry while the recording lifecycle is idle", async () => {
     const retryTranscription = vi.fn().mockResolvedValue("retried text");
     const { transcriptionsRouter } = await import(
       "../../src/trpc/routers/transcriptions"
     );
     const caller = transcriptionsRouter.createCaller({
       services: {
-        recordingManager: { getState: vi.fn(() => "idle") },
+        recordingLifecycle: {
+          getSnapshot: vi.fn(() => lifecycleSnapshotFor("idle")),
+        },
         transcriptionService: { retryTranscription },
       },
     } as never);

@@ -5,7 +5,9 @@
  * plain metadata here).
  */
 
-export type RecordingMode = "ptt" | "hands-free";
+import type { RecordingMode } from "../../types/recording";
+
+export type { RecordingMode };
 
 export interface LifecycleSessionMeta {
   mode: RecordingMode;

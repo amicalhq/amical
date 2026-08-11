@@ -2,11 +2,9 @@ import { observable } from "@trpc/server/observable";
 import { createRouter, procedure } from "../trpc";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
-import type { RecordingState } from "../../types/recording";
-import type { RecordingMode } from "../../main/managers/recording-manager";
+import type { RecordingMode, RecordingState } from "../../types/recording";
 import type {
   WidgetNotification,
-  WidgetNotificationType,
   WidgetNotificationConfig,
   LocalizedText,
 } from "../../types/widget-notification";
@@ -15,7 +13,13 @@ import {
   ERROR_CODE_CONFIG,
   buildNotificationDescription,
 } from "../../types/widget-notification";
-import { ErrorCodes, type ErrorCode } from "../../types/error";
+import { ErrorCodes } from "../../types/error";
+import type {
+  LifecycleNotification,
+  RecordingLifecycle,
+} from "../../main/lifecycle/runtime";
+import type { LifecycleSessionMeta } from "../../main/lifecycle/metadata";
+import type { LifecycleSnapshot } from "../../main/lifecycle/shell";
 
 interface RecordingStateUpdate {
   sessionId: string | null;
@@ -24,45 +28,46 @@ interface RecordingStateUpdate {
   isDraft: boolean;
 }
 
+function requireLifecycle(ctx: {
+  services: { recordingLifecycle?: RecordingLifecycle | null };
+}): RecordingLifecycle {
+  const lifecycle = ctx.services.recordingLifecycle;
+  if (!lifecycle) {
+    throw new Error("Recording lifecycle not available");
+  }
+  return lifecycle;
+}
+
+function toStateUpdate(
+  snapshot: LifecycleSnapshot<LifecycleSessionMeta>,
+): RecordingStateUpdate {
+  return {
+    sessionId: snapshot.sessionId,
+    state: snapshot.projection.publicState,
+    mode: snapshot.metadata?.mode ?? "ptt",
+    isDraft: snapshot.metadata?.isDraft ?? false,
+  };
+}
+
 export const recordingRouter = createRouter({
   signalStart: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.services.recordingManager;
-    if (!recordingManager) {
-      throw new Error("Recording manager not available");
-    }
-    return await recordingManager.signalStart();
+    await requireLifecycle(ctx).startDictation("hands-free");
   }),
 
   signalStop: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.services.recordingManager;
-    if (!recordingManager) {
-      throw new Error("Recording manager not available");
-    }
-    return await recordingManager.signalStop();
+    await requireLifecycle(ctx).stopDictation();
   }),
 
   confirmDraft: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.services.recordingManager;
-    if (!recordingManager) {
-      throw new Error("Recording manager not available");
-    }
-    await recordingManager.confirmDraft();
+    await requireLifecycle(ctx).confirmDraft();
   }),
 
-  dismissDraft: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.services.recordingManager;
-    if (!recordingManager) {
-      throw new Error("Recording manager not available");
-    }
-    recordingManager.dismissDraft();
+  dismissDraft: procedure.mutation(({ ctx }) => {
+    requireLifecycle(ctx).dismissDraft();
   }),
 
   dismiss: procedure.mutation(async ({ ctx }) => {
-    const recordingManager = ctx.services.recordingManager;
-    if (!recordingManager) {
-      throw new Error("Recording manager not available");
-    }
-    return await recordingManager.dismissCurrentSession();
+    await requireLifecycle(ctx).dismiss();
   }),
 
   captureStarted: procedure
@@ -75,12 +80,10 @@ export const recordingRouter = createRouter({
       }),
     )
     .mutation(({ ctx, input }) => {
-      const recordingManager = ctx.services.recordingManager;
-      if (!recordingManager) {
-        throw new Error("Recording manager not available");
-      }
-
-      recordingManager.setActiveMicrophoneForCurrentSession(input);
+      requireLifecycle(ctx).captureStarted(input.sessionId, {
+        name: input.microphoneName,
+        deviceId: input.deviceId,
+      });
     }),
 
   captureStartFailed: procedure
@@ -91,13 +94,8 @@ export const recordingRouter = createRouter({
         message: z.string(),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      const recordingManager = ctx.services.recordingManager;
-      if (!recordingManager) {
-        throw new Error("Recording manager not available");
-      }
-
-      await recordingManager.handleCaptureStartFailure(input);
+    .mutation(({ ctx, input }) => {
+      requireLifecycle(ctx).captureStartFailed(input.sessionId, input);
     }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
@@ -108,90 +106,25 @@ export const recordingRouter = createRouter({
   // eslint-disable-next-line deprecation/deprecation
   stateUpdates: procedure.subscription(({ ctx }) => {
     return observable<RecordingStateUpdate>((emit) => {
-      const recordingManager = ctx.services.recordingManager;
-      if (!recordingManager) {
-        throw new Error("Recording manager not available");
-      }
-      const sessionIdForState = (state: RecordingState) =>
-        state === "idle" ? null : recordingManager.getCurrentSessionId();
-
-      // Emit initial state
-      const initialState = recordingManager.getState();
-      emit.next({
-        sessionId: sessionIdForState(initialState),
-        state: initialState,
-        mode: recordingManager.getRecordingMode(),
-        isDraft: recordingManager.getIsDraftSession(),
+      const lifecycle = requireLifecycle(ctx);
+      emit.next(toStateUpdate(lifecycle.getSnapshot()));
+      // Snapshots publish on every material change (state, mode upgrade,
+      // draft latch), so one subscription covers what took three v1 events.
+      return lifecycle.onSnapshot((snapshot) => {
+        emit.next(toStateUpdate(snapshot));
       });
-
-      // Set up listener for state changes
-      const handleStateChange = (status: RecordingState) => {
-        emit.next({
-          sessionId: sessionIdForState(status),
-          state: status,
-          mode: recordingManager.getRecordingMode(),
-          isDraft: recordingManager.getIsDraftSession(),
-        });
-      };
-
-      const handleModeChange = (mode: RecordingMode) => {
-        const state = recordingManager.getState();
-        emit.next({
-          sessionId: sessionIdForState(state),
-          state,
-          mode,
-          isDraft: recordingManager.getIsDraftSession(),
-        });
-      };
-
-      // The draft tag latches mid-recording (first audio chunk) without a public
-      // state change, so re-push the current state with the now-true isDraft so
-      // the FAB shows the draft glyph while still recording.
-      const handleDraftLatched = () => {
-        const state = recordingManager.getState();
-        emit.next({
-          sessionId: sessionIdForState(state),
-          state,
-          mode: recordingManager.getRecordingMode(),
-          isDraft: recordingManager.getIsDraftSession(),
-        });
-      };
-
-      recordingManager.on("state-changed", handleStateChange);
-      recordingManager.on("mode-changed", handleModeChange);
-      recordingManager.on("draft-latched", handleDraftLatched);
-
-      // Cleanup function
-      return () => {
-        recordingManager.off("state-changed", handleStateChange);
-        recordingManager.off("mode-changed", handleModeChange);
-        recordingManager.off("draft-latched", handleDraftLatched);
-      };
     });
   }),
 
   // Widget notification subscription
   widgetNotifications: procedure.subscription(({ ctx }) => {
     return observable<WidgetNotification>((emit) => {
-      const recordingManager = ctx.services.recordingManager;
-      if (!recordingManager) {
-        throw new Error("Recording manager not available");
-      }
+      const lifecycle = requireLifecycle(ctx);
 
-      const handleNotification = (data: {
-        type: WidgetNotificationType;
-        errorCode?: ErrorCode;
-        uiTitle?: string;
-        uiMessage?: string;
-        traceId?: string;
-        params?: Record<string, string | number>;
-      }) => {
+      const handleNotification = (data: LifecycleNotification) => {
         let config: WidgetNotificationConfig;
 
         if (data.type === "transcription_failed" && data.errorCode) {
-          // USER_DISMISSED is a control signal, not in ERROR_CODE_CONFIG; it
-          // never reaches here (dismiss is handled before any emit), so fall
-          // back to UNKNOWN if it somehow did.
           const errorConfig =
             data.errorCode === ErrorCodes.USER_DISMISSED
               ? undefined
@@ -201,7 +134,6 @@ export const recordingRouter = createRouter({
           config = WIDGET_NOTIFICATION_CONFIG[data.type];
         }
 
-        // Inject params into i18n objects if provided
         const injectParams = (text: LocalizedText): LocalizedText => {
           if (!data.params || typeof text === "string") return text;
           return { ...text, params: { ...text.params, ...data.params } };
@@ -227,12 +159,7 @@ export const recordingRouter = createRouter({
         });
       };
 
-      recordingManager.on("widget-notification", handleNotification);
-
-      // Cleanup function
-      return () => {
-        recordingManager.off("widget-notification", handleNotification);
-      };
+      return lifecycle.onNotification(handleNotification);
     });
   }),
 
@@ -240,24 +167,9 @@ export const recordingRouter = createRouter({
   // Emits the current draft on subscribe and on every change; null = cleared.
   draftReview: procedure.subscription(({ ctx }) => {
     return observable<{ sessionId: string; text: string } | null>((emit) => {
-      const recordingManager = ctx.services.recordingManager;
-      if (!recordingManager) {
-        throw new Error("Recording manager not available");
-      }
-
-      emit.next(recordingManager.getPendingDraft());
-
-      const handleDraftChanged = (
-        data: { sessionId: string; text: string } | null,
-      ) => {
-        emit.next(data);
-      };
-
-      recordingManager.on("draft-changed", handleDraftChanged);
-
-      return () => {
-        recordingManager.off("draft-changed", handleDraftChanged);
-      };
+      const lifecycle = requireLifecycle(ctx);
+      emit.next(lifecycle.getPendingDraft());
+      return lifecycle.onDraftChanged((draft) => emit.next(draft));
     });
   }),
 });

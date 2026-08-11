@@ -7,7 +7,7 @@ import { setupApplicationMenu } from "../menu";
 import type { ServiceManager } from "../managers/service-manager";
 import { TrayManager } from "../managers/tray-manager";
 import type { OnboardingService } from "../../services/onboarding-service";
-import type { RecordingManager } from "../managers/recording-manager";
+import type { DesktopRecordingLifecycle } from "../lifecycle/live";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { SettingsService } from "../../services/settings-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
@@ -29,7 +29,7 @@ export class AppManager {
   private windowManager!: WindowManager;
   private settingsService!: SettingsService;
   private shortcutManager!: ShortcutManager;
-  private recordingManager!: RecordingManager;
+  private recordingLifecycle!: DesktopRecordingLifecycle;
   private featureFlagService!: FeatureFlagService;
   private autoUpdaterService!: AutoUpdaterService;
   private authService!: AuthService;
@@ -92,7 +92,7 @@ export class AppManager {
     this.windowManager = services.windowManager;
     this.settingsService = services.settingsService;
     this.shortcutManager = services.shortcutManager;
-    this.recordingManager = services.recordingManager;
+    this.recordingLifecycle = services.recordingLifecycle;
     this.featureFlagService = services.featureFlagService;
     this.autoUpdaterService = services.autoUpdaterService;
     this.authService = services.authService;
@@ -224,8 +224,8 @@ export class AppManager {
         // result publishes after the step is gone and Enter can insert stale
         // text into whatever is focused on the next screen. Both are no-ops
         // when there's nothing to clean.
-        this.recordingManager.dismissDraft();
-        this.recordingManager.dismissCurrentSession().catch((error) => {
+        this.recordingLifecycle.dismissDraft();
+        this.recordingLifecycle.dismiss().catch((error) => {
           logger.main.error(
             "Failed to dismiss in-flight take on try-it exit",
             error,

@@ -15,7 +15,7 @@ import {
   ShortcutManagerTag,
   SettingsServiceTag,
   NativeBridgeTag,
-  RecordingManagerTag,
+  RecordingLifecycleTag,
   AppScopeTag,
 } from "../runtime/tags";
 import { addRelease, step, up } from "../runtime/layer-helpers";
@@ -123,13 +123,13 @@ export class ShortcutManager extends EventEmitter {
   static readonly Live: Layer.Layer<
     ShortcutManagerTag,
     never,
-    SettingsServiceTag | NativeBridgeTag | RecordingManagerTag | AppScopeTag
+    SettingsServiceTag | NativeBridgeTag | RecordingLifecycleTag | AppScopeTag
   > = Layer.effect(
     ShortcutManagerTag,
     Effect.gen(function* () {
       const settingsService = yield* SettingsServiceTag;
       const nativeBridge = yield* NativeBridgeTag;
-      const recordingManager = yield* RecordingManagerTag;
+      const recordingLifecycle = yield* RecordingLifecycleTag;
       if (!nativeBridge) {
         // Unsupported platform (Linux): boot stays fatal with the old
         // initializeShortcutManager guard's exact message.
@@ -148,10 +148,8 @@ export class ShortcutManager extends EventEmitter {
         () => manager.cleanup(),
       );
       yield* step(() => manager.initialize());
-      // Connect shortcut events to recording manager (old init step 14).
-      yield* Effect.sync(() =>
-        recordingManager.setupShortcutListeners(manager),
-      );
+      // Connect the hotkey stream into the recording lifecycle.
+      yield* Effect.sync(() => recordingLifecycle.bindShortcutManager(manager));
       logger.main.info("Shortcut manager initialized");
       up("shortcutManager");
       return manager;

@@ -11,7 +11,7 @@ vi.mock("../../src/utils/platform", async (importOriginal) => {
 
 // Spawn-less NativeBridge: the real constructor spawns the native helper
 // process (native-bridge-service.ts:262). The fake keeps the EventEmitter
-// surface plus the methods ShortcutManager/RecordingManager call.
+// surface plus the methods ShortcutManager/RecordingLifecycle call.
 vi.mock("../../src/services/platform/native-bridge-service", async () => {
   // Imported inside the factory: vi.mock factories are hoisted above the
   // file's imports, so a top-level EventEmitter binding would be in TDZ here.
@@ -46,7 +46,7 @@ import {
   NativeBridgeTag,
   VadServiceTag,
   TranscriptionServiceTag,
-  RecordingManagerTag,
+  RecordingLifecycleTag,
   ShortcutManagerTag,
   AutoUpdaterServiceTag,
   TrpcHandlerTag,
@@ -138,7 +138,7 @@ describe("app layer graph (pre-cutover)", () => {
     expect(Context.get(ctx, VadServiceTag)).toBeTruthy();
     // …and transcription init succeeds under the global mocks (non-null).
     expect(Context.get(ctx, TranscriptionServiceTag)).toBeTruthy();
-    expect(Context.get(ctx, RecordingManagerTag)).toBeTruthy();
+    expect(Context.get(ctx, RecordingLifecycleTag)).toBeTruthy();
     expect(Context.get(ctx, ShortcutManagerTag)).toBeTruthy();
     expect(Context.get(ctx, AutoUpdaterServiceTag)).toBeTruthy();
     // Knot 1: the tRPC handler and WindowManager are graph services.
@@ -162,7 +162,7 @@ describe("app layer graph (pre-cutover)", () => {
       ["vadService", VadServiceTag],
       ["nativeBridge", NativeBridgeTag],
       ["autoUpdaterService", AutoUpdaterServiceTag],
-      ["recordingManager", RecordingManagerTag],
+      ["recordingLifecycle", RecordingLifecycleTag],
       ["shortcutManager", ShortcutManagerTag],
       ["windowManager", WindowManagerTag],
       ["onboardingService", OnboardingServiceTag],
@@ -226,9 +226,9 @@ describe("app layer graph (pre-cutover)", () => {
         Context.get(ctx, ShortcutManagerTag),
         "cleanup",
       ),
-      recordingCleanup: spyOnMethod(
-        Context.get(ctx, RecordingManagerTag),
-        "cleanup",
+      recordingDispose: spyOnMethod(
+        Context.get(ctx, RecordingLifecycleTag),
+        "dispose",
       ),
       stopHelper: spyOnMethod(Context.get(ctx, NativeBridgeTag)!, "stopHelper"),
       transcriptionDispose: spyOnMethod(
@@ -275,23 +275,23 @@ describe("app layer graph (pre-cutover)", () => {
     // hand-ordered cleanup():
     // shortcuts stop firing before the recording drain…
     expect(order(spies.shortcutCleanup)).toBeLessThan(
-      order(spies.recordingCleanup),
+      order(spies.recordingDispose),
     );
     // …the drain completes before the native helper is killed…
-    expect(order(spies.recordingCleanup)).toBeLessThan(order(spies.stopHelper));
+    expect(order(spies.recordingDispose)).toBeLessThan(order(spies.stopHelper));
     // …the transcription dispose (step 5) sits between the drain and the
     // helper kill…
-    expect(order(spies.recordingCleanup)).toBeLessThan(
+    expect(order(spies.recordingDispose)).toBeLessThan(
       order(spies.transcriptionDispose),
     );
     expect(order(spies.transcriptionDispose)).toBeLessThan(
       order(spies.stopHelper),
     );
     // …the drain also precedes the model/VAD teardown it may still use…
-    expect(order(spies.recordingCleanup)).toBeLessThan(
+    expect(order(spies.recordingDispose)).toBeLessThan(
       order(spies.modelCleanup),
     );
-    expect(order(spies.recordingCleanup)).toBeLessThan(order(spies.vadDispose));
+    expect(order(spies.recordingDispose)).toBeLessThan(order(spies.vadDispose));
     // …and PostHog flushes last among the capturing services.
     expect(order(spies.featureFlagShutdown)).toBeLessThan(
       order(spies.posthogShutdown),
@@ -368,7 +368,7 @@ describe("app layer graph (pre-cutover)", () => {
       source: "service_manager",
       stage: "initialize_ai_services",
     });
-    expect(Context.get(builtCtx!, RecordingManagerTag)).toBeTruthy();
+    expect(Context.get(builtCtx!, RecordingLifecycleTag)).toBeTruthy();
     expect(Context.get(builtCtx!, ShortcutManagerTag)).toBeTruthy();
   });
 });

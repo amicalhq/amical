@@ -47,15 +47,6 @@ jobs:
       - name: Type check
         run: pnpm type:check
 
-      - name: Verify recording contract artifact
-        run: pnpm --filter @amical/desktop test:recording-contract
-
-      - name: Verify recording contract version
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: pnpm --filter @amical/desktop verify:recording-contract-version "$BASE_SHA"
-
       - name: Verify lifecycle contract artifact
         run: pnpm --filter @amical/desktop test:lifecycle-contract
 

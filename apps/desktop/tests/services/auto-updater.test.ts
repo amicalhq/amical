@@ -1,11 +1,21 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { EventEmitter } from "node:events";
 import { app, autoUpdater, net } from "electron";
 import {
   AutoUpdaterService,
   classifyUpdaterError,
 } from "../../src/main/services/auto-updater";
 import type { RecordingState } from "../../src/types/recording";
+
+type LifecycleSnapshotFake = {
+  sessionId: string | null;
+  projection: {
+    publicState: RecordingState;
+    stopKind: "none";
+    stopOrigin: "none";
+    terminal: null;
+  };
+  metadata: null;
+};
 
 describe("classifyUpdaterError", () => {
   it("classifies macOS read-only volume updater failures as known noise", () => {
@@ -46,14 +56,32 @@ describe("AutoUpdaterService", () => {
   };
   let remoteConfig: { getConfig: ReturnType<typeof vi.fn> };
   let recordingState: RecordingState;
-  let recordingManager: EventEmitter & {
-    getState: ReturnType<typeof vi.fn>;
+  let snapshotListeners: Set<(snapshot: LifecycleSnapshotFake) => void>;
+  let recordingLifecycle: {
+    getSnapshot: () => LifecycleSnapshotFake;
+    onSnapshot: (
+      listener: (snapshot: LifecycleSnapshotFake) => void,
+    ) => () => void;
   };
   let emitUpdateChannelChanged: ((channel: "stable" | "beta") => void) | null;
 
+  const lifecycleSnapshot = (): LifecycleSnapshotFake => ({
+    sessionId: null,
+    projection: {
+      publicState: recordingState,
+      stopKind: "none",
+      stopOrigin: "none",
+      terminal: null,
+    },
+    metadata: null,
+  });
+
   const setRecordingState = (state: RecordingState): void => {
     recordingState = state;
-    recordingManager.emit("state-changed", state);
+    const snapshot = lifecycleSnapshot();
+    for (const listener of snapshotListeners) {
+      listener(snapshot);
+    }
   };
 
   beforeEach(async () => {
@@ -75,9 +103,14 @@ describe("AutoUpdaterService", () => {
       }),
     };
     recordingState = "idle";
-    recordingManager = Object.assign(new EventEmitter(), {
-      getState: vi.fn(() => recordingState),
-    });
+    snapshotListeners = new Set();
+    recordingLifecycle = {
+      getSnapshot: () => lifecycleSnapshot(),
+      onSnapshot: (listener) => {
+        snapshotListeners.add(listener);
+        return () => snapshotListeners.delete(listener);
+      },
+    };
     service = AutoUpdaterService.createForTests();
     await service.initialize(
       {
@@ -91,7 +124,7 @@ describe("AutoUpdaterService", () => {
       } as any,
       telemetry as any,
       remoteConfig as any,
-      recordingManager as any,
+      recordingLifecycle as any,
     );
   });
 

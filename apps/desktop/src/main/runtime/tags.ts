@@ -37,7 +37,7 @@ import type { OnboardingService } from "../../services/onboarding-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
 import type { VADService } from "../../services/vad-service";
 import type { TranscriptionService } from "../../services/transcription-service";
-import type { RecordingManager } from "../managers/recording-manager";
+import type { DesktopRecordingLifecycle } from "../lifecycle/live";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { AutoUpdaterService } from "../services/auto-updater";
 import type { ServiceMap, EarlyServiceRefs } from "../managers/service-manager";
@@ -101,9 +101,9 @@ export class TranscriptionServiceTag extends Context.Tag(
   "AmicalApp/TranscriptionService",
 )<TranscriptionServiceTag, TranscriptionService | null>() {}
 
-export class RecordingManagerTag extends Context.Tag(
-  "AmicalApp/RecordingManager",
-)<RecordingManagerTag, RecordingManager>() {}
+export class RecordingLifecycleTag extends Context.Tag(
+  "AmicalApp/RecordingLifecycle",
+)<RecordingLifecycleTag, DesktopRecordingLifecycle>() {}
 
 export class ShortcutManagerTag extends Context.Tag(
   "AmicalApp/ShortcutManager",
@@ -178,7 +178,7 @@ export type AppServices =
   | NativeBridgeTag
   | VadServiceTag
   | TranscriptionServiceTag
-  | RecordingManagerTag
+  | RecordingLifecycleTag
   | ShortcutManagerTag
   | AutoUpdaterServiceTag
   | TrpcHandlerTag

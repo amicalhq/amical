@@ -253,8 +253,11 @@ describe("TranscriptionService — provider session pinning", () => {
       "first second",
     );
     await expect(
-      service.finalizeSession({ sessionId: "cloud-session" }),
-    ).resolves.toBe("first second final");
+      service.resolveStreamingSession({ sessionId: "cloud-session" }),
+    ).resolves.toMatchObject({
+      text: "first second final",
+      speechModel: "amical-cloud",
+    });
 
     const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
     expect(providerMocks.cloud.openSession).toHaveBeenCalledOnce();
@@ -273,9 +276,6 @@ describe("TranscriptionService — provider session pinning", () => {
       expect.any(AbortSignal),
     );
     expect(cloudSession.cancel).toHaveBeenCalledOnce();
-    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
-      expect.objectContaining({ speechModel: "amical-cloud" }),
-    );
   });
 
   it("keeps a local recording and model pinned after selection changes", async () => {
@@ -285,7 +285,10 @@ describe("TranscriptionService — provider session pinning", () => {
 
     selectedModelId = "amical-cloud";
     await processChunk("local-session", 0.2);
-    await service.finalizeSession({ sessionId: "local-session" });
+    const resolvedSession = await service.resolveStreamingSession({
+      sessionId: "local-session",
+    });
+    expect(resolvedSession).toMatchObject({ speechModel: "whisper-tiny" });
 
     const localSession = sessionFor(providerMocks.local, "local-session");
     expect(providerMocks.local.openSession).toHaveBeenCalledOnce();
@@ -299,9 +302,6 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(localSession.transcribe).toHaveBeenCalledTimes(2);
     expect(localSession.flush).toHaveBeenCalledOnce();
     expect(localSession.cancel).toHaveBeenCalledOnce();
-    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
-      expect.objectContaining({ speechModel: "whisper-tiny" }),
-    );
   });
 
   it("drains audio admitted in VAD before the final provider flush", async () => {
@@ -326,7 +326,7 @@ describe("TranscriptionService — provider session pinning", () => {
 
     const secondChunk = processChunk("local-session", 0.2);
     await secondVadStarted.promise;
-    const finalization = service.finalizeSession({
+    const finalization = service.resolveStreamingSession({
       sessionId: "local-session",
     });
 
@@ -337,7 +337,7 @@ describe("TranscriptionService — provider session pinning", () => {
 
       secondVad.resolve({ probability: 1, isSpeaking: true });
       await expect(secondChunk).resolves.toBe("first second");
-      expect((await finalization).trim()).toBe("first second final");
+      expect((await finalization)?.text.trim()).toBe("first second final");
 
       expect(localSession.flush).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -392,7 +392,7 @@ describe("TranscriptionService — provider session pinning", () => {
       );
       expect(cloudSession.updateSessionContext).not.toHaveBeenCalled();
 
-      await service.finalizeSession({ sessionId: "cloud-session" });
+      await service.resolveStreamingSession({ sessionId: "cloud-session" });
       expect(cloudSession.flush).toHaveBeenCalledWith(
         expect.objectContaining({
           accessibilityContext,
@@ -422,7 +422,7 @@ describe("TranscriptionService — provider session pinning", () => {
     await processChunk("local-session", 0.1);
     const localSession = sessionFor(providerMocks.local, "local-session");
 
-    const finalization = service.finalizeSession({
+    const finalization = service.resolveStreamingSession({
       sessionId: "local-session",
     });
     try {
@@ -536,8 +536,8 @@ describe("TranscriptionService — provider session pinning", () => {
         "first second",
       );
       await expect(
-        service.finalizeSession({ sessionId: "cloud-session" }),
-      ).resolves.toBe("first second final");
+        service.resolveStreamingSession({ sessionId: "cloud-session" }),
+      ).resolves.toMatchObject({ text: "first second final" });
 
       expect(cloudSession.transcribe).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -638,13 +638,13 @@ describe("TranscriptionService — provider session pinning", () => {
     await service.cancelStreamingSession("current-session");
   });
 
-  it("retires a reserved session that finalizes without any chunks", async () => {
+  it("retires a reserved session that resolves without any chunks", async () => {
     selectedModelId = "whisper-tiny";
     service.beginStreamingSession("empty-session");
 
     await expect(
-      service.finalizeSession({ sessionId: "empty-session" }),
-    ).resolves.toBe("");
+      service.resolveStreamingSession({ sessionId: "empty-session" }),
+    ).resolves.toBeNull();
     expect(providerMocks.local.openSession).not.toHaveBeenCalled();
     expect(processVadFrame).not.toHaveBeenCalled();
     await expect(processChunk("empty-session", 0.1)).resolves.toBe("");
@@ -746,24 +746,11 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(listener).toHaveBeenCalledOnce();
     expect(listener).toHaveBeenCalledWith(terminalError);
     await expect(
-      service.finalizeSession({
-        sessionId: "cloud-session",
-        audioFilePath: "/tmp/cloud-session.wav",
-      }),
+      service.resolveStreamingSession({ sessionId: "cloud-session" }),
     ).rejects.toBe(terminalError);
     expect(cloudSession.flush).not.toHaveBeenCalled();
     expect(cloudSession.cancel).toHaveBeenCalledOnce();
-    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "",
-        audioFile: "/tmp/cloud-session.wav",
-        meta: expect.objectContaining({
-          sessionId: "cloud-session",
-          status: "failed",
-          failureReason: ErrorCodes.QUOTA_EXCEEDED,
-        }),
-      }),
-    );
+    expect(vi.mocked(createTranscription)).not.toHaveBeenCalled();
   });
 
   it("I-51: projects a rejected provider chunk as one terminal session failure", async () => {
@@ -787,10 +774,7 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(listener).toHaveBeenCalledWith(terminalError);
     const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
     await expect(
-      service.finalizeSession({
-        sessionId: "cloud-session",
-        audioFilePath: "/tmp/cloud-session.wav",
-      }),
+      service.resolveStreamingSession({ sessionId: "cloud-session" }),
     ).rejects.toBe(terminalError);
     expect(cloudSession.flush).not.toHaveBeenCalled();
   });
@@ -815,25 +799,12 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(listener).not.toHaveBeenCalled();
 
     await expect(
-      service.finalizeSession({
-        sessionId: "capture-session",
-        audioFilePath: "/tmp/capture-session.wav",
-      }),
+      service.resolveStreamingSession({ sessionId: "capture-session" }),
     ).rejects.toBe(terminalError);
-    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "",
-        audioFile: "/tmp/capture-session.wav",
-        meta: expect.objectContaining({
-          sessionId: "capture-session",
-          status: "failed",
-          failureReason: ErrorCodes.MICROPHONE_CAPTURE_FAILED,
-        }),
-      }),
-    );
+    expect(vi.mocked(createTranscription)).not.toHaveBeenCalled();
   });
 
-  it("persists a terminal failure that occurs before provider materialization", async () => {
+  it("surfaces a terminal failure that occurs before provider materialization", async () => {
     selectedModelId = "amical-cloud";
     const terminalError = new Error("Context lookup failed");
     vi.mocked(loadDictationContext).mockRejectedValueOnce(terminalError);
@@ -847,23 +818,10 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(listener).toHaveBeenCalledWith(terminalError);
 
     await expect(
-      service.finalizeSession({
-        sessionId: "cloud-session",
-        audioFilePath: "/tmp/cloud-session.wav",
-      }),
+      service.resolveStreamingSession({ sessionId: "cloud-session" }),
     ).rejects.toBe(terminalError);
     expect(providerMocks.cloud.openSession).not.toHaveBeenCalled();
-    expect(vi.mocked(createTranscription)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "",
-        audioFile: "/tmp/cloud-session.wav",
-        meta: expect.objectContaining({
-          sessionId: "cloud-session",
-          status: "failed",
-          failureReason: ErrorCodes.UNKNOWN,
-        }),
-      }),
-    );
+    expect(vi.mocked(createTranscription)).not.toHaveBeenCalled();
   });
 
   it("ignores a retired session callback while a newer live session is active", async () => {
@@ -890,8 +848,8 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(oldListener).not.toHaveBeenCalled();
     expect(currentListener).not.toHaveBeenCalled();
     await expect(
-      service.finalizeSession({ sessionId: "current-session" }),
-    ).resolves.toBe("cloud final");
+      service.resolveStreamingSession({ sessionId: "current-session" }),
+    ).resolves.toMatchObject({ text: "cloud final" });
     expect(currentSession.flush).toHaveBeenCalledOnce();
     expect(currentSession.cancel).toHaveBeenCalledOnce();
   });

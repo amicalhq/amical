@@ -10,14 +10,11 @@ import { TelemetryService } from "../services/telemetry-service";
 import type { AuthService } from "./auth-service";
 import type { NativeBridge } from "./platform/native-bridge-service";
 import type { OnboardingService } from "./onboarding-service";
-import { createTranscription } from "../db/transcriptions";
-import { incrementDailyStats } from "../db/daily-stats";
 import { logger } from "../main/logger";
 import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
-import { AppError, ErrorCodes } from "../types/error";
 import { isAmicalCloudSelectionValue } from "../utils/model-selection";
 import { Effect, Layer } from "effect";
 import {
@@ -42,8 +39,6 @@ import {
   accumulateTranscriptionResult,
   mergeDetectedLanguage,
   prepareTranscriptText,
-  sanitizeDetectedLanguage,
-  singleRequestedLanguage,
 } from "./transcription/prepare-transcript-text";
 import { retranscribeHistoryItem } from "./transcription/retranscribe-history-item";
 
@@ -52,13 +47,6 @@ type StreamingChunkOptions = {
   audioChunk: Float32Array;
   recordingStartedAt?: number;
   isInstruct?: boolean;
-};
-
-type FinalizeSessionOptions = {
-  sessionId: string;
-  audioFilePath?: string;
-  recordingStartedAt?: number;
-  recordingStoppedAt?: number;
 };
 
 /** Prepared transcript + descriptive fields, nothing persisted. */
@@ -154,6 +142,11 @@ export class TranscriptionService {
     });
     this.activeLiveSession = liveSession;
     return true;
+  }
+
+  /** Live recording admission gate: history retry holds the engines. */
+  isHistoryRetryInProgress(): boolean {
+    return this.historyRetryInProgress;
   }
 
   /** Latch a renderer-originated failure; the caller owns the FSM transition. */
@@ -711,81 +704,6 @@ export class TranscriptionService {
   }
 
   /**
-   * The control signal finalizeSession throws on dismiss. A fresh instance per
-   * throw so the stack trace points at the actual throw site.
-   */
-  private userDismissedError(): AppError {
-    return new AppError("Recording dismissed", ErrorCodes.USER_DISMISSED);
-  }
-
-  /**
-   * Persist a dismissed dictation: empty text, the captured audio (if any), and
-   * meta.status="dismissed". No stats increment (the user deliberately discarded).
-   */
-  async saveDismissedTranscription(options: {
-    sessionId: string;
-    audioFilePath?: string;
-  }): Promise<void> {
-    await createTranscription({
-      text: "",
-      audioFile: options.audioFilePath,
-      meta: {
-        sessionId: options.sessionId,
-        status: "dismissed",
-      },
-    });
-    logger.transcription.info("Saved dismissed transcription record", {
-      sessionId: options.sessionId,
-      audioFilePath: options.audioFilePath,
-    });
-  }
-
-  private async saveFailedTranscription(options: {
-    sessionId: string;
-    audioFilePath?: string;
-    error: unknown;
-    session?: MaterializedTranscriptionSession;
-  }): Promise<void> {
-    const { sessionId, audioFilePath, error, session } = options;
-    const errorCode =
-      error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
-    await createTranscription({
-      text: "",
-      audioFile: audioFilePath,
-      language: session
-        ? singleRequestedLanguage(session.context.languages)
-        : undefined,
-      detectedLanguage: session
-        ? sanitizeDetectedLanguage(session.detectedLanguage)
-        : undefined,
-      meta: {
-        sessionId,
-        status: "failed",
-        failureReason: errorCode,
-        errorMessage,
-      },
-    });
-    logger.transcription.info("Saved failed transcription record", {
-      sessionId,
-      errorCode,
-      audioFilePath,
-    });
-
-    try {
-      // Failed rows still appear in History, so they intentionally contribute
-      // to totalTranscriptions even though they add zero dictated words.
-      await incrementDailyStats(0);
-    } catch (statsError) {
-      logger.transcription.error("Failed to increment failed dictation stats", {
-        sessionId,
-        error: statsError,
-      });
-    }
-  }
-
-  /**
    * Finalize a streaming session - flush the provider session, format, save to DB
    * Call this instead of processStreamingChunk with isFinal=true
    */
@@ -925,277 +843,6 @@ export class TranscriptionService {
           formattingStyle: session.context.formattingStyle,
         },
       };
-    } finally {
-      this.retireLiveSession(liveSession);
-    }
-  }
-
-  /** v1 finalize path — deleted at the lifecycle cutover. */
-  async finalizeSession(options: FinalizeSessionOptions): Promise<string> {
-    const liveSession = this.activeLiveSession;
-    if (!liveSession || liveSession.id !== options.sessionId) {
-      logger.transcription.warn("No session found to finalize", {
-        sessionId: options.sessionId,
-      });
-      return "";
-    }
-
-    // Closing admission is synchronous: every chunk accepted before this call
-    // is now visible to the drain, and later chunks are rejected.
-    liveSession.closeChunkAdmission();
-    return this.finalizeLiveSession(liveSession, options);
-  }
-
-  private async finalizeLiveSession(
-    liveSession: LiveTranscriptionSession,
-    options: FinalizeSessionOptions,
-  ): Promise<string> {
-    const { sessionId, audioFilePath, recordingStartedAt, recordingStoppedAt } =
-      options;
-
-    await liveSession.drainAdmittedChunks();
-    const session = liveSession.materializedSession;
-    if (!session) {
-      try {
-        if (liveSession.signal.aborted) {
-          await this.saveDismissedTranscription({
-            sessionId,
-            audioFilePath: audioFilePath || undefined,
-          });
-          throw this.userDismissedError();
-        }
-
-        try {
-          liveSession.throwIfTerminalFailure();
-        } catch (error) {
-          await this.saveFailedTranscription({
-            sessionId,
-            audioFilePath: audioFilePath || undefined,
-            error,
-          });
-          throw error;
-        }
-
-        logger.transcription.warn("No materialized session to finalize", {
-          sessionId,
-        });
-        return "";
-      } finally {
-        this.retireLiveSession(liveSession);
-      }
-    }
-    const { signal } = liveSession;
-
-    try {
-      // Early dismiss: the user dismissed before the flush started — skip the
-      // flush entirely (no wasted transcription call). The catch below persists
-      // the dismissed row once and rethrows USER_DISMISSED.
-      if (signal.aborted) {
-        throw this.userDismissedError();
-      }
-      liveSession.throwIfTerminalFailure();
-
-      // Update session timestamps
-      session.finalizationStartedAt = performance.now();
-      session.recordingStoppedAt = recordingStoppedAt;
-      if (recordingStartedAt && !session.recordingStartedAt) {
-        session.recordingStartedAt = recordingStartedAt;
-      }
-
-      const formatterConfig = await this.settingsService.getFormatterConfig();
-      const shouldUseCloudFormatting =
-        formatterConfig?.enabled &&
-        isAmicalCloudSelectionValue(formatterConfig.modelId);
-      const usedCloudProvider = session.providerSession.name === "amical-cloud";
-
-      // Flush the provider session to get any remaining buffered audio
-      await this.transcriptionMutex.acquire();
-      try {
-        liveSession.throwIfTerminalFailure();
-        const finalResult = await session.providerSession.flush(
-          {
-            ...this.buildTranscribeContextForSession(sessionId, session),
-            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
-          },
-          signal,
-        );
-        liveSession.throwIfTerminalFailure();
-        session.detectedLanguage = mergeDetectedLanguage(
-          session.detectedLanguage,
-          finalResult.detectedLanguage,
-        );
-
-        accumulateTranscriptionResult(
-          session.transcriptionResults,
-          finalResult.text,
-          usedCloudProvider,
-        );
-        if (finalResult.text.trim()) {
-          logger.transcription.info("Whisper returned final transcription", {
-            sessionId,
-            transcriptionLength: finalResult.text.length,
-            totalResults: session.transcriptionResults.length,
-          });
-        }
-      } finally {
-        this.transcriptionMutex.release();
-      }
-
-      const rawTranscription = session.transcriptionResults.join("");
-
-      logger.transcription.info("Finalizing streaming session", {
-        sessionId,
-        rawTranscriptionLength: rawTranscription.length,
-        chunkCount: session.transcriptionResults.length,
-      });
-
-      // Finalize-phase dismiss: the flush already ran, but the user dismissed.
-      // Discard the transcript — the catch below persists the dismissed row and
-      // rethrows USER_DISMISSED (skip paste/stats).
-      if (signal.aborted) {
-        throw this.userDismissedError();
-      }
-
-      const prepared = await prepareTranscriptText(
-        {
-          text: rawTranscription,
-          usedCloudProvider,
-          context: session.context,
-          detectedLanguage: session.detectedLanguage,
-        },
-        {
-          settingsService: this.settingsService,
-          modelService: this.modelService,
-        },
-      );
-      const completeTranscription = prepared.text;
-
-      // Save directly to database
-      logger.transcription.info("Saving transcription with audio file", {
-        sessionId,
-        audioFilePath,
-        hasAudioFile: !!audioFilePath,
-      });
-
-      // Late dismiss: the user dismissed while formatting was in flight (after
-      // the post-flush check). Discard the now-formatted transcript
-      // — the catch persists the dismissed row and rethrows USER_DISMISSED, so
-      // there's no paste, no stats, no completion telemetry.
-      //
-      // This is the final gate for selecting the persisted outcome. A dismiss
-      // after this point cannot rewrite the successful row. RecordingManager
-      // separately checks delivery authority before dispatching native paste.
-      if (signal.aborted) {
-        throw this.userDismissedError();
-      }
-      liveSession.throwIfTerminalFailure();
-
-      await createTranscription({
-        text: completeTranscription,
-        language: prepared.language,
-        detectedLanguage: prepared.detectedLanguage,
-        duration: session.context.audio.duration,
-        speechModel: session.speechModelId,
-        formattingModel: prepared.formattingModel,
-        audioFile: audioFilePath,
-        meta: {
-          sessionId,
-          source: session.context.audio.source,
-          vocabularySize: session.context.vocabulary.length,
-          formattingStyle: session.context.formattingStyle,
-        },
-      });
-
-      try {
-        await incrementDailyStats(prepared.wordCount);
-      } catch (error) {
-        logger.transcription.error("Failed to increment dictation stats", {
-          sessionId,
-          error,
-        });
-      }
-
-      // Track transcription completion
-      const completionTime = performance.now();
-
-      // Calculate durations:
-      // - Recording duration: from when recording started to when it ended
-      // - Processing duration: from when recording ended to completion
-      // - Total duration: from recording start to completion
-      const recordingDuration =
-        session.recordingStartedAt && session.recordingStoppedAt
-          ? session.recordingStoppedAt - session.recordingStartedAt
-          : undefined;
-      const processingDuration = session.recordingStoppedAt
-        ? completionTime - session.recordingStoppedAt
-        : undefined;
-      const totalDuration = session.recordingStartedAt
-        ? completionTime - session.recordingStartedAt
-        : undefined;
-
-      const audioDurationSeconds = session.context.audio.duration;
-
-      // Get native binding info if using local whisper
-      let whisperNativeBinding: string | undefined;
-      if (this.whisperEngine && "getBindingInfo" in this.whisperEngine) {
-        const bindingInfo = await this.whisperEngine.getBindingInfo();
-        whisperNativeBinding = bindingInfo?.type;
-        logger.transcription.info(
-          "whisper native binding used",
-          whisperNativeBinding,
-        );
-      }
-
-      this.telemetryService.trackTranscriptionCompleted({
-        session_id: sessionId,
-        model_id: session.speechModelId,
-        model_preloaded: this.modelWasPreloaded,
-        whisper_native_binding: whisperNativeBinding,
-        total_duration_ms: totalDuration || 0,
-        recording_duration_ms: recordingDuration,
-        processing_duration_ms: processingDuration,
-        audio_duration_seconds: audioDurationSeconds,
-        realtime_factor:
-          audioDurationSeconds && totalDuration
-            ? audioDurationSeconds / (totalDuration / 1000)
-            : undefined,
-        text_length: completeTranscription.length,
-        word_count: prepared.wordCount,
-        formatting_enabled: prepared.formattingUsed,
-        formatting_model: prepared.formattingModel,
-        formatting_duration_ms: prepared.formattingDuration,
-        vad_enabled: !!this.vadService,
-        languages: session.context.languages ?? [],
-        vocabulary_size: session.context.vocabulary.length,
-      });
-
-      logger.transcription.info("Streaming session completed", { sessionId });
-      return completeTranscription;
-    } catch (error) {
-      // Dismiss — either an aborted flush, or the USER_DISMISSED rethrown from
-      // the pre/post-flush checks above. Persist the dismissed row once (with the
-      // already-written audio) and rethrow USER_DISMISSED so the caller resets
-      // silently — no failure toast.
-      if (signal.aborted) {
-        await this.saveDismissedTranscription({
-          sessionId,
-          audioFilePath: audioFilePath || undefined,
-        });
-        logger.transcription.info("Dismissed transcription during finalize", {
-          sessionId,
-        });
-        throw this.userDismissedError();
-      }
-
-      await this.saveFailedTranscription({
-        sessionId,
-        audioFilePath: audioFilePath || undefined,
-        error,
-        session,
-      });
-
-      // Re-throw for RecordingManager to handle notifications
-      throw error;
     } finally {
       this.retireLiveSession(liveSession);
     }

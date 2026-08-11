@@ -47,7 +47,7 @@
  *      │   Transcription (◄ Model, VAD, Settings, Telemetry, Auth, Bridge, Onboarding)
  *      │         ╎
  *      │         ▼
- *        RecordingManager (◄ Transcription, Bridge, Settings, Model)
+ *        RecordingLifecycle (◄ Transcription, Bridge, Settings, Model)
  *                │                    │
  *                ▼                    ▼
  *          ShortcutManager      AutoUpdater (◄ Settings, Telemetry, RC, Recording)
@@ -95,7 +95,7 @@ import { OnboardingService } from "../../services/onboarding-service";
 import { NativeBridge } from "../../services/platform/native-bridge-service";
 import { VADService } from "../../services/vad-service";
 import { TranscriptionService } from "../../services/transcription-service";
-import { RecordingManager } from "../managers/recording-manager";
+import { RecordingLifecycleLive } from "../lifecycle/live";
 import { ShortcutManager } from "../managers/shortcut-manager";
 import { AutoUpdaterService } from "../services/auto-updater";
 import { WindowManager } from "../core/window-manager";
@@ -116,7 +116,7 @@ import {
   NativeBridgeTag,
   VadServiceTag,
   TranscriptionServiceTag,
-  RecordingManagerTag,
+  RecordingLifecycleTag,
   ShortcutManagerTag,
   AutoUpdaterServiceTag,
   WindowManagerTag,
@@ -175,7 +175,7 @@ export const ServicesBundleLive: Layer.Layer<
   | NativeBridgeTag
   | VadServiceTag
   | TranscriptionServiceTag
-  | RecordingManagerTag
+  | RecordingLifecycleTag
   | ShortcutManagerTag
   | AutoUpdaterServiceTag
   | WindowManagerTag
@@ -195,7 +195,7 @@ export const ServicesBundleLive: Layer.Layer<
       vadService: yield* VadServiceTag,
       nativeBridge: yield* NativeBridgeTag,
       autoUpdaterService: yield* AutoUpdaterServiceTag,
-      recordingManager: yield* RecordingManagerTag,
+      recordingLifecycle: yield* RecordingLifecycleTag,
       shortcutManager: yield* ShortcutManagerTag,
       windowManager: yield* WindowManagerTag,
       onboardingService: yield* OnboardingServiceTag,
@@ -270,7 +270,7 @@ export const AppLive: Layer.Layer<
       SettingsSyncService.Live,
     ),
   ),
-  Layer.provideMerge(RecordingManager.Live),
+  Layer.provideMerge(RecordingLifecycleLive),
   Layer.provideMerge(WindowManager.Live),
   Layer.provideMerge(TranscriptionService.Live),
   Layer.provideMerge(OnboardingService.Live),
