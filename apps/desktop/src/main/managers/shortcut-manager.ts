@@ -93,7 +93,7 @@ export class ShortcutManager extends EventEmitter {
 
   // While a Draft review window is open, Enter routes to Insert (and is masked
   // by the native helper) instead of reaching the focused app. Set by
-  // RecordingManager in lockstep with the pending draft.
+  // the recording lifecycle in lockstep with the pending draft.
   private draftActive = false;
 
   // Construction goes through Live: the graph is the only thing that may
@@ -135,7 +135,7 @@ export class ShortcutManager extends EventEmitter {
         // initializeShortcutManager guard's exact message.
         return yield* Effect.die(
           new Error(
-            "SettingsService, NativeBridge and RecordingManager must be initialized first",
+            "SettingsService and NativeBridge must be initialized first",
           ),
         );
       }

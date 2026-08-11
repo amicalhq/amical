@@ -71,7 +71,7 @@ describe("ShortcutManager PTT activation (exact start, subset hold)", () => {
     expect(timeline).toEqual(["toggle"]);
 
     // Releasing the extra key collapses to exactly the PTT set. It must NOT emit a
-    // press — RecordingManager treats pttPress in hands-free as a stop, which would
+    // press — the lifecycle grammar treats a press while latched as a stop, which would
     // cancel the session.
     internals.removeActiveKey(C); // {A,B} via key-up
     expect(timeline).toEqual(["toggle"]);

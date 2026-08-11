@@ -52,7 +52,7 @@ export function DraftReview({
 
   // Sticky draft: the review stays open while a replacement is dictated. During
   // that window the action bar becomes a live status (Insert/Copy return once
-  // idle); Enter is disarmed meanwhile (see RecordingManager.syncDraftEnterMask).
+  // idle); Enter is disarmed meanwhile (the Enter mask arms only while idle).
   const isRecording =
     recordingStatus.state === "recording" ||
     recordingStatus.state === "starting";
