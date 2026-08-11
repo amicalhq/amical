@@ -14,27 +14,39 @@ import type { RemoteConfig } from "@/types/remote-config";
 import type { HistoryRetentionPeriod } from "../constants/history-retention";
 
 // Transcriptions table
-export const transcriptions = sqliteTable("transcriptions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  text: text("text").notNull(),
-  timestamp: integer("timestamp", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  language: text("language").default("en"),
-  detectedLanguage: text("detected_language"),
-  audioFile: text("audio_file"), // Path to the audio file
-  confidence: real("confidence"), // AI confidence score (0-1)
-  duration: integer("duration"), // Duration in seconds
-  speechModel: text("speech_model"), // Model used for speech recognition
-  formattingModel: text("formatting_model"), // Model used for formatting
-  meta: text("meta", { mode: "json" }), // Additional metadata as JSON
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const transcriptions = sqliteTable(
+  "transcriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    // Recording lifecycle custody: the session that produced this row, the
+    // sealed outcome stamped at commit ("success" | "empty" | "failure" |
+    // "dismissed"; discards delete the row), and whether audible speech was
+    // observed during capture. `disposition` NULL on a session-keyed row means
+    // the app died mid-session; startup recovery settles it.
+    sessionId: text("session_id"),
+    disposition: text("disposition"),
+    audible: integer("audible", { mode: "boolean" }),
+    text: text("text").notNull(),
+    timestamp: integer("timestamp", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    language: text("language").default("en"),
+    detectedLanguage: text("detected_language"),
+    audioFile: text("audio_file"), // Path to the audio file
+    confidence: real("confidence"), // AI confidence score (0-1)
+    duration: integer("duration"), // Duration in seconds
+    speechModel: text("speech_model"), // Model used for speech recognition
+    formattingModel: text("formatting_model"), // Model used for formatting
+    meta: text("meta", { mode: "json" }), // Additional metadata as JSON
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("transcriptions_session_id_idx").on(table.sessionId)],
+);
 
 // Vocabulary table
 export const vocabulary = sqliteTable("vocabulary", {

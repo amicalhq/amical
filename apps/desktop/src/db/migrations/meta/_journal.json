@@ -57,6 +57,13 @@
       "when": 1784879862020,
       "tag": "0007_odd_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786467605745,
+      "tag": "0008_cold_morbius",
+      "breakpoints": true
     }
   ]
 }

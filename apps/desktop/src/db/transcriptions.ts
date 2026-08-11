@@ -1,10 +1,30 @@
-import { eq, desc, asc, and, count, gte, lte, lt, sql } from "drizzle-orm";
+import {
+  eq,
+  desc,
+  asc,
+  and,
+  count,
+  gte,
+  lte,
+  lt,
+  sql,
+  isNull,
+  isNotNull,
+} from "drizzle-orm";
 import { db } from ".";
 import {
   transcriptions,
   type Transcription,
   type NewTranscription,
 } from "./schema";
+
+/** Sealed-outcome stamp values; a NULL disposition on a session-keyed row
+ * means custody was opened but the app died before the seal committed. */
+export type TranscriptionDisposition =
+  | "success"
+  | "empty"
+  | "failure"
+  | "dismissed";
 
 // Create a new transcription
 export async function createTranscription(
@@ -24,6 +44,145 @@ export async function createTranscription(
     .values(newTranscription)
     .returning();
   return result[0];
+}
+
+/**
+ * Open custody: the provisional row created at the first captured byte.
+ * Exists so a crash mid-session leaves disk evidence for startup recovery.
+ */
+export async function createProvisionalTranscription(options: {
+  sessionId: string;
+  audioFile?: string;
+}) {
+  const now = new Date();
+  const result = await db
+    .insert(transcriptions)
+    .values({
+      sessionId: options.sessionId,
+      disposition: null,
+      audible: false,
+      text: "",
+      audioFile: options.audioFile,
+      meta: { sessionId: options.sessionId },
+      timestamp: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
+  return result[0];
+}
+
+/** Record that audible speech was observed during capture (recovery input). */
+export async function markTranscriptionAudible(sessionId: string) {
+  await db
+    .update(transcriptions)
+    .set({ audible: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(transcriptions.sessionId, sessionId),
+        isNull(transcriptions.disposition),
+      ),
+    );
+}
+
+/**
+ * Enrich the session's row with descriptive (non-fate) fields. Unlike the
+ * disposition stamp this is not CAS-guarded: late enrichment of a settled
+ * row is harmless.
+ */
+export async function enrichTranscriptionBySession(
+  sessionId: string,
+  fields: Partial<
+    Pick<
+      Transcription,
+      | "language"
+      | "detectedLanguage"
+      | "duration"
+      | "speechModel"
+      | "formattingModel"
+      | "meta"
+    >
+  >,
+) {
+  await db
+    .update(transcriptions)
+    .set({ ...fields, updatedAt: new Date() })
+    .where(eq(transcriptions.sessionId, sessionId));
+}
+
+/**
+ * Stamp the sealed outcome onto the session's provisional row (status-CAS:
+ * only an uncommitted row is stamped). Returns the stamped row, or null when
+ * the session never opened custody or was already stamped.
+ */
+export async function stampTranscriptionDisposition(
+  sessionId: string,
+  stamp: {
+    disposition: TranscriptionDisposition;
+    text?: string;
+    metaPatch?: Record<string, unknown>;
+  },
+) {
+  const existing = await db
+    .select()
+    .from(transcriptions)
+    .where(
+      and(
+        eq(transcriptions.sessionId, sessionId),
+        isNull(transcriptions.disposition),
+      ),
+    );
+  const row = existing[0];
+  if (!row) return null;
+
+  const meta = {
+    ...((row.meta as Record<string, unknown> | null) ?? {}),
+    ...(stamp.metaPatch ?? {}),
+  };
+  const result = await db
+    .update(transcriptions)
+    .set({
+      disposition: stamp.disposition,
+      ...(stamp.text !== undefined ? { text: stamp.text } : {}),
+      meta,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(transcriptions.sessionId, sessionId),
+        isNull(transcriptions.disposition),
+      ),
+    )
+    .returning();
+  return result[0] ?? null;
+}
+
+/** Discard custody: delete the session's uncommitted row, returning it so
+ * the caller can remove the audio file. */
+export async function deleteProvisionalTranscription(sessionId: string) {
+  const result = await db
+    .delete(transcriptions)
+    .where(
+      and(
+        eq(transcriptions.sessionId, sessionId),
+        isNull(transcriptions.disposition),
+      ),
+    )
+    .returning();
+  return result[0] ?? null;
+}
+
+/** Startup recovery scan: custody rows the app died on. */
+export async function getUncommittedTranscriptions() {
+  return await db
+    .select()
+    .from(transcriptions)
+    .where(
+      and(
+        isNotNull(transcriptions.sessionId),
+        isNull(transcriptions.disposition),
+      ),
+    );
 }
 
 // Get all transcriptions with pagination and sorting
