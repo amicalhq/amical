@@ -21,6 +21,26 @@ export interface LifecycleTuning {
   quickWindowMs: number;
   /** Surface: "recording is getting long" reminder, off the recording projection. */
   longRecordingReminderMs: number;
+  /** StoragePort: single background retry after a failed commit stamp
+   * (quarantine-lite; the startup sweep is the ultimate net). */
+  commitRepairDelayMs: number;
+}
+
+/**
+ * Wedge watchdog budget: a single session legally spans at most the sum of
+ * its stage bounds; a session alive past that (plus slack) means a timer or
+ * port wedged, and the shell is force-reset.
+ */
+export function wedgeBudgetMs(tuning: LifecycleTuning): number {
+  const bounds = tuning.stageBoundsMs;
+  return (
+    bounds.starting +
+    bounds.recording +
+    bounds.resolving +
+    bounds.committing +
+    bounds.staging +
+    30_000
+  );
 }
 
 export const DEFAULT_LIFECYCLE_TUNING: LifecycleTuning = {
@@ -36,4 +56,5 @@ export const DEFAULT_LIFECYCLE_TUNING: LifecycleTuning = {
   pressWindowMs: 500, // v1 QUICK_PRESS_THRESHOLD
   quickWindowMs: 500,
   longRecordingReminderMs: 5 * 60 * 1000, // v1 RECORDING_WARNING_TIMEOUT
+  commitRepairDelayMs: 5_000,
 };

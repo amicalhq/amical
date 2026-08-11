@@ -35,7 +35,7 @@ import {
   type LifecycleSnapshot,
   type ShellTimerHost,
 } from "./shell";
-import type { LifecycleTuning } from "./tuning";
+import { wedgeBudgetMs, type LifecycleTuning } from "./tuning";
 import {
   RESOLVE_TIMEOUT_CAUSE,
   START_TIMEOUT_CAUSE,
@@ -236,7 +236,10 @@ export function createRecordingLifecycle(
       return {
         recorder,
         transcription,
-        storage: createStorageAdapter(sink),
+        storage: createStorageAdapter(sink, {
+          timers,
+          repairDelayMs: deps.tuning.commitRepairDelayMs,
+        }),
         host,
       };
     },
@@ -292,11 +295,19 @@ export function createRecordingLifecycle(
   let recordingStartedAt: number | null = null;
   let recordingStoppedAt: number | null = null;
   let reminderHandle: unknown | null = null;
+  let wedgeHandle: unknown | null = null;
 
   function clearReminder(): void {
     if (reminderHandle !== null) {
       timers.clear(reminderHandle);
       reminderHandle = null;
+    }
+  }
+
+  function clearWedgeWatchdog(): void {
+    if (wedgeHandle !== null) {
+      timers.clear(wedgeHandle);
+      wedgeHandle = null;
     }
   }
 
@@ -313,6 +324,17 @@ export function createRecordingLifecycle(
       snapshot.sessionId !== null
     ) {
       transcription.open(snapshot.sessionId);
+      // Wedge watchdog: every stage is bounded, so a session outliving the
+      // whole budget means a wedged timer or port — force-reset (R10).
+      clearWedgeWatchdog();
+      const session = snapshot.sessionId;
+      wedgeHandle = timers.set(wedgeBudgetMs(deps.tuning), () => {
+        wedgeHandle = null;
+        if (shell.getSnapshot().sessionId === session) {
+          logger.audio.error("Lifecycle wedge watchdog fired", { session });
+          shell.forceReset();
+        }
+      });
     }
 
     if (now.publicState === "recording" && was.publicState !== "recording") {
@@ -348,6 +370,7 @@ export function createRecordingLifecycle(
 
     if (now.publicState === "idle" && was.publicState !== "idle") {
       grammar.notifyLifecycleIdle();
+      clearWedgeWatchdog();
       recordingStartedAt = null;
       failureDetails.clear();
     }
@@ -468,6 +491,7 @@ export function createRecordingLifecycle(
     dispose: () => {
       unsubscribeSnapshots();
       clearReminder();
+      clearWedgeWatchdog();
       shell.forceReset();
     },
   };

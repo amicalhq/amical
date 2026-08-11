@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LifecycleTuning } from "../../src/main/lifecycle/tuning";
+import {
+  wedgeBudgetMs,
+  type LifecycleTuning,
+} from "../../src/main/lifecycle/tuning";
 import { FakeTimers } from "../helpers/lifecycle-fakes";
 import { AppError, ErrorCodes } from "../../src/types/error";
 
@@ -38,6 +41,7 @@ const TUNING: LifecycleTuning = {
   pressWindowMs: 3,
   quickWindowMs: 4,
   longRecordingReminderMs: 99,
+  commitRepairDelayMs: 66,
 };
 
 const settle = async (rounds = 4) => {
@@ -413,5 +417,27 @@ describe("recording lifecycle runtime", () => {
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(s2, {
       disposition: "dismissed",
     });
+  });
+
+  it("the wedge watchdog force-resets a session that outlives its budget", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    // Simulate a wedged stack: fire only the watchdog (stage bounds never ran).
+    h.timers.fire(wedgeBudgetMs(TUNING));
+    await settle();
+
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      sessionId: null,
+      projection: { publicState: "idle" },
+    });
+    // R10 teardown: ports were told to abandon the wedged session. The
+    // recorder drains best-effort; its bound closes custody with no session
+    // left to notify (the late recorderClosed is a fenced no-op).
+    expect(h.service.cancelStreamingSession).toHaveBeenCalledWith(session);
+    expect(h.timers.armedDurations()).toEqual([TUNING.drainMs]);
+    h.timers.fire(TUNING.drainMs);
+    await settle();
+    expect(h.timers.armedDurations()).toEqual([]);
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
   });
 });

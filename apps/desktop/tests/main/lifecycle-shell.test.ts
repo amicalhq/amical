@@ -29,6 +29,7 @@ const TUNING: LifecycleTuning = {
   pressWindowMs: 1,
   quickWindowMs: 1,
   longRecordingReminderMs: 99,
+  commitRepairDelayMs: 66,
 };
 
 type Meta = { mode: string; isDraft: boolean };

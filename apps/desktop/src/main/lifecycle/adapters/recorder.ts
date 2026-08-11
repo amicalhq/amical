@@ -229,6 +229,9 @@ export function createRecorderAdapter(
       }
       if (capture.phase === "draining") return;
       capture.phase = "draining";
+      // The dead-mic question is moot once the stop drain begins.
+      clearTimer(capture.deadMicHandle);
+      capture.deadMicHandle = null;
       endAmbiance(capture);
       capture.drainHandle = timers.set(deps.tuning.drainMs, () => {
         capture.drainHandle = null;

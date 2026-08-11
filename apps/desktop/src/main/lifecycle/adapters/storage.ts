@@ -7,6 +7,7 @@ import {
 } from "../../../db/transcriptions";
 import { countWords } from "../../../utils/dictation-stats";
 import type { LifecycleFactSink, StoragePort } from "../ports";
+import { REAL_TIMER_HOST, type ShellTimerHost } from "../shell";
 import type { SealedOutcome, SessionId } from "../types";
 
 /**
@@ -22,9 +23,15 @@ import type { SealedOutcome, SessionId } from "../types";
  *
  * A session that never opened custody (no first byte) has nothing to stamp:
  * storageFinished is reported immediately. A db error reports nothing — the
- * committing grace bound degrades forward and quarantine repairs the row.
+ * committing grace bound degrades forward, one background retry repairs the
+ * row (quarantine-lite), and the startup sweep is the ultimate net.
  */
-export function createStorageAdapter(sink: LifecycleFactSink): StoragePort {
+export function createStorageAdapter(
+  sink: LifecycleFactSink,
+  options?: { timers?: ShellTimerHost; repairDelayMs?: number },
+): StoragePort {
+  const timers = options?.timers ?? REAL_TIMER_HOST;
+  const repairDelayMs = options?.repairDelayMs ?? 5_000;
   async function commitSealed(
     session: SessionId,
     sealed: SealedOutcome,
@@ -94,6 +101,17 @@ export function createStorageAdapter(sink: LifecycleFactSink): StoragePort {
             sessionId: session,
             sealedKind: sealed.kind,
             error,
+          });
+          // Quarantine-lite: one silent background retry. No fact either
+          // way — the grace bound already advanced the machine, and a
+          // stale storageFinished would be a fenced no-op anyway.
+          timers.set(repairDelayMs, () => {
+            void commitSealed(session, sealed).catch((repairError) => {
+              logger.transcription.error(
+                "Lifecycle commit repair failed; startup recovery will settle the row",
+                { sessionId: session, error: repairError },
+              );
+            });
           });
         });
     },
