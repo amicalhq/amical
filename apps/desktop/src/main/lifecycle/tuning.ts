@@ -11,6 +11,10 @@ export interface LifecycleTuning {
   stageBoundsMs: Record<BoundStage, number>;
   /** RecorderPort: wall clock from recorderReady to noAudioDetected. */
   deadMicMs: number;
+  /** RecorderPort: stop-drain wait for the renderer's final chunk before
+   * recorderClosed is reported with whatever custody holds. Must sit well
+   * under the resolving stage bound so finalize still has room. */
+  drainMs: number;
   /** Grammar: press window (quickness is decided by event order against it). */
   pressWindowMs: number;
   /** Grammar: re-press window after a quick release before it becomes a discard. */
@@ -28,6 +32,7 @@ export const DEFAULT_LIFECYCLE_TUNING: LifecycleTuning = {
     staging: 5_000, // paste/draft staging incl. the 2.5s draft capture barrier
   },
   deadMicMs: 5_000, // v1 NO_AUDIO_TIMEOUT
+  drainMs: 3_000, // v1 folded this into the 10s stop recovery wait
   pressWindowMs: 500, // v1 QUICK_PRESS_THRESHOLD
   quickWindowMs: 500,
   longRecordingReminderMs: 5 * 60 * 1000, // v1 RECORDING_WARNING_TIMEOUT

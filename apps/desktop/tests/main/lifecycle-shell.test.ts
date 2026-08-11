@@ -3,8 +3,8 @@ import {
   createLifecycleShell,
   type LifecycleShell,
   type LifecycleSnapshot,
-  type ShellTimerHost,
 } from "../../src/main/lifecycle/shell";
+import { FakeTimers } from "../helpers/lifecycle-fakes";
 import type {
   LifecycleFactSink,
   LifecyclePorts,
@@ -25,42 +25,11 @@ const TUNING: LifecycleTuning = {
     staging: 55,
   },
   deadMicMs: 5,
+  drainMs: 6,
   pressWindowMs: 1,
   quickWindowMs: 1,
   longRecordingReminderMs: 99,
 };
-
-interface ArmedTimer {
-  ms: number;
-  fire: () => void;
-}
-
-class FakeTimers implements ShellTimerHost {
-  private next = 0;
-  readonly armed = new Map<number, ArmedTimer>();
-
-  set(ms: number, fire: () => void): unknown {
-    const handle = ++this.next;
-    this.armed.set(handle, { ms, fire });
-    return handle;
-  }
-
-  clear(handle: unknown): void {
-    this.armed.delete(handle as number);
-  }
-
-  armedDurations(): number[] {
-    return [...this.armed.values()].map((timer) => timer.ms);
-  }
-
-  fireOnly(): void {
-    const timers = [...this.armed.entries()];
-    expect(timers).toHaveLength(1);
-    const [handle, timer] = timers[0];
-    this.armed.delete(handle);
-    timer.fire();
-  }
-}
 
 type Meta = { mode: string; isDraft: boolean };
 
