@@ -86,9 +86,9 @@ export async function markTranscriptionAudible(sessionId: string) {
 }
 
 /**
- * Enrich the session's row with descriptive (non-fate) fields. Unlike the
- * disposition stamp this is not CAS-guarded: late enrichment of a settled
- * row is harmless.
+ * Enrich the session's row with descriptive (non-fate) fields; metaPatch is
+ * merged over the existing meta. Unlike the disposition stamp this is not
+ * CAS-guarded: late enrichment of a settled row is harmless.
  */
 export async function enrichTranscriptionBySession(
   sessionId: string,
@@ -100,13 +100,25 @@ export async function enrichTranscriptionBySession(
       | "duration"
       | "speechModel"
       | "formattingModel"
-      | "meta"
     >
-  >,
+  > & { metaPatch?: Record<string, unknown> },
 ) {
+  const { metaPatch, ...columns } = fields;
+  let meta: Record<string, unknown> | undefined;
+  if (metaPatch) {
+    const existing = await db
+      .select({ meta: transcriptions.meta })
+      .from(transcriptions)
+      .where(eq(transcriptions.sessionId, sessionId));
+    if (existing.length === 0) return;
+    meta = {
+      ...((existing[0].meta as Record<string, unknown> | null) ?? {}),
+      ...metaPatch,
+    };
+  }
   await db
     .update(transcriptions)
-    .set({ ...fields, updatedAt: new Date() })
+    .set({ ...columns, ...(meta ? { meta } : {}), updatedAt: new Date() })
     .where(eq(transcriptions.sessionId, sessionId));
 }
 

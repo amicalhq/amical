@@ -61,6 +61,21 @@ type FinalizeSessionOptions = {
   recordingStoppedAt?: number;
 };
 
+/** Prepared transcript + descriptive fields, nothing persisted. */
+export type ResolvedStreamingSession = {
+  text: string;
+  language?: string;
+  detectedLanguage?: string;
+  speechModel?: string;
+  formattingModel?: string;
+  audioDurationSeconds?: number;
+  meta: {
+    source?: string;
+    vocabularySize: number;
+    formattingStyle?: string;
+  };
+};
+
 /**
  * Service for audio transcription and optional formatting
  */
@@ -774,6 +789,148 @@ export class TranscriptionService {
    * Finalize a streaming session - flush the provider session, format, save to DB
    * Call this instead of processStreamingChunk with isFinal=true
    */
+  /**
+   * v2 lifecycle resolve: drain admitted chunks, flush the provider, prepare
+   * the transcript, and RETURN it — persistence belongs to the lifecycle's
+   * storage commit, and dismissal never flows through here (the lifecycle
+   * seals first and cancels this work; an abort surfaces as a throw the
+   * caller drops). Returns null when nothing was ever fed.
+   */
+  async resolveStreamingSession(options: {
+    sessionId: string;
+    recordingStartedAt?: number;
+    recordingStoppedAt?: number;
+  }): Promise<ResolvedStreamingSession | null> {
+    const { sessionId } = options;
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== sessionId) {
+      logger.transcription.warn("No session found to resolve", { sessionId });
+      return null;
+    }
+
+    liveSession.closeChunkAdmission();
+    try {
+      await liveSession.drainAdmittedChunks();
+      const session = liveSession.materializedSession;
+      if (!session) {
+        liveSession.throwIfTerminalFailure();
+        return null;
+      }
+
+      liveSession.throwIfTerminalFailure();
+      session.finalizationStartedAt = performance.now();
+      session.recordingStoppedAt = options.recordingStoppedAt;
+      if (options.recordingStartedAt && !session.recordingStartedAt) {
+        session.recordingStartedAt = options.recordingStartedAt;
+      }
+
+      const formatterConfig = await this.settingsService.getFormatterConfig();
+      const shouldUseCloudFormatting =
+        formatterConfig?.enabled &&
+        isAmicalCloudSelectionValue(formatterConfig.modelId);
+      const usedCloudProvider = session.providerSession.name === "amical-cloud";
+
+      await this.transcriptionMutex.acquire();
+      try {
+        liveSession.throwIfTerminalFailure();
+        const finalResult = await session.providerSession.flush(
+          {
+            ...this.buildTranscribeContextForSession(sessionId, session),
+            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+          },
+          liveSession.signal,
+        );
+        liveSession.throwIfTerminalFailure();
+        session.detectedLanguage = mergeDetectedLanguage(
+          session.detectedLanguage,
+          finalResult.detectedLanguage,
+        );
+        accumulateTranscriptionResult(
+          session.transcriptionResults,
+          finalResult.text,
+          usedCloudProvider,
+        );
+      } finally {
+        this.transcriptionMutex.release();
+      }
+
+      const rawTranscription = session.transcriptionResults.join("");
+      const prepared = await prepareTranscriptText(
+        {
+          text: rawTranscription,
+          usedCloudProvider,
+          context: session.context,
+          detectedLanguage: session.detectedLanguage,
+        },
+        {
+          settingsService: this.settingsService,
+          modelService: this.modelService,
+        },
+      );
+      liveSession.throwIfTerminalFailure();
+
+      const completionTime = performance.now();
+      const recordingDuration =
+        session.recordingStartedAt && session.recordingStoppedAt
+          ? session.recordingStoppedAt - session.recordingStartedAt
+          : undefined;
+      const processingDuration = session.recordingStoppedAt
+        ? completionTime - session.recordingStoppedAt
+        : undefined;
+      const totalDuration = session.recordingStartedAt
+        ? completionTime - session.recordingStartedAt
+        : undefined;
+      const audioDurationSeconds = session.context.audio.duration;
+
+      let whisperNativeBinding: string | undefined;
+      if (this.whisperEngine && "getBindingInfo" in this.whisperEngine) {
+        const bindingInfo = await this.whisperEngine.getBindingInfo();
+        whisperNativeBinding = bindingInfo?.type;
+      }
+
+      this.telemetryService.trackTranscriptionCompleted({
+        session_id: sessionId,
+        model_id: session.speechModelId,
+        model_preloaded: this.modelWasPreloaded,
+        whisper_native_binding: whisperNativeBinding,
+        total_duration_ms: totalDuration || 0,
+        recording_duration_ms: recordingDuration,
+        processing_duration_ms: processingDuration,
+        audio_duration_seconds: audioDurationSeconds,
+        realtime_factor:
+          audioDurationSeconds && totalDuration
+            ? audioDurationSeconds / (totalDuration / 1000)
+            : undefined,
+        text_length: prepared.text.length,
+        word_count: prepared.wordCount,
+        formatting_enabled: prepared.formattingUsed,
+        formatting_model: prepared.formattingModel,
+        formatting_duration_ms: prepared.formattingDuration,
+        vad_enabled: !!this.vadService,
+        languages: session.context.languages ?? [],
+        vocabulary_size: session.context.vocabulary.length,
+      });
+
+      logger.transcription.info("Streaming session resolved", { sessionId });
+      return {
+        text: prepared.text,
+        language: prepared.language,
+        detectedLanguage: prepared.detectedLanguage,
+        speechModel: session.speechModelId,
+        formattingModel: prepared.formattingModel,
+        audioDurationSeconds,
+        meta: {
+          source: session.context.audio.source,
+          vocabularySize: session.context.vocabulary.length,
+          formattingStyle: session.context.formattingStyle,
+        },
+      };
+    } finally {
+      this.retireLiveSession(liveSession);
+    }
+  }
+
+  /** v1 finalize path — deleted at the lifecycle cutover. */
   async finalizeSession(options: FinalizeSessionOptions): Promise<string> {
     const liveSession = this.activeLiveSession;
     if (!liveSession || liveSession.id !== options.sessionId) {
