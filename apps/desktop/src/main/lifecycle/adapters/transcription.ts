@@ -46,11 +46,22 @@ export interface TranscriptionEnrichment {
   metaPatch?: Record<string, unknown>;
 }
 
+export interface TranscriptionFailureDetail {
+  uiTitle?: string;
+  uiMessage?: string;
+  traceId?: string;
+}
+
 export interface TranscriptionAdapterDeps {
   sink: LifecycleFactSink;
   service: StreamingTranscriptionService;
   /** Descriptive fields onto the custody row (never the fate). */
   enrich: (session: SessionId, fields: TranscriptionEnrichment) => void;
+  /** Rich toast fields for a failure cause; outside the contract. */
+  onFailureDetail?: (
+    session: SessionId,
+    detail: TranscriptionFailureDetail,
+  ) => void;
 }
 
 export interface TranscriptionAdapter extends TranscriptionPort {
@@ -72,6 +83,16 @@ interface SttSession {
 
 function causeOf(error: unknown): string {
   return error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
+}
+
+function detailOf(error: unknown): TranscriptionFailureDetail | null {
+  if (!(error instanceof AppError)) return null;
+  if (!error.uiTitle && !error.uiMessage && !error.traceId) return null;
+  return {
+    uiTitle: error.uiTitle,
+    uiMessage: error.uiMessage,
+    traceId: error.traceId,
+  };
 }
 
 export function createTranscriptionAdapter(
@@ -107,6 +128,8 @@ export function createTranscriptionAdapter(
       state = stt;
       try {
         deps.service.beginStreamingSession(session, (error) => {
+          const detail = detailOf(error);
+          if (detail) deps.onFailureDetail?.(session, detail);
           emitFinal(stt, { kind: "failure", cause: causeOf(error) });
         });
       } catch (error) {
@@ -190,6 +213,8 @@ export function createTranscriptionAdapter(
               sessionId: session,
               error,
             });
+            const detail = detailOf(error);
+            if (detail) deps.onFailureDetail?.(session, detail);
           }
           emitFinal(stt, { kind: "failure", cause: causeOf(error) });
         });
