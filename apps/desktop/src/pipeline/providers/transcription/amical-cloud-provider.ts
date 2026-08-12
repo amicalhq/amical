@@ -358,8 +358,8 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     this.assertOpen();
     const sessionContext = this.contextForSession(context);
     // Dismiss/cancel arrives as an aborted signal. cancel() synchronously cancels
-    // the in-flight gRPC stream and aborts the HTTP fetch, rejecting this flush so
-    // finalizeSession's catch persists the row and returns to idle immediately.
+    // the in-flight gRPC stream and aborts the HTTP fetch, rejecting this flush;
+    // the lifecycle has already sealed, so the caller drops the rejection.
     // (No-op for the local worker; that path lives in WhisperProvider.) Checked
     // up-front too because addEventListener won't fire for an already-aborted
     // signal.

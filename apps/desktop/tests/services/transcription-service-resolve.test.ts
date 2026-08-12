@@ -216,7 +216,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
       (_context, signal?: AbortSignal) =>
         new Promise((_, reject) => {
           const abort = () =>
-            reject(new AppError("aborted", ErrorCodes.USER_DISMISSED));
+            reject(new AppError("aborted", ErrorCodes.NETWORK_ERROR));
           if (signal?.aborted) return abort();
           signal?.addEventListener("abort", abort);
         }),
@@ -227,7 +227,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
     service.abortSession("s1");
 
     await expect(pending).rejects.toMatchObject({
-      errorCode: ErrorCodes.USER_DISMISSED,
+      errorCode: ErrorCodes.NETWORK_ERROR,
     });
     expect(createTranscription).not.toHaveBeenCalled();
   });

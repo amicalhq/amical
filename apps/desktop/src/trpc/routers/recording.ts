@@ -125,11 +125,10 @@ export const recordingRouter = createRouter({
         let config: WidgetNotificationConfig;
 
         if (data.type === "transcription_failed" && data.errorCode) {
-          const errorConfig =
-            data.errorCode === ErrorCodes.USER_DISMISSED
-              ? undefined
-              : ERROR_CODE_CONFIG[data.errorCode];
-          config = errorConfig ?? ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN];
+          // Causes are opaque strings; unknown codes fall back to UNKNOWN.
+          config =
+            ERROR_CODE_CONFIG[data.errorCode] ??
+            ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN];
         } else {
           config = WIDGET_NOTIFICATION_CONFIG[data.type];
         }

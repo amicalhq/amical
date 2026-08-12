@@ -75,11 +75,6 @@ export const ErrorCodes = {
 
   // A History retry currently owns the shared transcription resources.
   RETRY_IN_PROGRESS: "RETRY_IN_PROGRESS",
-
-  // Control signal, not a failure: the user dismissed the dictation.
-  // finalizeSession throws this so the caller can silently abandon the session
-  // (no failure/no-speech notification).
-  USER_DISMISSED: "USER_DISMISSED",
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

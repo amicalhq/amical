@@ -91,10 +91,7 @@ export const buildNotificationDescription = (
     typeof data.params?.microphone === "string"
       ? data.params.microphone
       : undefined;
-  if (
-    microphoneName &&
-    (type === "no_audio" || type === "empty_transcript")
-  ) {
+  if (microphoneName && (type === "no_audio" || type === "empty_transcript")) {
     return getNotificationDescription(type, microphoneName);
   }
 
@@ -123,12 +120,8 @@ const MICROPHONE_NOTIFICATION_CONFIG: WidgetNotificationConfig = {
   },
 };
 
-// Config keyed by error code. USER_DISMISSED is intentionally excluded — it's a
-// control signal (the user dismissed the dictation), never a user-facing notification.
-export const ERROR_CODE_CONFIG: Record<
-  Exclude<ErrorCode, typeof ErrorCodes.USER_DISMISSED>,
-  WidgetNotificationConfig
-> = {
+// Config keyed by error code.
+export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
   [ErrorCodes.AUTH_REQUIRED]: {
     title: { key: "widget.notifications.errorCode.authRequired.title" },
     description: {
