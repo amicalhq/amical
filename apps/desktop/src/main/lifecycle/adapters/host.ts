@@ -5,7 +5,7 @@ import type { SealedOutcome, SessionId } from "../types";
 
 /**
  * HostPort — the single front door out of the lifecycle. stageDelivery runs
- * only after the record is committed (record before reveal, R6) and only
+ * only after the record is committed (record before reveal, R7) and only
  * for delivering outcomes, so no delivery-authority re-check exists here:
  * the serialized queue already decided every race by the time this runs.
  *
@@ -40,6 +40,11 @@ export interface HostAdapterDeps {
 }
 
 export interface HostAdapter extends HostPort {
+  /** R10 quarantine: a forceReset injector abandons the session's staged
+   * delivery BEFORE resetting, so an in-flight paste cannot land inside a
+   * successor session. Best-effort — a paste already handed to the native
+   * layer cannot be recalled. */
+  abandon(session: SessionId): void;
   getPendingDraft(): PendingDraft | null;
   confirmDraft(): Promise<void>;
   dismissDraft(): void;
@@ -54,6 +59,7 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
   let pendingDraft: PendingDraft | null = null;
   let draftEnterArmed = false;
   const draftListeners = new Set<(draft: PendingDraft | null) => void>();
+  const abandoned = new Set<SessionId>();
 
   function setPendingDraft(draft: PendingDraft | null): void {
     pendingDraft = draft;
@@ -81,7 +87,10 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
     }
   }
 
-  async function paste(transcript: string): Promise<void> {
+  async function paste(
+    transcript: string,
+    isAbandoned?: () => boolean,
+  ): Promise<void> {
     if (!transcript) return;
     try {
       const preserveClipboard = await deps.getPreserveClipboard();
@@ -89,6 +98,9 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
         logger.main.warn("Native bridge unavailable, cannot paste");
         return;
       }
+      // Re-check after the async gap: a forceReset quarantine may have
+      // abandoned this session while preferences were being read.
+      if (isAbandoned?.()) return;
       void deps.bridge
         .pasteText({ transcript, preserveClipboard })
         .catch((error) => {
@@ -104,15 +116,19 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
   return {
     stageDelivery(session: SessionId, sealed: SealedOutcome): void {
       void (async () => {
-        if (sealed.kind === "success") {
+        if (sealed.kind === "success" && !abandoned.has(session)) {
           if (deps.isDraftSession(session)) {
             setPendingDraft({ sessionId: session, text: sealed.text });
           } else {
-            await paste(sealed.text);
+            await paste(sealed.text, () => abandoned.has(session));
           }
         }
         deps.sink({ type: "deliveryStaged", session });
       })();
+    },
+
+    abandon(session: SessionId): void {
+      abandoned.add(session);
     },
 
     getPendingDraft(): PendingDraft | null {

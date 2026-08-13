@@ -72,6 +72,22 @@ describe("lifecycle host adapter", () => {
     expect(h.adapter.getPendingDraft()).toBeNull();
   });
 
+  it("an abandoned session stages nothing but still reports the fact", async () => {
+    const h = makeHarness();
+    h.adapter.abandon("s1");
+    h.adapter.stageDelivery("s1", { kind: "success", text: "quarantined" });
+    await settle();
+
+    expect(h.pastes).toEqual([]);
+    expect(h.adapter.getPendingDraft()).toBeNull();
+    expect(h.facts).toEqual([{ type: "deliveryStaged", session: "s1" }]);
+
+    // A successor session is unaffected.
+    h.adapter.stageDelivery("s2", { kind: "success", text: "next" });
+    await settle();
+    expect(h.pastes).toEqual([{ transcript: "next", preserveClipboard: true }]);
+  });
+
   it("stages a draft success into the pending draft without pasting", async () => {
     const h = makeHarness({ draftSessions: new Set(["s1"]) });
     h.adapter.stageDelivery("s1", { kind: "success", text: "draft text" });

@@ -62,7 +62,7 @@ export interface StoragePort {
 
 /**
  * Delivery. The single front door out of the lifecycle: paste, or stage a
- * draft for review. Runs only after the record is committed (R6).
+ * draft for review. Runs only after the record is committed (R7).
  */
 export interface HostPort {
   /** → deliveryStaged (also on failed/aborted staging; the row is already safe). */

@@ -99,6 +99,9 @@ export function createTranscriptionAdapter(
   deps: TranscriptionAdapterDeps,
 ): TranscriptionAdapter {
   let state: SttSession | null = null;
+  /** Never-opened sessions whose finalize already synthesized empty —
+   * finalize must be idempotent (§6.1). */
+  let lastSynthesizedEmpty: SessionId | null = null;
 
   function current(session: SessionId): SttSession | null {
     return state && state.session === session ? state : null;
@@ -127,11 +130,24 @@ export function createTranscriptionAdapter(
       };
       state = stt;
       try {
-        deps.service.beginStreamingSession(session, (error) => {
-          const detail = detailOf(error);
-          if (detail) deps.onFailureDetail?.(session, detail);
-          emitFinal(stt, { kind: "failure", cause: causeOf(error) });
-        });
+        const accepted = deps.service.beginStreamingSession(
+          session,
+          (error) => {
+            const detail = detailOf(error);
+            if (detail) deps.onFailureDetail?.(session, detail);
+            emitFinal(stt, { kind: "failure", cause: causeOf(error) });
+          },
+        );
+        if (!accepted) {
+          // The service refused the stream (a stale session still holds
+          // it). The session cannot transcribe; fail it now rather than
+          // letting finalize synthesize a misleading empty later.
+          logger.transcription.error("Streaming session refused", {
+            sessionId: session,
+          });
+          emitFinal(stt, { kind: "failure", cause: ErrorCodes.UNKNOWN });
+          return;
+        }
       } catch (error) {
         // A stale stream is still registered (should be impossible under the
         // serialized lifecycle); surface it as this session's failure.
@@ -177,7 +193,10 @@ export function createTranscriptionAdapter(
     finalize(session): void {
       const stt = current(session);
       if (!stt) {
-        // Never opened: nothing was ever fed, so the result is empty.
+        // Never opened: nothing was ever fed, so the result is empty —
+        // synthesized exactly once per session (finalize is idempotent).
+        if (lastSynthesizedEmpty === session) return;
+        lastSynthesizedEmpty = session;
         deps.sink({
           type: "transcriptionFinal",
           session,

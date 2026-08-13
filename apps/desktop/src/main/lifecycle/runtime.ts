@@ -237,11 +237,25 @@ export function createRecordingLifecycle(
         storage: createStorageAdapter(sink, {
           timers,
           repairDelayMs: deps.tuning.commitRepairDelayMs,
+          awaitCustodySettled: (session) => recorder.whenCustodySettled(session),
         }),
         host,
       };
     },
   });
+
+  /** R10: quarantine in-flight terminal work BEFORE the reset — an
+   * abandoned delivery cannot land inside a successor session, and the
+   * ports retire their streams instead of leaking them. */
+  function quarantineAndForceReset(): void {
+    const session = shell.getSnapshot().sessionId;
+    if (session !== null) {
+      host.abandon(session);
+      transcription.cancel(session);
+      recorder.stop(session);
+    }
+    shell.forceReset();
+  }
 
   // Verb ordering: admission gates await async lookups, and a release can
   // arrive while its press is still being admitted. One chain keeps input
@@ -330,7 +344,7 @@ export function createRecordingLifecycle(
         wedgeHandle = null;
         if (shell.getSnapshot().sessionId === session) {
           logger.audio.error("Lifecycle wedge watchdog fired", { session });
-          shell.forceReset();
+          quarantineAndForceReset();
         }
       });
     }
@@ -455,7 +469,7 @@ export function createRecordingLifecycle(
         await host.confirmDraft();
       }
     },
-    forceReset: () => shell.forceReset(),
+    forceReset: () => quarantineAndForceReset(),
 
     captureStarted: (session, microphone) => {
       recorder.captureStarted(session, microphone);
@@ -490,7 +504,7 @@ export function createRecordingLifecycle(
       unsubscribeSnapshots();
       clearReminder();
       clearWedgeWatchdog();
-      shell.forceReset();
+      quarantineAndForceReset();
     },
   };
 }

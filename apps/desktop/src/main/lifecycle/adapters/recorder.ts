@@ -85,6 +85,10 @@ export interface RecorderAdapter extends RecorderPort {
   ): Promise<void>;
   /** Microphone reported for the live session (surface notifications). */
   getActiveMicrophone(): CapturedMicrophone | null;
+  /** Resolves once the session's custody has closed and its writer settled
+   * (immediately for unknown sessions). WAV-deleting executors order their
+   * unlink behind this — the writer owns the file until then (R4). */
+  whenCustodySettled(session: SessionId): Promise<void>;
 }
 
 interface CaptureState {
@@ -114,6 +118,27 @@ export function createRecorderAdapter(
     ((filePath: string) => new StreamingWavWriter(filePath));
 
   let state: CaptureState | null = null;
+
+  /** Custody-settled waiters (R4): resolved when a session's writer closes.
+   * Keyed by session, not the live slot — a successor may start while the
+   * predecessor is still draining. */
+  const custodySettled = new Map<SessionId, () => void>();
+  const custodySettledPromises = new Map<SessionId, Promise<void>>();
+
+  function openCustodyWaiter(session: SessionId): void {
+    custodySettledPromises.set(
+      session,
+      new Promise<void>((resolve) => {
+        custodySettled.set(session, resolve);
+      }),
+    );
+  }
+
+  function settleCustodyWaiter(session: SessionId): void {
+    custodySettled.get(session)?.();
+    custodySettled.delete(session);
+    custodySettledPromises.delete(session);
+  }
 
   function current(session: SessionId): CaptureState | null {
     return state && state.session === session && state.phase !== "closed"
@@ -156,6 +181,7 @@ export function createRecorderAdapter(
           });
         });
     }
+    void capture.writeQueue.finally(() => settleCustodyWaiter(session));
 
     if (!capture.closedEmitted) {
       capture.closedEmitted = true;
@@ -165,6 +191,7 @@ export function createRecorderAdapter(
 
   return {
     start(session): void {
+      openCustodyWaiter(session);
       state = {
         session,
         phase: "starting",
@@ -305,6 +332,10 @@ export function createRecorderAdapter(
 
     getActiveMicrophone(): CapturedMicrophone | null {
       return state && state.phase !== "closed" ? state.microphone : null;
+    },
+
+    whenCustodySettled(session: SessionId): Promise<void> {
+      return custodySettledPromises.get(session) ?? Promise.resolve();
     },
   };
 }

@@ -116,6 +116,24 @@ describe("lifecycle transcription adapter", () => {
         result: { kind: "empty" },
       },
     ]);
+
+    // Idempotent: a repeat finalize on the never-opened session is a no-op.
+    neverOpened.adapter.finalize("ghost");
+    expect(neverOpened.facts).toHaveLength(1);
+  });
+
+  it("a refused stream open fails the session immediately", () => {
+    const h = makeHarness({
+      beginStreamingSession: vi.fn(() => false),
+    });
+    h.adapter.open("s1");
+    expect(h.facts).toEqual([
+      {
+        type: "transcriptionFinal",
+        session: "s1",
+        result: { kind: "failure", cause: "UNKNOWN" },
+      },
+    ]);
   });
 
   it("maps resolve failures to error-code causes", async () => {

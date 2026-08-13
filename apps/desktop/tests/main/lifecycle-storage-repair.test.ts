@@ -22,7 +22,7 @@ const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const REPAIR_MS = 9;
 
 describe("lifecycle storage quarantine-lite repair", () => {
-  it("retries a failed commit once in the background, without a fact", async () => {
+  it("reports the settled attempt on failure, then retries once in the background", async () => {
     const facts: LifecyclePortFact[] = [];
     const timers = new FakeTimers();
     const adapter = createStorageAdapter((fact) => facts.push(fact), {
@@ -36,16 +36,18 @@ describe("lifecycle storage quarantine-lite repair", () => {
     adapter.commit("s1", { kind: "success", text: "kept text" });
     await settle();
 
-    // First attempt failed: no fact, one repair timer armed.
-    expect(facts).toEqual([]);
+    // The attempt settled (failed): the fact fires either way (D15) so the
+    // machine never eats the grace bound for a known failure. One repair
+    // timer armed.
+    expect(facts).toEqual([{ type: "storageFinished", session: "s1" }]);
     expect(timers.armedDurations()).toEqual([REPAIR_MS]);
 
     timers.fire(REPAIR_MS);
     await settle();
 
-    // The repair stamped the row silently — still no fact (the grace bound
-    // already advanced the machine; a late fact would be a fenced no-op).
-    expect(facts).toEqual([]);
+    // The repair stamped the row silently — no second fact (the machine
+    // already moved on; a late fact would be a fenced no-op anyway).
+    expect(facts).toEqual([{ type: "storageFinished", session: "s1" }]);
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledTimes(2);
     expect(db.stampTranscriptionDisposition).toHaveBeenLastCalledWith("s1", {
       disposition: "success",
@@ -67,7 +69,7 @@ describe("lifecycle storage quarantine-lite repair", () => {
     timers.fire(REPAIR_MS);
     await settle();
 
-    expect(facts).toEqual([]);
+    expect(facts).toEqual([{ type: "storageFinished", session: "s1" }]);
     expect(timers.armedDurations()).toEqual([]); // no retry loop
     db.stampTranscriptionDisposition.mockResolvedValue({ id: 1 });
   });
