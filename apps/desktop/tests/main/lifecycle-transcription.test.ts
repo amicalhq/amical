@@ -46,7 +46,9 @@ function makeHarness(overrides: Partial<StreamingTranscriptionService> = {}) {
   const adapter = createTranscriptionAdapter({
     sink: (fact) => facts.push(fact),
     service,
-    enrich: (session, fields) => enrichments.push({ session, fields }),
+    enrich: (session, fields) => {
+      enrichments.push({ session, fields });
+    },
   });
 
   return { adapter, facts, enrichments, service, terminalCallbacks };
@@ -120,6 +122,36 @@ describe("lifecycle transcription adapter", () => {
     // Idempotent: a repeat finalize on the never-opened session is a no-op.
     neverOpened.adapter.finalize("ghost");
     expect(neverOpened.facts).toHaveLength(1);
+  });
+
+  it("awaits enrichment before emitting the final fact", async () => {
+    let releaseEnrich!: () => void;
+    const enrichGate = new Promise<void>((resolve) => {
+      releaseEnrich = resolve;
+    });
+    const facts: LifecyclePortFact[] = [];
+    const adapter = createTranscriptionAdapter({
+      sink: (fact) => facts.push(fact),
+      service: makeHarness().service,
+      enrich: () => enrichGate,
+    });
+
+    adapter.open("s1");
+    adapter.finalize("s1");
+    await settle();
+    // The stamp rewrites meta; the fact (and with it the commit) must not
+    // race the enrichment write.
+    expect(facts).toEqual([]);
+
+    releaseEnrich();
+    await settle();
+    expect(facts).toEqual([
+      {
+        type: "transcriptionFinal",
+        session: "s1",
+        result: { kind: "text", text: "hello world" },
+      },
+    ]);
   });
 
   it("a refused stream open fails the session immediately", () => {

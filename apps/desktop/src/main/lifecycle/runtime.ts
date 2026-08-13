@@ -161,20 +161,20 @@ export function createRecordingLifecycle(
       transcription = createTranscriptionAdapter({
         sink,
         service: deps.transcriptionService,
-        enrich: (session, fields) => {
-          void enrichTranscriptionBySession(session, {
+        enrich: (session, fields) =>
+          enrichTranscriptionBySession(session, {
             language: fields.language ?? undefined,
             detectedLanguage: fields.detectedLanguage ?? undefined,
             speechModel: fields.speechModel ?? undefined,
             formattingModel: fields.formattingModel ?? undefined,
             metaPatch: fields.metaPatch,
           }).catch((error) => {
+            // Enrichment is descriptive; a failure never blocks the fact.
             logger.transcription.error("Failed to enrich custody row", {
               sessionId: session,
               error,
             });
-          });
-        },
+          }),
         onFailureDetail: (session, detail) => {
           failureDetails.set(session, detail);
         },

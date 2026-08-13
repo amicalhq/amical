@@ -55,8 +55,13 @@ export interface TranscriptionFailureDetail {
 export interface TranscriptionAdapterDeps {
   sink: LifecycleFactSink;
   service: StreamingTranscriptionService;
-  /** Descriptive fields onto the custody row (never the fate). */
-  enrich: (session: SessionId, fields: TranscriptionEnrichment) => void;
+  /** Descriptive fields onto the custody row (never the fate). Awaited
+   * before the final fact so the disposition stamp — which rewrites meta —
+   * can never interleave with this write and lose fields. */
+  enrich: (
+    session: SessionId,
+    fields: TranscriptionEnrichment,
+  ) => Promise<void> | void;
   /** Rich toast fields for a failure cause; outside the contract. */
   onFailureDetail?: (
     session: SessionId,
@@ -210,9 +215,9 @@ export function createTranscriptionAdapter(
           recordingStartedAt: stt.openedAt,
           recordingStoppedAt: performance.now(),
         })
-        .then((resolved) => {
+        .then(async (resolved) => {
           if (resolved) {
-            deps.enrich(session, {
+            await deps.enrich(session, {
               language: resolved.language ?? null,
               detectedLanguage: resolved.detectedLanguage ?? null,
               speechModel: resolved.speechModel ?? null,
