@@ -354,7 +354,11 @@ export const LIFECYCLE_TRACES: LifecycleTrace[] = [
         },
       },
       // STARTING
-      noopStep({ type: "stopRequested", session: X }, starting, proj("starting")),
+      noopStep(
+        { type: "stopRequested", session: X },
+        starting,
+        proj("starting"),
+      ),
       noopStep(
         { type: "recorderFailed", session: X, cause: CAUSE },
         starting,

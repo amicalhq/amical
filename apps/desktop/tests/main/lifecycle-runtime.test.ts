@@ -50,6 +50,7 @@ const settle = async (rounds = 4) => {
 };
 
 function makeHarness(options?: {
+  hasSpeechModelSelected?: () => Promise<boolean>;
   resolveText?: string;
   hasModel?: boolean;
   retryInProgress?: boolean;
@@ -101,7 +102,9 @@ function makeHarness(options?: {
       setDraftEnterCapture: async () => undefined,
     },
     getPreserveClipboard: async () => false,
-    hasSpeechModelSelected: async () => options?.hasModel ?? true,
+    hasSpeechModelSelected:
+      options?.hasSpeechModelSelected ??
+      (async () => options?.hasModel ?? true),
     isDraftChordActive: options?.draftChord ?? (() => false),
     setDraftInputActive: () => undefined,
     audioFilePathFor: (session) => `/audio/${session}.wav`,
@@ -224,6 +227,51 @@ describe("recording lifecycle runtime", () => {
     h.lifecycle.setPttLevel(true); // next press stops
     await settle();
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("stopping");
+  });
+
+  it("a latch upgrade during a slow admission gate still lands", async () => {
+    let releaseGate!: (value: boolean) => void;
+    const h = makeHarness({
+      hasSpeechModelSelected: () =>
+        new Promise<boolean>((resolve) => {
+          releaseGate = resolve;
+        }),
+    });
+
+    // Tap and re-press while the model lookup is still pending: the
+    // upgrade queues behind the admission instead of hitting IDLE.
+    h.lifecycle.setPttLevel(true);
+    h.lifecycle.setPttLevel(false);
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+
+    releaseGate(true);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      projection: { publicState: "starting" },
+      metadata: { mode: "hands-free" },
+    });
+  });
+
+  it("a hung admission gate refuses the start instead of blocking input", async () => {
+    const h = makeHarness({
+      hasSpeechModelSelected: () => new Promise<boolean>(() => undefined),
+    });
+
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    h.timers.fire(3_000); // admission gate bound
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+    expect(h.notifications).toEqual([
+      expect.objectContaining({
+        type: "transcription_failed",
+        errorCode: ErrorCodes.UNKNOWN,
+      }),
+    ]);
   });
 
   it("a dead mic seals discard(no_audio) and notifies with the microphone", async () => {

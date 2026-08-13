@@ -103,9 +103,7 @@
       "indexes": {
         "daily_stats_date_unique_idx": {
           "name": "daily_stats_date_unique_idx",
-          "columns": [
-            "date"
-          ],
+          "columns": ["date"],
           "isUnique": true
         }
       },
@@ -249,34 +247,24 @@
       "indexes": {
         "models_provider_type_idx": {
           "name": "models_provider_type_idx",
-          "columns": [
-            "provider_type"
-          ],
+          "columns": ["provider_type"],
           "isUnique": false
         },
         "models_provider_instance_idx": {
           "name": "models_provider_instance_idx",
-          "columns": [
-            "provider_instance_id"
-          ],
+          "columns": ["provider_instance_id"],
           "isUnique": false
         },
         "models_type_idx": {
           "name": "models_type_idx",
-          "columns": [
-            "type"
-          ],
+          "columns": ["type"],
           "isUnique": false
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "models_provider_instance_id_type_id_pk": {
-          "columns": [
-            "provider_instance_id",
-            "type",
-            "id"
-          ],
+          "columns": ["provider_instance_id", "type", "id"],
           "name": "models_provider_instance_id_type_id_pk"
         }
       },
@@ -494,9 +482,7 @@
       "indexes": {
         "snippets_trigger_unique": {
           "name": "snippets_trigger_unique",
-          "columns": [
-            "trigger"
-          ],
+          "columns": ["trigger"],
           "isUnique": true
         }
       },
@@ -567,11 +553,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "sync_collection_state_scope_type_scope_id_collection_pk": {
-          "columns": [
-            "scope_type",
-            "scope_id",
-            "collection"
-          ],
+          "columns": ["scope_type", "scope_id", "collection"],
           "name": "sync_collection_state_scope_type_scope_id_collection_pk"
         }
       },
@@ -628,12 +610,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "sync_item_state_scope_type_scope_id_collection_sync_id_pk": {
-          "columns": [
-            "scope_type",
-            "scope_id",
-            "collection",
-            "sync_id"
-          ],
+          "columns": ["scope_type", "scope_id", "collection", "sync_id"],
           "name": "sync_item_state_scope_type_scope_id_collection_sync_id_pk"
         }
       },
@@ -740,12 +717,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "sync_outbox_scope_type_scope_id_collection_sync_id_pk": {
-          "columns": [
-            "scope_type",
-            "scope_id",
-            "collection",
-            "sync_id"
-          ],
+          "columns": ["scope_type", "scope_id", "collection", "sync_id"],
           "name": "sync_outbox_scope_type_scope_id_collection_sync_id_pk"
         }
       },
@@ -868,9 +840,7 @@
       "indexes": {
         "transcriptions_session_id_idx": {
           "name": "transcriptions_session_id_idx",
-          "columns": [
-            "session_id"
-          ],
+          "columns": ["session_id"],
           "isUnique": false
         }
       },
@@ -939,9 +909,7 @@
       "indexes": {
         "vocabulary_word_unique": {
           "name": "vocabulary_word_unique",
-          "columns": [
-            "word"
-          ],
+          "columns": ["word"],
           "isUnique": true
         }
       },
@@ -986,9 +954,7 @@
       "indexes": {
         "yjs_updates_note_id_idx": {
           "name": "yjs_updates_note_id_idx",
-          "columns": [
-            "note_id"
-          ],
+          "columns": ["note_id"],
           "isUnique": false
         }
       },
@@ -997,12 +963,8 @@
           "name": "yjs_updates_note_id_notes_id_fk",
           "tableFrom": "yjs_updates",
           "tableTo": "notes",
-          "columnsFrom": [
-            "note_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["note_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

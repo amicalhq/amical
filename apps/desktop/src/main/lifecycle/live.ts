@@ -19,11 +19,12 @@ import type { SettingsService } from "../../services/settings-service";
 import type { ModelService } from "../../services/model-service";
 import type { TranscriptionService } from "../../services/transcription-service";
 import type { ShortcutManager } from "../managers/shortcut-manager";
-import type {
-  AmbianceContext,
-  RecorderAmbiance,
-} from "./adapters/recorder";
-import { createRecordingLifecycle, type RecordingLifecycle } from "./runtime";
+import type { AmbianceContext, RecorderAmbiance } from "./adapters/recorder";
+import {
+  createRecordingLifecycle,
+  type RecordingLifecycle,
+  type RecordingLifecycleDeps,
+} from "./runtime";
 import { runLifecycleRecovery } from "./startup-recovery";
 import { DEFAULT_LIFECYCLE_TUNING } from "./tuning";
 
@@ -128,8 +129,45 @@ export function createDesktopRecordingLifecycle(deps: {
     },
   };
 
+  // Draft copy-capture barrier (v1 semantics): the clipboard-copy fallback
+  // starts when a draft session begins stopping, and resolve waits for it
+  // (bounded) so the merged selection is in the stream context before the
+  // final flush. One capture per session.
+  const DRAFT_CAPTURE_BARRIER_MS = 2_500;
+  const draftCaptures = new Map<string, Promise<void>>();
+
+  const barrieredTranscriptionService: RecordingLifecycleDeps["transcriptionService"] =
+    {
+      beginStreamingSession: (sessionId, onTerminalFailure) =>
+        transcriptionService.beginStreamingSession(
+          sessionId,
+          onTerminalFailure,
+        ),
+      processStreamingChunk: (options) =>
+        transcriptionService.processStreamingChunk(options),
+      resolveStreamingSession: async (options) => {
+        const capture = draftCaptures.get(options.sessionId);
+        if (capture) {
+          draftCaptures.delete(options.sessionId);
+          await Promise.race([
+            capture,
+            new Promise<void>((resolve) =>
+              setTimeout(resolve, DRAFT_CAPTURE_BARRIER_MS),
+            ),
+          ]);
+        }
+        return transcriptionService.resolveStreamingSession(options);
+      },
+      cancelStreamingSession: (sessionId) =>
+        transcriptionService.cancelStreamingSession(sessionId),
+      resetVadForNewSession: () => transcriptionService.resetVadForNewSession(),
+      warmupActiveProvider: () => transcriptionService.warmupActiveProvider(),
+      isHistoryRetryInProgress: () =>
+        transcriptionService.isHistoryRetryInProgress(),
+    };
+
   const lifecycle = createRecordingLifecycle({
-    transcriptionService,
+    transcriptionService: barrieredTranscriptionService,
     ambiance,
     bridge: nativeBridge
       ? {
@@ -195,14 +233,24 @@ export function createDesktopRecordingLifecycle(deps: {
     if (
       snapshot.projection.publicState === "stopping" &&
       snapshot.projection.stopKind === "finalize" &&
-      snapshot.metadata?.isDraft
+      snapshot.metadata?.isDraft &&
+      !draftCaptures.has(session)
     ) {
-      void captureDraftSelectionViaCopy(session).catch((error) => {
-        logger.audio.warn("Draft copy-capture fallback failed", {
-          sessionId: session,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+      // Once per session: stopping publishes several snapshots (drain,
+      // seal, settle) and the capture must not re-fire on each.
+      draftCaptures.set(
+        session,
+        captureDraftSelectionViaCopy(session).catch((error) => {
+          logger.audio.warn("Draft copy-capture fallback failed", {
+            sessionId: session,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
+    }
+
+    if (snapshot.projection.publicState === "idle") {
+      draftCaptures.clear();
     }
   });
 

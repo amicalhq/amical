@@ -232,7 +232,8 @@ export function createRecordingLifecycle(
         storage: createStorageAdapter(sink, {
           timers,
           repairDelayMs: deps.tuning.commitRepairDelayMs,
-          awaitCustodySettled: (session) => recorder.whenCustodySettled(session),
+          awaitCustodySettled: (session) =>
+            recorder.whenCustodySettled(session),
         }),
         host,
       };
@@ -263,6 +264,35 @@ export function createRecordingLifecycle(
     return verbChain;
   }
 
+  /** Admission gates must be bounded (D20): a hung gate may cost one
+   * refused start, never the input queue. Rejections refuse too. */
+  const ADMISSION_GATE_TIMEOUT_MS = 3_000;
+  function boundedGate<T>(work: Promise<T>): Promise<T | "gate-timeout"> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const handle = timers.set(ADMISSION_GATE_TIMEOUT_MS, () => {
+        if (settled) return;
+        settled = true;
+        resolve("gate-timeout");
+      });
+      work.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          timers.clear(handle);
+          resolve(value);
+        },
+        (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          timers.clear(handle);
+          logger.audio.error("Admission gate failed", { error });
+          resolve("gate-timeout");
+        },
+      );
+    });
+  }
+
   async function admitStart(mode: RecordingMode): Promise<void> {
     if (shell.getSnapshot().projection.publicState !== "idle") {
       return;
@@ -274,7 +304,16 @@ export function createRecordingLifecycle(
       });
       return;
     }
-    if (!(await deps.hasSpeechModelSelected())) {
+    const modelSelected = await boundedGate(deps.hasSpeechModelSelected());
+    if (modelSelected === "gate-timeout") {
+      logger.audio.error("Admission gate timed out; start refused");
+      notify({
+        type: "transcription_failed",
+        errorCode: ErrorCodes.UNKNOWN,
+      });
+      return;
+    }
+    if (!modelSelected) {
       notify({
         type: "transcription_failed",
         errorCode: ErrorCodes.MODEL_MISSING,
@@ -292,7 +331,11 @@ export function createRecordingLifecycle(
     requestStop: () => void enqueueVerb(() => shell.requestStop()),
     requestCancel: (reason: CancelReason) =>
       void enqueueVerb(() => shell.requestCancel(reason)),
-    modeChanged: (mode) => shell.updateMetadata({ mode }),
+    // Through the verb chain like every other input (D20): an upgrade
+    // arriving while its start is still being admitted queues behind the
+    // admission and lands on the session it was meant for.
+    modeChanged: (mode) =>
+      void enqueueVerb(() => shell.updateMetadata({ mode })),
     tuning: deps.tuning,
     timers,
   });
