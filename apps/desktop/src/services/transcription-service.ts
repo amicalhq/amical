@@ -131,6 +131,10 @@ export class TranscriptionService {
     }
 
     const liveSession = new LiveTranscriptionSession(sessionId, (error) => {
+      // A stream that reports a terminal result retires itself (§6.1):
+      // the registration must be gone before the lifecycle reacts, or the
+      // next session's begin finds a dead stream still holding the slot.
+      this.retireLiveSession(liveSession);
       try {
         onTerminalFailure?.(error);
       } catch (callbackError) {

@@ -743,12 +743,16 @@ describe("TranscriptionService — provider session pinning", () => {
 
     expect(listener).toHaveBeenCalledOnce();
     expect(listener).toHaveBeenCalledWith(terminalError);
+    // Self-retired on the terminal report: nothing left to resolve, and the
+    // slot is free for a successor.
     await expect(
       service.resolveStreamingSession({ sessionId: "cloud-session" }),
-    ).rejects.toBe(terminalError);
+    ).resolves.toBeNull();
     expect(cloudSession.flush).not.toHaveBeenCalled();
     expect(cloudSession.cancel).toHaveBeenCalledOnce();
     expect(vi.mocked(updateTranscription)).not.toHaveBeenCalled();
+    expect(service.beginStreamingSession("successor")).toBe(true);
+    await service.cancelStreamingSession("successor");
   });
 
   it("I-51: projects a rejected provider chunk as one terminal session failure", async () => {
@@ -773,7 +777,7 @@ describe("TranscriptionService — provider session pinning", () => {
     const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
     await expect(
       service.resolveStreamingSession({ sessionId: "cloud-session" }),
-    ).rejects.toBe(terminalError);
+    ).resolves.toBeNull();
     expect(cloudSession.flush).not.toHaveBeenCalled();
   });
 
@@ -792,7 +796,7 @@ describe("TranscriptionService — provider session pinning", () => {
 
     await expect(
       service.resolveStreamingSession({ sessionId: "cloud-session" }),
-    ).rejects.toBe(terminalError);
+    ).resolves.toBeNull();
     expect(providerMocks.cloud.openSession).not.toHaveBeenCalled();
     expect(vi.mocked(updateTranscription)).not.toHaveBeenCalled();
   });

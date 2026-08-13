@@ -195,16 +195,23 @@ describe("TranscriptionService — lifecycle resolve", () => {
     expect(updateTranscription).not.toHaveBeenCalled();
   });
 
-  it("throws the latched terminal failure instead of fabricating a result", async () => {
+  it("a terminal failure retires the session; a successor can begin", async () => {
     const failure = new AppError("provider down", ErrorCodes.NETWORK_ERROR);
-    service.beginStreamingSession("s1", () => undefined);
+    const listener = vi.fn();
+    service.beginStreamingSession("s1", listener);
     await feed("s1");
     providerMocks.provider.sessions.get("s1")!.emitTerminalFailure(failure);
 
+    // The stream reported terminal and retired itself: the lifecycle heard
+    // the failure through the callback, and nothing is left to resolve.
+    expect(listener).toHaveBeenCalledWith(failure);
     await expect(
       service.resolveStreamingSession({ sessionId: "s1" }),
-    ).rejects.toBe(failure);
+    ).resolves.toBeNull();
     expect(updateTranscription).not.toHaveBeenCalled();
+
+    // The slot is free — one dead stream must not poison the next session.
+    expect(service.beginStreamingSession("s2")).toBe(true);
   });
 
   it("an abort during the flush rejects the resolve and persists nothing", async () => {
