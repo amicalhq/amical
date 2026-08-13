@@ -13,6 +13,9 @@ export interface RecordingStatus {
   state: RecordingState;
   mode: RecordingMode;
   isDraft: boolean;
+  /** Dismiss-vs-finalize while stopping; "none" outside stopping. */
+  stopKind: "none" | "dismiss" | "finalize";
+  stopOrigin: "none" | "user" | "auto";
 }
 
 export interface UseRecordingOutput {
@@ -30,6 +33,8 @@ export const useRecording = (): UseRecordingOutput => {
     state: "idle",
     mode: "ptt",
     isDraft: false,
+    stopKind: "none",
+    stopOrigin: "none",
   });
 
   const startRecordingMutation = api.recording.signalStart.useMutation();

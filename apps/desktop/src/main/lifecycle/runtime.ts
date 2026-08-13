@@ -35,12 +35,7 @@ import {
   type ShellTimerHost,
 } from "./shell";
 import { wedgeBudgetMs, type LifecycleTuning } from "./tuning";
-import {
-  RESOLVE_TIMEOUT_CAUSE,
-  START_TIMEOUT_CAUSE,
-  type CancelReason,
-  type SessionId,
-} from "./types";
+import { type CancelReason, type SessionId } from "./types";
 
 /**
  * Recording lifecycle runtime — assembles shell + ports + grammar into the
@@ -304,8 +299,6 @@ export function createRecordingLifecycle(
 
   // ── Snapshot-driven surface work ────────────────────────────────────────
   let previous = shell.getSnapshot();
-  let recordingStartedAt: number | null = null;
-  let recordingStoppedAt: number | null = null;
   let reminderHandle: unknown | null = null;
   let wedgeHandle: unknown | null = null;
 
@@ -350,8 +343,6 @@ export function createRecordingLifecycle(
     }
 
     if (now.publicState === "recording" && was.publicState !== "recording") {
-      recordingStartedAt = Date.now();
-      recordingStoppedAt = null;
       clearReminder();
       reminderHandle = timers.set(deps.tuning.longRecordingReminderMs, () => {
         reminderHandle = null;
@@ -368,7 +359,6 @@ export function createRecordingLifecycle(
       });
     }
     if (was.publicState === "recording" && now.publicState !== "recording") {
-      recordingStoppedAt = Date.now();
       clearReminder();
     }
 
@@ -377,13 +367,12 @@ export function createRecordingLifecycle(
     }
 
     if (now.terminal && !was.terminal) {
-      deriveTerminalNotification(now.terminal, now, snapshot);
+      deriveTerminalNotification(now.terminal, snapshot);
     }
 
     if (now.publicState === "idle" && was.publicState !== "idle") {
       grammar.notifyLifecycleIdle();
       clearWedgeWatchdog();
-      recordingStartedAt = null;
       failureDetails.clear();
     }
 
@@ -392,19 +381,14 @@ export function createRecordingLifecycle(
 
   function deriveTerminalNotification(
     terminal: NonNullable<LifecycleProjection["terminal"]>,
-    projection: LifecycleProjection,
     snapshot: LifecycleSnapshot<LifecycleSessionMeta>,
   ): void {
     const microphone = snapshot.metadata?.microphone;
     switch (terminal.kind) {
       case "failure": {
-        // Stage-bound wedges reset silently (v1 behavior for stuck stops).
-        if (
-          terminal.cause === RESOLVE_TIMEOUT_CAUSE ||
-          terminal.cause === START_TIMEOUT_CAUSE
-        ) {
-          return;
-        }
+        // Every failure seal surfaces (R3: never a silent reset) — timeout
+        // causes included; unknown cause strings render the generic
+        // failure copy via the surface's UNKNOWN fallback.
         const detail = snapshot.sessionId
           ? failureDetails.get(snapshot.sessionId)
           : undefined;
@@ -418,16 +402,12 @@ export function createRecordingLifecycle(
         return;
       }
       case "empty": {
-        const durationMs =
-          recordingStartedAt !== null && recordingStoppedAt !== null
-            ? recordingStoppedAt - recordingStartedAt
-            : 0;
-        if (projection.stopKind === "finalize" && durationMs > 3500) {
-          notify({
-            type: "empty_transcript",
-            params: microphone ? { microphone } : undefined,
-          });
-        }
+        // Unconditional (§3.4): quick taps discard rather than seal empty,
+        // so there is no short-recording spam to gate against.
+        notify({
+          type: "empty_transcript",
+          params: microphone ? { microphone } : undefined,
+        });
         return;
       }
       case "discard": {

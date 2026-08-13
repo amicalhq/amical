@@ -66,6 +66,8 @@ describe("FloatingButton recording triggers", () => {
         state,
         mode: "hands-free",
         isDraft: false,
+        stopKind: "none",
+        stopOrigin: "none",
       };
 
       render(

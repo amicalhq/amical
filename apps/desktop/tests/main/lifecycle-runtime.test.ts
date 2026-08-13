@@ -317,7 +317,7 @@ describe("recording lifecycle runtime", () => {
     });
   });
 
-  it("a hung resolve seals failure(timeout) silently (no toast)", async () => {
+  it("a hung resolve seals failure(timeout) and surfaces it", async () => {
     const h = makeHarness();
     h.service.resolveStreamingSession.mockImplementation(
       () => new Promise(() => undefined),
@@ -333,20 +333,25 @@ describe("recording lifecycle runtime", () => {
     await settle();
 
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
-    expect(h.notifications).toEqual([]);
+    // Never a silent reset (R3): the timeout failure surfaces like any
+    // other failure seal; the surface renders unknown causes generically.
+    expect(h.notifications).toEqual([
+      expect.objectContaining({
+        type: "transcription_failed",
+        errorCode: "timeout",
+      }),
+    ]);
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
       disposition: "failure",
       metaPatch: { failureReason: "timeout" },
     });
   });
 
-  it("empty transcripts toast only for long-enough normal stops", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+  it("empty transcripts toast unconditionally on the empty seal", async () => {
     const h = makeHarness({ resolveText: "" });
     const session = await h.startToRecording("Blue Yeti");
     h.timers.fire(TUNING.pressWindowMs);
     await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
-    vi.setSystemTime(Date.now() + 4000);
     h.lifecycle.setPttLevel(false);
     await settle();
     await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);

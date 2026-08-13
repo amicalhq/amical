@@ -121,7 +121,11 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
   const isRecording =
     recordingStatus.state === "recording" ||
     recordingStatus.state === "starting";
-  const isStopping = recordingStatus.state === "stopping";
+  // Dismissals show no processing indicator: nothing is being transcribed
+  // (stopKind, D7) — the widget collapses as if the session never was.
+  const isStopping =
+    recordingStatus.state === "stopping" &&
+    recordingStatus.stopKind !== "dismiss";
   const isHandsFreeMode = recordingStatus.mode === "hands-free";
   const isNoteWindowEnabled = noteWindowFeatureFlag.enabled;
   // Draft (instruct) session: show a distinct indicator while dictating + processing.

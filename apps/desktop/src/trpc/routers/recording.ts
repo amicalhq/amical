@@ -26,6 +26,10 @@ interface RecordingStateUpdate {
   state: RecordingState;
   mode: RecordingMode;
   isDraft: boolean;
+  /** Dismiss-vs-finalize while stopping (D7): dismissals render no
+   * processing indicator — nothing is being transcribed. */
+  stopKind: "none" | "dismiss" | "finalize";
+  stopOrigin: "none" | "user" | "auto";
 }
 
 function requireLifecycle(ctx: {
@@ -46,6 +50,8 @@ function toStateUpdate(
     state: snapshot.projection.publicState,
     mode: snapshot.metadata?.mode ?? "ptt",
     isDraft: snapshot.metadata?.isDraft ?? false,
+    stopKind: snapshot.projection.stopKind,
+    stopOrigin: snapshot.projection.stopOrigin,
   };
 }
 
