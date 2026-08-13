@@ -146,9 +146,11 @@ export function createDesktopRecordingLifecycle(deps: {
       processStreamingChunk: (options) =>
         transcriptionService.processStreamingChunk(options),
       resolveStreamingSession: async (options) => {
+        // The entry stays in the map until idle clears it — deleting here
+        // would let the still-stopping snapshots start a second capture
+        // (a second synthetic copy chord) after transcription retired.
         const capture = draftCaptures.get(options.sessionId);
         if (capture) {
-          draftCaptures.delete(options.sessionId);
           await Promise.race([
             capture,
             new Promise<void>((resolve) =>
