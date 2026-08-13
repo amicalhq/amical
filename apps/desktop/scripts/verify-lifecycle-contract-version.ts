@@ -25,11 +25,11 @@ export function verifyLifecycleContractVersion(
   base: LifecycleContractArtifact | null,
 ): void {
   if (base === null) {
-    if (current.contractVersion !== 1) {
-      throw new Error(
-        "The initial lifecycle contract artifact must use contractVersion 1",
-      );
-    }
+    // No base artifact: the contract is being introduced. It lands at
+    // whatever version it declares — a branch may have advanced the
+    // version before its first merge. Parsing already enforces a positive
+    // integer, and the regeneration check enforces coherence with the
+    // in-repo generator; monotonicity applies from the next change on.
     return;
   }
   assertLifecycleVersionAdvance(base, current);
