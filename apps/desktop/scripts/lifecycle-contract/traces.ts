@@ -340,14 +340,35 @@ export const LIFECYCLE_TRACES: LifecycleTrace[] = [
     ],
   },
   {
-    name: "rule 0: stale-session events are fenced at every consequence point",
-    given: recording,
+    name: "rule 0: stale-session events are fenced at every phase",
+    given: idle,
     steps: [
+      // IDLE: everything session-carrying except StartRequested is stale.
+      noopStep({ type: "stopRequested", session: X }, idle, proj("idle")),
+      {
+        event: { type: "startRequested", session: S },
+        expect: {
+          state: starting,
+          commands: [{ type: "startRecorder", session: S }],
+          projection: proj("starting"),
+        },
+      },
+      // STARTING
+      noopStep({ type: "stopRequested", session: X }, starting, proj("starting")),
       noopStep(
-        { type: "stopRequested", session: X },
-        recording,
-        proj("recording"),
+        { type: "recorderFailed", session: X, cause: CAUSE },
+        starting,
+        proj("starting"),
       ),
+      {
+        event: { type: "recorderReady", session: S },
+        expect: {
+          state: recording,
+          commands: [],
+          projection: proj("recording"),
+        },
+      },
+      // RECORDING
       noopStep(
         { type: "noAudioDetected", session: X },
         recording,
@@ -367,6 +388,69 @@ export const LIFECYCLE_TRACES: LifecycleTrace[] = [
         recording,
         proj("recording"),
       ),
+      {
+        event: { type: "stopRequested", session: S },
+        expect: {
+          state: resolving(false),
+          commands: [stopRecorder],
+          projection: proj("stopping", "finalize", "user"),
+        },
+      },
+      // RESOLVING
+      noopStep(
+        {
+          type: "transcriptionFinal",
+          session: X,
+          result: { kind: "text", text: TEXT },
+        },
+        resolving(false),
+        proj("stopping", "finalize", "user"),
+      ),
+      noopStep(
+        { type: "recorderClosed", session: X },
+        resolving(false),
+        proj("stopping", "finalize", "user"),
+      ),
+      {
+        event: { type: "recorderClosed", session: S },
+        expect: {
+          state: resolving(true),
+          commands: [finalizeStt],
+          projection: proj("stopping", "finalize", "user"),
+        },
+      },
+      {
+        event: finalText,
+        expect: {
+          state: settling(success, "committing"),
+          commands: [commit(success)],
+          projection: proj("stopping", "finalize", "user", success),
+        },
+      },
+      // SETTLING (committing)
+      noopStep(
+        { type: "storageFinished", session: X },
+        settling(success, "committing"),
+        proj("stopping", "finalize", "user", success),
+      ),
+      {
+        event: { type: "storageFinished", session: S },
+        expect: {
+          state: settling(success, "staging"),
+          commands: [handoff(success)],
+          projection: proj("stopping", "finalize", "user", success),
+        },
+      },
+      // SETTLING (staging)
+      noopStep(
+        { type: "deliveryStaged", session: X },
+        settling(success, "staging"),
+        proj("stopping", "finalize", "user", success),
+      ),
+      {
+        event: { type: "deliveryStaged", session: S },
+        expect: { state: idle, commands: [], projection: proj("idle") },
+      },
     ],
   },
   {
@@ -406,7 +490,11 @@ export const LIFECYCLE_TRACES: LifecycleTrace[] = [
         event: { type: "dismissRequested", session: S },
         expect: {
           state: settling(discard("interrupted_start"), "committing"),
-          commands: [stopRecorder, commit(discard("interrupted_start"))],
+          commands: [
+            stopRecorder,
+            cancelStt,
+            commit(discard("interrupted_start")),
+          ],
           projection: proj(
             "stopping",
             "dismiss",
@@ -425,7 +513,7 @@ export const LIFECYCLE_TRACES: LifecycleTrace[] = [
         event: { type: "expired", session: S, stage: "starting" },
         expect: {
           state: settling(failureStartTimeout, "committing"),
-          commands: [stopRecorder, commit(failureStartTimeout)],
+          commands: [stopRecorder, cancelStt, commit(failureStartTimeout)],
           projection: proj("stopping", "finalize", "user", failureStartTimeout),
         },
       },
@@ -443,9 +531,31 @@ export const LIFECYCLE_TRACES: LifecycleTrace[] = [
         event: { type: "recorderFailed", session: S, cause: CAUSE },
         expect: {
           state: settling(failureCause, "committing"),
-          commands: [commit(failureCause)],
+          commands: [cancelStt, commit(failureCause)],
           projection: proj("stopping", "finalize", "user", failureCause),
         },
+      },
+    ],
+  },
+  {
+    name: "uniform seal law: stream fast-fail in STARTING seals",
+    given: starting,
+    steps: [
+      {
+        event: {
+          type: "transcriptionFinal",
+          session: S,
+          result: { kind: "failure", cause: CAUSE },
+        },
+        expect: {
+          state: settling(failureCause, "committing"),
+          commands: [stopRecorder, commit(failureCause)],
+          projection: proj("stopping", "finalize", "user", failureCause),
+        },
+      },
+      {
+        event: { type: "storageFinished", session: S },
+        expect: { state: idle, commands: [], projection: proj("idle") },
       },
     ],
   },

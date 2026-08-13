@@ -1,12 +1,12 @@
 {
-  "contractVersion": 1,
-  "contentDigest": "sha256:beddce80e3f5a7f9827ea0e3a97bf4b1fd88495c25ef42cbf087999e23081297",
+  "contractVersion": 2,
+  "contentDigest": "sha256:6ad2daf2e80de0305e7e7ee05b83dcdf562f21adf4c2a6a93d813d7b88bcf7f3",
   "source": "src/main/lifecycle/machine.ts",
   "counts": {
     "states": 35,
     "events": 37,
     "vectors": 1295,
-    "traces": 20
+    "traces": 21
   },
   "atoms": {
     "states": {
@@ -1167,6 +1167,10 @@
             "session": "s"
           },
           {
+            "type": "cancelTranscription",
+            "session": "s"
+          },
+          {
             "type": "commitDisposition",
             "session": "s",
             "sealed": {
@@ -1200,6 +1204,10 @@
         "commands": [
           {
             "type": "stopRecorder",
+            "session": "s"
+          },
+          {
+            "type": "cancelTranscription",
             "session": "s"
           },
           {
@@ -1237,6 +1245,10 @@
         "commands": [
           {
             "type": "stopRecorder",
+            "session": "s"
+          },
+          {
+            "type": "cancelTranscription",
             "session": "s"
           },
           {
@@ -1289,6 +1301,10 @@
           "autoStopped": false
         },
         "commands": [
+          {
+            "type": "cancelTranscription",
+            "session": "s"
+          },
           {
             "type": "commitDisposition",
             "session": "s",
@@ -1349,10 +1365,29 @@
       },
       "expect": {
         "state": {
-          "tag": "STARTING",
-          "session": "s"
+          "tag": "SETTLING",
+          "session": "s",
+          "sealed": {
+            "kind": "success",
+            "text": "text"
+          },
+          "stage": "committing",
+          "autoStopped": false
         },
-        "commands": []
+        "commands": [
+          {
+            "type": "stopRecorder",
+            "session": "s"
+          },
+          {
+            "type": "commitDisposition",
+            "session": "s",
+            "sealed": {
+              "kind": "success",
+              "text": "text"
+            }
+          }
+        ]
       }
     },
     {
@@ -1369,10 +1404,27 @@
       },
       "expect": {
         "state": {
-          "tag": "STARTING",
-          "session": "s"
+          "tag": "SETTLING",
+          "session": "s",
+          "sealed": {
+            "kind": "empty"
+          },
+          "stage": "committing",
+          "autoStopped": false
         },
-        "commands": []
+        "commands": [
+          {
+            "type": "stopRecorder",
+            "session": "s"
+          },
+          {
+            "type": "commitDisposition",
+            "session": "s",
+            "sealed": {
+              "kind": "empty"
+            }
+          }
+        ]
       }
     },
     {
@@ -1390,10 +1442,29 @@
       },
       "expect": {
         "state": {
-          "tag": "STARTING",
-          "session": "s"
+          "tag": "SETTLING",
+          "session": "s",
+          "sealed": {
+            "kind": "failure",
+            "cause": "cause"
+          },
+          "stage": "committing",
+          "autoStopped": false
         },
-        "commands": []
+        "commands": [
+          {
+            "type": "stopRecorder",
+            "session": "s"
+          },
+          {
+            "type": "commitDisposition",
+            "session": "s",
+            "sealed": {
+              "kind": "failure",
+              "cause": "cause"
+            }
+          }
+        ]
       }
     },
     {
@@ -1454,6 +1525,10 @@
         "commands": [
           {
             "type": "stopRecorder",
+            "session": "s"
+          },
+          {
+            "type": "cancelTranscription",
             "session": "s"
           },
           {
@@ -36963,16 +37038,96 @@
       ]
     },
     {
-      "name": "rule 0: stale-session events are fenced at every consequence point",
+      "name": "rule 0: stale-session events are fenced at every phase",
       "given": {
-        "tag": "RECORDING",
-        "session": "s"
+        "tag": "IDLE"
       },
       "steps": [
         {
           "event": {
             "type": "stopRequested",
             "session": "x"
+          },
+          "expect": {
+            "state": {
+              "tag": "IDLE"
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "idle",
+              "stopKind": "none",
+              "stopOrigin": "none",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "startRequested",
+            "session": "s"
+          },
+          "expect": {
+            "state": {
+              "tag": "STARTING",
+              "session": "s"
+            },
+            "commands": [
+              {
+                "type": "startRecorder",
+                "session": "s"
+              }
+            ],
+            "projection": {
+              "publicState": "starting",
+              "stopKind": "none",
+              "stopOrigin": "none",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "stopRequested",
+            "session": "x"
+          },
+          "expect": {
+            "state": {
+              "tag": "STARTING",
+              "session": "s"
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "starting",
+              "stopKind": "none",
+              "stopOrigin": "none",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "recorderFailed",
+            "session": "x",
+            "cause": "cause"
+          },
+          "expect": {
+            "state": {
+              "tag": "STARTING",
+              "session": "s"
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "starting",
+              "stopKind": "none",
+              "stopOrigin": "none",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "recorderReady",
+            "session": "s"
           },
           "expect": {
             "state": {
@@ -37044,6 +37199,256 @@
             "commands": [],
             "projection": {
               "publicState": "recording",
+              "stopKind": "none",
+              "stopOrigin": "none",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "stopRequested",
+            "session": "s"
+          },
+          "expect": {
+            "state": {
+              "tag": "RESOLVING",
+              "session": "s",
+              "recorderClosed": false,
+              "autoStopped": false
+            },
+            "commands": [
+              {
+                "type": "stopRecorder",
+                "session": "s"
+              }
+            ],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "transcriptionFinal",
+            "session": "x",
+            "result": {
+              "kind": "text",
+              "text": "text"
+            }
+          },
+          "expect": {
+            "state": {
+              "tag": "RESOLVING",
+              "session": "s",
+              "recorderClosed": false,
+              "autoStopped": false
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "recorderClosed",
+            "session": "x"
+          },
+          "expect": {
+            "state": {
+              "tag": "RESOLVING",
+              "session": "s",
+              "recorderClosed": false,
+              "autoStopped": false
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "recorderClosed",
+            "session": "s"
+          },
+          "expect": {
+            "state": {
+              "tag": "RESOLVING",
+              "session": "s",
+              "recorderClosed": true,
+              "autoStopped": false
+            },
+            "commands": [
+              {
+                "type": "finalizeTranscription",
+                "session": "s"
+              }
+            ],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": null
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "transcriptionFinal",
+            "session": "s",
+            "result": {
+              "kind": "text",
+              "text": "text"
+            }
+          },
+          "expect": {
+            "state": {
+              "tag": "SETTLING",
+              "session": "s",
+              "sealed": {
+                "kind": "success",
+                "text": "text"
+              },
+              "stage": "committing",
+              "autoStopped": false
+            },
+            "commands": [
+              {
+                "type": "commitDisposition",
+                "session": "s",
+                "sealed": {
+                  "kind": "success",
+                  "text": "text"
+                }
+              }
+            ],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": {
+                "kind": "success",
+                "text": "text"
+              }
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "storageFinished",
+            "session": "x"
+          },
+          "expect": {
+            "state": {
+              "tag": "SETTLING",
+              "session": "s",
+              "sealed": {
+                "kind": "success",
+                "text": "text"
+              },
+              "stage": "committing",
+              "autoStopped": false
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": {
+                "kind": "success",
+                "text": "text"
+              }
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "storageFinished",
+            "session": "s"
+          },
+          "expect": {
+            "state": {
+              "tag": "SETTLING",
+              "session": "s",
+              "sealed": {
+                "kind": "success",
+                "text": "text"
+              },
+              "stage": "staging",
+              "autoStopped": false
+            },
+            "commands": [
+              {
+                "type": "emitHandoff",
+                "session": "s",
+                "sealed": {
+                  "kind": "success",
+                  "text": "text"
+                }
+              }
+            ],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": {
+                "kind": "success",
+                "text": "text"
+              }
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "deliveryStaged",
+            "session": "x"
+          },
+          "expect": {
+            "state": {
+              "tag": "SETTLING",
+              "session": "s",
+              "sealed": {
+                "kind": "success",
+                "text": "text"
+              },
+              "stage": "staging",
+              "autoStopped": false
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": {
+                "kind": "success",
+                "text": "text"
+              }
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "deliveryStaged",
+            "session": "s"
+          },
+          "expect": {
+            "state": {
+              "tag": "IDLE"
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "idle",
               "stopKind": "none",
               "stopOrigin": "none",
               "terminal": null
@@ -37191,6 +37596,10 @@
                 "session": "s"
               },
               {
+                "type": "cancelTranscription",
+                "session": "s"
+              },
+              {
                 "type": "commitDisposition",
                 "session": "s",
                 "sealed": {
@@ -37239,6 +37648,10 @@
             "commands": [
               {
                 "type": "stopRecorder",
+                "session": "s"
+              },
+              {
+                "type": "cancelTranscription",
                 "session": "s"
               },
               {
@@ -37307,6 +37720,10 @@
             },
             "commands": [
               {
+                "type": "cancelTranscription",
+                "session": "s"
+              },
+              {
                 "type": "commitDisposition",
                 "session": "s",
                 "sealed": {
@@ -37323,6 +37740,78 @@
                 "kind": "failure",
                 "cause": "cause"
               }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "uniform seal law: stream fast-fail in STARTING seals",
+      "given": {
+        "tag": "STARTING",
+        "session": "s"
+      },
+      "steps": [
+        {
+          "event": {
+            "type": "transcriptionFinal",
+            "session": "s",
+            "result": {
+              "kind": "failure",
+              "cause": "cause"
+            }
+          },
+          "expect": {
+            "state": {
+              "tag": "SETTLING",
+              "session": "s",
+              "sealed": {
+                "kind": "failure",
+                "cause": "cause"
+              },
+              "stage": "committing",
+              "autoStopped": false
+            },
+            "commands": [
+              {
+                "type": "stopRecorder",
+                "session": "s"
+              },
+              {
+                "type": "commitDisposition",
+                "session": "s",
+                "sealed": {
+                  "kind": "failure",
+                  "cause": "cause"
+                }
+              }
+            ],
+            "projection": {
+              "publicState": "stopping",
+              "stopKind": "finalize",
+              "stopOrigin": "user",
+              "terminal": {
+                "kind": "failure",
+                "cause": "cause"
+              }
+            }
+          }
+        },
+        {
+          "event": {
+            "type": "storageFinished",
+            "session": "s"
+          },
+          "expect": {
+            "state": {
+              "tag": "IDLE"
+            },
+            "commands": [],
+            "projection": {
+              "publicState": "idle",
+              "stopKind": "none",
+              "stopOrigin": "none",
+              "terminal": null
             }
           }
         }

@@ -18,7 +18,7 @@ import {
 } from "./atoms";
 import { LIFECYCLE_TRACES, type LifecycleTrace } from "./traces";
 
-export const LIFECYCLE_CONTRACT_VERSION = 1;
+export const LIFECYCLE_CONTRACT_VERSION = 2;
 export const LIFECYCLE_CONTRACT_SOURCE = "src/main/lifecycle/machine.ts";
 export const LIFECYCLE_CONTRACT_ARTIFACT_PATH = resolve(
   __dirname,
