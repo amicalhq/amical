@@ -48,7 +48,6 @@ const providerMocks = vi.hoisted(() => {
 });
 
 vi.mock("../../src/db/transcriptions", () => ({
-  createTranscription: vi.fn(async () => "txn-id"),
   getTranscriptionById: vi.fn(),
   updateTranscription: vi.fn(async () => undefined),
 }));
@@ -86,7 +85,7 @@ vi.mock(
   }),
 );
 
-import { createTranscription } from "../../src/db/transcriptions";
+import { updateTranscription } from "../../src/db/transcriptions";
 import type { AuthService } from "../../src/services/auth-service";
 import type { ModelService } from "../../src/services/model-service";
 import type { SettingsService } from "../../src/services/settings-service";
@@ -176,7 +175,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
       speechModel: "whisper-tiny",
       meta: { source: "microphone", vocabularySize: 0 },
     });
-    expect(createTranscription).not.toHaveBeenCalled();
+    expect(updateTranscription).not.toHaveBeenCalled();
 
     // The live session is retired: a second resolve has nothing to work on.
     await expect(
@@ -193,7 +192,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
     await expect(
       service.resolveStreamingSession({ sessionId: "unknown" }),
     ).resolves.toBeNull();
-    expect(createTranscription).not.toHaveBeenCalled();
+    expect(updateTranscription).not.toHaveBeenCalled();
   });
 
   it("throws the latched terminal failure instead of fabricating a result", async () => {
@@ -205,7 +204,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
     await expect(
       service.resolveStreamingSession({ sessionId: "s1" }),
     ).rejects.toBe(failure);
-    expect(createTranscription).not.toHaveBeenCalled();
+    expect(updateTranscription).not.toHaveBeenCalled();
   });
 
   it("an abort during the flush rejects the resolve and persists nothing", async () => {
@@ -229,6 +228,6 @@ describe("TranscriptionService — lifecycle resolve", () => {
     await expect(pending).rejects.toMatchObject({
       errorCode: ErrorCodes.NETWORK_ERROR,
     });
-    expect(createTranscription).not.toHaveBeenCalled();
+    expect(updateTranscription).not.toHaveBeenCalled();
   });
 });

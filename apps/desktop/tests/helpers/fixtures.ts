@@ -101,6 +101,7 @@ export const defaultAppSettings: AppSettingsData = {
  */
 export const sampleTranscriptions: NewTranscription[] = [
   {
+    disposition: "success",
     text: "This is a test transcription",
     language: "en",
     confidence: 0.95,
@@ -109,6 +110,7 @@ export const sampleTranscriptions: NewTranscription[] = [
     formattingModel: null,
   },
   {
+    disposition: "success",
     text: "Another test transcription with more content",
     language: "en",
     confidence: 0.88,
@@ -117,6 +119,7 @@ export const sampleTranscriptions: NewTranscription[] = [
     formattingModel: "gpt-4o-mini",
   },
   {
+    disposition: "success",
     text: "A third transcription for comprehensive testing",
     language: "en",
     confidence: 0.92,

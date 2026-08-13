@@ -73,7 +73,6 @@ const providerMocks = vi.hoisted(() => {
 });
 
 vi.mock("../../src/db/transcriptions", () => ({
-  createTranscription: vi.fn(async () => "txn-id"),
   getTranscriptionById: vi.fn(),
   updateTranscription: vi.fn(async () => undefined),
 }));
@@ -112,7 +111,6 @@ vi.mock(
 );
 
 import {
-  createTranscription,
   getTranscriptionById,
   updateTranscription,
 } from "../../src/db/transcriptions";
@@ -750,7 +748,7 @@ describe("TranscriptionService — provider session pinning", () => {
     ).rejects.toBe(terminalError);
     expect(cloudSession.flush).not.toHaveBeenCalled();
     expect(cloudSession.cancel).toHaveBeenCalledOnce();
-    expect(vi.mocked(createTranscription)).not.toHaveBeenCalled();
+    expect(vi.mocked(updateTranscription)).not.toHaveBeenCalled();
   });
 
   it("I-51: projects a rejected provider chunk as one terminal session failure", async () => {
@@ -796,7 +794,7 @@ describe("TranscriptionService — provider session pinning", () => {
       service.resolveStreamingSession({ sessionId: "cloud-session" }),
     ).rejects.toBe(terminalError);
     expect(providerMocks.cloud.openSession).not.toHaveBeenCalled();
-    expect(vi.mocked(createTranscription)).not.toHaveBeenCalled();
+    expect(vi.mocked(updateTranscription)).not.toHaveBeenCalled();
   });
 
   it("ignores a retired session callback while a newer live session is active", async () => {

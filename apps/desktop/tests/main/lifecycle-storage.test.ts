@@ -9,8 +9,12 @@ import { TEST_USER_DATA_PATH } from "../helpers/electron-mocks";
 import { createStorageAdapter } from "../../src/main/lifecycle/adapters/storage";
 import {
   createProvisionalTranscription,
+  deleteAllTranscriptions,
   deleteProvisionalTranscription,
   enrichTranscriptionBySession,
+  getLatestTranscription,
+  getTranscriptions,
+  getTranscriptionsCount,
   getUncommittedTranscriptions,
   stampTranscriptionDisposition,
 } from "../../src/db/transcriptions";
@@ -201,5 +205,31 @@ describe("lifecycle storage", () => {
       { session_id: "legacy-3", disposition: "dismissed" },
     ]);
     expect(await getUncommittedTranscriptions()).toEqual([]);
+  });
+
+  it("provisional rows are invisible to every user-facing surface", async () => {
+    await createProvisionalTranscription({
+      sessionId: "live",
+      audioFile: "/audio/live.wav",
+    });
+    await createProvisionalTranscription({ sessionId: "done" });
+    await stampTranscriptionDisposition("done", {
+      disposition: "success",
+      text: "hello",
+    });
+
+    expect((await getTranscriptions()).map((r) => r.sessionId)).toEqual([
+      "done",
+    ]);
+    expect(await getTranscriptionsCount()).toBe(1);
+    expect((await getLatestTranscription())?.sessionId).toBe("done");
+
+    // Delete-all never touches live custody: the provisional row (and its
+    // WAV path) survive for the lifecycle and the recovery sweep.
+    const deleted = await deleteAllTranscriptions();
+    expect(deleted).toHaveLength(1);
+    expect(
+      (await getUncommittedTranscriptions()).map((r) => r.sessionId),
+    ).toEqual(["live"]);
   });
 });

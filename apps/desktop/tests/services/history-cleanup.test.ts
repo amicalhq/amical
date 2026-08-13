@@ -86,10 +86,12 @@ describe("HistoryCleanupService", () => {
 
     await testDb.db.insert(schema.transcriptions).values([
       {
+        disposition: "success",
         text: "expired transcription",
         timestamp: twoDaysAgo,
       },
       {
+        disposition: "success",
         text: "recent transcription",
         timestamp: now,
       },
@@ -118,10 +120,12 @@ describe("HistoryCleanupService", () => {
 
     await testDb.db.insert(schema.transcriptions).values([
       {
+        disposition: "success",
         text: "older transcription",
         timestamp: twoDaysAgo,
       },
       {
+        disposition: "success",
         text: "recent transcription",
         timestamp: now,
       },
@@ -157,6 +161,7 @@ describe("HistoryCleanupService", () => {
     const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
 
     await testDb.db.insert(schema.transcriptions).values({
+      disposition: "success",
       text: "expired transcription",
       timestamp: twoDaysAgo,
     });

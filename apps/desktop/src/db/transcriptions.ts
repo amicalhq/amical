@@ -26,26 +26,6 @@ export type TranscriptionDisposition =
   | "failure"
   | "dismissed";
 
-// Create a new transcription
-export async function createTranscription(
-  data: Omit<NewTranscription, "id" | "createdAt" | "updatedAt">,
-) {
-  const now = new Date();
-
-  const newTranscription: NewTranscription = {
-    ...data,
-    timestamp: data.timestamp || now,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  const result = await db
-    .insert(transcriptions)
-    .values(newTranscription)
-    .returning();
-  return result[0];
-}
-
 /**
  * Open custody: the provisional row created at the first captured byte.
  * Exists so a crash mid-session leaves disk evidence for startup recovery.
@@ -183,6 +163,14 @@ export async function getUncommittedTranscriptions() {
     );
 }
 
+/**
+ * Custody invisibility (§6.2): rows with a NULL disposition belong to the
+ * live lifecycle (or a crash pending recovery) — every user-facing read and
+ * delete surface excludes them. Only the lifecycle and the startup sweep
+ * may see or touch provisional rows.
+ */
+const settledRowsOnly = isNotNull(transcriptions.disposition);
+
 // Get all transcriptions with pagination and sorting
 export async function getTranscriptions(
   options: {
@@ -212,7 +200,12 @@ export async function getTranscriptions(
     return await db
       .select()
       .from(transcriptions)
-      .where(sql`${transcriptions.text} LIKE ${`%${search}%`} COLLATE NOCASE`)
+      .where(
+        and(
+          settledRowsOnly,
+          sql`${transcriptions.text} LIKE ${`%${search}%`} COLLATE NOCASE`,
+        ),
+      )
       .orderBy(orderFn(sortColumn))
       .limit(limit)
       .offset(offset);
@@ -220,6 +213,7 @@ export async function getTranscriptions(
     return await db
       .select()
       .from(transcriptions)
+      .where(settledRowsOnly)
       .orderBy(orderFn(sortColumn))
       .limit(limit)
       .offset(offset);
@@ -264,9 +258,9 @@ export async function deleteTranscription(id: number) {
   return result[0] || null;
 }
 
-// Delete all transcriptions
+// Delete all transcriptions (never the live/provisional custody rows)
 export async function deleteAllTranscriptions() {
-  return await db.delete(transcriptions).returning({
+  return await db.delete(transcriptions).where(settledRowsOnly).returning({
     id: transcriptions.id,
     audioFile: transcriptions.audioFile,
   });
@@ -276,7 +270,7 @@ export async function deleteAllTranscriptions() {
 export async function deleteTranscriptionsOlderThan(cutoffDate: Date) {
   return await db
     .delete(transcriptions)
-    .where(lt(transcriptions.timestamp, cutoffDate))
+    .where(and(settledRowsOnly, lt(transcriptions.timestamp, cutoffDate)))
     .returning({
       id: transcriptions.id,
       audioFile: transcriptions.audioFile,
@@ -289,10 +283,18 @@ export async function getTranscriptionsCount(search?: string) {
     const result = await db
       .select({ count: count() })
       .from(transcriptions)
-      .where(sql`${transcriptions.text} LIKE ${`%${search}%`} COLLATE NOCASE`);
+      .where(
+        and(
+          settledRowsOnly,
+          sql`${transcriptions.text} LIKE ${`%${search}%`} COLLATE NOCASE`,
+        ),
+      );
     return result[0]?.count || 0;
   } else {
-    const result = await db.select({ count: count() }).from(transcriptions);
+    const result = await db
+      .select({ count: count() })
+      .from(transcriptions)
+      .where(settledRowsOnly);
     return result[0]?.count || 0;
   }
 }
@@ -302,6 +304,7 @@ export async function getLatestTranscription() {
   const result = await db
     .select()
     .from(transcriptions)
+    .where(settledRowsOnly)
     .orderBy(desc(transcriptions.timestamp))
     .limit(1);
   return result[0] || null;
@@ -317,6 +320,7 @@ export async function getTranscriptionsByDateRange(
     .from(transcriptions)
     .where(
       and(
+        settledRowsOnly,
         gte(transcriptions.timestamp, startDate),
         lte(transcriptions.timestamp, endDate),
       ),
@@ -329,7 +333,7 @@ export async function getTranscriptionsByLanguage(language: string) {
   return await db
     .select()
     .from(transcriptions)
-    .where(eq(transcriptions.language, language))
+    .where(and(settledRowsOnly, eq(transcriptions.language, language)))
     .orderBy(desc(transcriptions.timestamp));
 }
 
@@ -338,7 +342,12 @@ export async function searchTranscriptions(searchTerm: string, limit = 20) {
   return await db
     .select()
     .from(transcriptions)
-    .where(sql`${transcriptions.text} LIKE ${`%${searchTerm}%`} COLLATE NOCASE`)
+    .where(
+      and(
+        settledRowsOnly,
+        sql`${transcriptions.text} LIKE ${`%${searchTerm}%`} COLLATE NOCASE`,
+      ),
+    )
     .orderBy(desc(transcriptions.timestamp))
     .limit(limit);
 }

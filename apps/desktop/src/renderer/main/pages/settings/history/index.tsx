@@ -186,12 +186,12 @@ export function HistoryTableCard({
     setIsDialogOpen(true);
   };
 
-  const getTitle = (text: string, meta?: { status?: string }) => {
+  const getTitle = (text: string, disposition?: string | null) => {
     if (!text || text.trim() === "") {
-      if (meta?.status === "failed") {
+      if (disposition === "failure") {
         return t("settings.history.item.failed");
       }
-      if (meta?.status === "dismissed") {
+      if (disposition === "dismissed") {
         return t("settings.history.item.dismissed");
       }
       return t("settings.history.item.noWords");
@@ -217,17 +217,13 @@ export function HistoryTableCard({
                           <div
                             className={`line-clamp-3 whitespace-pre-line ${
                               !item.text.trim()
-                                ? (item.meta as { status?: string })?.status ===
-                                  "failed"
+                                ? item.disposition === "failure"
                                   ? "font-mono text-destructive"
                                   : "font-mono text-muted-foreground"
                                 : ""
                             }`}
                           >
-                            {getTitle(
-                              item.text,
-                              item.meta as { status?: string },
-                            )}
+                            {getTitle(item.text, item.disposition)}
                           </div>
                           {item.text.split("\n").length > 3 ||
                           item.text.length > 200 ? (
