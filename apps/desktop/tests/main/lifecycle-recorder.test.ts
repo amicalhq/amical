@@ -64,8 +64,6 @@ function makeHarness() {
     custody: {
       open: async (session, audioFile) =>
         void custodyCalls.push(`open:${session}:${audioFile}`),
-      markAudible: async (session) =>
-        void custodyCalls.push(`audible:${session}`),
       enrich: async (session, fields) =>
         void custodyCalls.push(`enrich:${session}:${fields.duration}`),
     },
@@ -137,7 +135,7 @@ describe("lifecycle recorder adapter", () => {
     expect(h.facts.some((f) => f.type === "noAudioDetected")).toBe(false);
   });
 
-  it("opens custody at the first frame and marks audible only on signal", async () => {
+  it("opens custody at the first frame; content is never judged", async () => {
     const h = makeHarness();
     await driveToCapturing(h);
     await h.adapter.handleAudioChunk("s1", h.frames(160, 0.001), false);
@@ -146,7 +144,7 @@ describe("lifecycle recorder adapter", () => {
 
     await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
     await h.settle();
-    expect(h.custodyCalls).toEqual(["open:s1:/audio/s1.wav", "audible:s1"]);
+    expect(h.custodyCalls).toEqual(["open:s1:/audio/s1.wav"]);
     expect(h.writers[0].appended).toHaveLength(2);
     expect(h.feeds).toEqual([
       { session: "s1", length: 160 },

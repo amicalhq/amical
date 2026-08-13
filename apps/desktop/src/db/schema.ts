@@ -18,14 +18,13 @@ export const transcriptions = sqliteTable(
   "transcriptions",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    // Recording lifecycle custody: the session that produced this row, the
+    // Recording lifecycle custody: the session that produced this row and the
     // sealed outcome stamped at commit ("success" | "empty" | "failure" |
-    // "dismissed"; discards delete the row), and whether audible speech was
-    // observed during capture. `disposition` NULL on a session-keyed row means
-    // the app died mid-session; startup recovery settles it.
+    // "dismissed"; discards delete the row). `disposition` NULL on a
+    // session-keyed row means the app died mid-session; startup recovery
+    // settles it.
     sessionId: text("session_id"),
     disposition: text("disposition"),
-    audible: integer("audible", { mode: "boolean" }),
     text: text("text").notNull(),
     timestamp: integer("timestamp", { mode: "timestamp" })
       .notNull()

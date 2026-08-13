@@ -3,7 +3,6 @@ import { ErrorCodes, type ErrorCode } from "../../types/error";
 import {
   createProvisionalTranscription,
   enrichTranscriptionBySession,
-  markTranscriptionAudible,
 } from "../../db/transcriptions";
 import {
   createRecorderAdapter,
@@ -197,7 +196,6 @@ export function createRecordingLifecycle(
               sessionId: session,
               audioFile,
             }).then(() => undefined),
-          markAudible: (session) => markTranscriptionAudible(session),
           enrich: (session, fields) =>
             enrichTranscriptionBySession(session, fields),
         },

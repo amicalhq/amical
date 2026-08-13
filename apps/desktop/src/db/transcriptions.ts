@@ -60,7 +60,6 @@ export async function createProvisionalTranscription(options: {
     .values({
       sessionId: options.sessionId,
       disposition: null,
-      audible: false,
       text: "",
       audioFile: options.audioFile,
       meta: { sessionId: options.sessionId },
@@ -70,19 +69,6 @@ export async function createProvisionalTranscription(options: {
     })
     .returning();
   return result[0];
-}
-
-/** Record that audible speech was observed during capture (recovery input). */
-export async function markTranscriptionAudible(sessionId: string) {
-  await db
-    .update(transcriptions)
-    .set({ audible: true, updatedAt: new Date() })
-    .where(
-      and(
-        eq(transcriptions.sessionId, sessionId),
-        isNull(transcriptions.disposition),
-      ),
-    );
 }
 
 /**

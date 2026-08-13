@@ -25,7 +25,6 @@ const transcription = {
   id: 42,
   sessionId: null,
   disposition: "success",
-  audible: null,
   text: "Test transcript",
   timestamp: new Date(),
   language: "en",

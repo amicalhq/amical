@@ -5,15 +5,15 @@ import {
 } from "../../src/main/lifecycle/recovery";
 
 describe("lifecycle recovery disposition", () => {
-  it("keeps audible audio as a re-transcribable failure", () => {
-    expect(decideRecovery({ hasAudibleAudio: true })).toEqual({
+  it("keeps captured audio as a re-transcribable failure", () => {
+    expect(decideRecovery({ hasCapturedAudio: true })).toEqual({
       kind: "failure",
       cause: RECOVERY_INTERRUPTED_CAUSE,
     });
   });
 
-  it("deletes sessions that captured nothing audible", () => {
-    expect(decideRecovery({ hasAudibleAudio: false })).toEqual({
+  it("deletes sessions that captured no audio artifact", () => {
+    expect(decideRecovery({ hasCapturedAudio: false })).toEqual({
       kind: "discard",
       reason: "no_audio",
     });

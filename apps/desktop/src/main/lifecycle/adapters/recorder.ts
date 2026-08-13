@@ -19,14 +19,10 @@ import { REAL_TIMER_HOST, type ShellTimerHost } from "../shell";
  *   final chunk, or the drain bound after stop() → recorderClosed, exactly once
  *
  * Custody: WAV streamed from the first frame (crash leaves a playable file)
- * plus the provisional row. `audible` is a level test — a custody row full
- * of silence must let recovery discard instead of resurrecting dead air.
- * The dead-mic watchdog deliberately keys on frames (v1 semantics), not
- * level, so a thinking pause can never kill a live session.
+ * plus the provisional row. The dead-mic watchdog keys on liveness — frames
+ * arriving from the capture pipeline (D18) — so a thinking pause can never
+ * kill a live session; audio content is never judged here.
  */
-
-/** Peak amplitude that counts as audible speech for the recovery verdict. */
-const AUDIBLE_PEAK_THRESHOLD = 0.01;
 
 const SAMPLE_RATE = 16_000;
 
@@ -51,7 +47,6 @@ export interface RecorderAmbiance {
 /** The custody half of storage (provisional row bookkeeping). */
 export interface RecorderCustodyStore {
   open(session: SessionId, audioFile: string): Promise<void>;
-  markAudible(session: SessionId): Promise<void>;
   enrich(session: SessionId, fields: { duration: number }): Promise<void>;
 }
 
@@ -100,7 +95,6 @@ interface CaptureState {
   ambianceEnded: boolean;
   writer: WavCustodyWriter | null;
   audioFile: string | null;
-  audible: boolean;
   sawFrames: boolean;
   samples: number;
   microphone: CapturedMicrophone | null;
@@ -109,16 +103,6 @@ interface CaptureState {
   closedEmitted: boolean;
   /** Serializes custody writes; chunk IPC callbacks can interleave. */
   writeQueue: Promise<void>;
-}
-
-function hasAudiblePeak(chunk: Float32Array): boolean {
-  for (let i = 0; i < chunk.length; i++) {
-    const sample = chunk[i];
-    if (sample > AUDIBLE_PEAK_THRESHOLD || sample < -AUDIBLE_PEAK_THRESHOLD) {
-      return true;
-    }
-  }
-  return false;
 }
 
 export function createRecorderAdapter(
@@ -189,7 +173,6 @@ export function createRecorderAdapter(
         ambianceEnded: false,
         writer: null,
         audioFile: null,
-        audible: false,
         sawFrames: false,
         samples: 0,
         microphone: null,
@@ -292,18 +275,6 @@ export function createRecorderAdapter(
             .then(() => deps.custody.open(session, audioFile))
             .catch((error) => {
               logger.audio.error("Failed to open audio custody", {
-                sessionId: session,
-                error,
-              });
-            });
-        }
-
-        if (!capture.audible && hasAudiblePeak(chunk)) {
-          capture.audible = true;
-          capture.writeQueue = capture.writeQueue
-            .then(() => deps.custody.markAudible(session))
-            .catch((error) => {
-              logger.audio.error("Failed to mark custody audible", {
                 sessionId: session,
                 error,
               });

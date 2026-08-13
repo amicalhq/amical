@@ -1,4 +1,4 @@
-import { unlink } from "node:fs/promises";
+import { stat, unlink } from "node:fs/promises";
 import { logger } from "../logger";
 import {
   deleteProvisionalTranscription,
@@ -8,11 +8,25 @@ import {
 import { decideRecovery } from "./recovery";
 import type { SessionId } from "./types";
 
+/** A WAV with any payload past its 44-byte header counts as captured audio. */
+const WAV_HEADER_BYTES = 44;
+
+async function hasCapturedAudio(audioFile: string | null): Promise<boolean> {
+  if (!audioFile) return false;
+  try {
+    return (await stat(audioFile)).size > WAV_HEADER_BYTES;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Settle custody rows the app died on (posthumous sealing via the shared
- * decide()): audible sessions keep their audio as a re-transcribable
- * failure row; silent ones are deleted with their WAV. Runs at startup,
- * and doubles as the quarantine net for commit stamps that never landed.
+ * decide()). Domain is disk truth (D21): every row with a NULL disposition,
+ * except the live session — a seal is real only once stamped. Rows whose
+ * custody WAV holds audio keep it as a re-transcribable failure; rows with
+ * no audio artifact are deleted. Runs at startup, and doubles as the
+ * quarantine net for commit stamps that never landed.
  */
 export async function runLifecycleRecovery(options?: {
   /** Never touch the live session's row (in-app repair runs). */
@@ -26,7 +40,9 @@ export async function runLifecycleRecovery(options?: {
     const sessionId = row.sessionId;
     if (!sessionId || sessionId === options?.excludeSession) continue;
 
-    const verdict = decideRecovery({ hasAudibleAudio: row.audible === true });
+    const verdict = decideRecovery({
+      hasCapturedAudio: await hasCapturedAudio(row.audioFile),
+    });
     try {
       if (verdict.kind === "failure") {
         await stampTranscriptionDisposition(sessionId, {

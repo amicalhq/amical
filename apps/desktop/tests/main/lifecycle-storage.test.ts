@@ -12,7 +12,6 @@ import {
   deleteProvisionalTranscription,
   enrichTranscriptionBySession,
   getUncommittedTranscriptions,
-  markTranscriptionAudible,
   stampTranscriptionDisposition,
 } from "../../src/db/transcriptions";
 import { getLifetimeStats } from "../../src/db/daily-stats";
@@ -155,21 +154,17 @@ describe("lifecycle storage", () => {
     expect(uncommitted.map((row) => row.sessionId)).toEqual(["s1"]);
   });
 
-  it("records audibility and descriptive enrichment on the custody row", async () => {
+  it("records descriptive enrichment on the custody row", async () => {
     await createProvisionalTranscription({ sessionId: "s1" });
-    await markTranscriptionAudible("s1");
     await enrichTranscriptionBySession("s1", {
       duration: 7,
       speechModel: "base-en",
     });
     const row = await rowFor("s1");
     expect(row).toMatchObject({
-      audible: 1,
       duration: 7,
       speech_model: "base-en",
     });
-    const uncommitted = await getUncommittedTranscriptions();
-    expect(uncommitted[0]?.audible).toBe(true);
   });
 
   it("migration backfill settles legacy rows using their meta status", async () => {

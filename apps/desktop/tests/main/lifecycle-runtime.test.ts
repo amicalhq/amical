@@ -8,7 +8,6 @@ import { AppError, ErrorCodes } from "../../src/types/error";
 
 const db = vi.hoisted(() => ({
   createProvisionalTranscription: vi.fn(async () => ({ id: 1 })),
-  markTranscriptionAudible: vi.fn(async () => undefined),
   enrichTranscriptionBySession: vi.fn(async () => undefined),
   stampTranscriptionDisposition: vi.fn(async () => ({ id: 1 })),
   deleteProvisionalTranscription: vi.fn(async () => null),
@@ -164,7 +163,6 @@ describe("recording lifecycle runtime", () => {
       sessionId: session,
       audioFile: `/audio/${session}.wav`,
     });
-    expect(db.markTranscriptionAudible).toHaveBeenCalledWith(session);
 
     h.lifecycle.setPttLevel(false);
     await settle();

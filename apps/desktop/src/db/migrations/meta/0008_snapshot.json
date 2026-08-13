@@ -776,13 +776,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "audible": {
-          "name": "audible",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "text": {
           "name": "text",
           "type": "text",

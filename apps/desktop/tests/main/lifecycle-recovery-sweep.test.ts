@@ -8,7 +8,6 @@ import { TEST_USER_DATA_PATH } from "../helpers/electron-mocks";
 import { runLifecycleRecovery } from "../../src/main/lifecycle/startup-recovery";
 import {
   createProvisionalTranscription,
-  markTranscriptionAudible,
   stampTranscriptionDisposition,
 } from "../../src/db/transcriptions";
 
@@ -30,30 +29,32 @@ describe("lifecycle startup recovery", () => {
     );
   }
 
-  it("keeps audible sessions as re-transcribable failures, deletes silent ones", async () => {
-    const silentWav = path.join(TEST_USER_DATA_PATH, "silent.wav");
-    await fs.ensureFile(silentWav);
+  it("keeps rows whose WAV holds audio, deletes rows without an artifact", async () => {
+    const keptWav = path.join(TEST_USER_DATA_PATH, "kept.wav");
+    await fs.outputFile(keptWav, Buffer.alloc(100)); // header + payload
+    const headerOnlyWav = path.join(TEST_USER_DATA_PATH, "header-only.wav");
+    await fs.outputFile(headerOnlyWav, Buffer.alloc(44)); // no payload
 
     await createProvisionalTranscription({
-      sessionId: "died-speaking",
-      audioFile: "/audio/kept.wav",
+      sessionId: "died-with-audio",
+      audioFile: keptWav,
     });
-    await markTranscriptionAudible("died-speaking");
     await createProvisionalTranscription({
-      sessionId: "died-silent",
-      audioFile: silentWav,
+      sessionId: "died-header-only",
+      audioFile: headerOnlyWav,
     });
+    await createProvisionalTranscription({ sessionId: "died-no-file" });
     await createProvisionalTranscription({ sessionId: "settled" });
     await stampTranscriptionDisposition("settled", { disposition: "success" });
 
     const result = await runLifecycleRecovery();
 
-    expect(result).toEqual({ recovered: 1, discarded: 1 });
+    expect(result).toEqual({ recovered: 1, discarded: 2 });
     expect(rows()).toEqual([
       {
-        session_id: "died-speaking",
+        session_id: "died-with-audio",
         disposition: "failure",
-        audio_file: "/audio/kept.wav",
+        audio_file: keptWav,
         reason: "interrupted",
       },
       {
@@ -63,7 +64,8 @@ describe("lifecycle startup recovery", () => {
         reason: null,
       },
     ]);
-    expect(await fs.pathExists(silentWav)).toBe(false);
+    expect(await fs.pathExists(keptWav)).toBe(true);
+    expect(await fs.pathExists(headerOnlyWav)).toBe(false);
   });
 
   it("never touches the excluded live session", async () => {
