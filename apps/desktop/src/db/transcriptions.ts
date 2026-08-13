@@ -220,19 +220,20 @@ export async function getTranscriptions(
   }
 }
 
-// Get transcription by ID
+// Get transcription by ID (settled rows only — ids are user-supplied)
 export async function getTranscriptionById(id: number) {
   const result = await db
     .select()
     .from(transcriptions)
-    .where(eq(transcriptions.id, id));
+    .where(and(settledRowsOnly, eq(transcriptions.id, id)));
   return result[0] || null;
 }
 
-// Update transcription
+// Update transcription (settled rows only; the disposition stamp is CAS'd
+// through stampTranscriptionDisposition, never through here)
 export async function updateTranscription(
   id: number,
-  data: Partial<Omit<Transcription, "id" | "createdAt">>,
+  data: Partial<Omit<Transcription, "id" | "createdAt" | "disposition">>,
 ) {
   const updateData = {
     ...data,
@@ -242,17 +243,17 @@ export async function updateTranscription(
   const result = await db
     .update(transcriptions)
     .set(updateData)
-    .where(eq(transcriptions.id, id))
+    .where(and(settledRowsOnly, eq(transcriptions.id, id)))
     .returning();
 
   return result[0] || null;
 }
 
-// Delete transcription
+// Delete transcription (settled rows only)
 export async function deleteTranscription(id: number) {
   const result = await db
     .delete(transcriptions)
-    .where(eq(transcriptions.id, id))
+    .where(and(settledRowsOnly, eq(transcriptions.id, id)))
     .returning();
 
   return result[0] || null;

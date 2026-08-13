@@ -206,6 +206,33 @@ describe("lifecycle recorder adapter", () => {
     expect(h.facts.filter((f) => f.type === "recorderClosed")).toHaveLength(1);
   });
 
+  it("a draining predecessor keeps custody while a successor is live", async () => {
+    const h = makeHarness();
+    await driveToCapturing(h);
+    await h.adapter.handleAudioChunk("s1", h.frames(16000, 0.5), false);
+    h.adapter.stop("s1");
+
+    // Successor starts while s1 is still draining (D19: the predecessor
+    // must keep accepting its in-flight frames until its custody closes).
+    h.adapter.start("s2");
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), true);
+    await h.settle();
+
+    expect(h.writers[0].appended).toHaveLength(3);
+    expect(h.writers[0].finalized).toBe(true);
+    expect(h.facts.filter((f) => f.type === "recorderClosed")).toEqual([
+      { type: "recorderClosed", session: "s1" },
+    ]);
+
+    // The successor is untouched and proceeds normally.
+    h.adapter.captureStarted("s2", { name: "Other Mic" });
+    expect(h.adapter.getActiveMicrophone()).toEqual({ name: "Other Mic" });
+    await h.openBeepGate();
+    await h.adapter.handleAudioChunk("s2", h.frames(160, 0.5), false);
+    expect(h.writers).toHaveLength(2);
+  });
+
   it("the drain bound closes custody with the audio already held", async () => {
     const h = makeHarness();
     await driveToCapturing(h);
@@ -268,10 +295,15 @@ describe("lifecycle recorder adapter", () => {
     expect(h.writers).toHaveLength(0);
     expect(h.feeds).toEqual([]);
 
-    // A successor start retires the previous capture state entirely.
+    // Frames drop only once the session's own custody closes (D19) — a
+    // successor start alone never retires a predecessor's capture.
+    h.adapter.stop("s1");
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), true);
     h.adapter.start("s2");
     await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
-    expect(h.writers).toHaveLength(0);
+    await h.settle();
+    expect(h.writers).toHaveLength(1);
+    expect(h.writers[0].appended).toHaveLength(1);
   });
 
   it("ignores empty frames except as the final-chunk marker", async () => {

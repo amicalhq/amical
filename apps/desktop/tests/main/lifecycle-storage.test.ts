@@ -11,12 +11,15 @@ import {
   createProvisionalTranscription,
   deleteAllTranscriptions,
   deleteProvisionalTranscription,
+  deleteTranscription,
   enrichTranscriptionBySession,
   getLatestTranscription,
+  getTranscriptionById,
   getTranscriptions,
   getTranscriptionsCount,
   getUncommittedTranscriptions,
   stampTranscriptionDisposition,
+  updateTranscription,
 } from "../../src/db/transcriptions";
 import { getLifetimeStats } from "../../src/db/daily-stats";
 import type { LifecyclePortFact } from "../../src/main/lifecycle/ports";
@@ -231,5 +234,28 @@ describe("lifecycle storage", () => {
     expect(
       (await getUncommittedTranscriptions()).map((r) => r.sessionId),
     ).toEqual(["live"]);
+  });
+
+  it("by-id surfaces cannot see or touch provisional rows", async () => {
+    await createProvisionalTranscription({
+      sessionId: "live",
+      audioFile: "/audio/live.wav",
+    });
+    const row = await rowFor("live");
+    const id = row!.id as number;
+
+    expect(await getTranscriptionById(id)).toBeNull();
+    expect(await updateTranscription(id, { text: "smuggled" })).toBeNull();
+    expect(await deleteTranscription(id)).toBeNull();
+
+    // The custody row is untouched and still recoverable.
+    const uncommitted = await getUncommittedTranscriptions();
+    expect(uncommitted.map((r) => r.sessionId)).toEqual(["live"]);
+    expect(uncommitted[0]?.text).toBe("");
+
+    // Once stamped, the same id is visible and mutable.
+    await stampTranscriptionDisposition("live", { disposition: "success" });
+    expect((await getTranscriptionById(id))?.sessionId).toBe("live");
+    expect(await deleteTranscription(id)).not.toBeNull();
   });
 });

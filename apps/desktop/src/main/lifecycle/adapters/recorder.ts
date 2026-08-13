@@ -117,11 +117,14 @@ export function createRecorderAdapter(
     deps.createWavWriter ??
     ((filePath: string) => new StreamingWavWriter(filePath));
 
-  let state: CaptureState | null = null;
+  /** All open captures, keyed by session (D19): a successor may start while
+   * the predecessor is still draining, and the predecessor must keep
+   * accepting its in-flight frames until its own custody closes. At most
+   * two entries live at once (one draining, one live). */
+  const captures = new Map<SessionId, CaptureState>();
+  let liveSession: SessionId | null = null;
 
-  /** Custody-settled waiters (R4): resolved when a session's writer closes.
-   * Keyed by session, not the live slot — a successor may start while the
-   * predecessor is still draining. */
+  /** Custody-settled waiters (R4): resolved when a session's writer closes. */
   const custodySettled = new Map<SessionId, () => void>();
   const custodySettledPromises = new Map<SessionId, Promise<void>>();
 
@@ -141,9 +144,8 @@ export function createRecorderAdapter(
   }
 
   function current(session: SessionId): CaptureState | null {
-    return state && state.session === session && state.phase !== "closed"
-      ? state
-      : null;
+    const capture = captures.get(session);
+    return capture && capture.phase !== "closed" ? capture : null;
   }
 
   function clearTimer(handle: unknown | null): void {
@@ -182,6 +184,7 @@ export function createRecorderAdapter(
         });
     }
     void capture.writeQueue.finally(() => settleCustodyWaiter(session));
+    captures.delete(session);
 
     if (!capture.closedEmitted) {
       capture.closedEmitted = true;
@@ -192,7 +195,7 @@ export function createRecorderAdapter(
   return {
     start(session): void {
       openCustodyWaiter(session);
-      state = {
+      const capture: CaptureState = {
         session,
         phase: "starting",
         beepPending: true,
@@ -208,7 +211,8 @@ export function createRecorderAdapter(
         closedEmitted: false,
         writeQueue: Promise.resolve(),
       };
-      const capture = state;
+      captures.set(session, capture);
+      liveSession = session;
       const { beepGate, done } = deps.ambiance.begin(session);
       void beepGate
         .catch(() => undefined)
@@ -331,7 +335,8 @@ export function createRecorderAdapter(
     },
 
     getActiveMicrophone(): CapturedMicrophone | null {
-      return state && state.phase !== "closed" ? state.microphone : null;
+      const live = liveSession ? captures.get(liveSession) : null;
+      return live && live.phase !== "closed" ? live.microphone : null;
     },
 
     whenCustodySettled(session: SessionId): Promise<void> {
