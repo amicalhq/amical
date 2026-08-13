@@ -19,7 +19,10 @@ import type { SettingsService } from "../../services/settings-service";
 import type { ModelService } from "../../services/model-service";
 import type { TranscriptionService } from "../../services/transcription-service";
 import type { ShortcutManager } from "../managers/shortcut-manager";
-import type { RecorderAmbiance } from "./adapters/recorder";
+import type {
+  AmbianceContext,
+  RecorderAmbiance,
+} from "./adapters/recorder";
 import { createRecordingLifecycle, type RecordingLifecycle } from "./runtime";
 import { runLifecycleRecovery } from "./startup-recovery";
 import { DEFAULT_LIFECYCLE_TUNING } from "./tuning";
@@ -62,6 +65,10 @@ export function createDesktopRecordingLifecycle(deps: {
 
   let shortcutManager: ShortcutManager | null = null;
 
+  // The begin-side promise is joined at end() so a stop that lands before
+  // the native start call resolves still unmutes with the truthful context.
+  const ambianceInFlight = new Map<string, Promise<AmbianceContext>>();
+
   const ambiance: RecorderAmbiance = {
     begin(session) {
       let releaseGate!: () => void;
@@ -69,13 +76,17 @@ export function createDesktopRecordingLifecycle(deps: {
         releaseGate = resolve;
       });
       const done = (async () => {
-        const preferences = await settingsService.getPreferences();
-        const muteSounds = preferences.muteDictationSounds;
-        const muteSystemAudio = preferences.muteSystemAudio;
-        // No beep when dictation sounds are muted: frames are clean at once.
-        if (muteSounds) releaseGate();
+        // Everything before the gate release sits inside try/finally: a
+        // preferences or RPC failure must never leave the beep gate closed
+        // (a closed gate drops every non-final frame).
+        let muteSounds = false;
         let systemAudioMuted = false;
         try {
+          const preferences = await settingsService.getPreferences();
+          muteSounds = preferences.muteDictationSounds;
+          const muteSystemAudio = preferences.muteSystemAudio;
+          // No beep when dictation sounds are muted: frames are clean at once.
+          if (muteSounds) releaseGate();
           if (nativeBridge) {
             const result = await nativeBridge.call("startRecording", {
               muteSystemAudio,
@@ -94,21 +105,26 @@ export function createDesktopRecordingLifecycle(deps: {
           error,
         });
       });
+      ambianceInFlight.set(session, done);
       return { beepGate, done };
     },
     end(session, context) {
+      const pending = ambianceInFlight.get(session);
+      ambianceInFlight.delete(session);
       if (!nativeBridge) return;
-      void nativeBridge
-        .call("stopRecording", {
-          wasMuted: context?.systemAudioMuted ?? false,
-          muteSounds: context?.soundsMuted ?? false,
-        })
-        .catch((error) => {
-          logger.audio.warn("Failed to end recording ambiance", {
-            sessionId: session,
-            error,
-          });
+      void (async () => {
+        const resolved =
+          context ?? (pending ? await pending.catch(() => null) : null);
+        await nativeBridge.call("stopRecording", {
+          wasMuted: resolved?.systemAudioMuted ?? false,
+          muteSounds: resolved?.soundsMuted ?? false,
         });
+      })().catch((error) => {
+        logger.audio.warn("Failed to end recording ambiance", {
+          sessionId: session,
+          error,
+        });
+      });
     },
   };
 

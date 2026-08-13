@@ -249,6 +249,16 @@ export function createRecorderAdapter(
     async handleAudioChunk(session, chunk, isFinalChunk): Promise<void> {
       const capture = current(session);
       if (!capture) return;
+
+      // Liveness: any delivered frame proves the capture pipeline is alive
+      // and defuses the dead-mic bound — including frames dropped below
+      // (beep gating, pre-ready arrival). Content is never judged (D18).
+      if (chunk.length > 0 && !capture.sawFrames) {
+        capture.sawFrames = true;
+        clearTimer(capture.deadMicHandle);
+        capture.deadMicHandle = null;
+      }
+
       if (capture.phase === "starting") return;
 
       // Frames captured while the start beep was audible are dropped so the
@@ -256,17 +266,10 @@ export function createRecorderAdapter(
       // mid-beep still finalizes.
       if (capture.beepPending && !isFinalChunk) return;
 
-      // Non-final frames only accumulate while capturing (v1 semantics: the
-      // drain accepts nothing but the final flush).
-      if (!isFinalChunk && capture.phase !== "capturing") return;
+      // Draining accepts every in-flight frame (D19): the tail of speech is
+      // still arriving through IPC after stop; only custody close drops.
 
       if (chunk.length > 0) {
-        if (!capture.sawFrames) {
-          capture.sawFrames = true;
-          clearTimer(capture.deadMicHandle);
-          capture.deadMicHandle = null;
-        }
-
         if (!capture.writer) {
           const audioFile = deps.audioFilePathFor(session);
           capture.audioFile = audioFile;

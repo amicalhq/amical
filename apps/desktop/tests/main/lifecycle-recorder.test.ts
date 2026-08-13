@@ -166,6 +166,20 @@ describe("lifecycle recorder adapter", () => {
     expect(h.writers).toHaveLength(1);
   });
 
+  it("beep-gated frames still defuse the dead-mic watchdog", async () => {
+    const h = makeHarness();
+    h.adapter.start("s1");
+    h.adapter.captureStarted("s1", {});
+    expect(h.timers.armedDurations()).toEqual([DEAD_MIC_MS]);
+
+    // Gate still closed: the frame is dropped from custody/feed, but it
+    // proves the pipeline is alive — the bound must not fire later.
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
+    expect(h.feeds).toEqual([]);
+    expect(h.timers.armedDurations()).toEqual([]);
+    expect(h.facts.some((f) => f.type === "noAudioDetected")).toBe(false);
+  });
+
   it("drains to recorderClosed exactly once on the final chunk", async () => {
     const h = makeHarness();
     await driveToCapturing(h);
@@ -173,7 +187,8 @@ describe("lifecycle recorder adapter", () => {
     h.adapter.stop("s1");
     expect(h.timers.armedDurations()).toEqual([DRAIN_MS]);
 
-    // Non-final frames during the drain are not accumulated (v1 semantics).
+    // In-flight frames during the drain are accepted — the tail of speech
+    // is still arriving through IPC after stop (D19).
     await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
     await h.adapter.handleAudioChunk("s1", h.frames(16000, 0.5), true);
     await h.settle();
@@ -182,7 +197,7 @@ describe("lifecycle recorder adapter", () => {
       { type: "recorderClosed", session: "s1" },
     ]);
     expect(h.writers[0].finalized).toBe(true);
-    expect(h.writers[0].appended).toHaveLength(2);
+    expect(h.writers[0].appended).toHaveLength(3);
     expect(h.custodyCalls).toContain("enrich:s1:2");
     expect(h.timers.armedDurations()).toEqual([]);
 
