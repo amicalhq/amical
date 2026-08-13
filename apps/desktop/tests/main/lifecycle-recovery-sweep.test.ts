@@ -66,6 +66,12 @@ describe("lifecycle startup recovery", () => {
     ]);
     expect(await fs.pathExists(keptWav)).toBe(true);
     expect(await fs.pathExists(headerOnlyWav)).toBe(false);
+
+    // The crashed writer never finalized: recovery must repair the header
+    // sizes so the kept WAV decodes (RIFF = size-8, data = size-44).
+    const repaired = await fs.readFile(keptWav);
+    expect(repaired.readUInt32LE(4)).toBe(100 - 8);
+    expect(repaired.readUInt32LE(40)).toBe(100 - 44);
   });
 
   it("never touches the excluded live session", async () => {
