@@ -31,7 +31,8 @@ describe("lifecycle startup recovery", () => {
 
   it("keeps rows whose WAV holds audio, deletes rows without an artifact", async () => {
     const keptWav = path.join(TEST_USER_DATA_PATH, "kept.wav");
-    await fs.outputFile(keptWav, Buffer.alloc(100)); // header + payload
+    // 44-byte header + 2 seconds of 16 kHz 16-bit mono payload.
+    await fs.outputFile(keptWav, Buffer.alloc(44 + 64_000));
     const headerOnlyWav = path.join(TEST_USER_DATA_PATH, "header-only.wav");
     await fs.outputFile(headerOnlyWav, Buffer.alloc(44)); // no payload
 
@@ -68,10 +69,15 @@ describe("lifecycle startup recovery", () => {
     expect(await fs.pathExists(headerOnlyWav)).toBe(false);
 
     // The crashed writer never finalized: recovery must repair the header
-    // sizes so the kept WAV decodes (RIFF = size-8, data = size-44).
+    // sizes so the kept WAV decodes (RIFF = size-8, data = size-44) and
+    // derive the duration the writer never enriched.
     const repaired = await fs.readFile(keptWav);
-    expect(repaired.readUInt32LE(4)).toBe(100 - 8);
-    expect(repaired.readUInt32LE(40)).toBe(100 - 44);
+    expect(repaired.readUInt32LE(4)).toBe(44 + 64_000 - 8);
+    expect(repaired.readUInt32LE(40)).toBe(64_000);
+    const kept = testDb.db.all<Record<string, unknown>>(
+      sql`SELECT duration FROM transcriptions WHERE session_id = 'died-with-audio'`,
+    );
+    expect(kept).toEqual([{ duration: 2 }]);
   });
 
   it("never touches the excluded live session", async () => {

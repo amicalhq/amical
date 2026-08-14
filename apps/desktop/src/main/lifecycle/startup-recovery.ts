@@ -2,6 +2,7 @@ import { open, stat, unlink } from "node:fs/promises";
 import { logger } from "../logger";
 import {
   deleteProvisionalTranscription,
+  enrichTranscriptionBySession,
   getUncommittedTranscriptions,
   stampTranscriptionDisposition,
 } from "../../db/transcriptions";
@@ -20,21 +21,26 @@ async function hasCapturedAudio(audioFile: string | null): Promise<boolean> {
   }
 }
 
+/** Custody WAV format: 16 kHz, 16-bit, mono. */
+const WAV_BYTES_PER_SECOND = 32_000;
+
 /**
  * A crashed session's writer never ran finalize, so its header still says
  * zero data and decoders read the kept WAV as empty. Patch the RIFF and
  * data sizes from the real file length; idempotent on finalized files.
+ * Returns the payload size in bytes (0 when there is nothing to repair).
  */
-async function repairWavHeader(audioFile: string): Promise<void> {
+async function repairWavHeader(audioFile: string): Promise<number> {
   const handle = await open(audioFile, "r+");
   try {
     const size = (await handle.stat()).size;
-    if (size <= WAV_HEADER_BYTES) return;
+    if (size <= WAV_HEADER_BYTES) return 0;
     const sizes = Buffer.alloc(4);
     sizes.writeUInt32LE(size - 8, 0);
     await handle.write(sizes, 0, 4, 4); // RIFF chunk size
     sizes.writeUInt32LE(size - WAV_HEADER_BYTES, 0);
     await handle.write(sizes, 0, 4, 40); // data chunk size
+    return size - WAV_HEADER_BYTES;
   } finally {
     await handle.close();
   }
@@ -66,12 +72,22 @@ export async function runLifecycleRecovery(options?: {
     try {
       if (verdict.kind === "failure") {
         if (row.audioFile) {
-          await repairWavHeader(row.audioFile).catch((error) => {
-            logger.audio.warn("Failed to repair recovered WAV header", {
-              sessionId,
-              error,
-            });
-          });
+          // The crashed writer also never enriched duration; derive it from
+          // the repaired payload so the row is whole like a normal one.
+          const payloadBytes = await repairWavHeader(row.audioFile).catch(
+            (error) => {
+              logger.audio.warn("Failed to repair recovered WAV header", {
+                sessionId,
+                error,
+              });
+              return 0;
+            },
+          );
+          if (payloadBytes > 0) {
+            await enrichTranscriptionBySession(sessionId, {
+              duration: Math.round(payloadBytes / WAV_BYTES_PER_SECOND),
+            }).catch(() => undefined);
+          }
         }
         await stampTranscriptionDisposition(sessionId, {
           disposition: "failure",
