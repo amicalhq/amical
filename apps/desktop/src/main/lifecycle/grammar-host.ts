@@ -21,8 +21,13 @@ export interface GrammarHostDeps {
   requestStart(mode: RecordingMode): void;
   requestStop(): void;
   requestCancel(reason: "quick_release"): void;
-  /** A live session's mode changed (tap-to-latch upgrade). */
+  /** A live session's mode changed (latch upgrade). */
   modeChanged(mode: RecordingMode): void;
+  /** Draft interactions are push-to-talk only: while a draft review is
+   * pending or the live session is a draft, every toggleKey input — start,
+   * upgrade, surface start — is dropped (deliberate v1 deviation: v1
+   * exempted UI starts). */
+  isDraftBlocked?(): boolean;
   tuning: Pick<LifecycleTuning, "pressWindowMs" | "quickWindowMs">;
   timers?: ShellTimerHost;
 }
@@ -32,6 +37,10 @@ export interface GrammarHost {
   setPttLevel(engaged: boolean): void;
   /** Toggle binding fired (direct-fire, no edge detection). */
   toggleKey(): void;
+  /** Surface start (FAB, notes): start-only semantics — injects a toggle
+   * only when the grammar holds no drive state, so a stray second click can
+   * never stop or cancel a live session. */
+  startHandsFree(): void;
   /** The lifecycle returned to IDLE (any cause): reset drive state. */
   notifyLifecycleIdle(): void;
   getState(): GrammarState;
@@ -77,10 +86,12 @@ export function createGrammarHost(deps: GrammarHostDeps): GrammarHost {
       }
     }
 
+    const latchedNow = state === "latched" || state === "latchedFresh";
+
     for (const verb of transition.verbs) {
       switch (verb.type) {
         case "startRequested":
-          deps.requestStart(state === "latched" ? "hands-free" : "ptt");
+          deps.requestStart(latchedNow ? "hands-free" : "ptt");
           break;
         case "stopRequested":
           deps.requestStop();
@@ -91,11 +102,17 @@ export function createGrammarHost(deps: GrammarHostDeps): GrammarHost {
       }
     }
 
-    // Tap-to-latch: the quick-release window re-press upgrades the live
-    // session from push-to-talk to hands-free (no verb crosses the boundary).
-    if (before === "window" && state === "latched") {
+    // Latch upgrades (tap-to-latch, PTT+toggle chord) move a live session
+    // from push-to-talk to hands-free — no verb crosses the boundary.
+    const wasLatched = before === "latched" || before === "latchedFresh";
+    if (latchedNow && !wasLatched && before !== "idle") {
       deps.modeChanged("hands-free");
     }
+  }
+
+  function toggle(): void {
+    if (deps.isDraftBlocked?.()) return;
+    apply({ type: "toggleKey" });
   }
 
   return {
@@ -105,7 +122,11 @@ export function createGrammarHost(deps: GrammarHostDeps): GrammarHost {
       apply({ type: engaged ? "keyDown" : "keyUp" });
     },
     toggleKey(): void {
-      apply({ type: "toggleKey" });
+      toggle();
+    },
+    startHandsFree(): void {
+      if (state !== "idle") return;
+      toggle();
     },
     notifyLifecycleIdle(): void {
       apply({ type: "lifecycleIdle" });

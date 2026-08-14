@@ -57,7 +57,7 @@ function toStateUpdate(
 
 export const recordingRouter = createRouter({
   signalStart: procedure.mutation(async ({ ctx }) => {
-    await requireLifecycle(ctx).startDictation("hands-free");
+    await requireLifecycle(ctx).startDictation();
   }),
 
   signalStop: procedure.mutation(async ({ ctx }) => {

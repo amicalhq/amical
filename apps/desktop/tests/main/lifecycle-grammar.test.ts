@@ -48,33 +48,73 @@ describe("desktop hotkey grammar", () => {
     ]);
   });
 
-  it("tap-to-latch: quick release then re-press latches hands-free, next press stops", () => {
-    const result = run(
+  it("tap-to-latch: quick release then re-press latches fresh; press after the window stops", () => {
+    const latched = run(
       INITIAL_GRAMMAR_STATE,
       { type: "keyDown" },
       { type: "keyUp" },
       { type: "keyDown" },
-      { type: "keyDown" },
     );
-    expect(result.state).toBe("idle");
-    expect(result.verbs).toEqual([
-      { type: "startRequested" },
-      { type: "stopRequested" },
+    expect(latched.state).toBe("latchedFresh");
+    expect(latched.timerOps).toContainEqual({ type: "armQuickWindow" });
+
+    // Press inside the fresh window: the accident is cancelled.
+    const accident = run(latched.state, { type: "keyDown" });
+    expect(accident.state).toBe("idle");
+    expect(accident.verbs).toEqual([
+      { type: "cancelRequested", reason: "quick_release" },
     ]);
-    expect(result.timerOps).toContainEqual({ type: "cancelQuickWindow" });
+
+    // Window expires: the latch hardens; the next press is a normal stop.
+    const hardened = run(latched.state, { type: "quickWindowExpired" });
+    expect(hardened.state).toBe("latched");
+    const stopped = run(hardened.state, { type: "keyDown" });
+    expect(stopped.state).toBe("idle");
+    expect(stopped.verbs).toEqual([{ type: "stopRequested" }]);
   });
 
-  it("toggle key starts latched and stops on second toggle", () => {
-    const result = run(
-      INITIAL_GRAMMAR_STATE,
-      { type: "toggleKey" },
+  it("toggle key starts latched fresh; quick second toggle cancels, later one stops", () => {
+    const started = run(INITIAL_GRAMMAR_STATE, { type: "toggleKey" });
+    expect(started.state).toBe("latchedFresh");
+    expect(started.verbs).toEqual([{ type: "startRequested" }]);
+    expect(started.timerOps).toContainEqual({ type: "armQuickWindow" });
+
+    const quick = run(started.state, { type: "toggleKey" });
+    expect(quick.verbs).toEqual([
+      { type: "cancelRequested", reason: "quick_release" },
+    ]);
+
+    const late = run(
+      started.state,
+      { type: "quickWindowExpired" },
       { type: "toggleKey" },
     );
-    expect(result.state).toBe("idle");
-    expect(result.verbs).toEqual([
-      { type: "startRequested" },
-      { type: "stopRequested" },
-    ]);
+    expect(late.state).toBe("idle");
+    expect(late.verbs).toEqual([{ type: "stopRequested" }]);
+  });
+
+  it("PTT upgrades to a latch on the toggle chord", () => {
+    // Inside the press window: fresh latch, quick window armed.
+    const young = run(
+      INITIAL_GRAMMAR_STATE,
+      { type: "keyDown" },
+      { type: "toggleKey" },
+    );
+    expect(young.state).toBe("latchedFresh");
+    expect(young.timerOps).toContainEqual({ type: "cancelPressWindow" });
+    expect(young.timerOps).toContainEqual({ type: "armQuickWindow" });
+
+    // Past the press window: hard latch, and the chord release is inert.
+    const old = run(
+      INITIAL_GRAMMAR_STATE,
+      { type: "keyDown" },
+      { type: "pressWindowExpired" },
+      { type: "toggleKey" },
+    );
+    expect(old.state).toBe("latched");
+    const released = run(old.state, { type: "keyUp" });
+    expect(released.state).toBe("latched");
+    expect(released.verbs).toEqual([]);
   });
 
   it("quickness is decided by event order, not clocks", () => {

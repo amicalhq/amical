@@ -224,6 +224,7 @@ describe("recording lifecycle runtime", () => {
     await settle();
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("recording");
 
+    h.timers.fire(TUNING.quickWindowMs); // latch hardens
     h.lifecycle.setPttLevel(true); // next press stops
     await settle();
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("stopping");
@@ -312,7 +313,8 @@ describe("recording lifecycle runtime", () => {
 
   it("admission gates: missing model and active history retry refuse with a toast", async () => {
     const noModel = makeHarness({ hasModel: false });
-    await noModel.lifecycle.startDictation("hands-free");
+    await noModel.lifecycle.startDictation();
+    await settle();
     expect(noModel.lifecycle.getSnapshot().projection.publicState).toBe("idle");
     expect(noModel.notifications).toEqual([
       { type: "transcription_failed", errorCode: ErrorCodes.MODEL_MISSING },
@@ -320,10 +322,112 @@ describe("recording lifecycle runtime", () => {
     expect(noModel.service.beginStreamingSession).not.toHaveBeenCalled();
 
     const retrying = makeHarness({ retryInProgress: true });
-    await retrying.lifecycle.startDictation("hands-free");
+    await retrying.lifecycle.startDictation();
+    await settle();
     expect(retrying.notifications).toEqual([
       { type: "transcription_failed", errorCode: ErrorCodes.RETRY_IN_PROGRESS },
     ]);
+  });
+
+  it("a refused start resets the grammar: the next press starts", async () => {
+    let hasModel = false;
+    const h = makeHarness({
+      hasSpeechModelSelected: async () => hasModel,
+    });
+
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+    expect(h.notifications).toEqual([
+      { type: "transcription_failed", errorCode: ErrorCodes.MODEL_MISSING },
+    ]);
+
+    // The refusal must not strand the grammar latched — the very next
+    // toggle starts instead of being swallowed as a no-op stop.
+    hasModel = true;
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      projection: { publicState: "starting" },
+      metadata: { mode: "hands-free" },
+    });
+  });
+
+  it("a surface start is grammar-driven: a PTT tap stops it, never discards", async () => {
+    const h = makeHarness();
+    await h.lifecycle.startDictation();
+    await settle();
+    h.lifecycle.captureStarted(h.lifecycle.getSnapshot().sessionId!, {});
+    await settle();
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      projection: { publicState: "recording" },
+      metadata: { mode: "hands-free" },
+    });
+    h.timers.fire(TUNING.quickWindowMs); // latch hardens
+
+    // The regression: a stray PTT tap used to run its own idle→window path
+    // and quick-discard the live session. Grammar-driven starts make the
+    // press a normal stop.
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection).toMatchObject({
+      publicState: "stopping",
+      stopKind: "finalize",
+    });
+  });
+
+  it("PTT upgrades to hands-free on the toggle chord", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    expect(h.lifecycle.getSnapshot().metadata?.mode).toBe("ptt");
+
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot().metadata?.mode).toBe("hands-free");
+
+    // Releasing the PTT chord no longer stops: the session is latched.
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      sessionId: session,
+      projection: { publicState: "recording" },
+    });
+  });
+
+  it("a quick second toggle discards; a later one stops", async () => {
+    const quick = makeHarness();
+    quick.lifecycle.toggleKey();
+    await settle();
+    quick.lifecycle.toggleKey(); // inside the quick window: accident
+    await settle();
+    // Discarded, never stamped — the accidental session leaves no trace.
+    expect(quick.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(db.stampTranscriptionDisposition).not.toHaveBeenCalled();
+    expect(quick.notifications).toEqual([]);
+
+    const slow = makeHarness();
+    slow.lifecycle.toggleKey();
+    await settle();
+    slow.lifecycle.captureStarted(slow.lifecycle.getSnapshot().sessionId!, {});
+    await settle();
+    slow.timers.fire(TUNING.quickWindowMs); // latch hardens
+    slow.lifecycle.toggleKey();
+    await settle();
+    expect(slow.lifecycle.getSnapshot().projection.stopKind).toBe("finalize");
+  });
+
+  it("toggle inputs are dropped while a draft is pending or live", async () => {
+    const h = makeHarness({ draftChord: () => true });
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    await settle();
+    expect(h.lifecycle.getSnapshot().metadata?.isDraft).toBe(true);
+
+    // Draft is push-to-talk only: no hands-free upgrade of a live draft.
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot().metadata?.mode).toBe("ptt");
   });
 
   it("a release racing the admission still stops the session (verb order)", async () => {

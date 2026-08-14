@@ -83,7 +83,10 @@ export interface RecordingLifecycle {
   // Input side (shortcut wiring + tRPC verbs)
   setPttLevel(engaged: boolean): void;
   toggleKey(): void;
-  startDictation(mode: RecordingMode): Promise<void>;
+  /** Surface start (FAB, notes): hands-free, routed through the grammar so
+   * drive state stays consistent with every other start. Start-only — a
+   * stray call during a live session is a no-op, never a stop. */
+  startDictation(): Promise<void>;
   stopDictation(): Promise<void>;
   dismiss(): Promise<void>;
   confirmDraftFromInput(): Promise<void>;
@@ -293,8 +296,16 @@ export function createRecordingLifecycle(
     });
   }
 
+  /** A refused start leaves the grammar idle: the grammar latched (or held)
+   * on the press that produced this start, and no session will ever reset
+   * it — without this, the next press is a wasted no-op stop. */
+  function refuseStart(): void {
+    grammar.notifyLifecycleIdle();
+  }
+
   async function admitStart(mode: RecordingMode): Promise<void> {
     if (shell.getSnapshot().projection.publicState !== "idle") {
+      refuseStart();
       return;
     }
     if (deps.transcriptionService.isHistoryRetryInProgress()) {
@@ -302,6 +313,7 @@ export function createRecordingLifecycle(
         type: "transcription_failed",
         errorCode: ErrorCodes.RETRY_IN_PROGRESS,
       });
+      refuseStart();
       return;
     }
     const modelSelected = await boundedGate(deps.hasSpeechModelSelected());
@@ -311,6 +323,7 @@ export function createRecordingLifecycle(
         type: "transcription_failed",
         errorCode: ErrorCodes.UNKNOWN,
       });
+      refuseStart();
       return;
     }
     if (!modelSelected) {
@@ -318,13 +331,19 @@ export function createRecordingLifecycle(
         type: "transcription_failed",
         errorCode: ErrorCodes.MODEL_MISSING,
       });
+      refuseStart();
       return;
     }
-    // Draft is sticky: dictating over a pending review replaces the draft.
+    // Draft is sticky: dictating over a pending review replaces the draft
+    // (PTT only — the grammar host drops toggle inputs while draft-blocked).
     const isDraft =
       deps.isDraftChordActive() || host.getPendingDraft() !== null;
     shell.requestStart({ mode, isDraft });
   }
+
+  const isDraftBlocked = (): boolean =>
+    host.getPendingDraft() !== null ||
+    shell.getSnapshot().metadata?.isDraft === true;
 
   const grammar: GrammarHost = createGrammarHost({
     requestStart: (mode) => void enqueueVerb(() => admitStart(mode)),
@@ -336,6 +355,7 @@ export function createRecordingLifecycle(
     // admission and lands on the session it was meant for.
     modeChanged: (mode) =>
       void enqueueVerb(() => shell.updateMetadata({ mode })),
+    isDraftBlocked,
     tuning: deps.tuning,
     timers,
   });
@@ -470,7 +490,7 @@ export function createRecordingLifecycle(
   return {
     setPttLevel: (engaged) => grammar.setPttLevel(engaged),
     toggleKey: () => grammar.toggleKey(),
-    startDictation: (mode) => enqueueVerb(() => admitStart(mode)),
+    startDictation: async () => grammar.startHandsFree(),
     stopDictation: () => enqueueVerb(() => shell.requestStop()),
     dismiss: () =>
       enqueueVerb(() => {
