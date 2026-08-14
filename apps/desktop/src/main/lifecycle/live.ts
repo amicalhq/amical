@@ -206,6 +206,12 @@ export function createDesktopRecordingLifecycle(deps: {
   // empty selection, capture the selection via the helper's clipboard-copy
   // RPC and merge it in (v1 captureDraftSelectionViaCopy).
   lifecycle.onSnapshot((snapshot) => {
+    // Idle snapshots carry no session — clean up before the session guard,
+    // or the map keeps one settled promise per draft session forever.
+    if (snapshot.projection.publicState === "idle") {
+      draftCaptures.clear();
+    }
+
     const session = snapshot.sessionId;
     if (!session || !nativeBridge) return;
 
@@ -249,10 +255,6 @@ export function createDesktopRecordingLifecycle(deps: {
           });
         }),
       );
-    }
-
-    if (snapshot.projection.publicState === "idle") {
-      draftCaptures.clear();
     }
   });
 
