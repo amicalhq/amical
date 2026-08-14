@@ -37,9 +37,10 @@ describe("lifecycle grammar host", () => {
     const h = makeHarness();
     h.host.setPttLevel(true);
     h.host.setPttLevel(false);
-    // Press window cancelled, quick window armed.
-    expect(h.timers.armedDurations()).toEqual([QUICK_MS]);
+    // The start-anchored press window keeps running; quick window armed.
+    expect(h.timers.armedDurations()).toEqual([PRESS_MS, QUICK_MS]);
 
+    h.timers.fire(PRESS_MS); // the tap ages past the start window
     h.timers.fire(QUICK_MS);
     expect(h.calls).toEqual(["start:ptt", "cancel:quick_release"]);
     expect(h.host.getState()).toBe("idle");
@@ -51,12 +52,12 @@ describe("lifecycle grammar host", () => {
     h.host.setPttLevel(false);
     h.host.setPttLevel(true);
     expect(h.calls).toEqual(["start:ptt", "mode:hands-free"]);
-    // The latch is fresh: its quick window re-arms so an immediate next
-    // press cancels the accident instead of finalizing it.
-    expect(h.timers.armedDurations()).toEqual([QUICK_MS]);
+    // The latch is fresh only while the START-anchored window runs: no
+    // window is re-armed by the latch itself.
+    expect(h.timers.armedDurations()).toEqual([PRESS_MS]);
     expect(h.host.getState()).toBe("latchedFresh");
 
-    h.timers.fire(QUICK_MS);
+    h.timers.fire(PRESS_MS);
     expect(h.host.getState()).toBe("latched");
 
     // Releasing the latching press does nothing; the next press stops.
@@ -75,7 +76,7 @@ describe("lifecycle grammar host", () => {
 
     const slow = makeHarness();
     slow.host.toggleKey();
-    slow.timers.fire(QUICK_MS); // latch hardens
+    slow.timers.fire(PRESS_MS); // the start window expires: latch hardens
     slow.host.toggleKey();
     expect(slow.calls).toEqual(["start:hands-free", "stop"]);
   });
@@ -114,7 +115,7 @@ describe("lifecycle grammar host", () => {
     expect(h.calls).toEqual(["start:hands-free"]);
     // A stray second surface click never stops or cancels: start-only.
     h.host.startHandsFree();
-    h.timers.fire(QUICK_MS);
+    h.timers.fire(PRESS_MS);
     h.host.startHandsFree();
     expect(h.calls).toEqual(["start:hands-free"]);
   });
@@ -133,7 +134,7 @@ describe("lifecycle grammar host", () => {
     const h = makeHarness();
     h.host.setPttLevel(true);
     h.host.setPttLevel(false);
-    expect(h.timers.armedDurations()).toEqual([QUICK_MS]);
+    expect(h.timers.armedDurations()).toEqual([PRESS_MS, QUICK_MS]);
 
     h.host.notifyLifecycleIdle();
     expect(h.host.getState()).toBe("idle");

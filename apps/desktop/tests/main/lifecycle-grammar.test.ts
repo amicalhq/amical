@@ -48,7 +48,7 @@ describe("desktop hotkey grammar", () => {
     ]);
   });
 
-  it("tap-to-latch: quick release then re-press latches fresh; press after the window stops", () => {
+  it("tap-to-latch: quick release then re-press latches fresh; the start window keeps running", () => {
     const latched = run(
       INITIAL_GRAMMAR_STATE,
       { type: "keyDown" },
@@ -56,28 +56,57 @@ describe("desktop hotkey grammar", () => {
       { type: "keyDown" },
     );
     expect(latched.state).toBe("latchedFresh");
-    expect(latched.timerOps).toContainEqual({ type: "armQuickWindow" });
+    // Freshness stays anchored to the start: the press window armed at
+    // keyDown is never cancelled or re-armed along this path.
+    expect(latched.timerOps).toEqual([
+      { type: "armPressWindow" },
+      { type: "armQuickWindow" },
+      { type: "cancelQuickWindow" },
+    ]);
 
-    // Press inside the fresh window: the accident is cancelled.
+    // Press inside the start-anchored window: the accident is cancelled.
     const accident = run(latched.state, { type: "keyDown" });
     expect(accident.state).toBe("idle");
     expect(accident.verbs).toEqual([
       { type: "cancelRequested", reason: "quick_release" },
     ]);
 
-    // Window expires: the latch hardens; the next press is a normal stop.
-    const hardened = run(latched.state, { type: "quickWindowExpired" });
+    // The start window expires: the latch hardens; the next press stops.
+    const hardened = run(latched.state, { type: "pressWindowExpired" });
     expect(hardened.state).toBe("latched");
     const stopped = run(hardened.state, { type: "keyDown" });
     expect(stopped.state).toBe("idle");
     expect(stopped.verbs).toEqual([{ type: "stopRequested" }]);
   });
 
+  it("a stale re-press window latches hard: no discard past the start window", () => {
+    // Release quickly, but let the start window expire before re-pressing.
+    const stale = run(
+      INITIAL_GRAMMAR_STATE,
+      { type: "keyDown" },
+      { type: "keyUp" },
+      { type: "pressWindowExpired" },
+    );
+    expect(stale.state).toBe("windowStale");
+
+    const latched = run(stale.state, { type: "keyDown" });
+    expect(latched.state).toBe("latched");
+    const stopped = run(latched.state, { type: "keyDown" });
+    expect(stopped.verbs).toEqual([{ type: "stopRequested" }]);
+
+    // No re-press at all: the tap still discards on quick expiry.
+    const discarded = run(stale.state, { type: "quickWindowExpired" });
+    expect(discarded.state).toBe("idle");
+    expect(discarded.verbs).toEqual([
+      { type: "cancelRequested", reason: "quick_release" },
+    ]);
+  });
+
   it("toggle key starts latched fresh; quick second toggle cancels, later one stops", () => {
     const started = run(INITIAL_GRAMMAR_STATE, { type: "toggleKey" });
     expect(started.state).toBe("latchedFresh");
     expect(started.verbs).toEqual([{ type: "startRequested" }]);
-    expect(started.timerOps).toContainEqual({ type: "armQuickWindow" });
+    expect(started.timerOps).toEqual([{ type: "armPressWindow" }]);
 
     const quick = run(started.state, { type: "toggleKey" });
     expect(quick.verbs).toEqual([
@@ -86,7 +115,7 @@ describe("desktop hotkey grammar", () => {
 
     const late = run(
       started.state,
-      { type: "quickWindowExpired" },
+      { type: "pressWindowExpired" },
       { type: "toggleKey" },
     );
     expect(late.state).toBe("idle");
@@ -94,15 +123,23 @@ describe("desktop hotkey grammar", () => {
   });
 
   it("PTT upgrades to a latch on the toggle chord", () => {
-    // Inside the press window: fresh latch, quick window armed.
+    // Inside the start window: fresh latch, the original window keeps
+    // running (freshness never restarts — the reviewer's t=0/400/600 case).
     const young = run(
       INITIAL_GRAMMAR_STATE,
       { type: "keyDown" },
       { type: "toggleKey" },
     );
     expect(young.state).toBe("latchedFresh");
-    expect(young.timerOps).toContainEqual({ type: "cancelPressWindow" });
-    expect(young.timerOps).toContainEqual({ type: "armQuickWindow" });
+    expect(young.timerOps).toEqual([{ type: "armPressWindow" }]);
+
+    // The start window expires (t=500): a press now is a normal stop, not
+    // a discard — the upgrade did not extend discard eligibility.
+    const aged = run(young.state, { type: "pressWindowExpired" });
+    expect(aged.state).toBe("latched");
+    expect(run(aged.state, { type: "keyDown" }).verbs).toEqual([
+      { type: "stopRequested" },
+    ]);
 
     // Past the press window: hard latch, and the chord release is inert.
     const old = run(
@@ -156,7 +193,7 @@ describe("desktop hotkey grammar", () => {
       { type: "keyDown" },
       { type: "quickWindowExpired" },
     );
-    expect(afterLatch.state).toBe("latched");
+    expect(afterLatch.state).toBe("latchedFresh");
     expect(afterLatch.verbs).toEqual([{ type: "startRequested" }]);
   });
 

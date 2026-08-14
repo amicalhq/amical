@@ -224,7 +224,7 @@ describe("recording lifecycle runtime", () => {
     await settle();
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("recording");
 
-    h.timers.fire(TUNING.quickWindowMs); // latch hardens
+    h.timers.fire(TUNING.pressWindowMs); // the start window expires
     h.lifecycle.setPttLevel(true); // next press stops
     await settle();
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("stopping");
@@ -363,7 +363,7 @@ describe("recording lifecycle runtime", () => {
       projection: { publicState: "recording" },
       metadata: { mode: "hands-free" },
     });
-    h.timers.fire(TUNING.quickWindowMs); // latch hardens
+    h.timers.fire(TUNING.pressWindowMs); // the start window expires
 
     // The regression: a stray PTT tap used to run its own idle→window path
     // and quick-discard the live session. Grammar-driven starts make the
@@ -410,7 +410,7 @@ describe("recording lifecycle runtime", () => {
     await settle();
     slow.lifecycle.captureStarted(slow.lifecycle.getSnapshot().sessionId!, {});
     await settle();
-    slow.timers.fire(TUNING.quickWindowMs); // latch hardens
+    slow.timers.fire(TUNING.pressWindowMs); // the start window expires
     slow.lifecycle.toggleKey();
     await settle();
     expect(slow.lifecycle.getSnapshot().projection.stopKind).toBe("finalize");

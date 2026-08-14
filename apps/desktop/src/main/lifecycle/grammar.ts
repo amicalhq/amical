@@ -8,11 +8,13 @@
  * window expiries. Window durations are tuning; the shell arms/cancels the
  * window timers from the timerOps.
  *
- * Latch freshness: every entry into a latch passes through `latchedFresh`
- * with the quick window armed — a press or toggle inside that window cancels
- * the accidental session (quick_release) instead of finalizing it. The
- * window expiry hardens the latch into `latched`, where a press or toggle is
- * a normal stop.
+ * Freshness is anchored to the session START and never restarts: the press
+ * window doubles as the session-freshness window — armed once on the
+ * starting input, kept running across releases, latches, and upgrades. A
+ * press or toggle on a latch inside that window cancels the accidental
+ * session (quick_release); after it expires, the same input is a normal
+ * stop. The quick window is release-anchored and only governs the tap
+ * re-press grace (tap-to-latch vs discard).
  */
 
 export type GrammarState =
@@ -20,6 +22,7 @@ export type GrammarState =
   | "held"
   | "heldLong"
   | "window"
+  | "windowStale"
   | "latchedFresh"
   | "latched";
 
@@ -81,10 +84,12 @@ export function transitionGrammar(
         };
       }
       if (input.type === "toggleKey") {
+        // Hands-free start: the press window is the freshness window here
+        // too — one anchor, armed at start.
         return {
           state: "latchedFresh",
           verbs: [{ type: "startRequested" }],
-          timerOps: [{ type: "armQuickWindow" }],
+          timerOps: [{ type: "armPressWindow" }],
         };
       }
       return stay(state);
@@ -93,20 +98,18 @@ export function transitionGrammar(
         return { state: "heldLong", verbs: [], timerOps: [] };
       }
       if (input.type === "keyUp") {
+        // Quick release: the press window keeps running — freshness stays
+        // anchored to the start, not to this release.
         return {
           state: "window",
           verbs: [],
-          timerOps: [{ type: "cancelPressWindow" }, { type: "armQuickWindow" }],
+          timerOps: [{ type: "armQuickWindow" }],
         };
       }
       if (input.type === "toggleKey") {
-        // PTT→hands-free upgrade inside the press window: the session is
-        // young, so the latch stays cancellable for one quick window.
-        return {
-          state: "latchedFresh",
-          verbs: [],
-          timerOps: [{ type: "cancelPressWindow" }, { type: "armQuickWindow" }],
-        };
+        // PTT→hands-free upgrade inside the freshness window: the latch
+        // stays cancellable until the original window expires.
+        return { state: "latchedFresh", verbs: [], timerOps: [] };
       }
       return stay(state);
     case "heldLong":
@@ -118,19 +121,39 @@ export function transitionGrammar(
         };
       }
       if (input.type === "toggleKey") {
-        // PTT→hands-free upgrade past the press window: an established
+        // PTT→hands-free upgrade past the freshness window: an established
         // session, no discard protection.
         return { state: "latched", verbs: [], timerOps: [] };
       }
       return stay(state);
     case "window":
       if (input.type === "keyDown" || input.type === "toggleKey") {
-        // Tap-to-latch: re-arm the quick window so an immediate next press
-        // still cancels the accident.
+        // Tap-to-latch inside the freshness window.
         return {
           state: "latchedFresh",
           verbs: [],
-          timerOps: [{ type: "cancelQuickWindow" }, { type: "armQuickWindow" }],
+          timerOps: [{ type: "cancelQuickWindow" }],
+        };
+      }
+      if (input.type === "pressWindowExpired") {
+        // The session aged past its freshness window while waiting for the
+        // re-press; a latch from here is a hard latch.
+        return { state: "windowStale", verbs: [], timerOps: [] };
+      }
+      if (input.type === "quickWindowExpired") {
+        return {
+          state: "idle",
+          verbs: [{ type: "cancelRequested", reason: "quick_release" }],
+          timerOps: [{ type: "cancelPressWindow" }],
+        };
+      }
+      return stay(state);
+    case "windowStale":
+      if (input.type === "keyDown" || input.type === "toggleKey") {
+        return {
+          state: "latched",
+          verbs: [],
+          timerOps: [{ type: "cancelQuickWindow" }],
         };
       }
       if (input.type === "quickWindowExpired") {
@@ -146,10 +169,10 @@ export function transitionGrammar(
         return {
           state: "idle",
           verbs: [{ type: "cancelRequested", reason: "quick_release" }],
-          timerOps: [{ type: "cancelQuickWindow" }],
+          timerOps: [{ type: "cancelPressWindow" }],
         };
       }
-      if (input.type === "quickWindowExpired") {
+      if (input.type === "pressWindowExpired") {
         return { state: "latched", verbs: [], timerOps: [] };
       }
       return stay(state);
