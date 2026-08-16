@@ -47,6 +47,13 @@ function makeHarness() {
   let beep = deferred<void>();
   let ambianceDone = deferred<AmbianceContext>();
 
+  const custody = {
+    open: async (session: string, audioFile: string) =>
+      void custodyCalls.push(`open:${session}:${audioFile}`),
+    enrich: async (session: string, fields: { duration: number }) =>
+      void custodyCalls.push(`enrich:${session}:${fields.duration}`),
+  };
+
   const adapter: RecorderAdapter = createRecorderAdapter({
     sink: (fact) => facts.push(fact),
     tuning: { deadMicMs: DEAD_MIC_MS, drainMs: DRAIN_MS },
@@ -61,12 +68,7 @@ function makeHarness() {
         ambianceEnds.push(context);
       },
     },
-    custody: {
-      open: async (session, audioFile) =>
-        void custodyCalls.push(`open:${session}:${audioFile}`),
-      enrich: async (session, fields) =>
-        void custodyCalls.push(`enrich:${session}:${fields.duration}`),
-    },
+    custody,
     feed: (session, chunk) => feeds.push({ session, length: chunk.length }),
     audioFilePathFor: (session) => `/audio/${session}.wav`,
     createWavWriter: () => {
@@ -88,6 +90,7 @@ function makeHarness() {
     adapter,
     facts,
     feeds,
+    custody,
     custodyCalls,
     timers,
     writers,
@@ -281,6 +284,44 @@ describe("lifecycle recorder adapter", () => {
     expect(h.ambianceEnds).toEqual([
       { systemAudioMuted: false, soundsMuted: true },
     ]);
+  });
+
+  it("custody outcome stays cached after settlement and survives enrich failures", async () => {
+    const h = makeHarness();
+    await driveToCapturing(h);
+    // Duration enrichment fails transiently — a DB hiccup must never mark
+    // the finalized WAV broken.
+    h.custody.enrich = async () => {
+      throw new Error("db locked");
+    };
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
+    h.adapter.stop("s1");
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), true);
+    await h.settle();
+
+    // Asked AFTER settlement (the normal stamp timing): the real outcome,
+    // not an empty default.
+    const outcome = await h.adapter.whenCustodySettled("s1");
+    expect(outcome).toEqual({ audioFile: "/audio/s1.wav", wavOk: true });
+    // Asking twice (commit retry) still works.
+    expect(await h.adapter.whenCustodySettled("s1")).toEqual(outcome);
+  });
+
+  it("a writer failure marks the custody outcome broken", async () => {
+    const h = makeHarness();
+    await driveToCapturing(h);
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
+    h.writers[0].finalize = async () => {
+      throw new Error("disk full");
+    };
+    h.adapter.stop("s1");
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), true);
+    await h.settle();
+
+    expect(await h.adapter.whenCustodySettled("s1")).toEqual({
+      audioFile: "/audio/s1.wav",
+      wavOk: false,
+    });
   });
 
   it("fences traffic from stale sessions", async () => {

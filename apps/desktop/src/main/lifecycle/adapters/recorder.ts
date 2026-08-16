@@ -146,6 +146,16 @@ export function createRecorderAdapter(
   const custodySettledPromises = new Map<SessionId, Promise<CustodyOutcome>>();
 
   function openCustodyWaiter(session: SessionId): void {
+    // Settled outcomes stay cached: the stamp usually asks AFTER custody
+    // settled (the writer finishes before transcription resolves), and a
+    // commit retry can ask again seconds later. Bound the cache instead of
+    // deleting on settle.
+    while (custodySettledPromises.size > 8) {
+      const oldest = custodySettledPromises.keys().next().value;
+      if (oldest === undefined) break;
+      custodySettledPromises.delete(oldest);
+      custodySettled.delete(oldest);
+    }
     custodySettledPromises.set(
       session,
       new Promise<CustodyOutcome>((resolve) => {
@@ -160,7 +170,6 @@ export function createRecorderAdapter(
   ): void {
     custodySettled.get(session)?.(outcome);
     custodySettled.delete(session);
-    custodySettledPromises.delete(session);
   }
 
   function current(session: SessionId): CaptureState | null {
@@ -189,20 +198,30 @@ export function createRecorderAdapter(
 
     const { writer, session, samples } = capture;
     if (writer) {
-      capture.writeQueue = capture.writeQueue
-        .then(async () => {
+      capture.writeQueue = capture.writeQueue.then(async () => {
+        // wavOk tracks WRITER health only: a failed duration enrichment is
+        // a best-effort loss, never a reason to detach a finalized WAV.
+        try {
           await writer.finalize();
-          await deps.custody.enrich(session, {
-            duration: Math.round(samples / SAMPLE_RATE),
-          });
-        })
-        .catch((error) => {
+        } catch (error) {
           capture.wavOk = false;
           logger.audio.error("Failed to finalize audio custody", {
             sessionId: session,
             error,
           });
-        });
+          return;
+        }
+        await deps.custody
+          .enrich(session, {
+            duration: Math.round(samples / SAMPLE_RATE),
+          })
+          .catch((error) => {
+            logger.audio.warn("Failed to enrich custody duration", {
+              sessionId: session,
+              error,
+            });
+          });
+      });
     }
     void capture.writeQueue.finally(() =>
       settleCustodyWaiter(session, {
