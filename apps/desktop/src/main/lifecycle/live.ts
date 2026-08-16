@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect";
 import { v4 as uuid } from "uuid";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { logger } from "../logger";
+import { AppError, ErrorCodes } from "../../types/error";
 import { addRelease, up } from "../runtime/layer-helpers";
 import {
   AppScopeTag,
@@ -39,11 +40,18 @@ export interface DesktopRecordingLifecycle extends RecordingLifecycle {
   bindShortcutManager(shortcutManager: ShortcutManager): void;
 }
 
-/** Recording admission deliberately survives transcription-service init
- * failure (v1 behavior): sessions record and settle as empty. */
+/** Substituted when transcription-service init failed at boot: the stream
+ * fast-fails at open, so the session seals failure in STARTING and the user
+ * learns at press time. Deviation from v1, which recorded the full session
+ * and threw at finalize. */
 function degradedTranscriptionService() {
   return {
-    beginStreamingSession: () => true,
+    beginStreamingSession: (): boolean => {
+      throw new AppError(
+        "Transcription service failed to initialize",
+        ErrorCodes.WORKER_INITIALIZATION_FAILED,
+      );
+    },
     processStreamingChunk: async () => "",
     resolveStreamingSession: async () => null,
     cancelStreamingSession: async () => undefined,
