@@ -41,6 +41,7 @@ const TUNING: LifecycleTuning = {
   quickWindowMs: 4,
   longRecordingReminderMs: 99,
   commitRepairDelayMs: 66,
+  emptyNoticeMinRecordingMs: 8,
 };
 
 const settle = async (rounds = 4) => {
@@ -499,23 +500,78 @@ describe("recording lifecycle runtime", () => {
     });
   });
 
-  it("empty transcripts toast unconditionally on the empty seal", async () => {
-    const h = makeHarness({ resolveText: "" });
-    const session = await h.startToRecording("Blue Yeti");
-    h.timers.fire(TUNING.pressWindowMs);
-    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
-    h.lifecycle.setPttLevel(false);
-    await settle();
-    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
-    await settle();
+  it("empty transcripts toast only past the duration gate (D24)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
 
-    expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
-      disposition: "empty",
-    });
-    expect(h.pastes).toEqual([]);
-    expect(h.notifications).toEqual([
+    // Short recording: sealed empty, but the notice stays silent.
+    const short = makeHarness({ resolveText: "" });
+    const shortSession = await short.startToRecording("Blue Yeti");
+    short.timers.fire(TUNING.pressWindowMs);
+    await short.lifecycle.handleAudioChunk(
+      shortSession,
+      short.frames(0.5),
+      false,
+    );
+    vi.setSystemTime(Date.now() + TUNING.emptyNoticeMinRecordingMs);
+    short.lifecycle.setPttLevel(false);
+    await settle();
+    await short.lifecycle.handleAudioChunk(
+      shortSession,
+      short.frames(0.5),
+      true,
+    );
+    await settle();
+    expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(
+      shortSession,
+      { disposition: "empty" },
+    );
+    expect(short.notifications).toEqual([]);
+
+    // Long recording: the notice fires.
+    const long = makeHarness({ resolveText: "" });
+    const longSession = await long.startToRecording("Blue Yeti");
+    long.timers.fire(TUNING.pressWindowMs);
+    await long.lifecycle.handleAudioChunk(longSession, long.frames(0.5), false);
+    vi.setSystemTime(Date.now() + TUNING.emptyNoticeMinRecordingMs + 1);
+    long.lifecycle.setPttLevel(false);
+    await settle();
+    await long.lifecycle.handleAudioChunk(longSession, long.frames(0.5), true);
+    await settle();
+    expect(long.pastes).toEqual([]);
+    expect(long.notifications).toEqual([
       { type: "empty_transcript", params: { microphone: "Blue Yeti" } },
     ]);
+  });
+
+  it("a retry admitted during the gate await refuses with the truthful reason", async () => {
+    let releaseGate!: (value: boolean) => void;
+    const h = makeHarness({
+      hasSpeechModelSelected: () =>
+        new Promise<boolean>((resolve) => {
+          releaseGate = resolve;
+        }),
+    });
+
+    h.lifecycle.toggleKey();
+    await settle();
+    // A history retry wins the engines while the model lookup is pending.
+    h.service.isHistoryRetryInProgress.mockReturnValue(true);
+    releaseGate(true);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+    expect(h.service.beginStreamingSession).not.toHaveBeenCalled();
+    expect(h.notifications).toEqual([
+      { type: "transcription_failed", errorCode: ErrorCodes.RETRY_IN_PROGRESS },
+    ]);
+
+    // Grammar was reset by the refusal: the next toggle starts normally.
+    h.service.isHistoryRetryInProgress.mockReturnValue(false);
+    h.lifecycle.toggleKey();
+    await settle();
+    releaseGate(true);
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("starting");
   });
 
   it("auto-stop at the cap is visible and notifies", async () => {

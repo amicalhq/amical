@@ -21,6 +21,10 @@ export interface LifecycleTuning {
   quickWindowMs: number;
   /** Surface: "recording is getting long" reminder, off the recording projection. */
   longRecordingReminderMs: number;
+  /** Surface: the empty-result notice is suppressed for recordings at or
+   * under this duration — an accidental mid-length press stays silent. The
+   * terminal projection is unaffected; this gates presentation only. */
+  emptyNoticeMinRecordingMs: number;
   /** StoragePort: single background retry after a failed commit stamp
    * (quarantine-lite; the startup sweep is the ultimate net). */
   commitRepairDelayMs: number;
@@ -56,5 +60,6 @@ export const DEFAULT_LIFECYCLE_TUNING: LifecycleTuning = {
   pressWindowMs: 500, // v1 QUICK_PRESS_THRESHOLD
   quickWindowMs: 500,
   longRecordingReminderMs: 5 * 60 * 1000, // v1 RECORDING_WARNING_TIMEOUT
+  emptyNoticeMinRecordingMs: 3_500, // v1 empty-transcript notice gate
   commitRepairDelayMs: 5_000,
 };

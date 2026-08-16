@@ -334,6 +334,17 @@ export function createRecordingLifecycle(
       refuseStart();
       return;
     }
+    // Re-check after the await: a history retry admitted during the model
+    // lookup holds the engines — refuse with the truthful reason instead of
+    // letting the session start and die on a refused stream.
+    if (deps.transcriptionService.isHistoryRetryInProgress()) {
+      notify({
+        type: "transcription_failed",
+        errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+      });
+      refuseStart();
+      return;
+    }
     // Draft is sticky: dictating over a pending review replaces the draft
     // (PTT only — the grammar host drops toggle inputs while draft-blocked).
     const isDraft =
@@ -364,6 +375,9 @@ export function createRecordingLifecycle(
   let previous = shell.getSnapshot();
   let reminderHandle: unknown | null = null;
   let wedgeHandle: unknown | null = null;
+  // Recording duration, for the empty-notice gate (surface policy only).
+  let recordingStartedAt: number | null = null;
+  let recordingStoppedAt: number | null = null;
 
   function clearReminder(): void {
     if (reminderHandle !== null) {
@@ -406,6 +420,8 @@ export function createRecordingLifecycle(
     }
 
     if (now.publicState === "recording" && was.publicState !== "recording") {
+      recordingStartedAt = Date.now();
+      recordingStoppedAt = null;
       clearReminder();
       reminderHandle = timers.set(deps.tuning.longRecordingReminderMs, () => {
         reminderHandle = null;
@@ -422,6 +438,7 @@ export function createRecordingLifecycle(
       });
     }
     if (was.publicState === "recording" && now.publicState !== "recording") {
+      recordingStoppedAt = Date.now();
       clearReminder();
     }
 
@@ -436,6 +453,8 @@ export function createRecordingLifecycle(
     if (now.publicState === "idle" && was.publicState !== "idle") {
       grammar.notifyLifecycleIdle();
       clearWedgeWatchdog();
+      recordingStartedAt = null;
+      recordingStoppedAt = null;
       failureDetails.clear();
     }
 
@@ -465,12 +484,20 @@ export function createRecordingLifecycle(
         return;
       }
       case "empty": {
-        // Unconditional (§3.4): quick taps discard rather than seal empty,
-        // so there is no short-recording spam to gate against.
-        notify({
-          type: "empty_transcript",
-          params: microphone ? { microphone } : undefined,
-        });
+        // Surface gate (D24): recordings at or under the threshold stay
+        // silent — an accidental mid-length press is not worth a toast.
+        // Quick taps (<500ms) never get here (they discard); this covers
+        // the interval between the quick window and the threshold.
+        const durationMs =
+          recordingStartedAt !== null && recordingStoppedAt !== null
+            ? recordingStoppedAt - recordingStartedAt
+            : 0;
+        if (durationMs > deps.tuning.emptyNoticeMinRecordingMs) {
+          notify({
+            type: "empty_transcript",
+            params: microphone ? { microphone } : undefined,
+          });
+        }
         return;
       }
       case "discard": {
