@@ -99,6 +99,8 @@ export async function stampTranscriptionDisposition(
     disposition: TranscriptionDisposition;
     text?: string;
     metaPatch?: Record<string, unknown>;
+    /** Pass null to detach a broken WAV from the settled row (D25). */
+    audioFile?: string | null;
   },
 ) {
   const existing = await db
@@ -122,6 +124,7 @@ export async function stampTranscriptionDisposition(
     .set({
       disposition: stamp.disposition,
       ...(stamp.text !== undefined ? { text: stamp.text } : {}),
+      ...(stamp.audioFile !== undefined ? { audioFile: stamp.audioFile } : {}),
       meta,
       updatedAt: new Date(),
     })
@@ -131,6 +134,42 @@ export async function stampTranscriptionDisposition(
         isNull(transcriptions.disposition),
       ),
     )
+    .returning();
+  return result[0] ?? null;
+}
+
+/**
+ * Port-side repair (D25): settle a session that has NO row at all — the
+ * provisional insert failed, or custody never opened (§3.4 still demands a
+ * terminal row for every retained outcome). Existence-guarded so a commit
+ * retry after a successful stamp can never duplicate a session's row.
+ */
+export async function insertSettledTranscription(options: {
+  sessionId: string;
+  disposition: TranscriptionDisposition;
+  text?: string;
+  metaPatch?: Record<string, unknown>;
+  audioFile?: string | null;
+}) {
+  const existing = await db
+    .select({ id: transcriptions.id })
+    .from(transcriptions)
+    .where(eq(transcriptions.sessionId, options.sessionId));
+  if (existing.length > 0) return null;
+
+  const now = new Date();
+  const result = await db
+    .insert(transcriptions)
+    .values({
+      sessionId: options.sessionId,
+      disposition: options.disposition,
+      text: options.text ?? "",
+      audioFile: options.audioFile ?? undefined,
+      meta: { sessionId: options.sessionId, ...(options.metaPatch ?? {}) },
+      timestamp: now,
+      createdAt: now,
+      updatedAt: now,
+    })
     .returning();
   return result[0] ?? null;
 }

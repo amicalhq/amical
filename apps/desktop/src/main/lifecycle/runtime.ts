@@ -237,6 +237,9 @@ export function createRecordingLifecycle(
           repairDelayMs: deps.tuning.commitRepairDelayMs,
           awaitCustodySettled: (session) =>
             recorder.whenCustodySettled(session),
+          // Custody normally settles in ~ms (success path) or the drain
+          // tail (mid-drain seals); the bound only covers a wedged writer.
+          custodySettleBoundMs: deps.tuning.drainMs + 2_000,
         }),
         host,
       };

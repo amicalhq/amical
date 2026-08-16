@@ -86,9 +86,18 @@ export interface RecorderAdapter extends RecorderPort {
   /** Microphone reported for the live session (surface notifications). */
   getActiveMicrophone(): CapturedMicrophone | null;
   /** Resolves once the session's custody has closed and its writer settled
-   * (immediately for unknown sessions). WAV-deleting executors order their
-   * unlink behind this — the writer owns the file until then (R4). */
-  whenCustodySettled(session: SessionId): Promise<void>;
+   * (immediately, with an empty outcome, for unknown sessions). The stamp
+   * orders behind this — a settled row always has settled custody (D25). */
+  whenCustodySettled(session: SessionId): Promise<CustodyOutcome>;
+}
+
+/** What custody actually holds once it settles. `wavOk: false` means the
+ * writer failed somewhere (append/finalize) — the file must not be
+ * advertised by a settled row. A missing row is NOT a custody concern:
+ * the storage side repairs that at stamp time. */
+export interface CustodyOutcome {
+  audioFile: string | null;
+  wavOk: boolean;
 }
 
 interface CaptureState {
@@ -99,6 +108,8 @@ interface CaptureState {
   ambianceEnded: boolean;
   writer: WavCustodyWriter | null;
   audioFile: string | null;
+  /** Writer health: false after any append/finalize failure. */
+  wavOk: boolean;
   sawFrames: boolean;
   samples: number;
   microphone: CapturedMicrophone | null;
@@ -108,6 +119,8 @@ interface CaptureState {
   /** Serializes custody writes; chunk IPC callbacks can interleave. */
   writeQueue: Promise<void>;
 }
+
+const EMPTY_CUSTODY: CustodyOutcome = { audioFile: null, wavOk: true };
 
 export function createRecorderAdapter(
   deps: RecorderAdapterDeps,
@@ -124,21 +137,28 @@ export function createRecorderAdapter(
   const captures = new Map<SessionId, CaptureState>();
   let liveSession: SessionId | null = null;
 
-  /** Custody-settled waiters (R4): resolved when a session's writer closes. */
-  const custodySettled = new Map<SessionId, () => void>();
-  const custodySettledPromises = new Map<SessionId, Promise<void>>();
+  /** Custody-settled waiters (R4/D25): resolved when a session's writer
+   * closes, carrying what custody holds. */
+  const custodySettled = new Map<
+    SessionId,
+    (outcome: CustodyOutcome) => void
+  >();
+  const custodySettledPromises = new Map<SessionId, Promise<CustodyOutcome>>();
 
   function openCustodyWaiter(session: SessionId): void {
     custodySettledPromises.set(
       session,
-      new Promise<void>((resolve) => {
+      new Promise<CustodyOutcome>((resolve) => {
         custodySettled.set(session, resolve);
       }),
     );
   }
 
-  function settleCustodyWaiter(session: SessionId): void {
-    custodySettled.get(session)?.();
+  function settleCustodyWaiter(
+    session: SessionId,
+    outcome: CustodyOutcome,
+  ): void {
+    custodySettled.get(session)?.(outcome);
     custodySettled.delete(session);
     custodySettledPromises.delete(session);
   }
@@ -177,13 +197,19 @@ export function createRecorderAdapter(
           });
         })
         .catch((error) => {
+          capture.wavOk = false;
           logger.audio.error("Failed to finalize audio custody", {
             sessionId: session,
             error,
           });
         });
     }
-    void capture.writeQueue.finally(() => settleCustodyWaiter(session));
+    void capture.writeQueue.finally(() =>
+      settleCustodyWaiter(session, {
+        audioFile: capture.audioFile,
+        wavOk: capture.wavOk,
+      }),
+    );
     captures.delete(session);
 
     if (!capture.closedEmitted) {
@@ -203,6 +229,7 @@ export function createRecorderAdapter(
         ambianceEnded: false,
         writer: null,
         audioFile: null,
+        wavOk: true,
         sawFrames: false,
         samples: 0,
         microphone: null,
@@ -320,6 +347,7 @@ export function createRecorderAdapter(
         capture.writeQueue = capture.writeQueue
           .then(() => writer.appendAudio(chunk))
           .catch((error) => {
+            capture.wavOk = false;
             logger.audio.error("Failed to append audio custody", {
               sessionId: session,
               error,
@@ -339,8 +367,10 @@ export function createRecorderAdapter(
       return live && live.phase !== "closed" ? live.microphone : null;
     },
 
-    whenCustodySettled(session: SessionId): Promise<void> {
-      return custodySettledPromises.get(session) ?? Promise.resolve();
+    whenCustodySettled(session: SessionId): Promise<CustodyOutcome> {
+      return (
+        custodySettledPromises.get(session) ?? Promise.resolve(EMPTY_CUSTODY)
+      );
     },
   };
 }

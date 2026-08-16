@@ -200,6 +200,8 @@ describe("recording lifecycle runtime", () => {
     await settle();
     h.timers.fire(TUNING.quickWindowMs); // no re-press: tap becomes a discard
     await settle();
+    h.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
+    await settle();
 
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
     expect(db.stampTranscriptionDisposition).not.toHaveBeenCalled();
@@ -280,6 +282,8 @@ describe("recording lifecycle runtime", () => {
     const h = makeHarness();
     await h.startToRecording("Rode NT");
     h.timers.fire(TUNING.deadMicMs);
+    await settle();
+    h.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
     await settle();
 
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
@@ -454,6 +458,8 @@ describe("recording lifecycle runtime", () => {
       }),
     );
     await settle();
+    h.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
+    await settle();
 
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
     expect(h.notifications).toEqual([
@@ -622,6 +628,8 @@ describe("recording lifecycle runtime", () => {
     const h2 = makeHarness();
     const s2 = await h2.startToRecording();
     await h2.lifecycle.dismiss();
+    await settle();
+    h2.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
     await settle();
     expect(h2.lifecycle.getSnapshot().projection.publicState).toBe("idle");
     expect(h2.service.cancelStreamingSession).toHaveBeenCalledWith(s2);

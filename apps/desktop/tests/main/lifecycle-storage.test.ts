@@ -210,6 +210,103 @@ describe("lifecycle storage", () => {
     expect(await getUncommittedTranscriptions()).toEqual([]);
   });
 
+  it("stamps only after custody settles; the bound rescues a wedged writer", async () => {
+    const { FakeTimers } = await import("../helpers/lifecycle-fakes");
+    const timers = new FakeTimers();
+    let releaseCustody!: (outcome: {
+      audioFile: string | null;
+      wavOk: boolean;
+    }) => void;
+    const custodyFacts: LifecyclePortFact[] = [];
+    const custodyAdapter = createStorageAdapter(
+      (fact) => custodyFacts.push(fact),
+      {
+        timers,
+        custodySettleBoundMs: 9,
+        awaitCustodySettled: () =>
+          new Promise((resolve) => {
+            releaseCustody = resolve;
+          }),
+      },
+    );
+
+    await createProvisionalTranscription({ sessionId: "s1" });
+    custodyAdapter.commit("s1", { kind: "success", text: "ordered" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Custody still open: no stamp, no fact — the row stays provisional.
+    expect(custodyFacts).toEqual([]);
+    expect((await rowFor("s1"))?.disposition).toBeNull();
+
+    releaseCustody({ audioFile: null, wavOk: true });
+    await vi.waitFor(async () => {
+      expect((await rowFor("s1"))?.disposition).toBe("success");
+    });
+    expect(custodyFacts).toEqual([{ type: "storageFinished", session: "s1" }]);
+
+    // Wedged writer: the bound fires and the stamp proceeds anyway.
+    await createProvisionalTranscription({ sessionId: "s2" });
+    custodyAdapter.commit("s2", { kind: "dismissed" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect((await rowFor("s2"))?.disposition).toBeNull();
+    timers.fire(9);
+    await vi.waitFor(async () => {
+      expect((await rowFor("s2"))?.disposition).toBe("dismissed");
+    });
+  });
+
+  it("a broken WAV is detached and unlinked; the row still settles", async () => {
+    const brokenWav = path.join(TEST_USER_DATA_PATH, "broken.wav");
+    await fs.outputFile(brokenWav, Buffer.alloc(50));
+    await createProvisionalTranscription({
+      sessionId: "s1",
+      audioFile: brokenWav,
+    });
+
+    const custodyAdapter = createStorageAdapter((fact) => facts.push(fact), {
+      awaitCustodySettled: async () => ({
+        audioFile: brokenWav,
+        wavOk: false,
+      }),
+    });
+    custodyAdapter.commit("s1", { kind: "success", text: "kept text" });
+    await vi.waitFor(async () => {
+      expect((await rowFor("s1"))?.disposition).toBe("success");
+    });
+
+    const row = await rowFor("s1");
+    expect(row?.audio_file).toBeNull();
+    expect(row?.text).toBe("kept text");
+    expect(await fs.pathExists(brokenWav)).toBe(false);
+  });
+
+  it("a retained outcome with no row inserts its terminal row (§3.4)", async () => {
+    const custodyAdapter = createStorageAdapter((fact) => facts.push(fact), {
+      awaitCustodySettled: async () => ({
+        audioFile: "/audio/kept.wav",
+        wavOk: true,
+      }),
+    });
+
+    // Provisional insert never happened (or custody never opened): the
+    // pasted transcript must still land in history, audio attached.
+    custodyAdapter.commit("s1", { kind: "success", text: "rescued" });
+    await vi.waitFor(async () => {
+      expect((await rowFor("s1"))?.disposition).toBe("success");
+    });
+    const row = await rowFor("s1");
+    expect(row?.text).toBe("rescued");
+    expect(row?.audio_file).toBe("/audio/kept.wav");
+
+    // Existence guard: a commit retry after settling never duplicates.
+    custodyAdapter.commit("s1", { kind: "success", text: "rescued" });
+    await new Promise((r) => setTimeout(r, 5));
+    const rows = testDb.db.all<Record<string, unknown>>(
+      sql`SELECT id FROM transcriptions WHERE session_id = 's1'`,
+    );
+    expect(rows).toHaveLength(1);
+  });
+
   it("provisional rows are invisible to every user-facing surface", async () => {
     await createProvisionalTranscription({
       sessionId: "live",
