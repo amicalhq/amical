@@ -155,7 +155,9 @@ export const recordingRouter = createRouter({
           type: data.type,
           title: data.uiTitle ?? injectParams(config.title),
           description,
-          subDescription: config.subDescription,
+          // "Your recording is saved" must not show when the failure sealed
+          // before any recording began (refusals, STARTING fast-fails).
+          subDescription: data.noRecording ? undefined : config.subDescription,
           errorCode: data.errorCode,
           traceId: data.traceId,
           primaryAction: config.primaryAction,

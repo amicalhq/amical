@@ -54,6 +54,9 @@ export interface LifecycleNotification {
     | "recording_auto_stopped";
   params?: Record<string, string | number>;
   errorCode?: ErrorCode;
+  /** transcription_failed only: the failure sealed before recording began,
+   * so there is no saved recording for the toast to point at. */
+  noRecording?: boolean;
   uiTitle?: string;
   uiMessage?: string;
   traceId?: string;
@@ -134,6 +137,9 @@ export function createRecordingLifecycle(
     (event: LifecycleNotification) => void
   >();
   function notify(event: LifecycleNotification): void {
+    if (event.type === "transcription_failed") {
+      event = { ...event, noRecording: recordingStartedAt === null };
+    }
     for (const listener of notificationListeners) {
       listener(event);
     }

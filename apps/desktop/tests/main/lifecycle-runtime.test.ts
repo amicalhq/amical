@@ -322,7 +322,11 @@ describe("recording lifecycle runtime", () => {
     await settle();
     expect(noModel.lifecycle.getSnapshot().projection.publicState).toBe("idle");
     expect(noModel.notifications).toEqual([
-      { type: "transcription_failed", errorCode: ErrorCodes.MODEL_MISSING },
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.MODEL_MISSING,
+        noRecording: true,
+      },
     ]);
     expect(noModel.service.beginStreamingSession).not.toHaveBeenCalled();
 
@@ -330,7 +334,11 @@ describe("recording lifecycle runtime", () => {
     await retrying.lifecycle.startDictation();
     await settle();
     expect(retrying.notifications).toEqual([
-      { type: "transcription_failed", errorCode: ErrorCodes.RETRY_IN_PROGRESS },
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+        noRecording: true,
+      },
     ]);
   });
 
@@ -344,7 +352,11 @@ describe("recording lifecycle runtime", () => {
     await settle();
     expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
     expect(h.notifications).toEqual([
-      { type: "transcription_failed", errorCode: ErrorCodes.MODEL_MISSING },
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.MODEL_MISSING,
+        noRecording: true,
+      },
     ]);
 
     // The refusal must not strand the grammar latched — the very next
@@ -467,6 +479,8 @@ describe("recording lifecycle runtime", () => {
         type: "transcription_failed",
         errorCode: ErrorCodes.NETWORK_ERROR,
         uiMessage: "Service unreachable",
+        // The recording ran, so the saved-recording sub-line stays truthful.
+        noRecording: false,
       }),
     ]);
     // Failure keeps the record: stamped, not deleted.
@@ -568,7 +582,11 @@ describe("recording lifecycle runtime", () => {
     expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
     expect(h.service.beginStreamingSession).not.toHaveBeenCalled();
     expect(h.notifications).toEqual([
-      { type: "transcription_failed", errorCode: ErrorCodes.RETRY_IN_PROGRESS },
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+        noRecording: true,
+      },
     ]);
 
     // Grammar was reset by the refusal: the next toggle starts normally.

@@ -118,4 +118,44 @@ describe("recordingRouter capture lifecycle", () => {
 
     observer.unsubscribe();
   });
+
+  it("suppresses the recording-saved sub-line when the failure sealed before recording", async () => {
+    type NotificationListener = (data: {
+      type: "transcription_failed";
+      errorCode: string;
+      noRecording: boolean;
+    }) => void;
+    const notificationListeners = new Set<NotificationListener>();
+    const recordingLifecycle = {
+      onNotification: vi.fn((listener: NotificationListener) => {
+        notificationListeners.add(listener);
+        return () => notificationListeners.delete(listener);
+      }),
+    };
+    const caller = recordingRouter.createCaller({
+      services: { recordingLifecycle },
+    } as never);
+    const emitted: Array<{ subDescription?: unknown }> = [];
+    const subscription = await caller.widgetNotifications();
+    const observer = subscription.subscribe({
+      next: (notification) => emitted.push(notification),
+    });
+
+    const failure = {
+      type: "transcription_failed" as const,
+      errorCode: "WORKER_INITIALIZATION_FAILED",
+    };
+    for (const listener of notificationListeners)
+      listener({ ...failure, noRecording: true });
+    for (const listener of notificationListeners)
+      listener({ ...failure, noRecording: false });
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[0].subDescription).toBeUndefined();
+    expect(emitted[1].subDescription).toEqual({
+      key: "widget.notifications.recordingSaved",
+    });
+
+    observer.unsubscribe();
+  });
 });
