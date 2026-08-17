@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { logger } from "../logger";
 import { ErrorCodes, type ErrorCode } from "../../types/error";
 import {
@@ -24,6 +25,7 @@ import {
   type HostPasteBridge,
   type PendingDraft,
 } from "./adapters/host";
+import { createSessionWork, type SessionWork } from "./effect/session-work";
 import { createGrammarHost, type GrammarHost } from "./grammar-host";
 import type { LifecycleSessionMeta, RecordingMode } from "./metadata";
 import type { LifecycleProjection } from "./projection";
@@ -80,6 +82,8 @@ export interface RecordingLifecycleDeps {
   mintSession: () => SessionId;
   /** Test seam; production uses the streaming WAV writer. */
   createWavWriter?: RecorderAdapterDeps["createWavWriter"];
+  /** Test seam; production constructs its own SessionWork over `timers`. */
+  sessionWork?: SessionWork;
 }
 
 export interface RecordingLifecycle {
@@ -128,6 +132,7 @@ export function createRecordingLifecycle(
   deps: RecordingLifecycleDeps,
 ): RecordingLifecycle {
   const timers = deps.timers ?? REAL_TIMER_HOST;
+  const sessionWork = deps.sessionWork ?? createSessionWork({ timers });
 
   let recorder!: RecorderAdapter;
   let transcription!: TranscriptionAdapter;
@@ -169,6 +174,7 @@ export function createRecordingLifecycle(
     ports: (sink) => {
       transcription = createTranscriptionAdapter({
         sink,
+        sessionWork,
         service: deps.transcriptionService,
         enrich: (session, fields) =>
           enrichTranscriptionBySession(session, {
@@ -193,6 +199,7 @@ export function createRecordingLifecycle(
         sink,
         tuning: deps.tuning,
         timers,
+        sessionWork,
         ambiance: deps.ambiance,
         custody: {
           open: (session, audioFile) =>
@@ -223,6 +230,7 @@ export function createRecordingLifecycle(
         sink,
         bridge: deps.bridge,
         getPreserveClipboard: deps.getPreserveClipboard,
+        sessionWork,
         isDraftSession: (session) => {
           const snapshot = shell.getSnapshot();
           return (
@@ -240,6 +248,7 @@ export function createRecordingLifecycle(
         transcription,
         storage: createStorageAdapter(sink, {
           timers,
+          sessionWork,
           repairDelayMs: deps.tuning.commitRepairDelayMs,
           awaitCustodySettled: (session) =>
             recorder.whenCustodySettled(session),
@@ -258,6 +267,9 @@ export function createRecordingLifecycle(
   function quarantineAndForceReset(): void {
     const session = shell.getSnapshot().sessionId;
     if (session !== null) {
+      // Explicit port calls stay alongside the region interrupt (E8): each
+      // adapter remains independently revertible during the migration.
+      sessionWork.quarantine(session);
       host.abandon(session);
       transcription.cancel(session);
       recorder.stop(session);
@@ -383,7 +395,6 @@ export function createRecordingLifecycle(
   // ── Snapshot-driven surface work ────────────────────────────────────────
   let previous = shell.getSnapshot();
   let reminderHandle: unknown | null = null;
-  let wedgeHandle: unknown | null = null;
   // Recording duration, for the empty-notice gate (surface policy only).
   let recordingStartedAt: number | null = null;
   let recordingStoppedAt: number | null = null;
@@ -392,13 +403,6 @@ export function createRecordingLifecycle(
     if (reminderHandle !== null) {
       timers.clear(reminderHandle);
       reminderHandle = null;
-    }
-  }
-
-  function clearWedgeWatchdog(): void {
-    if (wedgeHandle !== null) {
-      timers.clear(wedgeHandle);
-      wedgeHandle = null;
     }
   }
 
@@ -414,18 +418,30 @@ export function createRecordingLifecycle(
       now.publicState === "starting" &&
       snapshot.sessionId !== null
     ) {
+      sessionWork.open(snapshot.sessionId);
       transcription.open(snapshot.sessionId);
       // Wedge watchdog: every stage is bounded, so a session outliving the
-      // whole budget means a wedged timer or port — force-reset (R10).
-      clearWedgeWatchdog();
+      // whole budget means a wedged timer or port — force-reset (R10). A
+      // delivery-region fiber: the IDLE edge retires it (canceller clears
+      // the port timer), and quarantine from inside the fiber is safe
+      // because SessionWork interrupts are forked (non-suicidal).
       const session = snapshot.sessionId;
-      wedgeHandle = timers.set(wedgeBudgetMs(deps.tuning), () => {
-        wedgeHandle = null;
-        if (shell.getSnapshot().sessionId === session) {
-          logger.audio.error("Lifecycle wedge watchdog fired", { session });
-          quarantineAndForceReset();
-        }
-      });
+      sessionWork.forkDelivery(
+        session,
+        sessionWork.sleep(wedgeBudgetMs(deps.tuning)).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              // Retirement interrupts this fiber; the equality re-check is
+              // deliberate defense-in-depth so a stale fire can never kill
+              // a successor (review S7).
+              if (shell.getSnapshot().sessionId !== session) return;
+              logger.audio.error("Lifecycle wedge watchdog fired", { session });
+              quarantineAndForceReset();
+            }),
+          ),
+        ),
+        { housekeeping: true },
+      );
     }
 
     if (now.publicState === "recording" && was.publicState !== "recording") {
@@ -460,8 +476,12 @@ export function createRecordingLifecycle(
     }
 
     if (now.publicState === "idle" && was.publicState !== "idle") {
+      // Retirement covers every route to IDLE, including staging expiry:
+      // delivery fibers die here, obligations run on (E1).
+      if (prev.sessionId !== null) {
+        sessionWork.retire(prev.sessionId);
+      }
       grammar.notifyLifecycleIdle();
-      clearWedgeWatchdog();
       recordingStartedAt = null;
       recordingStoppedAt = null;
       failureDetails.clear();
@@ -582,7 +602,6 @@ export function createRecordingLifecycle(
     dispose: () => {
       unsubscribeSnapshots();
       clearReminder();
-      clearWedgeWatchdog();
       quarantineAndForceReset();
     },
   };

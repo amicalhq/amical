@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSessionWork } from "../../src/main/lifecycle/effect/session-work";
 import {
   createRecorderAdapter,
   type AmbianceContext,
@@ -54,10 +55,12 @@ function makeHarness() {
       void custodyCalls.push(`enrich:${session}:${fields.duration}`),
   };
 
+  const sessionWork = createSessionWork({ timers });
   const adapter: RecorderAdapter = createRecorderAdapter({
     sink: (fact) => facts.push(fact),
     tuning: { deadMicMs: DEAD_MIC_MS, drainMs: DRAIN_MS },
     timers,
+    sessionWork,
     ambiance: {
       begin: () => {
         beep = deferred<void>();
@@ -88,6 +91,7 @@ function makeHarness() {
 
   return {
     adapter,
+    sessionWork,
     facts,
     feeds,
     custody,
@@ -370,5 +374,32 @@ describe("lifecycle recorder adapter", () => {
     await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
     expect(h.feeds).toHaveLength(1);
     expect(h.writers).toHaveLength(1);
+  });
+});
+
+describe("S2: the close tail is an obligation", () => {
+  it("custody settles after retirement: quarantine cannot kill the drain tail", async () => {
+    const h = makeHarness();
+    await driveToCapturing(h);
+    await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
+    await h.settle();
+
+    // R10 shape: quarantine retires the session, then stop() arms the drain.
+    h.sessionWork.open("s1");
+    h.sessionWork.quarantine("s1");
+    h.adapter.stop("s1");
+    const settled: Array<{ audioFile: string | null; wavOk: boolean }> = [];
+    void h.adapter.whenCustodySettled("s1").then((outcome) => {
+      settled.push(outcome);
+    });
+
+    h.timers.fire(DRAIN_MS);
+    await h.sessionWork.settled();
+    await h.settle();
+
+    // The obligation ran to completion: WAV finalized, custody settled.
+    expect(h.writers[0]?.finalized).toBe(true);
+    expect(settled).toEqual([{ audioFile: "/audio/s1.wav", wavOk: true }]);
+    expect(h.facts.at(-1)).toEqual({ type: "recorderClosed", session: "s1" });
   });
 });

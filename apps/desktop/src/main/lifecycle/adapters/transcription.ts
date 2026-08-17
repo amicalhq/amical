@@ -1,6 +1,8 @@
+import { Effect } from "effect";
 import { logger } from "../../logger";
 import { AppError, ErrorCodes } from "../../../types/error";
 import type { ResolvedStreamingSession } from "../../../services/transcription-service";
+import { type SessionWork } from "../effect/session-work";
 import type { LifecycleFactSink, TranscriptionPort } from "../ports";
 import type { SessionId } from "../types";
 
@@ -54,6 +56,7 @@ export interface TranscriptionFailureDetail {
 
 export interface TranscriptionAdapterDeps {
   sink: LifecycleFactSink;
+  sessionWork: SessionWork;
   service: StreamingTranscriptionService;
   /** Descriptive fields onto the custody row (never the fate). Awaited
    * before the final fact so the disposition stamp — which rewrites meta —
@@ -163,9 +166,24 @@ export function createTranscriptionAdapter(
         emitFinal(stt, { kind: "failure", cause: causeOf(error) });
         return;
       }
-      void deps.service.resetVadForNewSession().catch((error) => {
-        logger.transcription.warn("VAD reset failed", { error });
-      });
+      // The VAD reset runs as session work: a session already retired at
+      // dispatch time is refused. A reset ALREADY dispatched cannot be
+      // recalled if it lands late (the cloud-call limit, plan E1 pin 11) —
+      // this fences the dispatch, not the resolution. Warmup stays
+      // app-level fire-and-forget — provider state, not session state.
+      deps.sessionWork.forkDelivery(
+        session,
+        Effect.tryPromise({
+          try: () => deps.service.resetVadForNewSession(),
+          catch: (error) => error,
+        }).pipe(
+          Effect.catchAll((error) =>
+            Effect.sync(() =>
+              logger.transcription.warn("VAD reset failed", { error }),
+            ),
+          ),
+        ),
+      );
       void deps.service.warmupActiveProvider().catch((error) => {
         logger.transcription.warn("Provider warmup failed (non-fatal)", {
           error,
@@ -209,39 +227,52 @@ export function createTranscriptionAdapter(
         });
         return;
       }
-      void deps.service
-        .resolveStreamingSession({
-          sessionId: session,
-          recordingStartedAt: stt.openedAt,
-          recordingStoppedAt: performance.now(),
-        })
-        .then(async (resolved) => {
-          if (resolved) {
-            await deps.enrich(session, {
-              language: resolved.language ?? null,
-              detectedLanguage: resolved.detectedLanguage ?? null,
-              speechModel: resolved.speechModel ?? null,
-              formattingModel: resolved.formattingModel ?? null,
-              metaPatch: resolved.meta,
-            });
-          }
-          if (!resolved || resolved.text.trim() === "") {
-            emitFinal(stt, { kind: "empty" });
-          } else {
-            emitFinal(stt, { kind: "text", text: resolved.text });
-          }
-        })
-        .catch((error) => {
-          if (!stt.cancelled && !stt.finalEmitted) {
-            logger.transcription.error("Failed to resolve streaming session", {
+      // The resolve chain is an obligation: it must run to completion after
+      // the session leaves RESOLVING (the seal consumes its result wherever
+      // the machine is — uniform seal law). The terminal fact is guarded by
+      // the emitFinal once-latch, NOT an exit-filtered fact: three producers
+      // share it (this chain, the out-of-band terminal-failure callback,
+      // cancel), and the callback producer is no fiber exit — the flags are
+      // the only mechanism covering all three (audit S3).
+      deps.sessionWork.runObligation(
+        session,
+        Effect.promise(async () => {
+          try {
+            const resolved = await deps.service.resolveStreamingSession({
               sessionId: session,
-              error,
+              recordingStartedAt: stt.openedAt,
+              recordingStoppedAt: performance.now(),
             });
-            const detail = detailOf(error);
-            if (detail) deps.onFailureDetail?.(session, detail);
+            if (resolved) {
+              await deps.enrich(session, {
+                language: resolved.language ?? null,
+                detectedLanguage: resolved.detectedLanguage ?? null,
+                speechModel: resolved.speechModel ?? null,
+                formattingModel: resolved.formattingModel ?? null,
+                metaPatch: resolved.meta,
+              });
+            }
+            if (!resolved || resolved.text.trim() === "") {
+              emitFinal(stt, { kind: "empty" });
+            } else {
+              emitFinal(stt, { kind: "text", text: resolved.text });
+            }
+          } catch (error) {
+            if (!stt.cancelled && !stt.finalEmitted) {
+              logger.transcription.error(
+                "Failed to resolve streaming session",
+                {
+                  sessionId: session,
+                  error,
+                },
+              );
+              const detail = detailOf(error);
+              if (detail) deps.onFailureDetail?.(session, detail);
+            }
+            emitFinal(stt, { kind: "failure", cause: causeOf(error) });
           }
-          emitFinal(stt, { kind: "failure", cause: causeOf(error) });
-        });
+        }),
+      );
     },
 
     cancel(session): void {

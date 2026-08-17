@@ -25,6 +25,10 @@ import {
   type LifecycleNotification,
   type RecordingLifecycle,
 } from "../../src/main/lifecycle/runtime";
+import {
+  createSessionWork,
+  type SessionWork,
+} from "../../src/main/lifecycle/effect/session-work";
 import type { ResolvedStreamingSession } from "../../src/services/transcription-service";
 
 const TUNING: LifecycleTuning = {
@@ -56,6 +60,7 @@ function makeHarness(options?: {
   hasModel?: boolean;
   retryInProgress?: boolean;
   draftChord?: () => boolean;
+  sessionWork?: SessionWork;
 }) {
   const timers = new FakeTimers();
   const pastes: string[] = [];
@@ -117,6 +122,7 @@ function makeHarness(options?: {
       finalize: async () => undefined,
       abort: async () => undefined,
     }),
+    sessionWork: options?.sessionWork,
   });
   lifecycle.onNotification((event) => notifications.push(event));
 
@@ -676,5 +682,92 @@ describe("recording lifecycle runtime", () => {
     await settle();
     expect(h.timers.armedDurations()).toEqual([]);
     expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+  });
+});
+
+describe("S5 runtime edges", () => {
+  it("S5: the reminder dies on the recording-exit edge, not at retirement", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    expect(h.timers.armedDurations()).toContain(TUNING.longRecordingReminderMs);
+
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false); // stopping: recording exited, session live
+    await settle();
+    // A session in stopping must never get a "still recording" reminder.
+    expect(h.timers.armedDurations()).not.toContain(
+      TUNING.longRecordingReminderMs,
+    );
+  });
+});
+
+describe("session-work wiring (S0.5)", () => {
+  function probeWork() {
+    const inner = createSessionWork({ timers: new FakeTimers() });
+    const calls: string[] = [];
+    const sessionWork: SessionWork = {
+      ...inner,
+      open: (s) => {
+        calls.push(`open:${s}`);
+        inner.open(s);
+      },
+      retire: (s) => {
+        calls.push(`retire:${s}`);
+        inner.retire(s);
+      },
+      quarantine: (s) => {
+        calls.push(`quarantine:${s}`);
+        inner.quarantine(s);
+      },
+    };
+    return { calls, sessionWork, inner };
+  }
+
+  it("scopes open on the starting edge and retire on the idle edge", async () => {
+    const { calls, sessionWork, inner } = probeWork();
+    const h = makeHarness({ sessionWork });
+
+    const session = await h.startToRecording();
+    expect(calls).toEqual([`open:${session}`]);
+
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(calls).toEqual([`open:${session}`, `retire:${session}`]);
+    await inner.settled();
+    expect(inner.openCount()).toBe(0);
+  });
+
+  it("forceReset quarantines the live session before the reset retires it", async () => {
+    const { calls, sessionWork } = probeWork();
+    const h = makeHarness({ sessionWork });
+
+    const session = await h.startToRecording();
+    h.lifecycle.forceReset();
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    // quarantine appears twice: the runtime's explicit call (E8 keeps the
+    // port calls) plus host.abandon delegating to it — idempotent by design.
+    expect(calls).toEqual([
+      `open:${session}`,
+      `quarantine:${session}`,
+      `quarantine:${session}`,
+      `retire:${session}`,
+    ]);
+  });
+
+  it("a refused admission opens no scope", async () => {
+    const { calls, sessionWork } = probeWork();
+    const h = makeHarness({ sessionWork, hasModel: false });
+    await h.lifecycle.startDictation();
+    await settle();
+    expect(calls).toEqual([]);
   });
 });

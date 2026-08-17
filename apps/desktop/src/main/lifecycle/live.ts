@@ -1,7 +1,7 @@
 import { ipcMain, app } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Effect, Layer } from "effect";
+import { Deferred, Effect, Layer } from "effect";
 import { v4 as uuid } from "uuid";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { logger } from "../logger";
@@ -26,6 +26,8 @@ import {
   type RecordingLifecycle,
   type RecordingLifecycleDeps,
 } from "./runtime";
+import { createSessionWork } from "./effect/session-work";
+import { REAL_TIMER_HOST } from "./shell";
 import { runLifecycleRecovery } from "./startup-recovery";
 import { DEFAULT_LIFECYCLE_TUNING } from "./tuning";
 
@@ -71,6 +73,12 @@ export function createDesktopRecordingLifecycle(deps: {
   const { nativeBridge, settingsService, modelService } = deps;
   const transcriptionService =
     deps.transcriptionService ?? degradedTranscriptionService();
+
+  // One SessionWork instance for the whole binding: the runtime wires it to
+  // the lifecycle edges, and the desktop glue below runs its own session
+  // work (ambiance stop, draft barrier) through the same regions and
+  // failure sink.
+  const sessionWork = createSessionWork({ timers: REAL_TIMER_HOST });
 
   let shortcutManager: ShortcutManager | null = null;
 
@@ -121,19 +129,28 @@ export function createDesktopRecordingLifecycle(deps: {
       const pending = ambianceInFlight.get(session);
       ambianceInFlight.delete(session);
       if (!nativeBridge) return;
-      void (async () => {
-        const resolved =
-          context ?? (pending ? await pending.catch(() => null) : null);
-        await nativeBridge.call("stopRecording", {
-          wasMuted: resolved?.systemAudioMuted ?? false,
-          muteSounds: resolved?.soundsMuted ?? false,
-        });
-      })().catch((error) => {
-        logger.audio.warn("Failed to end recording ambiance", {
-          sessionId: session,
-          error,
-        });
-      });
+      // The unmute is an obligation: it must land even though the session
+      // is already retiring. (begin keeps its promise shape — the port
+      // returns {beepGate, done} promises, so a begin fiber would be pure
+      // ceremony around the same values.)
+      sessionWork.runObligation(
+        session,
+        Effect.promise(async () => {
+          try {
+            const resolved =
+              context ?? (pending ? await pending.catch(() => null) : null);
+            await nativeBridge.call("stopRecording", {
+              wasMuted: resolved?.systemAudioMuted ?? false,
+              muteSounds: resolved?.soundsMuted ?? false,
+            });
+          } catch (error) {
+            logger.audio.warn("Failed to end recording ambiance", {
+              sessionId: session,
+              error,
+            });
+          }
+        }),
+      );
     },
   };
 
@@ -142,7 +159,7 @@ export function createDesktopRecordingLifecycle(deps: {
   // (bounded) so the merged selection is in the stream context before the
   // final flush. One capture per session.
   const DRAFT_CAPTURE_BARRIER_MS = 2_500;
-  const draftCaptures = new Map<string, Promise<void>>();
+  const draftCaptures = new Map<string, Deferred.Deferred<void>>();
 
   const barrieredTranscriptionService: RecordingLifecycleDeps["transcriptionService"] =
     {
@@ -159,12 +176,15 @@ export function createDesktopRecordingLifecycle(deps: {
         // (a second synthetic copy chord) after transcription retired.
         const capture = draftCaptures.get(options.sessionId);
         if (capture) {
-          await Promise.race([
-            capture,
-            new Promise<void>((resolve) =>
-              setTimeout(resolve, DRAFT_CAPTURE_BARRIER_MS),
+          // Bounded barrier: the losing side is interrupted, so a settled
+          // capture no longer leaves a dangling timeout behind.
+          await Effect.runPromise(
+            sessionWork.bounded<void>(
+              Deferred.await(capture),
+              DRAFT_CAPTURE_BARRIER_MS,
+              undefined,
             ),
-          ]);
+          );
         }
         return transcriptionService.resolveStreamingSession(options);
       },
@@ -206,6 +226,7 @@ export function createDesktopRecordingLifecycle(deps: {
     },
     tuning: DEFAULT_LIFECYCLE_TUNING,
     mintSession: () => uuid(),
+    sessionWork,
   });
 
   // Session-start context work: refresh the accessibility snapshot and push
@@ -254,15 +275,16 @@ export function createDesktopRecordingLifecycle(deps: {
     ) {
       // Once per session: stopping publishes several snapshots (drain,
       // seal, settle) and the capture must not re-fire on each.
-      draftCaptures.set(
-        session,
-        captureDraftSelectionViaCopy(session).catch((error) => {
+      const barrier = Effect.runSync(Deferred.make<void>());
+      draftCaptures.set(session, barrier);
+      void captureDraftSelectionViaCopy(session)
+        .catch((error) => {
           logger.audio.warn("Draft copy-capture fallback failed", {
             sessionId: session,
             error: error instanceof Error ? error.message : String(error),
           });
-        }),
-      );
+        })
+        .finally(() => Deferred.unsafeDone(barrier, Effect.void));
     }
   });
 

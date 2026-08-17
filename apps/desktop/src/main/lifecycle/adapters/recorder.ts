@@ -1,5 +1,7 @@
+import { Deferred, Effect } from "effect";
 import { logger } from "../../logger";
 import { StreamingWavWriter } from "../../../utils/streaming-wav-writer";
+import { ensuringFact, type SessionWork } from "../effect/session-work";
 import type { LifecycleFactSink, RecorderPort } from "../ports";
 import type { SessionId } from "../types";
 import type { LifecycleTuning } from "../tuning";
@@ -64,6 +66,7 @@ export interface CapturedMicrophone {
 export interface RecorderAdapterDeps {
   sink: LifecycleFactSink;
   tuning: Pick<LifecycleTuning, "deadMicMs" | "drainMs">;
+  sessionWork: SessionWork;
   ambiance: RecorderAmbiance;
   custody: RecorderCustodyStore;
   /** Frames for the transcription stream; bypasses the shell queue. */
@@ -137,30 +140,25 @@ export function createRecorderAdapter(
   const captures = new Map<SessionId, CaptureState>();
   let liveSession: SessionId | null = null;
 
-  /** Custody-settled waiters (R4/D25): resolved when a session's writer
-   * closes, carrying what custody holds. */
-  const custodySettled = new Map<
+  /** Custody-settled waiters (R4/D25): one Deferred per session in an
+   * app-scope registry, resolved when the session's writer closes. The
+   * registry outlives the session scope by design (E1 pin 7): the stamp
+   * usually asks AFTER custody settled, and a commit retry can ask again
+   * seconds later — so retention is FIFO-bounded, never settle-deleted. */
+  const custodyDeferred = new Map<
     SessionId,
-    (outcome: CustodyOutcome) => void
+    Deferred.Deferred<CustodyOutcome>
   >();
-  const custodySettledPromises = new Map<SessionId, Promise<CustodyOutcome>>();
 
   function openCustodyWaiter(session: SessionId): void {
-    // Settled outcomes stay cached: the stamp usually asks AFTER custody
-    // settled (the writer finishes before transcription resolves), and a
-    // commit retry can ask again seconds later. Bound the cache instead of
-    // deleting on settle.
-    while (custodySettledPromises.size > 8) {
-      const oldest = custodySettledPromises.keys().next().value;
+    while (custodyDeferred.size > 8) {
+      const oldest = custodyDeferred.keys().next().value;
       if (oldest === undefined) break;
-      custodySettledPromises.delete(oldest);
-      custodySettled.delete(oldest);
+      custodyDeferred.delete(oldest);
     }
-    custodySettledPromises.set(
+    custodyDeferred.set(
       session,
-      new Promise<CustodyOutcome>((resolve) => {
-        custodySettled.set(session, resolve);
-      }),
+      Effect.runSync(Deferred.make<CustodyOutcome>()),
     );
   }
 
@@ -168,8 +166,8 @@ export function createRecorderAdapter(
     session: SessionId,
     outcome: CustodyOutcome,
   ): void {
-    custodySettled.get(session)?.(outcome);
-    custodySettled.delete(session);
+    const waiter = custodyDeferred.get(session);
+    if (waiter) Deferred.unsafeDone(waiter, Effect.succeed(outcome));
   }
 
   function current(session: SessionId): CaptureState | null {
@@ -197,40 +195,50 @@ export function createRecorderAdapter(
     endAmbiance(capture);
 
     const { writer, session, samples } = capture;
-    if (writer) {
-      capture.writeQueue = capture.writeQueue.then(async () => {
-        // wavOk tracks WRITER health only: a failed duration enrichment is
-        // a best-effort loss, never a reason to detach a finalized WAV.
-        try {
-          await writer.finalize();
-        } catch (error) {
-          capture.wavOk = false;
-          logger.audio.error("Failed to finalize audio custody", {
+    // The close tail is an obligation (D19/D25): it runs to completion no
+    // matter how the session ended — retirement and quarantine never touch
+    // it. The per-frame writeQueue itself stays a plain promise chain (E3);
+    // the fiber only owns the once-per-session tail behind it.
+    const closeTail = Effect.promise(async () => {
+      await capture.writeQueue;
+      if (!writer) return;
+      // wavOk tracks WRITER health only: a failed duration enrichment is
+      // a best-effort loss, never a reason to detach a finalized WAV.
+      try {
+        await writer.finalize();
+      } catch (error) {
+        capture.wavOk = false;
+        logger.audio.error("Failed to finalize audio custody", {
+          sessionId: session,
+          error,
+        });
+        return;
+      }
+      await deps.custody
+        .enrich(session, {
+          duration: Math.round(samples / SAMPLE_RATE),
+        })
+        .catch((error) => {
+          logger.audio.warn("Failed to enrich custody duration", {
             sessionId: session,
             error,
           });
-          return;
-        }
-        await deps.custody
-          .enrich(session, {
-            duration: Math.round(samples / SAMPLE_RATE),
-          })
-          .catch((error) => {
-            logger.audio.warn("Failed to enrich custody duration", {
-              sessionId: session,
-              error,
-            });
-          });
-      });
-    }
-    void capture.writeQueue.finally(() =>
-      settleCustodyWaiter(session, {
-        audioFile: capture.audioFile,
-        wavOk: capture.wavOk,
-      }),
+        });
+    });
+    deps.sessionWork.runObligation(
+      session,
+      ensuringFact(closeTail, () =>
+        settleCustodyWaiter(session, {
+          audioFile: capture.audioFile,
+          wavOk: capture.wavOk,
+        }),
+      ),
     );
     captures.delete(session);
 
+    // recorderClosed stays a synchronous emission at the close decision
+    // point: suites assert it without settling, and the reducer must see it
+    // in the same dispatch (audit S2 amendment).
     if (!capture.closedEmitted) {
       capture.closedEmitted = true;
       deps.sink({ type: "recorderClosed", session });
@@ -387,9 +395,9 @@ export function createRecorderAdapter(
     },
 
     whenCustodySettled(session: SessionId): Promise<CustodyOutcome> {
-      return (
-        custodySettledPromises.get(session) ?? Promise.resolve(EMPTY_CUSTODY)
-      );
+      const waiter = custodyDeferred.get(session);
+      if (!waiter) return Promise.resolve(EMPTY_CUSTODY);
+      return Effect.runPromise(Deferred.await(waiter));
     },
   };
 }

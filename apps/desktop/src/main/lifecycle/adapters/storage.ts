@@ -1,4 +1,5 @@
 import { unlink } from "node:fs/promises";
+import { Effect } from "effect";
 import { logger } from "../../logger";
 import { incrementDailyStats } from "../../../db/daily-stats";
 import {
@@ -7,6 +8,11 @@ import {
   stampTranscriptionDisposition,
 } from "../../../db/transcriptions";
 import { countWords } from "../../../utils/dictation-stats";
+import {
+  createSessionWork,
+  ensuringFact,
+  type SessionWork,
+} from "../effect/session-work";
 import type { LifecycleFactSink, StoragePort } from "../ports";
 import { REAL_TIMER_HOST, type ShellTimerHost } from "../shell";
 import type { SealedOutcome, SessionId } from "../types";
@@ -49,11 +55,13 @@ export function createStorageAdapter(
     /** Upper bound on the custody wait; a wedged writer delays the stamp,
      * never holds it hostage. */
     custodySettleBoundMs?: number;
+    sessionWork?: SessionWork;
   },
 ): StoragePort {
   const timers = options?.timers ?? REAL_TIMER_HOST;
   const repairDelayMs = options?.repairDelayMs ?? 5_000;
   const custodySettleBoundMs = options?.custodySettleBoundMs ?? 10_000;
+  const sessionWork = options?.sessionWork ?? createSessionWork({ timers });
 
   /** null = custody state unknown (no waiter wired, or the bound fired):
    * stamp as-is and never destroy references based on ignorance. */
@@ -62,31 +70,23 @@ export function createStorageAdapter(
   ): Promise<CustodyOutcome | null> {
     const wait = options?.awaitCustodySettled?.(session);
     if (!wait) return null;
-    return await new Promise<CustodyOutcome | null>((resolve) => {
-      let done = false;
-      const bound = timers.set(custodySettleBoundMs, () => {
-        if (done) return;
-        done = true;
-        logger.audio.error("Custody settle bound hit; stamping anyway", {
-          sessionId: session,
-        });
-        resolve(null);
-      });
-      wait.then(
-        (outcome) => {
-          if (done) return;
-          done = true;
-          timers.clear(bound);
-          resolve(outcome);
-        },
-        () => {
-          if (done) return;
-          done = true;
-          timers.clear(bound);
-          resolve(null);
-        },
-      );
-    });
+    // A race, not a hand-rolled latch: the loser is interrupted, and the
+    // sleep's canceller clears its port timer (armed-set parity, E2).
+    const read = Effect.tryPromise({
+      try: () => wait,
+      catch: () => null,
+    }).pipe(Effect.catchAll(() => Effect.succeed<CustodyOutcome | null>(null)));
+    const bound = sessionWork.sleep(custodySettleBoundMs).pipe(
+      Effect.tap(() =>
+        Effect.sync(() =>
+          logger.audio.error("Custody settle bound hit; stamping anyway", {
+            sessionId: session,
+          }),
+        ),
+      ),
+      Effect.as<CustodyOutcome | null>(null),
+    );
+    return Effect.runPromise(Effect.race(read, bound));
   }
 
   async function settleRetained(
@@ -170,29 +170,37 @@ export function createStorageAdapter(
 
   return {
     commit(session, sealed): void {
-      void commitSealed(session, sealed)
-        .then(() => sink({ type: "storageFinished", session }))
-        .catch((error) => {
-          logger.transcription.error("Lifecycle commit failed", {
-            sessionId: session,
-            sealedKind: sealed.kind,
-            error,
-          });
-          // The attempt settled (failed): report the fact (D15) so the
-          // machine moves on immediately instead of eating the grace bound
-          // — a known failure must not look like a wedged port. Repair is
-          // port business: one silent background retry (quarantine-lite),
-          // then the startup sweep.
-          sink({ type: "storageFinished", session });
-          timers.set(repairDelayMs, () => {
-            void commitSealed(session, sealed).catch((repairError) => {
-              logger.transcription.error(
-                "Lifecycle commit repair failed; startup recovery will settle the row",
-                { sessionId: session, error: repairError },
-              );
+      // The settle→stamp→count chain is one obligation fiber; its ensuring
+      // fact is storageFinished on BOTH paths (D15) — a known failure must
+      // not look like a wedged port. The fact belongs to the FIRST attempt
+      // only: the repair retry (raw timer, app-level, quarantine-lite)
+      // never re-emits, and the startup sweep stays the ultimate net.
+      const attempt = Effect.tryPromise({
+        try: () => commitSealed(session, sealed),
+        catch: (error) => error,
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.sync(() => {
+            logger.transcription.error("Lifecycle commit failed", {
+              sessionId: session,
+              sealedKind: sealed.kind,
+              error,
             });
-          });
-        });
+            timers.set(repairDelayMs, () => {
+              void commitSealed(session, sealed).catch((repairError) => {
+                logger.transcription.error(
+                  "Lifecycle commit repair failed; startup recovery will settle the row",
+                  { sessionId: session, error: repairError },
+                );
+              });
+            });
+          }),
+        ),
+      );
+      sessionWork.runObligation(
+        session,
+        ensuringFact(attempt, () => sink({ type: "storageFinished", session })),
+      );
     },
   };
 }

@@ -1,5 +1,7 @@
+import { Effect } from "effect";
 import { logger } from "../../logger";
 import { getLatestTranscription } from "../../../db/transcriptions";
+import { ensuringFact, type SessionWork } from "../effect/session-work";
 import type { HostPort, LifecycleFactSink } from "../ports";
 import type { SealedOutcome, SessionId } from "../types";
 
@@ -9,9 +11,17 @@ import type { SealedOutcome, SessionId } from "../types";
  * for delivering outcomes, so no delivery-authority re-check exists here:
  * the serialized queue already decided every race by the time this runs.
  *
+ * The paste runs as an interruptible delivery span inside the staging
+ * obligation (SessionWork): retirement — the IDLE edge, a staging expiry or
+ * an R10 quarantine — kills the span at its next await, so a stale paste can
+ * never land after the session died. The deliveryStaged fact is an ensuring
+ * fact: it fires exactly once whether the span delivered, was refused or was
+ * interrupted (the reducer waits on it — ports.ts).
+ *
  * Draft sessions stage into the pending-draft store for review instead of
  * pasting; confirm/dismiss are post-lifecycle host actions (the machine is
- * IDLE by then — a review never blocks the next dictation).
+ * IDLE by then — a review never blocks the next dictation) and therefore run
+ * outside any session region, as does the paste-last-transcript shortcut.
  */
 
 export interface PendingDraft {
@@ -31,6 +41,7 @@ export interface HostAdapterDeps {
   sink: LifecycleFactSink;
   bridge: HostPasteBridge | null;
   getPreserveClipboard: () => Promise<boolean>;
+  sessionWork: SessionWork;
   /** Whether the given (still-live) session is a draft review session. */
   isDraftSession: (session: SessionId) => boolean;
   /** Lifecycle idle probe for Enter-mask arming. */
@@ -40,10 +51,9 @@ export interface HostAdapterDeps {
 }
 
 export interface HostAdapter extends HostPort {
-  /** R10 quarantine: a forceReset injector abandons the session's staged
-   * delivery BEFORE resetting, so an in-flight paste cannot land inside a
-   * successor session. Best-effort — a paste already handed to the native
-   * layer cannot be recalled. */
+  /** R10 quarantine: retire the session's delivery region so an in-flight
+   * paste dies at its next await and no new one can fork. Best-effort — a
+   * paste already handed to the native layer cannot be recalled. */
   abandon(session: SessionId): void;
   getPendingDraft(): PendingDraft | null;
   confirmDraft(): Promise<void>;
@@ -59,7 +69,6 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
   let pendingDraft: PendingDraft | null = null;
   let draftEnterArmed = false;
   const draftListeners = new Set<(draft: PendingDraft | null) => void>();
-  const abandoned = new Set<SessionId>();
 
   function setPendingDraft(draft: PendingDraft | null): void {
     pendingDraft = draft;
@@ -87,48 +96,82 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
     }
   }
 
-  async function paste(
-    transcript: string,
-    isAbandoned?: () => boolean,
-  ): Promise<void> {
+  /** Hand the transcript to the native layer. Fire-and-forget by design:
+   * once dispatched it cannot be recalled. */
+  function dispatchPaste(transcript: string, preserveClipboard: boolean): void {
+    if (!deps.bridge) {
+      logger.main.warn("Native bridge unavailable, cannot paste");
+      return;
+    }
+    void deps.bridge
+      .pasteText({ transcript, preserveClipboard })
+      .catch((error) => {
+        logger.main.warn("Failed to paste transcription via native helper", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }
+
+  /** Post-lifecycle paste (draft confirm, paste-latest): app-scope, never
+   * fenced by session retirement. */
+  async function paste(transcript: string): Promise<void> {
     if (!transcript) return;
     try {
       const preserveClipboard = await deps.getPreserveClipboard();
-      if (!deps.bridge) {
-        logger.main.warn("Native bridge unavailable, cannot paste");
-        return;
-      }
-      // Re-check after the async gap: a forceReset quarantine may have
-      // abandoned this session while preferences were being read.
-      if (isAbandoned?.()) return;
-      void deps.bridge
-        .pasteText({ transcript, preserveClipboard })
-        .catch((error) => {
-          logger.main.warn("Failed to paste transcription via native helper", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
+      dispatchPaste(transcript, preserveClipboard);
     } catch (error) {
       logger.main.warn("Failed to prepare paste", { error });
     }
   }
 
+  /** The session-fenced delivery span: the preference read is the await a
+   * retirement interrupts (the R9-1 window). A rejected read degrades like
+   * the old catch — warn and skip, never fail the staging obligation. */
+  const pasteSpan = (transcript: string): Effect.Effect<void> =>
+    Effect.tryPromise({
+      try: () => deps.getPreserveClipboard(),
+      catch: (error) => error,
+    }).pipe(
+      Effect.flatMap((preserveClipboard) =>
+        Effect.sync(() => dispatchPaste(transcript, preserveClipboard)),
+      ),
+      Effect.catchAll((error) =>
+        Effect.sync(() =>
+          logger.main.warn("Failed to prepare paste", { error }),
+        ),
+      ),
+    );
+
   return {
     stageDelivery(session: SessionId, sealed: SealedOutcome): void {
-      void (async () => {
-        if (sealed.kind === "success" && !abandoned.has(session)) {
-          if (deps.isDraftSession(session)) {
-            setPendingDraft({ sessionId: session, text: sealed.text });
-          } else {
-            await paste(sealed.text, () => abandoned.has(session));
-          }
-        }
-        deps.sink({ type: "deliveryStaged", session });
-      })();
+      const emit = () => deps.sink({ type: "deliveryStaged", session });
+      if (sealed.kind !== "success") {
+        emit();
+        return;
+      }
+      if (deps.isDraftSession(session)) {
+        // Sync prefix: the still-live probe and the displacement write must
+        // run before any await (the probe is only valid while the session
+        // lives; a fiber hop would expose it to staleness).
+        setPendingDraft({ sessionId: session, text: sealed.text });
+        emit();
+        return;
+      }
+      if (!sealed.text) {
+        emit();
+        return;
+      }
+      deps.sessionWork.runObligation(
+        session,
+        ensuringFact(
+          deps.sessionWork.deliverySpan(session, pasteSpan(sealed.text)),
+          emit,
+        ),
+      );
     },
 
     abandon(session: SessionId): void {
-      abandoned.add(session);
+      deps.sessionWork.quarantine(session);
     },
 
     getPendingDraft(): PendingDraft | null {

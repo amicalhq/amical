@@ -5,6 +5,8 @@ import {
   type TranscriptionEnrichment,
 } from "../../src/main/lifecycle/adapters/transcription";
 import type { LifecyclePortFact } from "../../src/main/lifecycle/ports";
+import { createSessionWork } from "../../src/main/lifecycle/effect/session-work";
+import { FakeTimers } from "../helpers/lifecycle-fakes";
 import type { ResolvedStreamingSession } from "../../src/services/transcription-service";
 import { AppError, ErrorCodes } from "../../src/types/error";
 
@@ -29,8 +31,12 @@ function makeHarness(overrides: Partial<StreamingTranscriptionService> = {}) {
   }> = [];
   const terminalCallbacks = new Map<string, (error: Error) => void>();
 
+  const sessionWork = createSessionWork({ timers: new FakeTimers() });
   const service: StreamingTranscriptionService = {
     beginStreamingSession: vi.fn((sessionId, onTerminalFailure) => {
+      // The runtime opens the region before the adapter opens the stream;
+      // the harness mirrors that here so every test's session has one.
+      sessionWork.open(sessionId);
       if (onTerminalFailure)
         terminalCallbacks.set(sessionId, onTerminalFailure);
       return true;
@@ -45,13 +51,21 @@ function makeHarness(overrides: Partial<StreamingTranscriptionService> = {}) {
 
   const adapter = createTranscriptionAdapter({
     sink: (fact) => facts.push(fact),
+    sessionWork,
     service,
     enrich: (session, fields) => {
       enrichments.push({ session, fields });
     },
   });
 
-  return { adapter, facts, enrichments, service, terminalCallbacks };
+  return {
+    adapter,
+    sessionWork,
+    facts,
+    enrichments,
+    service,
+    terminalCallbacks,
+  };
 }
 
 describe("lifecycle transcription adapter", () => {
@@ -130,9 +144,11 @@ describe("lifecycle transcription adapter", () => {
       releaseEnrich = resolve;
     });
     const facts: LifecyclePortFact[] = [];
+    const inlineHarness = makeHarness();
     const adapter = createTranscriptionAdapter({
       sink: (fact) => facts.push(fact),
-      service: makeHarness().service,
+      sessionWork: inlineHarness.sessionWork,
+      service: inlineHarness.service,
       enrich: () => enrichGate,
     });
 
@@ -275,5 +291,27 @@ describe("lifecycle transcription adapter", () => {
         result: { kind: "failure", cause: ErrorCodes.UNKNOWN },
       },
     ]);
+  });
+});
+
+describe("S3: session fences", () => {
+  it("does not dispatch the VAD reset for a session already retired", async () => {
+    const h = makeHarness();
+    // Simulate the stale-open race: the region exists but retired before
+    // the stream opens (a quick discard landing inside the same tick).
+    const stale = vi.mocked(h.service.beginStreamingSession);
+    stale.mockImplementationOnce(() => {
+      h.sessionWork.open("s1");
+      h.sessionWork.retire("s1");
+      return true;
+    });
+    h.adapter.open("s1");
+    await settle();
+    expect(h.service.resetVadForNewSession).not.toHaveBeenCalled();
+
+    // A live session still resets normally.
+    h.adapter.open("s2");
+    await settle();
+    expect(h.service.resetVadForNewSession).toHaveBeenCalledTimes(1);
   });
 });
