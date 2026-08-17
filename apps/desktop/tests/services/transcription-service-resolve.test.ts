@@ -195,6 +195,49 @@ describe("TranscriptionService — lifecycle resolve", () => {
     expect(updateTranscription).not.toHaveBeenCalled();
   });
 
+  it("a VAD failure degrades the chunk to assumed speech, not a dead session", async () => {
+    const vad = {
+      processAudioFrame: vi.fn(async () => {
+        throw new Error("vad worker died");
+      }),
+      reset: vi.fn(),
+    };
+    const local = TranscriptionService.createForTests(
+      {
+        getSelectedModel: vi.fn(async () => "whisper-tiny"),
+      } as unknown as ModelService,
+      vad as unknown as VADService,
+      {
+        getFormatterConfig: vi.fn(async () => ({ enabled: false })),
+      } as unknown as SettingsService,
+      new Proxy({}, { get: () => vi.fn() }) as unknown as TelemetryService,
+      {
+        isAuthenticated: vi.fn(),
+        getIdToken: vi.fn(),
+        refreshTokenIfNeeded: vi.fn(),
+      } as unknown as AuthService,
+      null,
+      null,
+    );
+    const onTerminalFailure = vi.fn();
+    local.beginStreamingSession("vad-fail", onTerminalFailure);
+    await local.processStreamingChunk({
+      sessionId: "vad-fail",
+      audioChunk: new Float32Array([0.5]),
+    });
+
+    expect(vad.processAudioFrame).toHaveBeenCalled();
+    expect(onTerminalFailure).not.toHaveBeenCalled();
+    // The chunk still transcribed, under the same assumed-speech fallback
+    // used when VAD is unavailable at boot.
+    expect(
+      providerMocks.provider.sessions.get("vad-fail")?.transcribe,
+    ).toHaveBeenCalledWith(expect.objectContaining({ speechProbability: 1 }));
+    await expect(
+      local.resolveStreamingSession({ sessionId: "vad-fail" }),
+    ).resolves.toMatchObject({ text: "resolved final (prepared)" });
+  });
+
   it("a terminal failure retires the session; a successor can begin", async () => {
     const failure = new AppError("provider down", ErrorCodes.NETWORK_ERROR);
     const listener = vi.fn();

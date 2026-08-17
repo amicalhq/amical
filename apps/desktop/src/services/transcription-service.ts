@@ -538,10 +538,21 @@ export class TranscriptionService {
           return "";
         }
         // Pass Float32Array directly to VAD
-        const vadResult = await this.vadService.processAudioFrame(audioChunk);
-
-        speechProbability = vadResult.probability;
-        isSpeaking = vadResult.isSpeaking;
+        try {
+          const vadResult = await this.vadService.processAudioFrame(audioChunk);
+          speechProbability = vadResult.probability;
+          isSpeaking = vadResult.isSpeaking;
+        } catch (error) {
+          // A VAD error degrades this chunk exactly like a missing VAD
+          // degrades the whole session: assume speech instead of letting
+          // one bad frame fail the session terminally.
+          logger.transcription.warn(
+            "VAD failed for streaming chunk; assuming speech",
+            { error },
+          );
+          speechProbability = 1;
+          isSpeaking = true;
+        }
       } finally {
         // Release VAD mutex - always release even on error
         this.vadMutex.release();
