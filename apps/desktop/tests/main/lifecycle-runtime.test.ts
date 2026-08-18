@@ -30,6 +30,10 @@ import {
   type SessionWork,
 } from "../../src/main/lifecycle/effect/session-work";
 import type { ResolvedStreamingSession } from "../../src/services/transcription-service";
+import {
+  _resetDictationTraceForTests,
+  installDictationTrace,
+} from "../../src/main/telemetry/dictation-trace";
 
 const TUNING: LifecycleTuning = {
   stageBoundsMs: {
@@ -61,6 +65,8 @@ function makeHarness(options?: {
   retryInProgress?: boolean;
   draftChord?: () => boolean;
   sessionWork?: SessionWork;
+  /** Helper verdict for pasteText; refusals resolve { success: false }. */
+  pasteConfirms?: boolean;
 }) {
   const timers = new FakeTimers();
   const pastes: string[] = [];
@@ -104,6 +110,7 @@ function makeHarness(options?: {
     bridge: {
       pasteText: async ({ transcript }) => {
         pastes.push(transcript);
+        return { success: options?.pasteConfirms ?? true };
       },
       setDraftEnterCapture: async () => undefined,
     },
@@ -197,6 +204,72 @@ describe("recording lifecycle runtime", () => {
     expect(h.ambianceEnds).toHaveLength(1);
     expect(h.timers.armedDurations()).toEqual([]);
     expect(h.notifications).toEqual([]);
+  });
+
+  it("S6 gate: one delivered session flushes one dictation trace with its phases", async () => {
+    const flushedTraces: Array<Record<string, unknown>> = [];
+    installDictationTrace({
+      trackDictationTrace: (properties) => {
+        flushedTraces.push(properties);
+      },
+    });
+    try {
+      const h = makeHarness();
+      const session = await h.startToRecording();
+      h.timers.fire(TUNING.pressWindowMs);
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+      await settle();
+      h.lifecycle.setPttLevel(false);
+      await settle();
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+      await settle();
+      expect(h.pastes).toEqual(["hello world"]);
+
+      expect(flushedTraces).toHaveLength(1);
+      const trace = flushedTraces[0];
+      expect(trace.session_id).toBe(session);
+      expect(typeof trace.disposition).toBe("string");
+      expect(trace.flush_reason).toBe("settled");
+      expect(trace.recording_live_offset_ms).toBeTypeOf("number");
+      expect(trace.recorder_spinup_duration_ms).toBeTypeOf("number");
+      expect(trace.recorder_close_duration_ms).toBeTypeOf("number");
+      expect(trace.paste_duration_ms).toBeTypeOf("number");
+      expect(trace.pasted_offset_ms).toBeTypeOf("number");
+      expect(trace.storage_duration_ms).toBeTypeOf("number");
+      expect(trace.session_duration_ms).toBeTypeOf("number");
+    } finally {
+      _resetDictationTraceForTests();
+    }
+  });
+
+  it("a refused paste settles the trace without paste keys and without grace", async () => {
+    const flushedTraces: Array<Record<string, unknown>> = [];
+    installDictationTrace({
+      trackDictationTrace: (properties) => {
+        flushedTraces.push(properties);
+      },
+    });
+    try {
+      const h = makeHarness({ pasteConfirms: false });
+      const session = await h.startToRecording();
+      h.timers.fire(TUNING.pressWindowMs);
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+      await settle();
+      h.lifecycle.setPttLevel(false);
+      await settle();
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+      await settle();
+      // The helper answered { success: false }: the paste was dispatched but
+      // never landed — both paste keys must be omitted, never faked, and the
+      // settle must not leave the trace waiting out the grace window.
+      expect(flushedTraces).toHaveLength(1);
+      expect(flushedTraces[0].session_id).toBe(session);
+      expect(flushedTraces[0].flush_reason).toBe("settled");
+      expect(flushedTraces[0].paste_duration_ms).toBeUndefined();
+      expect(flushedTraces[0].pasted_offset_ms).toBeUndefined();
+    } finally {
+      _resetDictationTraceForTests();
+    }
   });
 
   it("a quick tap cancels: discard, no transcription result, no paste", async () => {

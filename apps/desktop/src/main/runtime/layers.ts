@@ -80,6 +80,7 @@ import type { BrowserWindow } from "electron";
 
 import { logger } from "../logger";
 import { addRelease, up } from "./layer-helpers";
+import { installDictationTrace } from "../telemetry/dictation-trace";
 import { isMacOS, isWindows } from "../../utils/platform";
 
 import { SettingsService } from "../../services/settings-service";
@@ -182,9 +183,12 @@ export const ServicesBundleLive: Layer.Layer<
 > = Layer.effect(
   ServicesBundleTag,
   Effect.gen(function* () {
+    const telemetryService = yield* TelemetryServiceTag;
+    // Wire the dictation-trace sink once the telemetry service exists.
+    installDictationTrace(telemetryService);
     return Object.freeze({
       posthogClient: yield* PostHogClientTag,
-      telemetryService: yield* TelemetryServiceTag,
+      telemetryService,
       featureFlagService: yield* FeatureFlagServiceTag,
       remoteConfigService: yield* RemoteConfigServiceTag,
       modelService: yield* ModelServiceTag,

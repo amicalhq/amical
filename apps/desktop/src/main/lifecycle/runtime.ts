@@ -1,5 +1,10 @@
 import { Effect } from "effect";
 import { logger } from "../logger";
+import {
+  closeSessionTrace,
+  openSessionTrace,
+  recordPoint,
+} from "../telemetry/dictation-trace";
 import { ErrorCodes, type ErrorCode } from "../../types/error";
 import {
   createProvisionalTranscription,
@@ -406,6 +411,9 @@ export function createRecordingLifecycle(
     }
   }
 
+  let traceDisposition: string | null = null;
+  let traceErrorCode: string | null = null;
+
   const unsubscribeSnapshots = shell.onSnapshot((snapshot) => {
     const prev = previous;
     previous = snapshot;
@@ -420,6 +428,8 @@ export function createRecordingLifecycle(
     ) {
       sessionWork.open(snapshot.sessionId);
       transcription.open(snapshot.sessionId);
+      traceDisposition = null;
+      openSessionTrace(snapshot.sessionId, {});
       // Wedge watchdog: every stage is bounded, so a session outliving the
       // whole budget means a wedged timer or port — force-reset (R10). A
       // delivery-region fiber: the IDLE edge retires it (canceller clears
@@ -447,6 +457,11 @@ export function createRecordingLifecycle(
     if (now.publicState === "recording" && was.publicState !== "recording") {
       recordingStartedAt = Date.now();
       recordingStoppedAt = null;
+      if (snapshot.sessionId !== null) {
+        // The moment recording went live; the payload reads it as an offset
+        // from session open — the user-felt startup latency.
+        recordPoint(snapshot.sessionId, "lifecycle.recording-live");
+      }
       clearReminder();
       reminderHandle = timers.set(deps.tuning.longRecordingReminderMs, () => {
         reminderHandle = null;
@@ -472,6 +487,14 @@ export function createRecordingLifecycle(
     }
 
     if (now.terminal && !was.terminal) {
+      // Discard reasons matter to analytics (no_audio especially); failure
+      // causes are the last-resort error_code (review findings).
+      traceDisposition =
+        now.terminal.kind === "discard"
+          ? `discard:${now.terminal.reason}`
+          : now.terminal.kind;
+      traceErrorCode =
+        now.terminal.kind === "failure" ? now.terminal.cause : null;
       deriveTerminalNotification(now.terminal, snapshot);
     }
 
@@ -480,6 +503,12 @@ export function createRecordingLifecycle(
       // delivery fibers die here, obligations run on (E1).
       if (prev.sessionId !== null) {
         sessionWork.retire(prev.sessionId);
+        closeSessionTrace(prev.sessionId, {
+          disposition: traceDisposition ?? "unknown",
+          errorCode: traceErrorCode ?? undefined,
+        });
+        traceDisposition = null;
+        traceErrorCode = null;
       }
       grammar.notifyLifecycleIdle();
       recordingStartedAt = null;
@@ -600,9 +629,12 @@ export function createRecordingLifecycle(
     pasteLatestTranscription: () => host.pasteLatestTranscription(),
 
     dispose: () => {
+      // Quarantine BEFORE unsubscribing: the forced idle edge must still
+      // reach the listener so an in-flight session closes its trace
+      // (review finding — the old order leaked the entry unflushed).
+      quarantineAndForceReset();
       unsubscribeSnapshots();
       clearReminder();
-      quarantineAndForceReset();
     },
   };
 }

@@ -37,9 +37,7 @@ export interface TranscriptionMetrics {
   session_id?: string;
   model_id: string;
   model_preloaded?: boolean;
-  whisper_native_binding?: string;
   total_duration_ms?: number;
-  recording_duration_ms?: number;
   processing_duration_ms?: number;
   audio_duration_seconds?: number;
   realtime_factor?: number;
@@ -192,6 +190,15 @@ export class TelemetryService extends EventEmitter {
     });
   }
 
+  /** The per-session dictation trace, flushed once per session on every
+   * disposition (phase durations, offsets, failure stage). This IS the
+   * transcription_completed event for live dictations. */
+  trackDictationTrace(properties: Record<string, unknown>): void {
+    this.captureEvent("transcription_completed", properties);
+  }
+
+  /** History-retry path only — live dictations report through the dictation
+   * trace above. Discriminated by is_retry. */
   trackTranscriptionCompleted(metrics: TranscriptionMetrics): void {
     this.captureEvent("transcription_completed", metrics);
 
@@ -199,7 +206,6 @@ export class TelemetryService extends EventEmitter {
       session_id: metrics.session_id,
       model: metrics.model_id,
       duration: metrics.total_duration_ms,
-      recording_duration: metrics.recording_duration_ms,
       processing_duration: metrics.processing_duration_ms,
     });
   }

@@ -1,3 +1,5 @@
+import { runPromise as runTelemetryPromise } from "../../runtime/telemetry-runtime";
+import { expectObligation, recordPhase } from "../../telemetry/dictation-trace";
 import { Deferred, Effect } from "effect";
 import { logger } from "../../logger";
 import { StreamingWavWriter } from "../../../utils/streaming-wav-writer";
@@ -105,6 +107,7 @@ export interface CustodyOutcome {
 
 interface CaptureState {
   session: SessionId;
+  startCalledAt: number;
   phase: "starting" | "capturing" | "draining" | "closed";
   beepPending: boolean;
   ambianceContext: AmbianceContext | null;
@@ -225,13 +228,20 @@ export function createRecorderAdapter(
           });
         });
     });
+    expectObligation(session, "lifecycle.recorder-close");
     deps.sessionWork.runObligation(
       session,
-      ensuringFact(closeTail, () =>
-        settleCustodyWaiter(session, {
-          audioFile: capture.audioFile,
-          wavOk: capture.wavOk,
-        }),
+      ensuringFact(
+        closeTail.pipe(
+          Effect.withSpan("lifecycle.recorder-close", {
+            attributes: { sessionId: session },
+          }),
+        ),
+        () =>
+          settleCustodyWaiter(session, {
+            audioFile: capture.audioFile,
+            wavOk: capture.wavOk,
+          }),
       ),
     );
     captures.delete(session);
@@ -250,6 +260,7 @@ export function createRecorderAdapter(
       openCustodyWaiter(session);
       const capture: CaptureState = {
         session,
+        startCalledAt: Date.now(),
         phase: "starting",
         beepPending: true,
         ambianceContext: null,
@@ -340,6 +351,14 @@ export function createRecorderAdapter(
       // (beep gating, pre-ready arrival). Content is never judged (D18).
       if (chunk.length > 0 && !capture.sawFrames) {
         capture.sawFrames = true;
+        // Capture spin-up as observed from the main process: start() call to
+        // the first PCM frame off IPC (includes the renderer round trip).
+        recordPhase(
+          session,
+          "lifecycle.recorder-spinup",
+          capture.startCalledAt,
+          Date.now(),
+        );
         clearTimer(capture.deadMicHandle);
         capture.deadMicHandle = null;
       }
@@ -397,7 +416,7 @@ export function createRecorderAdapter(
     whenCustodySettled(session: SessionId): Promise<CustodyOutcome> {
       const waiter = custodyDeferred.get(session);
       if (!waiter) return Promise.resolve(EMPTY_CUSTODY);
-      return Effect.runPromise(Deferred.await(waiter));
+      return runTelemetryPromise(Deferred.await(waiter));
     },
   };
 }

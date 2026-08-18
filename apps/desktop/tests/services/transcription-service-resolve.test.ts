@@ -42,7 +42,6 @@ const providerMocks = vi.hoisted(() => {
     warmup: vi.fn(async () => undefined),
     dispose: vi.fn(async () => undefined),
     preloadModel: vi.fn(async () => undefined),
-    getBindingInfo: vi.fn(async () => null),
   };
   return { provider };
 });

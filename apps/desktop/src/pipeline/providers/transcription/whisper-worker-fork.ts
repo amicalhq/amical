@@ -1,5 +1,5 @@
 // Worker process entry point for fork
-import { Whisper, getLoadedBindingInfo } from "@amical/whisper-wrapper";
+import { Whisper } from "@amical/whisper-wrapper";
 import { shouldDropSegment } from "../../utils/segment-filter";
 import { resolveWhisperGpuDecision } from "./whisper-gpu-policy";
 
@@ -149,10 +149,6 @@ const methods = {
       whisperInstance = null;
       currentModelPath = null;
     }
-  },
-
-  getBindingInfo(): { path: string; type: string } | null {
-    return getLoadedBindingInfo();
   },
 };
 

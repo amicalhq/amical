@@ -1,4 +1,8 @@
 import { Cause, Effect, Exit, Fiber, FiberId } from "effect";
+import {
+  runFork as runTelemetryFork,
+  runPromise as runTelemetryPromise,
+} from "../../runtime/telemetry-runtime";
 import type { RuntimeFiber } from "effect/Fiber";
 import { logger } from "../../logger";
 import type { ShellTimerHost } from "../shell";
@@ -204,7 +208,7 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
       trackDelivery(
         session,
         r,
-        Effect.runFork(work),
+        runTelemetryFork(work),
         options?.housekeeping ? "housekeeping" : "delivery",
       );
       return true;
@@ -219,7 +223,7 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
         r = { retired: true, deliveries: new Map(), obligations: new Set() };
         regions.set(session, r);
       }
-      trackObligation(session, r, Effect.runFork(work));
+      trackObligation(session, r, runTelemetryFork(work));
     },
 
     deliverySpan(session, work) {
@@ -258,7 +262,7 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
         ...r.obligations,
       ]);
       if (fibers.length === 0) return;
-      await Effect.runPromise(Fiber.awaitAll(fibers));
+      await runTelemetryPromise(Fiber.awaitAll(fibers));
       // One microtask so observers (set deletion, reap) run before callers
       // assert on the registry.
       await Promise.resolve();

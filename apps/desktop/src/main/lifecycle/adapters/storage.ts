@@ -1,3 +1,5 @@
+import { runPromise as runTelemetryPromise } from "../../runtime/telemetry-runtime";
+import { expectObligation } from "../../telemetry/dictation-trace";
 import { unlink } from "node:fs/promises";
 import { Effect } from "effect";
 import { logger } from "../../logger";
@@ -86,7 +88,7 @@ export function createStorageAdapter(
       ),
       Effect.as<CustodyOutcome | null>(null),
     );
-    return Effect.runPromise(Effect.race(read, bound));
+    return runTelemetryPromise(Effect.race(read, bound));
   }
 
   async function settleRetained(
@@ -197,9 +199,17 @@ export function createStorageAdapter(
           }),
         ),
       );
+      expectObligation(session, "storage.commit");
       sessionWork.runObligation(
         session,
-        ensuringFact(attempt, () => sink({ type: "storageFinished", session })),
+        ensuringFact(
+          attempt.pipe(
+            Effect.withSpan("storage.commit", {
+              attributes: { sessionId: session },
+            }),
+          ),
+          () => sink({ type: "storageFinished", session }),
+        ),
       );
     },
   };

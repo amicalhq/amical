@@ -181,7 +181,6 @@ describe("WhisperProvider sessions", () => {
       audioData: new Float32Array([2]),
       context: { sessionId: "session" },
     });
-    await provider.getBindingInfo();
     await expect(session.flush({ sessionId: "session" })).resolves.toEqual({
       text: "1,2",
     });
@@ -190,7 +189,6 @@ describe("WhisperProvider sessions", () => {
       audioData: new Float32Array([3]),
       context: { sessionId: "session" },
     });
-    await provider.getBindingInfo();
     await expect(session.flush({ sessionId: "session" })).resolves.toEqual({
       text: "3",
     });
@@ -508,7 +506,7 @@ describe("WhisperProvider sessions", () => {
     await expect(flush).resolves.toEqual({ text: "" });
   });
 
-  it("serializes model preload and binding inspection behind decode", async () => {
+  it("serializes model preload behind decode", async () => {
     const { provider, selectBestAvailableModel } = createProvider();
     const session = provider.openSession({
       sessionId: "session",
@@ -528,9 +526,6 @@ describe("WhisperProvider sessions", () => {
         await decodeGate;
         return { text: Array.from(args[0] as Float32Array).join(",") };
       }
-      if (method === "getBindingInfo") {
-        return { path: "/binding", type: "mock" };
-      }
       return undefined;
     });
 
@@ -545,21 +540,15 @@ describe("WhisperProvider sessions", () => {
 
     selectBestAvailableModel("/models/b.bin");
     const preload = provider.preloadModel();
-    const bindingInfo = provider.getBindingInfo();
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(workerMocks.exec).not.toHaveBeenCalledWith("initializeModel", [
       "/models/b.bin",
     ]);
-    expect(workerMocks.exec).not.toHaveBeenCalledWith("getBindingInfo", []);
 
     releaseDecode();
     await expect(flush).resolves.toEqual({ text: "1" });
     await expect(preload).resolves.toBeUndefined();
-    await expect(bindingInfo).resolves.toEqual({
-      path: "/binding",
-      type: "mock",
-    });
     expect(workerMocks.exec).toHaveBeenCalledWith("initializeModel", [
       "/models/b.bin",
     ]);
@@ -615,7 +604,6 @@ describe("WhisperProvider sessions", () => {
     await expect(provider.warmup()).rejects.toThrow(
       "Whisper transcription engine has been disposed",
     );
-    await expect(provider.getBindingInfo()).resolves.toBeNull();
 
     releaseDecode();
     await expect(flush).resolves.toEqual({ text: "1" });

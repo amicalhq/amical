@@ -32,8 +32,6 @@ export interface StreamingTranscriptionService {
   }): Promise<string>;
   resolveStreamingSession(options: {
     sessionId: string;
-    recordingStartedAt?: number;
-    recordingStoppedAt?: number;
   }): Promise<ResolvedStreamingSession | null>;
   cancelStreamingSession(sessionId: string): Promise<void>;
   resetVadForNewSession(): Promise<void>;
@@ -86,7 +84,6 @@ interface SttSession {
   isDraft: boolean;
   cancelled: boolean;
   finalEmitted: boolean;
-  openedAt: number;
 }
 
 function causeOf(error: unknown): string {
@@ -134,7 +131,6 @@ export function createTranscriptionAdapter(
         isDraft: false,
         cancelled: false,
         finalEmitted: false,
-        openedAt: performance.now(),
       };
       state = stt;
       try {
@@ -240,8 +236,6 @@ export function createTranscriptionAdapter(
           try {
             const resolved = await deps.service.resolveStreamingSession({
               sessionId: session,
-              recordingStartedAt: stt.openedAt,
-              recordingStoppedAt: performance.now(),
             });
             if (resolved) {
               await deps.enrich(session, {

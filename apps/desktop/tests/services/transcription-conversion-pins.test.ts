@@ -64,7 +64,6 @@ const providerMocks = vi.hoisted(() => {
       warmup: vi.fn(async () => undefined),
       dispose: vi.fn(async () => undefined),
       preloadModel: vi.fn(async () => undefined),
-      getBindingInfo: vi.fn(async () => null),
       setupSession(
         sessionId: string,
         setup: (session: ReturnType<typeof makeSession>) => void,
@@ -128,6 +127,7 @@ import type { ModelService } from "../../src/services/model-service";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 import { TranscriptionService } from "../../src/services/transcription-service";
+import { setSpanEndSink } from "../../src/main/runtime/telemetry-runtime";
 import { loadDictationContext } from "../../src/services/transcription/load-dictation-context";
 import { prepareTranscriptText } from "../../src/services/transcription/prepare-transcript-text";
 import type { DictationContext } from "../../src/services/transcription/types";
@@ -384,6 +384,10 @@ describe("TranscriptionService — conversion pins", () => {
   it("S3 gate: sustained frames keep order and drain to zero", async () => {
     const total = 2000;
     const startedAt = performance.now();
+    let spanEnds = 0;
+    setSpanEndSink(() => {
+      spanEnds += 1;
+    });
     providerMocks.local.setupSession("stress-session", (session) => {
       session.transcribe.mockImplementation(
         async (params: TranscribeParams) => ({
@@ -420,6 +424,10 @@ describe("TranscriptionService — conversion pins", () => {
     });
     expect(resolved).not.toBeNull();
     expect(resolved!.text.split(",").filter(Boolean)).toHaveLength(total);
+    // S6 gate: span emission is independent of chunk count — only the
+    // resolve-stage spans fire, never per-chunk spans (plan D5/D12).
+    setSpanEndSink(() => {});
+    expect(spanEnds).toBeLessThanOrEqual(8);
   }, 20000);
 
   // Review-pass additions.

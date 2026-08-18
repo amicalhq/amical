@@ -43,6 +43,11 @@ import {
 import { retranscribeHistoryItem } from "./transcription/retranscribe-history-item";
 import { runEffectSameError } from "./transcription/effect-boundary";
 import {
+  recordChunkAggregate,
+  recordPoint,
+  type ChunkAggregate,
+} from "../main/telemetry/dictation-trace";
+import {
   makeTokenLock,
   withLock,
   withLockPromise,
@@ -52,7 +57,6 @@ import {
 type StreamingChunkOptions = {
   sessionId: string;
   audioChunk: Float32Array;
-  recordingStartedAt?: number;
   isInstruct?: boolean;
 };
 
@@ -84,6 +88,7 @@ export class TranscriptionService {
   private vadLock: TokenLock;
   private transcriptionLock: TokenLock;
   private modelLoadMutex: Mutex;
+  private chunkStats = new Map<string, ChunkAggregate>();
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private modelWasPreloaded: boolean = false;
@@ -142,6 +147,15 @@ export class TranscriptionService {
       // the registration must be gone before the lifecycle reacts, or the
       // next session's begin finds a dead stream still holding the slot.
       this.retireLiveSession(liveSession);
+      recordPoint(sessionId, "transcription.terminal-latch", {
+        // The latch fires from chunk classification AND from the provider's
+        // out-of-band stream observer, so the stage names the stream, not
+        // one phase (review finding).
+        stage: "transcription.stream",
+        errorCode:
+          (error as { errorCode?: string }).errorCode ??
+          (error as { code?: string }).code,
+      });
       try {
         onTerminalFailure?.(error);
       } catch (callbackError) {
@@ -152,6 +166,18 @@ export class TranscriptionService {
       }
     });
     this.activeLiveSession = liveSession;
+    this.chunkStats.set(sessionId, {
+      modelId: null,
+      provider: null,
+      count: 0,
+      vadMsSum: 0,
+      vadMsMax: 0,
+      transcribeMsSum: 0,
+      transcribeMsMax: 0,
+      materializeMs: 0,
+      firstChunkAt: null,
+      lastChunkAt: null,
+    });
     return true;
   }
 
@@ -515,6 +541,13 @@ export class TranscriptionService {
       liveSession.updateSnapshot({ isInstruct: options.isInstruct });
     }
 
+    const stats = this.chunkStats.get(options.sessionId);
+    if (stats) {
+      const now = Date.now();
+      stats.count += 1;
+      stats.firstChunkAt ??= now;
+      stats.lastChunkAt = now;
+    }
     return liveSession.processChunkEffect(
       this.chunkEffect(liveSession, options),
     );
@@ -532,7 +565,7 @@ export class TranscriptionService {
     liveSession: LiveTranscriptionSession,
     options: StreamingChunkOptions,
   ): Effect.Effect<string, unknown> {
-    const { sessionId, audioChunk, recordingStartedAt } = options;
+    const { sessionId, audioChunk } = options;
     const service = this;
 
     return Effect.gen(function* () {
@@ -552,6 +585,7 @@ export class TranscriptionService {
       }
 
       if (audioChunk.length > 0 && service.vadService) {
+        const vadStartedAt = performance.now();
         const vadOutcome = yield* withLock(
           service.vadLock,
           Effect.uninterruptible(
@@ -592,6 +626,14 @@ export class TranscriptionService {
             }),
           ),
         );
+        {
+          const stats = service.chunkStats.get(sessionId);
+          if (stats) {
+            const vadMs = performance.now() - vadStartedAt;
+            stats.vadMsSum += vadMs;
+            stats.vadMsMax = Math.max(stats.vadMsMax, vadMs);
+          }
+        }
         if (vadOutcome === null) {
           return "";
         }
@@ -618,6 +660,7 @@ export class TranscriptionService {
 
             let session = liveSession.materializedSession;
             if (!session) {
+              const materializeStartedAt = performance.now();
               const context = yield* Effect.tryPromise({
                 try: () =>
                   loadDictationContext({
@@ -669,7 +712,6 @@ export class TranscriptionService {
                     : selectedModelId || "whisper-local",
                 transcriptionResults: [],
                 firstChunkReceivedAt: performance.now(),
-                recordingStartedAt: recordingStartedAt,
               };
 
               if (!liveSession.attach(session)) {
@@ -679,8 +721,15 @@ export class TranscriptionService {
               logger.transcription.info("Started streaming session", {
                 sessionId,
               });
+              const stats = service.chunkStats.get(sessionId);
+              if (stats) {
+                stats.materializeMs = performance.now() - materializeStartedAt;
+                stats.modelId = session.speechModelId;
+                stats.provider = session.providerSession.name;
+              }
             }
             // Transcribe chunk (flush is done separately in finalizeSession)
+            const transcribeStartedAt = performance.now();
             const chunkResult = yield* Effect.tryPromise({
               try: () =>
                 session.providerSession.transcribe({
@@ -693,6 +742,17 @@ export class TranscriptionService {
                 }),
               catch: (error) => error,
             });
+            {
+              const stats = service.chunkStats.get(sessionId);
+              if (stats) {
+                const transcribeMs = performance.now() - transcribeStartedAt;
+                stats.transcribeMsSum += transcribeMs;
+                stats.transcribeMsMax = Math.max(
+                  stats.transcribeMsMax,
+                  transcribeMs,
+                );
+              }
+            }
             if (!liveSession.canCompleteAdmittedWork()) {
               return "";
             }
@@ -761,6 +821,14 @@ export class TranscriptionService {
 
   private retireLiveSession(liveSession: LiveTranscriptionSession): void {
     liveSession.retire();
+    const stats = this.chunkStats.get(liveSession.id);
+    if (stats) {
+      // Emit once and delete: late uninterruptible chunk tails find no
+      // entry and their timing is dropped with their results (plan D5).
+      this.chunkStats.delete(liveSession.id);
+      recordChunkAggregate(liveSession.id, stats);
+    }
+    // (stats helper below is used by the chunk path)
     if (this.activeLiveSession === liveSession) {
       this.activeLiveSession = null;
     }
@@ -779,8 +847,6 @@ export class TranscriptionService {
    */
   async resolveStreamingSession(options: {
     sessionId: string;
-    recordingStartedAt?: number;
-    recordingStoppedAt?: number;
   }): Promise<ResolvedStreamingSession | null> {
     const { sessionId } = options;
     const liveSession = this.activeLiveSession;
@@ -810,8 +876,6 @@ export class TranscriptionService {
     liveSession: LiveTranscriptionSession,
     options: {
       sessionId: string;
-      recordingStartedAt?: number;
-      recordingStoppedAt?: number;
     },
   ): Effect.Effect<ResolvedStreamingSession | null, unknown> {
     const { sessionId } = options;
@@ -825,7 +889,7 @@ export class TranscriptionService {
       yield* Effect.tryPromise({
         try: () => liveSession.drainAdmittedChunks(),
         catch: (error) => error,
-      });
+      }).pipe(Effect.withSpan("resolve.drain", { attributes: { sessionId } }));
       const session = liveSession.materializedSession;
       if (!session) {
         yield* terminalGate;
@@ -834,10 +898,6 @@ export class TranscriptionService {
 
       yield* terminalGate;
       session.finalizationStartedAt = performance.now();
-      session.recordingStoppedAt = options.recordingStoppedAt;
-      if (options.recordingStartedAt && !session.recordingStartedAt) {
-        session.recordingStartedAt = options.recordingStartedAt;
-      }
 
       const formatterConfig = yield* Effect.tryPromise({
         try: () => service.settingsService.getFormatterConfig(),
@@ -880,7 +940,7 @@ export class TranscriptionService {
             );
           }),
         ),
-      );
+      ).pipe(Effect.withSpan("resolve.flush", { attributes: { sessionId } }));
 
       const rawTranscription = session.transcriptionResults.join("");
       const prepared = yield* Effect.tryPromise({
@@ -898,53 +958,10 @@ export class TranscriptionService {
             },
           ),
         catch: (error) => error,
-      });
+      }).pipe(Effect.withSpan("resolve.format", { attributes: { sessionId } }));
       yield* terminalGate;
 
-      const completionTime = performance.now();
-      const recordingDuration =
-        session.recordingStartedAt && session.recordingStoppedAt
-          ? session.recordingStoppedAt - session.recordingStartedAt
-          : undefined;
-      const processingDuration = session.recordingStoppedAt
-        ? completionTime - session.recordingStoppedAt
-        : undefined;
-      const totalDuration = session.recordingStartedAt
-        ? completionTime - session.recordingStartedAt
-        : undefined;
       const audioDurationSeconds = session.context.audio.duration;
-
-      let whisperNativeBinding: string | undefined;
-      if (service.whisperEngine && "getBindingInfo" in service.whisperEngine) {
-        const bindingInfo = yield* Effect.tryPromise({
-          try: () => service.whisperEngine.getBindingInfo(),
-          catch: (error) => error,
-        });
-        whisperNativeBinding = bindingInfo?.type;
-      }
-
-      service.telemetryService.trackTranscriptionCompleted({
-        session_id: sessionId,
-        model_id: session.speechModelId,
-        model_preloaded: service.modelWasPreloaded,
-        whisper_native_binding: whisperNativeBinding,
-        total_duration_ms: totalDuration || 0,
-        recording_duration_ms: recordingDuration,
-        processing_duration_ms: processingDuration,
-        audio_duration_seconds: audioDurationSeconds,
-        realtime_factor:
-          audioDurationSeconds && totalDuration
-            ? audioDurationSeconds / (totalDuration / 1000)
-            : undefined,
-        text_length: prepared.text.length,
-        word_count: prepared.wordCount,
-        formatting_enabled: prepared.formattingUsed,
-        formatting_model: prepared.formattingModel,
-        formatting_duration_ms: prepared.formattingDuration,
-        vad_enabled: !!service.vadService,
-        languages: session.context.languages ?? [],
-        vocabulary_size: session.context.vocabulary.length,
-      });
 
       logger.transcription.info("Streaming session resolved", { sessionId });
       return {
@@ -960,7 +977,9 @@ export class TranscriptionService {
           formattingStyle: session.context.formattingStyle,
         },
       };
-    });
+    }).pipe(
+      Effect.withSpan("transcription.resolve", { attributes: { sessionId } }),
+    );
   }
 
   async retryTranscription(transcriptionId: number): Promise<string> {

@@ -292,28 +292,6 @@ export class WhisperProvider implements TranscriptionEngine {
     await this.initializeWhisper();
   }
 
-  async getBindingInfo(): Promise<{ path: string; type: string } | null> {
-    if (this.disposed) {
-      return null;
-    }
-
-    return this.resourceMutex.runExclusive(async () => {
-      if (this.disposed || !this.workerWrapper) {
-        return null;
-      }
-
-      try {
-        return await this.workerWrapper.exec<{
-          path: string;
-          type: string;
-        } | null>("getBindingInfo", []);
-      } catch (error) {
-        logger.transcription.warn("Failed to get binding info:", error);
-        return null;
-      }
-    });
-  }
-
   /**
    * Initialize the currently selected model for warmup/preload callers.
    */

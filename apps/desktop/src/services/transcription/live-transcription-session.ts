@@ -107,9 +107,9 @@ export class LiveTranscriptionSession {
             // literally null must still latch (review finding — a null
             // sentinel here misrouted Fail(null) into the interruption arm).
             if (Option.isSome(failure)) {
-              this.reportTerminalFailure(failure.value);
+              this.reportTerminalFailure(Cause.originalError(failure.value));
             } else if (Option.isSome(defect)) {
-              this.reportTerminalFailure(defect.value);
+              this.reportTerminalFailure(Cause.originalError(defect.value));
             }
             // Pure interruption falls through without latching.
             return Effect.failCause(cause);
@@ -139,11 +139,11 @@ export class LiveTranscriptionSession {
       }
       const failure = Cause.failureOption(exit.cause);
       if (Option.isSome(failure)) {
-        throw failure.value;
+        throw Cause.originalError(failure.value);
       }
       const defect = Cause.dieOption(exit.cause);
       if (Option.isSome(defect)) {
-        throw defect.value;
+        throw Cause.originalError(defect.value);
       }
       // Interrupted chunk work settles as the empty string the pinned
       // cancellation behavior requires.

@@ -40,6 +40,7 @@ function makeHarness(options?: {
       : {
           pasteText: async (paste) => {
             pastes.push(paste);
+            return { success: true };
           },
           setDraftEnterCapture: async (armed) => {
             enterMasks.push(armed);

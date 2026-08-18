@@ -28,7 +28,5 @@ export interface MaterializedTranscriptionSession {
   transcriptionResults: string[];
   detectedLanguage?: string;
   firstChunkReceivedAt?: number;
-  recordingStartedAt?: number;
-  recordingStoppedAt?: number;
   finalizationStartedAt?: number;
 }

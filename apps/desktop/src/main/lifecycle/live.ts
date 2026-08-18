@@ -1,3 +1,9 @@
+import { runPromise as runTelemetryPromise } from "../runtime/telemetry-runtime";
+import {
+  expectObligation,
+  flushAllDictationTraces,
+  recordPhase,
+} from "../telemetry/dictation-trace";
 import { ipcMain, app } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -123,6 +129,25 @@ export function createDesktopRecordingLifecycle(deps: {
         });
       });
       ambianceInFlight.set(session, done);
+      if (nativeBridge) {
+        // The matching unmute obligation is owed from this moment; the
+        // expect must land before the root trace closes at the IDLE edge.
+        // Guarded like end()'s fork: no bridge, no unmute, no expect
+        // (review finding — an expect whose fork never comes waits out the
+        // full grace window).
+        expectObligation(session, "lifecycle.unmute-ambiance");
+        const muteStartedAt = Date.now();
+        void done
+          .then(() =>
+            recordPhase(
+              session,
+              "lifecycle.mute-ambiance",
+              muteStartedAt,
+              Date.now(),
+            ),
+          )
+          .catch(() => undefined);
+      }
       return { beepGate, done };
     },
     end(session, context) {
@@ -149,7 +174,11 @@ export function createDesktopRecordingLifecycle(deps: {
               error,
             });
           }
-        }),
+        }).pipe(
+          Effect.withSpan("lifecycle.unmute-ambiance", {
+            attributes: { sessionId: session },
+          }),
+        ),
       );
     },
   };
@@ -178,7 +207,7 @@ export function createDesktopRecordingLifecycle(deps: {
         if (capture) {
           // Bounded barrier: the losing side is interrupted, so a settled
           // capture no longer leaves a dangling timeout behind.
-          await Effect.runPromise(
+          await runTelemetryPromise(
             sessionWork.bounded<void>(
               Deferred.await(capture),
               DRAFT_CAPTURE_BARRIER_MS,
@@ -202,10 +231,11 @@ export function createDesktopRecordingLifecycle(deps: {
     bridge: nativeBridge
       ? {
           pasteText: async (options) => {
-            await nativeBridge.call("pasteText", {
+            const result = await nativeBridge.call("pasteText", {
               transcript: options.transcript,
               preserveClipboard: options.preserveClipboard,
             });
+            return { success: !!result?.success };
           },
           setDraftEnterCapture: async (armed) => {
             await nativeBridge.setDraftEnterCapture(armed);
@@ -433,6 +463,8 @@ export const RecordingLifecycleLive: Layer.Layer<
       () => {
         ipcMain.removeHandler("audio-data-chunk");
         lifecycle.dispose();
+        // Ship whatever traces are still waiting before the process exits.
+        flushAllDictationTraces();
       },
     );
     logger.main.info("Recording lifecycle initialized");

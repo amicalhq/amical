@@ -2,6 +2,11 @@ import { Effect } from "effect";
 import { logger } from "../../logger";
 import { getLatestTranscription } from "../../../db/transcriptions";
 import { ensuringFact, type SessionWork } from "../effect/session-work";
+import {
+  expectObligation,
+  recordPhase,
+  settleObligation,
+} from "../../telemetry/dictation-trace";
 import type { HostPort, LifecycleFactSink } from "../ports";
 import type { SealedOutcome, SessionId } from "../types";
 
@@ -30,10 +35,12 @@ export interface PendingDraft {
 }
 
 export interface HostPasteBridge {
+  /** Resolves with the helper's verdict: refusals arrive as
+   * `{ success: false }`, not as rejections. */
   pasteText(options: {
     transcript: string;
     preserveClipboard: boolean;
-  }): Promise<void>;
+  }): Promise<{ success: boolean }>;
   setDraftEnterCapture(armed: boolean): Promise<void>;
 }
 
@@ -97,19 +104,38 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
   }
 
   /** Hand the transcript to the native layer. Fire-and-forget by design:
-   * once dispatched it cannot be recalled. */
-  function dispatchPaste(transcript: string, preserveClipboard: boolean): void {
+   * once dispatched it cannot be recalled. `telemetry.dispatched` fires when
+   * the native call is actually issued; `settled(confirmed)` fires when the
+   * helper answers — confirmed ONLY for an acknowledged paste. A refusal
+   * resolves as `{ success: false }` (both helpers report paste failure as a
+   * result, never an RPC error) and settles unconfirmed. */
+  function dispatchPaste(
+    transcript: string,
+    preserveClipboard: boolean,
+    telemetry?: {
+      dispatched: () => void;
+      settled: (confirmed: boolean) => void;
+    },
+  ): void {
     if (!deps.bridge) {
       logger.main.warn("Native bridge unavailable, cannot paste");
       return;
     }
-    void deps.bridge
-      .pasteText({ transcript, preserveClipboard })
-      .catch((error) => {
+    telemetry?.dispatched();
+    void deps.bridge.pasteText({ transcript, preserveClipboard }).then(
+      (result) => {
+        if (!result?.success) {
+          logger.main.warn("Native helper refused the paste");
+        }
+        telemetry?.settled(!!result?.success);
+      },
+      (error) => {
         logger.main.warn("Failed to paste transcription via native helper", {
           error: error instanceof Error ? error.message : String(error),
         });
-      });
+        telemetry?.settled(false);
+      },
+    );
   }
 
   /** Post-lifecycle paste (draft confirm, paste-latest): app-scope, never
@@ -126,21 +152,38 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
 
   /** The session-fenced delivery span: the preference read is the await a
    * retirement interrupts (the R9-1 window). A rejected read degrades like
-   * the old catch — warn and skip, never fail the staging obligation. */
-  const pasteSpan = (transcript: string): Effect.Effect<void> =>
-    Effect.tryPromise({
-      try: () => deps.getPreserveClipboard(),
-      catch: (error) => error,
-    }).pipe(
-      Effect.flatMap((preserveClipboard) =>
-        Effect.sync(() => dispatchPaste(transcript, preserveClipboard)),
-      ),
-      Effect.catchAll((error) =>
-        Effect.sync(() =>
-          logger.main.warn("Failed to prepare paste", { error }),
+   * the old catch — warn and skip, never fail the staging obligation.
+   * `telemetry` reports the whole delivery (effect start → native answer);
+   * the span itself must end at dispatch — the staged fact the reducer
+   * waits on cannot hang on the native layer. */
+  const pasteSpan = (
+    transcript: string,
+    telemetry: {
+      dispatched: () => void;
+      settled: (startedAt: number, confirmed: boolean) => void;
+    },
+  ): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      const startedAt = Date.now();
+      return Effect.tryPromise({
+        try: () => deps.getPreserveClipboard(),
+        catch: (error) => error,
+      }).pipe(
+        Effect.flatMap((preserveClipboard) =>
+          Effect.sync(() =>
+            dispatchPaste(transcript, preserveClipboard, {
+              dispatched: telemetry.dispatched,
+              settled: (confirmed) => telemetry.settled(startedAt, confirmed),
+            }),
+          ),
         ),
-      ),
-    );
+        Effect.catchAll((error) =>
+          Effect.sync(() =>
+            logger.main.warn("Failed to prepare paste", { error }),
+          ),
+        ),
+      );
+    });
 
   return {
     stageDelivery(session: SessionId, sealed: SealedOutcome): void {
@@ -161,10 +204,36 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
         emit();
         return;
       }
+      expectObligation(session, "delivery.paste");
       deps.sessionWork.runObligation(
         session,
         ensuringFact(
-          deps.sessionWork.deliverySpan(session, pasteSpan(sealed.text)),
+          deps.sessionWork
+            .deliverySpan(
+              session,
+              pasteSpan(sealed.text, {
+                // Expected from actual issuance: without it the trace flushes
+                // synchronously at the IDLE edge — every other obligation is
+                // already settled — and the helper's answer always lands
+                // late, so the paste keys would never ship (review finding).
+                // The trace waits, grace-bounded; the reducer never does.
+                dispatched: () => expectObligation(session, "delivery.pasted"),
+                settled: (startedAt, confirmed) =>
+                  confirmed
+                    ? recordPhase(
+                        session,
+                        "delivery.pasted",
+                        startedAt,
+                        Date.now(),
+                      )
+                    : settleObligation(session, "delivery.pasted"),
+              }),
+            )
+            .pipe(
+              Effect.withSpan("delivery.paste", {
+                attributes: { sessionId: session },
+              }),
+            ),
           emit,
         ),
       );
