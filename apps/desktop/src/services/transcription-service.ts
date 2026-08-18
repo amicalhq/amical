@@ -41,6 +41,13 @@ import {
   prepareTranscriptText,
 } from "./transcription/prepare-transcript-text";
 import { retranscribeHistoryItem } from "./transcription/retranscribe-history-item";
+import { runEffectSameError } from "./transcription/effect-boundary";
+import {
+  makeTokenLock,
+  withLock,
+  withLockPromise,
+  type TokenLock,
+} from "./transcription/token-lock";
 
 type StreamingChunkOptions = {
   sessionId: string;
@@ -74,8 +81,8 @@ export class TranscriptionService {
   private historyRetryInProgress = false;
   private vadService: VADService | null;
   private settingsService: SettingsService;
-  private vadMutex: Mutex;
-  private transcriptionMutex: Mutex;
+  private vadLock: TokenLock;
+  private transcriptionLock: TokenLock;
   private modelLoadMutex: Mutex;
   private telemetryService: TelemetryService;
   private modelService: ModelService;
@@ -101,8 +108,8 @@ export class TranscriptionService {
     );
     this.vadService = vadService;
     this.settingsService = settingsService;
-    this.vadMutex = new Mutex();
-    this.transcriptionMutex = new Mutex();
+    this.vadLock = makeTokenLock();
+    this.transcriptionLock = makeTokenLock();
     this.modelLoadMutex = new Mutex();
     this.telemetryService = telemetryService;
     this.modelService = modelService;
@@ -508,166 +515,217 @@ export class TranscriptionService {
       liveSession.updateSnapshot({ isInstruct: options.isInstruct });
     }
 
-    return liveSession.processChunk(() =>
-      this.processAdmittedStreamingChunk(liveSession, options),
+    return liveSession.processChunkEffect(
+      this.chunkEffect(liveSession, options),
     );
   }
 
-  private async processAdmittedStreamingChunk(
+  /**
+   * One admitted chunk as an Effect: the VAD region and the transcription
+   * region each run uninterruptible inside their lock, so interruption lands
+   * only at the region boundaries — the same points where the cooperative
+   * guards sit. The guards themselves stay: a latched terminal failure fences
+   * work without interruption. Failures carry the original error object
+   * through the typed channel; the session ledger classifies them.
+   */
+  private chunkEffect(
     liveSession: LiveTranscriptionSession,
     options: StreamingChunkOptions,
-  ): Promise<string> {
+  ): Effect.Effect<string, unknown> {
     const { sessionId, audioChunk, recordingStartedAt } = options;
+    const service = this;
 
-    // Run VAD on the audio chunk
-    let speechProbability = this.vadService ? 0 : 1;
-    let isSpeaking = !this.vadService && audioChunk.length > 0;
+    return Effect.gen(function* () {
+      // Run VAD on the audio chunk
+      let speechProbability = service.vadService ? 0 : 1;
+      let isSpeaking = !service.vadService && audioChunk.length > 0;
 
-    if (audioChunk.length > 0 && !this.vadService && !this.loggedVadFallback) {
-      logger.transcription.warn(
-        "VAD unavailable; defaulting speechProbability to 1.0 for streaming chunks",
-      );
-      this.loggedVadFallback = true;
-    }
-
-    if (audioChunk.length > 0 && this.vadService) {
-      // Acquire VAD mutex
-      await this.vadMutex.acquire();
-      try {
-        if (!liveSession.canCompleteAdmittedWork()) {
-          return "";
-        }
-        // Pass Float32Array directly to VAD
-        try {
-          const vadResult = await this.vadService.processAudioFrame(audioChunk);
-          speechProbability = vadResult.probability;
-          isSpeaking = vadResult.isSpeaking;
-        } catch (error) {
-          // A VAD error degrades this chunk exactly like a missing VAD
-          // degrades the whole session: assume speech instead of letting
-          // one bad frame fail the session terminally.
-          logger.transcription.warn(
-            "VAD failed for streaming chunk; assuming speech",
-            { error },
-          );
-          speechProbability = 1;
-          isSpeaking = true;
-        }
-      } finally {
-        // Release VAD mutex - always release even on error
-        this.vadMutex.release();
-      }
-
-      logger.transcription.debug("VAD result", {
-        probability: speechProbability.toFixed(3),
-        isSpeaking,
-      });
-    }
-
-    if (!liveSession.canCompleteAdmittedWork()) {
-      return "";
-    }
-
-    // Acquire transcription mutex
-    await this.transcriptionMutex.acquire();
-    try {
-      if (!liveSession.canCompleteAdmittedWork()) {
-        return "";
-      }
-
-      let session = liveSession.materializedSession;
-      if (!session) {
-        const context = await loadDictationContext({
-          settingsService: this.settingsService,
-          sessionId,
-        });
-        if (!liveSession.canCompleteAdmittedWork()) {
-          return "";
-        }
-        const formatterConfig = await this.settingsService.getFormatterConfig();
-        if (!liveSession.canCompleteAdmittedWork()) {
-          return "";
-        }
-        context.cloudFormattingEnabled = !!(
-          formatterConfig?.enabled &&
-          isAmicalCloudSelectionValue(formatterConfig.modelId)
+      if (
+        audioChunk.length > 0 &&
+        !service.vadService &&
+        !service.loggedVadFallback
+      ) {
+        logger.transcription.warn(
+          "VAD unavailable; defaulting speechProbability to 1.0 for streaming chunks",
         );
+        service.loggedVadFallback = true;
+      }
 
-        // Get accessibility context from NativeBridge
-        context.accessibilityContext =
-          this.nativeBridge?.getAccessibilityContext() ?? null;
-
-        const selectedModelId = await this.modelService.getSelectedModel();
-        if (!liveSession.canCompleteAdmittedWork()) {
+      if (audioChunk.length > 0 && service.vadService) {
+        const vadOutcome = yield* withLock(
+          service.vadLock,
+          Effect.uninterruptible(
+            Effect.suspend(() => {
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return Effect.succeed(null);
+              }
+              // Pass Float32Array directly to VAD. The field projection
+              // stays INSIDE the try thunk: outside it, a malformed VAD
+              // result would throw as a defect that the degrade arm below
+              // cannot catch, and one bad frame would kill the session
+              // (review finding — this must degrade, per the R8-1 decision).
+              return Effect.tryPromise({
+                try: async () => {
+                  const vadResult =
+                    await service.vadService!.processAudioFrame(audioChunk);
+                  return {
+                    probability: vadResult.probability,
+                    isSpeaking: vadResult.isSpeaking,
+                  };
+                },
+                catch: (error) => error,
+              }).pipe(
+                Effect.catchAll((error) => {
+                  // A VAD error degrades this chunk exactly like a missing
+                  // VAD degrades the whole session: assume speech instead of
+                  // letting one bad frame fail the session terminally.
+                  logger.transcription.warn(
+                    "VAD failed for streaming chunk; assuming speech",
+                    { error },
+                  );
+                  return Effect.succeed({
+                    probability: 1,
+                    isSpeaking: true,
+                  });
+                }),
+              );
+            }),
+          ),
+        );
+        if (vadOutcome === null) {
           return "";
         }
-        const engine = this.engineForSelectedModel(selectedModelId);
-        const providerSession = engine.openSession({
-          sessionId,
-          modelId: selectedModelId,
-          onTerminalFailure: (error) =>
-            liveSession.reportTerminalFailure(error),
-        });
+        speechProbability = vadOutcome.probability;
+        isSpeaking = vadOutcome.isSpeaking;
 
-        session = {
-          context,
-          providerSession,
-          speechModelId:
-            providerSession.name === "amical-cloud"
-              ? "amical-cloud"
-              : selectedModelId || "whisper-local",
-          transcriptionResults: [],
-          firstChunkReceivedAt: performance.now(),
-          recordingStartedAt: recordingStartedAt,
-        };
-
-        if (!liveSession.attach(session)) {
-          return "";
-        }
-
-        logger.transcription.info("Started streaming session", {
-          sessionId,
+        logger.transcription.debug("VAD result", {
+          probability: speechProbability.toFixed(3),
+          isSpeaking,
         });
       }
-      // Transcribe chunk (flush is done separately in finalizeSession)
-      const chunkResult = await session.providerSession.transcribe({
-        audioData: audioChunk,
-        speechProbability: speechProbability,
-        context: this.buildTranscribeContextForSession(sessionId, session),
-      });
+
       if (!liveSession.canCompleteAdmittedWork()) {
         return "";
       }
-      session.detectedLanguage = mergeDetectedLanguage(
-        session.detectedLanguage,
-        chunkResult.detectedLanguage,
-      );
 
-      // Accumulate the result only if Whisper returned something
-      // (it returns empty string while buffering)
-      accumulateTranscriptionResult(
-        session.transcriptionResults,
-        chunkResult.text,
-        session.providerSession.name === "amical-cloud",
-      );
-      if (chunkResult.text.trim()) {
-        logger.transcription.info("Whisper returned transcription", {
-          sessionId,
-          transcriptionLength: chunkResult.text.length,
-          totalResults: session.transcriptionResults.length,
-        });
-      }
+      return yield* withLock(
+        service.transcriptionLock,
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            if (!liveSession.canCompleteAdmittedWork()) {
+              return "";
+            }
 
-      logger.transcription.debug("Processed frame", {
-        sessionId,
-        frameSize: audioChunk.length,
-        hadTranscription: chunkResult.text.length > 0,
-      });
-      return session.transcriptionResults.join("");
-    } finally {
-      // Release transcription mutex - always release even on error
-      this.transcriptionMutex.release();
-    }
+            let session = liveSession.materializedSession;
+            if (!session) {
+              const context = yield* Effect.tryPromise({
+                try: () =>
+                  loadDictationContext({
+                    settingsService: service.settingsService,
+                    sessionId,
+                  }),
+                catch: (error) => error,
+              });
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return "";
+              }
+              const formatterConfig = yield* Effect.tryPromise({
+                try: () => service.settingsService.getFormatterConfig(),
+                catch: (error) => error,
+              });
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return "";
+              }
+              context.cloudFormattingEnabled = !!(
+                formatterConfig?.enabled &&
+                isAmicalCloudSelectionValue(formatterConfig.modelId)
+              );
+
+              // Get accessibility context from NativeBridge
+              context.accessibilityContext =
+                service.nativeBridge?.getAccessibilityContext() ?? null;
+
+              const selectedModelId = yield* Effect.tryPromise({
+                try: () => service.modelService.getSelectedModel(),
+                catch: (error) => error,
+              });
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return "";
+              }
+              const engine = service.engineForSelectedModel(selectedModelId);
+              const providerSession = engine.openSession({
+                sessionId,
+                modelId: selectedModelId,
+                onTerminalFailure: (error) =>
+                  liveSession.reportTerminalFailure(error),
+              });
+
+              session = {
+                context,
+                providerSession,
+                speechModelId:
+                  providerSession.name === "amical-cloud"
+                    ? "amical-cloud"
+                    : selectedModelId || "whisper-local",
+                transcriptionResults: [],
+                firstChunkReceivedAt: performance.now(),
+                recordingStartedAt: recordingStartedAt,
+              };
+
+              if (!liveSession.attach(session)) {
+                return "";
+              }
+
+              logger.transcription.info("Started streaming session", {
+                sessionId,
+              });
+            }
+            // Transcribe chunk (flush is done separately in finalizeSession)
+            const chunkResult = yield* Effect.tryPromise({
+              try: () =>
+                session.providerSession.transcribe({
+                  audioData: audioChunk,
+                  speechProbability: speechProbability,
+                  context: service.buildTranscribeContextForSession(
+                    sessionId,
+                    session,
+                  ),
+                }),
+              catch: (error) => error,
+            });
+            if (!liveSession.canCompleteAdmittedWork()) {
+              return "";
+            }
+            session.detectedLanguage = mergeDetectedLanguage(
+              session.detectedLanguage,
+              chunkResult.detectedLanguage,
+            );
+
+            // Accumulate the result only if Whisper returned something
+            // (it returns empty string while buffering)
+            accumulateTranscriptionResult(
+              session.transcriptionResults,
+              chunkResult.text,
+              session.providerSession.name === "amical-cloud",
+            );
+            if (chunkResult.text.trim()) {
+              logger.transcription.info("Whisper returned transcription", {
+                sessionId,
+                transcriptionLength: chunkResult.text.length,
+                totalResults: session.transcriptionResults.length,
+              });
+            }
+
+            logger.transcription.debug("Processed frame", {
+              sessionId,
+              frameSize: audioChunk.length,
+              hadTranscription: chunkResult.text.length > 0,
+            });
+            return session.transcriptionResults.join("");
+          }),
+        ),
+      );
+    });
   }
 
   /**
@@ -731,66 +789,117 @@ export class TranscriptionService {
       return null;
     }
 
+    // Sync prefix (plan D9): the slot guard above and this close must run
+    // before any yield point — a later chunk on the same tick must already
+    // be refused.
     liveSession.closeChunkAdmission();
     try {
-      await liveSession.drainAdmittedChunks();
+      return await runEffectSameError(this.resolveEffect(liveSession, options));
+    } finally {
+      this.retireLiveSession(liveSession);
+    }
+  }
+
+  /**
+   * The resolve body as one Effect. Never interrupted (plan D9): an abort
+   * surfaces through the flush signal as a provider throw. Every synchronous
+   * terminal gate lifts through a two-arg Effect.try so the latched error
+   * object crosses the boundary unchanged.
+   */
+  private resolveEffect(
+    liveSession: LiveTranscriptionSession,
+    options: {
+      sessionId: string;
+      recordingStartedAt?: number;
+      recordingStoppedAt?: number;
+    },
+  ): Effect.Effect<ResolvedStreamingSession | null, unknown> {
+    const { sessionId } = options;
+    const service = this;
+    const terminalGate = Effect.try({
+      try: () => liveSession.throwIfTerminalFailure(),
+      catch: (error) => error,
+    });
+
+    return Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: () => liveSession.drainAdmittedChunks(),
+        catch: (error) => error,
+      });
       const session = liveSession.materializedSession;
       if (!session) {
-        liveSession.throwIfTerminalFailure();
+        yield* terminalGate;
         return null;
       }
 
-      liveSession.throwIfTerminalFailure();
+      yield* terminalGate;
       session.finalizationStartedAt = performance.now();
       session.recordingStoppedAt = options.recordingStoppedAt;
       if (options.recordingStartedAt && !session.recordingStartedAt) {
         session.recordingStartedAt = options.recordingStartedAt;
       }
 
-      const formatterConfig = await this.settingsService.getFormatterConfig();
+      const formatterConfig = yield* Effect.tryPromise({
+        try: () => service.settingsService.getFormatterConfig(),
+        catch: (error) => error,
+      });
       const shouldUseCloudFormatting =
         formatterConfig?.enabled &&
         isAmicalCloudSelectionValue(formatterConfig.modelId);
       const usedCloudProvider = session.providerSession.name === "amical-cloud";
 
-      await this.transcriptionMutex.acquire();
-      try {
-        liveSession.throwIfTerminalFailure();
-        const finalResult = await session.providerSession.flush(
-          {
-            ...this.buildTranscribeContextForSession(sessionId, session),
-            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
-          },
-          liveSession.signal,
-        );
-        liveSession.throwIfTerminalFailure();
-        session.detectedLanguage = mergeDetectedLanguage(
-          session.detectedLanguage,
-          finalResult.detectedLanguage,
-        );
-        accumulateTranscriptionResult(
-          session.transcriptionResults,
-          finalResult.text,
-          usedCloudProvider,
-        );
-      } finally {
-        this.transcriptionMutex.release();
-      }
+      yield* withLock(
+        service.transcriptionLock,
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            yield* terminalGate;
+            const finalResult = yield* Effect.tryPromise({
+              try: () =>
+                session.providerSession.flush(
+                  {
+                    ...service.buildTranscribeContextForSession(
+                      sessionId,
+                      session,
+                    ),
+                    formattingEnabled:
+                      shouldUseCloudFormatting && usedCloudProvider,
+                  },
+                  liveSession.signal,
+                ),
+              catch: (error) => error,
+            });
+            yield* terminalGate;
+            session.detectedLanguage = mergeDetectedLanguage(
+              session.detectedLanguage,
+              finalResult.detectedLanguage,
+            );
+            accumulateTranscriptionResult(
+              session.transcriptionResults,
+              finalResult.text,
+              usedCloudProvider,
+            );
+          }),
+        ),
+      );
 
       const rawTranscription = session.transcriptionResults.join("");
-      const prepared = await prepareTranscriptText(
-        {
-          text: rawTranscription,
-          usedCloudProvider,
-          context: session.context,
-          detectedLanguage: session.detectedLanguage,
-        },
-        {
-          settingsService: this.settingsService,
-          modelService: this.modelService,
-        },
-      );
-      liveSession.throwIfTerminalFailure();
+      const prepared = yield* Effect.tryPromise({
+        try: () =>
+          prepareTranscriptText(
+            {
+              text: rawTranscription,
+              usedCloudProvider,
+              context: session.context,
+              detectedLanguage: session.detectedLanguage,
+            },
+            {
+              settingsService: service.settingsService,
+              modelService: service.modelService,
+            },
+          ),
+        catch: (error) => error,
+      });
+      yield* terminalGate;
 
       const completionTime = performance.now();
       const recordingDuration =
@@ -806,15 +915,18 @@ export class TranscriptionService {
       const audioDurationSeconds = session.context.audio.duration;
 
       let whisperNativeBinding: string | undefined;
-      if (this.whisperEngine && "getBindingInfo" in this.whisperEngine) {
-        const bindingInfo = await this.whisperEngine.getBindingInfo();
+      if (service.whisperEngine && "getBindingInfo" in service.whisperEngine) {
+        const bindingInfo = yield* Effect.tryPromise({
+          try: () => service.whisperEngine.getBindingInfo(),
+          catch: (error) => error,
+        });
         whisperNativeBinding = bindingInfo?.type;
       }
 
-      this.telemetryService.trackTranscriptionCompleted({
+      service.telemetryService.trackTranscriptionCompleted({
         session_id: sessionId,
         model_id: session.speechModelId,
-        model_preloaded: this.modelWasPreloaded,
+        model_preloaded: service.modelWasPreloaded,
         whisper_native_binding: whisperNativeBinding,
         total_duration_ms: totalDuration || 0,
         recording_duration_ms: recordingDuration,
@@ -829,7 +941,7 @@ export class TranscriptionService {
         formatting_enabled: prepared.formattingUsed,
         formatting_model: prepared.formattingModel,
         formatting_duration_ms: prepared.formattingDuration,
-        vad_enabled: !!this.vadService,
+        vad_enabled: !!service.vadService,
         languages: session.context.languages ?? [],
         vocabulary_size: session.context.vocabulary.length,
       });
@@ -848,9 +960,7 @@ export class TranscriptionService {
           formattingStyle: session.context.formattingStyle,
         },
       };
-    } finally {
-      this.retireLiveSession(liveSession);
-    }
+    });
   }
 
   async retryTranscription(transcriptionId: number): Promise<string> {
@@ -871,7 +981,7 @@ export class TranscriptionService {
         engineForSelectedModel: (selectedModelId) =>
           this.engineForSelectedModel(selectedModelId),
         withTranscriptionLock: (work) =>
-          this.transcriptionMutex.runExclusive(work),
+          withLockPromise(this.transcriptionLock, work),
         wasModelPreloaded: () => this.modelWasPreloaded,
         isVadEnabled: () => this.vadService !== null,
       });
@@ -887,7 +997,7 @@ export class TranscriptionService {
       return new Array(frames.length).fill(1);
     }
 
-    return this.vadMutex.runExclusive(async () => {
+    return withLockPromise(this.vadLock, async () => {
       this.vadService!.reset();
       const probabilities: number[] = [];
       for (const frame of frames) {
@@ -899,10 +1009,10 @@ export class TranscriptionService {
   }
 
   /**
-   * Reset VAD state behind vadMutex so it cannot interleave with retry VAD computation.
+   * Reset VAD state behind the VAD lock so it cannot interleave with retry VAD computation.
    */
   async resetVadForNewSession(): Promise<void> {
-    await this.vadMutex.runExclusive(() => {
+    await withLockPromise(this.vadLock, async () => {
       this.vadService?.reset();
     });
   }
