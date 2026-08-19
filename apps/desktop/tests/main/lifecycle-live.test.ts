@@ -44,10 +44,9 @@ function deferred<T>() {
 }
 
 /**
- * Characterization harness for the desktop binding (S6 Part A). Scope rule:
- * only the surface S6 Part B converts — beep gate resilience, ambiance
- * end-joins-begin, the draft copy-capture barrier and its once-per-session
- * latch. Permanent regression coverage, not conversion scaffolding.
+ * Characterization harness for the desktop binding: beep-gate resilience,
+ * ambiance end-joins-begin, the draft copy-capture barrier, and its
+ * once-per-session latch. This is permanent regression coverage.
  */
 function makeLive(options?: {
   preferences?: () => Promise<{
@@ -174,7 +173,7 @@ function makeLive(options?: {
   };
 }
 
-describe("desktop live binding (S6 characterization)", () => {
+describe("desktop live binding", () => {
   it("a rejected preferences read still releases the beep gate", async () => {
     const h = makeLive({
       preferences: async () => {

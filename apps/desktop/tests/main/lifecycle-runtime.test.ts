@@ -207,7 +207,7 @@ describe("recording lifecycle runtime", () => {
     expect(h.notifications).toEqual([]);
   });
 
-  it("S6 gate: one delivered session flushes one dictation trace with its phases", async () => {
+  it("one delivered session flushes one dictation trace with its phases", async () => {
     const flushedTraces: Array<Record<string, unknown>> = [];
     installDictationTrace({
       trackDictationTrace: (properties) => {
@@ -760,8 +760,8 @@ describe("recording lifecycle runtime", () => {
   });
 });
 
-describe("S5 runtime edges", () => {
-  it("S5: the reminder dies on the recording-exit edge, not at retirement", async () => {
+describe("runtime edges", () => {
+  it("the reminder dies on the recording-exit edge, not at retirement", async () => {
     const h = makeHarness();
     const session = await h.startToRecording();
     expect(h.timers.armedDurations()).toContain(TUNING.longRecordingReminderMs);

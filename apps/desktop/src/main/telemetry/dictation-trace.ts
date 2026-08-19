@@ -7,8 +7,7 @@ import { codeOf, tagOf } from "../../types/errors";
 /**
  * Per-session dictation trace: collects span records, obligation markers,
  * and point events for one recording session, then flushes ONE flattened
- * telemetry event — `transcription_completed`, fired on every disposition
- * (plan D1/D2).
+ * telemetry event — `transcription_completed`, fired on every disposition.
  *
  * Flush policy: flush when the root is closed AND every expected obligation
  * has settled, or GRACE_MS after root close, whichever comes first; exactly
@@ -64,7 +63,7 @@ const FLAT_KEYS: Record<string, string> = {
   // delivery.paste span — that span ends at dispatch (the staged fact the
   // reducer waits on cannot hang on the native layer) and ends ok even when
   // nothing pasted, so it feeds no payload key. Unconfirmed paste = both
-  // paste keys omitted (review finding).
+  // paste keys omitted.
   "delivery.pasted": "paste_duration_ms",
   "storage.commit": "storage_duration_ms",
   "lifecycle.unmute-ambiance": "unmute_duration_ms",
@@ -277,7 +276,7 @@ export function reportDictationDefect(
   recordDefect(sessionId);
 }
 
-/** The per-session chunk aggregate, emitted once at retirement (plan D5).
+/** The per-session chunk aggregate, emitted once at retirement.
  * A second call for the same session is dropped — frozen after emit. */
 export function recordChunkAggregate(
   sessionId: string,
@@ -340,7 +339,7 @@ function handleSpanEnd(
   // Anchor discipline: every offset subtracts Date.now() moments (root
   // open, points, chunk stamps), but Effect's clock pins its wall origin
   // once at startup and only advances monotonically — a system clock step
-  // after boot would skew span-derived offsets (review finding). Stamp the
+  // after boot would skew span-derived offsets. Stamp the
   // end moment from Date.now() here (the sink runs synchronously inside
   // end()) and keep the duration on the monotonic clock.
   const endedAt = Date.now();
@@ -365,7 +364,7 @@ function handleSpanEnd(
     sessionId,
     spanId: span.spanId,
     // Native fiber parentage wins (resolve children); everything else hangs
-    // off the synthetic root (plan §3: sink-side stitching).
+    // off the synthetic root to keep sink-side stitching consistent.
     parentId:
       Option.isSome(span.parent) && span.parent.value._tag === "Span"
         ? span.parent.value.spanId
@@ -377,7 +376,7 @@ function handleSpanEnd(
     status,
     // Allowlist, never spread: effect injects code.stacktrace on failed
     // spans, and the record-content contract is names/timestamps/status/
-    // code/sessionId only (review finding).
+    // code/sessionId only.
     attributes: {
       sessionId,
       ...(errorCode ? { errorCode } : {}),
@@ -464,11 +463,10 @@ function flush(trace: SessionTrace): void {
     }
   }
 
-  // Attribution priority (plan §3): the terminal-latch point event carries
+  // Attribution priority: the terminal-latch point event carries
   // the true stage; a failing span is the fallback; close args come last.
   // Gated on an actual failure disposition: a dismissed session can reject
-  // an in-flight provider call, and that must not read as a stage failure
-  // (review finding).
+  // an in-flight provider call, and that must not read as a stage failure.
   const isFailure = trace.latch !== null || trace.disposition === "failure";
   if (isFailure) {
     const failedRecord = trace.records.find((r) => r.status === "failed");

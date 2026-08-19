@@ -11,7 +11,7 @@ import type { SessionId } from "../types";
 /**
  * SessionWork — session-scoped fiber regions for the lifecycle platform layer.
  *
- * Two regions per session (plan E1):
+ * Two regions per session:
  * - delivery: interruptible. Killed at retirement (IDLE edge, quarantine,
  *   staging expiry). New forks are refused after retirement — abandon can
  *   precede stageDelivery, so interruption alone is not a fence.

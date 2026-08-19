@@ -215,7 +215,7 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
                 // Expected from actual issuance: without it the trace flushes
                 // synchronously at the IDLE edge — every other obligation is
                 // already settled — and the helper's answer always lands
-                // late, so the paste keys would never ship (review finding).
+                // late, so the paste keys would never ship.
                 // The trace waits, grace-bounded; the reducer never does.
                 dispatched: () => expectObligation(session, "delivery.pasted"),
                 settled: (startedAt, confirmed) =>

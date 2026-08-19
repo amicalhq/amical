@@ -131,9 +131,8 @@ export function createDesktopRecordingLifecycle(deps: {
       if (nativeBridge) {
         // The matching unmute obligation is owed from this moment; the
         // expect must land before the root trace closes at the IDLE edge.
-        // Guarded like end()'s fork: no bridge, no unmute, no expect
-        // (review finding — an expect whose fork never comes waits out the
-        // full grace window).
+        // Guarded like end()'s fork: no bridge, no unmute, no expect. An
+        // expectation whose fork never comes waits out the full grace window.
         expectObligation(session, "lifecycle.unmute-ambiance");
         const muteStartedAt = Date.now();
         void done

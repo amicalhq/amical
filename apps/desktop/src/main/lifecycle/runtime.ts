@@ -443,7 +443,7 @@ export function createRecordingLifecycle(
             Effect.sync(() => {
               // Retirement interrupts this fiber; the equality re-check is
               // deliberate defense-in-depth so a stale fire can never kill
-              // a successor (review S7).
+              // a successor.
               if (shell.getSnapshot().sessionId !== session) return;
               logger.audio.error("Lifecycle wedge watchdog fired", { session });
               quarantineAndForceReset();
@@ -488,7 +488,7 @@ export function createRecordingLifecycle(
 
     if (now.terminal && !was.terminal) {
       // Discard reasons matter to analytics (no_audio especially); failure
-      // causes are the last-resort error_code (review findings).
+      // causes are the last-resort error_code.
       traceDisposition =
         now.terminal.kind === "discard"
           ? `discard:${now.terminal.reason}`
@@ -630,8 +630,8 @@ export function createRecordingLifecycle(
 
     dispose: () => {
       // Quarantine BEFORE unsubscribing: the forced idle edge must still
-      // reach the listener so an in-flight session closes its trace
-      // (review finding — the old order leaked the entry unflushed).
+      // reach the listener so an in-flight session closes its trace and
+      // retirement cannot leave the entry unflushed.
       quarantineAndForceReset();
       unsubscribeSnapshots();
       clearReminder();

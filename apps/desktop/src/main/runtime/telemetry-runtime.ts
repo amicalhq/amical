@@ -50,8 +50,8 @@ class DictationSpan implements Tracer.Span {
   ) {
     this.spanId = `span-${++spanCounter}`;
     // A root span mints its own trace id; children inherit the parent's, so
-    // one dictation produces one trace (review finding — a shared constant
-    // would merge every session into a single trace once spans land).
+    // one dictation produces one trace. A shared constant would merge every
+    // session into a single trace once spans land.
     this.traceId = Option.isSome(parent)
       ? parent.value.traceId
       : `trace-${randomUUID()}`;

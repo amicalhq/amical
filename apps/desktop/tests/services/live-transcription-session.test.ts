@@ -4,9 +4,8 @@ import { LiveTranscriptionSession } from "../../src/services/transcription/live-
 import type { MaterializedTranscriptionSession } from "../../src/services/transcription/types";
 
 /**
- * Direct characterization of LiveTranscriptionSession, written against the
- * CURRENT implementation before the Effect conversion (plan S0, D16). The v2
- * rewrite must pass this file unmodified.
+ * Direct characterization of LiveTranscriptionSession. These tests preserve
+ * its observable behavior across implementation changes.
  */
 
 const deferred = <T>() => {
@@ -130,9 +129,9 @@ describe("LiveTranscriptionSession — characterization", () => {
     expect(work).not.toHaveBeenCalled();
   });
 
-  // Added at S2 (plan D6): the fork can complete — or the session can retire —
-  // before the fork call returns; registration must survive both.
-  it("S2 gate: work that retires the session in its synchronous prefix is still interrupted", async () => {
+  // The fork can complete — or the session can retire — before the fork call
+  // returns; registration must survive both.
+  it("work that retires the session in its synchronous prefix is still interrupted", async () => {
     const session = new LiveTranscriptionSession("s1");
     const result = session.processChunkEffect(
       Effect.sync(() => session.retire()).pipe(
@@ -144,7 +143,7 @@ describe("LiveTranscriptionSession — characterization", () => {
     await expect(session.drainAdmittedChunks()).resolves.toBeUndefined();
   });
 
-  it("S2 gate: work that completes before registration settles normally and leaves the drain clean", async () => {
+  it("work that completes before registration settles normally and leaves the drain clean", async () => {
     const session = new LiveTranscriptionSession("s1");
     await expect(
       session.processChunkEffect(Effect.succeed("fast")),
@@ -152,8 +151,8 @@ describe("LiveTranscriptionSession — characterization", () => {
     await expect(session.drainAdmittedChunks()).resolves.toBeUndefined();
   });
 
-  // Review-pass additions: the defect arm and the drain abort arms had no
-  // coverage; the null-rejection case regressed and is pinned here.
+  // The defect arm and drain-abort arms need direct coverage; the
+  // null-rejection case regressed and is pinned here.
   it("a synchronous throw (defect) latches and rejects with the failure value", async () => {
     const listener = vi.fn();
     const session = new LiveTranscriptionSession("s1", listener);

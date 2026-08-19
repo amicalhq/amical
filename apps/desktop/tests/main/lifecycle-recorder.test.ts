@@ -377,7 +377,7 @@ describe("lifecycle recorder adapter", () => {
   });
 });
 
-describe("S2: the close tail is an obligation", () => {
+describe("the close tail is an obligation", () => {
   it("custody settles after retirement: quarantine cannot kill the drain tail", async () => {
     const h = makeHarness();
     await driveToCapturing(h);

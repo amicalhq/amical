@@ -67,8 +67,8 @@ describe("token lock", () => {
     expect(result.after).toBe("after");
   });
 
-  // Review P1 regression: with a capacity-1 token queue, a waiter
-  // interrupted right after release handed it the token destroyed the token
+  // With a capacity-1 token queue, a waiter interrupted right after release
+  // handed it the token destroyed the token
   // and deadlocked the lock forever. The waiter-queue lock must pass the
   // lock on instead. The production trigger is a terminal chunk failure
   // whose classification retires the session and interrupts a sibling that

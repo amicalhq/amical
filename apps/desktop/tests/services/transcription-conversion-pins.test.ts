@@ -7,10 +7,9 @@ import type {
 } from "../../src/pipeline/core/pipeline-types";
 
 /**
- * Conversion pins (plan S0, D16): behaviors the Effect conversion must keep
- * that no existing suite pins. Written and green against the CURRENT
- * promise/async-mutex implementation; every later step gates on this file
- * passing unmodified.
+ * Characterization pins for transcription behaviors that no other suite
+ * covers. They protect ordering, lock identity, failure timing, and bounded
+ * fiber growth across implementation changes.
  *
  * Pin 1 — chunk arrival order under lock contention (transcript order).
  * Pin 2 — lock identity: an in-flight chunk transcribe from a cancelled
@@ -338,9 +337,9 @@ describe("TranscriptionService — conversion pins", () => {
     expect(order).toEqual(["callback:provider exploded", "rejected"]);
   });
 
-  // Added at S1 with the token-lock swap: live-chunk VAD, retry VAD, and the
-  // new-session VAD reset must all contend on ONE lock.
-  it("S1 gate: live VAD, retry VAD, and VAD reset serialize on one lock in arrival order", async () => {
+  // Live-chunk VAD, retry VAD, and the new-session VAD reset must all contend
+  // on one lock.
+  it("live VAD, retry VAD, and VAD reset serialize on one lock in arrival order", async () => {
     const order: string[] = [];
     const vadGate = deferred<{ probability: number; isSpeaking: boolean }>();
     let firstVadCall = true;
@@ -382,9 +381,9 @@ describe("TranscriptionService — conversion pins", () => {
     expect(order).toEqual(["live-vad", "reset", "retry-vad", "reset"]);
   });
 
-  // Added at S3 (plan D12): one fiber per chunk at sustained frame rate must
-  // not reorder, leak ledger entries, or block resolve.
-  it("S3 gate: sustained frames keep order and drain to zero", async () => {
+  // One fiber per chunk at sustained frame rate must not reorder, leak ledger
+  // entries, or block resolve.
+  it("sustained frames keep order and drain to zero", async () => {
     const total = 2000;
     const startedAt = performance.now();
     let spanEnds = 0;
@@ -427,14 +426,14 @@ describe("TranscriptionService — conversion pins", () => {
     });
     expect(resolved).not.toBeNull();
     expect(resolved!.text.split(",").filter(Boolean)).toHaveLength(total);
-    // S6 gate: span emission is independent of chunk count — only the
-    // resolve-stage spans fire, never per-chunk spans (plan D5/D12).
+    // Span emission is independent of chunk count: only resolve-stage spans
+    // fire, never per-chunk spans.
     setSpanEndSink(() => {});
     expect(spanEnds).toBeLessThanOrEqual(8);
   }, 20000);
 
-  // Review-pass additions.
-  it("review gate: a terminal chunk failure with a queued sibling leaves the lock usable", async () => {
+  // Additional failure-path coverage.
+  it("a terminal chunk failure with a queued sibling leaves the lock usable", async () => {
     const boom = new Error("provider died");
     const gate = deferred<TranscriptionOutput>();
     providerMocks.local.setupSession("fail-session", (session) => {
@@ -450,7 +449,7 @@ describe("TranscriptionService — conversion pins", () => {
 
     // A fails; its release hands the lock to B; the terminal classification
     // then retires the session and interrupts B in the same cascade — the
-    // exact window that destroyed the token before the review fix.
+    // exact window that previously destroyed the token.
     gate.reject(boom);
     await expect(chunkA).rejects.toMatchObject({
       name: "Error",
@@ -466,7 +465,7 @@ describe("TranscriptionService — conversion pins", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
-  it("review gate: cancel interrupts a chunk waiting in the lock queue; its transcribe never starts", async () => {
+  it("cancel interrupts a chunk waiting in the lock queue; its transcribe never starts", async () => {
     const gate = deferred<TranscriptionOutput>();
     providerMocks.local.setupSession("queue-session", (session) => {
       session.transcribe.mockImplementationOnce(() => gate.promise);
@@ -489,7 +488,7 @@ describe("TranscriptionService — conversion pins", () => {
     await expect(processChunk("after-cancel", 3)).resolves.toBeDefined();
   });
 
-  it("review gate: a malformed VAD result degrades the chunk instead of killing the session", async () => {
+  it("a malformed VAD result degrades the chunk instead of killing the session", async () => {
     const listener = vi.fn();
     processVadFrame.mockResolvedValueOnce(
       undefined as unknown as { probability: number; isSpeaking: boolean },

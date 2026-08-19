@@ -123,8 +123,8 @@ describe("desktop hotkey grammar", () => {
   });
 
   it("PTT upgrades to a latch on the toggle chord", () => {
-    // Inside the start window: fresh latch, the original window keeps
-    // running (freshness never restarts — the reviewer's t=0/400/600 case).
+    // Inside the start window: fresh latch, and the original window keeps
+    // running rather than restarting its freshness timer.
     const young = run(
       INITIAL_GRAMMAR_STATE,
       { type: "keyDown" },

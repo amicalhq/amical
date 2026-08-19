@@ -248,7 +248,7 @@ export function createRecorderAdapter(
 
     // recorderClosed stays a synchronous emission at the close decision
     // point: suites assert it without settling, and the reducer must see it
-    // in the same dispatch (audit S2 amendment).
+    // in the same dispatch.
     if (!capture.closedEmitted) {
       capture.closedEmitted = true;
       deps.sink({ type: "recorderClosed", session });

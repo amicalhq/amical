@@ -164,8 +164,8 @@ export function createTranscriptionAdapter(
       }
       // The VAD reset runs as session work: a session already retired at
       // dispatch time is refused. A reset ALREADY dispatched cannot be
-      // recalled if it lands late (the cloud-call limit, plan E1 pin 11) —
-      // this fences the dispatch, not the resolution. Warmup stays
+      // recalled if its Promise completes late — this fences the dispatch,
+      // not the resolution. Warmup stays
       // app-level fire-and-forget — provider state, not session state.
       deps.sessionWork.forkDelivery(
         session,
@@ -229,7 +229,7 @@ export function createTranscriptionAdapter(
       // the emitFinal once-latch, NOT an exit-filtered fact: three producers
       // share it (this chain, the out-of-band terminal-failure callback,
       // cancel), and the callback producer is no fiber exit — the flags are
-      // the only mechanism covering all three (audit S3).
+      // the only mechanism covering all three producers.
       deps.sessionWork.runObligation(
         session,
         Effect.promise(async () => {

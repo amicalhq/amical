@@ -301,7 +301,7 @@ describe("lifecycle transcription adapter", () => {
   });
 });
 
-describe("S3: session fences", () => {
+describe("session fences", () => {
   it("does not dispatch the VAD reset for a session already retired", async () => {
     const h = makeHarness();
     // Simulate the stale-open race: the region exists but retired before

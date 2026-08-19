@@ -170,7 +170,7 @@ export class TranscriptionService {
         recordPoint(sessionId, "transcription.terminal-latch", {
           // The latch fires from chunk classification AND from the provider's
           // out-of-band stream observer, so the stage names the stream, not
-          // one phase (review finding).
+          // one phase.
           stage: "transcription.stream",
           errorCode: codeOf(error),
           errorTag: tagOf(error),
@@ -627,8 +627,8 @@ export class TranscriptionService {
               // Pass Float32Array directly to VAD. The field projection
               // stays INSIDE the try thunk: outside it, a malformed VAD
               // result would throw as a defect that the degrade arm below
-              // cannot catch, and one bad frame would kill the session
-              // (review finding — this must degrade, per the R8-1 decision).
+              // cannot catch, and one bad frame would kill the session instead
+              // of degrading to assumed speech.
               return Effect.tryPromise({
                 try: async () => {
                   const vadResult =
@@ -727,9 +727,9 @@ export class TranscriptionService {
                 return "";
               }
               const engine = service.engineForSelectedModel(selectedModelId);
-              // A sync throw inside gen is a defect whatever class it is
-              // (probe P7) — the disposed variants must enter the failure
-              // channel through a lift.
+              // A sync throw inside gen is a defect whatever class it is, so
+              // disposed variants must enter the failure channel through a
+              // lift.
               const providerSession = yield* Effect.try({
                 try: () =>
                   engine.openSession({
@@ -884,7 +884,7 @@ export class TranscriptionService {
     const stats = this.chunkStats.get(liveSession.id);
     if (stats) {
       // Emit once and delete: late uninterruptible chunk tails find no
-      // entry and their timing is dropped with their results (plan D5).
+      // entry and their timing is dropped with their results.
       this.chunkStats.delete(liveSession.id);
       recordChunkAggregate(liveSession.id, stats);
     }
@@ -915,7 +915,7 @@ export class TranscriptionService {
       return null;
     }
 
-    // Sync prefix (plan D9): the slot guard above and this close must run
+    // Sync prefix: the slot guard above and this close must run
     // before any yield point — a later chunk on the same tick must already
     // be refused.
     liveSession.closeChunkAdmission();
@@ -923,7 +923,7 @@ export class TranscriptionService {
       const exit = await runPromiseExit(
         this.resolveEffect(liveSession, options),
       );
-      // Boundary triage (D5): typed failures rethrow; every defect in the
+      // Boundary triage: typed failures rethrow; every defect in the
       // cause is reported once (the session bookkeeping dedups values the
       // chunk arm or an out-of-band channel already own), loudly.
       if (Exit.isFailure(exit)) {
@@ -946,7 +946,7 @@ export class TranscriptionService {
   }
 
   /**
-   * The resolve body as one Effect. Never interrupted (plan D9): an abort
+   * The resolve body as one Effect. Never interrupted: an abort
    * surfaces through the flush signal as a provider throw. Every synchronous
    * terminal gate lifts through a two-arg Effect.try so the latched error
    * object crosses the boundary unchanged.
@@ -960,7 +960,7 @@ export class TranscriptionService {
     const { sessionId } = options;
     const service = this;
     // The latch may hold a variant (typed failure) or an out-of-band defect;
-    // refine by value — a latched defect surfaces as a defect (D12).
+    // refine by value so a latched defect surfaces as a defect.
     const terminalGate = Effect.try({
       try: () => liveSession.throwIfTerminalFailure(),
       catch: (error) => error,

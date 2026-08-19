@@ -116,7 +116,7 @@ export class LiveTranscriptionSession {
    * the same uninterruptible region: when the failing chunk's callback
    * retires this session, the retirement interrupts this very fiber, and an
    * interruptible tail would lose the original error (the cause would end
-   * interruption-only). Probe-verified against effect 3.22.1 (plan D8).
+   * interruption-only). Verified against Effect 3.22.1.
    */
   processChunkEffect(work: Effect.Effect<string, unknown>): Promise<string> {
     if (!this.acceptsChunks()) {
@@ -129,7 +129,7 @@ export class LiveTranscriptionSession {
           Effect.suspend(() => {
             // Report defects BEFORE any suppression: an interrupted chunk
             // whose finalizer dies carries Interrupt + Die, and the phase
-            // guard below would silently swallow the defect (probe P8).
+            // guard below would silently swallow the defect.
             const defects = Array.from(Cause.defects(cause));
             if (defects.length > 0) {
               this.reportDefectsOnce(defects);
@@ -142,8 +142,8 @@ export class LiveTranscriptionSession {
             const failure = Cause.failureOption(cause);
             const defect = Cause.dieOption(cause);
             // Branch on PRESENCE, not value: a rejection whose value is
-            // literally null must still latch (review finding — a null
-            // sentinel here misrouted Fail(null) into the interruption arm).
+            // literally null must still latch; a null sentinel would misroute
+            // Fail(null) into the interruption arm.
             if (Option.isSome(failure)) {
               this.reportTerminalFailure(failure.value);
             } else if (Option.isSome(defect)) {
@@ -156,7 +156,7 @@ export class LiveTranscriptionSession {
       ),
     );
 
-    // Registration discipline (plan D6, session-work precedent): fork, insert
+    // Registration discipline: fork, insert
     // into the ledger, attach the observer, then re-check the phase — the
     // fork can complete, or this session can retire, before runFork returns.
     const fiber = runFork(classified);
@@ -310,7 +310,7 @@ export class LiveTranscriptionSession {
   }
 
   private interruptLedger(): void {
-    // Fired, never awaited (plan D3): an awaited interrupt would block the
+    // Fired, never awaited: an awaited interrupt would block the
     // synchronous cancel path behind uninterruptible provider work.
     for (const fiber of this.ledger) {
       fiber.unsafeInterruptAsFork(FiberId.none);
