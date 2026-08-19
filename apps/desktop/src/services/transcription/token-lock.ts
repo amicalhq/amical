@@ -1,5 +1,5 @@
 import { Deferred, Effect, Exit, FiberId } from "effect";
-import { runEffectSameError } from "./effect-boundary";
+import { runEffectSettled } from "./effect-boundary";
 
 /**
  * A FIFO mutual-exclusion lock with interruption-safe handoff.
@@ -85,13 +85,12 @@ export const withLock = <A, E, R>(
 
 /**
  * Promise bridge for the not-yet-converted async bodies: runs `work` under
- * the lock and preserves rejection identity — the exact thrown object
- * crosses the boundary (D8/D15).
+ * the lock and rethrows the failure value across the boundary.
  */
 export const withLockPromise = <T>(
   lock: TokenLock,
   work: () => Promise<T>,
 ): Promise<T> =>
-  runEffectSameError(
+  runEffectSettled(
     withLock(lock, Effect.tryPromise({ try: work, catch: (error) => error })),
   );

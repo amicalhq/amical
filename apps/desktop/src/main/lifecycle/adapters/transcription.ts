@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import { logger } from "../../logger";
-import { AppError, ErrorCodes } from "../../../types/error";
+import { ErrorCodes } from "../../../types/error";
+import { codeOf, isDictationError, uiOf } from "../../../types/errors";
+import { reportDictationDefect } from "../../telemetry/dictation-trace";
 import type { ResolvedStreamingSession } from "../../../services/transcription-service";
 import { type SessionWork } from "../effect/session-work";
 import type { LifecycleFactSink, TranscriptionPort } from "../ports";
@@ -86,19 +88,10 @@ interface SttSession {
   finalEmitted: boolean;
 }
 
-function causeOf(error: unknown): string {
-  return error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
-}
+const causeOf = (error: unknown): string => codeOf(error);
 
-function detailOf(error: unknown): TranscriptionFailureDetail | null {
-  if (!(error instanceof AppError)) return null;
-  if (!error.uiTitle && !error.uiMessage && !error.traceId) return null;
-  return {
-    uiTitle: error.uiTitle,
-    uiMessage: error.uiMessage,
-    traceId: error.traceId,
-  };
-}
+const detailOf = (error: unknown): TranscriptionFailureDetail | null =>
+  uiOf(error);
 
 export function createTranscriptionAdapter(
   deps: TranscriptionAdapterDeps,
@@ -154,11 +147,18 @@ export function createTranscriptionAdapter(
         }
       } catch (error) {
         // A stale stream is still registered (should be impossible under the
-        // serialized lifecycle); surface it as this session's failure.
+        // serialized lifecycle); surface it as this session's failure. The
+        // ONLY catch with no triage upstream: an unknown throw here is a
+        // defect and captures once; a typed variant (the degraded stub) is a
+        // known outcome and never captures. finalize()'s catch never
+        // captures — its resolve input is triaged upstream.
         logger.transcription.error("Failed to open streaming session", {
           sessionId: session,
           error,
         });
+        if (!isDictationError(error)) {
+          reportDictationDefect(session, error);
+        }
         emitFinal(stt, { kind: "failure", cause: causeOf(error) });
         return;
       }

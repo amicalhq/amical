@@ -30,8 +30,9 @@ const applyUpdate = (
  * shared telemetry runtime. Abort and retirement interrupt the ledger —
  * fired, never awaited, so the synchronous cancel path stays zero-tick. The
  * public surface is unchanged and stays synchronous; the promise returned by
- * processChunk settles exactly as before: same-object rejection for a
- * terminal failure, empty string for cancelled work.
+ * processChunk settles exactly as before: rejection with the failure value for a
+ * terminal failure (reads survive span proxies; object identity is not
+ * guaranteed), empty string for cancelled work.
  */
 export class LiveTranscriptionSession {
   private readonly abortController = new AbortController();
@@ -46,7 +47,37 @@ export class LiveTranscriptionSession {
   constructor(
     readonly id: string,
     private readonly onTerminalFailure?: (error: Error) => void,
+    private readonly onDefect?: (defects: ReadonlyArray<unknown>) => void,
   ) {}
+
+  /**
+   * Defect capture bookkeeping: a defect is reported exactly once. Values
+   * land here when classification reports them, when the resolve triage
+   * reports them, or when they latch via an out-of-band delivery (whose
+   * channel owns the capture — the observed-stream policy). Keys normalize
+   * through the span-annotation proxy: the same defect can cross one
+   * boundary raw and another proxied, and both must count as one.
+   */
+  private readonly reportedDefects = new Set<unknown>();
+
+  wasDefectReported(value: unknown): boolean {
+    return this.reportedDefects.has(Cause.originalError(value as Error));
+  }
+
+  markDefectsReported(defects: ReadonlyArray<unknown>): void {
+    for (const defect of defects) {
+      this.reportedDefects.add(Cause.originalError(defect as Error));
+    }
+  }
+
+  private reportDefectsOnce(defects: ReadonlyArray<unknown>): void {
+    const fresh = defects.filter((d) => !this.wasDefectReported(d));
+    if (fresh.length === 0) {
+      return;
+    }
+    this.markDefectsReported(fresh);
+    this.onDefect?.(fresh);
+  }
 
   get signal(): AbortSignal {
     return this.abortController.signal;
@@ -96,6 +127,13 @@ export class LiveTranscriptionSession {
       Effect.catchAllCause((cause) =>
         Effect.uninterruptible(
           Effect.suspend(() => {
+            // Report defects BEFORE any suppression: an interrupted chunk
+            // whose finalizer dies carries Interrupt + Die, and the phase
+            // guard below would silently swallow the defect (probe P8).
+            const defects = Array.from(Cause.defects(cause));
+            if (defects.length > 0) {
+              this.reportDefectsOnce(defects);
+            }
             if (this.phase === "aborted" || this.phase === "retired") {
               // Phase is read at failure time, exactly like the old catch:
               // failures after abort/retire are swallowed, never terminal.
@@ -107,9 +145,9 @@ export class LiveTranscriptionSession {
             // literally null must still latch (review finding — a null
             // sentinel here misrouted Fail(null) into the interruption arm).
             if (Option.isSome(failure)) {
-              this.reportTerminalFailure(Cause.originalError(failure.value));
+              this.reportTerminalFailure(failure.value);
             } else if (Option.isSome(defect)) {
-              this.reportTerminalFailure(Cause.originalError(defect.value));
+              this.reportTerminalFailure(defect.value);
             }
             // Pure interruption falls through without latching.
             return Effect.failCause(cause);
@@ -137,13 +175,20 @@ export class LiveTranscriptionSession {
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
+      // Interruption skips the classification arm entirely, so an
+      // interrupted chunk whose finalizer died surfaces its defect only
+      // here — report it (deduped) before settling.
+      const exitDefects = Array.from(Cause.defects(exit.cause));
+      if (exitDefects.length > 0) {
+        this.reportDefectsOnce(exitDefects);
+      }
       const failure = Cause.failureOption(exit.cause);
       if (Option.isSome(failure)) {
-        throw Cause.originalError(failure.value);
+        throw failure.value;
       }
       const defect = Cause.dieOption(exit.cause);
       if (Option.isSome(defect)) {
-        throw Cause.originalError(defect.value);
+        throw defect.value;
       }
       // Interrupted chunk work settles as the empty string the pinned
       // cancellation behavior requires.

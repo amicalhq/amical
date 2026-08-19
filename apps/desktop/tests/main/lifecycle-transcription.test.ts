@@ -8,7 +8,18 @@ import type { LifecyclePortFact } from "../../src/main/lifecycle/ports";
 import { createSessionWork } from "../../src/main/lifecycle/effect/session-work";
 import { FakeTimers } from "../helpers/lifecycle-fakes";
 import type { ResolvedStreamingSession } from "../../src/services/transcription-service";
-import { AppError, ErrorCodes } from "../../src/types/error";
+import { ErrorCodes } from "../../src/types/error";
+import {
+  CloudQuotaExceeded,
+  IdleTimeout,
+  NetworkFailure,
+  ServerRejected,
+  ServiceInitFailed,
+} from "../../src/types/errors";
+import {
+  _resetDictationTraceForTests,
+  installDictationTrace,
+} from "../../src/main/telemetry/dictation-trace";
 
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -187,7 +198,7 @@ describe("lifecycle transcription adapter", () => {
   it("maps resolve failures to error-code causes", async () => {
     const coded = makeHarness({
       resolveStreamingSession: vi.fn(async () => {
-        throw new AppError("quota", ErrorCodes.QUOTA_EXCEEDED);
+        throw new CloudQuotaExceeded({ message: "quota" });
       }),
     });
     coded.adapter.open("s1");
@@ -217,12 +228,8 @@ describe("lifecycle transcription adapter", () => {
   it("an uncommanded terminal failure surfaces immediately, exactly once", async () => {
     const h = makeHarness();
     h.adapter.open("s1");
-    h.terminalCallbacks.get("s1")!(
-      new AppError("down", ErrorCodes.NETWORK_ERROR),
-    );
-    h.terminalCallbacks.get("s1")!(
-      new AppError("down", ErrorCodes.NETWORK_ERROR),
-    );
+    h.terminalCallbacks.get("s1")!(new NetworkFailure({ message: "down" }));
+    h.terminalCallbacks.get("s1")!(new NetworkFailure({ message: "down" }));
 
     expect(h.facts).toEqual([
       {
@@ -313,5 +320,260 @@ describe("S3: session fences", () => {
     h.adapter.open("s2");
     await settle();
     expect(h.service.resetVadForNewSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---- Failure-funnel characterization pins --------------------------------
+// The adapter's causeOf/detailOf funnel is the frozen edge that feeds the
+// transcriptionFinal fact and the rich-toast detail channel. These rows pin
+// its exact output contract, including the title/message gating asymmetry.
+
+describe("failure funnel pins", () => {
+  function makeFailureHarness(rejection: unknown) {
+    const facts: LifecyclePortFact[] = [];
+    const details: Array<{
+      session: string;
+      detail: { uiTitle?: string; uiMessage?: string; traceId?: string };
+    }> = [];
+    const sessionWork = createSessionWork({ timers: new FakeTimers() });
+    const service: StreamingTranscriptionService = {
+      beginStreamingSession: (sessionId) => {
+        sessionWork.open(sessionId);
+        return true;
+      },
+      processStreamingChunk: async () => "",
+      resolveStreamingSession: async () => {
+        throw rejection;
+      },
+      cancelStreamingSession: async () => undefined,
+      resetVadForNewSession: async () => undefined,
+      warmupActiveProvider: async () => undefined,
+    };
+    const adapter = createTranscriptionAdapter({
+      sink: (fact) => facts.push(fact),
+      sessionWork,
+      service,
+      enrich: () => undefined,
+      onFailureDetail: (session, detail) => details.push({ session, detail }),
+    });
+    return { adapter, facts, details };
+  }
+
+  const failureCause = (facts: LifecyclePortFact[]): string => {
+    const fact = facts.find((f) => f.type === "transcriptionFinal");
+    if (!fact || fact.type !== "transcriptionFinal") {
+      throw new Error("no transcriptionFinal fact");
+    }
+    if (fact.result.kind !== "failure") {
+      throw new Error(`expected failure, got ${fact.result.kind}`);
+    }
+    return fact.result.cause;
+  };
+
+  it("forwards uiTitle, uiMessage, and traceId together", async () => {
+    const h = makeFailureHarness(
+      new CloudQuotaExceeded({
+        message: "boom",
+        meta: {
+          serverUi: { title: "Title override", message: "Body override" },
+          traceId: "trace-1",
+        },
+      }),
+    );
+    h.adapter.open("s1");
+    h.adapter.finalize("s1");
+    await settle();
+    expect(failureCause(h.facts)).toBe(ErrorCodes.QUOTA_EXCEEDED);
+    expect(h.details).toEqual([
+      {
+        session: "s1",
+        detail: {
+          uiTitle: "Title override",
+          uiMessage: "Body override",
+          traceId: "trace-1",
+        },
+      },
+    ]);
+  });
+
+  it("forwards a title without a message — the fields gate independently", async () => {
+    const h = makeFailureHarness(
+      new ServerRejected({
+        message: "boom",
+        meta: { httpStatus: 500, serverUi: { title: "Title only" } },
+      }),
+    );
+    h.adapter.open("s1");
+    h.adapter.finalize("s1");
+    await settle();
+    expect(failureCause(h.facts)).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+    expect(h.details).toEqual([
+      {
+        session: "s1",
+        detail: {
+          uiTitle: "Title only",
+          uiMessage: undefined,
+          traceId: undefined,
+        },
+      },
+    ]);
+  });
+
+  it("forwards a bare traceId", async () => {
+    const h = makeFailureHarness(
+      new NetworkFailure({ message: "boom", meta: { traceId: "trace-2" } }),
+    );
+    h.adapter.open("s1");
+    h.adapter.finalize("s1");
+    await settle();
+    expect(h.details[0]?.detail.traceId).toBe("trace-2");
+  });
+
+  it("emits no detail when the error carries none", async () => {
+    const h = makeFailureHarness(new IdleTimeout({ message: "boom" }));
+    h.adapter.open("s1");
+    h.adapter.finalize("s1");
+    await settle();
+    expect(failureCause(h.facts)).toBe(ErrorCodes.IDLE_TIMEOUT);
+    expect(h.details).toEqual([]);
+  });
+
+  it("projects a foreign error to UNKNOWN with no detail", async () => {
+    const h = makeFailureHarness(new TypeError("not an app error"));
+    h.adapter.open("s1");
+    h.adapter.finalize("s1");
+    await settle();
+    expect(failureCause(h.facts)).toBe(ErrorCodes.UNKNOWN);
+    expect(h.details).toEqual([]);
+  });
+
+  describe("open() capture split", () => {
+    function makeOpenThrowHarness(thrown: unknown) {
+      const facts: LifecyclePortFact[] = [];
+      const sessionWork = createSessionWork({ timers: new FakeTimers() });
+      const service: StreamingTranscriptionService = {
+        beginStreamingSession: () => {
+          throw thrown;
+        },
+        processStreamingChunk: async () => "",
+        resolveStreamingSession: async () => null,
+        cancelStreamingSession: async () => undefined,
+        resetVadForNewSession: async () => undefined,
+        warmupActiveProvider: async () => undefined,
+      };
+      const adapter = createTranscriptionAdapter({
+        sink: (fact) => facts.push(fact),
+        sessionWork,
+        service,
+        enrich: () => undefined,
+      });
+      return { adapter, facts };
+    }
+
+    const failureCauseOf = (facts: LifecyclePortFact[]): string => {
+      const fact = facts.find((f) => f.type === "transcriptionFinal");
+      if (!fact || fact.type !== "transcriptionFinal") {
+        throw new Error("no transcriptionFinal fact");
+      }
+      if (fact.result.kind !== "failure") {
+        throw new Error(`expected failure, got ${fact.result.kind}`);
+      }
+      return fact.result.cause;
+    };
+
+    it("an unknown open-throw captures exactly once and projects UNKNOWN", () => {
+      const captureException = vi.fn();
+      installDictationTrace({
+        trackDictationTrace: vi.fn(),
+        captureException,
+      });
+      try {
+        const bug = new TypeError("busy slot invariant");
+        const h = makeOpenThrowHarness(bug);
+        h.adapter.open("s1");
+        expect(failureCauseOf(h.facts)).toBe(ErrorCodes.UNKNOWN);
+        expect(captureException).toHaveBeenCalledExactlyOnceWith(bug, {
+          source: "dictation",
+          session_id: "s1",
+        });
+      } finally {
+        _resetDictationTraceForTests();
+      }
+    });
+
+    it("a typed open-throw (the degraded stub) never captures", () => {
+      const captureException = vi.fn();
+      installDictationTrace({
+        trackDictationTrace: vi.fn(),
+        captureException,
+      });
+      try {
+        const h = makeOpenThrowHarness(
+          new ServiceInitFailed({
+            message: "Transcription service failed to initialize",
+          }),
+        );
+        h.adapter.open("s1");
+        expect(failureCauseOf(h.facts)).toBe(
+          ErrorCodes.WORKER_INITIALIZATION_FAILED,
+        );
+        expect(captureException).not.toHaveBeenCalled();
+      } finally {
+        _resetDictationTraceForTests();
+      }
+    });
+  });
+
+  describe("finalize() capture discipline", () => {
+    it("never captures — the resolve triage upstream owns defects", () => {
+      const captureException = vi.fn();
+      installDictationTrace({
+        trackDictationTrace: vi.fn(),
+        captureException,
+      });
+      try {
+        const facts: LifecyclePortFact[] = [];
+        const sessionWork = createSessionWork({ timers: new FakeTimers() });
+        const service: StreamingTranscriptionService = {
+          beginStreamingSession: (sessionId) => {
+            sessionWork.open(sessionId);
+            return true;
+          },
+          processStreamingChunk: async () => "",
+          resolveStreamingSession: async () => {
+            // A defect rethrown by the settle boundary — already captured
+            // upstream by the resolve triage.
+            throw new TypeError("already-triaged defect");
+          },
+          cancelStreamingSession: async () => undefined,
+          resetVadForNewSession: async () => undefined,
+          warmupActiveProvider: async () => undefined,
+        };
+        const adapter = createTranscriptionAdapter({
+          sink: (fact) => facts.push(fact),
+          sessionWork,
+          service,
+          enrich: () => undefined,
+        });
+        adapter.open("s1");
+        adapter.finalize("s1");
+        return new Promise<void>((resolve) =>
+          setTimeout(() => {
+            const fact = facts.find((f) => f.type === "transcriptionFinal");
+            expect(fact).toBeDefined();
+            if (fact?.type === "transcriptionFinal") {
+              expect(fact.result).toEqual({
+                kind: "failure",
+                cause: ErrorCodes.UNKNOWN,
+              });
+            }
+            expect(captureException).not.toHaveBeenCalled();
+            resolve();
+          }, 0),
+        );
+      } finally {
+        _resetDictationTraceForTests();
+      }
+    });
   });
 });

@@ -40,7 +40,10 @@ describe("LiveTranscriptionSession — characterization", () => {
     const boom = new Error("chunk failed");
     const returned = session.processChunk(() => Promise.reject(boom));
     const drain = session.drainAdmittedChunks();
-    await expect(returned).rejects.toBe(boom);
+    await expect(returned).rejects.toMatchObject({
+      name: "Error",
+      message: boom.message,
+    });
     await expect(drain).resolves.toBeUndefined();
   });
 
@@ -73,12 +76,15 @@ describe("LiveTranscriptionSession — characterization", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it("a failure while live latches, fires the callback once, and rethrows the same object", async () => {
+  it("a failure while live latches, fires the callback once, and rethrows the failure value", async () => {
     const listener = vi.fn();
     const session = new LiveTranscriptionSession("s1", listener);
     const boom = new Error("terminal");
     const returned = session.processChunk(() => Promise.reject(boom));
-    await expect(returned).rejects.toBe(boom);
+    await expect(returned).rejects.toMatchObject({
+      name: "Error",
+      message: boom.message,
+    });
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(boom);
     // Second failure does not re-latch or re-fire.
@@ -148,7 +154,7 @@ describe("LiveTranscriptionSession — characterization", () => {
 
   // Review-pass additions: the defect arm and the drain abort arms had no
   // coverage; the null-rejection case regressed and is pinned here.
-  it("a synchronous throw (defect) latches and rejects with the same object", async () => {
+  it("a synchronous throw (defect) latches and rejects with the failure value", async () => {
     const listener = vi.fn();
     const session = new LiveTranscriptionSession("s1", listener);
     const boom = new Error("sync defect");
@@ -157,7 +163,10 @@ describe("LiveTranscriptionSession — characterization", () => {
         throw boom;
       }),
     );
-    await expect(returned).rejects.toBe(boom);
+    await expect(returned).rejects.toMatchObject({
+      name: "Error",
+      message: boom.message,
+    });
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(boom);
   });

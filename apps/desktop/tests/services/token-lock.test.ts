@@ -32,12 +32,12 @@ describe("token lock", () => {
     expect(order).toEqual([1, 2, 3]);
   });
 
-  it("the exact rejection object crosses the promise bridge", async () => {
+  it("the rejection value crosses the promise bridge", async () => {
     const lock = makeTokenLock();
     const boom = new Error("locked work failed");
     await expect(
       withLockPromise(lock, () => Promise.reject(boom)),
-    ).rejects.toBe(boom);
+    ).rejects.toMatchObject({ name: "Error", message: boom.message });
     // The token was released by the failure: the next user proceeds.
     await expect(withLockPromise(lock, async () => "next")).resolves.toBe(
       "next",

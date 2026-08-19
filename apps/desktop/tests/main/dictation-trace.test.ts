@@ -9,8 +9,10 @@ import {
   openSessionTrace,
   recordChunkAggregate,
   recordPoint,
+  recordDefect,
 } from "../../src/main/telemetry/dictation-trace";
 import { runPromise } from "../../src/main/runtime/telemetry-runtime";
+import { NetworkFailure } from "../../src/types/errors";
 
 const flushed: Array<Record<string, unknown>> = [];
 
@@ -119,16 +121,16 @@ describe("dictation trace", () => {
     await span(
       "resolve.flush",
       "s5",
-      // AppError shape: the code lives on `errorCode` (production reality;
-      // a `.code`-only fabrication masked a real extraction bug in review).
-      Effect.fail(
-        Object.assign(new Error("boom"), { errorCode: "NETWORK_ERROR" }),
-      ),
+      // A domain variant projects its frozen code and carries its tag; a
+      // foreign value would project UNKNOWN (the `.code` passthrough is
+      // superseded — decided carve-out).
+      Effect.fail(new NetworkFailure({ message: "boom" })),
     ).catch(() => undefined);
     closeSessionTrace("s5", { disposition: "failure" });
     expect(flushed).toHaveLength(1);
     expect(flushed[0].failed_stage).toBe("resolve.flush");
     expect(flushed[0].error_code).toBe("NETWORK_ERROR");
+    expect(flushed[0].error_tag).toBe("NetworkFailure");
   });
 
   it("a dismissed session with a rejected in-flight span reports no stage failure", async () => {
@@ -224,5 +226,26 @@ describe("dictation trace", () => {
     expect(flushed[0].mute_duration_ms).toBeTypeOf("number");
     expect(flushed[0].resolve_duration_ms).toBeTypeOf("number");
     expect(flushed[0].resolve_drain_duration_ms).toBeTypeOf("number");
+  });
+
+  it("stamps defect: true additively, keeping the disposition's code", () => {
+    install();
+    openSessionTrace("s-defect", { mode: "dictate" });
+    recordDefect("s-defect");
+    closeSessionTrace("s-defect", {
+      disposition: "failure",
+      failedStage: "transcription.stream",
+      errorCode: "QUOTA_EXCEEDED",
+    });
+    const payload = flushed.at(-1)!;
+    expect(payload.defect).toBe(true);
+    expect(payload.error_code).toBe("QUOTA_EXCEEDED");
+  });
+
+  it("omits the defect flag when none occurred", () => {
+    install();
+    openSessionTrace("s-clean", { mode: "dictate" });
+    closeSessionTrace("s-clean", { disposition: "empty" });
+    expect(flushed.at(-1)!).not.toHaveProperty("defect");
   });
 });

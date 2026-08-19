@@ -327,7 +327,10 @@ describe("TranscriptionService — conversion pins", () => {
     );
 
     gatedTranscribe.reject(boom);
-    await expect(resolve).rejects.toBe(boom);
+    await expect(resolve).rejects.toMatchObject({
+      name: "Error",
+      message: boom.message,
+    });
     await resolveOutcome;
 
     expect(listener).toHaveBeenCalledTimes(1);
@@ -449,7 +452,10 @@ describe("TranscriptionService — conversion pins", () => {
     // then retires the session and interrupts B in the same cascade — the
     // exact window that destroyed the token before the review fix.
     gate.reject(boom);
-    await expect(chunkA).rejects.toBe(boom);
+    await expect(chunkA).rejects.toMatchObject({
+      name: "Error",
+      message: boom.message,
+    });
     await expect(chunkB).resolves.toBe("");
 
     // The lock survived: a fresh session transcribes normally.

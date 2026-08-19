@@ -1,5 +1,5 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
-import { Effect, Either, Layer, ManagedRuntime, Ref } from "effect";
+import { Effect, Layer, ManagedRuntime, Ref } from "effect";
 import {
   OpenTranscriptionSessionOptions,
   TranscriptionEngine,
@@ -14,12 +14,21 @@ import type { SettingsService } from "../../../services/settings-service";
 import type { TelemetryService } from "../../../services/telemetry-service";
 import type { CloudFallbackStage } from "../../../types/telemetry-events";
 import {
-  AppError,
   DictationErrorCodes,
-  ErrorCodes,
   type DictationErrorCode,
-  type ErrorCode,
 } from "../../../types/error";
+import {
+  AuthRequired,
+  Cancelled,
+  CloudDisposed,
+  codeOf,
+  isCloudError,
+  settleExit,
+  tagOf,
+  type CloudError,
+  type CloudMeta,
+} from "../../../types/errors";
+import { recordDefect } from "../../../main/telemetry/dictation-trace";
 import { AMICAL_LAB_SELF_CORRECTION } from "../../../utils/http-client";
 import {
   AmicalCloudGrpcTransport,
@@ -32,7 +41,7 @@ import {
   createInitialProviderState,
   resetGrpcState,
   resetProviderState,
-  toNetworkAppError,
+  toNetworkFailure,
   type CloudProviderEffect,
   type ProviderState,
   type Transport,
@@ -43,17 +52,17 @@ const makeCloudAuthLive = (authService: AuthService) =>
     isAuthenticated: () =>
       Effect.tryPromise({
         try: () => authService.isAuthenticated(),
-        catch: toNetworkAppError,
+        catch: toNetworkFailure,
       }),
     getIdToken: () =>
       Effect.tryPromise({
         try: () => authService.getIdToken(),
-        catch: toNetworkAppError,
+        catch: toNetworkFailure,
       }),
     refreshTokenIfNeeded: (force = false) =>
       Effect.tryPromise({
         try: () => authService.refreshTokenIfNeeded(force),
-        catch: toNetworkAppError,
+        catch: toNetworkFailure,
       }),
   }));
 
@@ -84,38 +93,38 @@ type CloudRuntime = ReturnType<typeof createCloudRuntime>;
  *     back would trigger a phantom HTTP transcription right after the user
  *     tried to stop.
  */
-const NO_HTTP_FALLBACK_CODES: ReadonlySet<ErrorCode> = new Set([
-  ErrorCodes.AUTH_REQUIRED,
-  ErrorCodes.RATE_LIMIT_EXCEEDED,
-  ErrorCodes.QUOTA_EXCEEDED,
-  ErrorCodes.IDLE_TIMEOUT,
+const NO_HTTP_FALLBACK_WIRE_CODES: ReadonlySet<DictationErrorCode> = new Set([
+  DictationErrorCodes.AUTH_REQUIRED,
+  DictationErrorCodes.FORBIDDEN,
+  DictationErrorCodes.QUOTA_EXCEEDED,
+  DictationErrorCodes.RATE_LIMIT_EXCEEDED,
+  DictationErrorCodes.REQUEST_CANCELED,
 ]);
 
-const NO_HTTP_FALLBACK_APPLICATION_CODES: ReadonlySet<DictationErrorCode> =
-  new Set([
-    DictationErrorCodes.AUTH_REQUIRED,
-    DictationErrorCodes.FORBIDDEN,
-    DictationErrorCodes.QUOTA_EXCEEDED,
-    DictationErrorCodes.RATE_LIMIT_EXCEEDED,
-    DictationErrorCodes.REQUEST_CANCELED,
-  ]);
+const metaOf = (error: CloudError): CloudMeta | undefined =>
+  "meta" in error ? error.meta : undefined;
 
-const shouldFallbackToHttp = (error: AppError): boolean => {
+const shouldFallbackToHttp = (error: CloudError): boolean => {
   // TODO: Remove this exception once gRPC can force-refresh and retry
-  // UNAUTHENTICATED on a fresh stream. Until then, HTTP owns the 401 retry flow.
-  if (error.grpcStatus === GrpcStatus.UNAUTHENTICATED) {
+  // UNAUTHENTICATED on a fresh stream. Until then, HTTP owns the 401 retry
+  // flow — variant-independent, exactly like the legacy field check.
+  if (metaOf(error)?.grpcStatus === GrpcStatus.UNAUTHENTICATED) {
     return true;
   }
-  if (NO_HTTP_FALLBACK_CODES.has(error.errorCode)) {
+  switch (error._tag) {
+    case "AuthRequired":
+    case "RateLimited":
+    case "CloudQuotaExceeded":
+    case "IdleTimeout":
+    case "Cancelled":
+    case "CloudDisposed":
+      return false;
+  }
+  const wireCode = metaOf(error)?.wireCode;
+  if (wireCode && NO_HTTP_FALLBACK_WIRE_CODES.has(wireCode)) {
     return false;
   }
-  if (
-    error.applicationCode &&
-    NO_HTTP_FALLBACK_APPLICATION_CODES.has(error.applicationCode)
-  ) {
-    return false;
-  }
-  if (error.grpcStatus === GrpcStatus.CANCELLED) {
+  if (metaOf(error)?.grpcStatus === GrpcStatus.CANCELLED) {
     return false;
   }
   return true;
@@ -205,7 +214,9 @@ export class AmicalCloudProvider implements TranscriptionEngine {
 
   private assertNotDisposed(): void {
     if (this.disposed) {
-      throw new Error("Amical cloud transcription engine has been disposed");
+      throw new CloudDisposed({
+        message: "Amical cloud transcription engine has been disposed",
+      });
     }
   }
 }
@@ -387,18 +398,30 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   }
 
   /**
-   * Run a CloudProviderEffect and unwrap typed failures into raw thrown errors,
-   * so external Promise consumers see `AppError` directly instead of Effect's
-   * FiberFailure wrapper.
+   * Run a CloudProviderEffect and settle it cause-aware: a typed failure
+   * rejects with the variant, a defect rethrows, and a mixed cause settles
+   * with the typed value while its co-defects are reported here — the one
+   * point below the service where they would otherwise vanish.
    */
   private async runProviderEffect<A>(
     effect: CloudProviderEffect<A>,
   ): Promise<A> {
-    const result = await this.runtime.runPromise(Effect.either(effect));
-    if (Either.isLeft(result)) {
-      throw result.left;
+    const exit = await this.runtime.runPromiseExit(effect);
+    return settleExit(exit, (defects) => this.reportDroppedDefects(defects));
+  }
+
+  private reportDroppedDefects(defects: ReadonlyArray<unknown>): void {
+    for (const defect of defects) {
+      logger.transcription.error(
+        "Dropped co-defect at cloud provider exit",
+        defect,
+      );
+      this.telemetryService?.captureException(defect, {
+        source: "dictation",
+        session_id: this.sessionId,
+      });
     }
-    return result.right;
+    recordDefect(this.sessionId);
   }
 
   private flushEffect(
@@ -434,7 +457,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   }
 
   private engageHttpFallbackEffect(
-    error: AppError,
+    error: CloudError,
     stage: CloudFallbackStage,
     expectedStream?: NonNullable<ProviderState["grpcStream"]>,
   ): Effect.Effect<void> {
@@ -488,6 +511,30 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     stream,
     error,
   }: ObservedGrpcStreamFailure): void {
+    if (!isCloudError(error)) {
+      // A foreign value from the background channel is a client bug, not a
+      // network condition: log loud, deliver terminally (projects UNKNOWN),
+      // never consult the fallback matrix. Capture belongs to latch
+      // ACCEPTANCE in the service — the once-latch is the serializer, so a
+      // channel that loses the delivery race can never double-capture.
+      logger.transcription.error(
+        "Foreign failure on the observed gRPC channel",
+        error,
+      );
+      if (this.closed) {
+        return;
+      }
+      const currentStream = Effect.runSync(Ref.get(this.state)).grpcStream;
+      if (currentStream !== stream) {
+        return;
+      }
+      stream.cancel();
+      this.onTerminalFailure?.(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      return;
+    }
+
     if (this.closed) {
       return;
     }
@@ -511,30 +558,32 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   }
 
   private reportHttpFallback(
-    error: AppError,
+    error: CloudError,
     stage: CloudFallbackStage,
     sessionId: string | undefined,
   ): void {
+    const meta = metaOf(error);
     logger.transcription.warn(
       "Cloud transcription falling back to HTTP after gRPC failure",
       {
-        errorCode: error.errorCode,
-        applicationCode: error.applicationCode,
-        grpcStatus: error.grpcStatus,
-        httpStatus: error.httpStatus,
+        errorCode: codeOf(error),
+        errorTag: tagOf(error),
+        applicationCode: meta?.wireCode,
+        grpcStatus: meta?.grpcStatus,
+        httpStatus: meta?.httpStatus,
         message: error.message,
-        traceId: error.traceId,
+        traceId: meta?.traceId,
         stage,
         sessionId,
       },
     );
     this.telemetryService?.trackCloudGrpcFallback({
-      error_code: error.errorCode,
-      application_code: error.applicationCode,
-      grpc_status: error.grpcStatus,
-      http_status: error.httpStatus,
+      error_code: codeOf(error),
+      application_code: meta?.wireCode,
+      grpc_status: meta?.grpcStatus,
+      http_status: meta?.httpStatus,
       message: error.message,
-      trace_id: error.traceId,
+      trace_id: meta?.traceId,
       session_id: sessionId,
       fallback_stage: stage,
     });
@@ -575,10 +624,9 @@ class AmicalCloudSession implements TranscriptionProviderSession {
 
       if (!isAuthenticated) {
         return yield* Effect.fail(
-          new AppError(
-            "Authentication required for cloud transcription",
-            ErrorCodes.AUTH_REQUIRED,
-          ),
+          new AuthRequired({
+            message: "Authentication required for cloud transcription",
+          }),
         );
       }
     });
@@ -637,17 +685,14 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     this.onCancel(this);
   }
 
-  private logCloudErrorEffect(error: AppError): CloudProviderEffect<void> {
+  private logCloudErrorEffect(error: CloudError): CloudProviderEffect<void> {
     return Effect.sync(() => {
       logger.transcription.error("Cloud transcription error:", error);
     });
   }
 
-  private cancellationError(): AppError {
-    return new AppError(
-      "Cloud transcription was cancelled",
-      ErrorCodes.NETWORK_ERROR,
-    );
+  private cancellationError(): CloudError {
+    return new Cancelled({ message: "Cloud transcription was cancelled" });
   }
 
   private assertOpen(): void {
@@ -656,7 +701,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     }
   }
 
-  private failIfClosedEffect(): Effect.Effect<void, AppError> {
+  private failIfClosedEffect(): Effect.Effect<void, CloudError> {
     return this.closed ? Effect.fail(this.cancellationError()) : Effect.void;
   }
 

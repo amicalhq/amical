@@ -4,7 +4,8 @@ import {
   type LifecycleTuning,
 } from "../../src/main/lifecycle/tuning";
 import { FakeTimers } from "../helpers/lifecycle-fakes";
-import { AppError, ErrorCodes } from "../../src/types/error";
+import { ErrorCodes } from "../../src/types/error";
+import { NetworkFailure } from "../../src/types/errors";
 
 const db = vi.hoisted(() => ({
   createProvisionalTranscription: vi.fn(async () => ({ id: 1 })),
@@ -544,8 +545,9 @@ describe("recording lifecycle runtime", () => {
     const h = makeHarness();
     const session = await h.startToRecording();
     h.terminalCallbacks.get(session)!(
-      new AppError("cloud down", ErrorCodes.NETWORK_ERROR, {
-        uiMessage: "Service unreachable",
+      new NetworkFailure({
+        message: "cloud down",
+        meta: { serverUi: { message: "Service unreachable" } },
       }),
     );
     await settle();

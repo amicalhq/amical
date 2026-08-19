@@ -69,7 +69,6 @@ const grpcMock = vi.hoisted(() => {
 
   let lastStream: FakeStream | null = null;
   let lastClient: FakeClient | null = null;
-  let failNextBidiStream = false;
 
   class FakeClient {
     close = vi.fn();
@@ -77,10 +76,6 @@ const grpcMock = vi.hoisted(() => {
       lastClient = this;
     }
     makeBidiStreamRequest = vi.fn(() => {
-      if (failNextBidiStream) {
-        failNextBidiStream = false;
-        throw new Error("stream construction failed");
-      }
       lastStream = new FakeStream();
       return lastStream;
     });
@@ -115,14 +110,10 @@ const grpcMock = vi.hoisted(() => {
     metadata: () => new FakeMetadata(),
     status,
     getLastStream: () => lastStream,
-    failNextStreamConstruction: () => {
-      failNextBidiStream = true;
-    },
     getLastClient: () => lastClient,
     reset: () => {
       lastStream = null;
       lastClient = null;
-      failNextBidiStream = false;
     },
   };
 });
@@ -188,16 +179,16 @@ vi.mock("../../src/main/logger", () => ({
 // ---- Imports come AFTER mocks -------------------------------------------
 
 import { AmicalCloudProvider } from "../../src/pipeline/providers/transcription/amical-cloud-provider";
-import {
-  CloudDictationGrpcStream,
-  GrpcDictationError,
-} from "../../src/pipeline/providers/transcription/grpc-dictation-client";
+import { CloudDictationGrpcStream } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
+import { decodeWireFailure } from "../../src/pipeline/providers/transcription/cloud-wire-decode";
 import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
+import { DictationErrorCodes, ErrorCodes } from "../../src/types/error";
 import {
-  AppError,
-  DictationErrorCodes,
-  ErrorCodes,
-} from "../../src/types/error";
+  AuthRequired,
+  CloudQuotaExceeded as CloudQuotaExceededVariant,
+  IdleTimeout,
+} from "../../src/types/errors";
+import { Effect as EffectLib } from "effect";
 import type {
   TranscribeContext,
   TranscriptionProviderSession,
@@ -206,6 +197,10 @@ import type { GetAccessibilityContextResult } from "@amical/types";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 import type { AuthService } from "../../src/services/auth-service";
+import {
+  expectRejectionProjection,
+  projectionOf,
+} from "../helpers/error-projection";
 
 // ---- Helpers ------------------------------------------------------------
 
@@ -735,9 +730,9 @@ describe("AmicalCloudProvider", () => {
         speechProbability: 1,
         context: baseContext(),
       });
-      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+      await expectRejectionProjection(provider.flush(baseContext()), {
         message: "boom",
-        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
+        code: ErrorCodes.INTERNAL_SERVER_ERROR,
         httpStatus: 500,
         uiMessage: undefined,
       });
@@ -765,10 +760,10 @@ describe("AmicalCloudProvider", () => {
         context: baseContext(),
       });
 
-      await expect(provider.flush(baseContext())).rejects.toMatchObject({
+      await expectRejectionProjection(provider.flush(baseContext()), {
         message: "The account has exhausted its dictation quota.",
-        errorCode: ErrorCodes.QUOTA_EXCEEDED,
-        applicationCode: DictationErrorCodes.QUOTA_EXCEEDED,
+        code: ErrorCodes.QUOTA_EXCEEDED,
+        wireCode: DictationErrorCodes.QUOTA_EXCEEDED,
         httpStatus: 402,
         uiMessage: "Du hast dein Transkriptionslimit erreicht.",
         traceId: "trace-http",
@@ -796,9 +791,9 @@ describe("AmicalCloudProvider", () => {
         context: baseContext(),
       });
 
-      await expect(provider.flush(baseContext())).rejects.toMatchObject({
-        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
-        applicationCode: DictationErrorCodes.FORBIDDEN,
+      await expectRejectionProjection(provider.flush(baseContext()), {
+        code: ErrorCodes.INTERNAL_SERVER_ERROR,
+        wireCode: DictationErrorCodes.FORBIDDEN,
         httpStatus: 403,
         uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
       });
@@ -825,9 +820,9 @@ describe("AmicalCloudProvider", () => {
         context: baseContext(),
       });
 
-      await expect(provider.flush(baseContext())).rejects.toMatchObject({
-        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
-        applicationCode: undefined,
+      await expectRejectionProjection(provider.flush(baseContext()), {
+        code: ErrorCodes.INTERNAL_SERVER_ERROR,
+        wireCode: undefined,
         httpStatus: 500,
         uiMessage: undefined,
       });
@@ -843,8 +838,8 @@ describe("AmicalCloudProvider", () => {
         speechProbability: 1,
         context: baseContext(),
       });
-      await expect(provider.flush(baseContext())).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(provider.flush(baseContext()), {
+        code: ErrorCodes.NETWORK_ERROR,
       });
     });
 
@@ -880,8 +875,8 @@ describe("AmicalCloudProvider", () => {
         context: baseContext(),
       });
 
-      await expect(provider.flush(baseContext())).rejects.toMatchObject({
-        errorCode: ErrorCodes.AUTH_REQUIRED,
+      await expectRejectionProjection(provider.flush(baseContext()), {
+        code: ErrorCodes.AUTH_REQUIRED,
         httpStatus: 401,
       });
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -898,8 +893,8 @@ describe("AmicalCloudProvider", () => {
         speechProbability: 1,
         context: baseContext(),
       });
-      await expect(provider.flush(baseContext())).rejects.toMatchObject({
-        errorCode: ErrorCodes.AUTH_REQUIRED,
+      await expectRejectionProjection(provider.flush(baseContext()), {
+        code: ErrorCodes.AUTH_REQUIRED,
         httpStatus: 401,
       });
     });
@@ -937,29 +932,25 @@ describe("AmicalCloudProvider", () => {
       const stream = grpcMock.getLastStream()!;
       stream.emit(
         "error",
-        new GrpcDictationError(
-          "Word limit exceeded",
-          grpcMock.status.RESOURCE_EXHAUSTED,
-          undefined,
-          "trace-terminal",
-          false,
-          DictationErrorCodes.QUOTA_EXCEEDED,
-          "Quota reached.",
-        ),
+        decodeWireFailure({
+          message: "Word limit exceeded",
+          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+          traceId: "trace-terminal",
+          rawWireCode: DictationErrorCodes.QUOTA_EXCEEDED,
+          localizedMessage: "Quota reached.",
+        }),
       );
 
       await vi.waitFor(() => {
         expect(onTerminalFailure).toHaveBeenCalledOnce();
       });
       expect(cancelStream).toHaveBeenCalledOnce();
-      expect(onTerminalFailure).toHaveBeenCalledWith(
-        expect.objectContaining({
-          errorCode: ErrorCodes.QUOTA_EXCEEDED,
-          applicationCode: DictationErrorCodes.QUOTA_EXCEEDED,
-          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
-          traceId: "trace-terminal",
-        }),
-      );
+      expect(projectionOf(onTerminalFailure.mock.calls[0]![0])).toMatchObject({
+        code: ErrorCodes.QUOTA_EXCEEDED,
+        wireCode: DictationErrorCodes.QUOTA_EXCEEDED,
+        grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+        traceId: "trace-terminal",
+      });
 
       stream.emit("status", {
         code: grpcMock.status.RESOURCE_EXHAUSTED,
@@ -988,12 +979,10 @@ describe("AmicalCloudProvider", () => {
       await vi.waitFor(() => {
         expect(onTerminalFailure).toHaveBeenCalledOnce();
       });
-      expect(onTerminalFailure).toHaveBeenCalledWith(
-        expect.objectContaining({
-          errorCode: ErrorCodes.QUOTA_EXCEEDED,
-          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
-        }),
-      );
+      expect(projectionOf(onTerminalFailure.mock.calls[0]![0])).toMatchObject({
+        code: ErrorCodes.QUOTA_EXCEEDED,
+        grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+      });
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -1058,8 +1047,8 @@ describe("AmicalCloudProvider", () => {
       const { flushPromise } = await driveGrpcThenSettleError(
         grpcMock.status.RESOURCE_EXHAUSTED,
       );
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.QUOTA_EXCEEDED,
+      await expectRejectionProjection(flushPromise, {
+        code: ErrorCodes.QUOTA_EXCEEDED,
         grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
       });
       expect(fetchMock).not.toHaveBeenCalled();
@@ -1075,24 +1064,20 @@ describe("AmicalCloudProvider", () => {
       const flushPromise = provider.flush(baseContext());
       await flush();
 
-      grpcMock
-        .getLastStream()!
-        .emit(
-          "error",
-          new GrpcDictationError(
-            "Word limit exceeded",
-            grpcMock.status.RESOURCE_EXHAUSTED,
-            undefined,
-            "trace-rich",
-            false,
-            "QUOTA_EXCEEDED",
-            "Du hast dein Transkriptionslimit erreicht.",
-          ),
-        );
+      grpcMock.getLastStream()!.emit(
+        "error",
+        decodeWireFailure({
+          message: "Word limit exceeded",
+          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+          traceId: "trace-rich",
+          rawWireCode: "QUOTA_EXCEEDED",
+          localizedMessage: "Du hast dein Transkriptionslimit erreicht.",
+        }),
+      );
 
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.QUOTA_EXCEEDED,
-        applicationCode: DictationErrorCodes.QUOTA_EXCEEDED,
+      await expectRejectionProjection(flushPromise, {
+        code: ErrorCodes.QUOTA_EXCEEDED,
+        wireCode: DictationErrorCodes.QUOTA_EXCEEDED,
         grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
         uiMessage: "Du hast dein Transkriptionslimit erreicht.",
         traceId: "trace-rich",
@@ -1114,20 +1099,15 @@ describe("AmicalCloudProvider", () => {
       const flushPromise = provider.flush(baseContext());
       await flush();
 
-      grpcMock
-        .getLastStream()!
-        .emit(
-          "error",
-          new GrpcDictationError(
-            "buffer full",
-            grpcMock.status.RESOURCE_EXHAUSTED,
-            undefined,
-            undefined,
-            false,
-            "AUDIO_BUFFER_EXCEEDED",
-            "Too much audio was buffered.",
-          ),
-        );
+      grpcMock.getLastStream()!.emit(
+        "error",
+        decodeWireFailure({
+          message: "buffer full",
+          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+          rawWireCode: "AUDIO_BUFFER_EXCEEDED",
+          localizedMessage: "Too much audio was buffered.",
+        }),
+      );
 
       await expect(flushPromise).resolves.toMatchObject({
         text: "http fallback",
@@ -1145,24 +1125,21 @@ describe("AmicalCloudProvider", () => {
       const flushPromise = provider.flush(baseContext());
       await flush();
 
-      grpcMock
-        .getLastStream()!
-        .emit(
-          "error",
-          new GrpcDictationError(
-            "Cloud transcription access denied.",
-            grpcMock.status.PERMISSION_DENIED,
-            undefined,
-            "trace-forbidden",
-            false,
-            "FORBIDDEN",
+      grpcMock.getLastStream()!.emit(
+        "error",
+        decodeWireFailure({
+          message: "Cloud transcription access denied.",
+          grpcStatus: grpcMock.status.PERMISSION_DENIED,
+          traceId: "trace-forbidden",
+          rawWireCode: "FORBIDDEN",
+          localizedMessage:
             "Du hast keinen Zugriff auf die Cloud-Transkription.",
-          ),
-        );
+        }),
+      );
 
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
-        applicationCode: DictationErrorCodes.FORBIDDEN,
+      await expectRejectionProjection(flushPromise, {
+        code: ErrorCodes.INTERNAL_SERVER_ERROR,
+        wireCode: DictationErrorCodes.FORBIDDEN,
         grpcStatus: grpcMock.status.PERMISSION_DENIED,
         httpStatus: undefined,
         uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
@@ -1176,8 +1153,8 @@ describe("AmicalCloudProvider", () => {
         grpcMock.status.CANCELLED,
       );
       // Should surface the cancellation as a NETWORK_ERROR, not trigger an HTTP transcription.
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(flushPromise, {
+        code: ErrorCodes.NETWORK_ERROR,
         grpcStatus: grpcMock.status.CANCELLED,
       });
       expect(fetchMock).not.toHaveBeenCalled();
@@ -1291,16 +1268,17 @@ describe("AmicalCloudProvider", () => {
         status: 500,
         json: { error: { message: "fallback failed" } },
       });
-      await expect(
+      await expectRejectionProjection(
         session.transcribe({
           audioData: audioFrame(),
           speechProbability: 1,
           context: baseContext(),
         }),
-      ).rejects.toMatchObject({
-        errorCode: ErrorCodes.INTERNAL_SERVER_ERROR,
-        httpStatus: 500,
-      });
+        {
+          code: ErrorCodes.INTERNAL_SERVER_ERROR,
+          httpStatus: 500,
+        },
+      );
 
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(onTerminalFailure).not.toHaveBeenCalled();
@@ -1455,20 +1433,16 @@ describe("AmicalCloudProvider", () => {
       const flushPromise = provider.flush(baseContext());
       await flush();
 
-      grpcMock
-        .getLastStream()!
-        .emit(
-          "error",
-          new GrpcDictationError(
-            "server shutting down",
-            grpcMock.status.UNAVAILABLE,
-            undefined,
-            "trace-shutdown",
-            false,
-            DictationErrorCodes.SERVICE_UNAVAILABLE,
-            "Cloud transcription is temporarily unavailable.",
-          ),
-        );
+      grpcMock.getLastStream()!.emit(
+        "error",
+        decodeWireFailure({
+          message: "server shutting down",
+          grpcStatus: grpcMock.status.UNAVAILABLE,
+          traceId: "trace-shutdown",
+          rawWireCode: DictationErrorCodes.SERVICE_UNAVAILABLE,
+          localizedMessage: "Cloud transcription is temporarily unavailable.",
+        }),
+      );
 
       await expect(flushPromise).resolves.toMatchObject({
         text: "fallback worked",
@@ -1528,8 +1502,6 @@ describe("AmicalCloudProvider", () => {
 
     it("transcribe-stage fallback buffers the current chunk exactly once", async () => {
       const provider = openCloudSessionWithTransport("grpc");
-      // Force gRPC stream construction to throw → fallback during transcribe().
-      grpcMock.failNextStreamConstruction();
 
       // One short frame: below MIN_AUDIO_DURATION_MS, so the fallback route
       // does not transcribe yet (no HTTP request during transcribe).
@@ -1539,6 +1511,17 @@ describe("AmicalCloudProvider", () => {
         context: baseContext(),
       });
       expect(chunk.text).toBe("");
+
+      // A fallback-eligible wire failure on the open stream engages the
+      // transcribe-stage fallback through the observed channel. (A stream
+      // CONSTRUCTION throw no longer falls back — a client-local throw is a
+      // defect now, pinned separately.)
+      grpcMock.getLastStream()!.emit("status", {
+        code: grpcMock.status.UNAVAILABLE,
+        details: "",
+        metadata: grpcMock.metadata(),
+      });
+      await flush();
       expect(fetchMock).not.toHaveBeenCalled();
 
       // Flush now runs over the HTTP transport and sends the buffered audio.
@@ -1676,8 +1659,8 @@ describe("AmicalCloudProvider", () => {
     });
   });
 
-  describe("AppError passthrough", () => {
-    it("AppError thrown internally is not double-wrapped", async () => {
+  describe("variant passthrough", () => {
+    it("a cloud variant thrown internally is not double-wrapped", async () => {
       const provider = openCloudSessionWithTransport("http");
       authMock.instance.isAuthenticated.mockResolvedValueOnce(false);
       const promise = provider.transcribe({
@@ -1685,9 +1668,9 @@ describe("AmicalCloudProvider", () => {
         speechProbability: 1,
         context: baseContext(),
       });
-      await expect(promise).rejects.toBeInstanceOf(AppError);
-      await expect(promise).rejects.toMatchObject({
-        errorCode: ErrorCodes.AUTH_REQUIRED,
+      await expect(promise).rejects.toBeInstanceOf(AuthRequired);
+      await expectRejectionProjection(promise, {
+        code: ErrorCodes.AUTH_REQUIRED,
       });
     });
   });
@@ -1707,23 +1690,20 @@ describe("AmicalCloudProvider", () => {
       const flushPromise = provider.flush(baseContext());
       await flush();
 
-      // Inject the same GrpcDictationError the leaf's idle timer would
+      // Inject the same idle-timeout failure the leaf timer would
       // synthesize. Going through the leaf's real timer would require
       // vi.useFakeTimers and 10s of advancement; the leaf already has
       // dedicated tests for that path.
       stream.emit(
         "error",
-        new GrpcDictationError(
-          "gRPC stream idle for 10000ms",
-          grpcMock.status.CANCELLED,
-          undefined,
-          undefined,
-          true,
-        ),
+        new IdleTimeout({
+          message: "gRPC stream idle for 10000ms",
+          meta: { grpcStatus: grpcMock.status.CANCELLED },
+        }),
       );
 
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: "IDLE_TIMEOUT",
+      await expectRejectionProjection(flushPromise, {
+        code: "IDLE_TIMEOUT",
       });
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -1769,14 +1749,11 @@ describe("AmicalCloudProvider", () => {
 
       streamA.emit(
         "error",
-        new GrpcDictationError(
-          "late quota",
-          grpcMock.status.RESOURCE_EXHAUSTED,
-          undefined,
-          undefined,
-          false,
-          DictationErrorCodes.QUOTA_EXCEEDED,
-        ),
+        decodeWireFailure({
+          message: "late quota",
+          grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+          rawWireCode: DictationErrorCodes.QUOTA_EXCEEDED,
+        }),
       );
       await flush();
 
@@ -1821,8 +1798,8 @@ describe("AmicalCloudProvider", () => {
       expect(JSON.parse(init.body as string)).toMatchObject({
         sessionId: "session-B",
       });
-      await expect(sessionA.flush(baseContext())).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(sessionA.flush(baseContext()), {
+        code: ErrorCodes.NETWORK_ERROR,
       });
     });
 
@@ -1937,20 +1914,22 @@ describe("AmicalCloudProvider", () => {
         session.cancel();
       }).not.toThrow();
 
-      await expect(
+      await expectRejectionProjection(
         session.transcribe({
           audioData: audioFrame(),
           speechProbability: 1,
           context: baseContext(),
         }),
-      ).rejects.toMatchObject({ errorCode: ErrorCodes.NETWORK_ERROR });
-      await expect(session.flush(baseContext())).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+        { code: ErrorCodes.NETWORK_ERROR },
+      );
+      await expectRejectionProjection(session.flush(baseContext()), {
+        code: ErrorCodes.NETWORK_ERROR,
       });
       expect(session.updateSessionContext).toBeDefined();
-      await expect(
+      await expectRejectionProjection(
         session.updateSessionContext!(baseContext()),
-      ).rejects.toMatchObject({ errorCode: ErrorCodes.NETWORK_ERROR });
+        { code: ErrorCodes.NETWORK_ERROR },
+      );
       expect(authMock.instance.isAuthenticated).not.toHaveBeenCalled();
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -1979,8 +1958,8 @@ describe("AmicalCloudProvider", () => {
       session.cancel();
       resolveToken("late-token");
 
-      await expect(transcribe).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(transcribe, {
+        code: ErrorCodes.NETWORK_ERROR,
       });
       expect(grpcMock.getLastClient()).toBeNull();
       expect(fetchMock).not.toHaveBeenCalled();
@@ -2011,8 +1990,8 @@ describe("AmicalCloudProvider", () => {
       session.cancel();
       releaseAuthentication();
 
-      await expect(transcribe).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(transcribe, {
+        code: ErrorCodes.NETWORK_ERROR,
       });
       expect(authMock.instance.getIdToken).not.toHaveBeenCalled();
       expect(fetchMock).not.toHaveBeenCalled();
@@ -2049,8 +2028,8 @@ describe("AmicalCloudProvider", () => {
       session.cancel();
       resolveLabs({ selfCorrection: true });
 
-      await expect(transcribe).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(transcribe, {
+        code: ErrorCodes.NETWORK_ERROR,
       });
       expect(authMock.instance.isAuthenticated).not.toHaveBeenCalled();
       expect(fetchMock).not.toHaveBeenCalled();
@@ -2081,8 +2060,8 @@ describe("AmicalCloudProvider", () => {
       session.cancel();
       resolveToken("late-token");
 
-      await expect(finalization).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(finalization, {
+        code: ErrorCodes.NETWORK_ERROR,
       });
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -2109,13 +2088,14 @@ describe("AmicalCloudProvider", () => {
       expect(cancelFirst).toHaveBeenCalledOnce();
       expect(cancelSecond).toHaveBeenCalledOnce();
       expect(stream.end).toHaveBeenCalled();
-      await expect(
+      await expectRejectionProjection(
         first.transcribe({
           audioData: audioFrame(),
           speechProbability: 1,
           context: baseContext(),
         }),
-      ).rejects.toMatchObject({ errorCode: ErrorCodes.NETWORK_ERROR });
+        { code: ErrorCodes.NETWORK_ERROR },
+      );
       expect(() => engine.openSession({ sessionId: "after-dispose" })).toThrow(
         "disposed",
       );
@@ -2176,8 +2156,8 @@ describe("AmicalCloudProvider", () => {
 
       controller.abort(); // dismiss
 
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(flushPromise, {
+        code: ErrorCodes.NETWORK_ERROR,
       });
       // The /transcribe request itself was aborted (not left hanging).
       expect(capturedSignal!.aborted).toBe(true);
@@ -2198,8 +2178,8 @@ describe("AmicalCloudProvider", () => {
 
       controller.abort(); // dismiss → session.cancel() → stream.cancel()
 
-      await expect(flushPromise).rejects.toMatchObject({
-        errorCode: ErrorCodes.NETWORK_ERROR,
+      await expectRejectionProjection(flushPromise, {
+        code: ErrorCodes.NETWORK_ERROR,
         grpcStatus: grpcMock.status.CANCELLED,
       });
       expect(stream.end).toHaveBeenCalled();
@@ -2237,6 +2217,408 @@ describe("AmicalCloudProvider", () => {
       for (const call of authMock.instance.refreshTokenIfNeeded.mock.calls) {
         expect(call).toHaveLength(0);
       }
+    });
+  });
+});
+
+// ---- Error characterization pins ----------------------------------------
+// Row-by-row pins for the wire-code-less classification ladders and the
+// fallback decision, asserted through the projectionOf pin surface. These
+// freeze current behavior ahead of the error-model conversion; rows tagged
+// DELIBERATE-CHANGE are the ones the conversion is allowed to flip, each
+// with the new expectation recorded next to the old one.
+
+describe("error characterization pins", () => {
+  const settleFlushWithStatus = async (code: number, details = "") => {
+    const provider = openCloudSessionWithTransport("grpc");
+    await provider.transcribe({
+      audioData: audioFrame(),
+      speechProbability: 1,
+      context: baseContext(),
+    });
+    const flushPromise = provider.flush(baseContext());
+    await flush();
+    settleGrpcError(code, details);
+    const error = await flushPromise.then(
+      () => {
+        throw new Error("expected flush to reject");
+      },
+      (e: unknown) => e,
+    );
+    return projectionOf(error);
+  };
+
+  const settleFallbackAndCaptureTelemetry = async (
+    settle: (
+      stream: NonNullable<ReturnType<typeof grpcMock.getLastStream>>,
+    ) => void,
+  ) => {
+    const trackCloudGrpcFallback = vi.fn();
+    const telemetryStub = {
+      trackCloudGrpcFallback,
+    } as unknown as TelemetryService;
+    process.env.CLOUD_DICTATION_TRANSPORT = "grpc";
+    const provider = openCloudSession(
+      new AmicalCloudProvider(
+        authMock.instance as unknown as AuthService,
+        telemetryStub,
+      ),
+    );
+    await provider.transcribe({
+      audioData: audioFrame(),
+      speechProbability: 1,
+      context: baseContext(),
+    });
+    mockFetchOnce({
+      status: 200,
+      json: { success: true, transcription: "via http" },
+    });
+    const flushPromise = provider.flush(baseContext());
+    await flush();
+    settle(grpcMock.getLastStream()!);
+    await expect(flushPromise).resolves.toEqual({ text: "via http" });
+    expect(fetchMock).toHaveBeenCalled();
+    expect(trackCloudGrpcFallback).toHaveBeenCalledTimes(1);
+    return trackCloudGrpcFallback.mock.calls[0]![0] as Record<string, unknown>;
+  };
+
+  describe("gRPC status-only rows that surface without fallback", () => {
+    it("PERMISSION_DENIED projects AUTH_REQUIRED", async () => {
+      const p = await settleFlushWithStatus(grpcMock.status.PERMISSION_DENIED);
+      expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("an HTTP 401 seen through grpc-js details projects AUTH_REQUIRED", async () => {
+      const p = await settleFlushWithStatus(
+        grpcMock.status.UNKNOWN,
+        "Received HTTP status code 401",
+      );
+      expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+      expect(p.httpStatus).toBe(401);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("an HTTP 402 seen through grpc-js details projects QUOTA_EXCEEDED", async () => {
+      const p = await settleFlushWithStatus(
+        grpcMock.status.UNKNOWN,
+        "Received HTTP status code 402",
+      );
+      expect(p.code).toBe(ErrorCodes.QUOTA_EXCEEDED);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("an HTTP 403 seen through grpc-js details projects AUTH_REQUIRED", async () => {
+      const p = await settleFlushWithStatus(
+        grpcMock.status.UNKNOWN,
+        "Received HTTP status code 403",
+      );
+      expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("an HTTP 429 seen through grpc-js details projects RATE_LIMIT_EXCEEDED", async () => {
+      const p = await settleFlushWithStatus(
+        grpcMock.status.UNKNOWN,
+        "Received HTTP status code 429",
+      );
+      expect(p.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a structured FORBIDDEN wire code projects INTERNAL_SERVER_ERROR and never falls back", async () => {
+      const provider = openCloudSessionWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+      grpcMock.getLastStream()!.emit(
+        "error",
+        decodeWireFailure({
+          message: "forbidden",
+          grpcStatus: grpcMock.status.PERMISSION_DENIED,
+          traceId: "trace-forbidden",
+          rawWireCode: DictationErrorCodes.FORBIDDEN,
+        }),
+      );
+      const error = await flushPromise.then(
+        () => {
+          throw new Error("expected flush to reject");
+        },
+        (e: unknown) => e,
+      );
+      const p = projectionOf(error);
+      expect(p.code).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+      expect(p.wireCode).toBe(DictationErrorCodes.FORBIDDEN);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("gRPC status-only rows that engage the HTTP fallback", () => {
+    it("NOT_FOUND projects UNKNOWN", async () => {
+      const payload = await settleFallbackAndCaptureTelemetry((stream) =>
+        stream.emit("status", {
+          code: grpcMock.status.NOT_FOUND,
+          details: "",
+          metadata: grpcMock.metadata(),
+        }),
+      );
+      expect(payload.error_code).toBe(ErrorCodes.UNKNOWN);
+    });
+
+    it.each([
+      ["INVALID_ARGUMENT", grpcMock.status.INVALID_ARGUMENT],
+      ["DEADLINE_EXCEEDED", grpcMock.status.DEADLINE_EXCEEDED],
+      ["ALREADY_EXISTS", grpcMock.status.ALREADY_EXISTS],
+      ["FAILED_PRECONDITION", grpcMock.status.FAILED_PRECONDITION],
+      ["INTERNAL", grpcMock.status.INTERNAL],
+    ])("%s projects INTERNAL_SERVER_ERROR", async (_name, code) => {
+      const payload = await settleFallbackAndCaptureTelemetry((stream) =>
+        stream.emit("status", {
+          code,
+          details: "",
+          metadata: grpcMock.metadata(),
+        }),
+      );
+      expect(payload.error_code).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+    });
+
+    it("an HTTP 502 seen through grpc-js details projects INTERNAL_SERVER_ERROR", async () => {
+      const payload = await settleFallbackAndCaptureTelemetry((stream) =>
+        stream.emit("status", {
+          code: grpcMock.status.UNKNOWN,
+          details: "Received HTTP status code 502",
+          metadata: grpcMock.metadata(),
+        }),
+      );
+      expect(payload.error_code).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+      expect(payload.http_status).toBe(502);
+    });
+
+    it("a status with no ladder row projects UNKNOWN", async () => {
+      const payload = await settleFallbackAndCaptureTelemetry((stream) =>
+        stream.emit("status", {
+          code: grpcMock.status.UNKNOWN,
+          details: "",
+          metadata: grpcMock.metadata(),
+        }),
+      );
+      expect(payload.error_code).toBe(ErrorCodes.UNKNOWN);
+    });
+
+    it("RESOURCE_EXHAUSTED with an unrecognized application code projects INTERNAL_SERVER_ERROR", async () => {
+      // The absent-vs-invalid asymmetry: an absent code means plan quota,
+      // an unrecognized code means the server said something newer than this
+      // client — treated as a server error, never as the quota upsell.
+      const payload = await settleFallbackAndCaptureTelemetry((stream) =>
+        stream.emit(
+          "error",
+          decodeWireFailure({
+            message: "resource exhausted",
+            grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
+            traceId: "trace-unknown-code",
+            rawWireCode: "USER_DISMISSED",
+          }),
+        ),
+      );
+      expect(payload.error_code).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+      expect(payload.application_code).toBeUndefined();
+    });
+
+    it("a foreign error object surfaces as a defect and fires NO fallback", async () => {
+      // DELIBERATE-CHANGE, flipped here as tagged in the pin round: a
+      // non-wire foreign value is a client bug — it must not retry as a
+      // network failure. The raw value crosses the boundary (funnels to
+      // UNKNOWN downstream) and the HTTP route never engages.
+      const provider = openCloudSessionWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const flushPromise = provider.flush(baseContext());
+      await flush();
+      grpcMock.getLastStream()!.emit("error", new TypeError("client-side bug"));
+      await expect(flushPromise).rejects.toThrow("client-side bug");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("HTTP status-only rows", () => {
+    const flushHttpWithResponse = async (response: {
+      status: number;
+      json?: unknown;
+      jsonThrows?: boolean;
+    }) => {
+      const provider = openCloudSessionWithTransport("http");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const fetchImpl = global.fetch as Mock;
+      fetchImpl.mockImplementationOnce(async () => ({
+        status: response.status,
+        ok: response.status < 400,
+        statusText: `HTTP ${response.status}`,
+        json: async () => {
+          if (response.jsonThrows) throw new Error("bad json");
+          return response.json;
+        },
+      }));
+      const error = await provider.flush(baseContext()).then(
+        () => {
+          throw new Error("expected flush to reject");
+        },
+        (e: unknown) => e,
+      );
+      return projectionOf(error);
+    };
+
+    it("402 without a wire code projects QUOTA_EXCEEDED", async () => {
+      const p = await flushHttpWithResponse({
+        status: 402,
+        json: { error: {} },
+      });
+      expect(p.code).toBe(ErrorCodes.QUOTA_EXCEEDED);
+      expect(p.httpStatus).toBe(402);
+    });
+
+    it("403 without a wire code projects AUTH_REQUIRED", async () => {
+      const p = await flushHttpWithResponse({
+        status: 403,
+        json: { error: {} },
+      });
+      expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+    });
+
+    it("429 without a wire code projects RATE_LIMIT_EXCEEDED", async () => {
+      const p = await flushHttpWithResponse({
+        status: 429,
+        json: { error: {} },
+      });
+      expect(p.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED);
+    });
+
+    it("an unclassified 4xx projects UNKNOWN", async () => {
+      const p = await flushHttpWithResponse({
+        status: 404,
+        json: { error: {} },
+      });
+      expect(p.code).toBe(ErrorCodes.UNKNOWN);
+    });
+
+    it("an undecodable success body projects INTERNAL_SERVER_ERROR", async () => {
+      const p = await flushHttpWithResponse({ status: 200, jsonThrows: true });
+      expect(p.code).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+      expect(p.httpStatus).toBe(200);
+    });
+
+    it("a rejected fetch preserves the network error message", async () => {
+      const provider = openCloudSessionWithTransport("http");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      (global.fetch as Mock).mockImplementationOnce(async () => {
+        throw new Error("socket hang up");
+      });
+      const error = await provider.flush(baseContext()).then(
+        () => {
+          throw new Error("expected flush to reject");
+        },
+        (e: unknown) => e,
+      );
+      const p = projectionOf(error);
+      expect(p.code).toBe(ErrorCodes.NETWORK_ERROR);
+      expect(p.message).toBe("socket hang up");
+    });
+  });
+
+  describe("background client defects (observed channel)", () => {
+    it("captures a foreign value once, delivers terminal, and never falls back", async () => {
+      const captureException = vi.fn();
+      const trackCloudGrpcFallback = vi.fn();
+      const telemetryStub = {
+        captureException,
+        trackCloudGrpcFallback,
+      } as unknown as TelemetryService;
+      process.env.CLOUD_DICTATION_TRANSPORT = "grpc";
+      const onTerminalFailure = vi.fn();
+      const provider = openCloudSession(
+        new AmicalCloudProvider(
+          authMock.instance as unknown as AuthService,
+          telemetryStub,
+        ),
+        { onTerminalFailure },
+      );
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const bug = new TypeError("background client bug");
+      grpcMock.getLastStream()!.emit("error", bug);
+      await vi.waitFor(() => {
+        expect(onTerminalFailure).toHaveBeenCalledOnce();
+      });
+      expect(onTerminalFailure).toHaveBeenCalledWith(bug);
+      // Capture belongs to latch acceptance in the service, never to the
+      // delivering channel — losing the race must not double-capture.
+      expect(captureException).not.toHaveBeenCalled();
+      expect(trackCloudGrpcFallback).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("provider exit settle (mixed cause integration)", () => {
+    it("settles a mixed CloudError + dying finalizer with the typed value and captures the co-defect once", async () => {
+      const captureException = vi.fn();
+      const trackCloudGrpcFallback = vi.fn();
+      const telemetryStub = {
+        captureException,
+        trackCloudGrpcFallback,
+      } as unknown as TelemetryService;
+      const session = openCloudSession(
+        new AmicalCloudProvider(
+          authMock.instance as unknown as AuthService,
+          telemetryStub,
+        ),
+      );
+      const typed = new CloudQuotaExceededVariant({ message: "quota" });
+      const finalizerBug = new RangeError("finalizer bug");
+      const mixed = EffectLib.fail(typed).pipe(
+        EffectLib.ensuring(
+          EffectLib.sync(() => {
+            throw finalizerBug;
+          }),
+        ),
+      );
+      const runExit = (
+        session as unknown as {
+          runProviderEffect: (effect: unknown) => Promise<never>;
+        }
+      ).runProviderEffect.bind(session);
+      const rejection = await runExit(mixed).then(
+        () => {
+          throw new Error("expected the exit to reject");
+        },
+        (error: unknown) => error,
+      );
+      expect(projectionOf(rejection)).toMatchObject({
+        tag: "CloudQuotaExceeded",
+        code: ErrorCodes.QUOTA_EXCEEDED,
+      });
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(finalizerBug, {
+        source: "dictation",
+        session_id: "session-1",
+      });
+      expect(trackCloudGrpcFallback).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

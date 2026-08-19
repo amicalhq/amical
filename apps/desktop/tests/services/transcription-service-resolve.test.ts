@@ -5,7 +5,9 @@ import type {
   TranscribeParams,
   TranscriptionOutput,
 } from "../../src/pipeline/core/pipeline-types";
-import { AppError, ErrorCodes } from "../../src/types/error";
+import { ErrorCodes } from "../../src/types/error";
+import { NetworkFailure } from "../../src/types/errors";
+import { projectionOf } from "../helpers/error-projection";
 
 const providerMocks = vi.hoisted(() => {
   const makeSession = (
@@ -238,7 +240,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
   });
 
   it("a terminal failure retires the session; a successor can begin", async () => {
-    const failure = new AppError("provider down", ErrorCodes.NETWORK_ERROR);
+    const failure = new NetworkFailure({ message: "provider down" });
     const listener = vi.fn();
     service.beginStreamingSession("s1", listener);
     await feed("s1");
@@ -264,7 +266,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
       (_context, signal?: AbortSignal) =>
         new Promise((_, reject) => {
           const abort = () =>
-            reject(new AppError("aborted", ErrorCodes.NETWORK_ERROR));
+            reject(new NetworkFailure({ message: "aborted" }));
           if (signal?.aborted) return abort();
           signal?.addEventListener("abort", abort);
         }),
@@ -274,8 +276,15 @@ describe("TranscriptionService — lifecycle resolve", () => {
     await vi.waitFor(() => expect(providerSession.flush).toHaveBeenCalled());
     service.abortSession("s1");
 
-    await expect(pending).rejects.toMatchObject({
-      errorCode: ErrorCodes.NETWORK_ERROR,
+    const rejection = await pending.then(
+      () => {
+        throw new Error("expected resolve to reject");
+      },
+      (error: unknown) => error,
+    );
+    expect(projectionOf(rejection)).toMatchObject({
+      code: ErrorCodes.NETWORK_ERROR,
+      tag: "NetworkFailure",
     });
     expect(updateTranscription).not.toHaveBeenCalled();
   });

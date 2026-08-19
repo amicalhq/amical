@@ -8,7 +8,7 @@ import {
   type ServiceError,
   type StatusObject,
 } from "@grpc/grpc-js";
-import { Deferred, Effect, Either, Ref } from "effect";
+import { Deferred, Effect, Exit, Ref } from "effect";
 import {
   AudioEncoding,
   Language,
@@ -28,6 +28,13 @@ import {
 import { logger } from "../../../main/logger";
 import type { DictationSkill } from "./dictation-skill";
 import { decodeGrpcRichErrorDetails } from "./grpc-error-details";
+import {
+  Cancelled,
+  IdleTimeout,
+  isCloudError,
+  settleExit,
+} from "../../../types/errors";
+import { decodeWireFailure } from "./cloud-wire-decode";
 
 export interface GrpcStreamContext {
   selectedText?: string;
@@ -63,21 +70,6 @@ export interface GrpcFinalTranscript {
   throughSeq: bigint;
 }
 
-export class GrpcDictationError extends Error {
-  constructor(
-    message: string,
-    public readonly grpcStatus?: number,
-    public readonly httpStatus?: number,
-    public readonly traceId?: string,
-    public readonly isIdleTimeout?: boolean,
-    public readonly applicationCode?: string,
-    public readonly localizedMessage?: string,
-  ) {
-    super(message);
-    this.name = "GrpcDictationError";
-  }
-}
-
 const TRACE_ID_HEADER = "x-trace-id";
 const AUTHORIZATION_HEADER = "authorization";
 // Desktop recordings auto-stop at 6 minutes; keep the RPC deadline above that
@@ -109,22 +101,20 @@ const getFirstMetadataString = (
   return typeof first === "string" ? first : undefined;
 };
 
-const runEffectPromise = async <A>(
-  effect: Effect.Effect<A, Error>,
-): Promise<A> => {
-  const result = await Effect.runPromise(Effect.either(effect));
-  if (Either.isLeft(result)) {
-    throw result.left;
+const logDroppedDefects = (defects: ReadonlyArray<unknown>): void => {
+  for (const defect of defects) {
+    logger.transcription.error("Dropped co-defect at gRPC client exit", defect);
   }
-  return result.right;
 };
 
+const runEffectPromise = async <A>(
+  effect: Effect.Effect<A, Error>,
+): Promise<A> =>
+  settleExit(await Effect.runPromiseExit(effect), logDroppedDefects);
+
 const runEffectSync = <A>(effect: Effect.Effect<A, Error>): A => {
-  const result = Effect.runSync(Effect.either(effect));
-  if (Either.isLeft(result)) {
-    throw result.left;
-  }
-  return result.right;
+  const exit: Exit.Exit<A, Error> = Effect.runSyncExit(effect);
+  return settleExit(exit, logDroppedDefects);
 };
 
 type UInt64Value =
@@ -304,12 +294,12 @@ const deserializeStreamTranscribeEvent = (
   try {
     return StreamTranscribeEvent.decode(data) as StreamTranscribeEventMessage;
   } catch (error) {
-    throw new GrpcDictationError(
-      `Failed to decode StreamTranscribeEvent: ${
+    throw decodeWireFailure({
+      message: `Failed to decode StreamTranscribeEvent: ${
         error instanceof Error ? error.message : String(error)
       }`,
-      grpcStatusCode.INTERNAL,
-    );
+      grpcStatus: grpcStatusCode.INTERNAL,
+    });
   }
 };
 
@@ -412,7 +402,7 @@ interface GrpcStreamState {
 
 type CancelDecision =
   | { shouldCancel: false }
-  | { shouldCancel: true; error: GrpcDictationError };
+  | { shouldCancel: true; error: Cancelled };
 
 const createInitialGrpcStreamState = (): GrpcStreamState => ({
   settled: false,
@@ -580,13 +570,10 @@ export class CloudDictationGrpcStream {
       this.idleTimer = null;
       this.runBackground(
         this.failEffect(
-          new GrpcDictationError(
-            `gRPC stream idle for ${IDLE_TIMEOUT_MS}ms; closing as defense-in-depth`,
-            grpcStatusCode.CANCELLED,
-            undefined,
-            undefined,
-            true,
-          ),
+          new IdleTimeout({
+            message: `gRPC stream idle for ${IDLE_TIMEOUT_MS}ms; closing as defense-in-depth`,
+            meta: { grpcStatus: grpcStatusCode.CANCELLED },
+          }),
           true,
         ),
       );
@@ -689,12 +676,13 @@ export class CloudDictationGrpcStream {
             return [{ shouldCancel: false }, state] as const;
           }
 
-          const error = new GrpcDictationError(
-            "gRPC stream cancelled",
-            grpcStatusCode.CANCELLED,
-            undefined,
-            state.traceId,
-          );
+          const error = new Cancelled({
+            message: "gRPC stream cancelled",
+            meta: {
+              grpcStatus: grpcStatusCode.CANCELLED,
+              traceId: state.traceId,
+            },
+          });
 
           return [
             { shouldCancel: true, error },
@@ -840,16 +828,16 @@ export class CloudDictationGrpcStream {
             streamStatus.details,
           );
           yield* this.failEffect(
-            new GrpcDictationError(
-              streamStatus.details ||
+            decodeWireFailure({
+              message:
+                streamStatus.details ||
                 `gRPC stream failed with status ${streamStatus.code}`,
-              streamStatus.code,
+              grpcStatus: streamStatus.code,
               httpStatus,
-              state.traceId,
-              undefined,
-              richDetails.applicationCode,
-              richDetails.localizedMessage,
-            ),
+              traceId: state.traceId,
+              rawWireCode: richDetails.applicationCode,
+              localizedMessage: richDetails.localizedMessage,
+            }),
             false,
           );
         }
@@ -875,12 +863,11 @@ export class CloudDictationGrpcStream {
       }
 
       yield* this.failEffect(
-        new GrpcDictationError(
-          "gRPC stream closed before final transcript",
-          state.grpcStatus,
-          undefined,
-          state.traceId,
-        ),
+        decodeWireFailure({
+          message: "gRPC stream closed before final transcript",
+          grpcStatus: state.grpcStatus,
+          traceId: state.traceId,
+        }),
         false,
       );
     });
@@ -920,12 +907,11 @@ export class CloudDictationGrpcStream {
           : "gRPC stream closed before final transcript";
 
       yield* this.failEffect(
-        new GrpcDictationError(
+        decodeWireFailure({
           message,
-          state.grpcStatus,
-          undefined,
-          state.traceId,
-        ),
+          grpcStatus: state.grpcStatus,
+          traceId: state.traceId,
+        }),
         false,
       );
     });
@@ -958,12 +944,11 @@ export class CloudDictationGrpcStream {
 
       if (state.settled || !this.isStreamWritable()) {
         return yield* Effect.fail(
-          new GrpcDictationError(
-            "gRPC stream is closed",
-            state.grpcStatus,
-            undefined,
-            state.traceId,
-          ),
+          decodeWireFailure({
+            message: "gRPC stream is closed",
+            grpcStatus: state.grpcStatus,
+            traceId: state.traceId,
+          }),
         );
       }
     });
@@ -983,18 +968,17 @@ export class CloudDictationGrpcStream {
       const state = yield* Ref.get(this.stateRef);
       return (
         state.terminalError ??
-        new GrpcDictationError(
-          "gRPC stream closed before write completed",
-          state.grpcStatus,
-          undefined,
-          state.traceId,
-        )
+        decodeWireFailure({
+          message: "gRPC stream closed before write completed",
+          grpcStatus: state.grpcStatus,
+          traceId: state.traceId,
+        })
       );
     });
   }
 
   private normalizeGrpcErrorEffect(error: unknown): Effect.Effect<Error> {
-    if (error instanceof GrpcDictationError) {
+    if (isCloudError(error)) {
       return Effect.succeed(error);
     }
 
@@ -1006,20 +990,22 @@ export class CloudDictationGrpcStream {
         const httpStatus =
           extractHttpStatusFromGrpcJsDetails(error.details) ??
           extractHttpStatusFromGrpcJsDetails(error.message);
-        return new GrpcDictationError(
-          error.details ||
+        return decodeWireFailure({
+          message:
+            error.details ||
             error.message ||
             `gRPC stream failed with status ${error.code}`,
-          error.code,
+          grpcStatus: error.code,
           httpStatus,
-          state.traceId,
-          undefined,
-          richDetails.applicationCode,
-          richDetails.localizedMessage,
-        );
+          traceId: state.traceId,
+          rawWireCode: richDetails.applicationCode,
+          localizedMessage: richDetails.localizedMessage,
+        });
       });
     }
 
+    // A non-wire foreign value stays foreign: downstream refinement treats
+    // it as a defect, never as a retryable network failure.
     return Effect.succeed(
       error instanceof Error ? error : new Error(String(error)),
     );

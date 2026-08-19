@@ -107,9 +107,7 @@ export async function listSkills(): Promise<ResolvedSkill[]> {
   return rows.map(resolveSkill);
 }
 
-export async function getSkillById(
-  id: string,
-): Promise<ResolvedSkill | null> {
+export async function getSkillById(id: string): Promise<ResolvedSkill | null> {
   const result = await db.select().from(skills).where(eq(skills.id, id));
   return result[0] ? resolveSkill(result[0]) : null;
 }
@@ -159,10 +157,7 @@ export async function deleteSkill(id: string): Promise<Skill | null> {
   if (existing.isBuiltIn) {
     throw new Error("Cannot delete a built-in skill");
   }
-  const result = await db
-    .delete(skills)
-    .where(eq(skills.id, id))
-    .returning();
+  const result = await db.delete(skills).where(eq(skills.id, id)).returning();
   return result[0] ?? null;
 }
 

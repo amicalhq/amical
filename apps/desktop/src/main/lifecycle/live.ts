@@ -11,7 +11,7 @@ import { Deferred, Effect, Layer } from "effect";
 import { v4 as uuid } from "uuid";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { logger } from "../logger";
-import { AppError, ErrorCodes } from "../../types/error";
+import { ServiceInitFailed } from "../../types/errors";
 import { addRelease, up } from "../runtime/layer-helpers";
 import {
   AppScopeTag,
@@ -55,10 +55,9 @@ export interface DesktopRecordingLifecycle extends RecordingLifecycle {
 function degradedTranscriptionService() {
   return {
     beginStreamingSession: (): boolean => {
-      throw new AppError(
-        "Transcription service failed to initialize",
-        ErrorCodes.WORKER_INITIALIZATION_FAILED,
-      );
+      throw new ServiceInitFailed({
+        message: "Transcription service failed to initialize",
+      });
     },
     processStreamingChunk: async () => "",
     resolveStreamingSession: async () => null,

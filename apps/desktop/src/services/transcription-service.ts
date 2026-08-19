@@ -16,7 +16,7 @@ import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
 import { isAmicalCloudSelectionValue } from "../utils/model-selection";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import {
   TranscriptionServiceTag,
   ModelServiceTag,
@@ -41,9 +41,19 @@ import {
   prepareTranscriptText,
 } from "./transcription/prepare-transcript-text";
 import { retranscribeHistoryItem } from "./transcription/retranscribe-history-item";
-import { runEffectSameError } from "./transcription/effect-boundary";
+import { settleExit } from "./transcription/effect-boundary";
+import { runPromiseExit } from "../main/runtime/telemetry-runtime";
+import {
+  codeOf,
+  failOrDie,
+  isDictationError,
+  tagOf,
+  toDependencyFailure,
+  type DictationError,
+} from "../types/errors";
 import {
   recordChunkAggregate,
+  recordDefect,
   recordPoint,
   type ChunkAggregate,
 } from "../main/telemetry/dictation-trace";
@@ -142,29 +152,40 @@ export class TranscriptionService {
       return false;
     }
 
-    const liveSession = new LiveTranscriptionSession(sessionId, (error) => {
-      // A stream that reports a terminal result retires itself (§6.1):
-      // the registration must be gone before the lifecycle reacts, or the
-      // next session's begin finds a dead stream still holding the slot.
-      this.retireLiveSession(liveSession);
-      recordPoint(sessionId, "transcription.terminal-latch", {
-        // The latch fires from chunk classification AND from the provider's
-        // out-of-band stream observer, so the stage names the stream, not
-        // one phase (review finding).
-        stage: "transcription.stream",
-        errorCode:
-          (error as { errorCode?: string }).errorCode ??
-          (error as { code?: string }).code,
-      });
-      try {
-        onTerminalFailure?.(error);
-      } catch (callbackError) {
-        logger.transcription.error(
-          "Failed to handle terminal streaming session failure",
-          { sessionId, error: callbackError },
-        );
-      }
-    });
+    const liveSession = new LiveTranscriptionSession(
+      sessionId,
+      (error) => {
+        // Latch ACCEPTANCE is the once-authority for out-of-band defects:
+        // this callback fires only when the latch took the value, so an
+        // unknown value captures here exactly once (classification-latched
+        // defects arrive already marked). Losing channels never capture.
+        if (!isDictationError(error) && !liveSession.wasDefectReported(error)) {
+          liveSession.markDefectsReported([error]);
+          this.reportDefects(sessionId, [error]);
+        }
+        // A stream that reports a terminal result retires itself (§6.1):
+        // the registration must be gone before the lifecycle reacts, or the
+        // next session's begin finds a dead stream still holding the slot.
+        this.retireLiveSession(liveSession);
+        recordPoint(sessionId, "transcription.terminal-latch", {
+          // The latch fires from chunk classification AND from the provider's
+          // out-of-band stream observer, so the stage names the stream, not
+          // one phase (review finding).
+          stage: "transcription.stream",
+          errorCode: codeOf(error),
+          errorTag: tagOf(error),
+        });
+        try {
+          onTerminalFailure?.(error);
+        } catch (callbackError) {
+          logger.transcription.error(
+            "Failed to handle terminal streaming session failure",
+            { sessionId, error: callbackError },
+          );
+        }
+      },
+      (defects) => this.reportDefects(sessionId, defects),
+    );
     this.activeLiveSession = liveSession;
     this.chunkStats.set(sessionId, {
       modelId: null,
@@ -249,6 +270,16 @@ export class TranscriptionService {
         return session.providerSession.updateSessionContext?.(providerContext);
       })
       .catch((error) => {
+        // The push may outlive cancellation/finalization, so an unknown
+        // rejection captures REGARDLESS of session phase — exactly once;
+        // the typed-failure log stays best-effort-gated as before.
+        if (!isDictationError(error)) {
+          if (!liveSession.wasDefectReported(error)) {
+            liveSession.markDefectsReported([error]);
+            this.reportDefects(options.sessionId, [error]);
+          }
+          return;
+        }
         if (liveSession.canPushContextTo(session)) {
           logger.transcription.warn(
             "Failed to update streaming provider context",
@@ -564,7 +595,7 @@ export class TranscriptionService {
   private chunkEffect(
     liveSession: LiveTranscriptionSession,
     options: StreamingChunkOptions,
-  ): Effect.Effect<string, unknown> {
+  ): Effect.Effect<string, DictationError> {
     const { sessionId, audioChunk } = options;
     const service = this;
 
@@ -667,14 +698,14 @@ export class TranscriptionService {
                     settingsService: service.settingsService,
                     sessionId,
                   }),
-                catch: (error) => error,
+                catch: toDependencyFailure,
               });
               if (!liveSession.canCompleteAdmittedWork()) {
                 return "";
               }
               const formatterConfig = yield* Effect.tryPromise({
                 try: () => service.settingsService.getFormatterConfig(),
-                catch: (error) => error,
+                catch: toDependencyFailure,
               });
               if (!liveSession.canCompleteAdmittedWork()) {
                 return "";
@@ -690,18 +721,25 @@ export class TranscriptionService {
 
               const selectedModelId = yield* Effect.tryPromise({
                 try: () => service.modelService.getSelectedModel(),
-                catch: (error) => error,
+                catch: toDependencyFailure,
               });
               if (!liveSession.canCompleteAdmittedWork()) {
                 return "";
               }
               const engine = service.engineForSelectedModel(selectedModelId);
-              const providerSession = engine.openSession({
-                sessionId,
-                modelId: selectedModelId,
-                onTerminalFailure: (error) =>
-                  liveSession.reportTerminalFailure(error),
-              });
+              // A sync throw inside gen is a defect whatever class it is
+              // (probe P7) — the disposed variants must enter the failure
+              // channel through a lift.
+              const providerSession = yield* Effect.try({
+                try: () =>
+                  engine.openSession({
+                    sessionId,
+                    modelId: selectedModelId,
+                    onTerminalFailure: (error) =>
+                      liveSession.reportTerminalFailure(error),
+                  }),
+                catch: (error) => error,
+              }).pipe(Effect.catchAll(failOrDie));
 
               session = {
                 context,
@@ -741,7 +779,7 @@ export class TranscriptionService {
                   ),
                 }),
               catch: (error) => error,
-            });
+            }).pipe(Effect.catchAll(failOrDie));
             {
               const stats = service.chunkStats.get(sessionId);
               if (stats) {
@@ -819,6 +857,28 @@ export class TranscriptionService {
     logger.transcription.info("Aborted session", { sessionId });
   }
 
+  /**
+   * The one defect-reporting sink for this service's capture points (chunk
+   * classification, resolve triage, the late context push). Typed failures
+   * never come here; the latch/marking bookkeeping keeps each defect to one
+   * capture.
+   */
+  private reportDefects(
+    sessionId: string,
+    defects: ReadonlyArray<unknown>,
+  ): void {
+    for (const defect of defects) {
+      logger.transcription.error("Dictation defect", { sessionId, defect });
+      this.telemetryService.captureException(defect, {
+        source: "dictation",
+        session_id: sessionId,
+      });
+    }
+    if (defects.length > 0) {
+      recordDefect(sessionId);
+    }
+  }
+
   private retireLiveSession(liveSession: LiveTranscriptionSession): void {
     liveSession.retire();
     const stats = this.chunkStats.get(liveSession.id);
@@ -860,7 +920,26 @@ export class TranscriptionService {
     // be refused.
     liveSession.closeChunkAdmission();
     try {
-      return await runEffectSameError(this.resolveEffect(liveSession, options));
+      const exit = await runPromiseExit(
+        this.resolveEffect(liveSession, options),
+      );
+      // Boundary triage (D5): typed failures rethrow; every defect in the
+      // cause is reported once (the session bookkeeping dedups values the
+      // chunk arm or an out-of-band channel already own), loudly.
+      if (Exit.isFailure(exit)) {
+        const fresh = Array.from(Cause.defects(exit.cause)).filter(
+          (defect) => !liveSession.wasDefectReported(defect),
+        );
+        if (fresh.length > 0) {
+          liveSession.markDefectsReported(fresh);
+          logger.transcription.error("Dictation resolve defect", {
+            sessionId,
+            cause: Cause.pretty(exit.cause),
+          });
+          this.reportDefects(sessionId, fresh);
+        }
+      }
+      return settleExit(exit);
     } finally {
       this.retireLiveSession(liveSession);
     }
@@ -877,19 +956,24 @@ export class TranscriptionService {
     options: {
       sessionId: string;
     },
-  ): Effect.Effect<ResolvedStreamingSession | null, unknown> {
+  ): Effect.Effect<ResolvedStreamingSession | null, DictationError> {
     const { sessionId } = options;
     const service = this;
+    // The latch may hold a variant (typed failure) or an out-of-band defect;
+    // refine by value — a latched defect surfaces as a defect (D12).
     const terminalGate = Effect.try({
       try: () => liveSession.throwIfTerminalFailure(),
       catch: (error) => error,
-    });
+    }).pipe(Effect.catchAll(failOrDie));
 
     return Effect.gen(function* () {
       yield* Effect.tryPromise({
         try: () => liveSession.drainAdmittedChunks(),
         catch: (error) => error,
-      }).pipe(Effect.withSpan("resolve.drain", { attributes: { sessionId } }));
+      }).pipe(
+        Effect.catchAll(failOrDie),
+        Effect.withSpan("resolve.drain", { attributes: { sessionId } }),
+      );
       const session = liveSession.materializedSession;
       if (!session) {
         yield* terminalGate;
@@ -901,7 +985,7 @@ export class TranscriptionService {
 
       const formatterConfig = yield* Effect.tryPromise({
         try: () => service.settingsService.getFormatterConfig(),
-        catch: (error) => error,
+        catch: toDependencyFailure,
       });
       const shouldUseCloudFormatting =
         formatterConfig?.enabled &&
@@ -927,7 +1011,7 @@ export class TranscriptionService {
                   liveSession.signal,
                 ),
               catch: (error) => error,
-            });
+            }).pipe(Effect.catchAll(failOrDie));
             yield* terminalGate;
             session.detectedLanguage = mergeDetectedLanguage(
               session.detectedLanguage,
@@ -957,7 +1041,7 @@ export class TranscriptionService {
               modelService: service.modelService,
             },
           ),
-        catch: (error) => error,
+        catch: toDependencyFailure,
       }).pipe(Effect.withSpan("resolve.format", { attributes: { sessionId } }));
       yield* terminalGate;
 

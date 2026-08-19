@@ -2,7 +2,7 @@ import { fork, ChildProcess } from "child_process";
 import { app } from "electron";
 import * as path from "path";
 import { logger } from "../../../main/logger";
-import { AppError, ErrorCodes } from "../../../types/error";
+import { WorkerCrashed } from "../../../types/errors";
 
 interface WorkerMessage {
   id: number;
@@ -99,10 +99,10 @@ export class SimpleForkWrapper {
     this.worker.on("error", (error) => {
       logger.transcription.error("Worker process error:", error);
       this.rejectAllPending(
-        new AppError(
-          `Worker process error: ${error.message}`,
-          ErrorCodes.WORKER_CRASHED,
-        ),
+        new WorkerCrashed({
+          message: `Worker process error: ${error.message}`,
+          cause: error,
+        }),
       );
     });
 
@@ -114,10 +114,11 @@ export class SimpleForkWrapper {
       // Only reject if there were pending calls - idle exits are handled by auto-restart in exec()
       if (this.pendingCalls.size > 0) {
         this.rejectAllPending(
-          new AppError(
-            `Worker exited unexpectedly: code=${code}, signal=${signal}`,
-            ErrorCodes.WORKER_CRASHED,
-          ),
+          new WorkerCrashed({
+            message: `Worker exited unexpectedly: code=${code}, signal=${signal}`,
+            exitCode: code,
+            signal,
+          }),
         );
       }
     });

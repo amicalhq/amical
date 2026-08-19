@@ -5,7 +5,7 @@ import type {
   TranscribeParams,
   TranscriptionOutput,
 } from "../../src/pipeline/core/pipeline-types";
-import { AppError, ErrorCodes } from "../../src/types/error";
+import { ErrorCodes } from "../../src/types/error";
 
 const providerMocks = vi.hoisted(() => {
   const makeSession = (
@@ -123,6 +123,14 @@ import { prepareTranscriptText } from "../../src/services/transcription/prepare-
 import type { DictationContext } from "../../src/services/transcription/types";
 import type { VADService } from "../../src/services/vad-service";
 import * as fs from "node:fs";
+import { projectionOf } from "../helpers/error-projection";
+import {
+  CloudDisposed,
+  CloudQuotaExceeded,
+  EngineDisposed,
+  RateLimited,
+  ServerRejected,
+} from "../../src/types/errors";
 
 type MockProvider = typeof providerMocks.cloud;
 type MockProviderSession = ReturnType<MockProvider["openSession"]>;
@@ -157,6 +165,7 @@ describe("TranscriptionService — provider session pinning", () => {
   let service: TranscriptionService;
   let selectedModelId: string | null;
   let processVadFrame: ReturnType<typeof vi.fn>;
+  let captureException: ReturnType<typeof vi.fn>;
 
   const processChunk = (sessionId: string, sample: number) =>
     service.processStreamingChunk({
@@ -187,7 +196,11 @@ describe("TranscriptionService — provider session pinning", () => {
     const settingsService = {
       getFormatterConfig: vi.fn(async () => ({ enabled: false })),
     };
-    const telemetryService = new Proxy({}, { get: () => vi.fn() });
+    captureException = vi.fn();
+    const telemetryService = new Proxy(
+      { captureException } as Record<string, unknown>,
+      { get: (target, key) => (target[key as string] ??= vi.fn()) },
+    );
     processVadFrame = vi.fn(async () => ({
       probability: 1,
       isSpeaking: true,
@@ -688,7 +701,10 @@ describe("TranscriptionService — provider session pinning", () => {
       session.transcribe.mockRejectedValueOnce(failure);
     });
 
-    await expect(service.retryTranscription(1)).rejects.toBe(failure);
+    await expect(service.retryTranscription(1)).rejects.toMatchObject({
+      name: "Error",
+      message: failure.message,
+    });
 
     const retrySession = sessionFor(providerMocks.local, "retry-session");
     expect(retrySession.cancel).toHaveBeenCalledOnce();
@@ -730,14 +746,13 @@ describe("TranscriptionService — provider session pinning", () => {
     expect(service.beginStreamingSession("cloud-session", listener)).toBe(true);
     await processChunk("cloud-session", 0.1);
     const cloudSession = sessionFor(providerMocks.cloud, "cloud-session");
-    const terminalError = new AppError(
-      "Cloud quota exhausted",
-      ErrorCodes.QUOTA_EXCEEDED,
-    );
+    const terminalError = new CloudQuotaExceeded({
+      message: "Cloud quota exhausted",
+    });
 
     cloudSession.emitTerminalFailure(terminalError);
     cloudSession.emitTerminalFailure(
-      new AppError("Later failure", ErrorCodes.RATE_LIMIT_EXCEEDED),
+      new RateLimited({ message: "Later failure" }),
     );
 
     expect(listener).toHaveBeenCalledOnce();
@@ -755,11 +770,10 @@ describe("TranscriptionService — provider session pinning", () => {
   });
 
   it("I-51: projects a rejected provider chunk as one terminal session failure", async () => {
-    const terminalError = new AppError(
-      "HTTP fallback failed",
-      ErrorCodes.INTERNAL_SERVER_ERROR,
-      { httpStatus: 500 },
-    );
+    const terminalError = new ServerRejected({
+      message: "HTTP fallback failed",
+      meta: { httpStatus: 500 },
+    });
     providerMocks.cloud.setupSession("cloud-session", (session) => {
       session.transcribe.mockRejectedValueOnce(terminalError);
     });
@@ -787,11 +801,22 @@ describe("TranscriptionService — provider session pinning", () => {
     const listener = vi.fn();
     expect(service.beginStreamingSession("cloud-session", listener)).toBe(true);
 
-    await expect(processChunk("cloud-session", 0.1)).rejects.toBe(
-      terminalError,
+    // The context lookup is a wrap-policy lift now: the foreign rejection
+    // surfaces as a typed DependencyFailure carrying the original as cause,
+    // message preserved.
+    const surfaced = await processChunk("cloud-session", 0.1).then(
+      () => {
+        throw new Error("expected the chunk to reject");
+      },
+      (error: unknown) => error,
     );
+    expect(surfaced).toMatchObject({
+      _tag: "DependencyFailure",
+      message: "Context lookup failed",
+      cause: terminalError,
+    });
     expect(listener).toHaveBeenCalledOnce();
-    expect(listener).toHaveBeenCalledWith(terminalError);
+    expect(listener).toHaveBeenCalledWith(surfaced);
 
     await expect(
       service.resolveStreamingSession({ sessionId: "cloud-session" }),
@@ -818,7 +843,7 @@ describe("TranscriptionService — provider session pinning", () => {
     const currentSession = sessionFor(providerMocks.cloud, "current-session");
 
     oldSession.emitTerminalFailure(
-      new AppError("Late old failure", ErrorCodes.QUOTA_EXCEEDED),
+      new CloudQuotaExceeded({ message: "Late old failure" }),
     );
 
     expect(oldListener).not.toHaveBeenCalled();
@@ -857,5 +882,129 @@ describe("TranscriptionService — provider session pinning", () => {
 
     expect(service.beginStreamingSession("next-live-session")).toBe(true);
     await service.cancelStreamingSession("next-live-session");
+  });
+
+  describe("defect triage", () => {
+    it("die site: a foreign rejection from a typed callee surfaces as a defect and captures once", async () => {
+      selectedModelId = "amical-cloud";
+      expect(service.beginStreamingSession("die-session", vi.fn())).toBe(true);
+      await processChunk("die-session", 0.1);
+      const cloudSession = sessionFor(providerMocks.cloud, "die-session");
+      const bug = new TypeError("provider contract bug");
+      cloudSession.transcribe.mockRejectedValueOnce(bug);
+
+      await expect(processChunk("die-session", 0.2)).rejects.toBe(bug);
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(bug, {
+        source: "dictation",
+        session_id: "die-session",
+      });
+      // The terminal latch already retired the stream; resolve finds no
+      // session and nothing re-captures.
+      await expect(
+        service.resolveStreamingSession({ sessionId: "die-session" }),
+      ).resolves.toBeNull();
+      expect(captureException).toHaveBeenCalledTimes(1);
+    });
+
+    it("typed failures never capture", async () => {
+      selectedModelId = "amical-cloud";
+      expect(service.beginStreamingSession("typed-session", vi.fn())).toBe(
+        true,
+      );
+      await processChunk("typed-session", 0.1);
+      const cloudSession = sessionFor(providerMocks.cloud, "typed-session");
+      cloudSession.transcribe.mockRejectedValueOnce(
+        new CloudQuotaExceeded({ message: "quota" }),
+      );
+      await expect(processChunk("typed-session", 0.2)).rejects.toMatchObject({
+        _tag: "CloudQuotaExceeded",
+      });
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        "cloud",
+        () => new CloudDisposed({ message: "engine disposed" }),
+        ErrorCodes.UNKNOWN,
+      ],
+      [
+        "whisper",
+        () => new EngineDisposed({ message: "engine disposed" }),
+        ErrorCodes.WORKER_INITIALIZATION_FAILED,
+      ],
+    ] as const)(
+      "a disposed %s engine surfaces typed with zero captures",
+      async (_name, mk, expectedCode) => {
+        selectedModelId = "amical-cloud";
+        expect(service.beginStreamingSession("disposed", vi.fn())).toBe(true);
+        providerMocks.cloud.openSession.mockImplementationOnce(() => {
+          throw mk();
+        });
+        const rejection = await processChunk("disposed", 0.1).then(
+          () => {
+            throw new Error("expected the chunk to reject");
+          },
+          (error: unknown) => error,
+        );
+        expect(projectionOf(rejection).code).toBe(expectedCode);
+        expect(captureException).not.toHaveBeenCalled();
+      },
+    );
+
+    it("an out-of-band foreign terminal failure captures exactly once at latch acceptance", async () => {
+      selectedModelId = "amical-cloud";
+      const listener = vi.fn();
+      expect(service.beginStreamingSession("oob", listener)).toBe(true);
+      await processChunk("oob", 0.1);
+      const cloudSession = sessionFor(providerMocks.cloud, "oob");
+      const bug = new TypeError("background bug");
+      cloudSession.emitTerminalFailure(bug);
+      cloudSession.emitTerminalFailure(bug);
+      expect(listener).toHaveBeenCalledOnce();
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(bug, {
+        source: "dictation",
+        session_id: "oob",
+      });
+    });
+
+    it("an out-of-band typed terminal failure never captures", async () => {
+      selectedModelId = "amical-cloud";
+      expect(service.beginStreamingSession("oob-typed", vi.fn())).toBe(true);
+      await processChunk("oob-typed", 0.1);
+      sessionFor(providerMocks.cloud, "oob-typed").emitTerminalFailure(
+        new CloudQuotaExceeded({ message: "quota" }),
+      );
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("a context push that rejects with an unknown value after retirement captures exactly once", async () => {
+      selectedModelId = "amical-cloud";
+      expect(service.beginStreamingSession("late-push", vi.fn())).toBe(true);
+      await processChunk("late-push", 0.1);
+      const cloudSession = sessionFor(providerMocks.cloud, "late-push");
+      let rejectPush!: (error: unknown) => void;
+      cloudSession.updateSessionContext.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectPush = reject;
+          }),
+      );
+      await service.updateStreamingSession({
+        sessionId: "late-push",
+        isInstruct: true,
+        accessibilityContext:
+          dictationContext("late-push").accessibilityContext,
+      });
+      // The session moves on before the push settles.
+      await service.cancelStreamingSession("late-push");
+      const bug = new RangeError("late push bug");
+      rejectPush(bug);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(bug, {
+        source: "dictation",
+        session_id: "late-push",
+      });
+    });
   });
 });

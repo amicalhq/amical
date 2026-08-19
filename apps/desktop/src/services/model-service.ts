@@ -226,10 +226,7 @@ class ModelService extends EventEmitter {
   static readonly Live: Layer.Layer<
     ModelServiceTag,
     never,
-    | SettingsServiceTag
-    | AuthServiceTag
-    | TelemetryServiceTag
-    | AppScopeTag
+    SettingsServiceTag | AuthServiceTag | TelemetryServiceTag | AppScopeTag
   > = Layer.effect(
     ModelServiceTag,
     Effect.gen(function* () {

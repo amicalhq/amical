@@ -11,7 +11,14 @@ import { ModelService } from "../../../services/model-service";
 import { SimpleForkWrapper } from "./simple-fork-wrapper";
 import * as path from "path";
 import { app } from "electron";
-import { AppError, ErrorCodes } from "../../../types/error";
+import {
+  EngineDisposed,
+  LocalTranscriptionFailed,
+  LocalTranscriptionUnsupported,
+  ModelMissing,
+  WorkerInitFailed,
+  isLocalWhisperError,
+} from "../../../types/errors";
 import { isLocalTranscriptionSupported } from "../../../utils/os-version";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
 import { buildWhisperPrompt } from "./whisper-prompt";
@@ -182,13 +189,13 @@ class WhisperProviderSession implements TranscriptionProviderSession {
         return { text: "" };
       }
       logger.transcription.error("Transcription failed:", error);
-      if (error instanceof AppError) {
+      if (isLocalWhisperError(error)) {
         throw error;
       }
-      throw new AppError(
-        `Whisper transcription failed: ${error instanceof Error ? error.message : error}`,
-        ErrorCodes.LOCAL_TRANSCRIPTION_FAILED,
-      );
+      throw new LocalTranscriptionFailed({
+        message: `Whisper transcription failed: ${error instanceof Error ? error.message : error}`,
+        cause: error,
+      });
     }
   }
 
@@ -315,10 +322,9 @@ export class WhisperProvider implements TranscriptionEngine {
     // load there). Refuse before forking the worker so the native binding is
     // never loaded on an unsupported OS.
     if (!isLocalTranscriptionSupported()) {
-      throw new AppError(
-        "Local transcription requires macOS 15 or later.",
-        ErrorCodes.LOCAL_TRANSCRIPTION_UNSUPPORTED,
-      );
+      throw new LocalTranscriptionUnsupported({
+        message: "Local transcription requires macOS 15 or later.",
+      });
     }
 
     let worker = this.workerWrapper;
@@ -345,7 +351,16 @@ export class WhisperProvider implements TranscriptionEngine {
             terminationError,
           );
         }
-        throw error;
+        // A fork/spawn failure IS a worker-init failure, on every path that
+        // reaches it (session init and the transcribe-time auto-restart) —
+        // the tagged pin records both recodes.
+        if (isLocalWhisperError(error)) {
+          throw error;
+        }
+        throw new WorkerInitFailed({
+          message: `Whisper worker failed to start: ${error instanceof Error ? error.message : error}`,
+          cause: error,
+        });
       }
     }
 
@@ -364,13 +379,13 @@ export class WhisperProvider implements TranscriptionEngine {
         );
       }
       logger.transcription.error("Failed to initialize:", error);
-      if (error instanceof AppError) {
+      if (isLocalWhisperError(error)) {
         throw error;
       }
-      throw new AppError(
-        `Whisper model initialization failed: ${error instanceof Error ? error.message : error}`,
-        ErrorCodes.WORKER_INITIALIZATION_FAILED,
-      );
+      throw new WorkerInitFailed({
+        message: `Whisper model initialization failed: ${error instanceof Error ? error.message : error}`,
+        cause: error,
+      });
     }
 
     return worker;
@@ -418,12 +433,12 @@ export class WhisperProvider implements TranscriptionEngine {
       : await this.modelService.getBestAvailableModelPath();
 
     if (!modelPath) {
-      throw new AppError(
-        modelId
+      throw new ModelMissing({
+        message: modelId
           ? `Selected Whisper model is unavailable: ${modelId}`
           : "No Whisper models available. Please download a model first.",
-        ErrorCodes.MODEL_MISSING,
-      );
+        modelId: modelId ?? undefined,
+      });
     }
 
     return modelPath;
@@ -431,10 +446,9 @@ export class WhisperProvider implements TranscriptionEngine {
 
   private assertNotDisposed(): void {
     if (this.disposed) {
-      throw new AppError(
-        "Whisper transcription engine has been disposed",
-        ErrorCodes.WORKER_INITIALIZATION_FAILED,
-      );
+      throw new EngineDisposed({
+        message: "Whisper transcription engine has been disposed",
+      });
     }
   }
 

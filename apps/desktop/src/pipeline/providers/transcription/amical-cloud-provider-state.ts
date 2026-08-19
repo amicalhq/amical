@@ -1,6 +1,11 @@
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { Context, Effect, Ref } from "effect";
-import { AppError, ErrorCodes } from "../../../types/error";
+import {
+  AuthRequired,
+  NetworkFailure,
+  isCloudError,
+  type CloudError,
+} from "../../../types/errors";
 import type { CloudFallbackStage } from "../../../types/telemetry-events";
 import { detectApplicationType } from "../formatting/formatter-prompt";
 import type {
@@ -9,9 +14,9 @@ import type {
 } from "./grpc-dictation-client";
 
 export interface CloudAuth {
-  isAuthenticated(): Effect.Effect<boolean, AppError>;
-  getIdToken(): Effect.Effect<string | null, AppError>;
-  refreshTokenIfNeeded(force?: boolean): Effect.Effect<void, AppError>;
+  isAuthenticated(): Effect.Effect<boolean, CloudError>;
+  getIdToken(): Effect.Effect<string | null, CloudError>;
+  refreshTokenIfNeeded(force?: boolean): Effect.Effect<void, CloudError>;
 }
 
 export const CloudAuth = Context.GenericTag<CloudAuth>(
@@ -32,7 +37,7 @@ export const CloudConfig = Context.GenericTag<CloudConfig>(
 type CloudProviderEnv = CloudAuth | CloudConfig;
 export type CloudProviderEffect<A> = Effect.Effect<
   A,
-  AppError,
+  CloudError,
   CloudProviderEnv
 >;
 
@@ -104,16 +109,27 @@ export const projectAccessibilityContext = (
   };
 };
 
-export const toNetworkAppError = (error: unknown): AppError => {
-  if (error instanceof AppError) {
+export const toNetworkFailure = (error: unknown): CloudError => {
+  if (isCloudError(error)) {
     return error;
   }
 
-  return new AppError(
-    error instanceof Error ? error.message : "Network error",
-    ErrorCodes.NETWORK_ERROR,
-  );
+  return new NetworkFailure({
+    message: error instanceof Error ? error.message : "Network error",
+    cause: error,
+  });
 };
+
+/**
+ * Pass-through/die refinement for lifts around the gRPC client: the client
+ * throws cloud variants; anything else is a programming defect. Foreign
+ * values must NOT become NetworkFailure here — a bug is not a retryable
+ * network condition.
+ */
+export const cloudFailOrDie = (
+  error: unknown,
+): Effect.Effect<never, CloudError> =>
+  isCloudError(error) ? Effect.fail(error) : Effect.die(error);
 
 export const createInitialProviderState = (): ProviderState => ({
   frameBuffer: [],
@@ -164,10 +180,7 @@ export const getIdTokenEffect = (): CloudProviderEffect<string> =>
 
     if (!idToken) {
       return yield* Effect.fail(
-        new AppError(
-          "No authentication token available",
-          ErrorCodes.AUTH_REQUIRED,
-        ),
+        new AuthRequired({ message: "No authentication token available" }),
       );
     }
 

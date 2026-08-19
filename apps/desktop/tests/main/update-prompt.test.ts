@@ -19,8 +19,12 @@ describe("computeUpdatePrompt", () => {
   });
 
   it("returns null for action none/silent", () => {
-    expect(computeUpdatePrompt(meta({ action: "none" }), true, undefined)).toBeNull();
-    expect(computeUpdatePrompt(meta({ action: "silent" }), true, undefined)).toBeNull();
+    expect(
+      computeUpdatePrompt(meta({ action: "none" }), true, undefined),
+    ).toBeNull();
+    expect(
+      computeUpdatePrompt(meta({ action: "silent" }), true, undefined),
+    ).toBeNull();
   });
 
   it("returns the prompt for a fresh prompt action", () => {
@@ -40,7 +44,9 @@ describe("computeUpdatePrompt", () => {
   });
 
   it("ignores dismissal for force updates", () => {
-    expect(computeUpdatePrompt(meta({ action: "force" }), true, "1.7.1")).toEqual({
+    expect(
+      computeUpdatePrompt(meta({ action: "force" }), true, "1.7.1"),
+    ).toEqual({
       action: "force",
       version: "1.7.1",
       releaseNotes: "## Amical 1.7.1",

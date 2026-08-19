@@ -2,6 +2,7 @@ import { Cause, Exit, Option } from "effect";
 import type * as Tracer from "effect/Tracer";
 import { setSpanEndSink } from "../runtime/telemetry-runtime";
 import { logger } from "../logger";
+import { codeOf, tagOf } from "../../types/errors";
 
 /**
  * Per-session dictation trace: collects span records, obligation markers,
@@ -42,6 +43,10 @@ export interface ChunkAggregate {
 
 export interface DictationTraceTelemetry {
   trackDictationTrace(properties: Record<string, unknown>): void;
+  captureException?(
+    error: unknown,
+    additionalProperties?: Record<string, unknown>,
+  ): void;
 }
 
 const GRACE_MS = 15_000;
@@ -91,7 +96,13 @@ interface SessionTrace {
   disposition: string | null;
   closeFailedStage: string | null;
   closeErrorCode: string | null;
-  latch: { stage: string; errorCode: string | null } | null;
+  latch: {
+    stage: string;
+    errorCode: string | null;
+    errorTag: string | null;
+  } | null;
+  /** A defect occurred during this session (independent of the disposition). */
+  defect: boolean;
   chunks: ChunkAggregate | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   flushReason: "settled" | "grace" | null;
@@ -136,6 +147,7 @@ export function openSessionTrace(
     closeFailedStage: null,
     closeErrorCode: null,
     latch: null,
+    defect: false,
     chunks: null,
     graceTimer: null,
     flushReason: null,
@@ -198,6 +210,8 @@ export function recordPoint(
       stage: String(attributes.stage ?? "unknown"),
       errorCode:
         typeof attributes.errorCode === "string" ? attributes.errorCode : null,
+      errorTag:
+        typeof attributes.errorTag === "string" ? attributes.errorTag : null,
     };
   }
 }
@@ -229,6 +243,38 @@ export function recordPhase(
     trace.expected.set(name, true);
     maybeFlush(trace);
   }
+}
+
+/**
+ * Mark that a defect occurred during this session. Additive to the
+ * disposition: the trace keeps the code of what the user saw, and
+ * `defect: true` says a bug also fired (capture happens at the reporting
+ * site, not here).
+ */
+export function recordDefect(sessionId: string): void {
+  const trace = sessions.get(sessionId);
+  if (!trace) {
+    dropLate(sessionId, "defect");
+    return;
+  }
+  trace.defect = true;
+}
+
+/**
+ * Defect reporting channel for main-process sites with no telemetry
+ * dependency of their own (the lifecycle adapter's capture split): loud
+ * log + exception capture + the additive trace flag, in one call.
+ */
+export function reportDictationDefect(
+  sessionId: string,
+  defect: unknown,
+): void {
+  logger.transcription.error("Dictation defect", { sessionId, defect });
+  telemetry?.captureException?.(defect, {
+    source: "dictation",
+    session_id: sessionId,
+  });
+  recordDefect(sessionId);
 }
 
 /** The per-session chunk aggregate, emitted once at retirement (plan D5).
@@ -308,17 +354,12 @@ function handleSpanEnd(
   const failure = Exit.isFailure(exit)
     ? Cause.failureOption(exit.cause)
     : Option.none();
-  // AppError carries the code on `errorCode`; `.code` is the fallback for
-  // foreign errors (review finding — `.code` alone never matched AppError).
-  const failureValue = Option.isSome(failure)
-    ? (failure.value as { errorCode?: unknown; code?: unknown })
-    : null;
-  const errorCode =
-    typeof failureValue?.errorCode === "string"
-      ? failureValue.errorCode
-      : typeof failureValue?.code === "string"
-        ? failureValue.code
-        : undefined;
+  // The projection owns coding now: variants project their frozen code and
+  // carry their tag; foreign values project UNKNOWN (the foreign-`.code`
+  // passthrough is superseded — decided carve-out).
+  const failureValue = Option.isSome(failure) ? failure.value : null;
+  const errorCode = failureValue !== null ? codeOf(failureValue) : undefined;
+  const errorTag = failureValue !== null ? tagOf(failureValue) : undefined;
 
   trace.records.push({
     sessionId,
@@ -340,6 +381,7 @@ function handleSpanEnd(
     attributes: {
       sessionId,
       ...(errorCode ? { errorCode } : {}),
+      ...(errorTag ? { errorTag } : {}),
     },
   });
 
@@ -442,6 +484,15 @@ function flush(trace: SessionTrace): void {
     if (errorCode) {
       payload.error_code = errorCode;
     }
+    const errorTag =
+      trace.latch?.errorTag ??
+      (failedRecord?.attributes.errorTag as string | undefined);
+    if (errorTag) {
+      payload.error_tag = errorTag;
+    }
+  }
+  if (trace.defect) {
+    payload.defect = true;
   }
 
   logger.transcription.debug("Dictation trace", {

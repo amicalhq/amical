@@ -2,14 +2,19 @@ import { Effect, Ref } from "effect";
 import type { TranscriptionOutput } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import {
-  AppError,
-  ErrorCodes,
   isDictationErrorCode,
-  mapDictationErrorCodeToErrorCode,
   type CloudErrorResponse,
-  type DictationErrorCode,
-  type ErrorCode,
 } from "../../../types/error";
+import { variantForWireCode } from "./cloud-wire-decode";
+import {
+  AuthRequired,
+  Cancelled,
+  CloudQuotaExceeded,
+  RateLimited,
+  ServerRejected,
+  type CloudError,
+  type CloudMeta,
+} from "../../../types/errors";
 import {
   AMICAL_LABS_HEADER,
   buildAmicalLabsHeader,
@@ -22,7 +27,7 @@ import {
   getIdTokenEffect,
   projectAccessibilityContext,
   requestSnapshotEffect,
-  toNetworkAppError,
+  toNetworkFailure,
   type CloudProviderEffect,
   type ProviderRequestSnapshot,
   type ProviderState,
@@ -43,11 +48,6 @@ interface CloudTranscriptionSuccess {
 // Error response from cloud API (HTTP 4xx/5xx)
 interface CloudTranscriptionError {
   error: CloudErrorResponse;
-}
-
-interface ClassifiedHttpError {
-  errorCode: ErrorCode;
-  applicationCode?: DictationErrorCode;
 }
 
 type CloudTranscriptionResponse =
@@ -78,7 +78,7 @@ export class AmicalCloudHttpTransport {
 
   constructor(
     private readonly state: Ref.Ref<ProviderState>,
-    private readonly failIfClosedEffect: () => Effect.Effect<void, AppError>,
+    private readonly failIfClosedEffect: () => Effect.Effect<void, CloudError>,
   ) {}
 
   transcribeViaHttpEffect(
@@ -275,7 +275,7 @@ export class AmicalCloudHttpTransport {
         // like any network failure. (No special CANCELLED/499 code is needed —
         // shouldFallbackToHttp only inspects the gRPC attempt, never this HTTP
         // route, so an aborted fetch can't spawn a phantom fallback.)
-        catch: toNetworkAppError,
+        catch: toNetworkFailure,
       });
     });
   }
@@ -303,42 +303,61 @@ export class AmicalCloudHttpTransport {
     return Effect.tryPromise({
       try: async () => (await response.json()) as CloudTranscriptionSuccess,
       catch: () =>
-        new AppError(
-          "Invalid cloud API response",
-          ErrorCodes.INTERNAL_SERVER_ERROR,
-          {
-            httpStatus: response.status,
-          },
-        ),
+        new ServerRejected({
+          message: "Invalid cloud API response",
+          meta: { httpStatus: response.status },
+        }),
     });
   }
 
-  private classifyHttpError(
+  /**
+   * The ONE http decode: classifies an error response into its cloud
+   * variant. Branches on the RAW application code while it is still in
+   * hand, then discards unrecognized codes. The server's `ui.title` rides
+   * ungated; the localized message only with a validated code — the legacy
+   * gating, preserved.
+   */
+  private decodeHttpFailure(
     response: Response,
     errorData: CloudErrorResponse | undefined,
-  ): ClassifiedHttpError {
-    if (isDictationErrorCode(errorData?.code)) {
-      return {
-        errorCode: mapDictationErrorCodeToErrorCode(errorData.code),
-        applicationCode: errorData.code,
-      };
+    fallbackMessage?: string,
+  ): CloudError {
+    const message =
+      errorData?.message ??
+      fallbackMessage ??
+      `Cloud API error: ${response.status} ${response.statusText}`;
+    const validCode = isDictationErrorCode(errorData?.code)
+      ? errorData.code
+      : undefined;
+    const meta: CloudMeta = {
+      wireCode: validCode,
+      httpStatus: response.status,
+      traceId: errorData?.traceId ?? errorData?.id,
+      serverUi:
+        errorData?.ui?.title || (validCode && errorData?.localizedMessage)
+          ? {
+              title: errorData?.ui?.title,
+              message: validCode
+                ? errorData?.localizedMessage?.message
+                : undefined,
+            }
+          : undefined,
+    };
+    if (validCode) {
+      return variantForWireCode(validCode, message, meta);
     }
-    if (response.status === 401) {
-      return { errorCode: ErrorCodes.AUTH_REQUIRED };
+    if (response.status === 401 || response.status === 403) {
+      return new AuthRequired({ message, meta });
     }
     if (response.status === 402) {
-      return { errorCode: ErrorCodes.QUOTA_EXCEEDED };
-    }
-    if (response.status === 403) {
-      return { errorCode: ErrorCodes.AUTH_REQUIRED };
+      return new CloudQuotaExceeded({ message, meta });
     }
     if (response.status === 429) {
-      return { errorCode: ErrorCodes.RATE_LIMIT_EXCEEDED };
+      return new RateLimited({ message, meta });
     }
-    if (response.status >= 500) {
-      return { errorCode: ErrorCodes.INTERNAL_SERVER_ERROR };
-    }
-    return { errorCode: ErrorCodes.UNKNOWN };
+    // 5xx and unclassified statuses project through ServerRejected's
+    // status arm (INTERNAL_SERVER_ERROR / UNKNOWN).
+    return new ServerRejected({ message, meta });
   }
 
   private makeTranscriptionRequestEffect(
@@ -422,20 +441,11 @@ export class AmicalCloudHttpTransport {
       if (response.status === 401) {
         if (isRetry) {
           const errorData = yield* this.readCloudErrorResponseEffect(response);
-          const classifiedError = this.classifyHttpError(response, errorData);
           return yield* Effect.fail(
-            new AppError(
-              errorData?.message ?? "Cloud auth failed after retry",
-              classifiedError.errorCode,
-              {
-                applicationCode: classifiedError.applicationCode,
-                httpStatus: response.status,
-                uiTitle: errorData?.ui?.title,
-                uiMessage: classifiedError.applicationCode
-                  ? errorData?.localizedMessage?.message
-                  : undefined,
-                traceId: errorData?.traceId ?? errorData?.id,
-              },
+            this.decodeHttpFailure(
+              response,
+              errorData,
+              "Cloud auth failed after retry",
             ),
           );
         }
@@ -458,11 +468,10 @@ export class AmicalCloudHttpTransport {
                 );
               });
               return yield* Effect.fail(
-                new AppError(
-                  "Authentication failed - please log in again",
-                  ErrorCodes.AUTH_REQUIRED,
-                  { httpStatus: 401 },
-                ),
+                new AuthRequired({
+                  message: "Authentication failed - please log in again",
+                  meta: { httpStatus: 401 },
+                }),
               );
             }),
           ),
@@ -482,7 +491,6 @@ export class AmicalCloudHttpTransport {
 
       if (!response.ok) {
         const errorData = yield* this.readCloudErrorResponseEffect(response);
-        const classifiedError = this.classifyHttpError(response, errorData);
 
         yield* Effect.sync(() => {
           logger.transcription.error("Cloud API error:", {
@@ -496,22 +504,7 @@ export class AmicalCloudHttpTransport {
           });
         });
 
-        return yield* Effect.fail(
-          new AppError(
-            errorData?.message ??
-              `Cloud API error: ${response.status} ${response.statusText}`,
-            classifiedError.errorCode,
-            {
-              applicationCode: classifiedError.applicationCode,
-              httpStatus: response.status,
-              uiTitle: errorData?.ui?.title,
-              uiMessage: classifiedError.applicationCode
-                ? errorData?.localizedMessage?.message
-                : undefined,
-              traceId: errorData?.traceId ?? errorData?.id,
-            },
-          ),
-        );
+        return yield* Effect.fail(this.decodeHttpFailure(response, errorData));
       }
 
       const result = yield* this.readCloudSuccessResponseEffect(response);

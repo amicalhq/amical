@@ -1,21 +1,14 @@
-import { status as GrpcStatus } from "@grpc/grpc-js";
 import { Effect, Ref } from "effect";
 import type {
   TranscribeContext,
   TranscriptionOutput,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
-import {
-  AppError,
-  ErrorCodes,
-  isDictationErrorCode,
-  mapDictationErrorCodeToErrorCode,
-  type DictationErrorCode,
-  type ErrorCode,
-} from "../../../types/error";
+import { NetworkFailure, type CloudError } from "../../../types/errors";
 import { getAmicalClientInfo, getUserAgent } from "../../../utils/http-client";
 import {
   CloudConfig,
+  cloudFailOrDie,
   getIdTokenEffect,
   projectAccessibilityContext,
   requestSnapshotEffect,
@@ -26,7 +19,6 @@ import {
 } from "./amical-cloud-provider-state";
 import {
   CloudDictationGrpcStream,
-  GrpcDictationError,
   type GrpcStreamContext,
 } from "./grpc-dictation-client";
 import { float32ToPcmS16le } from "../../utils/pcm-encoding";
@@ -40,14 +32,15 @@ const contextSnapshotKey = (
 
 export interface ObservedGrpcStreamFailure {
   stream: CloudDictationGrpcStream;
-  error: AppError;
+  /** The settled client value: a cloud variant, or a foreign defect. */
+  error: unknown;
 }
 
 /** Owns the mechanics of the cloud gRPC route for one provider session. */
 export class AmicalCloudGrpcTransport {
   constructor(
     private readonly state: Ref.Ref<ProviderState>,
-    private readonly failIfClosedEffect: () => Effect.Effect<void, AppError>,
+    private readonly failIfClosedEffect: () => Effect.Effect<void, CloudError>,
     private readonly onStreamFailure: (
       failure: ObservedGrpcStreamFailure,
     ) => void,
@@ -126,8 +119,8 @@ export class AmicalCloudGrpcTransport {
 
       const result = yield* Effect.tryPromise({
         try: () => stream.finalize(),
-        catch: (error) => this.toAppError(error),
-      });
+        catch: (error) => error,
+      }).pipe(Effect.catchAll(cloudFailOrDie));
       yield* this.clearSuccessfulGrpcMirrorEffect(stream);
       return result;
     });
@@ -187,8 +180,8 @@ export class AmicalCloudGrpcTransport {
 
       const stream = yield* Effect.try({
         try: () => new CloudDictationGrpcStream(openOptions),
-        catch: (error) => this.toAppError(error),
-      });
+        catch: (error) => error,
+      }).pipe(Effect.catchAll(cloudFailOrDie));
       const selectedStream = yield* Ref.modify(this.state, (state) => {
         if (state.transportOverride === "http") {
           return [null, state] as const;
@@ -249,8 +242,8 @@ export class AmicalCloudGrpcTransport {
       if (streamContext && nextContextKey !== sentContextKey) {
         yield* Effect.tryPromise({
           try: () => stream.sendContextUpdate(streamContext),
-          catch: (error) => this.toAppError(error),
-        });
+          catch: (error) => error,
+        }).pipe(Effect.catchAll(cloudFailOrDie));
         yield* Ref.update(this.state, (state) => ({
           ...state,
           grpcSentContextKey: nextContextKey,
@@ -274,8 +267,8 @@ export class AmicalCloudGrpcTransport {
       if (nextSkillsKey !== sentSkillsKey) {
         yield* Effect.tryPromise({
           try: () => stream.sendSkillsUpdate(resolvedSkills),
-          catch: (error) => this.toAppError(error),
-        });
+          catch: (error) => error,
+        }).pipe(Effect.catchAll(cloudFailOrDie));
         yield* Ref.update(this.state, (state) => ({
           ...state,
           grpcSentSkillsKey: nextSkillsKey,
@@ -370,8 +363,8 @@ export class AmicalCloudGrpcTransport {
       ]);
       yield* Effect.tryPromise({
         try: () => stream.sendAudioBatch(seq, [packet]),
-        catch: (error) => this.toAppError(error),
-      });
+        catch: (error) => error,
+      }).pipe(Effect.catchAll(cloudFailOrDie));
     });
   }
 
@@ -396,9 +389,9 @@ export class AmicalCloudGrpcTransport {
   }
 
   private observeStreamFailure(stream: CloudDictationGrpcStream): void {
-    void stream.finalTranscript.catch((error) => {
+    void stream.finalTranscript.catch((error: unknown) => {
       try {
-        this.onStreamFailure({ stream, error: this.toAppError(error) });
+        this.onStreamFailure({ stream, error });
       } catch (observerError) {
         logger.transcription.error(
           "Failed to observe cloud gRPC stream failure",
@@ -432,98 +425,9 @@ export class AmicalCloudGrpcTransport {
     );
   }
 
-  private routeChangedError(): AppError {
-    return new AppError(
-      "gRPC route changed before the operation completed",
-      ErrorCodes.NETWORK_ERROR,
-    );
-  }
-
-  private toAppError(error: unknown): AppError {
-    if (error instanceof AppError) {
-      return error;
-    }
-
-    if (error instanceof GrpcDictationError) {
-      const build = (code: ErrorCode, applicationCode?: DictationErrorCode) =>
-        new AppError(error.message, code, {
-          applicationCode,
-          grpcStatus: error.grpcStatus,
-          httpStatus: error.httpStatus,
-          traceId: error.traceId,
-          uiMessage: applicationCode ? error.localizedMessage : undefined,
-        });
-
-      // Defense-in-depth idle close — distinct from user-cancellation even
-      // though both surface as gRPC CANCELLED on the wire.
-      if (error.isIdleTimeout) {
-        return build(ErrorCodes.IDLE_TIMEOUT);
-      }
-
-      if (isDictationErrorCode(error.applicationCode)) {
-        return build(
-          mapDictationErrorCodeToErrorCode(error.applicationCode),
-          error.applicationCode,
-        );
-      }
-
-      switch (error.grpcStatus) {
-        case GrpcStatus.UNAUTHENTICATED:
-          return build(ErrorCodes.AUTH_REQUIRED);
-        // The server's only RESOURCE_EXHAUSTED case today is a plan/word-limit
-        // cap, not a per-second throttle — surface as QUOTA_EXCEEDED so the
-        // user sees an Upgrade CTA instead of a generic rate-limit message.
-        case GrpcStatus.RESOURCE_EXHAUSTED:
-          if (error.applicationCode) {
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
-          }
-          return build(ErrorCodes.QUOTA_EXCEEDED);
-        case GrpcStatus.PERMISSION_DENIED:
-          return build(ErrorCodes.AUTH_REQUIRED);
-      }
-
-      switch (error.httpStatus) {
-        case 401:
-          return build(ErrorCodes.AUTH_REQUIRED);
-        case 402:
-          return build(ErrorCodes.QUOTA_EXCEEDED);
-        case 403:
-          return build(ErrorCodes.AUTH_REQUIRED);
-        case 429:
-          return build(ErrorCodes.RATE_LIMIT_EXCEEDED);
-      }
-
-      if (error.httpStatus && error.httpStatus >= 500) {
-        return build(ErrorCodes.INTERNAL_SERVER_ERROR);
-      }
-
-      if (!error.httpStatus) {
-        switch (error.grpcStatus) {
-          case GrpcStatus.CANCELLED:
-            return build(ErrorCodes.NETWORK_ERROR);
-          case GrpcStatus.INVALID_ARGUMENT:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
-          case GrpcStatus.DEADLINE_EXCEEDED:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
-          case GrpcStatus.NOT_FOUND:
-            return build(ErrorCodes.UNKNOWN);
-          case GrpcStatus.ALREADY_EXISTS:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
-          case GrpcStatus.FAILED_PRECONDITION:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
-          case GrpcStatus.INTERNAL:
-            return build(ErrorCodes.INTERNAL_SERVER_ERROR);
-          case GrpcStatus.UNAVAILABLE:
-            return build(ErrorCodes.NETWORK_ERROR);
-        }
-      }
-
-      return build(ErrorCodes.UNKNOWN);
-    }
-
-    return new AppError(
-      error instanceof Error ? error.message : "Network error",
-      ErrorCodes.NETWORK_ERROR,
-    );
+  private routeChangedError(): CloudError {
+    return new NetworkFailure({
+      message: "gRPC route changed before the operation completed",
+    });
   }
 }

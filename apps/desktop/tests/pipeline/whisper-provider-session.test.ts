@@ -76,6 +76,7 @@ beforeEach(() => {
 
 import { WhisperProvider } from "../../src/pipeline/providers/transcription/whisper-provider";
 import type { ModelService } from "../../src/services/model-service";
+import { projectionOf, rejectionOf } from "../helpers/error-projection";
 
 describe("WhisperProvider sessions", () => {
   beforeEach(() => {
@@ -704,5 +705,66 @@ describe("WhisperProvider sessions", () => {
         format: "detail",
       },
     ]);
+  });
+
+  describe("worker start-failure recodes (tagged pins, flipped in the conversion)", () => {
+    it("a fork failure at session init projects WORKER_INITIALIZATION_FAILED", async () => {
+      // Previously this path rethrew raw and projected UNKNOWN.
+      const { provider } = createProvider();
+      workerMocks.initialize.mockRejectedValue(new Error("spawn ENOENT"));
+      const session = provider.openSession({ sessionId: "s-init" });
+      const failure = projectionOf(
+        await rejectionOf(
+          session.transcribe({
+            audioData: new Float32Array(512).fill(0.1),
+            speechProbability: 1,
+            context: { sessionId: "s-init", vocabulary: [] },
+          }),
+        ),
+      );
+      expect(failure.code).toBe("WORKER_INITIALIZATION_FAILED");
+      expect(failure.tag).toBe("WorkerInitFailed");
+      expect(failure.message).toContain("spawn ENOENT");
+    });
+
+    it("a fork failure during the transcribe-time restart projects WORKER_INITIALIZATION_FAILED", async () => {
+      // Previously the raw fork throw was wrapped to LOCAL_TRANSCRIPTION_FAILED
+      // by the transcription catch; the typed variant passes through it.
+      const { provider } = createProvider();
+      const session = provider.openSession({ sessionId: "s-restart" });
+      const frame = new Float32Array(512).fill(0.1);
+      // Initialize normally on first use.
+      await session.transcribe({
+        audioData: frame,
+        speechProbability: 1,
+        context: { sessionId: "s-restart", vocabulary: [] },
+      });
+      // Kill the worker: a model-init exec failure nulls the wrapper.
+      workerMocks.exec.mockImplementation(async (method) => {
+        if (method === "initializeModel") {
+          throw new Error("worker gone");
+        }
+        return { text: "" };
+      });
+      await rejectionOf(
+        session.flush({ sessionId: "s-restart", vocabulary: [] }),
+      );
+      // The SAME session keeps feeding; the next flush takes the fresh-fork
+      // branch inside the transcribe path, and the fork now fails.
+      workerMocks.exec.mockImplementation(async () => ({ text: "" }));
+      workerMocks.initialize.mockRejectedValue(new Error("spawn ENOENT"));
+      await session.transcribe({
+        audioData: frame,
+        speechProbability: 1,
+        context: { sessionId: "s-restart", vocabulary: [] },
+      });
+      const failure = projectionOf(
+        await rejectionOf(
+          session.flush({ sessionId: "s-restart", vocabulary: [] }),
+        ),
+      );
+      expect(failure.code).toBe("WORKER_INITIALIZATION_FAILED");
+      expect(failure.tag).toBe("WorkerInitFailed");
+    });
   });
 });
