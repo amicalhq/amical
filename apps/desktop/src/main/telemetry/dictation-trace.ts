@@ -7,7 +7,7 @@ import { codeOf, tagOf } from "../../types/errors";
 /**
  * Per-session dictation trace: collects span records, obligation markers,
  * and point events for one recording session, then flushes ONE flattened
- * telemetry event — `transcription_completed`, fired on every disposition.
+ * telemetry event — `transcription_completed_v2`, fired on every disposition.
  *
  * Flush policy: flush when the root is closed AND every expected obligation
  * has settled, or GRACE_MS after root close, whichever comes first; exactly

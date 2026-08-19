@@ -192,9 +192,9 @@ export class TelemetryService extends EventEmitter {
 
   /** The per-session dictation trace, flushed once per session on every
    * disposition (phase durations, offsets, failure stage). This IS the
-   * transcription_completed event for live dictations. */
+   * transcription_completed_v2 event for live dictations. */
   trackDictationTrace(properties: Record<string, unknown>): void {
-    this.captureEvent("transcription_completed", properties);
+    this.captureEvent("transcription_completed_v2", properties);
   }
 
   /** History-retry path only — live dictations report through the dictation
