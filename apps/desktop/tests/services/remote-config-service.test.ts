@@ -29,17 +29,23 @@ describe("RemoteConfigService", () => {
   // load — so tests assert on post-init state directly. Closing the scope in
   // afterEach runs the registered shutdown release (clears the refresh
   // interval).
-  const createService = async (persisted?: PersistedRemoteConfig) => {
+  const createService = async (
+    persisted?: PersistedRemoteConfig,
+    overrides?: { getRemoteConfig?: () => Promise<PersistedRemoteConfig> },
+  ) => {
     // The Live subscribes to auth events, so the stub must be an emitter.
     const authService = Object.assign(new EventEmitter(), {
       getIdToken: vi.fn().mockResolvedValue(null),
     }) as unknown as AuthService;
     const settingsService = {
-      getRemoteConfig: vi.fn().mockResolvedValue(persisted),
+      getRemoteConfig:
+        overrides?.getRemoteConfig ?? vi.fn().mockResolvedValue(persisted),
       setRemoteConfig: vi.fn().mockResolvedValue(undefined),
     } as unknown as SettingsService;
+    const captureException = vi.fn();
     const telemetryService = {
       getMachineId: vi.fn().mockReturnValue(undefined),
+      captureException,
     } as unknown as TelemetryService;
 
     const scope = Effect.runSync(Scope.make());
@@ -59,6 +65,7 @@ describe("RemoteConfigService", () => {
       service: Context.get(ctx, RemoteConfigServiceTag),
       settingsService,
       authService,
+      captureException,
     };
   };
 
@@ -105,6 +112,7 @@ describe("RemoteConfigService", () => {
       URL,
       { headers: Record<string, string> },
     ];
+    expect(url.pathname).toBe("/apps/v1/remote-config");
     expect(url.searchParams.get("locale")).toBe("ja");
     expect(init.headers["Accept-Language"]).toBe("ja");
   });
@@ -248,6 +256,191 @@ describe("RemoteConfigService", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(emitter.listenerCount("logged-out")).toBe(0);
     expect(emitter.listenerCount("authenticated")).toBe(0);
+  });
+
+  describe("contract-break reporting", () => {
+    const validBanner = {
+      kind: "banner",
+      id: "banner-1",
+      content: { body: "hello" },
+    };
+    const ok = (payload: unknown) => ({
+      ok: true,
+      json: async () => payload,
+    });
+
+    it("keeps the last good config and reports an invalid envelope once per episode", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(ok({ version: 1, surfaces: [validBanner] }))
+        .mockResolvedValueOnce(ok({ version: "one" }))
+        .mockResolvedValueOnce(ok({ version: "one" }))
+        .mockResolvedValueOnce(ok({ version: 1, surfaces: [validBanner] }))
+        .mockResolvedValueOnce(ok({ version: "one" }));
+      vi.stubGlobal("fetch", fetchMock);
+      const { service, captureException } =
+        await createService(freshPersisted());
+
+      await service.refresh();
+      expect(service.getConfig().surfaces).toHaveLength(1);
+
+      await service.refresh();
+      // Fail-closed: the last good config stays.
+      expect(service.getConfig().surfaces).toHaveLength(1);
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ _tag: "RemoteConfigInvalid" }),
+        expect.objectContaining({ remote_config_issues: expect.any(String) }),
+      );
+
+      // Same episode (the interval would re-parse the same payload): no
+      // second report.
+      await service.refresh();
+      expect(captureException).toHaveBeenCalledTimes(1);
+
+      // A fully-valid payload ends the episode; the next break reports again.
+      await service.refresh();
+      await service.refresh();
+      expect(captureException).toHaveBeenCalledTimes(2);
+    });
+
+    it("drops an unrecognized surface kind without reporting", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          ok({
+            version: 1,
+            surfaces: [validBanner, { kind: "carousel", id: "c-1" }],
+          }),
+        ),
+      );
+      const { service, captureException } =
+        await createService(freshPersisted());
+
+      await service.refresh();
+
+      expect(service.getConfig().surfaces).toEqual([validBanner]);
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("drops a malformed known-kind surface, applies the rest, and reports", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          ok({
+            version: 1,
+            surfaces: [
+              { kind: "banner", id: "broken" }, // missing content
+              { kind: "side_slot", id: "slot-1", content: { body: "x" } },
+            ],
+          }),
+        ),
+      );
+      const { service, captureException } =
+        await createService(freshPersisted());
+
+      await service.refresh();
+
+      expect(service.getConfig().surfaces).toEqual([
+        { kind: "side_slot", id: "slot-1", content: { body: "x" } },
+      ]);
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ _tag: "RemoteConfigInvalid" }),
+        expect.anything(),
+      );
+    });
+
+    it("reports a surface without a string kind — that is a break, not skew", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          ok({
+            version: 1,
+            surfaces: [validBanner, { id: "kindless", content: { body: "x" } }],
+          }),
+        ),
+      );
+      const { service, captureException } =
+        await createService(freshPersisted());
+
+      await service.refresh();
+
+      expect(service.getConfig().surfaces).toEqual([validBanner]);
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ _tag: "RemoteConfigInvalid" }),
+        expect.anything(),
+      );
+    });
+
+    it("never reports network-phase failures", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce({ ok: false, status: 503 })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => {
+            // A middlebox serving HTML with a 200.
+            throw new SyntaxError("Unexpected token <");
+          },
+        });
+      vi.stubGlobal("fetch", fetchMock);
+      const { service, captureException } =
+        await createService(freshPersisted());
+
+      await service.refresh();
+      await service.refresh();
+      await service.refresh();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("never reports an invalid persisted config", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+      vi.stubGlobal("fetch", fetchMock);
+      const persisted = {
+        config: { version: "one" },
+        lastFetchedAt: new Date().toISOString(),
+      } as unknown as PersistedRemoteConfig;
+      const { captureException } = await createService(persisted);
+
+      // The rejected cache counts as absent, so init kicks its refresh.
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("a settings write failure neither rejects nor reports", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(ok({ version: 1, surfaces: [validBanner] })),
+      );
+      const { service, settingsService, captureException } =
+        await createService(freshPersisted());
+      vi.mocked(settingsService.setRemoteConfig).mockRejectedValue(
+        new Error("db locked"),
+      );
+
+      await service.refresh();
+
+      // The in-memory config applied before the persist failed.
+      expect(service.getConfig().surfaces).toHaveLength(1);
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("a settings read failure counts as an absent cache and never reports", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+      vi.stubGlobal("fetch", fetchMock);
+      const { service, captureException } = await createService(undefined, {
+        getRemoteConfig: vi.fn().mockRejectedValue(new Error("db gone")),
+      });
+
+      // Init survived the read failure and kicked its refresh.
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      expect(service.getConfig().flags[DESKTOP_BACKGROUND_UPDATES_FLAG]).toBe(
+        true,
+      );
+      expect(captureException).not.toHaveBeenCalled();
+    });
   });
 
   it("returns to the true default while identity config is refetched", async () => {

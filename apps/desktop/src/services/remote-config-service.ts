@@ -1,7 +1,12 @@
 import { app } from "electron";
 
 import { logger } from "../main/logger";
-import { RemoteConfigSchema, type RemoteConfig } from "@/types/remote-config";
+import {
+  RemoteConfigSchema,
+  RemoteConfigSurfaceSchema,
+  type RemoteConfig,
+  type RemoteConfigSurface,
+} from "@/types/remote-config";
 import {
   AMICAL_DEVICE_ID_HEADER,
   getAmicalClientHeaders,
@@ -12,7 +17,8 @@ import type { AuthService, AuthState } from "./auth-service";
 import type { SettingsService } from "./settings-service";
 import type { TelemetryService } from "./telemetry-service";
 import { getApplicationLocale } from "../i18n/application-locale";
-import { Effect, Layer, Scope } from "effect";
+import { Data, Effect, Layer, Scope } from "effect";
+import { z } from "zod";
 import {
   RemoteConfigServiceTag,
   AuthServiceTag,
@@ -24,6 +30,103 @@ import { addRelease, step, up } from "../main/runtime/layer-helpers";
 
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const DESKTOP_BACKGROUND_UPDATES_FLAG = "desktop-background-updates";
+
+/**
+ * Network-phase failure: server unreachable, non-OK status, or a body that is
+ * not JSON (middleboxes and captive portals serve HTML with a 200).
+ * Environmental — logged, and the last good config stays.
+ */
+class RemoteConfigFetchFailed extends Data.TaggedError(
+  "RemoteConfigFetchFailed",
+)<{
+  message: string;
+  status?: number;
+  cause?: unknown;
+}> {}
+
+/** Valid JSON that violates the remote-config contract. */
+class RemoteConfigInvalid extends Data.TaggedError("RemoteConfigInvalid")<{
+  message: string;
+  issues: unknown;
+}> {}
+
+/**
+ * The local settings store failed while loading or persisting the config.
+ * An expected dependency failure — logged, never reported.
+ */
+class RemoteConfigStorageFailed extends Data.TaggedError(
+  "RemoteConfigStorageFailed",
+)<{
+  message: string;
+  cause: unknown;
+}> {}
+
+// Envelope with the surfaces left raw: surfaces validate per element below,
+// so a surface kind newer than this client (version skew) drops that element
+// instead of rejecting the whole payload.
+const EnvelopeSchema = RemoteConfigSchema.omit({ surfaces: true }).extend({
+  surfaces: z.array(z.unknown()).optional(),
+});
+
+// Adding a kind to the contract must extend this record (compile-gated) —
+// it is what separates "unknown kind" (skew, dropped silently) from
+// "known kind, malformed" (contract break, reported).
+const KNOWN_SURFACE_KINDS: Record<RemoteConfigSurface["kind"], true> = {
+  banner: true,
+  side_slot: true,
+};
+
+interface ParsedEnvelope {
+  config: RemoteConfig;
+  /** Issues from known-kind surfaces that failed validation (dropped). */
+  brokenSurfaceIssues: unknown[];
+}
+
+const parseEnvelope = (
+  payload: unknown,
+): Effect.Effect<ParsedEnvelope, RemoteConfigInvalid> =>
+  Effect.suspend(() => {
+    const envelope = EnvelopeSchema.safeParse(payload);
+    if (!envelope.success) {
+      return Effect.fail(
+        new RemoteConfigInvalid({
+          message: "Remote config failed validation",
+          issues: envelope.error.issues,
+        }),
+      );
+    }
+    const { surfaces: rawSurfaces, ...rest } = envelope.data;
+    if (rawSurfaces === undefined) {
+      return Effect.succeed<ParsedEnvelope>({
+        config: rest,
+        brokenSurfaceIssues: [],
+      });
+    }
+    const surfaces: RemoteConfigSurface[] = [];
+    const brokenSurfaceIssues: unknown[] = [];
+    for (const raw of rawSurfaces) {
+      const surface = RemoteConfigSurfaceSchema.safeParse(raw);
+      if (surface.success) {
+        surfaces.push(surface.data);
+        continue;
+      }
+      const kind = (raw as { kind?: unknown } | null)?.kind;
+      if (typeof kind === "string" && !(kind in KNOWN_SURFACE_KINDS)) {
+        // Version skew: a surface kind newer than this client. Not an error.
+        logger.main.debug("Dropping unrecognized remote config surface", {
+          kind,
+        });
+      } else {
+        // A known kind that failed validation, or an element with no string
+        // `kind` at all — no contract version emits either, so it's a break.
+        brokenSurfaceIssues.push(surface.error.issues);
+      }
+    }
+    return Effect.succeed<ParsedEnvelope>({
+      config: { ...rest, surfaces },
+      brokenSurfaceIssues,
+    });
+  });
 
 export type DesktopRemoteConfig = Omit<RemoteConfig, "flags"> & {
   flags: NonNullable<RemoteConfig["flags"]> &
@@ -60,6 +163,10 @@ export class RemoteConfigService {
   // Bumped on identity change; an in-flight refresh whose generation no longer
   // matches discards its result, so a pre-change fetch can't clobber the reset.
   private generation = 0;
+  // Set by the first contract-break report of a bad-config episode and
+  // re-armed by the next fully-valid payload, so the refresh interval
+  // doesn't re-report the same payload every tick.
+  private invalidReported = false;
 
   // Construction goes through Live: the graph is the only thing that may
   // build this service, which also makes single-construction structural.
@@ -137,7 +244,7 @@ export class RemoteConfigService {
 
   private async initialize(): Promise<void> {
     // Load the persisted envelope first (fast, no network).
-    const lastFetchedAt = await this.loadPersisted();
+    const lastFetchedAt = await Effect.runPromise(this.loadPersistedEffect());
 
     const isStale =
       !lastFetchedAt ||
@@ -195,10 +302,50 @@ export class RemoteConfigService {
     await this.doRefresh();
   }
 
-  private async doRefresh(): Promise<void> {
-    const generation = this.generation;
-    try {
-      const url = getCoreApiUrl("/remote-config");
+  private doRefresh(): Promise<void> {
+    return Effect.runPromise(
+      this.refreshEffect().pipe(
+        Effect.catchTags({
+          RemoteConfigFetchFailed: (error) =>
+            Effect.sync(() => {
+              if (error.status !== undefined && error.cause === undefined) {
+                logger.main.warn("Remote config fetch failed", {
+                  status: error.status,
+                });
+              } else {
+                logger.main.error(
+                  "Failed to refresh remote config:",
+                  error.cause ?? error,
+                );
+              }
+            }),
+          RemoteConfigInvalid: (error) =>
+            Effect.sync(() => {
+              this.reportInvalid(error);
+            }),
+          RemoteConfigStorageFailed: (error) =>
+            Effect.sync(() => {
+              logger.main.error(
+                "Failed to refresh remote config:",
+                error.cause,
+              );
+            }),
+        }),
+        Effect.catchAllDefect((defect) =>
+          Effect.sync(() => {
+            logger.main.error("Failed to refresh remote config:", defect);
+          }),
+        ),
+      ),
+    );
+  }
+
+  private fetchEnvelopeEffect(): Effect.Effect<
+    unknown,
+    RemoteConfigFetchFailed
+  > {
+    return Effect.gen(this, function* () {
+      const url = getCoreApiUrl("/apps/v1/remote-config");
       url.searchParams.set("platform", process.platform);
       url.searchParams.set("version", app.getVersion());
       url.searchParams.set("locale", getApplicationLocale());
@@ -207,7 +354,14 @@ export class RemoteConfigService {
       // auth state. Attach the bearer token only when signed in, plus the
       // anonymous per-install device id (for staged-rollout bucketing), the same
       // id the auto-updater sends.
-      const idToken = await this.authService.getIdToken();
+      const idToken = yield* Effect.tryPromise({
+        try: () => this.authService.getIdToken(),
+        catch: (cause) =>
+          new RemoteConfigFetchFailed({
+            message: "Failed to resolve auth token for remote config",
+            cause,
+          }),
+      });
       const deviceId = this.telemetryService.getMachineId();
 
       const headers: Record<string, string> = {
@@ -221,24 +375,49 @@ export class RemoteConfigService {
         headers[AMICAL_DEVICE_ID_HEADER] = deviceId;
       }
 
-      const response = await fetch(url, { headers });
+      const response = yield* Effect.tryPromise({
+        try: () => fetch(url, { headers }),
+        catch: (cause) =>
+          new RemoteConfigFetchFailed({
+            message: "Remote config fetch failed",
+            cause,
+          }),
+      });
 
       if (!response.ok) {
-        logger.main.warn("Remote config fetch failed", {
-          status: response.status,
-        });
-        return;
+        return yield* Effect.fail(
+          new RemoteConfigFetchFailed({
+            message: "Remote config fetch failed",
+            status: response.status,
+          }),
+        );
       }
 
-      // The payload is untrusted; validate at the boundary and keep the last
-      // good config on failure (fail-closed on bad data).
-      const parsed = RemoteConfigSchema.safeParse(await response.json());
-      if (!parsed.success) {
-        logger.main.error("Remote config failed validation", {
-          issues: parsed.error.issues,
-        });
-        return;
-      }
+      return yield* Effect.tryPromise({
+        try: (): Promise<unknown> => response.json(),
+        catch: (cause) =>
+          new RemoteConfigFetchFailed({
+            message: "Remote config response was not JSON",
+            status: response.status,
+            cause,
+          }),
+      });
+    });
+  }
+
+  /**
+   * The refresh pipeline: fetch → validate → apply. The payload is untrusted;
+   * it is validated at this boundary and the last good config stays on any
+   * failure (fail-closed on bad data). Typed failures settle in doRefresh.
+   */
+  private refreshEffect(): Effect.Effect<
+    void,
+    RemoteConfigFetchFailed | RemoteConfigInvalid | RemoteConfigStorageFailed
+  > {
+    return Effect.gen(this, function* () {
+      const generation = this.generation;
+      const payload = yield* this.fetchEnvelopeEffect();
+      const { config, brokenSurfaceIssues } = yield* parseEnvelope(payload);
 
       // Identity changed while this fetch was in flight — drop it so it can't
       // write the previous identity's surfaces.
@@ -246,14 +425,59 @@ export class RemoteConfigService {
         return;
       }
 
-      await this.setConfig(parsed.data);
+      if (brokenSurfaceIssues.length > 0) {
+        // Known-kind surfaces that failed validation were dropped in the
+        // parse; the rest of the payload still applies, and the break is
+        // reported.
+        yield* Effect.sync(() => {
+          this.reportInvalid(
+            new RemoteConfigInvalid({
+              message: "Remote config surfaces failed validation",
+              issues: brokenSurfaceIssues,
+            }),
+          );
+        });
+      } else {
+        // A fully-valid payload ends the bad-config episode.
+        yield* Effect.sync(() => {
+          this.invalidReported = false;
+        });
+      }
 
-      logger.main.info("Remote config refreshed", {
-        surfaces: parsed.data.surfaces?.length ?? 0,
+      yield* Effect.tryPromise({
+        try: () => this.setConfig(config),
+        catch: (cause) =>
+          new RemoteConfigStorageFailed({
+            message: "Failed to persist remote config",
+            cause,
+          }),
       });
-    } catch (err) {
-      logger.main.error("Failed to refresh remote config:", err);
+
+      yield* Effect.sync(() => {
+        logger.main.info("Remote config refreshed", {
+          surfaces: config.surfaces?.length ?? 0,
+        });
+      });
+    });
+  }
+
+  /**
+   * A contract break: both ends of the payload are ours and the server saw a
+   * 200, so without a report the break is invisible fleet-wide (the client
+   * fails closed and keeps the last good config). Reported once per
+   * bad-config episode; the next fully-valid payload re-arms it.
+   */
+  private reportInvalid(error: RemoteConfigInvalid): void {
+    logger.main.error("Remote config failed validation", {
+      issues: error.issues,
+    });
+    if (this.invalidReported) {
+      return;
     }
+    this.invalidReported = true;
+    this.telemetryService.captureException(error, {
+      remote_config_issues: JSON.stringify(error.issues),
+    });
   }
 
   // Update the in-memory config and the persisted cache together.
@@ -268,25 +492,50 @@ export class RemoteConfigService {
 
   /**
    * Returns lastFetchedAt if a persisted config was found, null otherwise.
+   * A cache that fails to load or validate is treated as absent.
    */
-  private async loadPersisted(): Promise<string | null> {
-    try {
-      const persisted = await this.settingsService.getRemoteConfig();
-      if (persisted?.config) {
-        const parsed = RemoteConfigSchema.safeParse(persisted.config);
-        if (!parsed.success) {
-          logger.main.error("Persisted remote config failed validation", {
-            issues: parsed.error.issues,
-          });
-          return null;
-        }
-        this.config = resolveRemoteConfig(parsed.data);
-        return persisted.lastFetchedAt ?? null;
+  private loadPersistedEffect(): Effect.Effect<string | null> {
+    return Effect.gen(this, function* () {
+      const persisted = yield* Effect.tryPromise({
+        try: () => this.settingsService.getRemoteConfig(),
+        catch: (cause) =>
+          new RemoteConfigStorageFailed({
+            message: "Failed to load persisted remote config",
+            cause,
+          }),
+      });
+      if (!persisted?.config) {
+        return null;
       }
-      return null;
-    } catch (err) {
-      logger.main.error("Failed to load persisted remote config:", err);
-      return null;
-    }
+      // Same tolerant parse as the wire, but never reported: the cache is
+      // our own post-validation write, not a server payload.
+      const { config } = yield* parseEnvelope(persisted.config);
+      this.config = resolveRemoteConfig(config);
+      return persisted.lastFetchedAt ?? null;
+    }).pipe(
+      Effect.catchTags({
+        RemoteConfigInvalid: (error) =>
+          Effect.sync(() => {
+            logger.main.error("Persisted remote config failed validation", {
+              issues: error.issues,
+            });
+            return null;
+          }),
+        RemoteConfigStorageFailed: (error) =>
+          Effect.sync(() => {
+            logger.main.error(
+              "Failed to load persisted remote config:",
+              error.cause,
+            );
+            return null;
+          }),
+      }),
+      Effect.catchAllDefect((defect) =>
+        Effect.sync(() => {
+          logger.main.error("Failed to load persisted remote config:", defect);
+          return null;
+        }),
+      ),
+    );
   }
 }
