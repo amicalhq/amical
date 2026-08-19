@@ -52,6 +52,48 @@ export interface TranscriptionMetrics {
   vocabulary_size?: number;
 }
 
+/** Client-side flood guard: posthog-node rate-limits only AUTOCAPTURED
+ * exceptions, so manual capture()/captureException() — e.g. an error loop —
+ * can flood PostHog unguarded. Token buckets: a full burst up front, then
+ * one token per refill interval, keyed per event name / per exception
+ * fingerprint. */
+const EVENT_RATE_LIMIT = { bucketSize: 10, refillIntervalMs: 10_000 };
+const EXCEPTION_RATE_LIMIT = { bucketSize: 5, refillIntervalMs: 60_000 };
+/** Second layer across ALL exceptions: catches floods whose fingerprint
+ * churns (unique messages without a stack, unique non-Error values), which
+ * the per-fingerprint buckets cannot see. Checked only after the
+ * per-fingerprint bucket allows, so a same-key storm cannot drain it. */
+const EXCEPTION_GLOBAL_RATE_LIMIT = { bucketSize: 20, refillIntervalMs: 10_000 };
+const EXCEPTION_GLOBAL_KEY = "exceptions-global";
+const RATE_BUCKET_MAX_KEYS = 500;
+
+interface RateBucket {
+  tokens: number;
+  size: number;
+  refillIntervalMs: number;
+  lastRefill: number;
+  dropped: number;
+}
+
+/** Keyed by throw site (name + top frame) so a loop rethrowing the same
+ * error stays one key even when the message churns. Must never throw into
+ * the caller's error path: hostile values (throwing toString/getters) fall
+ * back to one shared key. */
+function exceptionFingerprint(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      const topFrame = error.stack
+        ?.split("\n")
+        .find((line) => line.trimStart().startsWith("at "))
+        ?.trim();
+      return `${error.name}:${topFrame ?? error.message.slice(0, 100)}`;
+    }
+    return String(error).slice(0, 100);
+  } catch {
+    return "unfingerprintable";
+  }
+}
+
 /**
  * Emits "identity-changed" after identifyUser()/resetUser() so downstream
  * identity consumers (feature flags) can react without auth or telemetry
@@ -63,6 +105,7 @@ export class TelemetryService extends EventEmitter {
   private initialized: boolean = false;
   private persistedProperties: Record<string, unknown> = {};
   private settingsService: SettingsService;
+  private rateBuckets = new Map<string, RateBucket>();
 
   // Construction goes through Live: the graph is the only thing that may
   // build this service, which also makes single-construction structural.
@@ -218,6 +261,16 @@ export class TelemetryService extends EventEmitter {
     if (!this.client.posthog || !this.enabled || !distinctId) {
       return;
     }
+    if (
+      !this.allowCapture(
+        `exception:${exceptionFingerprint(error)}`,
+        EXCEPTION_RATE_LIMIT,
+        true,
+      ) ||
+      !this.allowCapture(EXCEPTION_GLOBAL_KEY, EXCEPTION_GLOBAL_RATE_LIMIT)
+    ) {
+      return;
+    }
 
     this.client.posthog.captureException(
       error,
@@ -237,6 +290,9 @@ export class TelemetryService extends EventEmitter {
 
     // posthog-node's captureExceptionImmediate schedules async work but doesn't await network flush.
     // For fatal flows where we call this method, ensure events are sent before continuing by shutting down.
+    // Deliberately exempt from the rate limiter: the shutdown below makes
+    // this path self-limiting, and a fatal report must not be dropped
+    // because earlier noise drained the buckets.
     this.client.posthog.captureExceptionImmediate(
       error,
       distinctId,
@@ -342,9 +398,73 @@ export class TelemetryService extends EventEmitter {
     };
   }
 
+  /** Returns false when the key is over its rate limit and the capture must
+   * be dropped. Logs once when a key starts dropping and reports the count
+   * when it recovers. Capped keys (exception fingerprints, open-ended) fail
+   * closed while the bucket map is full, so a unique-key flood can grow
+   * neither the map nor the sweep work; fixed keys (event names, the global
+   * bucket) always get a bucket. */
+  private allowCapture(
+    key: string,
+    limit: { bucketSize: number; refillIntervalMs: number },
+    capped = false,
+  ): boolean {
+    const now = Date.now();
+    let bucket = this.rateBuckets.get(key);
+    if (!bucket) {
+      if (capped && this.rateBuckets.size >= RATE_BUCKET_MAX_KEYS) {
+        // Evict idle buckets before adding a key. Stored token counts are
+        // stale (refill happens on access), so credit the elapsed refill
+        // when judging idleness. A map still full after eviction fails
+        // closed — mid-flood the global bucket would gate the send anyway.
+        for (const [staleKey, stale] of this.rateBuckets) {
+          const idleTokens =
+            stale.tokens +
+            Math.floor((now - stale.lastRefill) / stale.refillIntervalMs);
+          if (idleTokens >= stale.size) this.rateBuckets.delete(staleKey);
+        }
+        if (this.rateBuckets.size >= RATE_BUCKET_MAX_KEYS) return false;
+      }
+      bucket = {
+        tokens: limit.bucketSize,
+        size: limit.bucketSize,
+        refillIntervalMs: limit.refillIntervalMs,
+        lastRefill: now,
+        dropped: 0,
+      };
+      this.rateBuckets.set(key, bucket);
+    } else {
+      const intervals = Math.floor(
+        (now - bucket.lastRefill) / bucket.refillIntervalMs,
+      );
+      if (intervals > 0) {
+        bucket.tokens = Math.min(bucket.tokens + intervals, bucket.size);
+        bucket.lastRefill += intervals * bucket.refillIntervalMs;
+      }
+    }
+
+    if (bucket.tokens === 0) {
+      bucket.dropped += 1;
+      if (bucket.dropped === 1) {
+        logger.main.warn("Telemetry rate limit engaged; dropping", { key });
+      }
+      return false;
+    }
+    bucket.tokens -= 1;
+    if (bucket.dropped > 0) {
+      logger.main.info("Telemetry rate limit recovered", {
+        key,
+        dropped: bucket.dropped,
+      });
+      bucket.dropped = 0;
+    }
+    return true;
+  }
+
   private captureEvent(event: string, properties: object = {}): void {
     const distinctId = this.client.distinctId;
     if (!this.client.posthog || !this.enabled || !distinctId) return;
+    if (!this.allowCapture(`event:${event}`, EVENT_RATE_LIMIT)) return;
 
     this.client.posthog.capture({
       distinctId,

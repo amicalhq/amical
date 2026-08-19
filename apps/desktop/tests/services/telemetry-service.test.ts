@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelemetryService } from "../../src/services/telemetry-service";
 import type { PostHogClient } from "../../src/services/posthog-client";
 import type { SettingsService } from "../../src/services/settings-service";
@@ -73,6 +73,7 @@ function createHarness(auth?: AuthStateFixture) {
       identity.email = undefined;
       identity.name = undefined;
     }),
+    shutdown: vi.fn(() => Promise.resolve()),
   } as unknown as PostHogClient;
 
   const settingsService = {
@@ -200,5 +201,122 @@ describe("TelemetryService identity", () => {
         $is_identified: true,
       }),
     });
+  });
+});
+
+describe("TelemetryService flood guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("drops events past the burst for one event name without touching others", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 15; i++) {
+      service.trackAppLaunch();
+    }
+    service.trackNoteCreated({
+      note_id: 1,
+      has_initial_content: false,
+      has_icon: false,
+    });
+
+    const captured = posthog.capture.mock.calls.map(
+      ([msg]) => (msg as { event: string }).event,
+    );
+    expect(captured.filter((e: string) => e === "app_launch")).toHaveLength(10);
+    expect(captured.filter((e: string) => e === "note_created")).toHaveLength(
+      1,
+    );
+  });
+
+  it("refills one event per interval after the burst is drained", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 12; i++) {
+      service.trackAppLaunch();
+    }
+    expect(posthog.capture).toHaveBeenCalledTimes(10);
+
+    vi.advanceTimersByTime(10_000);
+    service.trackAppLaunch();
+    service.trackAppLaunch();
+    expect(posthog.capture).toHaveBeenCalledTimes(11);
+  });
+
+  it("suppresses repeats of one exception but lets a different one through", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    const looping = new Error("boom");
+    for (let i = 0; i < 8; i++) {
+      service.captureException(looping);
+    }
+    expect(posthog.captureException).toHaveBeenCalledTimes(5);
+
+    service.captureException(new Error("something else"));
+    expect(posthog.captureException).toHaveBeenCalledTimes(6);
+  });
+
+  it("does not throw when the error resists fingerprinting", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    const hostile = {
+      toString() {
+        throw new Error("broken conversion");
+      },
+    };
+    expect(() => service.captureException(hostile)).not.toThrow();
+    expect(posthog.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps exceptions globally when every fingerprint is unique", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 30; i++) {
+      service.captureException(`unique failure ${i}`);
+    }
+    expect(posthog.captureException).toHaveBeenCalledTimes(20);
+  });
+
+  it("holds the bucket map at its hard bound during a unique-key storm", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 600; i++) {
+      service.captureException(`storm ${i}`);
+    }
+    const buckets = (
+      service as unknown as { rateBuckets: Map<string, unknown> }
+    ).rateBuckets;
+    expect(buckets.size).toBeLessThanOrEqual(500);
+    expect(posthog.captureException).toHaveBeenCalledTimes(20);
+
+    vi.advanceTimersByTime(61_000);
+    service.captureException("after the storm");
+    expect(buckets.size).toBeLessThan(10);
+    expect(posthog.captureException).toHaveBeenCalledTimes(21);
+  });
+
+  it("never rate-limits the fatal capture-and-shutdown path", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 30; i++) {
+      service.captureException(`noise ${i}`);
+    }
+    expect(posthog.captureException).toHaveBeenCalledTimes(20);
+
+    await service.captureExceptionImmediateAndShutdown(new Error("fatal"));
+    expect(posthog.captureExceptionImmediate).toHaveBeenCalledTimes(1);
   });
 });
