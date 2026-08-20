@@ -1187,7 +1187,7 @@ namespace WindowsHelper.Models
 
         public CultureInfo Culture
         {
-                get => _culture ?? CultureInfo.CurrentCulture;
+                get => _culture ?? CultureInfo.InvariantCulture;
                 set => _culture = value;
         }
 
