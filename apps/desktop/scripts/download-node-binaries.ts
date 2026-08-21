@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { createWriteStream, mkdirSync, chmodSync } from "node:fs";
 
 // Node.js version to download
-const NODE_VERSION = "22.23.2";
+const NODE_VERSION = "24.19.0";
 
 // Platform/arch types
 type Platform = "darwin" | "win32" | "linux";
