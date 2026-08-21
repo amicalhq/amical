@@ -600,7 +600,7 @@ export function createRecordingLifecycle(
     forceReset: () => quarantineAndForceReset(),
 
     captureStarted: (session, microphone) => {
-      recorder.captureStarted(session, microphone);
+      recorder.captureStarted(session);
       if (shell.getSnapshot().sessionId === session && microphone.name) {
         shell.updateMetadata({ microphone: microphone.name });
       }

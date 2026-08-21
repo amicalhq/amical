@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
-import { loadBinding, getLoadedBindingInfo } from "./loader";
+import { loadBinding } from "./loader";
 
 function applyMetalDefaults(): void {
   if (process.platform !== "darwin" || process.arch !== "x64") {
@@ -18,8 +18,6 @@ const binding = loadBinding();
 export interface WhisperOptions {
   gpu?: boolean;
 }
-
-export { getLoadedBindingInfo } from "./loader";
 
 export interface WhisperSegment {
   text: string;
@@ -52,9 +50,5 @@ export class Whisper {
 
   async free(): Promise<void> {
     binding.free(this.ctx);
-  }
-
-  static getBindingInfo(): { path: string; type: string } | null {
-    return getLoadedBindingInfo();
   }
 }

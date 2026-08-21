@@ -113,7 +113,7 @@ function makeHarness() {
 async function driveToCapturing(h: ReturnType<typeof makeHarness>) {
   h.adapter.start("s1");
   await h.openBeepGate();
-  h.adapter.captureStarted("s1", { name: "Built-in Mic" });
+  h.adapter.captureStarted("s1");
 }
 
 describe("lifecycle recorder adapter", () => {
@@ -121,9 +121,8 @@ describe("lifecycle recorder adapter", () => {
     const h = makeHarness();
     h.adapter.start("s1");
     expect(h.facts).toEqual([]);
-    h.adapter.captureStarted("s1", { name: "Built-in Mic" });
+    h.adapter.captureStarted("s1");
     expect(h.facts).toEqual([{ type: "recorderReady", session: "s1" }]);
-    expect(h.adapter.getActiveMicrophone()).toEqual({ name: "Built-in Mic" });
     expect(h.timers.armedDurations()).toEqual([DEAD_MIC_MS]);
   });
 
@@ -162,7 +161,7 @@ describe("lifecycle recorder adapter", () => {
   it("drops beep-window frames but never the final chunk", async () => {
     const h = makeHarness();
     h.adapter.start("s1");
-    h.adapter.captureStarted("s1", {});
+    h.adapter.captureStarted("s1");
     await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
     expect(h.feeds).toEqual([]);
     expect(h.writers).toHaveLength(0);
@@ -176,7 +175,7 @@ describe("lifecycle recorder adapter", () => {
   it("beep-gated frames still defuse the dead-mic watchdog", async () => {
     const h = makeHarness();
     h.adapter.start("s1");
-    h.adapter.captureStarted("s1", {});
+    h.adapter.captureStarted("s1");
     expect(h.timers.armedDurations()).toEqual([DEAD_MIC_MS]);
 
     // Gate still closed: the frame is dropped from custody/feed, but it
@@ -233,8 +232,7 @@ describe("lifecycle recorder adapter", () => {
     ]);
 
     // The successor is untouched and proceeds normally.
-    h.adapter.captureStarted("s2", { name: "Other Mic" });
-    expect(h.adapter.getActiveMicrophone()).toEqual({ name: "Other Mic" });
+    h.adapter.captureStarted("s2");
     await h.openBeepGate();
     await h.adapter.handleAudioChunk("s2", h.frames(160, 0.5), false);
     expect(h.writers).toHaveLength(2);
@@ -331,7 +329,7 @@ describe("lifecycle recorder adapter", () => {
   it("fences traffic from stale sessions", async () => {
     const h = makeHarness();
     await driveToCapturing(h);
-    h.adapter.captureStarted("s0", { name: "Ghost" });
+    h.adapter.captureStarted("s0");
     await h.adapter.handleAudioChunk("s0", h.frames(160, 0.5), false);
     h.adapter.stop("s0");
     h.adapter.captureStartFailed("s0", "LATE");
@@ -370,7 +368,7 @@ describe("lifecycle recorder adapter", () => {
     const h = makeHarness();
     h.adapter.start("s1");
     await h.openBeepGate(); // muted: gate resolves before any frame
-    h.adapter.captureStarted("s1", {});
+    h.adapter.captureStarted("s1");
     await h.adapter.handleAudioChunk("s1", h.frames(160, 0.5), false);
     expect(h.feeds).toHaveLength(1);
     expect(h.writers).toHaveLength(1);

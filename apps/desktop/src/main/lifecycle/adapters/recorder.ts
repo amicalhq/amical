@@ -62,7 +62,6 @@ export interface WavCustodyWriter {
 
 export interface CapturedMicrophone {
   name?: string;
-  deviceId?: string;
 }
 
 export interface RecorderAdapterDeps {
@@ -80,7 +79,7 @@ export interface RecorderAdapterDeps {
 
 export interface RecorderAdapter extends RecorderPort {
   /** Renderer capture handshake (tRPC-reported). */
-  captureStarted(session: SessionId, microphone: CapturedMicrophone): void;
+  captureStarted(session: SessionId): void;
   captureStartFailed(session: SessionId, cause: string): void;
   /** Renderer PCM traffic ("audio-data-chunk" IPC). */
   handleAudioChunk(
@@ -88,8 +87,6 @@ export interface RecorderAdapter extends RecorderPort {
     chunk: Float32Array,
     isFinalChunk: boolean,
   ): Promise<void>;
-  /** Microphone reported for the live session (surface notifications). */
-  getActiveMicrophone(): CapturedMicrophone | null;
   /** Resolves once the session's custody has closed and its writer settled
    * (immediately, with an empty outcome, for unknown sessions). The stamp
    * orders behind this — a settled row always has settled custody (D25). */
@@ -118,7 +115,6 @@ interface CaptureState {
   wavOk: boolean;
   sawFrames: boolean;
   samples: number;
-  microphone: CapturedMicrophone | null;
   deadMicHandle: unknown | null;
   drainHandle: unknown | null;
   closedEmitted: boolean;
@@ -141,7 +137,6 @@ export function createRecorderAdapter(
    * accepting its in-flight frames until its own custody closes. At most
    * two entries live at once (one draining, one live). */
   const captures = new Map<SessionId, CaptureState>();
-  let liveSession: SessionId | null = null;
 
   /** Custody-settled waiters (R4/D25): one Deferred per session in an
    * app-scope registry, resolved when the session's writer closes. The
@@ -270,14 +265,12 @@ export function createRecorderAdapter(
         wavOk: true,
         sawFrames: false,
         samples: 0,
-        microphone: null,
         deadMicHandle: null,
         drainHandle: null,
         closedEmitted: false,
         writeQueue: Promise.resolve(),
       };
       captures.set(session, capture);
-      liveSession = session;
       const { beepGate, done } = deps.ambiance.begin(session);
       void beepGate
         .catch(() => undefined)
@@ -321,11 +314,10 @@ export function createRecorderAdapter(
       });
     },
 
-    captureStarted(session, microphone): void {
+    captureStarted(session): void {
       const capture = current(session);
       if (!capture || capture.phase !== "starting") return;
       capture.phase = "capturing";
-      capture.microphone = microphone;
       deps.sink({ type: "recorderReady", session });
       capture.deadMicHandle = timers.set(deps.tuning.deadMicMs, () => {
         capture.deadMicHandle = null;
@@ -406,11 +398,6 @@ export function createRecorderAdapter(
       if (isFinalChunk) {
         closeCustody(capture);
       }
-    },
-
-    getActiveMicrophone(): CapturedMicrophone | null {
-      const live = liveSession ? captures.get(liveSession) : null;
-      return live && live.phase !== "closed" ? live.microphone : null;
     },
 
     whenCustodySettled(session: SessionId): Promise<CustodyOutcome> {

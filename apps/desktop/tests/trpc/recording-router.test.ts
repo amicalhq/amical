@@ -90,13 +90,12 @@ describe("recordingRouter capture lifecycle", () => {
     const microphone = {
       sessionId: "session-1",
       microphoneName: "External Mic",
-      deviceId: "external-mic",
       captureSource: "preferred" as const,
     };
     await caller.captureStarted(microphone);
     expect(recordingLifecycle.captureStarted).toHaveBeenCalledWith(
       "session-1",
-      { name: "External Mic", deviceId: "external-mic" },
+      { name: "External Mic" },
     );
 
     const failure = {

@@ -8,7 +8,6 @@ import {
 import { variantForWireCode } from "./cloud-wire-decode";
 import {
   AuthRequired,
-  Cancelled,
   CloudQuotaExceeded,
   RateLimited,
   ServerRejected,

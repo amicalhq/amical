@@ -81,14 +81,12 @@ export const recordingRouter = createRouter({
       z.object({
         sessionId: z.string(),
         microphoneName: z.string().optional(),
-        deviceId: z.string().optional(),
         captureSource: z.enum(["preferred", "default"]).optional(),
       }),
     )
     .mutation(({ ctx, input }) => {
       requireLifecycle(ctx).captureStarted(input.sessionId, {
         name: input.microphoneName,
-        deviceId: input.deviceId,
       });
     }),
 

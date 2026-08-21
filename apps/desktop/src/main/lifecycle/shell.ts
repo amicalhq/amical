@@ -102,9 +102,6 @@ function sameProjection(a: LifecycleProjection, b: LifecycleProjection) {
   ) {
     return false;
   }
-  if (a.terminal === null || b.terminal === null) {
-    return a.terminal === b.terminal;
-  }
   // Terminal is written once at the seal and never mutated after (R5), so
   // reference identity is the correct comparison for a same-session state.
   return a.terminal === b.terminal;

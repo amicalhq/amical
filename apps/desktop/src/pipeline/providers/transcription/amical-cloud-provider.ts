@@ -13,10 +13,7 @@ import type { AuthService } from "../../../services/auth-service";
 import type { SettingsService } from "../../../services/settings-service";
 import type { TelemetryService } from "../../../services/telemetry-service";
 import type { CloudFallbackStage } from "../../../types/telemetry-events";
-import {
-  DictationErrorCodes,
-  type DictationErrorCode,
-} from "../../../types/error";
+import { DictationErrorCodes } from "../../../types/error";
 import {
   AuthRequired,
   Cancelled,
@@ -92,15 +89,10 @@ type CloudRuntime = ReturnType<typeof createCloudRuntime>;
  *   - CANCELLED: user-initiated (for example, cancel() during flush) — falling
  *     back would trigger a phantom HTTP transcription right after the user
  *     tried to stop.
+ *   - FORBIDDEN: the server rejected the caller outright; HTTP would reject
+ *     the same credentials. The only carve-out keyed on the wire code — the
+ *     rest arrive as their own error variants and are handled by tag.
  */
-const NO_HTTP_FALLBACK_WIRE_CODES: ReadonlySet<DictationErrorCode> = new Set([
-  DictationErrorCodes.AUTH_REQUIRED,
-  DictationErrorCodes.FORBIDDEN,
-  DictationErrorCodes.QUOTA_EXCEEDED,
-  DictationErrorCodes.RATE_LIMIT_EXCEEDED,
-  DictationErrorCodes.REQUEST_CANCELED,
-]);
-
 const metaOf = (error: CloudError): CloudMeta | undefined =>
   "meta" in error ? error.meta : undefined;
 
@@ -117,11 +109,9 @@ const shouldFallbackToHttp = (error: CloudError): boolean => {
     case "CloudQuotaExceeded":
     case "IdleTimeout":
     case "Cancelled":
-    case "CloudDisposed":
       return false;
   }
-  const wireCode = metaOf(error)?.wireCode;
-  if (wireCode && NO_HTTP_FALLBACK_WIRE_CODES.has(wireCode)) {
+  if (metaOf(error)?.wireCode === DictationErrorCodes.FORBIDDEN) {
     return false;
   }
   if (metaOf(error)?.grpcStatus === GrpcStatus.CANCELLED) {

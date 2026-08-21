@@ -274,7 +274,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
 
     const pending = service.resolveStreamingSession({ sessionId: "s1" });
     await vi.waitFor(() => expect(providerSession.flush).toHaveBeenCalled());
-    service.abortSession("s1");
+    await service.cancelStreamingSession("s1");
 
     const rejection = await pending.then(
       () => {

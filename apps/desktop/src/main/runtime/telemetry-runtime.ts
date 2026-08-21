@@ -115,10 +115,3 @@ export const telemetryRuntime: Runtime.Runtime<never> = Effect.runSync(
 export const runFork = Runtime.runFork(telemetryRuntime);
 export const runPromise = Runtime.runPromise(telemetryRuntime);
 export const runPromiseExit = Runtime.runPromiseExit(telemetryRuntime);
-export const runSync = Runtime.runSync(telemetryRuntime);
-
-/** Registered as an app-scope release when the sink lands (final flush lives
- * there); the tracer layer itself has no finalizers. */
-export function closeTelemetryRuntime(): void {
-  Effect.runSync(Scope.close(runtimeScope, Exit.void));
-}

@@ -91,7 +91,6 @@ export const useRecording = (): UseRecordingOutput => {
         {
           sessionId,
           microphoneName: microphone.name,
-          deviceId: microphone.deviceId,
           captureSource: microphone.captureSource,
         },
         {

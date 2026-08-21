@@ -77,7 +77,6 @@ export type ResolvedStreamingSession = {
   detectedLanguage?: string;
   speechModel?: string;
   formattingModel?: string;
-  audioDurationSeconds?: number;
   meta: {
     source?: string;
     vocabularySize: number;
@@ -842,22 +841,6 @@ export class TranscriptionService {
   }
 
   /**
-   * Dismiss a session by aborting its signal and cancelling its provider
-   * session. The signal drives finalizeSession's cooperative gates, while cancel
-   * interrupts gRPC/HTTP work immediately. Local Whisper decode is not
-   * interruptible, so its result is discarded at the next lifecycle check.
-   * No-op if the session is already gone.
-   */
-  abortSession(sessionId: string): void {
-    const liveSession = this.activeLiveSession;
-    if (!liveSession || liveSession.id !== sessionId) {
-      return;
-    }
-    liveSession.requestAbort();
-    logger.transcription.info("Aborted session", { sessionId });
-  }
-
-  /**
    * The one defect-reporting sink for this service's capture points (chunk
    * classification, resolve triage, the late context push). Typed failures
    * never come here; the latch/marking bookkeeping keeps each defect to one
@@ -888,7 +871,6 @@ export class TranscriptionService {
       this.chunkStats.delete(liveSession.id);
       recordChunkAggregate(liveSession.id, stats);
     }
-    // (stats helper below is used by the chunk path)
     if (this.activeLiveSession === liveSession) {
       this.activeLiveSession = null;
     }
@@ -1045,8 +1027,6 @@ export class TranscriptionService {
       }).pipe(Effect.withSpan("resolve.format", { attributes: { sessionId } }));
       yield* terminalGate;
 
-      const audioDurationSeconds = session.context.audio.duration;
-
       logger.transcription.info("Streaming session resolved", { sessionId });
       return {
         text: prepared.text,
@@ -1054,7 +1034,6 @@ export class TranscriptionService {
         detectedLanguage: prepared.detectedLanguage,
         speechModel: session.speechModelId,
         formattingModel: prepared.formattingModel,
-        audioDurationSeconds,
         meta: {
           source: session.context.audio.source,
           vocabularySize: session.context.vocabulary.length,

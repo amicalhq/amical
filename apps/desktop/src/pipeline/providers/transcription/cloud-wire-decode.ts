@@ -25,14 +25,6 @@ export interface WireFailureInput {
 }
 
 /**
- * The ONE wire decode: classifies a transport failure into its cloud
- * variant. Selection branches on the RAW application code while it is still
- * in hand (the absent-vs-invalid RESOURCE_EXHAUSTED asymmetry depends on
- * it), then discards unrecognized codes — they never enter the projection
- * or the meta. The server's localized message rides only with a validated
- * code, matching the legacy gating.
- */
-/**
  * The single owner of the validated-wire-code → variant rule, shared by
  * both transports' decodes.
  */
@@ -55,6 +47,14 @@ export const variantForWireCode = (
   }
 };
 
+/**
+ * The ONE wire decode: classifies a transport failure into its cloud
+ * variant. Selection branches on the RAW application code while it is still
+ * in hand (the absent-vs-invalid RESOURCE_EXHAUSTED asymmetry depends on
+ * it), then discards unrecognized codes — they never enter the projection
+ * or the meta. The server's localized message rides only with a validated
+ * code, matching the legacy gating.
+ */
 export const decodeWireFailure = (input: WireFailureInput): CloudError => {
   const { message, grpcStatus, httpStatus, traceId } = input;
 

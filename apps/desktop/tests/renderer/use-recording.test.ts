@@ -160,7 +160,6 @@ describe("useRecording capture identity wiring", () => {
       {
         sessionId: "session-1",
         microphoneName: "External Mic",
-        deviceId: "external-mic",
         captureSource: "preferred",
       },
       expect.objectContaining({ onError: expect.any(Function) }),
