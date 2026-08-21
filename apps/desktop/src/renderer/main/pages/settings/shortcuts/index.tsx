@@ -188,6 +188,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "pushToTalk" : null)
                     }
+                    allowUnassign
                   />
                 </div>
               </div>
@@ -214,6 +215,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "toggleRecording" : null)
                     }
+                    allowUnassign
                   />
                 </div>
               </div>
@@ -242,6 +244,7 @@ export function ShortcutsSettingsPage() {
                         recording ? "pasteLastTranscript" : null,
                       )
                     }
+                    allowUnassign
                   />
                 </div>
               </div>
@@ -266,6 +269,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "newNote" : null)
                     }
+                    allowUnassign
                   />
                 </div>
               </div>
@@ -296,6 +300,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "draftMode" : null)
                     }
+                    allowUnassign
                   />
                 </div>
               </div>

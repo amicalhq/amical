@@ -854,7 +854,11 @@
         "overlapsWithPushToTalk": "這與您的「按住說話」快捷鍵重疊，可能會導致問題"
       },
       "input": {
-        "pressKeys": "請按下按鍵..."
+        "pressKeys": "請按下按鍵...",
+        "unassigned": "未指派",
+        "edit": "編輯快捷鍵",
+        "clear": "清除快捷鍵",
+        "cancel": "取消編輯"
       }
     },
     "notes": {
