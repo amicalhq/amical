@@ -30,6 +30,10 @@ pnpm download-node
 pnpm download-node:all
 ```
 
+Downloaded binaries are reused only when their local version marker matches the
+version configured by the download script. Version bumps therefore refresh
+existing binaries automatically.
+
 ## Purpose
 
 These binaries are used to spawn a separate Node.js process for Whisper transcription, providing:
@@ -41,4 +45,4 @@ These binaries are used to spawn a separate Node.js process for Whisper transcri
 
 ## Version
 
-Currently using Node.js v22.17.0 LTS binaries.
+Currently using Node.js v22.23.2 LTS binaries.

@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { createWriteStream, mkdirSync, chmodSync } from "node:fs";
 
 // Node.js version to download
-const NODE_VERSION = "22.17.0";
+const NODE_VERSION = "22.23.2";
 
 // Platform/arch types
 type Platform = "darwin" | "win32" | "linux";
@@ -167,11 +167,25 @@ async function downloadNodeBinary(config: PlatformConfig): Promise<void> {
     platformDir,
     platform === "win32" ? "node.exe" : "node",
   );
+  const versionPath = path.join(platformDir, ".node-version");
 
-  // Skip if already exists
-  if (fs.existsSync(binaryPath)) {
-    console.log(`✓ ${platform}-${arch} binary already exists`);
+  // Reuse only binaries downloaded for the configured Node.js version.
+  const installedVersion = fs.existsSync(versionPath)
+    ? fs.readFileSync(versionPath, "utf8").trim()
+    : undefined;
+  if (fs.existsSync(binaryPath) && installedVersion === NODE_VERSION) {
+    console.log(
+      `✓ ${platform}-${arch} binary already exists (v${NODE_VERSION})`,
+    );
     return;
+  }
+
+  if (fs.existsSync(binaryPath)) {
+    console.log(
+      `↻ Updating ${platform}-${arch} binary from ${
+        installedVersion ? `v${installedVersion}` : "an unknown version"
+      } to v${NODE_VERSION}`,
+    );
   }
 
   console.log(`\nDownloading Node.js for ${platform}-${arch}...`);
@@ -216,6 +230,8 @@ async function downloadNodeBinary(config: PlatformConfig): Promise<void> {
     if (platform !== "win32") {
       chmodSync(binaryPath, "755");
     }
+
+    fs.writeFileSync(versionPath, `${NODE_VERSION}\n`, "utf8");
 
     // Clean up
     fs.rmSync(tempDir, { recursive: true, force: true });

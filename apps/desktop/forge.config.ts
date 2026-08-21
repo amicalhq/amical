@@ -23,8 +23,13 @@ import {
   lstatSync,
   readlinkSync,
   copyFileSync,
+  chmodSync,
 } from "node:fs";
-import { join, normalize } from "node:path";
+import { dirname, join, normalize } from "node:path";
+import {
+  downloadNodeBinary,
+  PLATFORMS,
+} from "./scripts/download-node-binaries";
 import { stageBetterSqlite3ForElectron } from "./scripts/stage-better-sqlite3";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
 // flora-colossus is maintained by MarshallOfSound (a top electron-forge contributor)
@@ -37,7 +42,7 @@ let nativeModuleDependenciesToPackage: string[] = [];
 const isBundledNodeBinaryForSigning = (filePath: string): boolean => {
   const normalizedPath = filePath.replace(/\\/g, "/");
 
-  // extraResource copies the selected binary into Contents/Resources/node.
+  // packageAfterCopy places the binary in Contents/Resources/node.
   return normalizedPath.endsWith("/Contents/Resources/node");
 };
 
@@ -69,28 +74,6 @@ const config: ForgeConfig = {
       // The start script stages the same physical copy before Forge loads.
       // Refresh it here too so packaging never reuses stale ABI metadata.
       stageBetterSqlite3ForElectron();
-
-      // Copy platform-specific Node.js binary
-      console.log(`Copying Node.js binary for ${platform}-${arch}...`);
-      const nodeBinarySource = join(
-        projectRoot,
-        "node-binaries",
-        `${platform}-${arch}`,
-        platform === "win32" ? "node.exe" : "node",
-      );
-
-      // Check if the binary exists
-      if (existsSync(nodeBinarySource)) {
-        console.log(`✓ Node.js binary found for ${platform}-${arch}`);
-      } else {
-        console.error(
-          `✗ Node.js binary not found for ${platform}-${arch} at ${nodeBinarySource}`,
-        );
-        console.error(
-          `  Please run 'pnpm download-node' or 'pnpm download-node:all' first`,
-        );
-        throw new Error(`Missing Node.js binary for ${platform}-${arch}`);
-      }
 
       const getExternalNestedDependencies = async (
         nodeModuleNames: string[],
@@ -288,6 +271,43 @@ const config: ForgeConfig = {
           "Skipping onnxruntime-node pruning, bin directory not found.",
         );
       }
+    },
+    packageAfterCopy: async (
+      _forgeConfig,
+      buildPath,
+      _electronVersion,
+      platform,
+      arch,
+    ) => {
+      const nodePlatform = PLATFORMS.find(
+        (candidate) =>
+          candidate.platform === platform && candidate.arch === arch,
+      );
+      if (!nodePlatform) {
+        throw new Error(
+          `Unsupported Node.js binary target: ${platform}-${arch}`,
+        );
+      }
+
+      await downloadNodeBinary(nodePlatform);
+
+      const binaryName = platform === "win32" ? "node.exe" : "node";
+      const binarySource = join(
+        __dirname,
+        "node-binaries",
+        `${platform}-${arch}`,
+        binaryName,
+      );
+      const binaryDestination = join(dirname(buildPath), binaryName);
+
+      copyFileSync(binarySource, binaryDestination);
+      if (platform !== "win32") {
+        chmodSync(binaryDestination, 0o755);
+      }
+
+      console.log(
+        `✓ Node.js binary prepared for ${platform}-${arch} at ${binaryDestination}`,
+      );
     },
     // NOTE: This hook does NOT run when prune: false is set in packagerConfig (line 467).
     // The empty directory cleanup code below is currently dead code.
@@ -584,10 +604,6 @@ const config: ForgeConfig = {
     extraResource: [
       `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
-      // Only include the platform-specific node binary
-      `./node-binaries/${process.platform}-${process.arch}/node${
-        process.platform === "win32" ? ".exe" : ""
-      }`,
       "./models",
       "./assets",
     ],
