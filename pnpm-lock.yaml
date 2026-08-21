@@ -9,6 +9,11 @@ overrides:
   node-abi: 4.14.0
   '@types/minimatch': 3.0.5
 
+patchedDependencies:
+  appdmg@0.6.6:
+    hash: fed756979040c4154849025dbcebeb287af08ef4790b4ac34c837a0533c9a21e
+    path: patches/appdmg@0.6.6.patch
+
 importers:
 
   .:
@@ -10219,7 +10224,7 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 2.3.1
 
-  appdmg@0.6.6:
+  appdmg@0.6.6(patch_hash=fed756979040c4154849025dbcebeb287af08ef4790b4ac34c837a0533c9a21e):
     dependencies:
       async: 1.5.2
       ds-store: 0.1.6
@@ -11073,7 +11078,7 @@ snapshots:
       debug: 4.4.1
       minimist: 1.2.8
     optionalDependencies:
-      appdmg: 0.6.6
+      appdmg: 0.6.6(patch_hash=fed756979040c4154849025dbcebeb287af08ef4790b4ac34c837a0533c9a21e)
     transitivePeerDependencies:
       - supports-color
     optional: true
