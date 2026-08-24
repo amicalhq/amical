@@ -2,6 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 import { ShortcutManager } from "../../src/main/managers/shortcut-manager";
 
 describe("ShortcutManager shortcut unassignment", () => {
+  it("rejects unassigning push-to-talk", async () => {
+    const setShortcuts = vi.fn().mockResolvedValue(undefined);
+    const syncNativeShortcuts = vi.fn().mockResolvedValue(true);
+    const manager = ShortcutManager.createForTests(
+      { setShortcuts } as never,
+      { setShortcuts: syncNativeShortcuts } as never,
+    );
+
+    await expect(manager.setShortcut("pushToTalk", [])).resolves.toEqual({
+      valid: false,
+      error: { key: "settings.shortcuts.validation.noKeysDetected" },
+    });
+    expect(setShortcuts).not.toHaveBeenCalled();
+    expect(syncNativeShortcuts).not.toHaveBeenCalled();
+  });
+
   it("persists an empty shortcut and removes it from native matching", async () => {
     const setShortcuts = vi.fn().mockResolvedValue(undefined);
     const syncNativeShortcuts = vi.fn().mockResolvedValue(true);

@@ -7,7 +7,6 @@ import {
 
 describe("shortcut validation", () => {
   it.each<ShortcutType>([
-    "pushToTalk",
     "toggleRecording",
     "pasteLastTranscript",
     "newNote",
@@ -27,6 +26,26 @@ describe("shortcut validation", () => {
         platform: "darwin",
       }),
     ).toEqual({ valid: true });
+  });
+
+  it("rejects unassigning push-to-talk", () => {
+    expect(
+      validateShortcutComprehensive({
+        candidateShortcut: [],
+        candidateType: "pushToTalk",
+        shortcutsByType: {
+          pushToTalk: [63],
+          toggleRecording: [63, 49],
+          pasteLastTranscript: [55, 59, 9],
+          newNote: [55, 59, 45],
+          draftMode: [63, 59],
+        },
+        platform: "darwin",
+      }),
+    ).toEqual({
+      valid: false,
+      error: { key: "settings.shortcuts.validation.noKeysDetected" },
+    });
   });
 
   it("continues to reject an empty recording", () => {

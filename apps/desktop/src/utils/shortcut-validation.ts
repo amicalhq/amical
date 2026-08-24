@@ -22,6 +22,10 @@ export type ShortcutType =
   | "newNote"
   | "draftMode";
 
+export function canUnassignShortcut(type: ShortcutType): boolean {
+  return type !== "pushToTalk";
+}
+
 export interface ValidationContext {
   candidateShortcut: number[];
   candidateType: ShortcutType;
@@ -238,10 +242,12 @@ export function validateShortcutComprehensive(
   const { candidateShortcut, candidateType, shortcutsByType, platform } =
     context;
 
-  // An empty chord intentionally means "unassigned". It is produced by the
-  // clear button, not by the shortcut recorder (which still rejects no input).
+  // An empty chord intentionally means "unassigned" for optional shortcuts.
+  // Push-to-talk remains required, and the recorder still rejects no input.
   if (candidateShortcut.length === 0) {
-    return { valid: true };
+    return canUnassignShortcut(candidateType)
+      ? { valid: true }
+      : checkMaxKeysLength(candidateShortcut);
   }
 
   const otherShortcuts = Object.entries(shortcutsByType)
