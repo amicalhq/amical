@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { canUnassignShortcut } from "@/utils/shortcut-validation";
 
 export function ShortcutsSettingsPage() {
   const { t } = useTranslation();
@@ -188,6 +189,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "pushToTalk" : null)
                     }
+                    allowUnassign={canUnassignShortcut("pushToTalk")}
                   />
                 </div>
               </div>
@@ -214,6 +216,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "toggleRecording" : null)
                     }
+                    allowUnassign={canUnassignShortcut("toggleRecording")}
                   />
                 </div>
               </div>
@@ -242,6 +245,7 @@ export function ShortcutsSettingsPage() {
                         recording ? "pasteLastTranscript" : null,
                       )
                     }
+                    allowUnassign={canUnassignShortcut("pasteLastTranscript")}
                   />
                 </div>
               </div>
@@ -266,6 +270,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "newNote" : null)
                     }
+                    allowUnassign={canUnassignShortcut("newNote")}
                   />
                 </div>
               </div>
@@ -296,6 +301,7 @@ export function ShortcutsSettingsPage() {
                     onRecordingShortcutChange={(recording) =>
                       setRecordingShortcut(recording ? "draftMode" : null)
                     }
+                    allowUnassign={canUnassignShortcut("draftMode")}
                   />
                 </div>
               </div>

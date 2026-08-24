@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Pencil, X } from "lucide-react";
+import { Pencil, Trash2, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ interface ShortcutInputProps {
   onChange: (value: number[]) => void;
   isRecordingShortcut?: boolean;
   onRecordingShortcutChange: (recording: boolean) => void;
+  allowUnassign: boolean;
 }
 
 const MODIFIER_KEYS = new Set([
@@ -82,14 +83,16 @@ function RecordingDisplay({
   activeKeys,
   onCancel,
   pressKeysText,
+  cancelLabel,
 }: {
   activeKeys: number[];
   onCancel: () => void;
   pressKeysText: string;
+  cancelLabel: string;
 }) {
   return (
     <div
-      className="inline-flex items-center gap-2 px-3 py-1 bg-muted rounded-md ring-2 ring-primary"
+      className="inline-flex items-center gap-2 rounded-md bg-primary/5 px-3 py-1 ring-2 ring-primary"
       tabIndex={0}
     >
       {activeKeys.length > 0 ? (
@@ -109,8 +112,10 @@ function RecordingDisplay({
       <Button
         variant="ghost"
         size="sm"
-        className="h-6 w-6 p-0"
+        className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
         onClick={onCancel}
+        aria-label={cancelLabel}
+        title={cancelLabel}
       >
         <X className="h-3 w-3" />
       </Button>
@@ -121,13 +126,19 @@ function RecordingDisplay({
 function ShortcutDisplay({
   value,
   onEdit,
+  unassignedText,
+  editLabel,
 }: {
   value?: number[];
   onEdit: () => void;
+  unassignedText: string;
+  editLabel: string;
 }) {
+  const hasShortcut = !!value?.length;
+
   return (
     <>
-      {!!value?.length && (
+      {hasShortcut ? (
         <div
           onClick={onEdit}
           className="flex cursor-pointer items-center gap-1"
@@ -141,12 +152,16 @@ function ShortcutDisplay({
             </kbd>
           ))}
         </div>
+      ) : (
+        <span className="text-sm text-muted-foreground">{unassignedText}</span>
       )}
       <Button
         variant="ghost"
         size="sm"
         className="h-6 w-6 p-0"
         onClick={onEdit}
+        aria-label={editLabel}
+        title={editLabel}
       >
         <Pencil className="h-3 w-3" />
       </Button>
@@ -159,6 +174,7 @@ export function ShortcutInput({
   onChange,
   isRecordingShortcut = false,
   onRecordingShortcutChange,
+  allowUnassign,
 }: ShortcutInputProps) {
   const { t } = useTranslation();
   const [activeKeys, setActiveKeys] = useState<number[]>([]);
@@ -177,6 +193,11 @@ export function ShortcutInput({
     onRecordingShortcutChange(false);
     setActiveKeys([]);
     setRecordingStateMutation.mutate(false);
+  };
+
+  const handleClearShortcut = () => {
+    handleCancelRecording();
+    onChange([]);
   };
 
   // Subscribe to key events when recording. Keys held before recording
@@ -229,13 +250,33 @@ export function ShortcutInput({
     <TooltipProvider>
       <div className="inline-flex items-center gap-2">
         {isRecordingShortcut ? (
-          <RecordingDisplay
-            activeKeys={activeKeys}
-            onCancel={handleCancelRecording}
-            pressKeysText={t("settings.shortcuts.input.pressKeys")}
-          />
+          <>
+            <RecordingDisplay
+              activeKeys={activeKeys}
+              onCancel={handleCancelRecording}
+              pressKeysText={t("settings.shortcuts.input.pressKeys")}
+              cancelLabel={t("settings.shortcuts.input.cancel")}
+            />
+            {allowUnassign && !!value?.length && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleClearShortcut}
+                aria-label={t("settings.shortcuts.input.clear")}
+                title={t("settings.shortcuts.input.clear")}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </>
         ) : (
-          <ShortcutDisplay value={value} onEdit={handleStartRecording} />
+          <ShortcutDisplay
+            value={value}
+            onEdit={handleStartRecording}
+            unassignedText={t("settings.shortcuts.input.unassigned")}
+            editLabel={t("settings.shortcuts.input.edit")}
+          />
         )}
       </div>
     </TooltipProvider>

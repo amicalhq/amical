@@ -52,6 +52,7 @@ export class ShortcutManager extends EventEmitter {
   };
   private settingsService: SettingsService;
   private nativeBridge: NativeBridge;
+  private shortcutMutationChain: Promise<void> = Promise.resolve();
   private isRecordingShortcut: boolean = false;
   private recheckInFlight = false;
   // A resync requested while another was in flight (set = request pending;
@@ -468,9 +469,21 @@ export class ShortcutManager extends EventEmitter {
 
   /**
    * Set a shortcut with full validation.
-   * Validates, persists, updates internal state, and syncs to native.
+   * Serializes the complete mutation so each validation and merge sees the
+   * result of the previous write, and native updates are applied in order.
    */
-  async setShortcut(
+  setShortcut(type: ShortcutType, keys: number[]): Promise<ValidationResult> {
+    const run = this.shortcutMutationChain.then(() =>
+      this.applyShortcut(type, keys),
+    );
+    this.shortcutMutationChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async applyShortcut(
     type: ShortcutType,
     keys: number[],
   ): Promise<ValidationResult> {
