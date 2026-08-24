@@ -9,6 +9,7 @@ import type {
 } from "@db/schema";
 import { isMacOS } from "../../src/utils/platform";
 import { getKeycodeFromKeyName } from "../../src/utils/keycode-map";
+import { CURRENT_SETTINGS_VERSION } from "../../src/db/settings-migrations";
 
 const defaultShortcutNames = isMacOS()
   ? {
@@ -63,10 +64,10 @@ export const defaultAppSettings: AppSettingsData = {
     maxRecordingDuration: 600,
   },
   shortcuts: {
-    pushToTalk: defaultShortcuts.pushToTalk,
-    toggleRecording: defaultShortcuts.toggleRecording,
-    pasteLastTranscript: defaultShortcuts.pasteLastTranscript,
-    newNote: defaultShortcuts.newNote,
+    pushToTalk: [defaultShortcuts.pushToTalk],
+    toggleRecording: [defaultShortcuts.toggleRecording],
+    pasteLastTranscript: [defaultShortcuts.pasteLastTranscript],
+    newNote: [defaultShortcuts.newNote],
   },
   modelProvidersConfig: {
     defaultSpeechModel: "local-whisper:ggml-base.en",
@@ -214,7 +215,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: defaultAppSettings,
-      version: 6,
+      version: CURRENT_SETTINGS_VERSION,
     });
   },
 
@@ -274,7 +275,7 @@ export const fixtures = {
     await testDb.db.insert(schema.appSettings).values({
       id: 1,
       data: { ...defaultAppSettings, ...settings },
-      version: 6,
+      version: CURRENT_SETTINGS_VERSION,
     });
   },
 

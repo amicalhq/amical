@@ -277,11 +277,11 @@ export interface AppSettingsData {
     pendingMicrophoneName?: string;
   };
   shortcuts?: {
-    pushToTalk?: number[];
-    toggleRecording?: number[];
-    pasteLastTranscript?: number[];
-    newNote?: number[];
-    draftMode?: number[];
+    pushToTalk?: number[][];
+    toggleRecording?: number[][];
+    pasteLastTranscript?: number[][];
+    newNote?: number[][];
+    draftMode?: number[][];
   };
 
   modelProvidersConfig?: {

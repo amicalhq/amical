@@ -847,7 +847,7 @@
         "noKeysDetected": "キーが検出されません",
         "tooManyKeys": "キーが多すぎます - {{max}}個以下にしてください",
         "invalidKeyCombination": "無効なキーの組み合わせです",
-        "alreadyAssigned": "ショートカットは既に他のアクションに割り当てられています",
+        "alreadyAssigned": "ショートカットは既に割り当てられています",
         "conflictsWithSystem": "{{shortcut}}はシステムのショートカットと競合します",
         "addModifier": "Cmd、Ctrl、Fnなどの修飾キーを追加してください",
         "duplicateModifierPairs": "左右の{{modifier}}を同時に使用できません",
@@ -858,7 +858,8 @@
         "unassigned": "未割り当て",
         "edit": "ショートカットを編集",
         "clear": "ショートカットを解除",
-        "cancel": "編集をキャンセル"
+        "cancel": "編集をキャンセル",
+        "add": "ショートカットを追加"
       }
     },
     "notes": {

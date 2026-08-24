@@ -7,19 +7,17 @@ const CTRL = 202;
 const X = 203;
 const Y = 204;
 
-// Configure PTT + draft bindings. draftMode is a real ShortcutConfig field but
-// isn't in the shared internals helper type, so set shortcuts directly here.
 const useDraftBinding = (
   internals: unknown,
   ptt: number[],
   draft: number[],
 ) => {
-  (internals as { shortcuts: Record<string, number[]> }).shortcuts = {
-    pushToTalk: ptt,
+  (internals as { shortcuts: Record<string, number[][]> }).shortcuts = {
+    pushToTalk: [ptt],
     toggleRecording: [],
     pasteLastTranscript: [],
     newNote: [],
-    draftMode: draft,
+    draftMode: [draft],
   };
 };
 

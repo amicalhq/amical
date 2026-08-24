@@ -844,7 +844,7 @@
         "noKeysDetected": "No keys detected",
         "tooManyKeys": "Too many keys - use {{max}} or fewer",
         "invalidKeyCombination": "Invalid key combination",
-        "alreadyAssigned": "Shortcut already assigned to another action",
+        "alreadyAssigned": "Shortcut already assigned",
         "conflictsWithSystem": "{{shortcut}} conflicts with a system shortcut",
         "addModifier": "Add a modifier key like Cmd, Ctrl, or Fn",
         "duplicateModifierPairs": "Can't use both left and right {{modifier}} together",
@@ -855,7 +855,8 @@
         "unassigned": "Not assigned",
         "edit": "Edit shortcut",
         "clear": "Clear shortcut",
-        "cancel": "Cancel editing"
+        "cancel": "Cancel editing",
+        "add": "Add shortcut"
       }
     },
     "notes": {

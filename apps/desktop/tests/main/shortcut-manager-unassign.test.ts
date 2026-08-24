@@ -10,7 +10,9 @@ describe("ShortcutManager shortcut unassignment", () => {
       { setShortcuts: syncNativeShortcuts } as never,
     );
 
-    await expect(manager.setShortcut("pushToTalk", [])).resolves.toEqual({
+    await expect(
+      manager.setShortcutBindings("pushToTalk", []),
+    ).resolves.toEqual({
       valid: false,
       error: { key: "settings.shortcuts.validation.noKeysDetected" },
     });
@@ -26,16 +28,16 @@ describe("ShortcutManager shortcut unassignment", () => {
       { setShortcuts: syncNativeShortcuts } as never,
     );
 
-    await manager.setShortcut("pushToTalk", [63]);
-    await manager.setShortcut("newNote", [55, 59, 45]);
+    await manager.setShortcutBindings("pushToTalk", [[63]]);
+    await manager.setShortcutBindings("newNote", [[55, 59, 45]]);
     setShortcuts.mockClear();
     syncNativeShortcuts.mockClear();
 
-    await expect(manager.setShortcut("newNote", [])).resolves.toEqual({
+    await expect(manager.setShortcutBindings("newNote", [])).resolves.toEqual({
       valid: true,
     });
     expect(setShortcuts).toHaveBeenCalledWith({
-      pushToTalk: [63],
+      pushToTalk: [[63]],
       toggleRecording: [],
       pasteLastTranscript: [],
       newNote: [],
@@ -55,7 +57,7 @@ describe("ShortcutManager shortcut unassignment", () => {
       { setShortcuts: syncNativeShortcuts } as never,
     );
 
-    await manager.setShortcut("newNote", [55, 59, 45]);
+    await manager.setShortcutBindings("newNote", [[55, 59, 45]]);
     setShortcuts.mockClear();
     syncNativeShortcuts.mockClear();
 
@@ -65,8 +67,10 @@ describe("ShortcutManager shortcut unassignment", () => {
     });
     syncNativeShortcuts.mockImplementationOnce(() => firstNativeSync);
 
-    const clearNewNote = manager.setShortcut("newNote", []);
-    const updateDraftMode = manager.setShortcut("draftMode", [63, 59]);
+    const clearNewNote = manager.setShortcutBindings("newNote", []);
+    const updateDraftMode = manager.setShortcutBindings("draftMode", [
+      [63, 59],
+    ]);
 
     await vi.waitFor(() => {
       expect(syncNativeShortcuts).toHaveBeenCalledTimes(1);
@@ -88,7 +92,7 @@ describe("ShortcutManager shortcut unassignment", () => {
       toggleRecording: [],
       pasteLastTranscript: [],
       newNote: [],
-      draftMode: [63, 59],
+      draftMode: [[63, 59]],
     });
     expect(syncNativeShortcuts).toHaveBeenNthCalledWith(1, {
       subsetChords: [],
@@ -109,8 +113,10 @@ describe("ShortcutManager shortcut unassignment", () => {
     );
     const shortcut = [55, 59, 45];
 
-    const assignNewNote = manager.setShortcut("newNote", shortcut);
-    const assignDraftMode = manager.setShortcut("draftMode", shortcut);
+    const assignNewNote = manager.setShortcutBindings("newNote", [shortcut]);
+    const assignDraftMode = manager.setShortcutBindings("draftMode", [
+      shortcut,
+    ]);
 
     await expect(assignNewNote).resolves.toEqual({ valid: true });
     await expect(assignDraftMode).resolves.toEqual({
@@ -132,10 +138,12 @@ describe("ShortcutManager shortcut unassignment", () => {
       { setShortcuts: syncNativeShortcuts } as never,
     );
 
-    const failedMutation = manager.setShortcut("newNote", [55, 59, 45]);
+    const failedMutation = manager.setShortcutBindings("newNote", [
+      [55, 59, 45],
+    ]);
     const failedExpectation =
       expect(failedMutation).rejects.toThrow("write failed");
-    const nextMutation = manager.setShortcut("draftMode", [63, 59]);
+    const nextMutation = manager.setShortcutBindings("draftMode", [[63, 59]]);
 
     await failedExpectation;
     await expect(nextMutation).resolves.toEqual({ valid: true });
@@ -145,7 +153,7 @@ describe("ShortcutManager shortcut unassignment", () => {
       toggleRecording: [],
       pasteLastTranscript: [],
       newNote: [],
-      draftMode: [63, 59],
+      draftMode: [[63, 59]],
     });
     expect(syncNativeShortcuts).toHaveBeenCalledOnce();
     expect(syncNativeShortcuts).toHaveBeenCalledWith({

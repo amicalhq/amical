@@ -6,7 +6,9 @@ import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
 import {
-  validateShortcutComprehensive,
+  validateShortcutBindings,
+  type ShortcutBindings,
+  type ShortcutsConfig,
   type ShortcutType,
   type ValidationResult,
 } from "@/utils/shortcut-validation";
@@ -28,14 +30,6 @@ interface KeyInfo {
   timestamp: number;
 }
 
-interface ShortcutConfig {
-  pushToTalk: number[];
-  toggleRecording: number[];
-  pasteLastTranscript: number[];
-  newNote: number[];
-  draftMode: number[];
-}
-
 export class ShortcutManager extends EventEmitter {
   private activeKeys = new Map<number, KeyInfo>();
   // Timestamp of the last DELIVERED key-up (handleKeyUp). A resync trigger
@@ -43,7 +37,7 @@ export class ShortcutManager extends EventEmitter {
   // pressing it — the held set collapsed by release, and a resync completing
   // that collapse must not be evaluated as a press.
   private lastDeliveredKeyUpAt = 0;
-  private shortcuts: ShortcutConfig = {
+  private shortcuts: ShortcutsConfig = {
     pushToTalk: [],
     toggleRecording: [],
     pasteLastTranscript: [],
@@ -201,13 +195,13 @@ export class ShortcutManager extends EventEmitter {
   private async syncShortcutsToNative() {
     try {
       const subsetChords = [
-        this.shortcuts.pushToTalk,
-        this.shortcuts.draftMode,
+        ...this.shortcuts.pushToTalk,
+        ...this.shortcuts.draftMode,
       ].filter((chord) => chord.length > 0);
       const exactChords = [
-        this.shortcuts.toggleRecording,
-        this.shortcuts.pasteLastTranscript,
-        this.shortcuts.newNote,
+        ...this.shortcuts.toggleRecording,
+        ...this.shortcuts.pasteLastTranscript,
+        ...this.shortcuts.newNote,
       ].filter((chord) => chord.length > 0);
       await this.nativeBridge.setShortcuts({ subsetChords, exactChords });
       log.info("Shortcuts synced to native helper");
@@ -449,32 +443,52 @@ export class ShortcutManager extends EventEmitter {
    */
   private getEngagedChordKeys(): Set<number> {
     const keys = new Set<number>();
+    const activeKeys = this.getActiveKeys();
+    const addMatchingKeys = (
+      bindings: ShortcutBindings,
+      matches: (binding: number[]) => boolean,
+    ) => {
+      for (const binding of bindings) {
+        if (!matches(binding)) continue;
+        for (const key of binding) keys.add(key);
+      }
+    };
+
     if (this.pttActive) {
-      for (const key of this.shortcuts.pushToTalk) keys.add(key);
+      addMatchingKeys(
+        [...this.shortcuts.pushToTalk, ...this.shortcuts.draftMode],
+        (binding) => this.allHeld(binding, activeKeys),
+      );
     }
     if (this.exactMatchState.toggleRecording) {
-      for (const key of this.shortcuts.toggleRecording) keys.add(key);
+      addMatchingKeys(this.shortcuts.toggleRecording, (binding) =>
+        this.isExactMatch(binding, activeKeys),
+      );
     }
     if (this.exactMatchState.pasteLastTranscript) {
-      for (const key of this.shortcuts.pasteLastTranscript) keys.add(key);
+      addMatchingKeys(this.shortcuts.pasteLastTranscript, (binding) =>
+        this.isExactMatch(binding, activeKeys),
+      );
     }
     if (this.exactMatchState.newNote) {
-      for (const key of this.shortcuts.newNote) keys.add(key);
-    }
-    if (this.pttDraftActive) {
-      for (const key of this.shortcuts.draftMode) keys.add(key);
+      addMatchingKeys(this.shortcuts.newNote, (binding) =>
+        this.isExactMatch(binding, activeKeys),
+      );
     }
     return keys;
   }
 
   /**
-   * Set a shortcut with full validation.
+   * Replace one action's shortcut bindings with full validation.
    * Serializes the complete mutation so each validation and merge sees the
    * result of the previous write, and native updates are applied in order.
    */
-  setShortcut(type: ShortcutType, keys: number[]): Promise<ValidationResult> {
+  setShortcutBindings(
+    type: ShortcutType,
+    bindings: ShortcutBindings,
+  ): Promise<ValidationResult> {
     const run = this.shortcutMutationChain.then(() =>
-      this.applyShortcut(type, keys),
+      this.applyShortcutBindings(type, bindings),
     );
     this.shortcutMutationChain = run.then(
       () => undefined,
@@ -483,13 +497,12 @@ export class ShortcutManager extends EventEmitter {
     return run;
   }
 
-  private async applyShortcut(
+  private async applyShortcutBindings(
     type: ShortcutType,
-    keys: number[],
+    bindings: ShortcutBindings,
   ): Promise<ValidationResult> {
-    // Validate the shortcut
-    const result = validateShortcutComprehensive({
-      candidateShortcut: keys,
+    const result = validateShortcutBindings({
+      candidateBindings: bindings,
       candidateType: type,
       shortcutsByType: this.shortcuts,
       platform: process.platform,
@@ -502,13 +515,13 @@ export class ShortcutManager extends EventEmitter {
     // Persist to settings
     const updatedShortcuts = {
       ...this.shortcuts,
-      [type]: keys,
+      [type]: bindings,
     };
     await this.settingsService.setShortcuts(updatedShortcuts);
 
     // Update internal state
     this.shortcuts = updatedShortcuts;
-    log.info("Shortcut updated", { type, keys });
+    log.info("Shortcut bindings updated", { type, bindings });
 
     // Sync to native helper
     await this.syncShortcutsToNative();
@@ -668,11 +681,11 @@ export class ShortcutManager extends EventEmitter {
     // Snapshot the active keys once; every matcher below reads the same set.
     const activeKeys = this.getActiveKeys();
 
-    // Check PTT shortcut. PTT accepts two bindings — the normal chord and the
-    // "draft" chord — both handled inside the matcher (it owns the pttActive latch
-    // and the live pttDraftActive flag). Draft is NOT a separate event: it rides
-    // the same ptt-state-changed edge, only tagged. Suppression only masks the
-    // EMITTED level to false, so a mid-hold flip still delivers a release.
+    // Check PTT shortcuts. Normal and Draft binding lists are handled inside
+    // the matcher (it owns the pttActive latch and live pttDraftActive flag).
+    // Draft is NOT a separate event: it rides the same ptt-state-changed edge,
+    // only tagged. Suppression only masks the EMITTED level to false, so a
+    // mid-hold flip still delivers a release.
     const isPTTPressed = this.isPTTShortcutPressed(isKeyDown, activeKeys);
     this.emit("ptt-state-changed", isPTTPressed && !this.commandsSuppressed);
 
@@ -738,12 +751,14 @@ export class ShortcutManager extends EventEmitter {
   // True when every key of some configured shortcut is held *and* at least one
   // extra key is also down (a strict superset). Empty shortcuts are ignored.
   private isStrictSupersetOfAnyShortcut(activeKeys: number[]): boolean {
-    return Object.values(this.shortcuts).some(
-      (keys) =>
-        keys.length > 0 &&
-        activeKeys.length > keys.length &&
-        this.allHeld(keys, activeKeys),
-    );
+    return Object.values(this.shortcuts)
+      .flatMap((bindings) => bindings)
+      .some(
+        (keys) =>
+          keys.length > 0 &&
+          activeKeys.length > keys.length &&
+          this.allHeld(keys, activeKeys),
+      );
   }
 
   // True when every shortcut key is currently held (extra keys allowed).
@@ -756,47 +771,41 @@ export class ShortcutManager extends EventEmitter {
     return keys.length === activeKeys.length && this.allHeld(keys, activeKeys);
   }
 
-  // PTT accepts two bindings: the normal chord and the optional "draft" chord.
-  // Start only on a key-down that EXACTLY matches one of them (never latch on a
-  // key-up that collapses a larger chord onto the set — that would fire a phantom
-  // press and stop the session). Prefer the draft chord on start, so a draft chord
-  // that is a superset of plain PTT (Fn+Ctrl over Fn) tags as draft when both
-  // match in one event. Sustain while EITHER binding's keys are all held.
-  // pttDraftActive is recomputed live (draft chord currently exactly held) so the
-  // Fn-then-Ctrl press order still resolves to draft once both keys are down.
+  // PTT accepts normal and Draft binding lists. Start only on a key-down that
+  // EXACTLY matches one chord (never latch on a key-up collapse). Sustain while
+  // any PTT or Draft chord remains fully held, which also permits a seamless
+  // handoff when the user holds a second binding before releasing the first.
+  // Draft is preferred when the current exact chord belongs to that list.
   private isPTTShortcutPressed(
     isKeyDown: boolean,
     activeKeys: number[],
   ): boolean {
-    const pttKeys = this.shortcuts.pushToTalk;
-    const draftKeys = this.shortcuts.draftMode;
-    const hasPtt = !!pttKeys && pttKeys.length > 0;
-    const hasDraft = !!draftKeys && draftKeys.length > 0;
+    const pttBindings = this.shortcuts.pushToTalk;
+    const draftBindings = this.shortcuts.draftMode;
+    const allBindings = [...pttBindings, ...draftBindings];
+    const exactDraft = draftBindings.some((binding) =>
+      this.isExactMatch(binding, activeKeys),
+    );
+    const exactPtt = pttBindings.some((binding) =>
+      this.isExactMatch(binding, activeKeys),
+    );
 
-    if (!hasPtt && !hasDraft) {
+    if (allBindings.length === 0) {
       this.pttActive = false;
       this.pttDraftActive = false;
       return false;
     }
 
     if (this.pttActive) {
-      // Sustain while either binding's full chord remains held.
-      this.pttActive =
-        (hasPtt && this.allHeld(pttKeys, activeKeys)) ||
-        (hasDraft && this.allHeld(draftKeys, activeKeys));
-    } else if (
-      isKeyDown &&
-      hasDraft &&
-      this.isExactMatch(draftKeys, activeKeys)
-    ) {
-      this.pttActive = true;
-    } else if (isKeyDown && hasPtt && this.isExactMatch(pttKeys, activeKeys)) {
+      this.pttActive = allBindings.some((binding) =>
+        this.allHeld(binding, activeKeys),
+      );
+    } else if (isKeyDown && (exactDraft || exactPtt)) {
       this.pttActive = true;
     }
 
     // Tag (live): is the draft chord exactly held right now?
-    this.pttDraftActive =
-      this.pttActive && hasDraft && this.isExactMatch(draftKeys, activeKeys);
+    this.pttDraftActive = this.pttActive && exactDraft;
 
     return this.pttActive;
   }
@@ -811,30 +820,21 @@ export class ShortcutManager extends EventEmitter {
   }
 
   private isToggleRecordingShortcutPressed(activeKeys: number[]): boolean {
-    const toggleKeys = this.shortcuts.toggleRecording;
-    if (!toggleKeys || toggleKeys.length === 0) {
-      return false;
-    }
-
-    return this.isExactMatch(toggleKeys, activeKeys);
+    return this.shortcuts.toggleRecording.some((binding) =>
+      this.isExactMatch(binding, activeKeys),
+    );
   }
 
   private isPasteLastTranscriptShortcutPressed(activeKeys: number[]): boolean {
-    const pasteKeys = this.shortcuts.pasteLastTranscript;
-    if (!pasteKeys || pasteKeys.length === 0) {
-      return false;
-    }
-
-    return this.isExactMatch(pasteKeys, activeKeys);
+    return this.shortcuts.pasteLastTranscript.some((binding) =>
+      this.isExactMatch(binding, activeKeys),
+    );
   }
 
   private isNewNoteShortcutPressed(activeKeys: number[]): boolean {
-    const newNoteKeys = this.shortcuts.newNote;
-    if (!newNoteKeys || newNoteKeys.length === 0) {
-      return false;
-    }
-
-    return this.isExactMatch(newNoteKeys, activeKeys);
+    return this.shortcuts.newNote.some((binding) =>
+      this.isExactMatch(binding, activeKeys),
+    );
   }
 
   private getKeycodeFromPayload(payload: KeyEventPayload): number {

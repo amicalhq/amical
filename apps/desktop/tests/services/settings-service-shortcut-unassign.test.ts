@@ -18,37 +18,57 @@ describe("SettingsService shortcut unassignment", () => {
     const service = SettingsService.createForTests();
 
     await service.setShortcuts({
-      pushToTalk: [63],
-      toggleRecording: [63, 49],
-      pasteLastTranscript: [55, 59, 9],
+      pushToTalk: [[63], [55, 59, 11]],
+      toggleRecording: [[63, 49]],
+      pasteLastTranscript: [[55, 59, 9]],
       newNote: [],
-      draftMode: [63, 59],
+      draftMode: [[63, 59]],
     });
 
     expect(updateSettingsSection).toHaveBeenCalledWith("shortcuts", {
-      pushToTalk: [63],
-      toggleRecording: [63, 49],
-      pasteLastTranscript: [55, 59, 9],
+      pushToTalk: [[63], [55, 59, 11]],
+      toggleRecording: [[63, 49]],
+      pasteLastTranscript: [[55, 59, 9]],
       newNote: undefined,
-      draftMode: [63, 59],
+      draftMode: [[63, 59]],
     });
   });
 
   it("reads an absent stored shortcut back as unassigned", async () => {
     vi.mocked(getSettingsSection).mockResolvedValueOnce({
-      pushToTalk: [63],
-      toggleRecording: [63, 49],
-      pasteLastTranscript: [55, 59, 9],
-      draftMode: [63, 59],
+      pushToTalk: [[63]],
+      toggleRecording: [[63, 49]],
+      pasteLastTranscript: [[55, 59, 9]],
+      draftMode: [[63, 59]],
     });
     const service = SettingsService.createForTests();
 
     await expect(service.getShortcuts()).resolves.toEqual({
-      pushToTalk: [63],
-      toggleRecording: [63, 49],
-      pasteLastTranscript: [55, 59, 9],
+      pushToTalk: [[63]],
+      toggleRecording: [[63, 49]],
+      pasteLastTranscript: [[55, 59, 9]],
       newNote: [],
-      draftMode: [63, 59],
+      draftMode: [[63, 59]],
+    });
+  });
+
+  it("removes empty inner bindings before storing shortcuts", async () => {
+    const service = SettingsService.createForTests();
+
+    await service.setShortcuts({
+      pushToTalk: [[63], []],
+      toggleRecording: [[]],
+      pasteLastTranscript: [[55, 59, 9]],
+      newNote: [],
+      draftMode: [[63, 59]],
+    });
+
+    expect(updateSettingsSection).toHaveBeenLastCalledWith("shortcuts", {
+      pushToTalk: [[63]],
+      toggleRecording: undefined,
+      pasteLastTranscript: [[55, 59, 9]],
+      newNote: undefined,
+      draftMode: [[63, 59]],
     });
   });
 });

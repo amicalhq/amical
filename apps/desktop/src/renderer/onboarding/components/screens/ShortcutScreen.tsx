@@ -31,7 +31,7 @@ export function ShortcutScreen({ onNext, onBack }: ShortcutScreenProps) {
   const { t } = useTranslation();
   const utils = api.useUtils();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
-  const configured = shortcuts?.pushToTalk ?? [];
+  const configured = shortcuts?.pushToTalk[0] ?? [];
   const heldKeys = useHeldKeys();
   const [modalOpen, setModalOpen] = useState(false);
 

@@ -120,10 +120,11 @@ describe("ShortcutManager superset resync (prune stuck keys)", () => {
       physicallyDown,
     });
     internals.shortcuts = {
-      pushToTalk: [A, B],
-      toggleRecording: [A, B, EXTRA],
+      pushToTalk: [[A, B]],
+      toggleRecording: [[A, B, EXTRA]],
       pasteLastTranscript: [],
       newNote: [],
+      draftMode: [],
     };
 
     internals.addActiveKey(A);

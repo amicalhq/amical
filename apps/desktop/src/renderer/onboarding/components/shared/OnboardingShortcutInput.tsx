@@ -29,7 +29,7 @@ export function OnboardingShortcutInput({
 
   const utils = api.useUtils();
   const shortcutsQuery = api.settings.getShortcuts.useQuery();
-  const setShortcutMutation = api.settings.setShortcut.useMutation({
+  const setShortcutMutation = api.settings.setShortcutBindings.useMutation({
     onSuccess: (data) => {
       if (!data.success) {
         toast.error(t(data.error.key, data.error.params));
@@ -54,15 +54,19 @@ export function OnboardingShortcutInput({
   // Load current shortcut
   useEffect(() => {
     if (shortcutsQuery.data) {
-      setShortcut(shortcutsQuery.data[binding]);
+      setShortcut(shortcutsQuery.data[binding][0] ?? []);
     }
   }, [shortcutsQuery.data, binding]);
 
   const handleShortcutChange = (newShortcut: number[]) => {
     setShortcut(newShortcut);
+    const currentBindings = shortcutsQuery.data?.[binding] ?? [];
+    const bindings = newShortcut.length
+      ? [newShortcut, ...currentBindings.slice(1)]
+      : currentBindings.slice(1);
     setShortcutMutation.mutate({
       type: binding,
-      shortcut: newShortcut,
+      bindings,
     });
   };
 

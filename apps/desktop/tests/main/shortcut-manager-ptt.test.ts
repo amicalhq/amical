@@ -13,10 +13,11 @@ const createManager = () => {
   // superset-triggered resync never prunes anything in these tests.
   const ctx = createTestManager();
   ctx.internals.shortcuts = {
-    pushToTalk: [A, B],
-    toggleRecording: [A, B, C],
+    pushToTalk: [[A, B]],
+    toggleRecording: [[A, B, C]],
     pasteLastTranscript: [],
     newNote: [],
+    draftMode: [],
   };
   return ctx;
 };

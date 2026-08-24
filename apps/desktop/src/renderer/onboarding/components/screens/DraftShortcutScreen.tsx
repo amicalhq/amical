@@ -35,8 +35,8 @@ export function DraftShortcutScreen({
   const { t } = useTranslation();
   const utils = api.useUtils();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
-  const configured = shortcuts?.draftMode ?? [];
-  const dictation = shortcuts?.pushToTalk ?? [];
+  const configured = shortcuts?.draftMode[0] ?? [];
+  const dictation = shortcuts?.pushToTalk[0] ?? [];
   const heldKeys = useHeldKeys();
   const [modalOpen, setModalOpen] = useState(false);
 

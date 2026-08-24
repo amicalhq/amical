@@ -75,6 +75,16 @@ describe("default settings seed", () => {
     expect(settings.dictation?.languages).toEqual(["en", "fr"]);
   });
 
+  it("seeds each default shortcut as one binding", async () => {
+    const settings = await getAppSettings();
+
+    expect(settings.shortcuts).toBeDefined();
+    for (const bindings of Object.values(settings.shortcuts ?? {})) {
+      expect(bindings).toHaveLength(1);
+      expect(bindings?.[0]?.length).toBeGreaterThan(0);
+    }
+  });
+
   it("preserves concurrent updates to different sections", async () => {
     await getAppSettings();
     const auth = {

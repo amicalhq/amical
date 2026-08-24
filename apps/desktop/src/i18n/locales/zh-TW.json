@@ -847,7 +847,7 @@
         "noKeysDetected": "未偵測到任何按鍵",
         "tooManyKeys": "按鍵數量過多 - 請使用 {{max}} 個或更少",
         "invalidKeyCombination": "無效的按鍵組合",
-        "alreadyAssigned": "該快捷鍵已指派給其他操作",
+        "alreadyAssigned": "該快捷鍵已指派",
         "conflictsWithSystem": "{{shortcut}} 與目前的系統快捷鍵衝突",
         "addModifier": "請增加修飾鍵（如 Cmd、Ctrl 或是 Fn）",
         "duplicateModifierPairs": "無法同時使用左側與右側的 {{modifier}}",
@@ -858,7 +858,8 @@
         "unassigned": "未指派",
         "edit": "編輯快捷鍵",
         "clear": "清除快捷鍵",
-        "cancel": "取消編輯"
+        "cancel": "取消編輯",
+        "add": "新增快捷鍵"
       }
     },
     "notes": {

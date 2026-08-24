@@ -23,6 +23,16 @@ import {
 import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention";
 import { isWindows } from "../utils/platform";
 import { logger } from "../main/logger";
+import type {
+  ShortcutBindings,
+  ShortcutsConfig,
+} from "../utils/shortcut-validation";
+
+function assignedShortcutBindings(
+  bindings: ShortcutBindings,
+): ShortcutBindings {
+  return bindings.filter((binding) => binding.length > 0);
+}
 
 function getSquirrelUpdateExePath(): string {
   return path.resolve(path.dirname(process.execPath), "..", "Update.exe");
@@ -91,14 +101,6 @@ function syncWindowsSquirrelAutoLaunch(openAtLogin: boolean): void {
 /**
  * Database-backed settings service with typed configuration
  */
-export interface ShortcutsConfig {
-  pushToTalk: number[];
-  toggleRecording: number[];
-  pasteLastTranscript: number[];
-  newNote: number[];
-  draftMode: number[];
-}
-
 export interface AppPreferences {
   launchAtLogin: boolean;
   minimizeToTray: boolean;
@@ -305,19 +307,29 @@ export class SettingsService extends EventEmitter {
    * Update shortcuts configuration
    */
   async setShortcuts(shortcuts: ShortcutsConfig): Promise<void> {
-    // Store empty arrays as undefined to clear shortcuts
+    const normalized = {
+      pushToTalk: assignedShortcutBindings(shortcuts.pushToTalk),
+      toggleRecording: assignedShortcutBindings(shortcuts.toggleRecording),
+      pasteLastTranscript: assignedShortcutBindings(
+        shortcuts.pasteLastTranscript,
+      ),
+      newNote: assignedShortcutBindings(shortcuts.newNote),
+      draftMode: assignedShortcutBindings(shortcuts.draftMode),
+    };
+
+    // Store empty binding lists as undefined to clear optional shortcuts.
     const dataToStore = {
-      pushToTalk: shortcuts.pushToTalk?.length
-        ? shortcuts.pushToTalk
+      pushToTalk: normalized.pushToTalk.length
+        ? normalized.pushToTalk
         : undefined,
-      toggleRecording: shortcuts.toggleRecording?.length
-        ? shortcuts.toggleRecording
+      toggleRecording: normalized.toggleRecording.length
+        ? normalized.toggleRecording
         : undefined,
-      pasteLastTranscript: shortcuts.pasteLastTranscript?.length
-        ? shortcuts.pasteLastTranscript
+      pasteLastTranscript: normalized.pasteLastTranscript.length
+        ? normalized.pasteLastTranscript
         : undefined,
-      newNote: shortcuts.newNote?.length ? shortcuts.newNote : undefined,
-      draftMode: shortcuts.draftMode?.length ? shortcuts.draftMode : undefined,
+      newNote: normalized.newNote.length ? normalized.newNote : undefined,
+      draftMode: normalized.draftMode.length ? normalized.draftMode : undefined,
     };
     await updateSettingsSection("shortcuts", dataToStore);
   }

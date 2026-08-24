@@ -37,7 +37,7 @@ export function DictationTestScreen({
   const { t } = useTranslation();
   const { isRecording } = useOnboardingDictation();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
-  const configured = shortcuts?.pushToTalk ?? [];
+  const configured = shortcuts?.pushToTalk[0] ?? [];
   const screen = {
     email: OnboardingScreen.DictationEmail,
     notes: OnboardingScreen.DictationNotes,

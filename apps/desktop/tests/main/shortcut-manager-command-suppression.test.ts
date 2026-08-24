@@ -12,10 +12,11 @@ const N2 = 121;
 const createManager = () => {
   const ctx = createTestManager();
   ctx.internals.shortcuts = {
-    pushToTalk: [A, B],
-    toggleRecording: [A, B, 103],
-    pasteLastTranscript: [P1, P2],
-    newNote: [N1, N2],
+    pushToTalk: [[A, B]],
+    toggleRecording: [[A, B, 103]],
+    pasteLastTranscript: [[P1, P2]],
+    newNote: [[N1, N2]],
+    draftMode: [],
   };
   return ctx;
 };

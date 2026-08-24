@@ -62,7 +62,7 @@ export function DraftTestScreen({
   const enterCode = getKeycodeFromKeyName("Enter");
 
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
-  const configured = shortcuts?.draftMode ?? [];
+  const configured = shortcuts?.draftMode[0] ?? [];
   const screen = {
     compose: OnboardingScreen.DraftCompose,
     selection: OnboardingScreen.DraftSelection,

@@ -847,7 +847,7 @@
         "noKeysDetected": "No se detectaron teclas",
         "tooManyKeys": "Demasiadas teclas: usa {{max}} o menos",
         "invalidKeyCombination": "Combinación de teclas no válida",
-        "alreadyAssigned": "El atajo ya está asignado a otra acción",
+        "alreadyAssigned": "El atajo ya está asignado",
         "conflictsWithSystem": "{{shortcut}} entra en conflicto con un atajo del sistema",
         "addModifier": "Agrega una tecla modificadora como Cmd, Ctrl o Fn",
         "duplicateModifierPairs": "No se pueden usar las teclas {{modifier}} izquierda y derecha juntas",
@@ -858,7 +858,8 @@
         "unassigned": "Sin asignar",
         "edit": "Editar atajo",
         "clear": "Quitar atajo",
-        "cancel": "Cancelar edición"
+        "cancel": "Cancelar edición",
+        "add": "Añadir atajo"
       }
     },
     "notes": {

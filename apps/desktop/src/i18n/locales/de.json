@@ -847,7 +847,7 @@
         "noKeysDetected": "Keine Tasten erkannt",
         "tooManyKeys": "Zu viele Tasten – verwende {{max}} oder weniger",
         "invalidKeyCombination": "Ungültige Tastenkombination",
-        "alreadyAssigned": "Tastenkürzel ist bereits einer anderen Aktion zugewiesen",
+        "alreadyAssigned": "Tastenkürzel ist bereits zugewiesen",
         "conflictsWithSystem": "{{shortcut}} steht in Konflikt mit einem System-Tastenkürzel",
         "addModifier": "Füge eine Modifikator-Taste wie Cmd, Ctrl oder Fn hinzu",
         "duplicateModifierPairs": "Linke und rechte {{modifier}}-Taste können nicht gleichzeitig verwendet werden",
@@ -858,7 +858,8 @@
         "unassigned": "Nicht zugewiesen",
         "edit": "Tastenkürzel bearbeiten",
         "clear": "Tastenkürzel entfernen",
-        "cancel": "Bearbeitung abbrechen"
+        "cancel": "Bearbeitung abbrechen",
+        "add": "Tastenkürzel hinzufügen"
       }
     },
     "notes": {

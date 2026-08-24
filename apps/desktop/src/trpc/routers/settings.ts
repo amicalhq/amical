@@ -21,8 +21,8 @@ const FormatterConfigSchema = z.object({
   fallbackModelId: z.string().optional(),
 });
 
-// Shortcut schema (array of keycodes)
-const SetShortcutSchema = z.object({
+// Shortcut binding schema (list of keycode chords)
+const SetShortcutBindingsSchema = z.object({
   type: z.enum([
     "pushToTalk",
     "toggleRecording",
@@ -30,7 +30,7 @@ const SetShortcutSchema = z.object({
     "newNote",
     "draftMode",
   ]),
-  shortcut: z.array(z.number()),
+  bindings: z.array(z.array(z.number().int()).min(1)),
 });
 
 // Model providers schemas
@@ -260,9 +260,9 @@ export const settingsRouter = createRouter({
     }
     return await settingsService.getShortcuts();
   }),
-  // Set individual shortcut
-  setShortcut: procedure
-    .input(SetShortcutSchema)
+  // Replace one action's shortcut bindings
+  setShortcutBindings: procedure
+    .input(SetShortcutBindingsSchema)
     .mutation(async ({ input, ctx }) => {
       const shortcutManager = ctx.services.shortcutManager;
       if (!shortcutManager) {
@@ -272,9 +272,9 @@ export const settingsRouter = createRouter({
         });
       }
 
-      const result = await shortcutManager.setShortcut(
+      const result = await shortcutManager.setShortcutBindings(
         input.type,
-        input.shortcut,
+        input.bindings,
       );
 
       if (!result.valid) {

@@ -4,35 +4,117 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 import { ShortcutInput } from "@/components/shortcut-input";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { canUnassignShortcut } from "@/utils/shortcut-validation";
+import {
+  canUnassignShortcut,
+  type ShortcutBindings,
+  type ShortcutsConfig,
+  type ShortcutType,
+} from "@/utils/shortcut-validation";
+
+const EMPTY_SHORTCUTS: ShortcutsConfig = {
+  pushToTalk: [],
+  toggleRecording: [],
+  pasteLastTranscript: [],
+  newNote: [],
+  draftMode: [],
+};
+
+type RecordingBinding = { type: ShortcutType; index: number } | null;
+
+export function ShortcutBindingsEditor({
+  type,
+  bindings,
+  recordingBinding,
+  onRecordingBindingChange,
+  onChange,
+}: {
+  type: ShortcutType;
+  bindings: ShortcutBindings;
+  recordingBinding: RecordingBinding;
+  onRecordingBindingChange: (binding: RecordingBinding) => void;
+  onChange: (bindings: ShortcutBindings) => void;
+}) {
+  const { t } = useTranslation();
+  const setRecordingStateMutation =
+    api.settings.setShortcutRecordingState.useMutation();
+  const assignedBindings = bindings.filter((binding) => binding.length > 0);
+  const addingIndex = assignedBindings.length;
+  const isAdding =
+    recordingBinding?.type === type && recordingBinding.index === addingIndex;
+
+  const updateBinding = (index: number, shortcut: number[]) => {
+    if (shortcut.length === 0) {
+      onChange(
+        assignedBindings.filter((_, bindingIndex) => bindingIndex !== index),
+      );
+      return;
+    }
+
+    if (index === assignedBindings.length) {
+      onChange([...assignedBindings, shortcut]);
+      return;
+    }
+
+    onChange(
+      assignedBindings.map((binding, bindingIndex) =>
+        bindingIndex === index ? shortcut : binding,
+      ),
+    );
+  };
+
+  const recorder = (shortcut: number[], index: number) => (
+    <ShortcutInput
+      key={`${type}-${index}`}
+      value={shortcut}
+      onChange={(nextShortcut) => updateBinding(index, nextShortcut)}
+      isRecordingShortcut={
+        recordingBinding?.type === type && recordingBinding.index === index
+      }
+      onRecordingShortcutChange={(recording) =>
+        onRecordingBindingChange(recording ? { type, index } : null)
+      }
+      allowUnassign={canUnassignShortcut(type) || assignedBindings.length > 1}
+    />
+  );
+
+  return (
+    <div className="flex min-w-[260px] flex-col items-end gap-2">
+      {assignedBindings.length === 0
+        ? recorder([], 0)
+        : assignedBindings.map(recorder)}
+      {assignedBindings.length > 0 && isAdding && recorder([], addingIndex)}
+      {assignedBindings.length > 0 && !isAdding && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            onRecordingBindingChange({ type, index: addingIndex });
+            setRecordingStateMutation.mutate(true);
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t("settings.shortcuts.input.add")}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export function ShortcutsSettingsPage() {
   const { t } = useTranslation();
   // The injected-keys toggle only has an effect on Windows (the injected-key
   // filter lives in the Windows native hook); hide it everywhere else.
   const isWindows = window.electronAPI.platform === "win32";
-  const [pushToTalkShortcut, setPushToTalkShortcut] = useState<number[]>([]);
-  const [toggleRecordingShortcut, setToggleRecordingShortcut] = useState<
-    number[]
-  >([]);
-  const [pasteLastTranscriptShortcut, setPasteLastTranscriptShortcut] =
-    useState<number[]>([]);
-  const [newNoteShortcut, setNewNoteShortcut] = useState<number[]>([]);
-  const [draftModeShortcut, setDraftModeShortcut] = useState<number[]>([]);
-  const [recordingShortcut, setRecordingShortcut] = useState<
-    | "pushToTalk"
-    | "toggleRecording"
-    | "pasteLastTranscript"
-    | "newNote"
-    | "draftMode"
-    | null
-  >(null);
+  const [shortcuts, setShortcuts] = useState<ShortcutsConfig>(EMPTY_SHORTCUTS);
+  const [recordingBinding, setRecordingBinding] =
+    useState<RecordingBinding>(null);
 
   // tRPC queries and mutations
   const shortcutsQuery = api.settings.getShortcuts.useQuery();
@@ -57,20 +139,20 @@ export function ShortcutsSettingsPage() {
     );
   };
 
-  const setShortcutMutation = api.settings.setShortcut.useMutation({
+  const restoreCachedShortcuts = () => {
+    const cached = utils.settings.getShortcuts.getData();
+    if (cached) {
+      setShortcuts(cached);
+    } else {
+      utils.settings.getShortcuts.invalidate();
+    }
+  };
+
+  const setShortcutMutation = api.settings.setShortcutBindings.useMutation({
     onSuccess: (data, variables) => {
       if (!data.success) {
         toast.error(t(data.error.key, data.error.params));
-        const cached = utils.settings.getShortcuts.getData();
-        if (cached) {
-          setPushToTalkShortcut(cached.pushToTalk);
-          setToggleRecordingShortcut(cached.toggleRecording);
-          setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
-          setNewNoteShortcut(cached.newNote);
-          setDraftModeShortcut(cached.draftMode);
-        } else {
-          utils.settings.getShortcuts.invalidate();
-        }
+        restoreCachedShortcuts();
         return;
       }
 
@@ -95,67 +177,25 @@ export function ShortcutsSettingsPage() {
     onError: (error) => {
       console.error(error);
       toast.error(t("errors.generic"));
-      const cached = utils.settings.getShortcuts.getData();
-      if (cached) {
-        setPushToTalkShortcut(cached.pushToTalk);
-        setToggleRecordingShortcut(cached.toggleRecording);
-        setPasteLastTranscriptShortcut(cached.pasteLastTranscript);
-        setNewNoteShortcut(cached.newNote);
-        setDraftModeShortcut(cached.draftMode);
-      } else {
-        utils.settings.getShortcuts.invalidate();
-      }
+      restoreCachedShortcuts();
     },
   });
 
   // Load shortcuts when query data is available
   useEffect(() => {
     if (shortcutsQuery.data) {
-      setPushToTalkShortcut(shortcutsQuery.data.pushToTalk);
-      setToggleRecordingShortcut(shortcutsQuery.data.toggleRecording);
-      setPasteLastTranscriptShortcut(shortcutsQuery.data.pasteLastTranscript);
-      setNewNoteShortcut(shortcutsQuery.data.newNote);
-      setDraftModeShortcut(shortcutsQuery.data.draftMode);
+      setShortcuts(shortcutsQuery.data);
     }
   }, [shortcutsQuery.data]);
 
-  const handlePushToTalkChange = (shortcut: number[]) => {
-    setPushToTalkShortcut(shortcut);
+  const handleBindingsChange = (
+    type: ShortcutType,
+    bindings: ShortcutBindings,
+  ) => {
+    setShortcuts((current) => ({ ...current, [type]: bindings }));
     setShortcutMutation.mutate({
-      type: "pushToTalk",
-      shortcut: shortcut,
-    });
-  };
-
-  const handleToggleRecordingChange = (shortcut: number[]) => {
-    setToggleRecordingShortcut(shortcut);
-    setShortcutMutation.mutate({
-      type: "toggleRecording",
-      shortcut: shortcut,
-    });
-  };
-
-  const handlePasteLastTranscriptChange = (shortcut: number[]) => {
-    setPasteLastTranscriptShortcut(shortcut);
-    setShortcutMutation.mutate({
-      type: "pasteLastTranscript",
-      shortcut: shortcut,
-    });
-  };
-
-  const handleNewNoteChange = (shortcut: number[]) => {
-    setNewNoteShortcut(shortcut);
-    setShortcutMutation.mutate({
-      type: "newNote",
-      shortcut: shortcut,
-    });
-  };
-
-  const handleDraftModeChange = (shortcut: number[]) => {
-    setDraftModeShortcut(shortcut);
-    setShortcutMutation.mutate({
-      type: "draftMode",
-      shortcut: shortcut,
+      type,
+      bindings,
     });
   };
 
@@ -181,17 +221,15 @@ export function ShortcutsSettingsPage() {
                     {t("settings.shortcuts.pushToTalk.description")}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 items-end min-w-[260px]">
-                  <ShortcutInput
-                    value={pushToTalkShortcut}
-                    onChange={handlePushToTalkChange}
-                    isRecordingShortcut={recordingShortcut === "pushToTalk"}
-                    onRecordingShortcutChange={(recording) =>
-                      setRecordingShortcut(recording ? "pushToTalk" : null)
-                    }
-                    allowUnassign={canUnassignShortcut("pushToTalk")}
-                  />
-                </div>
+                <ShortcutBindingsEditor
+                  type="pushToTalk"
+                  bindings={shortcuts.pushToTalk}
+                  recordingBinding={recordingBinding}
+                  onRecordingBindingChange={setRecordingBinding}
+                  onChange={(bindings) =>
+                    handleBindingsChange("pushToTalk", bindings)
+                  }
+                />
               </div>
               <Separator className="my-4" />
             </div>
@@ -206,19 +244,15 @@ export function ShortcutsSettingsPage() {
                     {t("settings.shortcuts.handsFree.description")}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 items-end min-w-[260px]">
-                  <ShortcutInput
-                    value={toggleRecordingShortcut}
-                    onChange={handleToggleRecordingChange}
-                    isRecordingShortcut={
-                      recordingShortcut === "toggleRecording"
-                    }
-                    onRecordingShortcutChange={(recording) =>
-                      setRecordingShortcut(recording ? "toggleRecording" : null)
-                    }
-                    allowUnassign={canUnassignShortcut("toggleRecording")}
-                  />
-                </div>
+                <ShortcutBindingsEditor
+                  type="toggleRecording"
+                  bindings={shortcuts.toggleRecording}
+                  recordingBinding={recordingBinding}
+                  onRecordingBindingChange={setRecordingBinding}
+                  onChange={(bindings) =>
+                    handleBindingsChange("toggleRecording", bindings)
+                  }
+                />
               </div>
             </div>
 
@@ -233,21 +267,15 @@ export function ShortcutsSettingsPage() {
                     {t("settings.shortcuts.pasteLastTranscript.description")}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 items-end min-w-[260px]">
-                  <ShortcutInput
-                    value={pasteLastTranscriptShortcut}
-                    onChange={handlePasteLastTranscriptChange}
-                    isRecordingShortcut={
-                      recordingShortcut === "pasteLastTranscript"
-                    }
-                    onRecordingShortcutChange={(recording) =>
-                      setRecordingShortcut(
-                        recording ? "pasteLastTranscript" : null,
-                      )
-                    }
-                    allowUnassign={canUnassignShortcut("pasteLastTranscript")}
-                  />
-                </div>
+                <ShortcutBindingsEditor
+                  type="pasteLastTranscript"
+                  bindings={shortcuts.pasteLastTranscript}
+                  recordingBinding={recordingBinding}
+                  onRecordingBindingChange={setRecordingBinding}
+                  onChange={(bindings) =>
+                    handleBindingsChange("pasteLastTranscript", bindings)
+                  }
+                />
               </div>
             </div>
 
@@ -262,17 +290,15 @@ export function ShortcutsSettingsPage() {
                     {t("settings.shortcuts.newNote.description")}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 items-end min-w-[260px]">
-                  <ShortcutInput
-                    value={newNoteShortcut}
-                    onChange={handleNewNoteChange}
-                    isRecordingShortcut={recordingShortcut === "newNote"}
-                    onRecordingShortcutChange={(recording) =>
-                      setRecordingShortcut(recording ? "newNote" : null)
-                    }
-                    allowUnassign={canUnassignShortcut("newNote")}
-                  />
-                </div>
+                <ShortcutBindingsEditor
+                  type="newNote"
+                  bindings={shortcuts.newNote}
+                  recordingBinding={recordingBinding}
+                  onRecordingBindingChange={setRecordingBinding}
+                  onChange={(bindings) =>
+                    handleBindingsChange("newNote", bindings)
+                  }
+                />
               </div>
             </div>
 
@@ -293,17 +319,15 @@ export function ShortcutsSettingsPage() {
                     {t("settings.shortcuts.draft.description")}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 items-end min-w-[260px]">
-                  <ShortcutInput
-                    value={draftModeShortcut}
-                    onChange={handleDraftModeChange}
-                    isRecordingShortcut={recordingShortcut === "draftMode"}
-                    onRecordingShortcutChange={(recording) =>
-                      setRecordingShortcut(recording ? "draftMode" : null)
-                    }
-                    allowUnassign={canUnassignShortcut("draftMode")}
-                  />
-                </div>
+                <ShortcutBindingsEditor
+                  type="draftMode"
+                  bindings={shortcuts.draftMode}
+                  recordingBinding={recordingBinding}
+                  onRecordingBindingChange={setRecordingBinding}
+                  onChange={(bindings) =>
+                    handleBindingsChange("draftMode", bindings)
+                  }
+                />
               </div>
             </div>
           </CardContent>

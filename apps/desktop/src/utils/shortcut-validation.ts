@@ -22,14 +22,18 @@ export type ShortcutType =
   | "newNote"
   | "draftMode";
 
+export type ShortcutChord = number[];
+export type ShortcutBindings = ShortcutChord[];
+export type ShortcutsConfig = Record<ShortcutType, ShortcutBindings>;
+
 export function canUnassignShortcut(type: ShortcutType): boolean {
   return type !== "pushToTalk";
 }
 
 export interface ValidationContext {
-  candidateShortcut: number[];
+  candidateBindings: ShortcutBindings;
   candidateType: ShortcutType;
-  shortcutsByType: Record<ShortcutType, number[]>;
+  shortcutsByType: ShortcutsConfig;
   platform: NodeJS.Platform;
 }
 
@@ -89,7 +93,7 @@ export function checkMaxKeysLength(keys: number[]): ValidationResult {
 }
 
 /**
- * Check if the shortcut is already assigned to another action
+ * Check if the shortcut is already assigned
  */
 export function checkDuplicateShortcut(
   currentKeys: number[],
@@ -206,86 +210,89 @@ export function checkDuplicateModifierPairs(
 export function checkSubsetConflict(
   candidateShortcut: number[],
   candidateType: ShortcutType,
-  shortcutsByType: Record<ShortcutType, number[]>,
+  shortcutsByType: ShortcutsConfig,
 ): ValidationResult {
   if (candidateType !== "toggleRecording") return { valid: true };
 
-  const pushToTalkKeys = shortcutsByType.pushToTalk ?? [];
-  if (pushToTalkKeys.length === 0 || candidateShortcut.length === 0)
+  if (shortcutsByType.pushToTalk.length === 0 || candidateShortcut.length === 0)
     return { valid: true };
 
   const toggleNormalized = normalizeKeys(candidateShortcut);
-  const pttNormalized = normalizeKeys(pushToTalkKeys);
+  for (const pushToTalkKeys of shortcutsByType.pushToTalk) {
+    const pttNormalized = normalizeKeys(pushToTalkKeys);
+    const isSubset = toggleNormalized.every((key) =>
+      pttNormalized.some((pttKey) => pttKey === key),
+    );
 
-  // Check if toggle shortcut is a subset of PTT shortcut
-  const isSubset = toggleNormalized.every((key) =>
-    pttNormalized.some((pttKey) => pttKey === key),
-  );
-
-  if (isSubset && toggleNormalized.length < pttNormalized.length) {
-    return {
-      valid: true, // Still valid, just warning
-      warning: { key: "settings.shortcuts.validation.overlapsWithPushToTalk" },
-    };
+    if (isSubset && toggleNormalized.length < pttNormalized.length) {
+      return {
+        valid: true,
+        warning: {
+          key: "settings.shortcuts.validation.overlapsWithPushToTalk",
+        },
+      };
+    }
   }
 
   return { valid: true };
 }
 
 /**
- * Run all validation checks in order
- * Returns first error found, or warning if all pass
+ * Validate the complete replacement binding list for one action. The proposed
+ * list is checked atomically so duplicates within the same action are caught
+ * alongside conflicts with every other action.
  */
-export function validateShortcutComprehensive(
+export function validateShortcutBindings(
   context: ValidationContext,
 ): ValidationResult {
-  const { candidateShortcut, candidateType, shortcutsByType, platform } =
+  const { candidateBindings, candidateType, shortcutsByType, platform } =
     context;
 
-  // An empty chord intentionally means "unassigned" for optional shortcuts.
-  // Push-to-talk remains required, and the recorder still rejects no input.
-  if (candidateShortcut.length === 0) {
+  // An empty binding list intentionally means "unassigned" for optional
+  // actions. Push-to-talk remains required.
+  if (candidateBindings.length === 0) {
     return canUnassignShortcut(candidateType)
       ? { valid: true }
-      : checkMaxKeysLength(candidateShortcut);
+      : checkMaxKeysLength([]);
   }
 
-  const otherShortcuts = Object.entries(shortcutsByType)
-    .filter(([shortcutType]) => shortcutType !== candidateType)
-    .map(([, shortcutKeys]) => shortcutKeys);
+  const proposedShortcuts = {
+    ...shortcutsByType,
+    [candidateType]: candidateBindings,
+  };
+  let warning: I18nMessage | undefined;
 
-  // 1. Max keys length check
-  const maxKeysCheck = checkMaxKeysLength(candidateShortcut);
-  if (!maxKeysCheck.valid) return maxKeysCheck;
-
-  // 2. Duplicate shortcut check
-  const duplicateCheck = checkDuplicateShortcut(
+  for (const [
+    candidateIndex,
     candidateShortcut,
-    otherShortcuts,
-  );
-  if (!duplicateCheck.valid) return duplicateCheck;
+  ] of candidateBindings.entries()) {
+    const otherShortcuts = Object.entries(proposedShortcuts).flatMap(
+      ([shortcutType, bindings]) =>
+        bindings.filter(
+          (_, bindingIndex) =>
+            shortcutType !== candidateType || bindingIndex !== candidateIndex,
+        ),
+    );
 
-  // 3. Reserved shortcut check
-  const reservedCheck = checkReservedShortcut(candidateShortcut, platform);
-  if (!reservedCheck.valid) return reservedCheck;
+    const checks = [
+      checkMaxKeysLength(candidateShortcut),
+      checkDuplicateShortcut(candidateShortcut, otherShortcuts),
+      checkReservedShortcut(candidateShortcut, platform),
+      checkAlphanumericOnly(candidateShortcut, platform),
+      checkDuplicateModifierPairs(candidateShortcut, platform),
+    ];
+    const error = checks.find((result) => !result.valid);
+    if (error) return error;
 
-  // 4. Alphanumeric-only check
-  const alphaCheck = checkAlphanumericOnly(candidateShortcut, platform);
-  if (!alphaCheck.valid) return alphaCheck;
-
-  // 5. Duplicate modifier pair check (Windows only)
-  const pairCheck = checkDuplicateModifierPairs(candidateShortcut, platform);
-  if (!pairCheck.valid) return pairCheck;
-
-  // 6. Subset conflict check (soft warning - returns valid:true with warning)
-  const subsetCheck = checkSubsetConflict(
-    candidateShortcut,
-    candidateType,
-    shortcutsByType,
-  );
+    warning ??= checkSubsetConflict(
+      candidateShortcut,
+      candidateType,
+      proposedShortcuts,
+    ).warning;
+  }
 
   return {
     valid: true,
-    warning: subsetCheck.warning,
+    warning,
   };
 }

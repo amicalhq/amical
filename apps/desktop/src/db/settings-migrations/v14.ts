@@ -1,6 +1,9 @@
-import type { AppSettingsData } from "../schema";
 import { isMacOS } from "../../utils/platform";
 import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../../utils/keycodes";
+import type {
+  AppSettingsDataBeforeV15,
+  ShortcutSettingsBeforeV15,
+} from "./legacy-shortcuts";
 
 // v13 -> v14: introduce the draft hotkey (UI: "Draft"; the wire preset stays
 // "instruct"). This single migration folds the two concerns that ship as a
@@ -14,9 +17,9 @@ import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../../utils/keycodes";
 //      modifier-only (a non-modifier key would be swallowed by the subset
 //      consume rule). Skipped when that chord is already bound to another
 //      shortcut, so we never silently shadow an existing binding.
-export function migrateToV14(data: unknown): AppSettingsData {
-  const oldData = data as AppSettingsData & {
-    shortcuts?: { instructMode?: number[] };
+export function migrateToV14(data: unknown): AppSettingsDataBeforeV15 {
+  const oldData = data as AppSettingsDataBeforeV15 & {
+    shortcuts?: ShortcutSettingsBeforeV15 & { instructMode?: number[] };
   };
 
   if (!oldData.shortcuts) {
