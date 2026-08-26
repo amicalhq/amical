@@ -100,6 +100,9 @@ jobs:
           GGML_NATIVE: OFF
         run: pnpm install --frozen-lockfile
 
+      - name: Generate native helper models
+        run: pnpm --filter @amical/types generate:all
+
       - name: Smoke test Windows native dependencies
         if: matrix.os == 'windows'
         working-directory: apps/desktop
@@ -108,6 +111,10 @@ jobs:
       - name: Test Windows helper
         if: matrix.os == 'windows'
         run: dotnet test packages/native-helpers/windows-helper-tests/WindowsHelper.Tests.csproj -c Release --arch ${{ matrix.arch }} -- RunConfiguration.TreatNoTestsAsError=true
+
+      - name: Test Swift helper
+        if: matrix.os == 'macos'
+        run: swift test --package-path packages/native-helpers/swift-helper
 
       - name: Build whisper wrapper JS
         run: pnpm --filter @amical/whisper-wrapper build

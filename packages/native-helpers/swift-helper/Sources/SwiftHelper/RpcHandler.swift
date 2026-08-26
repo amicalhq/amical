@@ -8,9 +8,62 @@ struct FlexibleRPCRequest: Codable {
     let params: JSONAny?
 }
 
+enum RPCDispatchFailure: Swift.Error {
+    case invalidParams(data: Data?, message: String)
+    case internalError(data: Data?, message: String)
+
+    var code: Int {
+        switch self {
+        case .invalidParams:
+            return -32602
+        case .internalError:
+            return -32603
+        }
+    }
+
+    var data: Data? {
+        switch self {
+        case .invalidParams(let data, _), .internalError(let data, _):
+            return data
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .invalidParams(_, let message), .internalError(_, let message):
+            return message
+        }
+    }
+}
+
+enum RPCResponseExecutor {
+    static func execute(
+        id: String,
+        operation: () async throws -> JSONAny?
+    ) async -> RPCResponseSchema {
+        do {
+            return RPCResponseSchema(error: nil, id: id, result: try await operation())
+        } catch let failure as RPCDispatchFailure {
+            let error = Error(
+                code: failure.code,
+                data: failure.data.flatMap {
+                    try? JSONDecoder().decode(JSONAny.self, from: $0)
+                },
+                message: failure.message
+            )
+            return RPCResponseSchema(error: error, id: id, result: nil)
+        } catch {
+            let payload = Error(
+                code: -32603,
+                data: nil,
+                message: "Internal error: \(error.localizedDescription)"
+            )
+            return RPCResponseSchema(error: payload, id: id, result: nil)
+        }
+    }
+}
+
 class IOBridge: NSObject {
-    let jsonEncoder: JSONEncoder
-    let jsonDecoder: JSONDecoder
     private let accessibilityService: AccessibilityService
     private let audioService: AudioService
     // Copy capture polls the pasteboard for up to the capture timeout; it
@@ -18,9 +71,7 @@ class IOBridge: NSObject {
     // blocking AccessibilityQueue (and the AX context requests behind it).
     private let copyCaptureQueue = DispatchQueue(label: "com.amical.helper.copy-capture")
 
-    init(jsonEncoder: JSONEncoder, jsonDecoder: JSONDecoder) {
-        self.jsonEncoder = jsonEncoder
-        self.jsonDecoder = jsonDecoder
+    override init() {
         self.accessibilityService = AccessibilityService()
         self.audioService = AudioService()  // Audio preloaded here at startup
         super.init()
@@ -30,350 +81,332 @@ class IOBridge: NSObject {
         HelperLogger.logToStderr(message)
     }
 
-    // Handles a single RPC Request
-    func handleRpcRequest(_ request: RPCRequestSchema) {
-        var rpcResponse: RPCResponseSchema
+    func handleRpcRequest(_ request: RPCRequestSchema) async {
+        let response = await RPCResponseExecutor.execute(id: request.id) { [self] in
+            try await dispatchRpcRequest(request)
+        }
+        sendRpcResponse(response)
+    }
 
+    private func dispatchRpcRequest(_ request: RPCRequestSchema) async throws -> JSONAny? {
         switch request.method {
         case .getAccessibilityTreeDetails:
-            // Process accessibility tree requests on dedicated thread
-            AccessibilityQueue.shared.async { [weak self] in
-                guard let self = self else { return }
-                self.handleAccessibilityTreeDetails(request)
-            }
-            return
+            return try encodeResult(try await handleAccessibilityTreeDetails(request))
 
         case .getAccessibilityContext:
-            // Process accessibility context requests on dedicated thread (uses v2 service)
-            AccessibilityQueue.shared.async { [weak self] in
-                guard let self = self else { return }
-                self.handleGetAccessibilityContext(id: request.id, params: request.params)
-            }
-            return
+            return try encodeResult(
+                try await handleGetAccessibilityContext(params: request.params))
 
         case .getAccessibilityStatus:
-            handleGetAccessibilityStatus(id: request.id)
-            return
+            logToStderr("[IOBridge] Handling getAccessibilityStatus for ID: \(request.id)")
+            return try encodeResult(AccessibilityContextService.getAccessibilityStatus())
 
         case .requestAccessibilityPermission:
-            handleRequestAccessibilityPermission(id: request.id)
-            return
+            logToStderr(
+                "[IOBridge] Handling requestAccessibilityPermission for ID: \(request.id)")
+            return try encodeResult(AccessibilityContextService.requestAccessibilityPermission())
 
         case .pasteText:
-            logToStderr("[IOBridge] Handling pasteText for ID: \(request.id)")
-            guard let paramsAnyCodable = request.params else {
-                let errPayload = Error(
-                    code: -32602, data: nil, message: "Missing params for pasteText")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-                sendRpcResponse(rpcResponse)
-                return
-            }
-
-            do {
-                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                // Corrected to use generated Swift model name from models.swift
-                let pasteParams = try jsonDecoder.decode(
-                    PasteTextParamsSchema.self, from: paramsData)
-                logToStderr("[IOBridge] Decoded pasteParams.transcript for ID: \(request.id)")
-
-                // Call the actual paste function (to be implemented in AccessibilityService or similar)
-                let preserveClipboard = pasteParams.preserveClipboard ?? true
-                let success = accessibilityService.pasteText(transcript: pasteParams.transcript, preserveClipboard: preserveClipboard)
-
-                // Corrected to use generated Swift model name from models.swift
-                let resultPayload = PasteTextResultSchema(
-                    message: success ? "Pasted successfully" : "Paste failed", success: success)
-                let resultData = try jsonEncoder.encode(resultPayload)
-                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-
-            } catch {
-                logToStderr(
-                    "[IOBridge] Error processing pasteText params or operation: \(error.localizedDescription) for ID: \(request.id)"
-                )
-                let errPayload = Error(
-                    code: -32602, data: request.params,
-                    message: "Invalid params or error during paste: \(error.localizedDescription)")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            }
+            return try encodeResult(try await handlePasteText(request))
 
         case .startRecording:
-            logToStderr("[IOBridge] Handling startRecording for ID: \(request.id)")
-
-            // Parse params to get muteSystemAudio and muteSounds flags
-            var shouldMute = false
-            var muteSounds = false
-            if let paramsAnyCodable = request.params {
-                do {
-                    let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                    let startParams = try jsonDecoder.decode(
-                        StartRecordingParamsSchema.self, from: paramsData)
-                    shouldMute = startParams.muteSystemAudio
-                    muteSounds = startParams.muteSounds ?? false
-                } catch {
-                    logToStderr(
-                        "[IOBridge] Error decoding startRecording params: \(error.localizedDescription) for ID: \(request.id)"
-                    )
-                }
-            }
-
-            // Helper to send startRecording response after optional sound + mute
-            let sendStartResponse: (Bool) -> Void = { [weak self] muteSuccess in
-                guard let self = self else { return }
-                let resultPayload = StartRecordingResultSchema(
-                    message: muteSuccess ? "Recording started" : "Failed to mute system audio",
-                    success: muteSuccess)
-
-                var responseToSend: RPCResponseSchema
-                do {
-                    let resultData = try self.jsonEncoder.encode(resultPayload)
-                    let resultAsJsonAny = try self.jsonDecoder.decode(
-                        JSONAny.self, from: resultData)
-                    responseToSend = RPCResponseSchema(
-                        error: nil, id: request.id, result: resultAsJsonAny)
-                } catch {
-                    self.logToStderr(
-                        "[IOBridge] Error encoding startRecording result: \(error.localizedDescription) for ID: \(request.id)"
-                    )
-                    let errPayload = Error(
-                        code: -32603, data: nil,
-                        message: "Error encoding result: \(error.localizedDescription)")
-                    responseToSend = RPCResponseSchema(
-                        error: errPayload, id: request.id, result: nil)
-                }
-                self.sendRpcResponse(responseToSend)
-            }
-
-            if muteSounds {
-                // Skip sound, mute system audio immediately if needed
-                var success = true
-                if shouldMute {
-                    logToStderr("[IOBridge] Sounds muted. Proceeding to mute system audio directly. ID: \(request.id)")
-                    success = accessibilityService.muteSystemAudio()
-                } else {
-                    logToStderr("[IOBridge] Sounds muted. No system audio mute needed. ID: \(request.id)")
-                }
-                sendStartResponse(success)
-            } else {
-                // Play rec-start sound; conditionally mute in completion handler
-                audioService.playSound(named: "rec-start") { [weak self] in
-                    guard let self = self else {
-                        HelperLogger.logToStderr(
-                            "[IOBridge] self is nil in playSound completion for startRecording. ID: \(request.id)"
-                        )
-                        return
-                    }
-
-                    var success = true
-                    if shouldMute {
-                        self.logToStderr(
-                            "[IOBridge] rec-start.mp3 finished playing. Proceeding to mute system audio. ID: \(request.id)"
-                        )
-                        success = self.accessibilityService.muteSystemAudio()
-                    } else {
-                        self.logToStderr(
-                            "[IOBridge] rec-start.mp3 finished playing. Mute skipped by preference. ID: \(request.id)"
-                        )
-                    }
-                    sendStartResponse(success)
-                }
-            }
-            return
+            return try encodeResult(try await handleStartRecording(request))
 
         case .stopRecording:
-            logToStderr("[IOBridge] Handling stopRecording for ID: \(request.id)")
+            return try encodeResult(try handleStopRecording(request))
 
-            // Parse params to get wasMuted and muteSounds flags
-            var wasMuted = false
-            var muteSounds = false
-            if let paramsAnyCodable = request.params {
+        case .setShortcuts:
+            return try encodeResult(try handleSetShortcuts(request))
+
+        case .setDraftEnterCapture:
+            return try encodeResult(try handleSetDraftEnterCapture(request))
+
+        case .setAllowInjectedKeys:
+            return try encodeResult(try handleSetAllowInjectedKeys(request))
+
+        case .recheckPressedKeys:
+            return try encodeResult(try handleRecheckPressedKeys(request))
+
+        case .getSelectedTextViaCopy:
+            return try encodeResult(try await handleGetSelectedTextViaCopy(request))
+
+        }
+    }
+
+    private func handleAccessibilityTreeDetails(
+        _ request: RPCRequestSchema
+    ) async throws -> GetAccessibilityTreeDetailsResultSchema {
+        logToStderr("[IOBridge] Handling getAccessibilityTreeDetails for ID: \(request.id)")
+        let params: GetAccessibilityTreeDetailsParamsSchema? = try decodeOptionalParams(
+            request.params,
+            method: "getAccessibilityTreeDetails"
+        )
+
+        return try await AccessibilityQueue.shared.perform { [self] in
+            switch ExceptionCatcher.try({
+                self.accessibilityService.fetchFullAccessibilityTree(rootId: params?.rootID)
+            }) {
+            case .success(let tree):
+                var treeAsJSON: JSONAny?
+                if let tree {
+                    treeAsJSON = try self.encodeResult(tree)
+                }
+                return GetAccessibilityTreeDetailsResultSchema(tree: treeAsJSON)
+
+            case .exception(let exception):
+                throw RPCDispatchFailure.internalError(
+                    data: self.exceptionData(exception),
+                    message: "\(exception.name): \(exception.reason)"
+                )
+            }
+        }
+    }
+
+    private func handleGetAccessibilityContext(
+        params: JSONAny?
+    ) async throws -> GetAccessibilityContextResult {
+        logToStderr("[IOBridge] Handling getAccessibilityContext")
+        let decoded: GetAccessibilityContextParams? = try decodeOptionalParams(
+            params,
+            method: "getAccessibilityContext"
+        )
+        let editableOnly = decoded?.editableOnly ?? false
+
+        return try await AccessibilityQueue.shared.perform {
+            switch ExceptionCatcher.try({
+                AccessibilityContextService.getAccessibilityContext(editableOnly: editableOnly)
+            }) {
+            case .success(let context):
+                return GetAccessibilityContextResult(context: context)
+
+            case .exception(let exception):
+                throw RPCDispatchFailure.internalError(
+                    data: nil,
+                    message: "\(exception.name): \(exception.reason)"
+                )
+            }
+        }
+    }
+
+    private func handlePasteText(
+        _ request: RPCRequestSchema
+    ) async throws -> PasteTextResultSchema {
+        logToStderr("[IOBridge] Handling pasteText for ID: \(request.id)")
+        let params: PasteTextParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "pasteText"
+        )
+
+        return try await performOnCopyCaptureQueue { [self] in
+            let preserveClipboard = params.preserveClipboard ?? true
+            let success = accessibilityService.pasteText(
+                transcript: params.transcript,
+                preserveClipboard: preserveClipboard
+            )
+            return PasteTextResultSchema(
+                message: success ? "Pasted successfully" : "Paste failed",
+                success: success
+            )
+        }
+    }
+
+    private func handleStartRecording(
+        _ request: RPCRequestSchema
+    ) async throws -> StartRecordingResultSchema {
+        logToStderr("[IOBridge] Handling startRecording for ID: \(request.id)")
+        let params: StartRecordingParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "startRecording"
+        )
+
+        if params.muteSounds != true {
+            try await audioService.playSound(named: "rec-start")
+        }
+
+        var success = true
+        if params.muteSystemAudio {
+            success = accessibilityService.muteSystemAudio()
+        }
+
+        return StartRecordingResultSchema(
+            message: success ? "Recording started" : "Failed to mute system audio",
+            success: success
+        )
+    }
+
+    private func handleStopRecording(
+        _ request: RPCRequestSchema
+    ) throws -> StopRecordingResultSchema {
+        logToStderr("[IOBridge] Handling stopRecording for ID: \(request.id)")
+        let params: StopRecordingParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "stopRecording"
+        )
+
+        var success = true
+        if params.wasMuted {
+            success = accessibilityService.restoreSystemAudio()
+        }
+
+        if params.muteSounds != true {
+            Task { [audioService] in
                 do {
-                    let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                    let stopParams = try jsonDecoder.decode(
-                        StopRecordingParamsSchema.self, from: paramsData)
-                    wasMuted = stopParams.wasMuted
-                    muteSounds = stopParams.muteSounds ?? false
+                    try await audioService.playSound(named: "rec-stop")
                 } catch {
-                    logToStderr(
-                        "[IOBridge] Error decoding stopRecording params: \(error.localizedDescription) for ID: \(request.id)"
+                    HelperLogger.logToStderr(
+                        "[IOBridge] Error playing rec-stop: \(error.localizedDescription)"
                     )
                 }
             }
-
-            // Conditionally restore system audio
-            var success = true
-            if wasMuted {
-                success = accessibilityService.restoreSystemAudio()
-            }
-
-            // Play rec-stop sound unless muted (fire-and-forget)
-            if !muteSounds {
-                audioService.playSound(named: "rec-stop")
-            }
-
-            let resultPayload = StopRecordingResultSchema(
-                message: success ? "Recording stopped" : "Failed to restore system audio",
-                success: success)
-
-            do {
-                let resultData = try jsonEncoder.encode(resultPayload)
-                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-            } catch {
-                logToStderr(
-                    "[IOBridge] Error encoding stopRecording result: \(error.localizedDescription) for ID: \(request.id)"
-                )
-                let errPayload = Error(
-                    code: -32603, data: nil,
-                    message: "Error encoding result: \(error.localizedDescription)")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            }
-
-        case .setShortcuts:
-            logToStderr("[IOBridge] Handling setShortcuts for ID: \(request.id)")
-            guard let paramsAnyCodable = request.params else {
-                let errPayload = Error(
-                    code: -32602, data: nil, message: "Missing params for setShortcuts")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-                sendRpcResponse(rpcResponse)
-                return
-            }
-
-            do {
-                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                let shortcutsParams = try jsonDecoder.decode(
-                    SetShortcutsParamsSchema.self, from: paramsData)
-
-                // Update the ShortcutManager with the new shortcuts
-                ShortcutManager.shared.setShortcuts(
-                    subsetChords: shortcutsParams.subsetChords,
-                    exactChords: shortcutsParams.exactChords
-                )
-
-                let resultPayload = SetShortcutsResultSchema(success: true)
-                let resultData = try jsonEncoder.encode(resultPayload)
-                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-
-            } catch {
-                logToStderr(
-                    "[IOBridge] Error processing setShortcuts params: \(error.localizedDescription) for ID: \(request.id)"
-                )
-                let errPayload = Error(
-                    code: -32602, data: request.params,
-                    message: "Invalid params: \(error.localizedDescription)")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            }
-
-        case .setDraftEnterCapture:
-            logToStderr("[IOBridge] Handling setDraftEnterCapture for ID: \(request.id)")
-            guard let paramsAnyCodable = request.params else {
-                let errPayload = Error(
-                    code: -32602, data: nil, message: "Missing params for setDraftEnterCapture")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-                sendRpcResponse(rpcResponse)
-                return
-            }
-
-            do {
-                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                let captureParams = try jsonDecoder.decode(
-                    SetDraftEnterCaptureParamsSchema.self, from: paramsData)
-
-                ShortcutManager.shared.setDraftEnterCapture(captureParams.enabled)
-
-                let resultPayload = SetDraftEnterCaptureResultSchema(success: true)
-                let resultData = try jsonEncoder.encode(resultPayload)
-                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-
-            } catch {
-                logToStderr(
-                    "[IOBridge] Error processing setDraftEnterCapture params: \(error.localizedDescription) for ID: \(request.id)"
-                )
-                let errPayload = Error(
-                    code: -32602, data: request.params,
-                    message: "Invalid params: \(error.localizedDescription)")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            }
-
-        case .setAllowInjectedKeys:
-            // Windows-only behavior: the injected-key filter lives in the Windows
-            // helper's low-level hook. macOS accepts this call and no-ops so the
-            // desktop can push the setting uniformly to whichever helper is running.
-            logToStderr(
-                "[IOBridge] Handling setAllowInjectedKeys (no-op on macOS) for ID: \(request.id)")
-            do {
-                let resultPayload = SetAllowInjectedKeysResultSchema(success: true)
-                let resultData = try jsonEncoder.encode(resultPayload)
-                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-            } catch {
-                logToStderr(
-                    "[IOBridge] Error encoding setAllowInjectedKeys result: \(error.localizedDescription) for ID: \(request.id)"
-                )
-                let errPayload = Error(
-                    code: -32603, data: nil,
-                    message: "Error encoding result: \(error.localizedDescription)")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            }
-
-        case .recheckPressedKeys:
-            logToStderr("[IOBridge] Handling recheckPressedKeys for ID: \(request.id)")
-            guard let paramsAnyCodable = request.params else {
-                let errPayload = Error(
-                    code: -32602, data: nil, message: "Missing params for recheckPressedKeys")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-                sendRpcResponse(rpcResponse)
-                return
-            }
-
-            do {
-                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                let recheckParams = try jsonDecoder.decode(
-                    RecheckPressedKeysParamsSchema.self, from: paramsData)
-
-                let staleKeyCodes = ShortcutManager.shared.getStalePressedKeyCodes(
-                    recheckParams.pressedKeyCodes
-                )
-
-                let resultPayload = RecheckPressedKeysResultSchema(
-                    staleKeyCodes: staleKeyCodes)
-                let resultData = try jsonEncoder.encode(resultPayload)
-                let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-                rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-
-            } catch {
-                logToStderr(
-                    "[IOBridge] Error processing recheckPressedKeys params: \(error.localizedDescription) for ID: \(request.id)"
-                )
-                let errPayload = Error(
-                    code: -32602, data: request.params,
-                    message: "Invalid params: \(error.localizedDescription)")
-                rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            }
-
-        case .getSelectedTextViaCopy:
-            // Blocks up to the copy-capture timeout while polling the pasteboard,
-            // so run it off the IO thread (own queue — see copyCaptureQueue).
-            copyCaptureQueue.async { [weak self] in
-                guard let self = self else { return }
-                self.handleGetSelectedTextViaCopy(id: request.id)
-            }
-            return
-
-        default:
-            logToStderr("[IOBridge] Method not found: \(request.method) for ID: \(request.id)")
-            let errPayload = Error(
-                code: -32601, data: nil, message: "Method not found: \(request.method)")
-            rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
         }
-        sendRpcResponse(rpcResponse)
+
+        return StopRecordingResultSchema(
+            message: success ? "Recording stopped" : "Failed to restore system audio",
+            success: success
+        )
+    }
+
+    private func handleSetShortcuts(
+        _ request: RPCRequestSchema
+    ) throws -> SetShortcutsResultSchema {
+        logToStderr("[IOBridge] Handling setShortcuts for ID: \(request.id)")
+        let params: SetShortcutsParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "setShortcuts"
+        )
+        ShortcutManager.shared.setShortcuts(
+            subsetChords: params.subsetChords,
+            exactChords: params.exactChords
+        )
+        return SetShortcutsResultSchema(success: true)
+    }
+
+    private func handleSetDraftEnterCapture(
+        _ request: RPCRequestSchema
+    ) throws -> SetDraftEnterCaptureResultSchema {
+        logToStderr("[IOBridge] Handling setDraftEnterCapture for ID: \(request.id)")
+        let params: SetDraftEnterCaptureParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "setDraftEnterCapture"
+        )
+        ShortcutManager.shared.setDraftEnterCapture(params.enabled)
+        return SetDraftEnterCaptureResultSchema(success: true)
+    }
+
+    private func handleSetAllowInjectedKeys(
+        _ request: RPCRequestSchema
+    ) throws -> SetAllowInjectedKeysResultSchema {
+        logToStderr(
+            "[IOBridge] Handling setAllowInjectedKeys (no-op on macOS) for ID: \(request.id)")
+        let _: SetAllowInjectedKeysParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "setAllowInjectedKeys"
+        )
+        return SetAllowInjectedKeysResultSchema(success: true)
+    }
+
+    private func handleRecheckPressedKeys(
+        _ request: RPCRequestSchema
+    ) throws -> RecheckPressedKeysResultSchema {
+        logToStderr("[IOBridge] Handling recheckPressedKeys for ID: \(request.id)")
+        let params: RecheckPressedKeysParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "recheckPressedKeys"
+        )
+        let staleKeyCodes = ShortcutManager.shared.getStalePressedKeyCodes(
+            params.pressedKeyCodes
+        )
+        return RecheckPressedKeysResultSchema(staleKeyCodes: staleKeyCodes)
+    }
+
+    private func handleGetSelectedTextViaCopy(
+        _ request: RPCRequestSchema
+    ) async throws -> GetSelectedTextViaCopyResultSchema {
+        logToStderr("[IOBridge] Handling getSelectedTextViaCopy for ID: \(request.id)")
+        return try await performOnCopyCaptureQueue { [self] in
+            accessibilityService.getSelectedTextViaCopy()
+        }
+    }
+
+    private func decodeRequiredParams<T: Decodable>(
+        _ params: JSONAny?,
+        method: String
+    ) throws -> T {
+        guard let params else {
+            throw RPCDispatchFailure.invalidParams(
+                data: nil,
+                message: "Missing params for \(method)"
+            )
+        }
+        var payload: Data?
+        do {
+            let data = try JSONEncoder().encode(params)
+            payload = data
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw RPCDispatchFailure.invalidParams(
+                data: payload,
+                message: "Invalid params for \(method): \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func decodeOptionalParams<T: Decodable>(
+        _ params: JSONAny?,
+        method: String
+    ) throws -> T? {
+        guard let params else { return nil }
+        var payload: Data?
+        do {
+            let data = try JSONEncoder().encode(params)
+            payload = data
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw RPCDispatchFailure.invalidParams(
+                data: payload,
+                message: "Invalid params for \(method): \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func encodeResult<T: Encodable>(_ result: T) throws -> JSONAny {
+        do {
+            let data = try JSONEncoder().encode(result)
+            return try JSONDecoder().decode(JSONAny.self, from: data)
+        } catch {
+            throw RPCDispatchFailure.internalError(
+                data: nil,
+                message: "Error encoding result: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func performOnCopyCaptureQueue<T>(
+        _ operation: @escaping () throws -> T
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            copyCaptureQueue.async {
+                do {
+                    continuation.resume(returning: try operation())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func exceptionData(_ exception: CaughtException) -> Data? {
+        let payload: [String: Any] = [
+            "name": exception.name,
+            "reason": exception.reason,
+            "callStack": exception.callStack.prefix(10).joined(separator: "\n"),
+        ]
+        return try? JSONSerialization.data(withJSONObject: payload)
     }
 
     private func sendRpcResponse(_ response: RPCResponseSchema) {
         do {
-            let responseData = try jsonEncoder.encode(response)
+            let responseData = try JSONEncoder().encode(response)
             if let responseString = String(data: responseData, encoding: .utf8) {
                 logToStderr("[Swift Biz Logic] FINAL JSON RESPONSE to stdout: \(responseString)")
                 StdoutWriter.writeLine(responseString)
@@ -393,169 +426,19 @@ class IOBridge: NSObject {
             }
 
             do {
-                let rpcRequest = try jsonDecoder.decode(RPCRequestSchema.self, from: data)
+                let request = try JSONDecoder().decode(RPCRequestSchema.self, from: data)
                 logToStderr(
-                    "IOBridge: Received RPC Request ID \(rpcRequest.id), Method: \(rpcRequest.method)"
+                    "IOBridge: Received RPC Request ID \(request.id), Method: \(request.method)"
                 )
-                handleRpcRequest(rpcRequest)
+                Task(priority: .high) { [self] in
+                    await handleRpcRequest(request)
+                }
             } catch {
                 logToStderr(
                     "Error decoding RpcRequest from stdin: \(error.localizedDescription). Line: \(line)"
                 )
-                // Consider sending a parse error if ID can be extracted
             }
         }
         logToStderr("IOBridge: RPC request processing loop finished (stdin closed).")
     }
-
-    // MARK: - Async RPC Handlers
-
-    private func handleAccessibilityTreeDetails(_ request: RPCRequestSchema) {
-        var accessibilityParams: GetAccessibilityTreeDetailsParamsSchema? = nil
-        logToStderr("[IOBridge] Handling getAccessibilityTreeDetails for ID: \(request.id)")
-
-        if let paramsAnyCodable = request.params {
-            do {
-                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                accessibilityParams = try jsonDecoder.decode(
-                    GetAccessibilityTreeDetailsParamsSchema.self, from: paramsData)
-                logToStderr(
-                    "[IOBridge] Decoded accessibilityParams.rootID: \(accessibilityParams?.rootID ?? "nil") for ID: \(request.id)"
-                )
-            } catch {
-                logToStderr(
-                    "[IOBridge] Error decoding getAccessibilityTreeDetails params: \(error.localizedDescription)"
-                )
-                let errPayload = Error(
-                    code: -32602, data: request.params,
-                    message: "Invalid params: \(error.localizedDescription)")
-                let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-                sendRpcResponse(rpcResponse)
-                return
-            }
-        }
-
-        // Fetch REAL accessibility tree data using the service
-        switch ExceptionCatcher.try({
-            self.accessibilityService.fetchFullAccessibilityTree(rootId: accessibilityParams?.rootID)
-        }) {
-        case .success(let actualTreeData):
-            logToStderr("[IOBridge] Fetched actualTreeData. Is nil? \(actualTreeData == nil). For ID: \(request.id)")
-
-            var treeAsJsonAny: JSONAny? = nil
-            if let dataToEncode = actualTreeData {
-                do {
-                    let encodedData = try jsonEncoder.encode(dataToEncode)
-                    treeAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: encodedData)
-                } catch {
-                    logToStderr("[IOBridge] Error encoding actualTreeData: \(error.localizedDescription)")
-                }
-            }
-
-            let resultPayload = GetAccessibilityTreeDetailsResultSchema(tree: treeAsJsonAny)
-            var resultAsJsonAny: JSONAny? = nil
-            do {
-                let resultPayloadData = try jsonEncoder.encode(resultPayload)
-                resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultPayloadData)
-            } catch {
-                logToStderr("Error encoding result: \(error.localizedDescription)")
-            }
-            let rpcResponse = RPCResponseSchema(error: nil, id: request.id, result: resultAsJsonAny)
-            sendRpcResponse(rpcResponse)
-
-        case .exception(let exception):
-            logToStderr("[IOBridge] NSException in fetchFullAccessibilityTree: \(exception.name) - \(exception.reason)")
-            let exceptionData: [String: Any] = [
-                "name": exception.name,
-                "reason": exception.reason,
-                "callStack": exception.callStack.prefix(10).joined(separator: "\n")
-            ]
-            var exceptionJsonAny: JSONAny? = nil
-            if let jsonData = try? JSONSerialization.data(withJSONObject: exceptionData),
-               let decoded = try? jsonDecoder.decode(JSONAny.self, from: jsonData) {
-                exceptionJsonAny = decoded
-            }
-            let errPayload = Error(
-                code: -32603,
-                data: exceptionJsonAny,
-                message: "\(exception.name): \(exception.reason)"
-            )
-            let rpcResponse = RPCResponseSchema(error: errPayload, id: request.id, result: nil)
-            sendRpcResponse(rpcResponse)
-        }
-    }
-
-    // MARK: - Accessibility Handlers (using consolidated service)
-
-    private func handleGetAccessibilityContext(id: String, params: JSONAny?) {
-        logToStderr("[IOBridge] Handling getAccessibilityContext for ID: \(id)")
-
-        // Parse params (default editableOnly = false per spec)
-        var editableOnly = false
-        if let paramsAnyCodable = params {
-            do {
-                let paramsData = try jsonEncoder.encode(paramsAnyCodable)
-                let contextParams = try jsonDecoder.decode(GetAccessibilityContextParams.self, from: paramsData)
-                editableOnly = contextParams.editableOnly ?? false
-            } catch {
-                logToStderr("[IOBridge] Error decoding params: \(error.localizedDescription)")
-            }
-        }
-
-        // Call service with exception handling
-        switch ExceptionCatcher.try({
-            AccessibilityContextService.getAccessibilityContext(editableOnly: editableOnly)
-        }) {
-        case .success(let context):
-            logToStderr("[IOBridge] Retrieved context for ID: \(id)")
-            let result = GetAccessibilityContextResult(context: context)
-            sendResult(id: id, result: result)
-
-        case .exception(let exception):
-            logToStderr("[IOBridge] NSException in getAccessibilityContext: \(exception.name) - \(exception.reason)")
-            sendError(id: id, code: -32603, message: "\(exception.name): \(exception.reason)")
-        }
-    }
-
-    private func handleGetSelectedTextViaCopy(id: String) {
-        logToStderr("[IOBridge] Handling getSelectedTextViaCopy for ID: \(id)")
-
-        let result = accessibilityService.getSelectedTextViaCopy()
-        sendResult(id: id, result: result)
-    }
-
-    private func handleGetAccessibilityStatus(id: String) {
-        logToStderr("[IOBridge] Handling getAccessibilityStatus for ID: \(id)")
-
-        let result = AccessibilityContextService.getAccessibilityStatus()
-        sendResult(id: id, result: result)
-    }
-
-    private func handleRequestAccessibilityPermission(id: String) {
-        logToStderr("[IOBridge] Handling requestAccessibilityPermission for ID: \(id)")
-
-        let result = AccessibilityContextService.requestAccessibilityPermission()
-        sendResult(id: id, result: result)
-    }
-
-    // MARK: - Response Helpers
-
-    private func sendResult<T: Encodable>(id: String, result: T) {
-        do {
-            let resultData = try jsonEncoder.encode(result)
-            let resultAsJsonAny = try jsonDecoder.decode(JSONAny.self, from: resultData)
-            let rpcResponse = RPCResponseSchema(error: nil, id: id, result: resultAsJsonAny)
-            sendRpcResponse(rpcResponse)
-        } catch {
-            logToStderr("[IOBridge] Error encoding result: \(error.localizedDescription)")
-            sendError(id: id, code: -32603, message: "Error encoding result: \(error.localizedDescription)")
-        }
-    }
-
-    private func sendError(id: String, code: Int, message: String) {
-        let errPayload = Error(code: code, data: nil, message: message)
-        let rpcResponse = RPCResponseSchema(error: errPayload, id: id, result: nil)
-        sendRpcResponse(rpcResponse)
-    }
-
 }

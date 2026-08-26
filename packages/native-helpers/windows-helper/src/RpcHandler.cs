@@ -9,27 +9,91 @@ using WindowsHelper.Services;
 
 namespace WindowsHelper
 {
+    internal sealed class RpcDispatchException : Exception
+    {
+        internal long RpcCode { get; }
+        internal object? RpcData { get; }
+
+        internal RpcDispatchException(long code, string message, object? data = null)
+            : base(message)
+        {
+            RpcCode = code;
+            RpcData = data;
+        }
+    }
+
+    internal static class RpcResponseExecutor
+    {
+        internal static async Task<string> ExecuteAsync(
+            string id,
+            Func<Task<object?>> operation,
+            JsonSerializerOptions jsonOptions)
+        {
+            RpcResponse response;
+            try
+            {
+                response = new RpcResponse
+                {
+                    Id = id,
+                    Result = await operation()
+                };
+            }
+            catch (RpcDispatchException ex)
+            {
+                response = new RpcResponse
+                {
+                    Id = id,
+                    Error = new Error
+                    {
+                        Code = ex.RpcCode,
+                        Message = ex.Message,
+                        Data = ex.RpcData
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                response = InternalError(id, ex);
+            }
+
+            try
+            {
+                return JsonSerializer.Serialize(response, jsonOptions);
+            }
+            catch (Exception ex)
+            {
+                return JsonSerializer.Serialize(InternalError(id, ex), jsonOptions);
+            }
+        }
+
+        private static RpcResponse InternalError(string id, Exception exception)
+        {
+            return new RpcResponse
+            {
+                Id = id,
+                Error = new Error
+                {
+                    Code = -32603,
+                    Message = $"Internal error: {exception.Message}"
+                }
+            };
+        }
+    }
+
     public class RpcHandler : IDisposable
     {
         private readonly JsonSerializerOptions jsonOptions;
         private readonly AccessibilityService accessibilityService;
         private readonly AudioService audioService;
         private readonly StaThreadRunner? staRunner;
-        private Action<string>? audioCompletionHandler;
         private bool disposed;
 
         public RpcHandler(StaThreadRunner? staRunner, ClipboardService clipboardService)
         {
             this.staRunner = staRunner;
-
-            // Use the generated converter settings from the models
             jsonOptions = WindowsHelper.Models.Converter.Settings;
-
-            // Create AccessibilityService with ClipboardService
             accessibilityService = new AccessibilityService(clipboardService);
-
             audioService = new AudioService();
-            audioService.SoundPlaybackCompleted += OnSoundPlaybackCompleted;
 
             if (staRunner != null)
             {
@@ -61,603 +125,345 @@ namespace WindowsHelper
                     try
                     {
                         var request = JsonSerializer.Deserialize<RpcRequest>(line, jsonOptions);
-                        if (request != null)
+                        if (request == null)
                         {
-                            LogToStderr($"RpcHandler: Received RPC Request ID {request.Id}, Method: {request.Method}");
-                            _ = Task.Run(() => HandleRpcRequest(request), cancellationToken);
+                            LogToStderr($"Error decoding RpcRequest from stdin: decoded request was null. Line: {line}");
+                            continue;
                         }
+
+                        LogToStderr($"RpcHandler: Received RPC Request ID {request.Id}, Method: {request.Method}");
+                        _ = Task.Run(
+                            () => ProcessAndRespondAsync(request),
+                            cancellationToken
+                        );
                     }
-                    catch (JsonException ex)
+                    catch (Exception ex)
                     {
+                        // Generated converters can throw exceptions other than JsonException.
+                        // Keep every decode failure inside this iteration so the reader survives.
                         LogToStderr($"Error decoding RpcRequest from stdin: {ex.Message}. Line: {line}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                LogToStderr($"Fatal error in RPC processing: {ex.Message}");
+                LogToStderr($"Fatal error reading RPC stdin: {ex.Message}");
             }
 
             LogToStderr("RpcHandler: RPC request processing loop finished.");
         }
 
-        private async void HandleRpcRequest(RpcRequest request)
+        private async Task ProcessAndRespondAsync(RpcRequest request)
         {
-            RpcResponse response;
+            var responseJson = await RpcResponseExecutor.ExecuteAsync(
+                request.Id.ToString(),
+                () => DispatchRpcRequestAsync(request),
+                jsonOptions
+            );
+            SendRpcResponse(responseJson);
+        }
 
+        private async Task<object?> DispatchRpcRequestAsync(RpcRequest request)
+        {
+            switch (request.Method)
+            {
+                case Method.GetAccessibilityTreeDetails:
+                    return await HandleGetAccessibilityTreeDetails(request);
+
+                case Method.GetAccessibilityContext:
+                    return await HandleGetAccessibilityContext(request);
+
+                case Method.PasteText:
+                    return HandlePasteText(request);
+
+                case Method.StartRecording:
+                    return await HandleStartRecording(request);
+
+                case Method.StopRecording:
+                    return HandleStopRecording(request);
+
+                case Method.SetShortcuts:
+                    return HandleSetShortcuts(request);
+
+                case Method.SetDraftEnterCapture:
+                    return HandleSetDraftEnterCapture(request);
+
+                case Method.SetAllowInjectedKeys:
+                    return HandleSetAllowInjectedKeys(request);
+
+                case Method.RecheckPressedKeys:
+                    return HandleRecheckPressedKeys(request);
+
+                case Method.GetSelectedTextViaCopy:
+                    return HandleGetSelectedTextViaCopy(request);
+
+                case Method.GetAccessibilityStatus:
+                case Method.RequestAccessibilityPermission:
+                    throw new RpcDispatchException(
+                        -32601,
+                        $"Method not found: {request.Method}"
+                    );
+
+                default:
+                    throw new RpcDispatchException(
+                        -32601,
+                        $"Method not found: {request.Method}"
+                    );
+            }
+        }
+
+        private async Task<object?> HandleGetAccessibilityTreeDetails(RpcRequest request)
+        {
+            LogToStderr($"Handling getAccessibilityTreeDetails for ID: {request.Id}");
+            var parameters = DecodeOptionalParams<GetAccessibilityTreeDetailsParams>(
+                request,
+                "getAccessibilityTreeDetails"
+            );
+            var tree = await Task.Run(
+                () => accessibilityService.FetchAccessibilityTree(parameters?.RootId)
+            );
+            return new GetAccessibilityTreeDetailsResult { Tree = tree };
+        }
+
+        private async Task<object?> HandleGetAccessibilityContext(RpcRequest request)
+        {
+            LogToStderr($"Handling getAccessibilityContext for ID: {request.Id}");
+            var parameters = DecodeOptionalParams<GetAccessibilityContextParams>(
+                request,
+                "getAccessibilityContext"
+            );
+            var context = await Task.Run(
+                () => accessibilityService.GetAccessibilityContext(parameters?.EditableOnly ?? false)
+            );
+            return new GetAccessibilityContextResult { Context = context };
+        }
+
+        private object HandleGetSelectedTextViaCopy(RpcRequest request)
+        {
+            LogToStderr($"Handling getSelectedTextViaCopy for ID: {request.Id}");
+            return accessibilityService.GetSelectedTextViaCopy();
+        }
+
+        private object HandlePasteText(RpcRequest request)
+        {
+            LogToStderr($"Handling pasteText for ID: {request.Id}");
+            var parameters = DecodeRequiredParams<PasteTextParams>(
+                request,
+                "pasteText",
+                "transcript"
+            );
+            var preserveClipboard = parameters.PreserveClipboard ?? true;
+            var success = accessibilityService.PasteText(
+                parameters.Transcript,
+                preserveClipboard,
+                out var errorMessage
+            );
+            return new PasteTextResult
+            {
+                Success = success,
+                Message = success
+                    ? (errorMessage ?? "Pasted successfully")
+                    : (errorMessage ?? "Paste failed")
+            };
+        }
+
+        private async Task<object?> HandleStartRecording(RpcRequest request)
+        {
+            LogToStderr($"Handling startRecording for ID: {request.Id}");
+            var parameters = DecodeRequiredParams<StartRecordingParams>(
+                request,
+                "startRecording",
+                "muteSystemAudio"
+            );
+
+            if (parameters.MuteSounds != true)
+            {
+                await audioService.PlaySound("rec-start");
+            }
+
+            var success = true;
+            if (parameters.MuteSystemAudio)
+            {
+                success = audioService.MuteSystemAudio();
+            }
+
+            return new StartRecordingResult
+            {
+                Success = success,
+                Message = success ? "Recording started" : "Failed to mute system audio"
+            };
+        }
+
+        private object HandleStopRecording(RpcRequest request)
+        {
+            LogToStderr($"Handling stopRecording for ID: {request.Id}");
+            var parameters = DecodeRequiredParams<StopRecordingParams>(
+                request,
+                "stopRecording",
+                "wasMuted"
+            );
+
+            var success = true;
+            if (parameters.WasMuted)
+            {
+                success = audioService.RestoreSystemAudio();
+            }
+
+            if (parameters.MuteSounds != true)
+            {
+                _ = PlayStopSoundAsync();
+            }
+
+            return new StopRecordingResult
+            {
+                Success = success,
+                Message = success ? "Recording stopped" : "Failed to restore system audio"
+            };
+        }
+
+        private async Task PlayStopSoundAsync()
+        {
             try
             {
-                switch (request.Method)
-                {
-                    case Method.GetAccessibilityTreeDetails:
-                        response = await HandleGetAccessibilityTreeDetails(request);
-                        break;
-
-                    case Method.GetAccessibilityContext:
-                        response = await HandleGetAccessibilityContext(request);
-                        break;
-
-                    case Method.PasteText:
-                        response = HandlePasteText(request);
-                        break;
-
-                    case Method.StartRecording:
-                        // HandleStartRecording sends its own response immediately or from the
-                        // rec-start completion callback, so there is nothing for the main loop to send.
-                        await HandleStartRecording(request);
-                        return;
-
-                    case Method.StopRecording:
-                        response = HandleStopRecording(request);
-                        break;
-
-                    case Method.SetShortcuts:
-                        response = HandleSetShortcuts(request);
-                        break;
-
-                    case Method.SetDraftEnterCapture:
-                        response = HandleSetDraftEnterCapture(request);
-                        break;
-
-                    case Method.SetAllowInjectedKeys:
-                        response = HandleSetAllowInjectedKeys(request);
-                        break;
-
-                    case Method.RecheckPressedKeys:
-                        response = HandleRecheckPressedKeys(request);
-                        break;
-
-                    case Method.GetSelectedTextViaCopy:
-                        response = HandleGetSelectedTextViaCopy(request);
-                        break;
-
-                    default:
-                        LogToStderr($"Method not found: {request.Method} for ID: {request.Id}");
-                        response = new RpcResponse
-                        {
-                            Id = request.Id.ToString(),
-                            Error = new Error
-                            {
-                                Code = -32601,
-                                Message = $"Method not found: {request.Method}"
-                            }
-                        };
-                        break;
-                }
+                await audioService.PlaySound("rec-stop");
             }
             catch (Exception ex)
             {
-                LogToStderr($"Error handling request {request.Id}: {ex.Message}");
-                response = new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Error = new Error
-                    {
-                        Code = -32603,
-                        Message = $"Internal error: {ex.Message}"
-                    }
-                };
+                LogToStderr($"Error playing rec-stop: {ex.Message}");
             }
-
-            SendRpcResponse(response);
         }
 
-        private RpcResponse HandleRecheckPressedKeys(RpcRequest request)
+        private object HandleSetShortcuts(RpcRequest request)
+        {
+            LogToStderr($"[RpcHandler] Handling setShortcuts for ID: {request.Id}");
+            var parameters = DecodeRequiredParams<SetShortcutsParams>(
+                request,
+                "setShortcuts",
+                "subsetChords",
+                "exactChords"
+            );
+            ShortcutManager.Instance.SetShortcuts(
+                ConvertChords(parameters.SubsetChords),
+                ConvertChords(parameters.ExactChords)
+            );
+            return new SetShortcutsResult { Success = true };
+        }
+
+        private object HandleSetDraftEnterCapture(RpcRequest request)
+        {
+            LogToStderr($"[RpcHandler] Handling setDraftEnterCapture for ID: {request.Id}");
+            var parameters = DecodeRequiredParams<SetDraftEnterCaptureParams>(
+                request,
+                "setDraftEnterCapture",
+                "enabled"
+            );
+            ShortcutManager.Instance.SetDraftEnterCapture(parameters.Enabled);
+            return new SetDraftEnterCaptureResult { Success = true };
+        }
+
+        private object HandleSetAllowInjectedKeys(RpcRequest request)
+        {
+            LogToStderr($"[RpcHandler] Handling setAllowInjectedKeys for ID: {request.Id}");
+            var parameters = DecodeRequiredParams<SetAllowInjectedKeysParams>(
+                request,
+                "setAllowInjectedKeys",
+                "enabled"
+            );
+            ShortcutManager.Instance.SetAllowInjectedKeys(parameters.Enabled);
+            return new SetAllowInjectedKeysResult { Success = true };
+        }
+
+        private object HandleRecheckPressedKeys(RpcRequest request)
         {
             LogToStderr($"Handling recheckPressedKeys for ID: {request.Id}");
-
-            if (request.Params == null)
-            {
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Error = new Error
-                    {
-                        Code = -32602,
-                        Message = "Missing params for recheckPressedKeys"
-                    }
-                };
-            }
-
-            RecheckPressedKeysParams? parameters = null;
-            if (request.Params != null)
-            {
-                try
-                {
-                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
-                    parameters = JsonSerializer.Deserialize<RecheckPressedKeysParams>(json, jsonOptions);
-                }
-                catch (Exception ex)
-                {
-                    LogToStderr($"Error decoding params: {ex.Message}");
-                    return new RpcResponse
-                    {
-                        Id = request.Id.ToString(),
-                        Error = new Error
-                        {
-                            Code = -32602,
-                            Message = $"Invalid params: {ex.Message}",
-                            Data = request.Params
-                        }
-                    };
-                }
-            }
-
-            var pressedKeyCodes = parameters?.PressedKeyCodes ?? new List<long>();
-            var staleKeyCodes = ShortcutManager.Instance.GetStalePressedKeyCodes(
-                pressedKeyCodes.Select(keyCode => (int)keyCode)
+            var parameters = DecodeRequiredParams<RecheckPressedKeysParams>(
+                request,
+                "recheckPressedKeys",
+                "pressedKeyCodes"
             );
-
-            return new RpcResponse
+            var staleKeyCodes = ShortcutManager.Instance.GetStalePressedKeyCodes(
+                (parameters.PressedKeyCodes ?? new List<long>()).Select(keyCode => (int)keyCode)
+            );
+            return new RecheckPressedKeysResult
             {
-                Id = request.Id.ToString(),
-                Result = new RecheckPressedKeysResult
-                {
-                    StaleKeyCodes = staleKeyCodes.Select(keyCode => (long)keyCode).ToList()
-                }
+                StaleKeyCodes = staleKeyCodes.Select(keyCode => (long)keyCode).ToList()
             };
         }
 
-        private async Task<RpcResponse> HandleGetAccessibilityTreeDetails(RpcRequest request)
+        private T DecodeRequiredParams<T>(
+            RpcRequest request,
+            string method,
+            params string[] requiredProperties)
         {
-            LogToStderr($"Handling getAccessibilityTreeDetails for ID: {request.Id}");
-
-            GetAccessibilityTreeDetailsParams? parameters = null;
-            if (request.Params != null)
-            {
-                try
-                {
-                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
-                    parameters = JsonSerializer.Deserialize<GetAccessibilityTreeDetailsParams>(json, jsonOptions);
-                }
-                catch (Exception ex)
-                {
-                    LogToStderr($"Error decoding params: {ex.Message}");
-                    return new RpcResponse
-                    {
-                        Id = request.Id.ToString(),
-                        Error = new Error
-                        {
-                            Code = -32602,
-                            Message = $"Invalid params: {ex.Message}",
-                            Data = request.Params
-                        }
-                    };
-                }
-            }
-
-            // Get accessibility tree on UI thread
-            var tree = await Task.Run(() => accessibilityService.FetchAccessibilityTree(parameters?.RootId));
-
-            return new RpcResponse
-            {
-                Id = request.Id.ToString(),
-                Result = new GetAccessibilityTreeDetailsResult { Tree = tree }
-            };
-        }
-
-        private async Task<RpcResponse> HandleGetAccessibilityContext(RpcRequest request)
-        {
-            LogToStderr($"Handling getAccessibilityContext for ID: {request.Id}");
-
-            GetAccessibilityContextParams? parameters = null;
-            if (request.Params != null)
-            {
-                try
-                {
-                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
-                    parameters = JsonSerializer.Deserialize<GetAccessibilityContextParams>(json, jsonOptions);
-                }
-                catch (Exception ex)
-                {
-                    LogToStderr($"Error decoding params: {ex.Message}");
-                    return new RpcResponse
-                    {
-                        Id = request.Id.ToString(),
-                        Error = new Error
-                        {
-                            Code = -32602,
-                            Message = $"Invalid params: {ex.Message}",
-                            Data = request.Params
-                        }
-                    };
-                }
-            }
-
-            var editableOnly = parameters?.EditableOnly ?? false;
-            var context = await Task.Run(() => accessibilityService.GetAccessibilityContext(editableOnly));
-
-            return new RpcResponse
-            {
-                Id = request.Id.ToString(),
-                Result = new GetAccessibilityContextResult { Context = context }
-            };
-        }
-
-        private RpcResponse HandleGetSelectedTextViaCopy(RpcRequest request)
-        {
-            LogToStderr($"Handling getSelectedTextViaCopy for ID: {request.Id}");
-
-            var result = accessibilityService.GetSelectedTextViaCopy();
-            return new RpcResponse
-            {
-                Id = request.Id.ToString(),
-                Result = result
-            };
-        }
-
-        private RpcResponse HandlePasteText(RpcRequest request)
-        {
-            LogToStderr($"Handling pasteText for ID: {request.Id}");
-
             if (request.Params == null)
             {
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Error = new Error
-                    {
-                        Code = -32602,
-                        Message = "Missing params for pasteText"
-                    }
-                };
+                throw InvalidParams(request, $"Missing params for {method}");
             }
 
             try
             {
                 var json = JsonSerializer.Serialize(request.Params, jsonOptions);
-                var parameters = JsonSerializer.Deserialize<PasteTextParams>(json, jsonOptions);
-
-                if (parameters != null)
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
                 {
-                    var preserveClipboard = parameters.PreserveClipboard ?? true;
-                    var success = accessibilityService.PasteText(parameters.Transcript, preserveClipboard, out var errorMessage);
-                    return new RpcResponse
-                    {
-                        Id = request.Id.ToString(),
-                        Result = new PasteTextResult
-                        {
-                            Success = success,
-                            Message = success ? (errorMessage ?? "Pasted successfully") : (errorMessage ?? "Paste failed")
-                        }
-                    };
+                    throw InvalidParams(request, $"Invalid params for {method}: expected an object");
                 }
+
+                foreach (var propertyName in requiredProperties)
+                {
+                    if (!document.RootElement.TryGetProperty(propertyName, out var property)
+                        || property.ValueKind == JsonValueKind.Null)
+                    {
+                        throw InvalidParams(
+                            request,
+                            $"Invalid params for {method}: missing {propertyName}"
+                        );
+                    }
+                }
+
+                return JsonSerializer.Deserialize<T>(json, jsonOptions)
+                    ?? throw InvalidParams(request, $"Invalid params for {method}");
+            }
+            catch (RpcDispatchException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                LogToStderr($"Error processing pasteText: {ex}");
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Error = new Error
-                    {
-                        Code = -32603,
-                        Message = $"Error during paste operation: {ex.Message}",
-                        Data = ex.ToString()
-                    }
-                };
+                throw InvalidParams(request, $"Invalid params for {method}: {ex.Message}");
             }
-
-            return new RpcResponse
-            {
-                Id = request.Id.ToString(),
-                Error = new Error
-                {
-                    Code = -32603,
-                    Message = "Error during paste operation"
-                }
-            };
         }
 
-        private async Task HandleStartRecording(RpcRequest request)
+        private T? DecodeOptionalParams<T>(RpcRequest request, string method)
         {
-            LogToStderr($"Handling startRecording for ID: {request.Id}");
-
-            // Parse params to get muteSystemAudio and muteSounds flags
-            var shouldMute = false;
-            var muteSounds = false;
-            if (request.Params != null)
-            {
-                try
-                {
-                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
-                    var parameters = JsonSerializer.Deserialize<StartRecordingParams>(json, jsonOptions);
-                    if (parameters != null)
-                    {
-                        shouldMute = parameters.MuteSystemAudio;
-                        muteSounds = parameters.MuteSounds ?? false;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogToStderr($"Error decoding startRecording params: {ex.Message}");
-                }
-            }
-
-            if (muteSounds)
-            {
-                // Skip sound, mute system audio immediately if needed
-                var success = true;
-                if (shouldMute)
-                {
-                    LogToStderr($"Sounds muted. Proceeding to mute system audio directly. ID: {request.Id}");
-                    success = audioService.MuteSystemAudio();
-                }
-                else
-                {
-                    LogToStderr($"Sounds muted. No system audio mute needed. ID: {request.Id}");
-                }
-
-                // Send response directly (caller returns early without sending)
-                SendRpcResponse(new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Result = new StartRecordingResult
-                    {
-                        Success = success,
-                        Message = success ? "Recording started" : "Failed to mute system audio"
-                    }
-                });
-                return;
-            }
-
-            // Store the request ID and mute flag for the completion handler
-            var requestId = request.Id.ToString();
-            var capturedShouldMute = shouldMute;
-
-            audioCompletionHandler = (id) =>
-            {
-                var success = true;
-                if (capturedShouldMute)
-                {
-                    LogToStderr($"rec-start.mp3 finished playing. Proceeding to mute system audio. ID: {id}");
-                    success = audioService.MuteSystemAudio();
-                }
-                else
-                {
-                    LogToStderr($"rec-start.mp3 finished playing. Mute skipped by preference. ID: {id}");
-                }
-
-                var response = new RpcResponse
-                {
-                    Id = id,
-                    Result = new StartRecordingResult
-                    {
-                        Success = success,
-                        Message = success ? "Recording started" : "Failed to mute system audio"
-                    }
-                };
-                SendRpcResponse(response);
-                audioCompletionHandler = null;
-            };
-
-            // Play rec-start sound
-            await audioService.PlaySound("rec-start", requestId);
-        }
-
-        private RpcResponse HandleStopRecording(RpcRequest request)
-        {
-            LogToStderr($"Handling stopRecording for ID: {request.Id}");
-
-            // Parse params to get wasMuted and muteSounds flags
-            var wasMuted = false;
-            var muteSounds = false;
-            if (request.Params != null)
-            {
-                try
-                {
-                    var json = JsonSerializer.Serialize(request.Params, jsonOptions);
-                    var parameters = JsonSerializer.Deserialize<StopRecordingParams>(json, jsonOptions);
-                    if (parameters != null)
-                    {
-                        wasMuted = parameters.WasMuted;
-                        muteSounds = parameters.MuteSounds ?? false;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogToStderr($"Error decoding stopRecording params: {ex.Message}");
-                }
-            }
-
-            // Conditionally restore system audio
-            var success = true;
-            if (wasMuted)
-            {
-                success = audioService.RestoreSystemAudio();
-            }
-
-            // Play rec-stop sound unless muted (fire-and-forget)
-            if (!muteSounds)
-            {
-                _ = audioService.PlaySound("rec-stop", request.Id.ToString());
-            }
-
-            return new RpcResponse
-            {
-                Id = request.Id.ToString(),
-                Result = new StopRecordingResult
-                {
-                    Success = success,
-                    Message = success ? "Recording stopped" : "Failed to restore system audio"
-                }
-            };
-        }
-
-        private void OnSoundPlaybackCompleted(object? sender, string requestId)
-        {
-            audioCompletionHandler?.Invoke(requestId);
-        }
-
-        private RpcResponse HandleSetShortcuts(RpcRequest request)
-        {
-            LogToStderr($"[RpcHandler] Handling setShortcuts for ID: {request.Id}");
+            if (request.Params == null) return default;
 
             try
             {
-                var paramsJson = JsonSerializer.Serialize(request.Params, jsonOptions);
-                var setShortcutsParams = JsonSerializer.Deserialize<SetShortcutsParams>(paramsJson, jsonOptions);
-
-                if (setShortcutsParams == null)
-                {
-                    return new RpcResponse
-                    {
-                        Id = request.Id.ToString(),
-                        Error = new Error
-                        {
-                            Code = -32602,
-                            Message = "Invalid params: could not deserialize SetShortcutsParams"
-                        }
-                    };
-                }
-
-                ShortcutManager.Instance.SetShortcuts(
-                    ConvertChords(setShortcutsParams.SubsetChords),
-                    ConvertChords(setShortcutsParams.ExactChords)
-                );
-
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Result = new SetShortcutsResult { Success = true }
-                };
+                var json = JsonSerializer.Serialize(request.Params, jsonOptions);
+                return JsonSerializer.Deserialize<T>(json, jsonOptions);
             }
             catch (Exception ex)
             {
-                LogToStderr($"[RpcHandler] Error in setShortcuts: {ex.Message}");
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Error = new Error
-                    {
-                        Code = -32603,
-                        Message = $"Internal error: {ex.Message}"
-                    }
-                };
+                throw InvalidParams(request, $"Invalid params for {method}: {ex.Message}");
             }
         }
 
-        private RpcResponse HandleSetDraftEnterCapture(RpcRequest request)
+        private static RpcDispatchException InvalidParams(RpcRequest request, string message)
         {
-            LogToStderr($"[RpcHandler] Handling setDraftEnterCapture for ID: {request.Id}");
-
-            try
-            {
-                var paramsJson = JsonSerializer.Serialize(request.Params, jsonOptions);
-                var captureParams = JsonSerializer.Deserialize<SetDraftEnterCaptureParams>(paramsJson, jsonOptions);
-
-                if (captureParams == null)
-                {
-                    return new RpcResponse
-                    {
-                        Id = request.Id.ToString(),
-                        Error = new Error
-                        {
-                            Code = -32602,
-                            Message = "Invalid params: could not deserialize SetDraftEnterCaptureParams"
-                        }
-                    };
-                }
-
-                ShortcutManager.Instance.SetDraftEnterCapture(captureParams.Enabled);
-
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Result = new SetDraftEnterCaptureResult { Success = true }
-                };
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"[RpcHandler] Error in setDraftEnterCapture: {ex.Message}");
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Error = new Error
-                    {
-                        Code = -32603,
-                        Message = $"Internal error: {ex.Message}"
-                    }
-                };
-            }
+            return new RpcDispatchException(-32602, message, request.Params);
         }
 
-        private RpcResponse HandleSetAllowInjectedKeys(RpcRequest request)
-        {
-            LogToStderr($"[RpcHandler] Handling setAllowInjectedKeys for ID: {request.Id}");
-
-            try
-            {
-                var paramsJson = JsonSerializer.Serialize(request.Params, jsonOptions);
-                var allowParams = JsonSerializer.Deserialize<SetAllowInjectedKeysParams>(paramsJson, jsonOptions);
-
-                if (allowParams == null)
-                {
-                    return new RpcResponse
-                    {
-                        Id = request.Id.ToString(),
-                        Error = new Error
-                        {
-                            Code = -32602,
-                            Message = "Invalid params: could not deserialize SetAllowInjectedKeysParams"
-                        }
-                    };
-                }
-
-                ShortcutManager.Instance.SetAllowInjectedKeys(allowParams.Enabled);
-
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Result = new SetAllowInjectedKeysResult { Success = true }
-                };
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"[RpcHandler] Error in setAllowInjectedKeys: {ex.Message}");
-                return new RpcResponse
-                {
-                    Id = request.Id.ToString(),
-                    Error = new Error
-                    {
-                        Code = -32603,
-                        Message = $"Internal error: {ex.Message}"
-                    }
-                };
-            }
-        }
-
-        private void SendRpcResponse(RpcResponse response)
+        private void SendRpcResponse(string responseJson)
         {
             try
             {
-                var json = JsonSerializer.Serialize(response, jsonOptions);
-                LogToStderr($"[RpcHandler] Sending response to stdout: {json}");
-                StdoutWriter.WriteLine(json);
+                LogToStderr($"[RpcHandler] Sending response to stdout: {responseJson}");
+                StdoutWriter.WriteLine(responseJson);
             }
             catch (Exception ex)
             {
-                LogToStderr($"Error encoding RpcResponse: {ex.Message}");
+                LogToStderr($"Error writing RpcResponse: {ex.Message}");
             }
         }
 
@@ -675,7 +481,7 @@ namespace WindowsHelper
         private static int[][] ConvertChords(List<List<long>>? chords)
         {
             if (chords == null) return Array.Empty<int[]>();
-            return chords.Select(chord => ConvertKeycodes(chord)).ToArray();
+            return chords.Select(ConvertKeycodes).ToArray();
         }
     }
 }

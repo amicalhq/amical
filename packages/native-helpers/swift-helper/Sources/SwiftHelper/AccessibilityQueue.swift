@@ -26,6 +26,19 @@ class AccessibilityQueue {
         }
     }
 
+    /// Execute work asynchronously without blocking a Swift concurrency thread.
+    func perform<T>(_ work: @escaping () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            async {
+                do {
+                    continuation.resume(returning: try work())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     /// Execute work synchronously on the accessibility queue and return result
     func sync<T>(execute work: () throws -> T) rethrows -> T {
         try queue.sync {

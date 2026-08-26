@@ -19,8 +19,6 @@ namespace WindowsHelper.Services
         // Preloaded audio data for faster playback
         private readonly Dictionary<string, byte[]> preloadedAudio = new();
 
-        public event EventHandler<string>? SoundPlaybackCompleted;
-
         public AudioService()
         {
             try
@@ -64,8 +62,9 @@ namespace WindowsHelper.Services
             }
         }
 
-        public async Task PlaySound(string soundName, string requestId)
+        public async Task PlaySound(string soundName)
         {
+            WaveOutEvent? player = null;
             try
             {
                 LogToStderr($"PlaySound called with soundName: {soundName}");
@@ -74,8 +73,6 @@ namespace WindowsHelper.Services
                 if (waveOut != null && waveOut.PlaybackState == PlaybackState.Playing)
                 {
                     waveOut.Stop();
-                    waveOut.Dispose();
-                    waveOut = null;
                 }
 
                 // Use preloaded audio data (fast) or fall back to loading from resources
@@ -89,8 +86,7 @@ namespace WindowsHelper.Services
                     using var stream = assembly.GetManifestResourceStream(resourceName);
                     if (stream == null)
                     {
-                        LogToStderr($"Resource not found: {resourceName}");
-                        return;
+                        throw new InvalidOperationException($"Resource not found: {resourceName}");
                     }
 
                     using var ms = new MemoryStream();
@@ -102,20 +98,29 @@ namespace WindowsHelper.Services
                 using var memoryStream = new MemoryStream(audioData);
                 using var audioFile = new Mp3FileReader(memoryStream);
 
-                waveOut = new WaveOutEvent();
-                waveOut.Init(audioFile);
+                player = new WaveOutEvent();
+                waveOut = player;
+                player.Init(audioFile);
 
                 // Set up completion handler
-                var completionSource = new TaskCompletionSource<bool>();
-                waveOut.PlaybackStopped += (sender, args) =>
+                var completionSource = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
+                player.PlaybackStopped += (sender, args) =>
                 {
                     LogToStderr($"Sound playback finished for {soundName}");
-                    completionSource.TrySetResult(true);
-                    SoundPlaybackCompleted?.Invoke(this, requestId);
+                    if (args.Exception != null)
+                    {
+                        completionSource.TrySetException(args.Exception);
+                    }
+                    else
+                    {
+                        completionSource.TrySetResult(true);
+                    }
                 };
 
                 // Start playback
-                waveOut.Play();
+                player.Play();
                 LogToStderr($"Playing sound: {soundName}.mp3");
 
                 // Wait for completion
@@ -124,13 +129,17 @@ namespace WindowsHelper.Services
             catch (Exception ex)
             {
                 LogToStderr($"Error playing sound {soundName}: {ex.Message}");
+                throw;
             }
             finally
             {
-                if (waveOut != null)
+                if (player != null)
                 {
-                    waveOut.Dispose();
-                    waveOut = null;
+                    player.Dispose();
+                    if (ReferenceEquals(waveOut, player))
+                    {
+                        waveOut = null;
+                    }
                 }
             }
         }
