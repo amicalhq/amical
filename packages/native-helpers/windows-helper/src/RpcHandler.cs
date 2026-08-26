@@ -84,7 +84,7 @@ namespace WindowsHelper
     {
         private readonly JsonSerializerOptions jsonOptions;
         private readonly AccessibilityService accessibilityService;
-        private readonly AudioService audioService;
+        private readonly RecordingAmbianceController recordingAmbianceController;
         private readonly StaThreadRunner? staRunner;
         private bool disposed;
 
@@ -93,7 +93,13 @@ namespace WindowsHelper
             this.staRunner = staRunner;
             jsonOptions = WindowsHelper.Models.Converter.Settings;
             accessibilityService = new AccessibilityService(clipboardService);
-            audioService = new AudioService();
+            var audioService = new AudioService();
+            recordingAmbianceController = new RecordingAmbianceController(
+                audioService.PlaySound,
+                audioService.MuteSystemAudio,
+                audioService.RestoreSystemAudio,
+                LogToStderr
+            );
 
             if (staRunner != null)
             {
@@ -180,7 +186,7 @@ namespace WindowsHelper
                     return await HandleStartRecording(request);
 
                 case Method.StopRecording:
-                    return HandleStopRecording(request);
+                    return await HandleStopRecording(request);
 
                 case Method.SetShortcuts:
                     return HandleSetShortcuts(request);
@@ -276,16 +282,10 @@ namespace WindowsHelper
                 "muteSystemAudio"
             );
 
-            if (parameters.MuteSounds != true)
-            {
-                await audioService.PlaySound("rec-start");
-            }
-
-            var success = true;
-            if (parameters.MuteSystemAudio)
-            {
-                success = audioService.MuteSystemAudio();
-            }
+            var success = await recordingAmbianceController.StartRecordingAsync(
+                parameters.MuteSystemAudio,
+                parameters.MuteSounds == true
+            );
 
             return new StartRecordingResult
             {
@@ -294,7 +294,7 @@ namespace WindowsHelper
             };
         }
 
-        private object HandleStopRecording(RpcRequest request)
+        private async Task<object?> HandleStopRecording(RpcRequest request)
         {
             LogToStderr($"Handling stopRecording for ID: {request.Id}");
             var parameters = DecodeRequiredParams<StopRecordingParams>(
@@ -303,34 +303,16 @@ namespace WindowsHelper
                 "wasMuted"
             );
 
-            var success = true;
-            if (parameters.WasMuted)
-            {
-                success = audioService.RestoreSystemAudio();
-            }
-
-            if (parameters.MuteSounds != true)
-            {
-                _ = PlayStopSoundAsync();
-            }
+            var success = await recordingAmbianceController.StopRecordingAsync(
+                parameters.WasMuted,
+                parameters.MuteSounds == true
+            );
 
             return new StopRecordingResult
             {
                 Success = success,
                 Message = success ? "Recording stopped" : "Failed to restore system audio"
             };
-        }
-
-        private async Task PlayStopSoundAsync()
-        {
-            try
-            {
-                await audioService.PlaySound("rec-stop");
-            }
-            catch (Exception ex)
-            {
-                LogToStderr($"Error playing rec-stop: {ex.Message}");
-            }
         }
 
         private object HandleSetShortcuts(RpcRequest request)

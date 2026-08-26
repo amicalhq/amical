@@ -65,15 +65,22 @@ enum RPCResponseExecutor {
 
 class IOBridge: NSObject {
     private let accessibilityService: AccessibilityService
-    private let audioService: AudioService
+    private let recordingAmbianceController: RecordingAmbianceController
     // Copy capture polls the pasteboard for up to the capture timeout; it
     // touches no AX state, so it gets its own serial queue instead of
     // blocking AccessibilityQueue (and the AX context requests behind it).
     private let copyCaptureQueue = DispatchQueue(label: "com.amical.helper.copy-capture")
 
     override init() {
-        self.accessibilityService = AccessibilityService()
-        self.audioService = AudioService()  // Audio preloaded here at startup
+        let accessibilityService = AccessibilityService()
+        let audioService = AudioService()  // Audio preloaded here at startup
+        self.accessibilityService = accessibilityService
+        self.recordingAmbianceController = RecordingAmbianceController(
+            playSound: { try await audioService.playSound(named: $0) },
+            muteSystemAudio: { accessibilityService.muteSystemAudio() },
+            restoreSystemAudio: { accessibilityService.restoreSystemAudio() },
+            log: { HelperLogger.logToStderr($0) }
+        )
         super.init()
     }
 
@@ -113,7 +120,7 @@ class IOBridge: NSObject {
             return try encodeResult(try await handleStartRecording(request))
 
         case .stopRecording:
-            return try encodeResult(try handleStopRecording(request))
+            return try encodeResult(try await handleStopRecording(request))
 
         case .setShortcuts:
             return try encodeResult(try handleSetShortcuts(request))
@@ -219,14 +226,10 @@ class IOBridge: NSObject {
             method: "startRecording"
         )
 
-        if params.muteSounds != true {
-            try await audioService.playSound(named: "rec-start")
-        }
-
-        var success = true
-        if params.muteSystemAudio {
-            success = accessibilityService.muteSystemAudio()
-        }
+        let success = await recordingAmbianceController.startRecording(
+            muteSystemAudio: params.muteSystemAudio,
+            muteSounds: params.muteSounds == true
+        )
 
         return StartRecordingResultSchema(
             message: success ? "Recording started" : "Failed to mute system audio",
@@ -236,29 +239,17 @@ class IOBridge: NSObject {
 
     private func handleStopRecording(
         _ request: RPCRequestSchema
-    ) throws -> StopRecordingResultSchema {
+    ) async throws -> StopRecordingResultSchema {
         logToStderr("[IOBridge] Handling stopRecording for ID: \(request.id)")
         let params: StopRecordingParamsSchema = try decodeRequiredParams(
             request.params,
             method: "stopRecording"
         )
 
-        var success = true
-        if params.wasMuted {
-            success = accessibilityService.restoreSystemAudio()
-        }
-
-        if params.muteSounds != true {
-            Task { [audioService] in
-                do {
-                    try await audioService.playSound(named: "rec-stop")
-                } catch {
-                    HelperLogger.logToStderr(
-                        "[IOBridge] Error playing rec-stop: \(error.localizedDescription)"
-                    )
-                }
-            }
-        }
+        let success = await recordingAmbianceController.stopRecording(
+            wasMuted: params.wasMuted,
+            muteSounds: params.muteSounds == true
+        )
 
         return StopRecordingResultSchema(
             message: success ? "Recording stopped" : "Failed to restore system audio",

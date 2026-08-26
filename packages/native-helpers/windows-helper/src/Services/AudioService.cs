@@ -11,6 +11,7 @@ namespace WindowsHelper.Services
 {
     public class AudioService
     {
+        private static readonly TimeSpan PlaybackTimeout = TimeSpan.FromSeconds(1);
         private WaveOutEvent? waveOut;
         private MMDeviceEnumerator? deviceEnumerator;
         private float originalVolume = 1.0f;
@@ -65,6 +66,7 @@ namespace WindowsHelper.Services
         public async Task PlaySound(string soundName)
         {
             WaveOutEvent? player = null;
+            EventHandler<StoppedEventArgs>? playbackStopped = null;
             try
             {
                 LogToStderr($"PlaySound called with soundName: {soundName}");
@@ -106,7 +108,7 @@ namespace WindowsHelper.Services
                 var completionSource = new TaskCompletionSource<bool>(
                     TaskCreationOptions.RunContinuationsAsynchronously
                 );
-                player.PlaybackStopped += (sender, args) =>
+                playbackStopped = (sender, args) =>
                 {
                     LogToStderr($"Sound playback finished for {soundName}");
                     if (args.Exception != null)
@@ -118,13 +120,18 @@ namespace WindowsHelper.Services
                         completionSource.TrySetResult(true);
                     }
                 };
+                player.PlaybackStopped += playbackStopped;
 
                 // Start playback
                 player.Play();
                 LogToStderr($"Playing sound: {soundName}.mp3");
 
                 // Wait for completion
-                await completionSource.Task;
+                await WaitForPlaybackAsync(
+                    completionSource.Task,
+                    PlaybackTimeout,
+                    player.Stop
+                );
             }
             catch (Exception ex)
             {
@@ -135,12 +142,32 @@ namespace WindowsHelper.Services
             {
                 if (player != null)
                 {
+                    if (playbackStopped != null)
+                    {
+                        player.PlaybackStopped -= playbackStopped;
+                    }
                     player.Dispose();
                     if (ReferenceEquals(waveOut, player))
                     {
                         waveOut = null;
                     }
                 }
+            }
+        }
+
+        internal static async Task WaitForPlaybackAsync(
+            Task playback,
+            TimeSpan timeout,
+            Action stopPlayback)
+        {
+            try
+            {
+                await playback.WaitAsync(timeout);
+            }
+            catch (TimeoutException)
+            {
+                stopPlayback();
+                throw;
             }
         }
 
