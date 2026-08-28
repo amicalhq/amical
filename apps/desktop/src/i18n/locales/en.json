@@ -3,7 +3,14 @@
     "loading": "Loading Amical..."
   },
   "errors": {
-    "generic": "Something went wrong. Please try again."
+    "generic": "Something went wrong. Please try again.",
+    "renderer": {
+      "title": "Something went wrong",
+      "description": "Amical encountered an unexpected error.",
+      "tryAgain": "Try again",
+      "reload": "Reload window",
+      "supportNote": "If this keeps happening, contact support."
+    }
   },
   "menu": {
     "file": "File",
@@ -50,13 +57,6 @@
       "completeFailed": "Couldn't finish setup. Please try again.",
       "resetSuccess": "Onboarding reset successfully",
       "resetFailed": "Failed to reset onboarding"
-    },
-    "errorBoundary": {
-      "title": "Something went wrong",
-      "description": "An unexpected error interrupted setup. Please try again.",
-      "tryAgain": "Try again",
-      "restart": "Restart setup",
-      "supportNote": "If this keeps happening, contact support."
     },
     "welcome": {
       "title": "How will you use Amical?",

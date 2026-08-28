@@ -136,6 +136,26 @@ describe("identity subscriptions", () => {
       expect(identityAtEvent).toEqual([true, false]);
     });
 
+    it("forwards auth API contract failures to telemetry", async () => {
+      const { service, authEmitter } = await build();
+      const captureContractFailure = vi.spyOn(
+        service,
+        "captureContractFailure",
+      );
+
+      authEmitter.emit("api-contract-failure", {
+        errorContext: "oauth_token_response_invalid",
+        failureKind: "invalid_json",
+        properties: { status: 200 },
+      });
+
+      expect(captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "oauth_token_response_invalid",
+        "invalid_json",
+        { status: 200 },
+      );
+    });
+
     it("drops the auth subscriptions when the scope closes", async () => {
       const { client, authEmitter } = await build();
 
@@ -149,6 +169,7 @@ describe("identity subscriptions", () => {
       expect(client.setIdentifiedUser).not.toHaveBeenCalled();
       expect(authEmitter.listenerCount("authenticated")).toBe(0);
       expect(authEmitter.listenerCount("logged-out")).toBe(0);
+      expect(authEmitter.listenerCount("api-contract-failure")).toBe(0);
     });
   });
 

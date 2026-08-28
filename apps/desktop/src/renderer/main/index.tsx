@@ -5,6 +5,11 @@ import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { initializeRendererI18n } from "@/renderer/lib/initialize-i18n";
+import {
+  captureRendererException,
+  initializeRendererPostHog,
+} from "@/renderer/lib/posthog";
+import { RendererErrorBoundary } from "@/renderer/lib/renderer-error-boundary";
 
 // Lazy import the main content
 const Content = React.lazy(() => import("./content"));
@@ -98,15 +103,22 @@ const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
   const bootstrap = async () => {
+    await initializeRendererPostHog("main");
     const i18n = await initializeRendererI18n();
     root.render(
       <I18nextProvider i18n={i18n}>
-        <App />
+        <RendererErrorBoundary surface="main">
+          <App />
+        </RendererErrorBoundary>
       </I18nextProvider>,
     );
   };
 
   void bootstrap().catch((error) => {
     console.error("Failed to initialize i18n", error);
+    captureRendererException(error, {
+      error_context: "renderer_bootstrap_failed",
+      surface: "main",
+    });
   });
 }

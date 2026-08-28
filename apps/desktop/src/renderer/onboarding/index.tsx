@@ -3,11 +3,15 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nextProvider } from "react-i18next";
 import { App } from "./App";
-import { OnboardingErrorBoundary } from "./components/ErrorBoundary";
 import { api, trpcClient } from "@/trpc/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { initializeRendererI18n } from "@/renderer/lib/initialize-i18n";
+import {
+  captureRendererException,
+  initializeRendererPostHog,
+} from "@/renderer/lib/posthog";
+import { RendererErrorBoundary } from "@/renderer/lib/renderer-error-boundary";
 import "@/styles/globals.css";
 
 // Create a query client for tRPC
@@ -36,21 +40,22 @@ const rootElement = document.getElementById("root") as HTMLElement;
 const root = ReactDOM.createRoot(rootElement);
 
 const bootstrap = async () => {
+  await initializeRendererPostHog("onboarding");
   const i18n = await initializeRendererI18n();
 
   root.render(
     <React.StrictMode>
       <I18nextProvider i18n={i18n}>
-        <api.Provider client={trpcClient} queryClient={queryClient}>
-          <QueryClientProvider client={queryClient}>
-            <ThemeProvider>
-              <OnboardingErrorBoundary>
+        <RendererErrorBoundary surface="onboarding">
+          <api.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+              <ThemeProvider>
                 <App />
-              </OnboardingErrorBoundary>
-              <Toaster position="top-right" />
-            </ThemeProvider>
-          </QueryClientProvider>
-        </api.Provider>
+                <Toaster position="top-right" />
+              </ThemeProvider>
+            </QueryClientProvider>
+          </api.Provider>
+        </RendererErrorBoundary>
       </I18nextProvider>
     </React.StrictMode>,
   );
@@ -58,4 +63,8 @@ const bootstrap = async () => {
 
 void bootstrap().catch((error) => {
   console.error("Failed to initialize i18n", error);
+  captureRendererException(error, {
+    error_context: "renderer_bootstrap_failed",
+    surface: "onboarding",
+  });
 });

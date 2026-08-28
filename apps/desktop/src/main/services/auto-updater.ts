@@ -585,7 +585,19 @@ export class AutoUpdaterService extends EventEmitter {
         return null;
       }
 
-      const raw: unknown = await response.json();
+      let raw: unknown;
+      try {
+        raw = await response.json();
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          this.telemetryService?.captureContractFailure(
+            "update_metadata_response_invalid",
+            "invalid_json",
+            { status: response.status },
+          );
+        }
+        throw error;
+      }
       const data = this.parseUpdateMetadata(raw);
       logger.updater.info("Update metadata fetched", {
         action: data.action,
@@ -603,6 +615,11 @@ export class AutoUpdaterService extends EventEmitter {
       logger.updater.warn(
         "Invalid metadata response shape, falling back to silent",
       );
+      this.telemetryService?.captureContractFailure(
+        "update_metadata_response_invalid",
+        "schema_mismatch",
+        { reason: "invalid_shape" },
+      );
       return { action: "silent" };
     }
     const obj = raw as Record<string, unknown>;
@@ -610,6 +627,11 @@ export class AutoUpdaterService extends EventEmitter {
       logger.updater.warn("Invalid metadata action, falling back to silent", {
         action: obj.action,
       });
+      this.telemetryService?.captureContractFailure(
+        "update_metadata_response_invalid",
+        "schema_mismatch",
+        { reason: "invalid_action" },
+      );
       return { action: "silent" };
     }
     return {

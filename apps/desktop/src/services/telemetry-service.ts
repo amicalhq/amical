@@ -30,6 +30,24 @@ import type {
   CloudGrpcFallbackEvent,
 } from "../types/telemetry-events";
 
+export type ContractFailureKind = "invalid_json" | "schema_mismatch";
+
+export type ContractFailureProperties = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+export interface ContractFailureReport {
+  errorContext: string;
+  failureKind: ContractFailureKind;
+  properties?: ContractFailureProperties;
+}
+
+const CONTRACT_FAILURE_MESSAGES: Record<ContractFailureKind, string> = {
+  invalid_json: "Response was not valid JSON",
+  schema_mismatch: "Response did not match its expected schema",
+};
+
 // Re-export from posthog-client for backwards compatibility
 export type { SystemInfo } from "./posthog-client";
 
@@ -63,7 +81,10 @@ const EXCEPTION_RATE_LIMIT = { bucketSize: 5, refillIntervalMs: 60_000 };
  * churns (unique messages without a stack, unique non-Error values), which
  * the per-fingerprint buckets cannot see. Checked only after the
  * per-fingerprint bucket allows, so a same-key storm cannot drain it. */
-const EXCEPTION_GLOBAL_RATE_LIMIT = { bucketSize: 20, refillIntervalMs: 10_000 };
+const EXCEPTION_GLOBAL_RATE_LIMIT = {
+  bucketSize: 20,
+  refillIntervalMs: 10_000,
+};
 const EXCEPTION_GLOBAL_KEY = "exceptions-global";
 const RATE_BUCKET_MAX_KEYS = 500;
 
@@ -159,13 +180,22 @@ export class TelemetryService extends EventEmitter {
         if (!service.isUserIdentified()) return;
         service.resetUser();
       };
+      const onApiContractFailure = (report: ContractFailureReport) => {
+        service.captureContractFailure(
+          report.errorContext,
+          report.failureKind,
+          report.properties,
+        );
+      };
       authService.on("authenticated", onAuthenticated);
       authService.on("logged-out", onLoggedOut);
+      authService.on("api-contract-failure", onApiContractFailure);
       yield* Scope.addFinalizer(
         appScope,
         Effect.sync(() => {
           authService.off("authenticated", onAuthenticated);
           authService.off("logged-out", onLoggedOut);
+          authService.off("api-contract-failure", onApiContractFailure);
         }),
       );
       logger.main.info("Telemetry service initialized");
@@ -261,9 +291,14 @@ export class TelemetryService extends EventEmitter {
     if (!this.client.posthog || !this.enabled || !distinctId) {
       return;
     }
+    const errorContext =
+      typeof additionalProperties.error_context === "string"
+        ? additionalProperties.error_context
+        : null;
+    const fingerprint = exceptionFingerprint(error);
     if (
       !this.allowCapture(
-        `exception:${exceptionFingerprint(error)}`,
+        `exception:${errorContext ? `${errorContext}:` : ""}${fingerprint}`,
         EXCEPTION_RATE_LIMIT,
         true,
       ) ||
@@ -277,6 +312,20 @@ export class TelemetryService extends EventEmitter {
       distinctId,
       this.buildEventProperties(additionalProperties),
     );
+  }
+
+  captureContractFailure(
+    errorContext: string,
+    failureKind: ContractFailureKind,
+    properties: ContractFailureProperties = {},
+  ): void {
+    const error = new Error(CONTRACT_FAILURE_MESSAGES[failureKind]);
+    error.name = "ClientContractError";
+    this.captureException(error, {
+      ...properties,
+      error_context: errorContext,
+      failure_kind: failureKind,
+    });
   }
 
   async captureExceptionImmediateAndShutdown(
@@ -310,15 +359,21 @@ export class TelemetryService extends EventEmitter {
     return this.client.machineId;
   }
 
+  getCommonProperties(): Record<string, unknown> {
+    return { ...this.persistedProperties };
+  }
+
   async optIn(): Promise<void> {
     await this.settingsService.setTelemetrySettings({ enabled: true });
     if (!this.client.posthog) {
       this.enabled = true;
+      this.emit("enabled-changed", true);
       return;
     }
 
     await this.client.posthog.optIn();
     this.enabled = true;
+    this.emit("enabled-changed", true);
     this.sendIdentifyForCurrentUser();
 
     logger.main.info("Telemetry opt-in successful");
@@ -327,6 +382,7 @@ export class TelemetryService extends EventEmitter {
   async optOut(): Promise<void> {
     await this.settingsService.setTelemetrySettings({ enabled: false });
     this.enabled = false;
+    this.emit("enabled-changed", false);
     if (!this.client.posthog) {
       return;
     }

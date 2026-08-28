@@ -16,6 +16,7 @@ function idToken(subject: string): string {
 }
 
 describe("AuthService refresh fencing", () => {
+  const contractFailure = vi.fn();
   let testDb: TestDatabase;
   let authService: AuthService;
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -29,6 +30,8 @@ describe("AuthService refresh fencing", () => {
     testDb = await createTestDatabase();
     setTestDatabase(testDb.db);
     authService = AuthService.createForTests();
+    contractFailure.mockReset();
+    authService.on("api-contract-failure", contractFailure);
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -94,6 +97,33 @@ describe("AuthService refresh fencing", () => {
     expect((await getSettingsSection("auth"))?.refreshToken).toBe(
       "refresh-user-1-next",
     );
+  });
+
+  it.each([
+    {
+      name: "invalid JSON",
+      json: () => Promise.reject(new SyntaxError("Unexpected token <")),
+      kind: "invalid_json",
+    },
+    {
+      name: "a schema mismatch",
+      json: async () => ({ access_token: 42 }),
+      kind: "schema_mismatch",
+    },
+  ])("reports $name from a successful token response", async (scenario) => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: scenario.json,
+    });
+
+    await authService.getIdToken();
+
+    expect(contractFailure).toHaveBeenCalledExactlyOnceWith({
+      errorContext: "oauth_token_response_invalid",
+      failureKind: scenario.kind,
+      properties: { status: 200 },
+    });
   });
 
   it("ignores a successful refresh response that arrives after logout", async () => {
@@ -186,5 +216,28 @@ describe("AuthService refresh fencing", () => {
     await expect(callbackPromise).resolves.toBeUndefined();
     expect(await getSettingsSection("auth")).toBeUndefined();
     expect(authenticated).not.toHaveBeenCalled();
+  });
+
+  it("reports an untrusted account-handoff URL without including the URL", async () => {
+    const authState = await getSettingsSection("auth");
+    await updateSettingsSection("auth", {
+      ...authState!,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: "https://untrusted.example/account" }),
+    });
+
+    await expect(authService.openWebSession("/account")).rejects.toThrow(
+      "Handoff URL not allowed",
+    );
+
+    expect(contractFailure).toHaveBeenCalledExactlyOnceWith({
+      errorContext: "account_handoff_response_invalid",
+      failureKind: "schema_mismatch",
+      properties: { status: 200, reason: "untrusted_url" },
+    });
   });
 });

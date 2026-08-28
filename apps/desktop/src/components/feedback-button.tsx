@@ -1,6 +1,6 @@
 import { IconMessageHeart } from "@tabler/icons-react";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import { usePostHog } from "@/renderer/main/lib/posthog";
+import { usePostHog } from "@/renderer/lib/posthog";
 
 export function FeedbackButton() {
   const { enabled, hasSurvey, showFeedbackSurvey } = usePostHog();

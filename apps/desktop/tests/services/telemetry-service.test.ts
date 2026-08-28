@@ -114,6 +114,55 @@ describe("TelemetryService identity", () => {
     });
   });
 
+  it("exposes the common event properties used by renderer telemetry", async () => {
+    const { service } = createHarness();
+
+    await service.initialize();
+
+    expect(service.getCommonProperties()).toEqual({
+      app_version: "0.1.0-test",
+      machine_id: "machine-1",
+      app_is_packaged: false,
+      system_info: {},
+    });
+  });
+
+  it("emits telemetry enabled changes for renderer subscribers", async () => {
+    const { service } = createHarness();
+    const onEnabledChange = vi.fn();
+    service.on("enabled-changed", onEnabledChange);
+
+    await service.initialize();
+    await service.setEnabled(false);
+    await service.setEnabled(true);
+
+    expect(onEnabledChange.mock.calls).toEqual([[false], [true]]);
+  });
+
+  it("reports API contract failures without the rejected response", async () => {
+    const { posthog, service } = createHarness();
+
+    await service.initialize();
+    service.captureContractFailure(
+      "remote_config_response_invalid",
+      "schema_mismatch",
+      { status: 200 },
+    );
+
+    expect(posthog.captureException).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        name: "ClientContractError",
+        message: "Response did not match its expected schema",
+      }),
+      "machine-1",
+      expect.objectContaining({
+        error_context: "remote_config_response_invalid",
+        failure_kind: "schema_mismatch",
+        status: 200,
+      }),
+    );
+  });
+
   it("identifies on login and captures later events with user ID", async () => {
     const { client, posthog, service } = createHarness();
 

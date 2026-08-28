@@ -42,10 +42,10 @@ describe("RemoteConfigService", () => {
         overrides?.getRemoteConfig ?? vi.fn().mockResolvedValue(persisted),
       setRemoteConfig: vi.fn().mockResolvedValue(undefined),
     } as unknown as SettingsService;
-    const captureException = vi.fn();
+    const captureContractFailure = vi.fn();
     const telemetryService = {
       getMachineId: vi.fn().mockReturnValue(undefined),
-      captureException,
+      captureContractFailure,
     } as unknown as TelemetryService;
 
     const scope = Effect.runSync(Scope.make());
@@ -65,7 +65,7 @@ describe("RemoteConfigService", () => {
       service: Context.get(ctx, RemoteConfigServiceTag),
       settingsService,
       authService,
-      captureException,
+      captureContractFailure,
     };
   };
 
@@ -278,7 +278,7 @@ describe("RemoteConfigService", () => {
         .mockResolvedValueOnce(ok({ version: 1, surfaces: [validBanner] }))
         .mockResolvedValueOnce(ok({ version: "one" }));
       vi.stubGlobal("fetch", fetchMock);
-      const { service, captureException } =
+      const { service, captureContractFailure } =
         await createService(freshPersisted());
 
       await service.refresh();
@@ -287,20 +287,20 @@ describe("RemoteConfigService", () => {
       await service.refresh();
       // Fail-closed: the last good config stays.
       expect(service.getConfig().surfaces).toHaveLength(1);
-      expect(captureException).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ _tag: "RemoteConfigInvalid" }),
-        expect.objectContaining({ remote_config_issues: expect.any(String) }),
+      expect(captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "remote_config_response_invalid",
+        "schema_mismatch",
       );
 
       // Same episode (the interval would re-parse the same payload): no
       // second report.
       await service.refresh();
-      expect(captureException).toHaveBeenCalledTimes(1);
+      expect(captureContractFailure).toHaveBeenCalledTimes(1);
 
       // A fully-valid payload ends the episode; the next break reports again.
       await service.refresh();
       await service.refresh();
-      expect(captureException).toHaveBeenCalledTimes(2);
+      expect(captureContractFailure).toHaveBeenCalledTimes(2);
     });
 
     it("drops an unrecognized surface kind without reporting", async () => {
@@ -313,13 +313,13 @@ describe("RemoteConfigService", () => {
           }),
         ),
       );
-      const { service, captureException } =
+      const { service, captureContractFailure } =
         await createService(freshPersisted());
 
       await service.refresh();
 
       expect(service.getConfig().surfaces).toEqual([validBanner]);
-      expect(captureException).not.toHaveBeenCalled();
+      expect(captureContractFailure).not.toHaveBeenCalled();
     });
 
     it("drops a malformed known-kind surface, applies the rest, and reports", async () => {
@@ -335,7 +335,7 @@ describe("RemoteConfigService", () => {
           }),
         ),
       );
-      const { service, captureException } =
+      const { service, captureContractFailure } =
         await createService(freshPersisted());
 
       await service.refresh();
@@ -343,9 +343,9 @@ describe("RemoteConfigService", () => {
       expect(service.getConfig().surfaces).toEqual([
         { kind: "side_slot", id: "slot-1", content: { body: "x" } },
       ]);
-      expect(captureException).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ _tag: "RemoteConfigInvalid" }),
-        expect.anything(),
+      expect(captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "remote_config_response_invalid",
+        "schema_mismatch",
       );
     });
 
@@ -359,19 +359,19 @@ describe("RemoteConfigService", () => {
           }),
         ),
       );
-      const { service, captureException } =
+      const { service, captureContractFailure } =
         await createService(freshPersisted());
 
       await service.refresh();
 
       expect(service.getConfig().surfaces).toEqual([validBanner]);
-      expect(captureException).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ _tag: "RemoteConfigInvalid" }),
-        expect.anything(),
+      expect(captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "remote_config_response_invalid",
+        "schema_mismatch",
       );
     });
 
-    it("never reports network-phase failures", async () => {
+    it("reports invalid JSON but not network or HTTP failures", async () => {
       const fetchMock = vi
         .fn()
         .mockRejectedValueOnce(new Error("offline"))
@@ -384,7 +384,7 @@ describe("RemoteConfigService", () => {
           },
         });
       vi.stubGlobal("fetch", fetchMock);
-      const { service, captureException } =
+      const { service, captureContractFailure } =
         await createService(freshPersisted());
 
       await service.refresh();
@@ -392,7 +392,10 @@ describe("RemoteConfigService", () => {
       await service.refresh();
 
       expect(fetchMock).toHaveBeenCalledTimes(3);
-      expect(captureException).not.toHaveBeenCalled();
+      expect(captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "remote_config_response_invalid",
+        "invalid_json",
+      );
     });
 
     it("never reports an invalid persisted config", async () => {
@@ -402,11 +405,11 @@ describe("RemoteConfigService", () => {
         config: { version: "one" },
         lastFetchedAt: new Date().toISOString(),
       } as unknown as PersistedRemoteConfig;
-      const { captureException } = await createService(persisted);
+      const { captureContractFailure } = await createService(persisted);
 
       // The rejected cache counts as absent, so init kicks its refresh.
       await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-      expect(captureException).not.toHaveBeenCalled();
+      expect(captureContractFailure).not.toHaveBeenCalled();
     });
 
     it("a settings write failure neither rejects nor reports", async () => {
@@ -414,7 +417,7 @@ describe("RemoteConfigService", () => {
         "fetch",
         vi.fn().mockResolvedValue(ok({ version: 1, surfaces: [validBanner] })),
       );
-      const { service, settingsService, captureException } =
+      const { service, settingsService, captureContractFailure } =
         await createService(freshPersisted());
       vi.mocked(settingsService.setRemoteConfig).mockRejectedValue(
         new Error("db locked"),
@@ -424,22 +427,25 @@ describe("RemoteConfigService", () => {
 
       // The in-memory config applied before the persist failed.
       expect(service.getConfig().surfaces).toHaveLength(1);
-      expect(captureException).not.toHaveBeenCalled();
+      expect(captureContractFailure).not.toHaveBeenCalled();
     });
 
     it("a settings read failure counts as an absent cache and never reports", async () => {
       const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
       vi.stubGlobal("fetch", fetchMock);
-      const { service, captureException } = await createService(undefined, {
-        getRemoteConfig: vi.fn().mockRejectedValue(new Error("db gone")),
-      });
+      const { service, captureContractFailure } = await createService(
+        undefined,
+        {
+          getRemoteConfig: vi.fn().mockRejectedValue(new Error("db gone")),
+        },
+      );
 
       // Init survived the read failure and kicked its refresh.
       await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
       expect(service.getConfig().flags[DESKTOP_BACKGROUND_UPDATES_FLAG]).toBe(
         true,
       );
-      expect(captureException).not.toHaveBeenCalled();
+      expect(captureContractFailure).not.toHaveBeenCalled();
     });
   });
 

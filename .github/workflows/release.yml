@@ -68,6 +68,10 @@ jobs:
             echo "✓ Architecture verified: Running as native arm64"
           fi
 
+      - name: Record checked-out commit
+        shell: bash
+        run: echo "POSTHOG_RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -151,6 +155,9 @@ jobs:
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_SOURCE_MAP_UPLOAD: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'true' || 'false' }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
           FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
           AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
           AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
@@ -190,6 +197,9 @@ jobs:
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_SOURCE_MAP_UPLOAD: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'true' || 'false' }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
           FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
           AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
           AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}

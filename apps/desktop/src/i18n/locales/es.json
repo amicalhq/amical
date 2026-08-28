@@ -3,7 +3,14 @@
     "loading": "Cargando Amical..."
   },
   "errors": {
-    "generic": "Algo salió mal. Por favor, inténtalo de nuevo."
+    "generic": "Algo salió mal. Por favor, inténtalo de nuevo.",
+    "renderer": {
+      "title": "Algo salió mal",
+      "description": "Amical encontró un error inesperado.",
+      "tryAgain": "Intentar de nuevo",
+      "reload": "Recargar ventana",
+      "supportNote": "Si esto sigue ocurriendo, contacta a soporte."
+    }
   },
   "menu": {
     "file": "Archivo",
@@ -50,13 +57,6 @@
       "completeFailed": "No se pudo completar la configuración inicial. Por favor, inténtalo de nuevo.",
       "resetSuccess": "Configuración inicial restablecida correctamente",
       "resetFailed": "No se pudo restablecer la configuración inicial"
-    },
-    "errorBoundary": {
-      "title": "Algo salió mal",
-      "description": "Ocurrió un error durante el proceso de configuración inicial. Por favor, inténtalo de nuevo.",
-      "tryAgain": "Intentar de nuevo",
-      "restart": "Reiniciar configuración inicial",
-      "supportNote": "Si esto sigue ocurriendo, contacta a soporte."
     },
     "welcome": {
       "title": "¿Cómo usarás Amical?",

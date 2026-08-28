@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/trpc/react";
 import { useOnboardingState } from "./hooks/useOnboardingState";
 import { PhaseProgress } from "./components/shared/PhaseProgress";
-import { OnboardingErrorBoundary } from "./components/ErrorBoundary";
 import { useTranslation } from "react-i18next";
+import { usePostHog } from "@/renderer/lib/posthog";
 
 // Screens
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
@@ -48,6 +48,7 @@ interface PermissionStatus {
  * Implements T026, T027, T028, T029 - Navigation & State Machine
  */
 export function App() {
+  usePostHog("onboarding");
   const { t } = useTranslation();
   // State management
   const [currentScreen, setCurrentScreen] = useState<OnboardingScreen>(
@@ -478,17 +479,15 @@ export function App() {
       : (screensInPhase.indexOf(currentScreen) + 1) / screensInPhase.length;
 
   return (
-    <OnboardingErrorBoundary>
-      <div className="flex h-screen flex-col overflow-hidden bg-background text-sm text-foreground antialiased [background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-brand-glow)_0%,transparent_60%)]">
-        {/* native titlebar drag region (traffic lights drawn by titleBarOverlay) */}
-        <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
-        <PhaseProgress
-          phases={phases}
-          currentPhase={currentPhase}
-          fill={phaseFill}
-        />
-        <div className="relative flex-1 overflow-hidden">{renderScreen()}</div>
-      </div>
-    </OnboardingErrorBoundary>
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-sm text-foreground antialiased [background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-brand-glow)_0%,transparent_60%)]">
+      {/* native titlebar drag region (traffic lights drawn by titleBarOverlay) */}
+      <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
+      <PhaseProgress
+        phases={phases}
+        currentPhase={currentPhase}
+        fill={phaseFill}
+      />
+      <div className="relative flex-1 overflow-hidden">{renderScreen()}</div>
+    </div>
   );
 }

@@ -52,6 +52,7 @@ describe("AutoUpdaterService", () => {
   let service: AutoUpdaterService;
   let telemetry: {
     captureException: ReturnType<typeof vi.fn>;
+    captureContractFailure: ReturnType<typeof vi.fn>;
     getMachineId: ReturnType<typeof vi.fn>;
   };
   let remoteConfig: { getConfig: ReturnType<typeof vi.fn> };
@@ -93,6 +94,7 @@ describe("AutoUpdaterService", () => {
     emitUpdateChannelChanged = null;
     telemetry = {
       captureException: vi.fn(),
+      captureContractFailure: vi.fn(),
       getMachineId: vi.fn().mockReturnValue("machine-xyz"),
     };
     remoteConfig = {
@@ -270,6 +272,35 @@ describe("AutoUpdaterService", () => {
   });
 
   describe("checkForUpdates", () => {
+    it.each([
+      {
+        name: "invalid JSON",
+        json: () => Promise.reject(new SyntaxError("Unexpected token <")),
+        kind: "invalid_json",
+        properties: { status: 200 },
+      },
+      {
+        name: "an invalid action",
+        json: async () => ({ action: "unknown" }),
+        kind: "schema_mismatch",
+        properties: { reason: "invalid_action" },
+      },
+    ])("reports $name from the metadata endpoint", async (scenario) => {
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: scenario.json,
+      } as unknown as Response);
+
+      await service.checkForUpdates(true);
+
+      expect(telemetry.captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "update_metadata_response_invalid",
+        scenario.kind,
+        scenario.properties,
+      );
+    });
+
     it("skips the native check when metadata reports action 'none'", async () => {
       vi.mocked(net.fetch).mockResolvedValue({
         ok: true,

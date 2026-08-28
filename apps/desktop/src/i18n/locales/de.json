@@ -3,7 +3,14 @@
     "loading": "Amical wird geladen..."
   },
   "errors": {
-    "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+    "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+    "renderer": {
+      "title": "Etwas ist schiefgelaufen",
+      "description": "In Amical ist ein unerwarteter Fehler aufgetreten.",
+      "tryAgain": "Erneut versuchen",
+      "reload": "Fenster neu laden",
+      "supportNote": "Falls das immer wieder passiert, wende dich an den Support."
+    }
   },
   "menu": {
     "file": "Datei",
@@ -50,13 +57,6 @@
       "completeFailed": "Einrichtung konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
       "resetSuccess": "Einrichtung erfolgreich zurückgesetzt",
       "resetFailed": "Einrichtung konnte nicht zurückgesetzt werden"
-    },
-    "errorBoundary": {
-      "title": "Etwas ist schiefgelaufen",
-      "description": "Während der Einrichtung ist ein Fehler aufgetreten. Bitte versuche es erneut.",
-      "tryAgain": "Erneut versuchen",
-      "restart": "Einrichtung neu starten",
-      "supportNote": "Falls das immer wieder passiert, wende dich an den Support."
     },
     "welcome": {
       "title": "Wie wirst du Amical nutzen?",

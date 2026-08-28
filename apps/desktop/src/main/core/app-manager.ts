@@ -19,6 +19,7 @@ import { runDataMigrations } from "../migrations/data-migrations";
 import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { getApplicationLocale } from "@/i18n/application-locale";
+import { installRendererFailureTelemetry } from "../telemetry/renderer-failure-telemetry";
 
 export class AppManager {
   // Resolved ONCE in initialize() after the graph builds — AppManager's only
@@ -100,6 +101,7 @@ export class AppManager {
     const onboardingService = services.onboardingService;
     const nativeBridge = services.nativeBridge;
 
+    installRendererFailureTelemetry(this.windowManager, telemetryService);
     telemetryService.trackAppLaunch();
 
     // Subscribe to onboarding lifecycle, shortcuts, and native bridge events.

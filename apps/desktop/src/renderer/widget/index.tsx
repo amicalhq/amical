@@ -7,7 +7,12 @@ import { api, trpcClient } from "@/trpc/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToasterWrapper } from "./components/ToasterWrapper";
 import { initializeRendererI18n } from "@/renderer/lib/initialize-i18n";
-import { usePostHog } from "@/renderer/main/lib/posthog";
+import {
+  captureRendererException,
+  initializeRendererPostHog,
+  usePostHog,
+} from "@/renderer/lib/posthog";
+import { RendererErrorBoundary } from "@/renderer/lib/renderer-error-boundary";
 import "@/styles/globals.css";
 
 // Extend Console interface to include original methods
@@ -71,7 +76,7 @@ const queryClient = new QueryClient({
 });
 
 const WidgetShell: React.FC = () => {
-  usePostHog();
+  usePostHog("widget");
 
   return (
     <>
@@ -85,23 +90,30 @@ const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
   const bootstrap = async () => {
+    await initializeRendererPostHog("widget");
     const i18n = await initializeRendererI18n();
 
     root.render(
       <I18nextProvider i18n={i18n}>
-        <ThemeProvider>
-          <api.Provider client={trpcClient} queryClient={queryClient}>
-            <QueryClientProvider client={queryClient}>
-              <WidgetShell />
-            </QueryClientProvider>
-          </api.Provider>
-        </ThemeProvider>
+        <RendererErrorBoundary surface="widget">
+          <ThemeProvider>
+            <api.Provider client={trpcClient} queryClient={queryClient}>
+              <QueryClientProvider client={queryClient}>
+                <WidgetShell />
+              </QueryClientProvider>
+            </api.Provider>
+          </ThemeProvider>
+        </RendererErrorBoundary>
       </I18nextProvider>,
     );
   };
 
   void bootstrap().catch((error) => {
     console.error("Failed to initialize i18n", error);
+    captureRendererException(error, {
+      error_context: "renderer_bootstrap_failed",
+      surface: "widget",
+    });
   });
 } else {
   console.error(

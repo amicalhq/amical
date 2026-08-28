@@ -3,7 +3,14 @@
     "loading": "Amicalを読み込み中..."
   },
   "errors": {
-    "generic": "問題が発生しました。もう一度お試しください。"
+    "generic": "問題が発生しました。もう一度お試しください。",
+    "renderer": {
+      "title": "問題が発生しました",
+      "description": "Amical で予期しないエラーが発生しました。",
+      "tryAgain": "再試行",
+      "reload": "ウィンドウを再読み込み",
+      "supportNote": "繰り返し発生する場合は、サポートにお問い合わせください。"
+    }
   },
   "menu": {
     "file": "ファイル",
@@ -50,13 +57,6 @@
       "completeFailed": "オンボーディングの完了に失敗しました。もう一度お試しください。",
       "resetSuccess": "オンボーディングをリセットしました",
       "resetFailed": "オンボーディングのリセットに失敗しました"
-    },
-    "errorBoundary": {
-      "title": "問題が発生しました",
-      "description": "オンボーディング中にエラーが発生しました。もう一度お試しください。",
-      "tryAgain": "再試行",
-      "restart": "オンボーディングをやり直す",
-      "supportNote": "繰り返し発生する場合は、サポートにお問い合わせください。"
     },
     "welcome": {
       "title": "Amicalをどのように使いますか？",

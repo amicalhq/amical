@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import { posthogSourceMapPlugins } from "./vite.posthog";
 // https://vitejs.dev/config
 export default defineConfig(async () => {
   const { default: tailwindcss } = await import("@tailwindcss/vite");
@@ -14,6 +15,7 @@ export default defineConfig(async () => {
         generatedRouteTree: "./src/renderer/main/routeTree.gen.ts",
       }),
       tailwindcss(),
+      ...posthogSourceMapPlugins(),
     ],
     publicDir: "public",
     resolve: {

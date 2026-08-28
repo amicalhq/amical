@@ -3,7 +3,14 @@
     "loading": "載入 Amical 中..."
   },
   "errors": {
-    "generic": "發生錯誤，請再試一次。"
+    "generic": "發生錯誤，請再試一次。",
+    "renderer": {
+      "title": "發生錯誤",
+      "description": "Amical 發生未預期的錯誤。",
+      "tryAgain": "重試",
+      "reload": "重新載入視窗",
+      "supportNote": "如果問題持續發生，請聯絡支援團隊。"
+    }
   },
   "menu": {
     "file": "檔案",
@@ -50,13 +57,6 @@
       "completeFailed": "無法完成引導，請再試一次。",
       "resetSuccess": "成功重設引導程序",
       "resetFailed": "無法重設引導程序"
-    },
-    "errorBoundary": {
-      "title": "發生錯誤",
-      "description": "我們在引導過程中遇到錯誤，請再試一次。",
-      "tryAgain": "重試",
-      "restart": "重新啟動引導程序",
-      "supportNote": "如果問題持續發生，請聯絡支援團隊。"
     },
     "welcome": {
       "title": "您會如何使用 Amical？",

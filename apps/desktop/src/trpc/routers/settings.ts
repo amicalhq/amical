@@ -724,7 +724,7 @@ export const settingsRouter = createRouter({
     return telemetryService?.getMachineId() ?? "";
   }),
 
-  // Get telemetry config for renderer (PostHog surveys).
+  // Get telemetry config for renderer PostHog.
   // Identity is delivered separately via api.auth.onAuthStateChange so this stays cheap to poll.
   getTelemetryConfig: procedure.query(async ({ ctx }) => {
     const telemetryService = ctx.services.telemetryService;
@@ -733,9 +733,28 @@ export const settingsRouter = createRouter({
       host: process.env.POSTHOG_HOST || __BUNDLED_POSTHOG_HOST,
       machineId: telemetryService?.getMachineId() ?? "",
       enabled: telemetryService?.isEnabled() ?? false,
+      commonProperties: telemetryService?.getCommonProperties() ?? {},
       feedbackSurveyId:
         process.env.FEEDBACK_SURVEY_ID || __BUNDLED_FEEDBACK_SURVEY_ID,
     };
+  }),
+
+  onTelemetryEnabledChange: procedure.subscription(({ ctx }) => {
+    return observable<boolean>((emit) => {
+      const telemetryService = ctx.services.telemetryService;
+      if (!telemetryService) {
+        emit.next(false);
+        return;
+      }
+
+      const onEnabledChange = (enabled: boolean) => emit.next(enabled);
+      telemetryService.on("enabled-changed", onEnabledChange);
+      emit.next(telemetryService.isEnabled());
+
+      return () => {
+        telemetryService.off("enabled-changed", onEnabledChange);
+      };
+    });
   }),
 
   // Download log file via save dialog

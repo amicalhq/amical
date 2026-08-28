@@ -15,7 +15,10 @@ import {
 } from "../utils/http-client";
 import type { AuthService, AuthState } from "./auth-service";
 import type { SettingsService } from "./settings-service";
-import type { TelemetryService } from "./telemetry-service";
+import type {
+  ContractFailureKind,
+  TelemetryService,
+} from "./telemetry-service";
 import { getApplicationLocale } from "../i18n/application-locale";
 import { Data, Effect, Layer, Scope } from "effect";
 import { z } from "zod";
@@ -32,8 +35,7 @@ const REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const DESKTOP_BACKGROUND_UPDATES_FLAG = "desktop-background-updates";
 
 /**
- * Network-phase failure: server unreachable, non-OK status, or a body that is
- * not JSON (middleboxes and captive portals serve HTML with a 200).
+ * Network-phase failure: server unreachable or a non-OK status.
  * Environmental — logged, and the last good config stays.
  */
 class RemoteConfigFetchFailed extends Data.TaggedError(
@@ -44,10 +46,11 @@ class RemoteConfigFetchFailed extends Data.TaggedError(
   cause?: unknown;
 }> {}
 
-/** Valid JSON that violates the remote-config contract. */
+/** A successful response that violates the remote-config contract. */
 class RemoteConfigInvalid extends Data.TaggedError("RemoteConfigInvalid")<{
   message: string;
-  issues: unknown;
+  failureKind: ContractFailureKind;
+  issues?: unknown;
 }> {}
 
 /**
@@ -91,6 +94,7 @@ const parseEnvelope = (
       return Effect.fail(
         new RemoteConfigInvalid({
           message: "Remote config failed validation",
+          failureKind: "schema_mismatch",
           issues: envelope.error.issues,
         }),
       );
@@ -342,7 +346,7 @@ export class RemoteConfigService {
 
   private fetchEnvelopeEffect(): Effect.Effect<
     unknown,
-    RemoteConfigFetchFailed
+    RemoteConfigFetchFailed | RemoteConfigInvalid
   > {
     return Effect.gen(this, function* () {
       const url = getCoreApiUrl("/apps/v1/remote-config");
@@ -396,11 +400,16 @@ export class RemoteConfigService {
       return yield* Effect.tryPromise({
         try: (): Promise<unknown> => response.json(),
         catch: (cause) =>
-          new RemoteConfigFetchFailed({
-            message: "Remote config response was not JSON",
-            status: response.status,
-            cause,
-          }),
+          cause instanceof SyntaxError
+            ? new RemoteConfigInvalid({
+                message: "Remote config response was not JSON",
+                failureKind: "invalid_json",
+              })
+            : new RemoteConfigFetchFailed({
+                message: "Failed to read remote config response",
+                status: response.status,
+                cause,
+              }),
       });
     });
   }
@@ -433,6 +442,7 @@ export class RemoteConfigService {
           this.reportInvalid(
             new RemoteConfigInvalid({
               message: "Remote config surfaces failed validation",
+              failureKind: "schema_mismatch",
               issues: brokenSurfaceIssues,
             }),
           );
@@ -475,9 +485,10 @@ export class RemoteConfigService {
       return;
     }
     this.invalidReported = true;
-    this.telemetryService.captureException(error, {
-      remote_config_issues: JSON.stringify(error.issues),
-    });
+    this.telemetryService.captureContractFailure(
+      "remote_config_response_invalid",
+      error.failureKind,
+    );
   }
 
   // Update the in-memory config and the persisted cache together.

@@ -8,6 +8,11 @@ import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
 import { getAmicalClientHeaders, getUserAgent } from "../utils/http-client";
 import { AuthServiceTag } from "../main/runtime/tags";
 import { up } from "../main/runtime/layer-helpers";
+import type {
+  ContractFailureKind,
+  ContractFailureProperties,
+  ContractFailureReport,
+} from "./telemetry-service";
 
 interface AuthConfig {
   clientId: string;
@@ -37,20 +42,55 @@ interface PendingAuth {
 
 interface TokenResponse {
   access_token: string;
-  token_type: string;
   expires_in: number;
   refresh_token: string;
-  scope: string;
   id_token: string;
 }
 
-interface RefreshTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  refresh_token: string;
-  scope: string;
-  id_token: string;
+function parseExpiresInSeconds(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function parseTokenResponse(
+  raw: unknown,
+  fallbackRefreshToken?: string,
+  fallbackIdToken?: string,
+): TokenResponse | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+
+  const value = raw as Record<string, unknown>;
+  const expiresIn = parseExpiresInSeconds(value.expires_in);
+  const refreshToken =
+    typeof value.refresh_token === "string"
+      ? value.refresh_token
+      : fallbackRefreshToken;
+  const idToken =
+    typeof value.id_token === "string" ? value.id_token : fallbackIdToken;
+
+  if (
+    typeof value.access_token !== "string" ||
+    !idToken ||
+    !refreshToken ||
+    expiresIn === null
+  ) {
+    return null;
+  }
+
+  return {
+    access_token: value.access_token,
+    id_token: idToken,
+    refresh_token: refreshToken,
+    expires_in: expiresIn,
+  };
 }
 
 export class AuthService extends EventEmitter {
@@ -140,6 +180,57 @@ export class AuthService extends EventEmitter {
    */
   private generateState(): string {
     return this.base64URLEncode(randomBytes(16));
+  }
+
+  private reportApiContractFailure(
+    errorContext: string,
+    failureKind: ContractFailureKind,
+    properties?: ContractFailureProperties,
+  ): void {
+    const report: ContractFailureReport = {
+      errorContext,
+      failureKind,
+      properties,
+    };
+    this.emit("api-contract-failure", report);
+  }
+
+  private async parseSuccessfulTokenResponse(
+    response: Response,
+    fallbackRefreshToken?: string,
+    fallbackIdToken?: string,
+  ): Promise<TokenResponse> {
+    const statusProperties =
+      typeof response.status === "number" ? { status: response.status } : {};
+    let raw: unknown;
+    try {
+      raw = await response.json();
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        this.reportApiContractFailure(
+          "oauth_token_response_invalid",
+          "invalid_json",
+          statusProperties,
+        );
+        throw new Error("Token endpoint returned an invalid response.");
+      }
+      throw error;
+    }
+
+    const parsed = parseTokenResponse(
+      raw,
+      fallbackRefreshToken,
+      fallbackIdToken,
+    );
+    if (!parsed) {
+      this.reportApiContractFailure(
+        "oauth_token_response_invalid",
+        "schema_mismatch",
+        statusProperties,
+      );
+      throw new Error("Token endpoint returned an invalid response.");
+    }
+    return parsed;
   }
 
   /**
@@ -310,7 +401,7 @@ export class AuthService extends EventEmitter {
         throw new Error(`Token exchange failed: ${response.statusText}`);
       }
 
-      const tokenResponse: TokenResponse = await response.json();
+      const tokenResponse = await this.parseSuccessfulTokenResponse(response);
       logger.main.debug("Token exchange successful", tokenResponse);
       return tokenResponse;
     } catch (error) {
@@ -412,15 +503,50 @@ export class AuthService extends EventEmitter {
       throw new Error(`Handoff failed: ${response.status}`);
     }
 
-    const { url } = (await response.json()) as { url?: string };
-    if (!url) {
+    const statusProperties =
+      typeof response.status === "number" ? { status: response.status } : {};
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        this.reportApiContractFailure(
+          "account_handoff_response_invalid",
+          "invalid_json",
+          statusProperties,
+        );
+        throw new Error("Handoff response was not valid JSON");
+      }
+      throw error;
+    }
+
+    const url =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>).url
+        : undefined;
+    if (typeof url !== "string" || !url) {
+      this.reportApiContractFailure(
+        "account_handoff_response_invalid",
+        "schema_mismatch",
+        { ...statusProperties, reason: "missing_url" },
+      );
       throw new Error("Handoff response missing url");
     }
 
     // Server compromise is a remote risk, but `shell.openExternal` honors
     // any scheme/host the URL specifies (file://, vbscript:, etc.) and
     // can't be undone. Constrain to https on the amical.ai family.
-    const parsed = new URL(url);
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      this.reportApiContractFailure(
+        "account_handoff_response_invalid",
+        "schema_mismatch",
+        { ...statusProperties, reason: "invalid_url" },
+      );
+      throw new Error("Handoff response contained an invalid url");
+    }
     const host = parsed.hostname;
     const hostAllowed = host === "amical.ai" || host.endsWith(".amical.ai");
     if (parsed.protocol !== "https:" || !hostAllowed) {
@@ -428,6 +554,11 @@ export class AuthService extends EventEmitter {
         protocol: parsed.protocol,
         host,
       });
+      this.reportApiContractFailure(
+        "account_handoff_response_invalid",
+        "schema_mismatch",
+        { ...statusProperties, reason: "untrusted_url" },
+      );
       throw new Error(`Handoff URL not allowed: ${parsed.protocol}//${host}`);
     }
 
@@ -494,7 +625,12 @@ export class AuthService extends EventEmitter {
     }
 
     logger.main.info("Token needs refresh, starting refresh flow");
-    await this.performTokenRefresh(authState.refreshToken, generation, signal);
+    await this.performTokenRefresh(
+      authState.refreshToken,
+      authState.idToken,
+      generation,
+      signal,
+    );
   }
 
   /**
@@ -502,6 +638,7 @@ export class AuthService extends EventEmitter {
    */
   private async performTokenRefresh(
     refreshToken: string,
+    currentIdToken: string | null,
     generation: number,
     signal: AbortSignal,
   ): Promise<void> {
@@ -553,7 +690,11 @@ export class AuthService extends EventEmitter {
         throw new Error(`Token refresh failed: ${response.statusText}`);
       }
 
-      const tokenResponse: RefreshTokenResponse = await response.json();
+      const tokenResponse = await this.parseSuccessfulTokenResponse(
+        response,
+        refreshToken,
+        currentIdToken ?? undefined,
+      );
       logger.main.info("Token refresh successful");
 
       // Get current auth state to preserve user info
