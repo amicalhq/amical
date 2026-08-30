@@ -100,7 +100,7 @@ export class AuthService extends EventEmitter {
   private refreshAbortController: AbortController | null = null;
   private readonly authStateMutex = new Mutex();
   private authGeneration = 0;
-  private beforeLogoutHandler: (() => Promise<void>) | null = null;
+  private beforeLogoutHandlers = new Set<() => Promise<void>>();
 
   private constructor() {
     super();
@@ -144,12 +144,10 @@ export class AuthService extends EventEmitter {
   }
 
   registerBeforeLogoutHandler(handler: () => Promise<void>): () => void {
-    this.beforeLogoutHandler = handler;
+    this.beforeLogoutHandlers.add(handler);
 
     return () => {
-      if (this.beforeLogoutHandler === handler) {
-        this.beforeLogoutHandler = null;
-      }
+      this.beforeLogoutHandlers.delete(handler);
     };
   }
 
@@ -417,7 +415,9 @@ export class AuthService extends EventEmitter {
     const logoutGeneration = ++this.authGeneration;
     this.refreshAbortController?.abort();
     this.pendingAuth = null;
-    await this.beforeLogoutHandler?.();
+    for (const handler of this.beforeLogoutHandlers) {
+      await handler();
+    }
     const cleared = await this.authStateMutex.runExclusive(async () => {
       if (logoutGeneration !== this.authGeneration) return false;
       await updateSettingsSection("auth", undefined);

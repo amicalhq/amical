@@ -51,7 +51,10 @@ export interface RecorderAmbiance {
 /** The custody half of storage (provisional row bookkeeping). */
 export interface RecorderCustodyStore {
   open(session: SessionId, audioFile: string): Promise<void>;
-  enrich(session: SessionId, fields: { duration: number }): Promise<void>;
+  enrich(
+    session: SessionId,
+    fields: { duration: number; audioDurationMs: number },
+  ): Promise<void>;
 }
 
 export interface WavCustodyWriter {
@@ -100,6 +103,7 @@ export interface RecorderAdapter extends RecorderPort {
 export interface CustodyOutcome {
   audioFile: string | null;
   wavOk: boolean;
+  audioDurationMs?: number;
 }
 
 interface CaptureState {
@@ -193,6 +197,7 @@ export function createRecorderAdapter(
     endAmbiance(capture);
 
     const { writer, session, samples } = capture;
+    const audioDurationMs = Math.round((samples / SAMPLE_RATE) * 1000);
     // The close tail is an obligation (D19/D25): it runs to completion no
     // matter how the session ended — retirement and quarantine never touch
     // it. The per-frame writeQueue itself stays a plain promise chain (E3);
@@ -215,6 +220,7 @@ export function createRecorderAdapter(
       await deps.custody
         .enrich(session, {
           duration: Math.round(samples / SAMPLE_RATE),
+          audioDurationMs,
         })
         .catch((error) => {
           logger.audio.warn("Failed to enrich custody duration", {
@@ -236,6 +242,7 @@ export function createRecorderAdapter(
           settleCustodyWaiter(session, {
             audioFile: capture.audioFile,
             wavOk: capture.wavOk,
+            ...(audioDurationMs > 0 ? { audioDurationMs } : {}),
           }),
       ),
     );

@@ -89,11 +89,13 @@ describe("HistoryCleanupService", () => {
         disposition: "success",
         text: "expired transcription",
         timestamp: twoDaysAgo,
+        createdAt: twoDaysAgo,
       },
       {
         disposition: "success",
         text: "recent transcription",
         timestamp: now,
+        createdAt: now,
       },
     ]);
 
@@ -101,9 +103,55 @@ describe("HistoryCleanupService", () => {
     await cleanupService.runCleanup("startup");
 
     const remaining = await testDb.db.select().from(schema.transcriptions);
+    const queuedActivities = await testDb.db
+      .select()
+      .from(schema.activityOutbox);
 
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.text).toBe("recent transcription");
+    expect(queuedActivities).toHaveLength(2);
+    expect(
+      queuedActivities.some(
+        (row) =>
+          row.payload.occurredAt ===
+          new Date(
+            Math.floor(twoDaysAgo.getTime() / 1000) * 1000,
+          ).toISOString(),
+      ),
+    ).toBe(true);
+  });
+
+  it("skips unsettled rows while preserving later activity before cleanup", async () => {
+    const settingsService = {
+      getHistorySettings: vi.fn().mockResolvedValue({ retentionPeriod: "1d" }),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+
+    await testDb.db.insert(schema.transcriptions).values([
+      {
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        disposition: null,
+        text: "",
+        timestamp: twoDaysAgo,
+      },
+      {
+        disposition: "success",
+        text: "must remain recoverable",
+        timestamp: twoDaysAgo,
+      },
+    ]);
+
+    cleanupService = await buildCleanupService(settingsService);
+    await cleanupService.runCleanup("startup");
+
+    const remaining = await testDb.db.select().from(schema.transcriptions);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.disposition).toBeNull();
+    expect(await testDb.db.select().from(schema.activityOutbox)).toHaveLength(
+      1,
+    );
   });
 
   it("keeps history intact when retention is set to never", async () => {

@@ -196,6 +196,7 @@ describe("recording lifecycle runtime", () => {
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
       disposition: "success",
       text: "hello world",
+      audioDurationMs: 200,
     });
     expect(h.pastes).toEqual(["hello world"]);
     expect(h.lifecycle.getSnapshot()).toMatchObject({
@@ -598,6 +599,7 @@ describe("recording lifecycle runtime", () => {
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
       disposition: "failure",
       metaPatch: { failureReason: "timeout" },
+      audioDurationMs: 200,
     });
   });
 
@@ -624,7 +626,7 @@ describe("recording lifecycle runtime", () => {
     await settle();
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(
       shortSession,
-      { disposition: "empty" },
+      { disposition: "empty", audioDurationMs: 200 },
     );
     expect(short.notifications).toEqual([]);
 

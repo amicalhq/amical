@@ -32,6 +32,7 @@ const transcription = {
   audioFile: "/tmp/recording.wav",
   confidence: null,
   duration: 1,
+  audioDurationMs: null,
   speechModel: "whisper-tiny",
   formattingModel: null,
   meta: {},

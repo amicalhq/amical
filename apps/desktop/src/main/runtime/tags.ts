@@ -26,6 +26,7 @@ import type { Scope } from "effect";
 
 import type { SettingsService } from "../../services/settings-service";
 import type { SettingsSyncService } from "../../services/settings-sync-service";
+import type { ActivityReportingService } from "../../services/activity-reporting-service";
 import type { AuthService } from "../../services/auth-service";
 import type { PostHogClient } from "../../services/posthog-client";
 import type { TelemetryService } from "../../services/telemetry-service";
@@ -60,6 +61,10 @@ export class AuthServiceTag extends Context.Tag("AmicalApp/AuthService")<
 export class SettingsSyncServiceTag extends Context.Tag(
   "AmicalApp/SettingsSyncService",
 )<SettingsSyncServiceTag, SettingsSyncService>() {}
+
+export class ActivityReportingServiceTag extends Context.Tag(
+  "AmicalApp/ActivityReportingService",
+)<ActivityReportingServiceTag, ActivityReportingService>() {}
 
 export class PostHogClientTag extends Context.Tag("AmicalApp/PostHogClient")<
   PostHogClientTag,
@@ -169,6 +174,7 @@ export type AppServices =
   | HistoryCleanupServiceTag
   | AuthServiceTag
   | SettingsSyncServiceTag
+  | ActivityReportingServiceTag
   | PostHogClientTag
   | TelemetryServiceTag
   | FeatureFlagServiceTag

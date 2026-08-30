@@ -142,6 +142,7 @@ export function createRecordingLifecycle(
   let recorder!: RecorderAdapter;
   let transcription!: TranscriptionAdapter;
   let host!: HostAdapter;
+  const completionMeta = new Map<SessionId, Record<string, unknown>>();
 
   const notificationListeners = new Set<
     (event: LifecycleNotification) => void
@@ -181,20 +182,28 @@ export function createRecordingLifecycle(
         sink,
         sessionWork,
         service: deps.transcriptionService,
-        enrich: (session, fields) =>
-          enrichTranscriptionBySession(session, {
+        enrich: (session, fields) => {
+          if (fields.metaPatch) {
+            completionMeta.set(session, fields.metaPatch);
+          }
+          return enrichTranscriptionBySession(session, {
             language: fields.language ?? undefined,
             detectedLanguage: fields.detectedLanguage ?? undefined,
             speechModel: fields.speechModel ?? undefined,
             formattingModel: fields.formattingModel ?? undefined,
             metaPatch: fields.metaPatch,
-          }).catch((error) => {
-            // Enrichment is descriptive; a failure never blocks the fact.
-            logger.transcription.error("Failed to enrich custody row", {
-              sessionId: session,
-              error,
+          })
+            .then((enriched) => {
+              if (enriched !== false) completionMeta.delete(session);
+            })
+            .catch((error) => {
+              // Enrichment is descriptive; a failure never blocks the fact.
+              logger.transcription.error("Failed to enrich custody row", {
+                sessionId: session,
+                error,
+              });
             });
-          }),
+        },
         onFailureDetail: (session, detail) => {
           failureDetails.set(session, detail);
         },
@@ -213,7 +222,7 @@ export function createRecordingLifecycle(
               audioFile,
             }).then(() => undefined),
           enrich: (session, fields) =>
-            enrichTranscriptionBySession(session, fields),
+            enrichTranscriptionBySession(session, fields).then(() => undefined),
         },
         feed: (session, chunk) => {
           // v1 latch semantics: the draft chord tags the live session at
@@ -260,6 +269,8 @@ export function createRecordingLifecycle(
           // Custody normally settles in ~ms (success path) or the drain
           // tail (mid-drain seals); the bound only covers a wedged writer.
           custodySettleBoundMs: deps.tuning.drainMs + 2_000,
+          completionMetaFor: (session) => completionMeta.get(session),
+          releaseCompletionMeta: (session) => completionMeta.delete(session),
         }),
         host,
       };

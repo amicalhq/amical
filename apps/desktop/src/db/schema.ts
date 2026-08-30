@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { RemoteConfig } from "@/types/remote-config";
 import type { HistoryRetentionPeriod } from "../constants/history-retention";
+import type { DictationActivity } from "../types/activity";
 
 // Transcriptions table
 export const transcriptions = sqliteTable(
@@ -34,6 +35,7 @@ export const transcriptions = sqliteTable(
     audioFile: text("audio_file"), // Path to the audio file
     confidence: real("confidence"), // AI confidence score (0-1)
     duration: integer("duration"), // Duration in seconds
+    audioDurationMs: integer("audio_duration_ms"),
     speechModel: text("speech_model"), // Model used for speech recognition
     formattingModel: text("formatting_model"), // Model used for formatting
     meta: text("meta", { mode: "json" }), // Additional metadata as JSON
@@ -215,6 +217,41 @@ export const syncOutbox = sqliteTable(
     primaryKey({
       columns: [table.scopeType, table.scopeId, table.collection, table.syncId],
     }),
+  ],
+);
+
+export const activityOutbox = sqliteTable(
+  "activity_outbox",
+  {
+    activityId: text("activity_id").primaryKey(),
+    payload: text("payload", { mode: "json" })
+      .$type<DictationActivity>()
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("activity_outbox_created_idx").on(table.createdAt)],
+);
+
+// Singleton scan cursor over the durable transcription log. Account changes
+// reset it; newly settled rows are materialized directly without changing it.
+export const activityMaterializationState = sqliteTable(
+  "activity_materialization_state",
+  {
+    id: integer("id").primaryKey(),
+    accountId: text("account_id"),
+    transcriptionCursor: integer("transcription_cursor").notNull().default(0),
+  },
+  (table) => [
+    check(
+      "activity_materialization_state_singleton_check",
+      sql`${table.id} = 1`,
+    ),
+    check(
+      "activity_materialization_state_cursor_check",
+      sql`${table.transcriptionCursor} >= 0`,
+    ),
   ],
 );
 
@@ -544,6 +581,9 @@ export type SyncScopeState = typeof syncScopeState.$inferSelect;
 export type SyncCollectionState = typeof syncCollectionState.$inferSelect;
 export type SyncItemState = typeof syncItemState.$inferSelect;
 export type SyncOutbox = typeof syncOutbox.$inferSelect;
+export type ActivityOutbox = typeof activityOutbox.$inferSelect;
+export type ActivityMaterializationState =
+  typeof activityMaterializationState.$inferSelect;
 export type Model = typeof models.$inferSelect;
 export type NewModel = typeof models.$inferInsert;
 export type AppSettings = typeof appSettings.$inferSelect;

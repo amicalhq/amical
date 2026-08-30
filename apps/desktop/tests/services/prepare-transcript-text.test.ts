@@ -18,7 +18,9 @@ type SyncedModel = Awaited<
   >
 >[number];
 
-function createFormatterModel(): SyncedModel {
+function createFormatterModel(
+  overrides: Partial<SyncedModel> = {},
+): SyncedModel {
   return {
     id: "formatter-model",
     providerType: PROVIDER_TYPES.openRouter,
@@ -38,6 +40,7 @@ function createFormatterModel(): SyncedModel {
     accuracy: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    ...overrides,
   };
 }
 
@@ -66,12 +69,22 @@ function createDependencies(options?: {
     >
   >;
   createFormattingProvider?: PrepareTranscriptTextDependencies["createFormattingProvider"];
+  openAICompatibleBaseURL?: string;
+  ollamaURL?: string;
 }): PrepareTranscriptTextDependencies {
   const settingsService = {
     getFormatterConfig: vi.fn(
       async () => options?.formatterConfig ?? { enabled: false },
     ),
     getDefaultLanguageModel: vi.fn(async () => undefined),
+    getOpenAICompatibleConfig: vi.fn(async () =>
+      options?.openAICompatibleBaseURL
+        ? { apiKey: "test-key", baseURL: options.openAICompatibleBaseURL }
+        : undefined,
+    ),
+    getOllamaConfig: vi.fn(async () =>
+      options?.ollamaURL ? { url: options.ollamaURL } : undefined,
+    ),
   } as unknown as SettingsService;
   const modelService = {
     getSyncedProviderModels: vi.fn(async () => options?.models ?? []),
@@ -147,6 +160,11 @@ describe("prepareTranscriptText", () => {
       text: "cloud result",
       formattingUsed: true,
       formattingModel: getSpeechModelSelectionKey("amical-cloud"),
+      formattingActivity: {
+        provider: "amical",
+        model: "amical-cloud",
+        execution: "amical_cloud",
+      },
     });
     expect(createFormattingProvider).not.toHaveBeenCalled();
   });
@@ -207,6 +225,11 @@ describe("prepareTranscriptText", () => {
     expect(result.formattingModel).toBe(
       "system-openrouter::language::formatter-model",
     );
+    expect(result.formattingActivity).toEqual({
+      provider: "openrouter",
+      model: "formatter-model",
+      execution: "provider_cloud",
+    });
   });
 
   it("uses unformatted text when a remote formatter fails", async () => {
@@ -233,6 +256,72 @@ describe("prepareTranscriptText", () => {
     expect(result).toMatchObject({
       text: "raw text ",
       formattingUsed: false,
+    });
+  });
+
+  it("reports a localhost OpenAI-compatible formatter as local execution", async () => {
+    const createFormattingProvider = vi.fn(async () => ({
+      name: "openai-compatible",
+      format: vi.fn(async () => "formatted locally"),
+    })) as PrepareTranscriptTextDependencies["createFormattingProvider"];
+
+    const result = await prepareTranscriptText(
+      {
+        text: "raw text",
+        usedCloudProvider: false,
+        context: createContext(),
+      },
+      createDependencies({
+        formatterConfig: { enabled: true, modelId: "formatter-model" },
+        models: [
+          createFormatterModel({
+            providerType: PROVIDER_TYPES.openAICompatible,
+            providerInstanceId: "system-openai-compatible",
+            provider: "OpenAI Compatible",
+          }),
+        ],
+        openAICompatibleBaseURL: "http://localhost:1234/v1",
+        createFormattingProvider,
+      }),
+    );
+
+    expect(result.formattingActivity).toEqual({
+      provider: "openai-compatible",
+      model: "formatter-model",
+      execution: "local",
+    });
+  });
+
+  it("reports a remote Ollama formatter as provider-cloud execution", async () => {
+    const createFormattingProvider = vi.fn(async () => ({
+      name: "ollama",
+      format: vi.fn(async () => "formatted remotely"),
+    })) as PrepareTranscriptTextDependencies["createFormattingProvider"];
+
+    const result = await prepareTranscriptText(
+      {
+        text: "raw text",
+        usedCloudProvider: false,
+        context: createContext(),
+      },
+      createDependencies({
+        formatterConfig: { enabled: true, modelId: "formatter-model" },
+        models: [
+          createFormatterModel({
+            providerType: PROVIDER_TYPES.ollama,
+            providerInstanceId: "system-ollama",
+            provider: "Ollama",
+          }),
+        ],
+        ollamaURL: "https://ollama.example.com",
+        createFormattingProvider,
+      }),
+    );
+
+    expect(result.formattingActivity).toEqual({
+      provider: "ollama",
+      model: "formatter-model",
+      execution: "provider_cloud",
     });
   });
 });

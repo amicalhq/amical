@@ -17,6 +17,11 @@ import { applyTextReplacements } from "../../utils/text-replacement";
 import type { ModelService } from "../model-service";
 import type { SettingsService } from "../settings-service";
 import type { DictationContext } from "./types";
+import {
+  activityModelForEndpointProvider,
+  activityModelForProvider,
+  type ActivityModel,
+} from "../../types/activity";
 
 type FormattingProviderFactory = typeof createRemoteFormattingProvider;
 
@@ -41,6 +46,7 @@ export interface PreparedTranscriptText {
   formattingUsed: boolean;
   formattingModel?: string;
   formattingDuration?: number;
+  formattingActivity?: ActivityModel;
 }
 
 async function formatWithProvider(
@@ -85,6 +91,7 @@ export async function prepareTranscriptText(
   let formattingUsed = false;
   let formattingModel: string | undefined;
   let formattingDuration: number | undefined;
+  let formattingActivity: ActivityModel | undefined;
 
   const formatterConfig =
     await dependencies.settingsService.getFormatterConfig();
@@ -101,6 +108,10 @@ export async function prepareTranscriptText(
     } else {
       formattingUsed = true;
       formattingModel = getSpeechModelSelectionKey("amical-cloud");
+      formattingActivity = activityModelForProvider(
+        PROVIDER_TYPES.amical,
+        "amical-cloud",
+      );
     }
   } else {
     const modelId =
@@ -126,6 +137,13 @@ export async function prepareTranscriptText(
         const createFormattingProvider =
           dependencies.createFormattingProvider ??
           createRemoteFormattingProvider;
+        const activityEndpoint =
+          model.providerType === PROVIDER_TYPES.ollama
+            ? (await dependencies.settingsService.getOllamaConfig())?.url
+            : model.providerType === PROVIDER_TYPES.openAICompatible
+              ? (await dependencies.settingsService.getOpenAICompatibleConfig())
+                  ?.baseURL
+              : undefined;
         const provider = await createFormattingProvider(
           dependencies.settingsService,
           model.providerType as RemoteFormattingProviderType,
@@ -158,6 +176,21 @@ export async function prepareTranscriptText(
               model.type,
               model.id,
             );
+            if (
+              model.providerType === PROVIDER_TYPES.ollama ||
+              model.providerType === PROVIDER_TYPES.openAICompatible
+            ) {
+              formattingActivity = activityModelForEndpointProvider(
+                model.providerType,
+                model.id,
+                activityEndpoint,
+              );
+            } else {
+              formattingActivity = activityModelForProvider(
+                PROVIDER_TYPES.openRouter,
+                model.id,
+              );
+            }
           }
         }
       } else {
@@ -201,6 +234,7 @@ export async function prepareTranscriptText(
     formattingUsed,
     formattingModel,
     formattingDuration,
+    formattingActivity,
   };
 }
 

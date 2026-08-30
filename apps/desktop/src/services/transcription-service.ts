@@ -63,6 +63,14 @@ import {
   withLockPromise,
   type TokenLock,
 } from "./transcription/token-lock";
+import { detectApplicationType } from "../pipeline/providers/formatting/formatter-prompt";
+import { resolveSessionSkills } from "../pipeline/providers/transcription/skill-resolution";
+import type { DictationSkill } from "../pipeline/providers/transcription/dictation-skill";
+import {
+  sanitizeActivitySkills,
+  transcriptionActivityModel,
+  type CompletedDictationActivityMetadata,
+} from "../types/activity";
 
 type StreamingChunkOptions = {
   sessionId: string;
@@ -81,6 +89,7 @@ export type ResolvedStreamingSession = {
     source?: string;
     vocabularySize: number;
     formattingStyle?: string;
+    activity?: CompletedDictationActivityMetadata;
   };
 };
 
@@ -1027,6 +1036,38 @@ export class TranscriptionService {
       }).pipe(Effect.withSpan("resolve.format", { attributes: { sessionId } }));
       yield* terminalGate;
 
+      let activitySkillInputs: DictationSkill[] | null =
+        formatterConfig?.enabled ? [] : null;
+      if (
+        usedCloudProvider &&
+        (session.context.isInstruct || shouldUseCloudFormatting)
+      ) {
+        activitySkillInputs = yield* Effect.tryPromise({
+          try: () =>
+            resolveSessionSkills({
+              isInstruct: session.context.isInstruct,
+              enableFormatting: Boolean(shouldUseCloudFormatting),
+              accessibilityContext: session.context.accessibilityContext,
+            }),
+          catch: toDependencyFailure,
+        });
+      }
+
+      const activity: CompletedDictationActivityMetadata = {
+        wordCount: prepared.wordCount,
+        appType: detectApplicationType(session.context.accessibilityContext),
+        skills: sanitizeActivitySkills(activitySkillInputs),
+        transcription: transcriptionActivityModel(
+          session.speechModelId,
+          usedCloudProvider,
+        ),
+        formatting:
+          prepared.formattingActivity ??
+          (usedCloudProvider && session.context.isInstruct
+            ? transcriptionActivityModel("amical-cloud", true)
+            : null),
+      };
+
       logger.transcription.info("Streaming session resolved", { sessionId });
       return {
         text: prepared.text,
@@ -1038,6 +1079,7 @@ export class TranscriptionService {
           source: session.context.audio.source,
           vocabularySize: session.context.vocabulary.length,
           formattingStyle: session.context.formattingStyle,
+          activity,
         },
       };
     }).pipe(

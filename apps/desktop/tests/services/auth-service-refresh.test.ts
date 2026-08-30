@@ -126,6 +126,18 @@ describe("AuthService refresh fencing", () => {
     });
   });
 
+  it("runs every registered logout fence", async () => {
+    const first = vi.fn(async () => undefined);
+    const second = vi.fn(async () => undefined);
+    authService.registerBeforeLogoutHandler(first);
+    authService.registerBeforeLogoutHandler(second);
+
+    await authService.logout();
+
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledOnce();
+  });
+
   it("ignores a successful refresh response that arrives after logout", async () => {
     let resolveFetch:
       | ((response: {

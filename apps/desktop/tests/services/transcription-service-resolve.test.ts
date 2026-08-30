@@ -32,20 +32,25 @@ const providerMocks = vi.hoisted(() => {
     emitTerminalFailure: (error: Error) => options.onTerminalFailure?.(error),
   });
 
-  const sessions = new Map<string, ReturnType<typeof makeSession>>();
-  const provider = {
-    name: "whisper-local",
-    sessions,
-    openSession: vi.fn((options: OpenTranscriptionSessionOptions) => {
-      const session = makeSession("whisper-local", options);
-      sessions.set(options.sessionId, session);
-      return session;
-    }),
-    warmup: vi.fn(async () => undefined),
-    dispose: vi.fn(async () => undefined),
-    preloadModel: vi.fn(async () => undefined),
+  const makeProvider = (name: string) => {
+    const sessions = new Map<string, ReturnType<typeof makeSession>>();
+    return {
+      name,
+      sessions,
+      openSession: vi.fn((options: OpenTranscriptionSessionOptions) => {
+        const session = makeSession(name, options);
+        sessions.set(options.sessionId, session);
+        return session;
+      }),
+      warmup: vi.fn(async () => undefined),
+      dispose: vi.fn(async () => undefined),
+      preloadModel: vi.fn(async () => undefined),
+    };
   };
-  return { provider };
+  return {
+    provider: makeProvider("whisper-local"),
+    cloudProvider: makeProvider("amical-cloud"),
+  };
 });
 
 vi.mock("../../src/db/transcriptions", () => ({
@@ -81,7 +86,7 @@ vi.mock(
   "../../src/pipeline/providers/transcription/amical-cloud-provider",
   () => ({
     AmicalCloudProvider: vi.fn(function () {
-      return providerMocks.provider;
+      return providerMocks.cloudProvider;
     }),
   }),
 );
@@ -114,6 +119,7 @@ describe("TranscriptionService — lifecycle resolve", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     providerMocks.provider.sessions.clear();
+    providerMocks.cloudProvider.sessions.clear();
 
     service = TranscriptionService.createForTests(
       {
@@ -174,7 +180,21 @@ describe("TranscriptionService — lifecycle resolve", () => {
       text: "resolved final (prepared)",
       language: "en",
       speechModel: "whisper-tiny",
-      meta: { source: "microphone", vocabularySize: 0 },
+      meta: {
+        source: "microphone",
+        vocabularySize: 0,
+        activity: {
+          wordCount: 2,
+          appType: "default",
+          skills: null,
+          transcription: {
+            provider: "whisper-cpp",
+            model: "whisper-tiny",
+            execution: "local",
+          },
+          formatting: null,
+        },
+      },
     });
     expect(updateTranscription).not.toHaveBeenCalled();
 
@@ -182,6 +202,65 @@ describe("TranscriptionService — lifecycle resolve", () => {
     await expect(
       service.resolveStreamingSession({ sessionId: "s1" }),
     ).resolves.toBeNull();
+  });
+
+  it("reports Amical Cloud transcription and instruct formatting metadata", async () => {
+    const cloud = TranscriptionService.createForTests(
+      {
+        getSelectedModel: vi.fn(async () => "amical-cloud"),
+      } as unknown as ModelService,
+      {
+        processAudioFrame: vi.fn(async () => ({
+          probability: 1,
+          isSpeaking: true,
+        })),
+        reset: vi.fn(),
+      } as unknown as VADService,
+      {
+        getFormatterConfig: vi.fn(async () => ({
+          enabled: true,
+          modelId: "amical-cloud",
+        })),
+      } as unknown as SettingsService,
+      new Proxy({}, { get: () => vi.fn() }) as unknown as TelemetryService,
+      {
+        isAuthenticated: vi.fn(),
+        getIdToken: vi.fn(),
+        refreshTokenIfNeeded: vi.fn(),
+      } as unknown as AuthService,
+      null,
+      null,
+    );
+    vi.mocked(loadDictationContext).mockResolvedValue({
+      ...dictationContext("cloud"),
+      isInstruct: true,
+    });
+
+    cloud.beginStreamingSession("cloud");
+    await cloud.processStreamingChunk({
+      sessionId: "cloud",
+      audioChunk: new Float32Array([0.5]),
+      isInstruct: true,
+    });
+    const resolved = await cloud.resolveStreamingSession({
+      sessionId: "cloud",
+    });
+
+    expect(resolved?.meta.activity).toEqual({
+      wordCount: 2,
+      appType: "default",
+      skills: [{ kind: "preset", presetId: "instruct" }],
+      transcription: {
+        provider: "amical",
+        model: "amical-cloud",
+        execution: "amical_cloud",
+      },
+      formatting: {
+        provider: "amical",
+        model: "amical-cloud",
+        execution: "amical_cloud",
+      },
+    });
   });
 
   it("returns null for never-fed and unknown sessions", async () => {

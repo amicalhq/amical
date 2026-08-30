@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 
 import { logger } from "../main/logger";
 import { getHistoryRetentionCutoffDate } from "../constants/history-retention";
+import { materializeAllCompletedDictationActivities } from "../db/activity-outbox";
 import { deleteTranscriptionsOlderThan } from "../db/transcriptions";
 import { deleteAudioFilesForTranscriptions } from "../utils/audio-file-cleanup";
 import {
@@ -135,6 +136,8 @@ export class HistoryCleanupService {
         );
         return;
       }
+
+      await materializeAllCompletedDictationActivities();
 
       const deletedTranscriptions =
         await deleteTranscriptionsOlderThan(cutoffDate);

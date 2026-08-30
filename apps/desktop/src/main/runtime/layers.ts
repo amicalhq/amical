@@ -85,6 +85,7 @@ import { isMacOS, isWindows } from "../../utils/platform";
 
 import { SettingsService } from "../../services/settings-service";
 import { SettingsSyncService } from "../../services/settings-sync-service";
+import { ActivityReportingService } from "../../services/activity-reporting-service";
 import { AuthService } from "../../services/auth-service";
 import { PostHogClient } from "../../services/posthog-client";
 import { TelemetryService } from "../../services/telemetry-service";
@@ -272,6 +273,7 @@ export const AppLive: Layer.Layer<
       ShortcutManager.Live,
       AutoUpdaterService.Live,
       SettingsSyncService.Live,
+      ActivityReportingService.Live,
     ),
   ),
   Layer.provideMerge(RecordingLifecycleLive),

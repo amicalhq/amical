@@ -42,6 +42,7 @@ function makeHarness() {
   const facts: LifecyclePortFact[] = [];
   const feeds: Array<{ session: string; length: number }> = [];
   const custodyCalls: string[] = [];
+  const capturedDurationsMs: number[] = [];
   const timers = new FakeTimers();
   const writers: FakeWriter[] = [];
   const ambianceEnds: Array<AmbianceContext | null> = [];
@@ -51,8 +52,13 @@ function makeHarness() {
   const custody = {
     open: async (session: string, audioFile: string) =>
       void custodyCalls.push(`open:${session}:${audioFile}`),
-    enrich: async (session: string, fields: { duration: number }) =>
-      void custodyCalls.push(`enrich:${session}:${fields.duration}`),
+    enrich: async (
+      session: string,
+      fields: { duration: number; audioDurationMs: number },
+    ) => {
+      custodyCalls.push(`enrich:${session}:${fields.duration}`);
+      capturedDurationsMs.push(fields.audioDurationMs);
+    },
   };
 
   const sessionWork = createSessionWork({ timers });
@@ -96,6 +102,7 @@ function makeHarness() {
     feeds,
     custody,
     custodyCalls,
+    capturedDurationsMs,
     timers,
     writers,
     ambianceEnds,
@@ -205,6 +212,7 @@ describe("lifecycle recorder adapter", () => {
     expect(h.writers[0].finalized).toBe(true);
     expect(h.writers[0].appended).toHaveLength(3);
     expect(h.custodyCalls).toContain("enrich:s1:2");
+    expect(h.capturedDurationsMs).toContain(2010);
     expect(h.timers.armedDurations()).toEqual([]);
 
     // A tardy final chunk changes nothing.
@@ -249,6 +257,7 @@ describe("lifecycle recorder adapter", () => {
     expect(h.facts).toContainEqual({ type: "recorderClosed", session: "s1" });
     expect(h.writers[0].finalized).toBe(true);
     expect(h.custodyCalls).toContain("enrich:s1:1");
+    expect(h.capturedDurationsMs).toContain(1000);
   });
 
   it("stop before capture confirmation closes without a drain", async () => {
@@ -304,7 +313,11 @@ describe("lifecycle recorder adapter", () => {
     // Asked AFTER settlement (the normal stamp timing): the real outcome,
     // not an empty default.
     const outcome = await h.adapter.whenCustodySettled("s1");
-    expect(outcome).toEqual({ audioFile: "/audio/s1.wav", wavOk: true });
+    expect(outcome).toEqual({
+      audioFile: "/audio/s1.wav",
+      wavOk: true,
+      audioDurationMs: 20,
+    });
     // Asking twice (commit retry) still works.
     expect(await h.adapter.whenCustodySettled("s1")).toEqual(outcome);
   });
@@ -323,6 +336,7 @@ describe("lifecycle recorder adapter", () => {
     expect(await h.adapter.whenCustodySettled("s1")).toEqual({
       audioFile: "/audio/s1.wav",
       wavOk: false,
+      audioDurationMs: 20,
     });
   });
 
@@ -386,7 +400,11 @@ describe("the close tail is an obligation", () => {
     h.sessionWork.open("s1");
     h.sessionWork.quarantine("s1");
     h.adapter.stop("s1");
-    const settled: Array<{ audioFile: string | null; wavOk: boolean }> = [];
+    const settled: Array<{
+      audioFile: string | null;
+      wavOk: boolean;
+      audioDurationMs?: number;
+    }> = [];
     void h.adapter.whenCustodySettled("s1").then((outcome) => {
       settled.push(outcome);
     });
@@ -397,7 +415,9 @@ describe("the close tail is an obligation", () => {
 
     // The obligation ran to completion: WAV finalized, custody settled.
     expect(h.writers[0]?.finalized).toBe(true);
-    expect(settled).toEqual([{ audioFile: "/audio/s1.wav", wavOk: true }]);
+    expect(settled).toEqual([
+      { audioFile: "/audio/s1.wav", wavOk: true, audioDurationMs: 10 },
+    ]);
     expect(h.facts.at(-1)).toEqual({ type: "recorderClosed", session: "s1" });
   });
 });

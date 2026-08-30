@@ -17,6 +17,7 @@ import {
   type Transcription,
   type NewTranscription,
 } from "./schema";
+import { notifyTranscriptionSettled } from "./transcription-events";
 
 /** Sealed-outcome stamp values; a NULL disposition on a session-keyed row
  * means custody was opened but the app died before the seal committed. */
@@ -64,6 +65,7 @@ export async function enrichTranscriptionBySession(
       | "language"
       | "detectedLanguage"
       | "duration"
+      | "audioDurationMs"
       | "speechModel"
       | "formattingModel"
     >
@@ -76,7 +78,7 @@ export async function enrichTranscriptionBySession(
       .select({ meta: transcriptions.meta })
       .from(transcriptions)
       .where(eq(transcriptions.sessionId, sessionId));
-    if (existing.length === 0) return;
+    if (existing.length === 0) return false;
     meta = {
       ...((existing[0].meta as Record<string, unknown> | null) ?? {}),
       ...metaPatch,
@@ -86,6 +88,7 @@ export async function enrichTranscriptionBySession(
     .update(transcriptions)
     .set({ ...columns, ...(meta ? { meta } : {}), updatedAt: new Date() })
     .where(eq(transcriptions.sessionId, sessionId));
+  return true;
 }
 
 /**
@@ -101,6 +104,7 @@ export async function stampTranscriptionDisposition(
     metaPatch?: Record<string, unknown>;
     /** Pass null to detach a broken WAV from the settled row (D25). */
     audioFile?: string | null;
+    audioDurationMs?: number;
   },
 ) {
   const existing = await db
@@ -125,6 +129,9 @@ export async function stampTranscriptionDisposition(
       disposition: stamp.disposition,
       ...(stamp.text !== undefined ? { text: stamp.text } : {}),
       ...(stamp.audioFile !== undefined ? { audioFile: stamp.audioFile } : {}),
+      ...(stamp.audioDurationMs !== undefined
+        ? { audioDurationMs: stamp.audioDurationMs }
+        : {}),
       meta,
       updatedAt: new Date(),
     })
@@ -135,7 +142,9 @@ export async function stampTranscriptionDisposition(
       ),
     )
     .returning();
-  return result[0] ?? null;
+  const settled = result[0] ?? null;
+  if (settled) notifyTranscriptionSettled(settled.id);
+  return settled;
 }
 
 /**
@@ -150,6 +159,7 @@ export async function insertSettledTranscription(options: {
   text?: string;
   metaPatch?: Record<string, unknown>;
   audioFile?: string | null;
+  audioDurationMs?: number;
 }) {
   const existing = await db
     .select({ id: transcriptions.id })
@@ -165,13 +175,16 @@ export async function insertSettledTranscription(options: {
       disposition: options.disposition,
       text: options.text ?? "",
       audioFile: options.audioFile ?? undefined,
+      audioDurationMs: options.audioDurationMs,
       meta: { sessionId: options.sessionId, ...(options.metaPatch ?? {}) },
       timestamp: now,
       createdAt: now,
       updatedAt: now,
     })
     .returning();
-  return result[0] ?? null;
+  const settled = result[0] ?? null;
+  if (settled) notifyTranscriptionSettled(settled.id);
+  return settled;
 }
 
 /** Discard custody: delete the session's uncommitted row, returning it so

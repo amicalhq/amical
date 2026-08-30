@@ -72,6 +72,8 @@ export async function createTestDatabase(
     },
     clear: async () => {
       // Clear all tables
+      db.delete(schema.activityOutbox).run();
+      db.delete(schema.activityMaterializationState).run();
       db.delete(schema.syncOutbox).run();
       db.delete(schema.syncItemState).run();
       db.delete(schema.syncCollectionState).run();

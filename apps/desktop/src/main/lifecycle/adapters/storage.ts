@@ -58,6 +58,10 @@ export function createStorageAdapter(
      * never holds it hostage. */
     custodySettleBoundMs?: number;
     sessionWork?: SessionWork;
+    completionMetaFor?: (
+      session: SessionId,
+    ) => Record<string, unknown> | undefined;
+    releaseCompletionMeta?: (session: SessionId) => void;
   },
 ): StoragePort {
   const timers = options?.timers ?? REAL_TIMER_HOST;
@@ -97,8 +101,16 @@ export function createStorageAdapter(
     custody: CustodyOutcome | null,
   ): Promise<void> {
     const text = sealed.kind === "success" ? sealed.text : undefined;
+    const completedWordCount =
+      sealed.kind === "success" ? countWords(sealed.text) : 0;
+    const completionMeta =
+      sealed.kind === "success"
+        ? options?.completionMetaFor?.(session)
+        : undefined;
     const metaPatch =
-      sealed.kind === "failure" ? { failureReason: sealed.cause } : undefined;
+      sealed.kind === "failure"
+        ? { failureReason: sealed.cause }
+        : completionMeta;
     // A broken WAV must never be advertised by a settled row.
     const stripAudio = custody !== null && !custody.wavOk;
 
@@ -107,6 +119,11 @@ export function createStorageAdapter(
       text,
       metaPatch,
       ...(stripAudio ? { audioFile: null } : {}),
+      ...(custody?.audioDurationMs
+        ? {
+            audioDurationMs: custody.audioDurationMs,
+          }
+        : {}),
     });
 
     if (!row) {
@@ -119,6 +136,11 @@ export function createStorageAdapter(
         text,
         metaPatch,
         audioFile: custody !== null && custody.wavOk ? custody.audioFile : null,
+        ...(custody?.audioDurationMs
+          ? {
+              audioDurationMs: custody.audioDurationMs,
+            }
+          : {}),
       });
     }
 
@@ -129,7 +151,7 @@ export function createStorageAdapter(
     }
 
     if (sealed.kind === "success") {
-      await countTranscription(session, countWords(sealed.text));
+      await countTranscription(session, completedWordCount);
     } else if (sealed.kind === "empty" || sealed.kind === "failure") {
       await countTranscription(session, 0);
     }
@@ -150,10 +172,12 @@ export function createStorageAdapter(
           // Missing file is an acceptable end state for a discard.
         });
       }
+      options?.releaseCompletionMeta?.(session);
       return;
     }
 
     await settleRetained(session, sealed, custody);
+    options?.releaseCompletionMeta?.(session);
   }
 
   async function countTranscription(
@@ -190,6 +214,7 @@ export function createStorageAdapter(
             });
             timers.set(repairDelayMs, () => {
               void commitSealed(session, sealed).catch((repairError) => {
+                options?.releaseCompletionMeta?.(session);
                 logger.transcription.error(
                   "Lifecycle commit repair failed; startup recovery will settle the row",
                   { sessionId: session, error: repairError },
