@@ -1,9 +1,21 @@
 import { BrowserWindow, ipcMain } from "electron";
-import { Mutex } from "async-mutex";
-import { Effect, Layer } from "effect";
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  FiberId,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Runtime,
+  Scope,
+} from "effect";
 
 import { logger } from "../main/logger";
-import { addRelease, step, up } from "../main/runtime/layer-helpers";
+import { addRelease, up } from "../main/runtime/layer-helpers";
 import {
   AppScopeTag,
   AuthServiceTag,
@@ -41,6 +53,54 @@ const EDIT_DEBOUNCE_MS = 750;
 
 type SyncClient = Pick<SettingsSyncClient, "bootstrap" | "pull" | "push">;
 
+type AttemptResult = { rebootstrap: boolean };
+
+type RunningAttempt = {
+  id: number;
+  epoch: number;
+  fiber: Fiber.RuntimeFiber<void, never>;
+};
+
+type SupervisorState = {
+  epoch: number;
+  context: SyncContext | null;
+  attempt: RunningAttempt | null;
+  debounce: Fiber.RuntimeFiber<void, never> | null;
+  rerunRequested: boolean;
+  authorizationBlocked: boolean;
+  authenticationRefreshAttempted: boolean;
+  nextAttemptId: number;
+};
+
+type ControlEvent =
+  | {
+      _tag: "Initialize";
+      epoch: number;
+      authState: AuthState | null;
+      ack: Deferred.Deferred<void, unknown>;
+    }
+  | { _tag: "Wake"; epoch: number }
+  | { _tag: "LocalMutation" }
+  | { _tag: "Authenticated"; epoch: number; accountId: string }
+  | { _tag: "TokenRefreshed"; epoch: number; accountId: string }
+  | { _tag: "LoggedOut" }
+  | {
+      _tag: "BeforeLogout";
+      epoch: number;
+      ack: Deferred.Deferred<void, unknown>;
+    }
+  | {
+      _tag: "AttemptFinished";
+      id: number;
+      epoch: number;
+      exit: Exit.Exit<AttemptResult, unknown>;
+    }
+  | {
+      _tag: "Shutdown";
+      epoch: number;
+      ack: Deferred.Deferred<void, unknown>;
+    };
+
 class SyncScopeAuthorizationError extends Error {
   constructor(readonly context: SyncContext) {
     super(`Axis rejected the active ${context.scopeType} sync scope`);
@@ -48,59 +108,86 @@ class SyncScopeAuthorizationError extends Error {
 }
 
 export class SettingsSyncService {
-  private readonly client: SyncClient;
-  private readonly localStateMutex = new Mutex();
   private initialized = false;
-  private stopped = false;
-  private currentContext: SyncContext | null = null;
-  private currentContexts: SyncContext[] = [];
-  private abortController: AbortController | null = null;
-  private capabilities: SyncBootstrap | null = null;
-  private worker: Promise<void> | null = null;
-  private rerunRequested = false;
-  private authorizationBlocked = false;
-  private authenticationRefreshAttempted = false;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopping = false;
+  private boundaryEpoch = 0;
+  private activeAccountId: string | null = null;
+  private wakeAdmissionOpen = false;
+  private wakeEventQueued = false;
+  private localMutationEventQueued = false;
+  private localMutationEpoch = 0;
+  private localMutationDeadline = 0;
+  private currentAttemptId: number | null = null;
+  private currentAttemptFiber: Fiber.RuntimeFiber<void, never> | null = null;
+  private currentDebounceFiber: Fiber.RuntimeFiber<void, never> | null = null;
+  private initializePromise: Promise<void> | null = null;
+  private shutdownPromise: Promise<void> | null = null;
   private unregisterBeforeLogout: (() => void) | null = null;
   private unregisterLocalMutation: (() => void) | null = null;
 
   private readonly onExternalWake = () => this.wake();
 
   private readonly onLoggedOut = () => {
-    queueMicrotask(() => {
-      if (this.initialized && !this.stopped) this.notifyRenderers();
-    });
+    if (!this.initialized || this.stopping) return;
+    this.offer({ _tag: "LoggedOut" });
   };
 
   private readonly onAuthenticated = (authState: AuthState) => {
     const accountId = authState.userInfo?.sub;
-    if (!accountId) return;
-    void this.activateAccount(accountId, "full").catch((error) => {
-      logger.main.error("Failed to start settings sync after login", error);
-    });
+    if (!accountId || !this.initialized || this.stopping) return;
+    const epoch = this.fenceBoundary(true, false);
+    this.offer({ _tag: "Authenticated", epoch, accountId });
   };
 
   private readonly onTokenRefreshed = (authState: AuthState) => {
     const accountId = authState.userInfo?.sub;
-    if (!accountId || accountId !== this.currentContext?.accountId) return;
-    void this.restartAfterTokenRefresh(accountId).catch((error) => {
-      logger.main.error("Failed to restart settings sync after token refresh", {
-        error,
-      });
-    });
+    if (
+      !accountId ||
+      accountId !== this.activeAccountId ||
+      !this.initialized ||
+      this.stopping
+    ) {
+      return;
+    }
+    const epoch = this.fenceBoundary(false, false);
+    this.offer({ _tag: "TokenRefreshed", epoch, accountId });
   };
 
   private constructor(
     private readonly authService: AuthService,
+    private readonly client: SyncClient,
+    private readonly runtime: Runtime.Runtime<never>,
+    private serviceScope: Scope.CloseableScope,
+    private events: Queue.Queue<ControlEvent>,
+    private readonly dbSemaphore: Effect.Semaphore,
+    private supervisorDone: Deferred.Deferred<void>,
+  ) {}
+
+  private static make(
+    authService: AuthService,
     client?: SyncClient,
-  ) {
-    this.client = client ?? new SettingsSyncClient(authService);
+    runtime: Runtime.Runtime<never> = Runtime.defaultRuntime,
+  ): Effect.Effect<SettingsSyncService> {
+    return Effect.gen(function* () {
+      const serviceScope = yield* Scope.make();
+      const events = yield* Queue.unbounded<ControlEvent>();
+      const dbSemaphore = yield* Effect.makeSemaphore(1);
+      const supervisorDone = yield* Deferred.make<void>();
+      return new SettingsSyncService(
+        authService,
+        client ?? new SettingsSyncClient(authService),
+        runtime,
+        serviceScope,
+        events,
+        dbSemaphore,
+        supervisorDone,
+      );
+    });
   }
 
   /**
    * The graph awaits local account binding before any window is created.
-   * Token refresh and sync I/O run in the background worker.
+   * Token refresh and sync I/O run in scoped background fibers.
    */
   static readonly Live: Layer.Layer<
     SettingsSyncServiceTag,
@@ -111,14 +198,21 @@ export class SettingsSyncService {
     Effect.gen(function* () {
       const authService = yield* AuthServiceTag;
       const appScope = yield* AppScopeTag;
-      const service = new SettingsSyncService(authService);
+      const runtime = yield* Effect.runtime<never>();
+      const service = yield* SettingsSyncService.make(
+        authService,
+        undefined,
+        runtime,
+      );
       yield* addRelease(
         appScope,
         "Shutting down settings sync service...",
         "settingsSyncService",
         () => service.shutdown(),
       );
-      yield* step(() => service.initialize());
+      yield* Effect.uninterruptible(
+        service.initializeEffect().pipe(Effect.orDie),
+      );
       logger.main.info("Settings sync service created");
       up("settingsSyncService");
       return service;
@@ -129,80 +223,130 @@ export class SettingsSyncService {
     authService: AuthService,
     client?: SyncClient,
   ): SettingsSyncService {
-    return new SettingsSyncService(authService, client);
+    return Effect.runSync(SettingsSyncService.make(authService, client));
   }
 
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-    this.initialized = true;
-    this.stopped = false;
-    const initializationController = new AbortController();
-    this.abortController?.abort();
-    this.abortController = initializationController;
+  initialize(): Promise<void> {
+    if (this.initializePromise) return this.initializePromise;
+    const initializePromise = this.runBoundary(this.initializeEffect()).finally(
+      () => {
+        if (this.initializePromise === initializePromise) {
+          this.initializePromise = null;
+        }
+      },
+    );
+    this.initializePromise = initializePromise;
+    return initializePromise;
+  }
 
+  wake(): void {
+    if (
+      !this.initialized ||
+      this.stopping ||
+      !this.wakeAdmissionOpen ||
+      this.wakeEventQueued
+    ) {
+      return;
+    }
+    this.wakeEventQueued = true;
+    this.offer({ _tag: "Wake", epoch: this.boundaryEpoch });
+  }
+
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    if (!this.initialized) return Promise.resolve();
+
+    this.stopping = true;
+    this.initialized = false;
+    this.unregisterListeners();
+    const epoch = this.fenceBoundary(true, true);
+    const ack = Runtime.runSync(this.runtime, Deferred.make<void, unknown>());
+
+    this.shutdownPromise = this.runBoundary(
+      Queue.offer(this.events, { _tag: "Shutdown", epoch, ack }).pipe(
+        Effect.zipRight(
+          Effect.raceFirst(
+            Deferred.await(ack),
+            Deferred.await(this.supervisorDone),
+          ),
+        ),
+        Effect.ensuring(Scope.close(this.serviceScope, Exit.void)),
+      ),
+    );
+    return this.shutdownPromise;
+  }
+
+  private initializeEffect(): Effect.Effect<void, unknown> {
+    if (this.initialized) return Effect.void;
+
+    return Effect.gen(this, function* () {
+      if (this.shutdownPromise) {
+        yield* this.fromPromise(() => this.shutdownPromise!);
+        this.serviceScope = yield* Scope.make();
+        this.events = yield* Queue.unbounded<ControlEvent>();
+        this.supervisorDone = yield* Deferred.make<void>();
+        this.shutdownPromise = null;
+      }
+
+      const initialEpoch = this.boundaryEpoch;
+      this.initialized = true;
+      this.stopping = false;
+      this.wakeEventQueued = false;
+      this.localMutationEventQueued = false;
+      this.registerListeners();
+
+      yield* Effect.forkIn(
+        Effect.interruptible(
+          this.supervisorLoop().pipe(
+            Effect.ensuring(
+              Deferred.succeed(this.supervisorDone, undefined).pipe(
+                Effect.asVoid,
+              ),
+            ),
+          ),
+        ),
+        this.serviceScope,
+      );
+      yield* Effect.forkIn(
+        Effect.interruptible(this.pollLoop()),
+        this.serviceScope,
+      );
+
+      const authState = yield* this.fromPromise(() =>
+        this.authService.getAuthState(),
+      );
+      if (this.stopping || initialEpoch !== this.boundaryEpoch) return;
+
+      const ack = yield* Deferred.make<void, unknown>();
+      yield* Queue.offer(this.events, {
+        _tag: "Initialize",
+        epoch: initialEpoch,
+        authState,
+        ack,
+      });
+      yield* Deferred.await(ack);
+    });
+  }
+
+  private registerListeners(): void {
     this.unregisterBeforeLogout = this.authService.registerBeforeLogoutHandler(
       () => this.handleBeforeLogout(),
     );
     this.authService.on("authenticated", this.onAuthenticated);
     this.authService.on("logged-out", this.onLoggedOut);
     this.authService.on("token-refreshed", this.onTokenRefreshed);
-    this.unregisterLocalMutation = registerLocalSyncMutationHandler(() =>
-      this.scheduleDebouncedWake(),
-    );
+    this.unregisterLocalMutation = registerLocalSyncMutationHandler(() => {
+      if (!this.initialized || this.stopping || !this.wakeAdmissionOpen) return;
+      this.localMutationEpoch = this.boundaryEpoch;
+      this.localMutationDeadline = Date.now() + EDIT_DEBOUNCE_MS;
+      if (this.localMutationEventQueued) return;
+      this.localMutationEventQueued = true;
+      this.offer({ _tag: "LocalMutation" });
+    });
     ipcMain.on("settings-sync-wake", this.onExternalWake);
-
-    this.pollTimer = setInterval(() => this.wake(), POLL_INTERVAL_MS);
-    this.pollTimer.unref?.();
-
-    const authState = await this.authService.getAuthState();
-    if (
-      this.stopped ||
-      !this.initialized ||
-      initializationController.signal.aborted
-    ) {
-      return;
-    }
-    if (authState?.isAuthenticated && authState.userInfo?.sub) {
-      const canResume = await this.runLocalTransition(() =>
-        hasResumableUserSyncState(authState.userInfo!.sub),
-      );
-      if (initializationController.signal.aborted) return;
-      await this.activateAccount(
-        authState.userInfo.sub,
-        canResume ? "resume" : "full",
-      );
-    } else {
-      await this.runLocalTransition(() => clearSyncState());
-      this.notifyRenderers();
-    }
   }
 
-  wake(): void {
-    if (this.stopped || this.authorizationBlocked || !this.currentContext)
-      return;
-    this.rerunRequested = true;
-    if (this.worker) return;
-
-    this.worker = this.runWorker()
-      .catch((error) => {
-        logger.main.error("Settings sync worker failed", error);
-      })
-      .finally(() => {
-        this.worker = null;
-        if (this.rerunRequested && !this.stopped) this.wake();
-      });
-  }
-
-  async shutdown(): Promise<void> {
-    if (!this.initialized) return;
-    this.stopped = true;
-    this.initialized = false;
-
-    if (this.pollTimer) clearInterval(this.pollTimer);
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.pollTimer = null;
-    this.debounceTimer = null;
-
+  private unregisterListeners(): void {
     this.authService.off("authenticated", this.onAuthenticated);
     this.authService.off("logged-out", this.onLoggedOut);
     this.authService.off("token-refreshed", this.onTokenRefreshed);
@@ -211,332 +355,877 @@ export class SettingsSyncService {
     this.unregisterLocalMutation?.();
     this.unregisterBeforeLogout = null;
     this.unregisterLocalMutation = null;
-
-    this.abortController?.abort();
-    this.abortController = null;
-    this.currentContext = null;
-    this.currentContexts = [];
-    this.capabilities = null;
-    this.authorizationBlocked = false;
-    this.authenticationRefreshAttempted = false;
-    pauseSyncSession();
-    await this.worker;
   }
 
-  private async handleBeforeLogout(): Promise<void> {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = null;
-    this.abortController?.abort();
-    this.abortController = null;
-    this.currentContext = null;
-    this.currentContexts = [];
-    this.capabilities = null;
-    this.rerunRequested = false;
-    this.authorizationBlocked = false;
-    this.authenticationRefreshAttempted = false;
-    pauseSyncSession();
-    await this.runLocalTransition(() => clearSyncState());
-  }
-
-  private async activateAccount(
-    accountId: string,
-    mode: "full" | "resume",
-  ): Promise<void> {
-    this.authorizationBlocked = false;
-    this.authenticationRefreshAttempted = false;
-    this.abortController?.abort();
-    const controller = new AbortController();
-    this.abortController = controller;
-    this.currentContext = null;
-    this.currentContexts = [];
-    this.capabilities = null;
-    pauseSyncSession();
-    if (mode === "full") {
-      await this.runLocalTransition(() => clearSyncState());
-      this.notifyRenderers();
-    }
-    if (this.stopped || controller.signal.aborted) {
-      if (this.stopped) pauseSyncSession();
-      return;
-    }
-
-    const context = await this.runLocalTransition(() =>
-      mode === "full"
-        ? beginUserSyncSession(accountId)
-        : resumeUserSyncSession(accountId),
+  private handleBeforeLogout(): Promise<void> {
+    if (this.stopping || !this.initialized) return Promise.resolve();
+    const epoch = this.fenceBoundary(true, true);
+    const ack = Runtime.runSync(this.runtime, Deferred.make<void, unknown>());
+    this.offer({ _tag: "BeforeLogout", epoch, ack });
+    return this.runBoundary(
+      Effect.raceFirst(
+        Deferred.await(ack),
+        Deferred.await(this.supervisorDone).pipe(
+          Effect.zipRight(this.db(() => clearSyncState())),
+          Effect.tap(() => Effect.sync(() => this.notifyRenderers())),
+        ),
+      ),
     );
-    if (this.stopped || controller.signal.aborted) {
-      if (this.stopped) pauseSyncSession();
-      return;
-    }
-
-    if (
-      !(await this.runLocalTransition(async () => {
-        if (!(await prepareVisibleRowsForFullSync(context))) return false;
-        return adoptVisibleRows(context);
-      }))
-    ) {
-      return;
-    }
-    if (this.stopped || controller.signal.aborted) {
-      if (this.stopped) pauseSyncSession();
-      return;
-    }
-
-    this.currentContext = context;
-    this.currentContexts = [context];
-    this.wake();
   }
 
-  private async restartAfterTokenRefresh(accountId: string): Promise<void> {
-    const context = this.currentContext;
-    if (!context || context.accountId !== accountId) return;
-
-    this.authorizationBlocked = true;
-    this.abortController?.abort();
-    const controller = new AbortController();
-    this.abortController = controller;
-    this.capabilities = null;
-    const hadOrganization = this.currentContexts.some(
-      (candidate) => candidate.scopeType === "org",
-    );
-    this.currentContexts = [context];
-    const organizationDeactivated = await this.runLocalTransition(async () =>
-      deactivateOrganizationSyncScopes(),
-    );
-    if (
-      this.stopped ||
-      controller !== this.abortController ||
-      accountId !== this.currentContext?.accountId
-    ) {
-      return;
+  private fenceBoundary(pause: boolean, cancelDebounce: boolean): number {
+    this.boundaryEpoch += 1;
+    this.wakeAdmissionOpen = false;
+    this.currentAttemptFiber?.unsafeInterruptAsFork(FiberId.none);
+    if (cancelDebounce) {
+      this.currentDebounceFiber?.unsafeInterruptAsFork(FiberId.none);
+      this.currentDebounceFiber = null;
     }
-
-    this.authorizationBlocked = false;
-    if (hadOrganization || organizationDeactivated) this.notifyRenderers();
-    this.wake();
+    if (pause) {
+      this.activeAccountId = null;
+      pauseSyncSession();
+    }
+    return this.boundaryEpoch;
   }
 
-  private scheduleDebouncedWake(): void {
-    if (this.stopped || this.authorizationBlocked || !this.currentContext)
-      return;
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.debounceTimer = null;
-      this.wake();
-    }, EDIT_DEBOUNCE_MS);
+  private supervisorLoop(): Effect.Effect<void> {
+    const initialState: SupervisorState = {
+      epoch: this.boundaryEpoch,
+      context: null,
+      attempt: null,
+      debounce: null,
+      rerunRequested: false,
+      authorizationBlocked: false,
+      authenticationRefreshAttempted: false,
+      nextAttemptId: 1,
+    };
+    const loop = (state: SupervisorState): Effect.Effect<void> =>
+      Queue.take(this.events).pipe(
+        Effect.flatMap((event) =>
+          Effect.exit(this.handleEvent(state, event)).pipe(
+            Effect.flatMap((exit) => {
+              if (Exit.isSuccess(exit)) {
+                return exit.value._tag === "Stop"
+                  ? Effect.void
+                  : loop(exit.value.state);
+              }
+              if (Cause.isInterrupted(exit.cause)) {
+                return Effect.failCause(exit.cause);
+              }
+              return this.recoverSupervisorEvent(state, event, exit.cause).pipe(
+                Effect.flatMap(loop),
+              );
+            }),
+          ),
+        ),
+      );
+    return loop(initialState);
   }
 
-  private async runWorker(): Promise<void> {
-    while (this.rerunRequested && !this.stopped) {
-      this.rerunRequested = false;
-      const context = this.currentContext;
-      const controller = this.abortController;
-      if (!context || !controller) return;
+  private recoverSupervisorEvent(
+    state: SupervisorState,
+    event: ControlEvent,
+    cause: Cause.Cause<never>,
+  ): Effect.Effect<SupervisorState> {
+    return Effect.gen(this, function* () {
+      logger.main.error("Settings sync supervisor event failed", {
+        error: Cause.squash(cause),
+        event: event._tag,
+      });
 
-      try {
-        await this.runIncrementalSync(context, controller.signal);
-        if (!controller.signal.aborted) {
-          this.authenticationRefreshAttempted = false;
+      if (
+        this.currentAttemptId !== null &&
+        this.currentAttemptId !== state.attempt?.id
+      ) {
+        this.currentAttemptFiber?.unsafeInterruptAsFork(FiberId.none);
+        this.currentAttemptId = null;
+        this.currentAttemptFiber = null;
+      }
+
+      if (event._tag === "Initialize" || event._tag === "BeforeLogout") {
+        yield* Deferred.failCause(event.ack, cause);
+      } else if (event._tag === "Shutdown") {
+        yield* Deferred.failCause(event.ack, cause);
+      }
+
+      switch (event._tag) {
+        case "Authenticated":
+        case "BeforeLogout":
+          return {
+            ...state,
+            epoch: event.epoch,
+            context: null,
+            attempt: null,
+            rerunRequested: false,
+          };
+        case "TokenRefreshed":
+          return {
+            ...state,
+            epoch: event.epoch,
+            attempt: null,
+            rerunRequested: false,
+            authorizationBlocked: true,
+          };
+        case "AttemptFinished":
+          return { ...state, attempt: null, rerunRequested: false };
+        default:
+          return state;
+      }
+    });
+  }
+
+  private handleEvent(
+    state: SupervisorState,
+    event: ControlEvent,
+  ): Effect.Effect<
+    { _tag: "Continue"; state: SupervisorState } | { _tag: "Stop" }
+  > {
+    switch (event._tag) {
+      case "Initialize":
+        return this.handleInitialize(state, event).pipe(
+          Effect.map((next) => ({ _tag: "Continue" as const, state: next })),
+        );
+      case "Wake":
+        return this.handleWake(state, event.epoch).pipe(
+          Effect.map((next) => ({ _tag: "Continue" as const, state: next })),
+        );
+      case "LocalMutation":
+        return this.handleLocalMutation(state).pipe(
+          Effect.map((next) => ({ _tag: "Continue" as const, state: next })),
+        );
+      case "Authenticated":
+        return this.handleAuthenticated(state, event).pipe(
+          Effect.map((next) => ({ _tag: "Continue" as const, state: next })),
+        );
+      case "TokenRefreshed":
+        return this.handleTokenRefreshed(state, event).pipe(
+          Effect.map((next) => ({ _tag: "Continue" as const, state: next })),
+        );
+      case "LoggedOut":
+        if (this.stopping) {
+          return Effect.succeed({ _tag: "Continue" as const, state });
         }
-      } catch (error) {
-        if (controller.signal.aborted || this.stopped) continue;
-        if (error instanceof SyncScopeAuthorizationError) {
-          this.authorizationBlocked = true;
-          this.rerunRequested = false;
-          logger.main.warn(
-            "Axis rejected the active user sync scope; waiting for auth change",
-            { error },
-          );
-          return;
-        }
-        if (error instanceof SettingsSyncHttpError && error.status === 401) {
-          this.authorizationBlocked = true;
-          this.rerunRequested = false;
-          logger.main.warn(
-            "Settings sync authentication failed; waiting for auth change",
-            { error },
-          );
-          if (!this.authenticationRefreshAttempted) {
-            this.authenticationRefreshAttempted = true;
-            await this.authService.refreshTokenIfNeeded(true);
+        return Effect.sync(() => this.notifyRenderers()).pipe(
+          Effect.as({ _tag: "Continue" as const, state }),
+        );
+      case "BeforeLogout":
+        return this.handleBeforeLogoutEvent(state, event).pipe(
+          Effect.map((next) => ({ _tag: "Continue" as const, state: next })),
+        );
+      case "AttemptFinished":
+        return this.handleAttemptFinished(state, event).pipe(
+          Effect.map((next) => ({ _tag: "Continue" as const, state: next })),
+        );
+      case "Shutdown":
+        return this.handleShutdownEvent(state, event).pipe(
+          Effect.as({ _tag: "Stop" as const }),
+        );
+    }
+  }
+
+  private handleInitialize(
+    state: SupervisorState,
+    event: Extract<ControlEvent, { _tag: "Initialize" }>,
+  ): Effect.Effect<SupervisorState> {
+    if (
+      event.epoch !== state.epoch ||
+      event.epoch !== this.boundaryEpoch ||
+      this.stopping
+    ) {
+      return Deferred.succeed(event.ack, undefined).pipe(Effect.as(state));
+    }
+
+    const transition = Effect.gen(this, function* () {
+      const accountId =
+        event.authState?.isAuthenticated && event.authState.userInfo?.sub
+          ? event.authState.userInfo.sub
+          : null;
+      if (!accountId) {
+        yield* this.db(() => clearSyncState());
+        this.notifyRenderers();
+        return state;
+      }
+
+      const canResume = yield* this.db(() =>
+        hasResumableUserSyncState(accountId),
+      );
+      const context = yield* this.activateAccount(
+        accountId,
+        canResume ? "resume" : "full",
+        event.epoch,
+      );
+      if (!context) return state;
+      this.activeAccountId = accountId;
+      this.wakeAdmissionOpen = true;
+      return yield* this.startAttempt({
+        ...state,
+        context,
+        authorizationBlocked: false,
+        authenticationRefreshAttempted: false,
+      });
+    });
+
+    return Effect.exit(transition).pipe(
+      Effect.tap((exit) =>
+        Deferred.done(
+          event.ack,
+          Exit.map(exit, () => undefined),
+        ),
+      ),
+      Effect.map((exit) => (Exit.isSuccess(exit) ? exit.value : state)),
+    );
+  }
+
+  private handleAuthenticated(
+    state: SupervisorState,
+    event: Extract<ControlEvent, { _tag: "Authenticated" }>,
+  ): Effect.Effect<SupervisorState> {
+    if (this.stopping || event.epoch !== this.boundaryEpoch) {
+      return Effect.succeed(state);
+    }
+    const transition = Effect.gen(this, function* () {
+      let next = yield* this.interruptAttempt(state);
+      next = {
+        ...next,
+        epoch: event.epoch,
+        context: null,
+        rerunRequested: false,
+        authorizationBlocked: false,
+        authenticationRefreshAttempted: false,
+      };
+      const context = yield* this.activateAccount(
+        event.accountId,
+        "full",
+        event.epoch,
+      );
+      if (!context) return next;
+      this.activeAccountId = event.accountId;
+      this.wakeAdmissionOpen = true;
+      return yield* this.startAttempt({ ...next, context });
+    });
+
+    return Effect.exit(transition).pipe(
+      Effect.map((exit) => {
+        if (Exit.isSuccess(exit)) return exit.value;
+        logger.main.error(
+          "Failed to start settings sync after login",
+          Cause.squash(exit.cause),
+        );
+        return {
+          ...state,
+          epoch: event.epoch,
+          context: null,
+          attempt: null,
+          rerunRequested: false,
+        };
+      }),
+    );
+  }
+
+  private handleTokenRefreshed(
+    state: SupervisorState,
+    event: Extract<ControlEvent, { _tag: "TokenRefreshed" }>,
+  ): Effect.Effect<SupervisorState> {
+    if (
+      this.stopping ||
+      event.epoch !== this.boundaryEpoch ||
+      !state.context ||
+      state.context.accountId !== event.accountId
+    ) {
+      return Effect.succeed(state);
+    }
+
+    const transition = Effect.gen(this, function* () {
+      const interrupted = yield* this.interruptAttempt(state);
+      const organizationDeactivated = yield* this.db(async () =>
+        deactivateOrganizationSyncScopes(),
+      );
+      if (organizationDeactivated) this.notifyRenderers();
+      if (event.epoch !== this.boundaryEpoch || this.stopping) {
+        return {
+          ...interrupted,
+          epoch: event.epoch,
+          attempt: null,
+          rerunRequested: false,
+        };
+      }
+      this.wakeAdmissionOpen = true;
+      return yield* this.startAttempt({
+        ...interrupted,
+        epoch: event.epoch,
+        rerunRequested: false,
+        authorizationBlocked: false,
+      });
+    });
+
+    return Effect.exit(transition).pipe(
+      Effect.map((exit) => {
+        if (Exit.isSuccess(exit)) return exit.value;
+        logger.main.error(
+          "Failed to restart settings sync after token refresh",
+          {
+            error: Cause.squash(exit.cause),
+          },
+        );
+        return {
+          ...state,
+          epoch: event.epoch,
+          attempt: null,
+          rerunRequested: false,
+        };
+      }),
+    );
+  }
+
+  private handleBeforeLogoutEvent(
+    state: SupervisorState,
+    event: Extract<ControlEvent, { _tag: "BeforeLogout" }>,
+  ): Effect.Effect<SupervisorState> {
+    const cleanup = Effect.gen(this, function* () {
+      let next = yield* this.interruptAttempt(state);
+      next = yield* this.interruptDebounce(next);
+      yield* this.db(() => clearSyncState());
+      return {
+        ...next,
+        epoch: event.epoch,
+        context: null,
+        attempt: null,
+        rerunRequested: false,
+        authorizationBlocked: false,
+        authenticationRefreshAttempted: false,
+      };
+    });
+
+    return Effect.exit(cleanup).pipe(
+      Effect.tap((exit) =>
+        Deferred.done(
+          event.ack,
+          Exit.map(exit, () => undefined),
+        ),
+      ),
+      Effect.map((exit) =>
+        Exit.isSuccess(exit)
+          ? exit.value
+          : {
+              ...state,
+              epoch: event.epoch,
+              context: null,
+              attempt: null,
+              rerunRequested: false,
+            },
+      ),
+    );
+  }
+
+  private handleShutdownEvent(
+    state: SupervisorState,
+    event: Extract<ControlEvent, { _tag: "Shutdown" }>,
+  ): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const next = yield* this.interruptAttempt(state);
+      yield* this.interruptDebounce(next);
+      pauseSyncSession();
+      this.currentAttemptFiber = null;
+      this.currentAttemptId = null;
+      this.currentDebounceFiber = null;
+      this.activeAccountId = null;
+      this.wakeAdmissionOpen = false;
+      yield* Deferred.succeed(event.ack, undefined);
+    });
+  }
+
+  private handleWake(
+    state: SupervisorState,
+    epoch: number,
+  ): Effect.Effect<SupervisorState> {
+    this.wakeEventQueued = false;
+    if (
+      epoch !== state.epoch ||
+      epoch !== this.boundaryEpoch ||
+      !state.context ||
+      state.authorizationBlocked ||
+      this.stopping
+    ) {
+      return Effect.succeed(state);
+    }
+    if (state.attempt) {
+      return Effect.succeed({ ...state, rerunRequested: true });
+    }
+    return this.startAttempt(state);
+  }
+
+  private handleLocalMutation(
+    state: SupervisorState,
+  ): Effect.Effect<SupervisorState> {
+    this.localMutationEventQueued = false;
+    const epoch = this.localMutationEpoch;
+    const remainingDelay = Math.max(0, this.localMutationDeadline - Date.now());
+    if (
+      epoch !== state.epoch ||
+      epoch !== this.boundaryEpoch ||
+      !state.context ||
+      state.authorizationBlocked ||
+      this.stopping
+    ) {
+      return Effect.succeed(state);
+    }
+
+    return Effect.gen(this, function* () {
+      const withoutPrevious = yield* this.interruptDebounce(state);
+      const fiber = yield* Effect.forkIn(
+        Effect.sleep(remainingDelay).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              this.currentDebounceFiber = null;
+            }),
+          ),
+          Effect.tap(() => Effect.sync(() => this.wake())),
+        ),
+        this.serviceScope,
+      );
+      this.currentDebounceFiber = fiber;
+      return { ...withoutPrevious, debounce: fiber };
+    });
+  }
+
+  private handleAttemptFinished(
+    state: SupervisorState,
+    event: Extract<ControlEvent, { _tag: "AttemptFinished" }>,
+  ): Effect.Effect<SupervisorState> {
+    if (
+      !state.attempt ||
+      state.attempt.id !== event.id ||
+      state.attempt.epoch !== event.epoch ||
+      event.epoch !== state.epoch ||
+      event.epoch !== this.boundaryEpoch
+    ) {
+      return Effect.succeed(state);
+    }
+
+    if (this.currentAttemptId === event.id) {
+      this.currentAttemptId = null;
+      this.currentAttemptFiber = null;
+    }
+    const completed = { ...state, attempt: null };
+    if (Exit.isInterrupted(event.exit)) {
+      return Effect.succeed(completed);
+    }
+    if (Exit.isSuccess(event.exit)) {
+      const next = {
+        ...completed,
+        authenticationRefreshAttempted: false,
+        rerunRequested:
+          completed.rerunRequested || event.exit.value.rebootstrap,
+      };
+      return next.rerunRequested
+        ? this.startAttempt({ ...next, rerunRequested: false })
+        : Effect.succeed(next);
+    }
+
+    const errorOption = Cause.failureOption(event.exit.cause);
+    const error = Option.isSome(errorOption)
+      ? errorOption.value
+      : Cause.squash(event.exit.cause);
+    if (error instanceof SyncScopeAuthorizationError) {
+      this.wakeAdmissionOpen = false;
+      logger.main.warn(
+        "Axis rejected the active user sync scope; waiting for auth change",
+        { error },
+      );
+      return Effect.succeed({
+        ...completed,
+        rerunRequested: false,
+        authorizationBlocked: true,
+      });
+    }
+    if (error instanceof SettingsSyncHttpError && error.status === 401) {
+      this.wakeAdmissionOpen = false;
+      logger.main.warn(
+        "Settings sync authentication failed; waiting for auth change",
+        { error },
+      );
+      const blocked = {
+        ...completed,
+        rerunRequested: false,
+        authorizationBlocked: true,
+      };
+      if (blocked.authenticationRefreshAttempted) {
+        return Effect.succeed(blocked);
+      }
+      return this.startAuthenticationRefresh({
+        ...blocked,
+        authenticationRefreshAttempted: true,
+      });
+    }
+    if (error instanceof SettingsSyncHttpError && error.status === 403) {
+      return Effect.exit(
+        this.removeAllOrganizationScopes(completed.context!),
+      ).pipe(
+        Effect.flatMap((cleanupExit) => {
+          if (Exit.isFailure(cleanupExit)) {
+            logger.main.warn(
+              "Settings sync attempt failed; durable work retained",
+              { error: Cause.squash(cleanupExit.cause) },
+            );
+            return completed.rerunRequested
+              ? this.startAttempt({ ...completed, rerunRequested: false })
+              : Effect.succeed(completed);
           }
-          return;
-        }
-        if (error instanceof SettingsSyncHttpError && error.status === 403) {
-          const changed = await this.removeAllOrganizationScopes(
-            context,
-            controller.signal,
-          );
-          if (controller.signal.aborted || this.stopped) continue;
-          if (changed) this.notifyRenderers();
-          this.authorizationBlocked = true;
-          this.rerunRequested = false;
+          if (cleanupExit.value) this.notifyRenderers();
+          this.wakeAdmissionOpen = false;
           logger.main.warn(
             "Settings sync authorization failed; waiting for auth change",
             { error },
           );
-          return;
-        }
-        logger.main.warn(
-          "Settings sync attempt failed; durable work retained",
-          {
+          return Effect.succeed({
+            ...completed,
+            rerunRequested: false,
+            authorizationBlocked: true,
+          });
+        }),
+      );
+    }
+
+    logger.main.warn("Settings sync attempt failed; durable work retained", {
+      error,
+    });
+    return completed.rerunRequested
+      ? this.startAttempt({ ...completed, rerunRequested: false })
+      : Effect.succeed(completed);
+  }
+
+  private startAttempt(state: SupervisorState): Effect.Effect<SupervisorState> {
+    if (!state.context || this.stopping) return Effect.succeed(state);
+    const id = state.nextAttemptId;
+    const epoch = state.epoch;
+    const context = state.context;
+    return Effect.gen(this, function* () {
+      const startGate = yield* Deferred.make<void>();
+      const fiber = yield* Effect.forkIn(
+        Effect.exit(
+          Deferred.await(startGate).pipe(
+            Effect.zipRight(this.runIncrementalSync(context)),
+          ),
+        ).pipe(
+          Effect.flatMap((exit) =>
+            Queue.offer(this.events, {
+              _tag: "AttemptFinished" as const,
+              id,
+              epoch,
+              exit,
+            }),
+          ),
+          Effect.asVoid,
+        ),
+        this.serviceScope,
+      );
+      this.currentAttemptId = id;
+      this.currentAttemptFiber = fiber;
+      yield* Deferred.succeed(startGate, undefined);
+      return {
+        ...state,
+        attempt: { id, epoch, fiber },
+        nextAttemptId: id + 1,
+      };
+    });
+  }
+
+  private startAuthenticationRefresh(
+    state: SupervisorState,
+  ): Effect.Effect<SupervisorState> {
+    const refresh = Effect.uninterruptible(
+      this.fromPromise(() => this.authService.refreshTokenIfNeeded(true)),
+    ).pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          logger.main.error("Settings sync authentication refresh failed", {
             error,
-          },
-        );
-      }
-    }
-  }
-
-  private async runIncrementalSync(
-    context: SyncContext,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const capabilities = await this.client.bootstrap(context.accountId, signal);
-    if (signal.aborted) return;
-    const reconciled = await this.runLocalTransition(() =>
-      reconcileSyncScopes(context.accountId, capabilities.scopes),
+          });
+        }),
+      ),
     );
-    if (!reconciled || signal.aborted) return;
-    this.capabilities = capabilities;
-    this.currentContexts = reconciled.contexts;
-    if (reconciled.organizationChanged || reconciled.capabilityChanged) {
-      this.notifyRenderers();
-    }
-    if (capabilities.collections.length === 0) return;
+    return Effect.forkIn(refresh, this.serviceScope).pipe(Effect.as(state));
+  }
 
-    for (const scopeContext of reconciled.contexts) {
-      const scope = capabilities.scopes.find(
-        (candidate) =>
-          candidate.scopeType === scopeContext.scopeType &&
-          candidate.scopeId === scopeContext.scopeId,
-      );
-      if (!scope) continue;
-      try {
-        if (scope.canWrite) {
-          await this.pushUntilDrained(scopeContext, signal);
-          if (signal.aborted) return;
-        }
-        await this.pullUntilCurrent(scopeContext, signal);
-      } catch (error) {
-        if (signal.aborted) return;
-        if (error instanceof SyncScopeAuthorizationError) {
-          if (scopeContext.scopeType !== "org") throw error;
-          const changed = await this.deactivateOrganizationScopes(signal);
-          if (signal.aborted) return;
-          if (changed) this.notifyRenderers();
-          this.rerunRequested = true;
-          return;
-        }
-        if (
-          scopeContext.scopeType === "org" &&
-          error instanceof SettingsSyncHttpError &&
-          error.status === 403
-        ) {
-          if (
-            await this.runLocalTransition(() =>
-              removeOrganizationSyncScope(scopeContext),
-            )
-          ) {
-            this.currentContexts = this.currentContexts.filter(
-              (candidate) =>
-                candidate.scopeType !== "org" ||
-                candidate.scopeId !== scopeContext.scopeId,
-            );
-            this.notifyRenderers();
+  private interruptAttempt(
+    state: SupervisorState,
+  ): Effect.Effect<SupervisorState> {
+    if (!state.attempt) return Effect.succeed(state);
+    return Fiber.interrupt(state.attempt.fiber).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          if (this.currentAttemptId === state.attempt?.id) {
+            this.currentAttemptId = null;
+            this.currentAttemptFiber = null;
           }
-          continue;
-        }
-        throw error;
-      }
-      if (signal.aborted) return;
-    }
+        }),
+      ),
+      Effect.as({ ...state, attempt: null }),
+    );
   }
 
-  private async pullUntilCurrent(
-    context: SyncContext,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const capabilities = this.capabilities;
-    if (!capabilities) throw new Error("Settings sync is not bootstrapped");
-
-    let changed = false;
-    try {
-      while (!signal.aborted) {
-        const cursors = await this.runLocalTransition(async () =>
-          signal.aborted
-            ? null
-            : getPullCursors(context, capabilities.collections),
-        );
-        if (cursors === null) return;
-        const page = await this.client.pull(
-          context.scopeType,
-          context.scopeId,
-          cursors,
-          capabilities.pullLimit,
-          signal,
-        );
-        if (signal.aborted) return;
-        if (
-          !(await this.runLocalTransition(async () =>
-            signal.aborted ? false : applyPullPages(context, page.collections),
-          ))
-        ) {
-          return;
-        }
-        changed ||= page.collections.some(
-          (collection) => collection.items.length > 0,
-        );
-        if (page.collections.every((collection) => !collection.hasMore)) break;
-      }
-    } finally {
-      if (changed && !signal.aborted) this.notifyRenderers();
-    }
+  private interruptDebounce(
+    state: SupervisorState,
+  ): Effect.Effect<SupervisorState> {
+    if (!state.debounce) return Effect.succeed(state);
+    return Fiber.interrupt(state.debounce).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          if (this.currentDebounceFiber === state.debounce) {
+            this.currentDebounceFiber = null;
+          }
+        }),
+      ),
+      Effect.as({ ...state, debounce: null }),
+    );
   }
 
-  private async pushUntilDrained(
-    context: SyncContext,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const capabilities = this.capabilities;
-    if (!capabilities) throw new Error("Settings sync is not bootstrapped");
-
-    while (!signal.aborted) {
-      const heads = await this.runLocalTransition(async () =>
-        signal.aborted
-          ? []
-          : capturePushHeads(context, undefined, capabilities.collections),
-      );
-      if (heads.length === 0) return;
-      const batch = this.buildPushBatch(
-        heads,
-        capabilities.maxPushBatch,
-        capabilities.maxPushBytes,
-      );
-
-      const results = await this.client.push(batch.mutations, signal);
-      if (signal.aborted) return;
-      if (
-        results.some(
-          (result) =>
-            result.status === "error" && result.reason === "unauthorized_scope",
-        )
-      ) {
-        throw new SyncScopeAuthorizationError(context);
-      }
-      if (
-        !(await this.runLocalTransition(async () =>
-          signal.aborted
-            ? false
-            : applyPushResults(context, batch.heads, results),
-        ))
-      ) {
-        return;
-      }
-      if (results.some((result) => result.status !== "ok")) {
+  private activateAccount(
+    accountId: string,
+    mode: "full" | "resume",
+    epoch: number,
+  ): Effect.Effect<SyncContext | null, unknown> {
+    return Effect.gen(this, function* () {
+      pauseSyncSession();
+      if (mode === "full") {
+        yield* this.db(() => clearSyncState());
         this.notifyRenderers();
       }
-    }
+      if (!this.boundaryIsCurrent(epoch)) {
+        pauseSyncSession();
+        return null;
+      }
+
+      const context = yield* this.db(() =>
+        mode === "full"
+          ? beginUserSyncSession(accountId)
+          : resumeUserSyncSession(accountId),
+      );
+      if (!this.boundaryIsCurrent(epoch)) {
+        pauseSyncSession();
+        return null;
+      }
+
+      const adopted = yield* this.db(async () => {
+        if (!(await prepareVisibleRowsForFullSync(context))) return false;
+        return adoptVisibleRows(context);
+      });
+      if (!adopted || !this.boundaryIsCurrent(epoch)) {
+        if (!this.boundaryIsCurrent(epoch)) pauseSyncSession();
+        return null;
+      }
+      return context;
+    });
+  }
+
+  private runIncrementalSync(
+    context: SyncContext,
+  ): Effect.Effect<AttemptResult, unknown> {
+    return Effect.gen(this, function* () {
+      const capabilities = yield* this.request((signal) =>
+        this.client.bootstrap(context.accountId, signal),
+      );
+      const reconciled = yield* this.db(() =>
+        reconcileSyncScopes(context.accountId, capabilities.scopes),
+      );
+      if (!reconciled) return { rebootstrap: false };
+      if (reconciled.organizationChanged || reconciled.capabilityChanged) {
+        this.notifyRenderers();
+      }
+      if (capabilities.collections.length === 0) {
+        return { rebootstrap: false };
+      }
+
+      const syncScope = (
+        index: number,
+      ): Effect.Effect<AttemptResult, unknown> => {
+        const scopeContext = reconciled.contexts[index];
+        if (!scopeContext) return Effect.succeed({ rebootstrap: false });
+        const scope = capabilities.scopes.find(
+          (candidate) =>
+            candidate.scopeType === scopeContext.scopeType &&
+            candidate.scopeId === scopeContext.scopeId,
+        );
+        if (!scope) return syncScope(index + 1);
+
+        const transfer = scope.canWrite
+          ? this.pushUntilDrained(scopeContext, capabilities).pipe(
+              Effect.zipRight(
+                this.pullUntilCurrent(scopeContext, capabilities),
+              ),
+            )
+          : this.pullUntilCurrent(scopeContext, capabilities);
+
+        return transfer.pipe(
+          Effect.as<AttemptResult>({ rebootstrap: false }),
+          Effect.catchAll((error) => {
+            if (
+              error instanceof SyncScopeAuthorizationError &&
+              scopeContext.scopeType === "org"
+            ) {
+              return this.db(async () =>
+                deactivateOrganizationSyncScopes(),
+              ).pipe(
+                Effect.tap((changed) =>
+                  changed
+                    ? Effect.sync(() => this.notifyRenderers())
+                    : Effect.void,
+                ),
+                Effect.as<AttemptResult>({ rebootstrap: true }),
+              );
+            }
+            if (
+              scopeContext.scopeType === "org" &&
+              error instanceof SettingsSyncHttpError &&
+              error.status === 403
+            ) {
+              return this.db(() =>
+                removeOrganizationSyncScope(scopeContext),
+              ).pipe(
+                Effect.tap((changed) =>
+                  changed
+                    ? Effect.sync(() => this.notifyRenderers())
+                    : Effect.void,
+                ),
+                Effect.as<AttemptResult>({ rebootstrap: false }),
+              );
+            }
+            return Effect.fail(error);
+          }),
+          Effect.flatMap((result) =>
+            result.rebootstrap ? Effect.succeed(result) : syncScope(index + 1),
+          ),
+        );
+      };
+
+      return yield* syncScope(0);
+    });
+  }
+
+  private pullUntilCurrent(
+    context: SyncContext,
+    capabilities: SyncBootstrap,
+  ): Effect.Effect<void, unknown> {
+    return Effect.gen(this, function* () {
+      const changed = yield* Ref.make(false);
+      const pullPage = (): Effect.Effect<void, unknown> =>
+        this.db(() => getPullCursors(context, capabilities.collections)).pipe(
+          Effect.flatMap((cursors) => {
+            if (cursors === null) return Effect.void;
+            return this.request((signal) =>
+              this.client.pull(
+                context.scopeType,
+                context.scopeId,
+                cursors,
+                capabilities.pullLimit,
+                signal,
+              ),
+            ).pipe(
+              Effect.flatMap((page) =>
+                this.db(() => applyPullPages(context, page.collections)).pipe(
+                  Effect.flatMap((applied) => {
+                    if (!applied) return Effect.void;
+                    const pageChanged = page.collections.some(
+                      (collection) => collection.items.length > 0,
+                    );
+                    const hasMore = page.collections.some(
+                      (collection) => collection.hasMore,
+                    );
+                    return (
+                      pageChanged ? Ref.set(changed, true) : Effect.void
+                    ).pipe(Effect.zipRight(hasMore ? pullPage() : Effect.void));
+                  }),
+                ),
+              ),
+            );
+          }),
+        );
+
+      yield* pullPage().pipe(
+        Effect.onExit((exit) =>
+          Exit.isInterrupted(exit)
+            ? Effect.void
+            : Ref.get(changed).pipe(
+                Effect.tap((didChange) =>
+                  didChange
+                    ? Effect.sync(() => this.notifyRenderers())
+                    : Effect.void,
+                ),
+                Effect.asVoid,
+              ),
+        ),
+      );
+    });
+  }
+
+  private pushUntilDrained(
+    context: SyncContext,
+    capabilities: SyncBootstrap,
+  ): Effect.Effect<void, unknown> {
+    const pushBatch = (): Effect.Effect<void, unknown> =>
+      this.db(() =>
+        capturePushHeads(context, undefined, capabilities.collections),
+      ).pipe(
+        Effect.flatMap((heads) => {
+          if (heads.length === 0) return Effect.void;
+          return Effect.try({
+            try: () =>
+              this.buildPushBatch(
+                heads,
+                capabilities.maxPushBatch,
+                capabilities.maxPushBytes,
+              ),
+            catch: (error) => error,
+          }).pipe(
+            Effect.flatMap((batch) =>
+              this.request((signal) =>
+                this.client.push(batch.mutations, signal),
+              ).pipe(Effect.map((results) => ({ batch, results }))),
+            ),
+            Effect.flatMap(({ batch, results }) => {
+              if (
+                results.some(
+                  (result) =>
+                    result.status === "error" &&
+                    result.reason === "unauthorized_scope",
+                )
+              ) {
+                return Effect.fail(new SyncScopeAuthorizationError(context));
+              }
+              return this.db(() =>
+                applyPushResults(context, batch.heads, results),
+              ).pipe(
+                Effect.flatMap((applied) => {
+                  if (!applied) return Effect.void;
+                  if (results.some((result) => result.status !== "ok")) {
+                    this.notifyRenderers();
+                  }
+                  return pushBatch();
+                }),
+              );
+            }),
+          );
+        }),
+      );
+    return pushBatch();
+  }
+
+  private removeAllOrganizationScopes(
+    context: SyncContext,
+  ): Effect.Effect<boolean, unknown> {
+    return this.db(async () => {
+      const hadActiveOrganization = deactivateOrganizationSyncScopes();
+      const reconciled = await reconcileSyncScopes(context.accountId, [
+        {
+          scopeType: "user",
+          scopeId: context.accountId,
+          role: null,
+          canWrite: true,
+          latestSyncVersion: 0,
+        },
+      ]);
+      return hadActiveOrganization || Boolean(reconciled?.organizationChanged);
+    });
   }
 
   private buildPushBatch(
@@ -578,47 +1267,45 @@ export class SettingsSyncService {
     return { heads: selectedHeads, mutations };
   }
 
-  private async deactivateOrganizationScopes(
-    signal: AbortSignal,
-  ): Promise<boolean> {
-    const hadOrganization = this.currentContexts.some(
-      (context) => context.scopeType === "org",
-    );
-    const deactivated = await this.runLocalTransition(async () =>
-      signal.aborted ? false : deactivateOrganizationSyncScopes(),
-    );
-    if (signal.aborted) return false;
-    this.currentContexts = this.currentContexts.filter(
-      (context) => context.scopeType !== "org",
-    );
-    this.capabilities = null;
-    return hadOrganization || deactivated;
+  private pollLoop(): Effect.Effect<never> {
+    return Effect.async<never>(() => {
+      const timer = setInterval(() => this.wake(), POLL_INTERVAL_MS);
+      timer.unref?.();
+      return Effect.sync(() => clearInterval(timer));
+    });
   }
 
-  private async removeAllOrganizationScopes(
-    context: SyncContext,
-    signal: AbortSignal,
-  ): Promise<boolean> {
-    const hadOrganization = this.currentContexts.some(
-      (candidate) => candidate.scopeType === "org",
+  private db<T>(callback: () => Promise<T>): Effect.Effect<T, unknown> {
+    return this.dbSemaphore.withPermits(1)(
+      Effect.uninterruptible(this.fromPromise(callback)),
     );
-    const reconciled = await this.runLocalTransition(async () =>
-      signal.aborted
-        ? null
-        : reconcileSyncScopes(context.accountId, [
-            {
-              scopeType: "user",
-              scopeId: context.accountId,
-              role: null,
-              canWrite: true,
-              latestSyncVersion: 0,
-            },
-          ]),
-    );
-    if (!reconciled || signal.aborted) return false;
-    this.currentContexts = reconciled.contexts;
-    this.capabilities = null;
-    return hadOrganization || reconciled.organizationChanged;
+  }
+
+  private request<T>(
+    callback: (signal: AbortSignal) => Promise<T>,
+  ): Effect.Effect<T, unknown> {
+    return Effect.tryPromise({ try: callback, catch: (error) => error });
+  }
+
+  private fromPromise<T>(
+    callback: () => Promise<T>,
+  ): Effect.Effect<T, unknown> {
+    return Effect.tryPromise({ try: callback, catch: (error) => error });
+  }
+
+  private boundaryIsCurrent(epoch: number): boolean {
+    return !this.stopping && epoch === this.boundaryEpoch;
+  }
+
+  private offer(event: ControlEvent): void {
+    Runtime.runSync(this.runtime, Queue.offer(this.events, event));
+  }
+
+  private runBoundary<T>(effect: Effect.Effect<T, unknown>): Promise<T> {
+    return Runtime.runPromiseExit(this.runtime)(effect).then((exit) => {
+      if (Exit.isSuccess(exit)) return exit.value;
+      throw Cause.squash(exit.cause);
+    });
   }
 
   private notifyRenderers(): void {
@@ -634,8 +1321,9 @@ export class SettingsSyncService {
 
     for (const window of windows) {
       try {
-        if (window.isDestroyed() || window.webContents.isDestroyed?.())
+        if (window.isDestroyed() || window.webContents.isDestroyed?.()) {
           continue;
+        }
         window.webContents.send("settings-sync-updated");
       } catch (error) {
         logger.main.warn("Failed to notify renderer of settings sync update", {
@@ -644,9 +1332,5 @@ export class SettingsSyncService {
         });
       }
     }
-  }
-
-  private runLocalTransition<T>(callback: () => Promise<T>): Promise<T> {
-    return this.localStateMutex.runExclusive(callback);
   }
 }

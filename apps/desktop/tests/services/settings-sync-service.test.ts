@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { BrowserWindow } from "electron";
+import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthState, AuthService } from "../../src/services/auth-service";
@@ -176,6 +177,7 @@ describe("SettingsSyncService", () => {
     await service?.shutdown();
     pauseSyncSession();
     await testDb.close();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -343,6 +345,24 @@ describe("SettingsSyncService", () => {
     expect(await testDb.db.select().from(syncCollectionState)).toHaveLength(2);
   });
 
+  it("can initialize the same service again after clean shutdown", async () => {
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    await service.shutdown();
+    const firstInitialize = service.initialize();
+    const secondInitialize = service.initialize();
+    expect(secondInitialize).toBe(firstInitialize);
+    await Promise.all([firstInitialize, secondInitialize]);
+
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+  });
+
   it("resumes a pending outbox after restart without logout", async () => {
     await createVocabularyWord({
       word: "Pending",
@@ -465,6 +485,41 @@ describe("SettingsSyncService", () => {
       { collection: "vocabulary", cursor: 0 },
       { collection: "snippet", cursor: 0 },
     ]);
+  });
+
+  it("ignores token refresh until explicit login binding is active", async () => {
+    auth.state = null;
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+
+    auth.state = AUTH_STATE;
+    auth.emit("authenticated", AUTH_STATE);
+    auth.emit("token-refreshed", AUTH_STATE);
+
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+    expect(client.bootstrap).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a same-turn wake while token refresh is rebinding sync", async () => {
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    auth.emit("token-refreshed", AUTH_STATE);
+    service.wake();
+
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(client.bootstrap).toHaveBeenCalledTimes(2);
+    expect(client.pull).toHaveBeenCalledTimes(2);
   });
 
   it("retains organization state and requests reauthentication after HTTP 401", async () => {
@@ -1328,6 +1383,68 @@ describe("SettingsSyncService", () => {
     expect(await testDb.db.select().from(syncItemState)).toEqual([]);
   });
 
+  it("falls back to direct cleanup if the supervisor stops before logout", async () => {
+    const client = {
+      bootstrap: vi.fn(
+        async (): Promise<SyncBootstrap> => ({
+          scopes: [
+            ...USER_BOOTSTRAP_SCOPES,
+            organizationBootstrapScope("org-1", true),
+          ],
+          collections: ["vocabulary", "snippet"],
+          maxPushBatch: 100,
+          maxPushBytes: 524288,
+          pullLimit: 200,
+        }),
+      ),
+      pull: vi.fn(
+        async (
+          _scopeType: "user" | "org",
+          _scopeId: string,
+          cursors: ReadonlyArray<{
+            collection: "vocabulary" | "snippet";
+            cursor: number;
+          }>,
+        ): Promise<SyncPullPage> => ({
+          collections: cursors.map(({ collection, cursor }) => ({
+            collection,
+            items: [],
+            cursor,
+            hasMore: false,
+          })),
+        }),
+      ),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+    await testDb.db.insert(vocabulary).values([
+      { word: "Personal", scopeType: "user", scopeId: "" },
+      { word: "Organization", scopeType: "org", scopeId: "org-1" },
+    ]);
+
+    const internal = service as unknown as {
+      handleEvent: (...args: unknown[]) => Effect.Effect<never>;
+    };
+    const handleEvent = vi
+      .spyOn(internal, "handleEvent")
+      .mockReturnValueOnce(Effect.interrupt);
+    service.wake();
+    await vi.waitFor(() => expect(handleEvent).toHaveBeenCalled());
+
+    await auth.logoutForTest();
+
+    expect(await testDb.db.select().from(vocabulary)).toEqual([
+      expect.objectContaining({ word: "Personal", scopeType: "user" }),
+    ]);
+    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+    expect(await testDb.db.select().from(syncScopeState)).toEqual([]);
+  });
+
   it("ignores a bootstrap response that arrives after logout", async () => {
     const row = await createVocabularyWord({
       word: "Keep local",
@@ -1511,6 +1628,163 @@ describe("SettingsSyncService", () => {
     );
   });
 
+  it("waits for another wake after a failed attempt", async () => {
+    const client = new InMemorySyncClient();
+    client.bootstrap
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({
+        scopes: USER_BOOTSTRAP_SCOPES,
+        collections: ["vocabulary", "snippet"],
+        maxPushBatch: 100,
+        maxPushBytes: 524288,
+        pullLimit: 200,
+      });
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(client.bootstrap).toHaveBeenCalledOnce();
+
+    service.wake();
+    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+  });
+
+  it("notifies renderers after logout cleanup", async () => {
+    const send = vi.fn();
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      {
+        isDestroyed: () => false,
+        webContents: { send },
+      } as unknown as BrowserWindow,
+    ]);
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+    send.mockClear();
+
+    await auth.logoutForTest();
+
+    await vi.waitFor(() =>
+      expect(send).toHaveBeenCalledWith("settings-sync-updated"),
+    );
+  });
+
+  it("keeps the original poll phase across token refresh", async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    const elapsed = Date.now() - startedAt;
+    await vi.advanceTimersByTimeAsync(5 * 60_000 - elapsed - 1);
+    expect(client.bootstrap).toHaveBeenCalledOnce();
+
+    auth.emit("token-refreshed", AUTH_STATE);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.bootstrap).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.bootstrap).toHaveBeenCalledTimes(3);
+  });
+
+  it("resets the edit debounce and cancels it on shutdown", async () => {
+    vi.useFakeTimers();
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    const row = await createVocabularyWord({ word: "First" });
+    await vi.advanceTimersByTimeAsync(500);
+    await updateVocabulary(row.id, { word: "Second" });
+    await vi.advanceTimersByTimeAsync(749);
+    expect(client.bootstrap).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.bootstrap).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+
+    await updateVocabulary(row.id, { word: "Pending at shutdown" });
+    await vi.advanceTimersByTimeAsync(0);
+    await service.shutdown();
+    await vi.advanceTimersByTimeAsync(750);
+
+    expect(client.bootstrap).toHaveBeenCalledTimes(2);
+    expect(await testDb.db.select().from(syncOutbox)).toEqual([
+      expect.objectContaining({ syncId: row.id }),
+    ]);
+  });
+
+  it("interrupts a pending pull and preserves durable state on shutdown", async () => {
+    let pullSignal: AbortSignal | undefined;
+    const client = {
+      bootstrap: vi.fn().mockResolvedValue({
+        scopes: USER_BOOTSTRAP_SCOPES,
+        collections: ["vocabulary", "snippet"] as Array<
+          "vocabulary" | "snippet"
+        >,
+        maxPushBatch: 100,
+        maxPushBytes: 524288,
+        pullLimit: 200,
+      }),
+      pull: vi.fn(
+        (
+          _scopeType: "user" | "org",
+          _scopeId: string,
+          _cursors: ReadonlyArray<{
+            collection: "vocabulary" | "snippet";
+            cursor: number;
+          }>,
+          _limit: number,
+          signal: AbortSignal,
+        ) => {
+          pullSignal = signal;
+          return new Promise<SyncPullPage>((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        },
+      ),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(pullSignal).toBeDefined());
+    const row = await createVocabularyWord({ word: "Pending" });
+
+    await service.shutdown();
+
+    expect(pullSignal?.aborted).toBe(true);
+    expect(await testDb.db.select().from(syncClientState)).toHaveLength(1);
+    expect(await testDb.db.select().from(syncOutbox)).toEqual([
+      expect.objectContaining({ syncId: row.id }),
+    ]);
+  });
+
   it("coalesces wakes so only one pull is in flight", async () => {
     let concurrentPulls = 0;
     let maxConcurrentPulls = 0;
@@ -1567,9 +1841,9 @@ describe("SettingsSyncService", () => {
     expect(maxConcurrentPulls).toBe(1);
 
     pullState.release?.();
-    await vi.waitFor(() =>
-      expect(client.pull.mock.calls.length).toBeGreaterThan(1),
-    );
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(client.pull).toHaveBeenCalledTimes(2);
     expect(maxConcurrentPulls).toBe(1);
   });
 });
