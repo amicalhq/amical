@@ -26,7 +26,6 @@ import {
   SettingsSyncClient,
   SettingsSyncHttpError,
   type SyncBootstrap,
-  type SyncPullPage,
   type SyncPushMutation,
 } from "./settings-sync-client";
 import {
@@ -46,8 +45,6 @@ import {
   removeOrganizationSyncScope,
   resumeUserSyncSession,
   type CapturedSyncHead,
-  type PullCollectionCursor,
-  type PushSyncResult,
   type SyncContext,
 } from "../db/sync";
 
@@ -55,21 +52,6 @@ const POLL_INTERVAL_MS = 5 * 60_000;
 const EDIT_DEBOUNCE_MS = 750;
 
 type SyncClient = Pick<SettingsSyncClient, "bootstrap" | "pull" | "push">;
-
-type PromiseSyncClient = {
-  bootstrap(accountId: string, signal: AbortSignal): Promise<SyncBootstrap>;
-  pull(
-    scopeType: SyncContext["scopeType"],
-    scopeId: string,
-    cursors: readonly PullCollectionCursor[],
-    limit: number,
-    signal: AbortSignal,
-  ): Promise<SyncPullPage>;
-  push(
-    mutations: SyncPushMutation[],
-    signal: AbortSignal,
-  ): Promise<PushSyncResult[]>;
-};
 
 type AttemptResult = { rebootstrap: boolean };
 
@@ -245,30 +227,9 @@ export class SettingsSyncService {
 
   static createForTests(
     authService: AuthService,
-    client?: PromiseSyncClient,
+    client?: SyncClient,
   ): SettingsSyncService {
-    return Effect.runSync(
-      SettingsSyncService.make(
-        authService,
-        client ? SettingsSyncService.adaptPromiseClient(client) : undefined,
-      ),
-    );
-  }
-
-  private static adaptPromiseClient(client: PromiseSyncClient): SyncClient {
-    const request = <T>(
-      callback: (signal: AbortSignal) => Promise<T>,
-    ): Effect.Effect<T, unknown> =>
-      Effect.tryPromise({ try: callback, catch: (error) => error });
-    return {
-      bootstrap: (accountId) =>
-        request((signal) => client.bootstrap(accountId, signal)),
-      pull: (scopeType, scopeId, cursors, limit) =>
-        request((signal) =>
-          client.pull(scopeType, scopeId, cursors, limit, signal),
-        ),
-      push: (mutations) => request((signal) => client.push(mutations, signal)),
-    };
+    return Effect.runSync(SettingsSyncService.make(authService, client));
   }
 
   initialize(): Promise<void> {
