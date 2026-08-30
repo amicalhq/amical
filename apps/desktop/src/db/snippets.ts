@@ -141,14 +141,15 @@ export async function getSnippets(
   const searchTerm = search?.toLocaleLowerCase();
   const scopedRows = (
     await readableSnippets(await db.select().from(snippets))
-  ).filter(
+  ).filter((row) => scope === "all" || row.scopeType === scope);
+  const visibleRows =
+    scope === "all" ? effectiveSnippets(scopedRows) : scopedRows;
+  const rows = visibleRows.filter(
     (row) =>
-      (scope === "all" || row.scopeType === scope) &&
-      (!searchTerm ||
-        row.trigger.toLocaleLowerCase().includes(searchTerm) ||
-        row.content.toLocaleLowerCase().includes(searchTerm)),
+      !searchTerm ||
+      row.trigger.toLocaleLowerCase().includes(searchTerm) ||
+      row.content.toLocaleLowerCase().includes(searchTerm),
   );
-  const rows = scope === "all" ? effectiveSnippets(scopedRows) : scopedRows;
   return rows
     .sort(
       (left, right) =>

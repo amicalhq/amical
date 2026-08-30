@@ -286,6 +286,15 @@ describe("scoped vocabulary and snippet storage", () => {
     expect(await getSnippets({ scope: "org" })).toEqual([
       expect.objectContaining({ id: organizationSnippet.id }),
     ]);
+    expect(
+      await getSnippets({ scope: "all", search: "Organization response" }),
+    ).toEqual([]);
+    expect(
+      await getSnippets({ scope: "all", search: "Personal response" }),
+    ).toEqual([expect.objectContaining({ id: personalSnippet.id })]);
+    expect(
+      await getSnippets({ scope: "org", search: "Organization response" }),
+    ).toEqual([expect.objectContaining({ id: organizationSnippet.id })]);
 
     await trackWordUsage("amical");
     expect(database.select().from(vocabulary).all()).toEqual(
