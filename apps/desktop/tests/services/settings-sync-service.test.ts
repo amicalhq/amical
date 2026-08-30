@@ -453,6 +453,39 @@ describe("SettingsSyncService", () => {
     expect(auth.beforeLogout).not.toBeNull();
   });
 
+  it("keeps every restart caller pending until shared initialization completes", async () => {
+    let releaseRestartAuth!: (state: AuthState | null) => void;
+    auth.getAuthState.mockResolvedValueOnce(AUTH_STATE).mockImplementationOnce(
+      () =>
+        new Promise<AuthState | null>((resolve) => {
+          releaseRestartAuth = resolve;
+        }),
+    );
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    const stopping = service.shutdown();
+    const firstRestart = stopping.then(() => service!.initialize());
+    const queuedRestart = service.initialize();
+    let queuedRestartSettled = false;
+    void queuedRestart.then(() => {
+      queuedRestartSettled = true;
+    });
+
+    await stopping;
+    await vi.waitFor(() => expect(auth.getAuthState).toHaveBeenCalledTimes(2));
+    expect(queuedRestartSettled).toBe(false);
+
+    releaseRestartAuth(AUTH_STATE);
+    await Promise.all([firstRestart, queuedRestart]);
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+  });
+
   it("resumes a pending outbox after restart without logout", async () => {
     await createVocabularyWord({
       word: "Pending",

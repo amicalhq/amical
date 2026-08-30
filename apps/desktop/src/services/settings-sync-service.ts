@@ -272,21 +272,10 @@ export class SettingsSyncService {
   }
 
   initialize(): Promise<void> {
-    if (
-      (this.lifecyclePhase === "starting" ||
-        this.lifecyclePhase === "running") &&
-      this.initializePromise
-    ) {
+    if (this.desiredRunning && this.initializePromise) {
       return this.initializePromise;
     }
     if (this.lifecyclePhase === "running") return Promise.resolve();
-    if (
-      this.lifecyclePhase === "stopping" &&
-      this.desiredRunning &&
-      this.initializePromise
-    ) {
-      return this.initializePromise;
-    }
 
     this.desiredRunning = true;
     const intent = ++this.lifecycleIntent;
