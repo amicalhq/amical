@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect, Fiber } from "effect";
 
 import {
   SettingsSyncPullCollectionRequestSchema,
@@ -9,8 +10,11 @@ import {
   SettingsSyncClient,
   SettingsSyncHttpError,
 } from "../../src/services/settings-sync-client";
+import { settleExit } from "../../src/types/errors";
 
 const SYNC_ID = "11111111-1111-4111-8111-111111111111";
+const runClient = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
+  Effect.runPromiseExit(effect).then(settleExit);
 
 describe("SettingsSyncClient", () => {
   let client: SettingsSyncClient;
@@ -58,9 +62,7 @@ describe("SettingsSyncClient", () => {
       }),
     });
 
-    await expect(
-      client.bootstrap("user-1", new AbortController().signal),
-    ).resolves.toEqual({
+    await expect(runClient(client.bootstrap("user-1"))).resolves.toEqual({
       scopes: [
         {
           scopeType: "user",
@@ -116,9 +118,7 @@ describe("SettingsSyncClient", () => {
       }),
     });
 
-    await expect(
-      client.bootstrap("user-1", new AbortController().signal),
-    ).resolves.toMatchObject({
+    await expect(runClient(client.bootstrap("user-1"))).resolves.toMatchObject({
       scopes: [
         expect.objectContaining({ scopeType: "user", scopeId: "user-1" }),
         expect.objectContaining({
@@ -195,12 +195,13 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 0 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 0 }],
+          200,
+        ),
       ),
     ).rejects.toThrow("strictly cursor ordered");
   });
@@ -239,15 +240,16 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [
-          { collection: "vocabulary", cursor: 7 },
-          { collection: "snippet", cursor: 3 },
-        ],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [
+            { collection: "vocabulary", cursor: 7 },
+            { collection: "snippet", cursor: 3 },
+          ],
+          200,
+        ),
       ),
     ).resolves.toEqual({
       collections: [
@@ -299,12 +301,13 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 0 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 0 }],
+          200,
+        ),
       ),
     ).rejects.toThrow("unrequested collection");
   });
@@ -327,12 +330,13 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 1 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 1 }],
+          200,
+        ),
       ),
     ).rejects.toThrow("Empty pull");
   });
@@ -362,12 +366,13 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 0 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 0 }],
+          200,
+        ),
       ),
     ).resolves.toEqual({
       collections: [
@@ -395,8 +400,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "vocabulary",
             scopeType: "user",
@@ -405,8 +410,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { word: "Amical", replacement: null },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("result count");
   });
@@ -427,8 +431,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -437,8 +441,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { trigger: "sig", content: "hello" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("identity");
   });
@@ -464,8 +467,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -474,8 +477,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { trigger: "sig", content: "hello" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("canonical identity");
   });
@@ -502,8 +504,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -512,8 +514,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { trigger: "sig", content: "local" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("does not match request key");
   });
@@ -542,8 +543,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -552,8 +553,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: 2,
             payload: { trigger: "sig", content: "local" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("non-conflicting version");
   });
@@ -561,12 +561,58 @@ describe("SettingsSyncClient", () => {
   it("surfaces HTTP status without changing durable state itself", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 503 });
 
-    await expect(
-      client.bootstrap("user-1", new AbortController().signal),
-    ).rejects.toEqual(
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toEqual(
       expect.objectContaining<Partial<SettingsSyncHttpError>>({
         status: 503,
       }),
     );
+  });
+
+  it("aborts an in-flight request when its client effect is interrupted", async () => {
+    let requestSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(
+      (_url: URL, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          requestSignal = init.signal as AbortSignal;
+          requestSignal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+
+    const fiber = Effect.runFork(client.bootstrap("user-1"));
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("keeps the request signal cancellable while decoding the response", async () => {
+    let requestSignal: AbortSignal | undefined;
+    let decodingStarted = false;
+    fetchMock.mockImplementation((_url: URL, init: RequestInit) => {
+      requestSignal = init.signal as AbortSignal;
+      return Promise.resolve({
+        ok: true,
+        json: () => {
+          decodingStarted = true;
+          return new Promise((_resolve, reject) => {
+            requestSignal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        },
+      });
+    });
+
+    const fiber = Effect.runFork(client.bootstrap("user-1"));
+    await vi.waitFor(() => expect(decodingStarted).toBe(true));
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    expect(requestSignal?.aborted).toBe(true);
   });
 });

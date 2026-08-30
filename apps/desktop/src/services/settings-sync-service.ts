@@ -26,6 +26,7 @@ import {
   SettingsSyncClient,
   SettingsSyncHttpError,
   type SyncBootstrap,
+  type SyncPullPage,
   type SyncPushMutation,
 } from "./settings-sync-client";
 import {
@@ -45,6 +46,8 @@ import {
   removeOrganizationSyncScope,
   resumeUserSyncSession,
   type CapturedSyncHead,
+  type PullCollectionCursor,
+  type PushSyncResult,
   type SyncContext,
 } from "../db/sync";
 
@@ -52,6 +55,21 @@ const POLL_INTERVAL_MS = 5 * 60_000;
 const EDIT_DEBOUNCE_MS = 750;
 
 type SyncClient = Pick<SettingsSyncClient, "bootstrap" | "pull" | "push">;
+
+type PromiseSyncClient = {
+  bootstrap(accountId: string, signal: AbortSignal): Promise<SyncBootstrap>;
+  pull(
+    scopeType: SyncContext["scopeType"],
+    scopeId: string,
+    cursors: readonly PullCollectionCursor[],
+    limit: number,
+    signal: AbortSignal,
+  ): Promise<SyncPullPage>;
+  push(
+    mutations: SyncPushMutation[],
+    signal: AbortSignal,
+  ): Promise<PushSyncResult[]>;
+};
 
 type AttemptResult = { rebootstrap: boolean };
 
@@ -227,9 +245,30 @@ export class SettingsSyncService {
 
   static createForTests(
     authService: AuthService,
-    client?: SyncClient,
+    client?: PromiseSyncClient,
   ): SettingsSyncService {
-    return Effect.runSync(SettingsSyncService.make(authService, client));
+    return Effect.runSync(
+      SettingsSyncService.make(
+        authService,
+        client ? SettingsSyncService.adaptPromiseClient(client) : undefined,
+      ),
+    );
+  }
+
+  private static adaptPromiseClient(client: PromiseSyncClient): SyncClient {
+    const request = <T>(
+      callback: (signal: AbortSignal) => Promise<T>,
+    ): Effect.Effect<T, unknown> =>
+      Effect.tryPromise({ try: callback, catch: (error) => error });
+    return {
+      bootstrap: (accountId) =>
+        request((signal) => client.bootstrap(accountId, signal)),
+      pull: (scopeType, scopeId, cursors, limit) =>
+        request((signal) =>
+          client.pull(scopeType, scopeId, cursors, limit, signal),
+        ),
+      push: (mutations) => request((signal) => client.push(mutations, signal)),
+    };
   }
 
   initialize(): Promise<void> {
@@ -1128,9 +1167,7 @@ export class SettingsSyncService {
     context: SyncContext,
   ): Effect.Effect<AttemptResult, unknown> {
     return Effect.gen(this, function* () {
-      const capabilities = yield* this.request((signal) =>
-        this.client.bootstrap(context.accountId, signal),
-      );
+      const capabilities = yield* this.client.bootstrap(context.accountId);
       const reconciled = yield* this.db(() =>
         reconcileSyncScopes(context.accountId, capabilities.scopes),
       );
@@ -1218,32 +1255,33 @@ export class SettingsSyncService {
         this.db(() => getPullCursors(context, capabilities.collections)).pipe(
           Effect.flatMap((cursors) => {
             if (cursors === null) return Effect.void;
-            return this.request((signal) =>
-              this.client.pull(
+            return this.client
+              .pull(
                 context.scopeType,
                 context.scopeId,
                 cursors,
                 capabilities.pullLimit,
-                signal,
-              ),
-            ).pipe(
-              Effect.flatMap((page) =>
-                this.db(() => applyPullPages(context, page.collections)).pipe(
-                  Effect.flatMap((applied) => {
-                    if (!applied) return Effect.void;
-                    const pageChanged = page.collections.some(
-                      (collection) => collection.items.length > 0,
-                    );
-                    const hasMore = page.collections.some(
-                      (collection) => collection.hasMore,
-                    );
-                    return (
-                      pageChanged ? Ref.set(changed, true) : Effect.void
-                    ).pipe(Effect.zipRight(hasMore ? pullPage() : Effect.void));
-                  }),
+              )
+              .pipe(
+                Effect.flatMap((page) =>
+                  this.db(() => applyPullPages(context, page.collections)).pipe(
+                    Effect.flatMap((applied) => {
+                      if (!applied) return Effect.void;
+                      const pageChanged = page.collections.some(
+                        (collection) => collection.items.length > 0,
+                      );
+                      const hasMore = page.collections.some(
+                        (collection) => collection.hasMore,
+                      );
+                      return (
+                        pageChanged ? Ref.set(changed, true) : Effect.void
+                      ).pipe(
+                        Effect.zipRight(hasMore ? pullPage() : Effect.void),
+                      );
+                    }),
+                  ),
                 ),
-              ),
-            );
+              );
           }),
         );
 
@@ -1284,9 +1322,9 @@ export class SettingsSyncService {
             catch: (error) => error,
           }).pipe(
             Effect.flatMap((batch) =>
-              this.request((signal) =>
-                this.client.push(batch.mutations, signal),
-              ).pipe(Effect.map((results) => ({ batch, results }))),
+              this.client
+                .push(batch.mutations)
+                .pipe(Effect.map((results) => ({ batch, results }))),
             ),
             Effect.flatMap(({ batch, results }) => {
               if (
@@ -1385,12 +1423,6 @@ export class SettingsSyncService {
     return this.dbSemaphore.withPermits(1)(
       Effect.uninterruptible(this.fromPromise(callback)),
     );
-  }
-
-  private request<T>(
-    callback: (signal: AbortSignal) => Promise<T>,
-  ): Effect.Effect<T, unknown> {
-    return Effect.tryPromise({ try: callback, catch: (error) => error });
   }
 
   private fromPromise<T>(
