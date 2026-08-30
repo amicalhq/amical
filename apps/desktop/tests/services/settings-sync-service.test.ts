@@ -363,6 +363,96 @@ describe("SettingsSyncService", () => {
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
   });
 
+  it("starts a fresh lifecycle when initialization is requested after shutdown", async () => {
+    let releaseInitialAuth!: (state: AuthState | null) => void;
+    auth.getAuthState
+      .mockImplementationOnce(
+        () =>
+          new Promise<AuthState | null>((resolve) => {
+            releaseInitialAuth = resolve;
+          }),
+      )
+      .mockResolvedValue(AUTH_STATE);
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+
+    const initialInitialize = service.initialize();
+    await vi.waitFor(() => expect(auth.getAuthState).toHaveBeenCalledOnce());
+    await service.shutdown();
+
+    const restartedInitialize = service.initialize();
+    releaseInitialAuth(AUTH_STATE);
+    await Promise.all([initialInitialize, restartedInitialize]);
+
+    expect(restartedInitialize).not.toBe(initialInitialize);
+    expect(auth.getAuthState).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+  });
+
+  it("stops a restart requested immediately after clean shutdown", async () => {
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+    await service.shutdown();
+
+    const restartedInitialize = service.initialize();
+    const restartedShutdown = service.shutdown();
+    await Promise.all([restartedInitialize, restartedShutdown]);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(client.pull).toHaveBeenCalledOnce();
+    expect(auth.listenerCount("authenticated")).toBe(0);
+    expect(auth.beforeLogout).toBeNull();
+  });
+
+  it("cancels a restart queued while shutdown is still running", async () => {
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    const initialShutdown = service.shutdown();
+    const queuedRestart = service.initialize();
+    const finalShutdown = service.shutdown();
+    await Promise.all([initialShutdown, queuedRestart, finalShutdown]);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(finalShutdown).toBe(initialShutdown);
+    expect(client.pull).toHaveBeenCalledOnce();
+    expect(auth.listenerCount("authenticated")).toBe(0);
+    expect(auth.beforeLogout).toBeNull();
+  });
+
+  it("starts one lifecycle when restart is requested during shutdown", async () => {
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await service.initialize();
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    const stopping = service.shutdown();
+    const firstRestart = service.initialize();
+    const secondRestart = service.initialize();
+    expect(secondRestart).toBe(firstRestart);
+    await Promise.all([stopping, firstRestart, secondRestart]);
+
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+    expect(auth.listenerCount("authenticated")).toBe(1);
+    expect(auth.beforeLogout).not.toBeNull();
+  });
+
   it("resumes a pending outbox after restart without logout", async () => {
     await createVocabularyWord({
       word: "Pending",

@@ -55,6 +55,8 @@ type SyncClient = Pick<SettingsSyncClient, "bootstrap" | "pull" | "push">;
 
 type AttemptResult = { rebootstrap: boolean };
 
+type LifecyclePhase = "stopped" | "starting" | "running" | "stopping";
+
 type RunningAttempt = {
   id: number;
   epoch: number;
@@ -108,8 +110,12 @@ class SyncScopeAuthorizationError extends Error {
 }
 
 export class SettingsSyncService {
-  private initialized = false;
-  private stopping = false;
+  private lifecyclePhase: LifecyclePhase = "stopped";
+  private lifecycleGeneration = 0;
+  private lifecycleIntent = 0;
+  private desiredRunning = false;
+  private runResourcesClosed = false;
+  private supervisorStarted = false;
   private boundaryEpoch = 0;
   private activeAccountId: string | null = null;
   private wakeAdmissionOpen = false;
@@ -227,14 +233,43 @@ export class SettingsSyncService {
   }
 
   initialize(): Promise<void> {
-    if (this.initializePromise) return this.initializePromise;
-    const initializePromise = this.runBoundary(this.initializeEffect()).finally(
-      () => {
-        if (this.initializePromise === initializePromise) {
-          this.initializePromise = null;
-        }
-      },
-    );
+    if (
+      (this.lifecyclePhase === "starting" ||
+        this.lifecyclePhase === "running") &&
+      this.initializePromise
+    ) {
+      return this.initializePromise;
+    }
+    if (this.lifecyclePhase === "running") return Promise.resolve();
+    if (
+      this.lifecyclePhase === "stopping" &&
+      this.desiredRunning &&
+      this.initializePromise
+    ) {
+      return this.initializePromise;
+    }
+
+    this.desiredRunning = true;
+    const intent = ++this.lifecycleIntent;
+    const waitForShutdown =
+      this.lifecyclePhase === "stopping" ? this.shutdownPromise : null;
+    const start = (): Promise<void> => {
+      if (
+        !this.desiredRunning ||
+        intent !== this.lifecycleIntent ||
+        this.lifecyclePhase !== "stopped"
+      ) {
+        return Promise.resolve();
+      }
+      const generation = this.prepareServiceRun();
+      return this.runBoundary(this.runInitialization(generation));
+    };
+    const operation = waitForShutdown ? waitForShutdown.then(start) : start();
+    const initializePromise = operation.finally(() => {
+      if (this.initializePromise === initializePromise) {
+        this.initializePromise = null;
+      }
+    });
     this.initializePromise = initializePromise;
     return initializePromise;
   }
@@ -253,72 +288,120 @@ export class SettingsSyncService {
   }
 
   shutdown(): Promise<void> {
-    if (this.shutdownPromise) return this.shutdownPromise;
-    if (!this.initialized) return Promise.resolve();
+    this.desiredRunning = false;
+    this.lifecycleIntent += 1;
+    this.initializePromise = null;
+    if (this.lifecyclePhase === "stopping") {
+      return this.shutdownPromise ?? Promise.resolve();
+    }
+    if (this.lifecyclePhase === "stopped") return Promise.resolve();
 
-    this.stopping = true;
-    this.initialized = false;
+    const generation = this.lifecycleGeneration;
+    this.lifecyclePhase = "stopping";
     this.unregisterListeners();
     const epoch = this.fenceBoundary(true, true);
-    const ack = Runtime.runSync(this.runtime, Deferred.make<void, unknown>());
-
-    this.shutdownPromise = this.runBoundary(
-      Queue.offer(this.events, { _tag: "Shutdown", epoch, ack }).pipe(
-        Effect.zipRight(
-          Effect.raceFirst(
+    const shutdownEffect = this.supervisorStarted
+      ? Effect.gen(this, function* () {
+          const ack = yield* Deferred.make<void, unknown>();
+          yield* Queue.offer(this.events, { _tag: "Shutdown", epoch, ack });
+          yield* Effect.raceFirst(
             Deferred.await(ack),
             Deferred.await(this.supervisorDone),
-          ),
-        ),
-        Effect.ensuring(Scope.close(this.serviceScope, Exit.void)),
-      ),
-    );
-    return this.shutdownPromise;
+          );
+        }).pipe(Effect.ensuring(Scope.close(this.serviceScope, Exit.void)))
+      : Scope.close(this.serviceScope, Exit.void);
+    const shutdownPromise = this.runBoundary(shutdownEffect).finally(() => {
+      if (
+        generation === this.lifecycleGeneration &&
+        this.lifecyclePhase === "stopping"
+      ) {
+        this.lifecyclePhase = "stopped";
+        this.runResourcesClosed = true;
+        this.supervisorStarted = false;
+        this.currentAttemptFiber = null;
+        this.currentAttemptId = null;
+        this.currentDebounceFiber = null;
+        this.activeAccountId = null;
+        this.wakeAdmissionOpen = false;
+      }
+      if (this.shutdownPromise === shutdownPromise) {
+        this.shutdownPromise = null;
+      }
+    });
+    this.shutdownPromise = shutdownPromise;
+    return shutdownPromise;
   }
 
   private initializeEffect(): Effect.Effect<void, unknown> {
-    if (this.initialized) return Effect.void;
+    return Effect.suspend(() => {
+      if (this.initialized) return Effect.void;
+      this.desiredRunning = true;
+      this.lifecycleIntent += 1;
+      const generation = this.prepareServiceRun();
+      return this.runInitialization(generation);
+    });
+  }
 
+  private prepareServiceRun(): number {
+    if (this.runResourcesClosed) {
+      this.serviceScope = Runtime.runSync(this.runtime, Scope.make());
+      this.events = Runtime.runSync(
+        this.runtime,
+        Queue.unbounded<ControlEvent>(),
+      );
+      this.supervisorDone = Runtime.runSync(
+        this.runtime,
+        Deferred.make<void>(),
+      );
+      this.runResourcesClosed = false;
+    }
+
+    this.lifecycleGeneration += 1;
+    this.lifecyclePhase = "starting";
+    this.supervisorStarted = false;
+    this.wakeEventQueued = false;
+    this.localMutationEventQueued = false;
+    return this.lifecycleGeneration;
+  }
+
+  private runInitialization(generation: number): Effect.Effect<void, unknown> {
     return Effect.gen(this, function* () {
-      if (this.shutdownPromise) {
-        yield* this.fromPromise(() => this.shutdownPromise!);
-        this.serviceScope = yield* Scope.make();
-        this.events = yield* Queue.unbounded<ControlEvent>();
-        this.supervisorDone = yield* Deferred.make<void>();
-        this.shutdownPromise = null;
-      }
+      if (!this.lifecycleIsCurrent(generation, "starting")) return;
 
       const initialEpoch = this.boundaryEpoch;
-      this.initialized = true;
-      this.stopping = false;
-      this.wakeEventQueued = false;
-      this.localMutationEventQueued = false;
+      const events = this.events;
+      const serviceScope = this.serviceScope;
+      const supervisorDone = this.supervisorDone;
       this.registerListeners();
 
       yield* Effect.forkIn(
         Effect.interruptible(
-          this.supervisorLoop().pipe(
+          this.supervisorLoop(events).pipe(
             Effect.ensuring(
-              Deferred.succeed(this.supervisorDone, undefined).pipe(
-                Effect.asVoid,
-              ),
+              Deferred.succeed(supervisorDone, undefined).pipe(Effect.asVoid),
             ),
           ),
         ),
-        this.serviceScope,
+        serviceScope,
       );
-      yield* Effect.forkIn(
-        Effect.interruptible(this.pollLoop()),
-        this.serviceScope,
-      );
+      if (!this.lifecycleIsCurrent(generation, "starting")) return;
+      this.supervisorStarted = true;
+      yield* Effect.forkIn(Effect.interruptible(this.pollLoop()), serviceScope);
+      if (!this.lifecycleIsCurrent(generation, "starting")) return;
+      this.lifecyclePhase = "running";
 
       const authState = yield* this.fromPromise(() =>
         this.authService.getAuthState(),
       );
-      if (this.stopping || initialEpoch !== this.boundaryEpoch) return;
+      if (
+        !this.lifecycleIsCurrent(generation, "running") ||
+        initialEpoch !== this.boundaryEpoch
+      ) {
+        return;
+      }
 
       const ack = yield* Deferred.make<void, unknown>();
-      yield* Queue.offer(this.events, {
+      yield* Queue.offer(events, {
         _tag: "Initialize",
         epoch: initialEpoch,
         authState,
@@ -326,6 +409,27 @@ export class SettingsSyncService {
       });
       yield* Deferred.await(ack);
     });
+  }
+
+  private lifecycleIsCurrent(
+    generation: number,
+    phase: "starting" | "running",
+  ): boolean {
+    return (
+      this.desiredRunning &&
+      generation === this.lifecycleGeneration &&
+      this.lifecyclePhase === phase
+    );
+  }
+
+  private get initialized(): boolean {
+    return (
+      this.lifecyclePhase === "starting" || this.lifecyclePhase === "running"
+    );
+  }
+
+  private get stopping(): boolean {
+    return this.lifecyclePhase === "stopping";
   }
 
   private registerListeners(): void {
@@ -388,7 +492,9 @@ export class SettingsSyncService {
     return this.boundaryEpoch;
   }
 
-  private supervisorLoop(): Effect.Effect<void> {
+  private supervisorLoop(
+    events: Queue.Queue<ControlEvent>,
+  ): Effect.Effect<void> {
     const initialState: SupervisorState = {
       epoch: this.boundaryEpoch,
       context: null,
@@ -400,7 +506,7 @@ export class SettingsSyncService {
       nextAttemptId: 1,
     };
     const loop = (state: SupervisorState): Effect.Effect<void> =>
-      Queue.take(this.events).pipe(
+      Queue.take(events).pipe(
         Effect.flatMap((event) =>
           Effect.exit(this.handleEvent(state, event)).pipe(
             Effect.flatMap((exit) => {
