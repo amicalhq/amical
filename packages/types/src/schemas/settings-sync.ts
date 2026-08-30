@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-// Hand-maintained structural copy of the Axis settings-sync wire contract.
-// Axis owns operational limits and advertises them through bootstrap; only
+// Hand-maintained structural copy of the cloud settings-sync wire contract.
+// The cloud service owns operational limits and advertises them through bootstrap; only
 // invariant payload limits remain fixed here until both repositories share it.
 export const SETTINGS_SYNC_KEY_MAX_LENGTH = 60;
 export const SETTINGS_SYNC_TEXT_MAX_LENGTH = 4000;

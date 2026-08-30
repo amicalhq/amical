@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-// Remote config — server-controlled UI/config delivered from amical-core (Axis).
+// Remote config — server-controlled UI/config delivered from the cloud service.
 //
 // The payload is a VERSIONED, NAMESPACED envelope: `surfaces` is one domain;
 // other server-controlled config domains slot in alongside it later, each
 // independently optional and independently validated so a malformed domain can
 // never break another (partial application, fail-closed per domain).
 //
-// Targeting is server-side: Axis returns only the surfaces a client should
+// Targeting is server-side: the cloud service returns only the surfaces a client should
 // currently see (audience + enable + schedule already applied), so there are no
 // targeting rules in this contract. The client keeps `expiresAt` only, as a
 // safety-net to hide a surface that ages out of a cached payload between fetches.

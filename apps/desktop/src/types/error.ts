@@ -21,7 +21,7 @@ export interface CloudErrorResponse {
   ui?: { title?: string; message?: string };
 }
 
-/** Application-level error codes emitted by the Axis dictation service. */
+/** Application-level error codes emitted by the cloud dictation service. */
 export const DictationErrorCodes = {
   AUTH_REQUIRED: "AUTH_REQUIRED",
   FORBIDDEN: "FORBIDDEN",

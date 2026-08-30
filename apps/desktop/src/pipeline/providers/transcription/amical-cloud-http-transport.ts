@@ -7,10 +7,11 @@ import {
 } from "../../../types/error";
 import { variantForWireCode } from "./cloud-wire-decode";
 import {
-  AuthRequired,
+  AuthenticationRequired,
+  CloudHttpFailure,
   CloudQuotaExceeded,
-  RateLimited,
   ServerRejected,
+  decodeCloudHttpFailure,
   type CloudError,
   type CloudMeta,
 } from "../../../types/errors";
@@ -71,7 +72,7 @@ export class AmicalCloudHttpTransport {
   private readonly SAMPLE_RATE = 16000;
   private readonly HTTP_AUTO_FLUSH_SAMPLE_COUNT = 28 * this.SAMPLE_RATE;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2;
-  // Axis computes VAD server-side. Keep the client path available for a
+  // The cloud service computes VAD server-side. Keep the client path available for a
   // controlled re-enable without sending client probabilities by default.
   private readonly CLOUD_CLIENT_VAD_ENABLED = false;
 
@@ -311,10 +312,10 @@ export class AmicalCloudHttpTransport {
 
   /**
    * The ONE http decode: classifies an error response into its cloud
-   * variant. Branches on the RAW application code while it is still in
-   * hand, then discards unrecognized codes. The server's `ui.title` rides
-   * ungated; the localized message only with a validated code — the legacy
-   * gating, preserved.
+   * variant. Valid dictation codes take precedence over HTTP status. Unknown
+   * codes use the shared cloud status fallback and remain available as
+   * diagnostic metadata. The server's `ui.title` rides ungated; the localized
+   * display message only rides with a valid dictation code.
    */
   private decodeHttpFailure(
     response: Response,
@@ -332,6 +333,8 @@ export class AmicalCloudHttpTransport {
       wireCode: validCode,
       httpStatus: response.status,
       traceId: errorData?.traceId ?? errorData?.id,
+      requestId: errorData?.requestId,
+      localizedMessage: errorData?.localizedMessage,
       serverUi:
         errorData?.ui?.title || (validCode && errorData?.localizedMessage)
           ? {
@@ -345,18 +348,28 @@ export class AmicalCloudHttpTransport {
     if (validCode) {
       return variantForWireCode(validCode, message, meta);
     }
-    if (response.status === 401 || response.status === 403) {
-      return new AuthRequired({ message, meta });
-    }
     if (response.status === 402) {
       return new CloudQuotaExceeded({ message, meta });
     }
-    if (response.status === 429) {
-      return new RateLimited({ message, meta });
+    const decoded = decodeCloudHttpFailure({
+      status: response.status,
+      statusText: response.statusText,
+      body: errorData ? { error: errorData } : undefined,
+      fallbackMessage: message,
+      additionalMeta: meta,
+    });
+    if (decoded instanceof CloudHttpFailure) {
+      return new ServerRejected({
+        message: decoded.message,
+        meta: {
+          ...decoded.meta,
+          wireCode: isDictationErrorCode(decoded.meta.wireCode)
+            ? decoded.meta.wireCode
+            : undefined,
+        },
+      });
     }
-    // 5xx and unclassified statuses project through ServerRejected's
-    // status arm (INTERNAL_SERVER_ERROR / UNKNOWN).
-    return new ServerRejected({ message, meta });
+    return decoded;
   }
 
   private makeTranscriptionRequestEffect(
@@ -467,7 +480,7 @@ export class AmicalCloudHttpTransport {
                 );
               });
               return yield* Effect.fail(
-                new AuthRequired({
+                new AuthenticationRequired({
                   message: "Authentication failed - please log in again",
                   meta: { httpStatus: 401 },
                 }),

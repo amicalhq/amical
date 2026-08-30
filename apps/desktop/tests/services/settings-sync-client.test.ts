@@ -6,11 +6,14 @@ import {
   SettingsSyncPushRequestSchema,
 } from "@amical/types";
 import type { AuthService } from "../../src/services/auth-service";
+import { SettingsSyncClient } from "../../src/services/settings-sync-client";
+import { SettingsSyncContractFailure } from "../../src/services/settings-sync-errors";
 import {
-  SettingsSyncClient,
-  SettingsSyncHttpError,
-} from "../../src/services/settings-sync-client";
-import { settleExit } from "../../src/types/errors";
+  AuthenticationRequired,
+  CloudHttpFailure,
+  CloudNetworkFailure,
+  settleExit,
+} from "../../src/types/errors";
 
 const SYNC_ID = "11111111-1111-4111-8111-111111111111";
 const runClient = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
@@ -341,7 +344,7 @@ describe("SettingsSyncClient", () => {
     ).rejects.toThrow("Empty pull");
   });
 
-  it("applies Axis's null default for an omitted vocabulary replacement", async () => {
+  it("applies the cloud default for an omitted vocabulary replacement", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -562,10 +565,78 @@ describe("SettingsSyncClient", () => {
     fetchMock.mockResolvedValue({ ok: false, status: 503 });
 
     await expect(runClient(client.bootstrap("user-1"))).rejects.toEqual(
-      expect.objectContaining<Partial<SettingsSyncHttpError>>({
-        status: 503,
+      expect.objectContaining<Partial<CloudHttpFailure>>({
+        _tag: "CloudHttpFailure",
+        meta: expect.objectContaining({ httpStatus: 503 }),
       }),
     );
+  });
+
+  it("uses the cloud error envelope and keeps authentication metadata", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "AUTH_REQUIRED",
+            message: "Token expired",
+            traceId: "trace-1",
+            requestId: "request-1",
+          },
+        }),
+        { status: 403 },
+      ),
+    );
+
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toMatchObject({
+      _tag: "AuthenticationRequired",
+      message: "Token expired",
+      meta: {
+        wireCode: "AUTH_REQUIRED",
+        httpStatus: 403,
+        traceId: "trace-1",
+        requestId: "request-1",
+      },
+    } satisfies Partial<AuthenticationRequired>);
+  });
+
+  it("classifies a rejected fetch as a cloud network failure", async () => {
+    const cause = new TypeError("offline");
+    fetchMock.mockRejectedValue(cause);
+
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toEqual(
+      new CloudNetworkFailure({ message: "offline", cause }),
+    );
+  });
+
+  it("classifies an invalid success body as a response contract failure", async () => {
+    const cause = new SyntaxError("invalid JSON");
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => Promise.reject(cause),
+    });
+
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toEqual(
+      new SettingsSyncContractFailure({
+        message: "invalid JSON",
+        operation: "bootstrap",
+        phase: "response",
+        cause,
+      }),
+    );
+  });
+
+  it("classifies a missing local token as authentication required", async () => {
+    const tokenlessClient = new SettingsSyncClient({
+      getIdToken: vi.fn().mockResolvedValue(null),
+    } as unknown as AuthService);
+
+    await expect(
+      runClient(tokenlessClient.bootstrap("user-1")),
+    ).rejects.toMatchObject({
+      _tag: "AuthenticationRequired",
+      meta: { httpStatus: 401 },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("aborts an in-flight request when its client effect is interrupted", async () => {

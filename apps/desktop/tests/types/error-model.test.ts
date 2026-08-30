@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { Cause, Effect, Exit } from "effect";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import {
-  AuthRequired,
+  AccessForbidden,
+  AuthenticationRequired,
   Cancelled,
   CloudDisposed,
   CloudQuotaExceeded,
@@ -37,7 +38,11 @@ describe("error model projection", () => {
       [new Cancelled(msg), ErrorCodes.NETWORK_ERROR],
       [new NetworkFailure(msg), ErrorCodes.NETWORK_ERROR],
       [new IdleTimeout(msg), ErrorCodes.IDLE_TIMEOUT],
-      [new AuthRequired(msg), ErrorCodes.AUTH_REQUIRED],
+      [new AuthenticationRequired(msg), ErrorCodes.AUTH_REQUIRED],
+      [
+        new AccessForbidden({ ...msg, meta: { httpStatus: 403 } }),
+        ErrorCodes.AUTH_REQUIRED,
+      ],
       [new RateLimited(msg), ErrorCodes.RATE_LIMIT_EXCEEDED],
       [new CloudQuotaExceeded(msg), ErrorCodes.QUOTA_EXCEEDED],
       [new CloudDisposed(msg), ErrorCodes.UNKNOWN],
@@ -62,6 +67,20 @@ describe("error model projection", () => {
     for (const [variant, code] of rows) {
       expect(codeOf(variant)).toBe(code);
     }
+  });
+
+  it("preserves the existing structured and status-only forbidden projections", () => {
+    expect(
+      codeOf(
+        new AccessForbidden({
+          ...msg,
+          meta: { wireCode: "FORBIDDEN", httpStatus: 403 },
+        }),
+      ),
+    ).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+    expect(
+      codeOf(new AccessForbidden({ ...msg, meta: { httpStatus: 403 } })),
+    ).toBe(ErrorCodes.AUTH_REQUIRED);
   });
 
   it("projects ServerRejected by validated wire code through the re-homed rows", () => {

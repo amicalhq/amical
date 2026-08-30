@@ -22,3 +22,6 @@ export * from "./schemas/remote-config.js";
 
 // Settings sync HTTP contract
 export * from "./schemas/settings-sync.js";
+
+// Shared cloud HTTP error envelope
+export * from "./schemas/cloud-http-error.js";

@@ -11,7 +11,7 @@ export const PRESET_OPTIONS: { value: string; label: string }[] = [
   { value: "email", label: "Email" },
 ];
 
-// Presentation axis (matches axis ToneId). Most presets expose formal /
+// Presentation range (matches the cloud ToneId). Most presets expose formal /
 // excited / casual; the casual-messaging preset (personal_messages) swaps
 // excited for very_casual.
 export type Tone = "formal" | "casual" | "excited" | "very_casual";

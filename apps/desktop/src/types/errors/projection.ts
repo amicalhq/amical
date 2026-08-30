@@ -1,6 +1,7 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import { Match } from "effect";
 import { ErrorCodes, type DictationErrorCode, type ErrorCode } from "../error";
+import type { AccessForbidden } from "./cloud-request";
 import type { ServerRejected } from "./cloud";
 import { isCloudError } from "./cloud";
 import { isDictationError, type DictationError } from "./union";
@@ -71,6 +72,11 @@ const serverRejectedCode = (error: ServerRejected): ErrorCode => {
   return ErrorCodes.UNKNOWN;
 };
 
+const accessForbiddenCode = (error: AccessForbidden): ErrorCode =>
+  error.meta.wireCode === "FORBIDDEN"
+    ? ErrorCodes.INTERNAL_SERVER_ERROR
+    : ErrorCodes.AUTH_REQUIRED;
+
 /**
  * The exhaustive projection: every variant to its frozen analytics/toast
  * code. Adding a variant without an arm here fails to compile — this is the
@@ -81,7 +87,8 @@ export const projectCode = (error: DictationError): ErrorCode =>
     Match.tag("Cancelled", () => ErrorCodes.NETWORK_ERROR),
     Match.tag("NetworkFailure", () => ErrorCodes.NETWORK_ERROR),
     Match.tag("IdleTimeout", () => ErrorCodes.IDLE_TIMEOUT),
-    Match.tag("AuthRequired", () => ErrorCodes.AUTH_REQUIRED),
+    Match.tag("AuthenticationRequired", () => ErrorCodes.AUTH_REQUIRED),
+    Match.tag("AccessForbidden", accessForbiddenCode),
     Match.tag("RateLimited", () => ErrorCodes.RATE_LIMIT_EXCEEDED),
     Match.tag("CloudQuotaExceeded", () => ErrorCodes.QUOTA_EXCEEDED),
     Match.tag("ServerRejected", serverRejectedCode),

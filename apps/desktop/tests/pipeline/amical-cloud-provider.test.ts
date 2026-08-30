@@ -184,7 +184,7 @@ import { decodeWireFailure } from "../../src/pipeline/providers/transcription/cl
 import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
 import { DictationErrorCodes, ErrorCodes } from "../../src/types/error";
 import {
-  AuthRequired,
+  AuthenticationRequired,
   CloudQuotaExceeded as CloudQuotaExceededVariant,
   IdleTimeout,
 } from "../../src/types/errors";
@@ -733,6 +733,7 @@ describe("AmicalCloudProvider", () => {
       await expectRejectionProjection(provider.flush(baseContext()), {
         message: "boom",
         code: ErrorCodes.INTERNAL_SERVER_ERROR,
+        tag: "ServerRejected",
         httpStatus: 500,
         uiMessage: undefined,
       });
@@ -793,6 +794,7 @@ describe("AmicalCloudProvider", () => {
 
       await expectRejectionProjection(provider.flush(baseContext()), {
         code: ErrorCodes.INTERNAL_SERVER_ERROR,
+        tag: "AccessForbidden",
         wireCode: DictationErrorCodes.FORBIDDEN,
         httpStatus: 403,
         uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
@@ -877,6 +879,7 @@ describe("AmicalCloudProvider", () => {
 
       await expectRejectionProjection(provider.flush(baseContext()), {
         code: ErrorCodes.AUTH_REQUIRED,
+        tag: "AuthenticationRequired",
         httpStatus: 401,
       });
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -895,6 +898,7 @@ describe("AmicalCloudProvider", () => {
       });
       await expectRejectionProjection(provider.flush(baseContext()), {
         code: ErrorCodes.AUTH_REQUIRED,
+        tag: "AuthenticationRequired",
         httpStatus: 401,
       });
     });
@@ -1668,7 +1672,7 @@ describe("AmicalCloudProvider", () => {
         speechProbability: 1,
         context: baseContext(),
       });
-      await expect(promise).rejects.toBeInstanceOf(AuthRequired);
+      await expect(promise).rejects.toBeInstanceOf(AuthenticationRequired);
       await expectRejectionProjection(promise, {
         code: ErrorCodes.AUTH_REQUIRED,
       });
@@ -2286,6 +2290,7 @@ describe("error characterization pins", () => {
     it("PERMISSION_DENIED projects AUTH_REQUIRED", async () => {
       const p = await settleFlushWithStatus(grpcMock.status.PERMISSION_DENIED);
       expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+      expect(p.tag).toBe("AccessForbidden");
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -2295,6 +2300,7 @@ describe("error characterization pins", () => {
         "Received HTTP status code 401",
       );
       expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+      expect(p.tag).toBe("AuthenticationRequired");
       expect(p.httpStatus).toBe(401);
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -2314,6 +2320,7 @@ describe("error characterization pins", () => {
         "Received HTTP status code 403",
       );
       expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+      expect(p.tag).toBe("AccessForbidden");
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -2352,6 +2359,7 @@ describe("error characterization pins", () => {
       );
       const p = projectionOf(error);
       expect(p.code).toBe(ErrorCodes.INTERNAL_SERVER_ERROR);
+      expect(p.tag).toBe("AccessForbidden");
       expect(p.wireCode).toBe(DictationErrorCodes.FORBIDDEN);
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -2493,6 +2501,7 @@ describe("error characterization pins", () => {
         json: { error: {} },
       });
       expect(p.code).toBe(ErrorCodes.AUTH_REQUIRED);
+      expect(p.tag).toBe("AccessForbidden");
     });
 
     it("429 without a wire code projects RATE_LIMIT_EXCEEDED", async () => {

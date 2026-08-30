@@ -4,7 +4,8 @@ import {
   DictationErrorCodes,
 } from "../../../types/error";
 import {
-  AuthRequired,
+  AccessForbidden,
+  AuthenticationRequired,
   Cancelled,
   CloudQuotaExceeded,
   NetworkFailure,
@@ -35,7 +36,9 @@ export const variantForWireCode = (
 ): CloudError => {
   switch (wireCode) {
     case DictationErrorCodes.AUTH_REQUIRED:
-      return new AuthRequired({ message, meta });
+      return new AuthenticationRequired({ message, meta });
+    case DictationErrorCodes.FORBIDDEN:
+      return new AccessForbidden({ message, meta });
     case DictationErrorCodes.QUOTA_EXCEEDED:
       return new CloudQuotaExceeded({ message, meta });
     case DictationErrorCodes.RATE_LIMIT_EXCEEDED:
@@ -75,8 +78,9 @@ export const decodeWireFailure = (input: WireFailureInput): CloudError => {
 
   switch (grpcStatus) {
     case GrpcStatus.UNAUTHENTICATED:
+      return new AuthenticationRequired({ message, meta });
     case GrpcStatus.PERMISSION_DENIED:
-      return new AuthRequired({ message, meta });
+      return new AccessForbidden({ message, meta });
     case GrpcStatus.RESOURCE_EXHAUSTED:
       // Absent code: the server's only bare RESOURCE_EXHAUSTED is the plan
       // cap. A present-but-unrecognized code means the server said
@@ -88,8 +92,9 @@ export const decodeWireFailure = (input: WireFailureInput): CloudError => {
 
   switch (httpStatus) {
     case 401:
+      return new AuthenticationRequired({ message, meta });
     case 403:
-      return new AuthRequired({ message, meta });
+      return new AccessForbidden({ message, meta });
     case 402:
       return new CloudQuotaExceeded({ message, meta });
     case 429:

@@ -1,5 +1,11 @@
 import { Data } from "effect";
 import type { DictationErrorCode } from "../error";
+import {
+  AccessForbidden,
+  AuthenticationRequired,
+  RateLimited,
+  type CloudRequestMeta,
+} from "./cloud-request";
 
 /**
  * Wire metadata shared by every cloud variant that derives from a transport
@@ -8,12 +14,8 @@ import type { DictationErrorCode } from "../error";
  * then keys on status). `serverUi` carries the server's display overrides
  * with their asymmetric gating: `title` may be present without `message`.
  */
-export interface CloudMeta {
+export interface CloudMeta extends CloudRequestMeta {
   wireCode?: DictationErrorCode;
-  httpStatus?: number;
-  grpcStatus?: number;
-  traceId?: string;
-  serverUi?: { title?: string; message?: string };
 }
 
 /** User- or lifecycle-initiated cancellation, incl. wire REQUEST_CANCELED. */
@@ -31,18 +33,6 @@ export class NetworkFailure extends Data.TaggedError("NetworkFailure")<{
 
 /** The client-minted defense-in-depth idle close (gRPC CANCELLED on the wire). */
 export class IdleTimeout extends Data.TaggedError("IdleTimeout")<{
-  message: string;
-  meta?: CloudMeta;
-}> {}
-
-/** Missing/invalid auth: local checks, wire AUTH_REQUIRED, or 401/403-class statuses. */
-export class AuthRequired extends Data.TaggedError("AuthRequired")<{
-  message: string;
-  meta?: CloudMeta;
-}> {}
-
-/** Account-level throttle (wire RATE_LIMIT_EXCEEDED / HTTP 429). */
-export class RateLimited extends Data.TaggedError("RateLimited")<{
   message: string;
   meta?: CloudMeta;
 }> {}
@@ -72,7 +62,8 @@ export type CloudError =
   | Cancelled
   | NetworkFailure
   | IdleTimeout
-  | AuthRequired
+  | AuthenticationRequired
+  | AccessForbidden
   | RateLimited
   | CloudQuotaExceeded
   | ServerRejected
@@ -82,7 +73,8 @@ export const isCloudError = (error: unknown): error is CloudError =>
   error instanceof Cancelled ||
   error instanceof NetworkFailure ||
   error instanceof IdleTimeout ||
-  error instanceof AuthRequired ||
+  error instanceof AuthenticationRequired ||
+  error instanceof AccessForbidden ||
   error instanceof RateLimited ||
   error instanceof CloudQuotaExceeded ||
   error instanceof ServerRejected ||

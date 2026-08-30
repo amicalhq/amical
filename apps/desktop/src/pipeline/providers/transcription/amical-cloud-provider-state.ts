@@ -1,7 +1,7 @@
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { Context, Effect, Ref } from "effect";
 import {
-  AuthRequired,
+  AuthenticationRequired,
   NetworkFailure,
   isCloudError,
   type CloudError,
@@ -180,7 +180,9 @@ export const getIdTokenEffect = (): CloudProviderEffect<string> =>
 
     if (!idToken) {
       return yield* Effect.fail(
-        new AuthRequired({ message: "No authentication token available" }),
+        new AuthenticationRequired({
+          message: "No authentication token available",
+        }),
       );
     }
 

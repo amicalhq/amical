@@ -58,7 +58,7 @@ export const vocabulary = sqliteTable(
       .notNull()
       .default("user"),
     // Personal data keeps the existing device-local lifecycle and uses an
-    // empty scope ID. Organisation data always stores Axis's concrete scope ID.
+    // empty scope ID. Organisation data always stores the cloud scope ID.
     scopeId: text("scope_id").notNull().default(""),
     word: text("word").notNull(),
     replacementWord: text("replacement_word"),
@@ -131,7 +131,7 @@ export const syncClientState = sqliteTable("sync_client_state", {
   lastOutboxSequence: integer("last_outbox_sequence").notNull().default(0),
 });
 
-// The scopes advertised by the latest successful Axis bootstrap. This gives
+// The scopes advertised by the latest successful cloud bootstrap. This gives
 // local organisation CRUD a transactionally checkable capability boundary.
 export const syncScopeState = sqliteTable(
   "sync_scope_state",

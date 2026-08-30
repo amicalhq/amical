@@ -15,7 +15,7 @@ import {
 import { getActiveOrganizationAccess } from "../../db/sync";
 import { SNIPPET_ERROR_DUPLICATE_TRIGGER } from "../../constants/snippets";
 import {
-  axisSyncRequiredTextSchema,
+  cloudSyncRequiredTextSchema,
   trimmedSyncKeySchema,
 } from "../../db/sync-payload";
 
@@ -27,12 +27,12 @@ const GetSnippetsSchema = z.object({
 
 const CreateSnippetSchema = z.object({
   trigger: trimmedSyncKeySchema,
-  content: axisSyncRequiredTextSchema,
+  content: cloudSyncRequiredTextSchema,
 });
 
 const UpdateSnippetSchema = z.object({
   trigger: trimmedSyncKeySchema.optional(),
-  content: axisSyncRequiredTextSchema.optional(),
+  content: cloudSyncRequiredTextSchema.optional(),
 });
 
 function isDuplicateTriggerError(err: unknown): boolean {

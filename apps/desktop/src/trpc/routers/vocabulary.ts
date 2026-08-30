@@ -19,7 +19,7 @@ import {
 } from "../../db/vocabulary";
 import { getActiveOrganizationAccess } from "../../db/sync";
 import {
-  axisSyncOptionalTextSchema,
+  cloudSyncOptionalTextSchema,
   trimmedSyncKeySchema,
 } from "../../db/sync-payload";
 
@@ -36,7 +36,7 @@ const GetVocabularySchema = z.object({
 const CreateVocabularySchema = z
   .object({
     word: trimmedSyncKeySchema,
-    replacementWord: axisSyncOptionalTextSchema.nullable().optional(),
+    replacementWord: cloudSyncOptionalTextSchema.nullable().optional(),
   })
   .refine(
     (data) => {
@@ -55,7 +55,7 @@ const CreateVocabularySchema = z
 const UpdateVocabularySchema = z
   .object({
     word: trimmedSyncKeySchema.optional(),
-    replacementWord: axisSyncOptionalTextSchema.nullable().optional(),
+    replacementWord: cloudSyncOptionalTextSchema.nullable().optional(),
   })
   .refine(
     (data) => {

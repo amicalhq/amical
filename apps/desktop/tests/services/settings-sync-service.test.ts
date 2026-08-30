@@ -1,16 +1,25 @@
 import { EventEmitter } from "node:events";
 import { BrowserWindow } from "electron";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthState, AuthService } from "../../src/services/auth-service";
 import { SettingsSyncService } from "../../src/services/settings-sync-service";
 import {
-  SettingsSyncHttpError,
   type SyncBootstrap,
   type SyncPullPage,
   type SyncPushMutation,
 } from "../../src/services/settings-sync-client";
+import {
+  SettingsSyncDependencyFailure,
+  type SettingsSyncClientError,
+} from "../../src/services/settings-sync-errors";
+import {
+  AccessForbidden,
+  AuthenticationRequired,
+  CloudNetworkFailure,
+  settleExit,
+} from "../../src/types/errors";
 import type { CanonicalSyncItem, PushSyncResult } from "../../src/db/sync";
 import {
   snippets,
@@ -98,7 +107,7 @@ class InMemorySyncClient {
 
   readonly calls: string[] = [];
   readonly bootstrap = vi.fn(
-    (): Effect.Effect<SyncBootstrap, unknown> =>
+    (): Effect.Effect<SyncBootstrap, SettingsSyncClientError> =>
       Effect.sync(() => {
         this.calls.push("bootstrap");
         return {
@@ -111,7 +120,9 @@ class InMemorySyncClient {
       }),
   );
   readonly push = vi.fn(
-    (mutations: SyncPushMutation[]): Effect.Effect<PushSyncResult[], unknown> =>
+    (
+      mutations: SyncPushMutation[],
+    ): Effect.Effect<PushSyncResult[], SettingsSyncClientError> =>
       Effect.sync(() => {
         this.calls.push("push");
         return mutations.map((mutation) => {
@@ -139,7 +150,7 @@ class InMemorySyncClient {
         collection: "vocabulary" | "snippet";
         cursor: number;
       }>,
-    ): Effect.Effect<SyncPullPage, unknown> =>
+    ): Effect.Effect<SyncPullPage, SettingsSyncClientError> =>
       Effect.sync(() => {
         this.calls.push("pull");
         return {
@@ -179,7 +190,7 @@ describe("SettingsSyncService", () => {
   });
 
   afterEach(async () => {
-    await service?.shutdown();
+    if (service) await Effect.runPromise(service.shutdown());
     pauseSyncSession();
     await testDb.close();
     vi.useRealTimers();
@@ -206,10 +217,29 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       new InMemorySyncClient(),
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     expect(await testDb.db.select().from(syncClientState)).toEqual([]);
     expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+  });
+
+  it("classifies startup authentication dependency failures", async () => {
+    const cause = new Error("token store unavailable");
+    auth.getAuthState.mockRejectedValueOnce(cause);
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      new InMemorySyncClient(),
+    );
+
+    await expect(
+      Effect.runPromiseExit(service.initialize()).then(settleExit),
+    ).rejects.toEqual(
+      new SettingsSyncDependencyFailure({
+        message: "Settings sync authentication operation failed",
+        dependency: "authentication",
+        cause,
+      }),
+    );
   });
 
   it("resumes an existing account from its saved cursor on startup", async () => {
@@ -240,7 +270,7 @@ describe("SettingsSyncService", () => {
       client,
     );
 
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     expect(client.calls).toEqual(["bootstrap", "pull"]);
@@ -305,7 +335,7 @@ describe("SettingsSyncService", () => {
       client,
     );
 
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
     await updateVocabulary(row.id, { word: "Edited during refresh" });
     expect((await testDb.db.select().from(syncOutbox))[0]).toMatchObject({
@@ -339,10 +369,10 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
     service = null;
 
     expect(await testDb.db.select().from(syncClientState)).toHaveLength(1);
@@ -355,13 +385,12 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
-    await service.shutdown();
-    const firstInitialize = service.initialize();
-    const secondInitialize = service.initialize();
-    expect(secondInitialize).toBe(firstInitialize);
+    await Effect.runPromise(service.shutdown());
+    const firstInitialize = Effect.runPromise(service.initialize());
+    const secondInitialize = Effect.runPromise(service.initialize());
     await Promise.all([firstInitialize, secondInitialize]);
 
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
@@ -383,15 +412,14 @@ describe("SettingsSyncService", () => {
       client,
     );
 
-    const initialInitialize = service.initialize();
+    const initialInitialize = Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(auth.getAuthState).toHaveBeenCalledOnce());
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
 
-    const restartedInitialize = service.initialize();
+    const restartedInitialize = Effect.runPromise(service.initialize());
     releaseInitialAuth(AUTH_STATE);
     await Promise.all([initialInitialize, restartedInitialize]);
 
-    expect(restartedInitialize).not.toBe(initialInitialize);
     expect(auth.getAuthState).toHaveBeenCalledTimes(2);
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
   });
@@ -402,12 +430,12 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
 
-    const restartedInitialize = service.initialize();
-    const restartedShutdown = service.shutdown();
+    const restartedInitialize = Effect.runPromise(service.initialize());
+    const restartedShutdown = Effect.runPromise(service.shutdown());
     await Promise.all([restartedInitialize, restartedShutdown]);
     await new Promise((resolve) => setTimeout(resolve, 25));
 
@@ -422,17 +450,58 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
-    const initialShutdown = service.shutdown();
-    const queuedRestart = service.initialize();
-    const finalShutdown = service.shutdown();
+    const initialShutdown = Effect.runPromise(service.shutdown());
+    const queuedRestart = Effect.runPromise(service.initialize());
+    const finalShutdown = Effect.runPromise(service.shutdown());
     await Promise.all([initialShutdown, queuedRestart, finalShutdown]);
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    expect(finalShutdown).toBe(initialShutdown);
     expect(client.pull).toHaveBeenCalledOnce();
+    expect(auth.listenerCount("authenticated")).toBe(0);
+    expect(auth.beforeLogout).toBeNull();
+  });
+
+  it("keeps shared shutdown cleanup alive when its first caller is interrupted", async () => {
+    const client = new InMemorySyncClient();
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await Effect.runPromise(service.initialize());
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    const internal = service as unknown as {
+      supervisor: {
+        handleShutdownEvent: (...args: unknown[]) => Effect.Effect<void, never>;
+      };
+    };
+    const originalHandleShutdown = internal.supervisor.handleShutdownEvent.bind(
+      internal.supervisor,
+    );
+    let shutdownStarted = false;
+    let releaseShutdown!: () => void;
+    vi.spyOn(internal.supervisor, "handleShutdownEvent").mockImplementationOnce(
+      (...args) =>
+        Effect.async<void>((resume) => {
+          shutdownStarted = true;
+          releaseShutdown = () => resume(originalHandleShutdown(...args));
+        }),
+    );
+
+    const firstCaller = Effect.runFork(service.shutdown());
+    await vi.waitFor(() => expect(shutdownStarted).toBe(true));
+    const sharedCaller = Effect.runPromise(service.shutdown());
+    const interruptFirstCaller = Effect.runPromise(
+      Fiber.interrupt(firstCaller),
+    );
+
+    releaseShutdown();
+    await sharedCaller;
+    await interruptFirstCaller;
+
     expect(auth.listenerCount("authenticated")).toBe(0);
     expect(auth.beforeLogout).toBeNull();
   });
@@ -443,13 +512,12 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
-    const stopping = service.shutdown();
-    const firstRestart = service.initialize();
-    const secondRestart = service.initialize();
-    expect(secondRestart).toBe(firstRestart);
+    const stopping = Effect.runPromise(service.shutdown());
+    const firstRestart = Effect.runPromise(service.initialize());
+    const secondRestart = Effect.runPromise(service.initialize());
     await Promise.all([stopping, firstRestart, secondRestart]);
 
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
@@ -470,12 +538,14 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
-    const stopping = service.shutdown();
-    const firstRestart = stopping.then(() => service!.initialize());
-    const queuedRestart = service.initialize();
+    const stopping = Effect.runPromise(service.shutdown());
+    const firstRestart = stopping.then(() =>
+      Effect.runPromise(service!.initialize()),
+    );
+    const queuedRestart = Effect.runPromise(service.initialize());
     let queuedRestartSettled = false;
     void queuedRestart.then(() => {
       queuedRestartSettled = true;
@@ -495,7 +565,14 @@ describe("SettingsSyncService", () => {
       word: "Pending",
     });
     const unavailableClient = {
-      bootstrap: vi.fn(() => Effect.fail(new Error("offline"))),
+      bootstrap: vi.fn(() =>
+        Effect.fail(
+          new CloudNetworkFailure({
+            message: "offline",
+            cause: new Error("offline"),
+          }),
+        ),
+      ),
       pull: vi.fn(),
       push: vi.fn(),
     };
@@ -503,13 +580,13 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       unavailableClient,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() =>
       expect(unavailableClient.bootstrap).toHaveBeenCalledOnce(),
     );
     expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
 
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
     service = null;
 
     const resumedClient = new InMemorySyncClient();
@@ -517,7 +594,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       resumedClient,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => {
       expect(resumedClient.push).toHaveBeenCalledOnce();
       expect(resumedClient.pull).toHaveBeenCalledOnce();
@@ -543,7 +620,7 @@ describe("SettingsSyncService", () => {
       client,
     );
 
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(async () => {
       expect(client.push).toHaveBeenCalledOnce();
       expect(await testDb.db.select().from(syncOutbox)).toEqual([]);
@@ -567,7 +644,7 @@ describe("SettingsSyncService", () => {
       client,
     );
 
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => {
       expect(client.push).toHaveBeenCalledOnce();
       expect(client.pull).toHaveBeenCalledOnce();
@@ -605,7 +682,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     auth.state = AUTH_STATE;
     auth.emit("authenticated", AUTH_STATE);
@@ -624,7 +701,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     auth.state = AUTH_STATE;
     auth.emit("authenticated", AUTH_STATE);
@@ -640,7 +717,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     auth.emit("token-refreshed", AUTH_STATE);
@@ -656,12 +733,14 @@ describe("SettingsSyncService", () => {
     let rejectBootstrap = false;
     const client = {
       bootstrap: vi.fn(() =>
-        Effect.try({
-          try: (): SyncBootstrap => {
-            if (rejectBootstrap) {
-              throw new SettingsSyncHttpError("Request rejected", 401);
-            }
-            return {
+        rejectBootstrap
+          ? Effect.fail(
+              new AuthenticationRequired({
+                message: "Request rejected",
+                meta: { httpStatus: 401 },
+              }),
+            )
+          : Effect.succeed({
               scopes: [
                 ...USER_BOOTSTRAP_SCOPES,
                 organizationBootstrapScope("org-1", true),
@@ -670,10 +749,7 @@ describe("SettingsSyncService", () => {
               maxPushBatch: 100,
               maxPushBytes: 524288,
               pullLimit: 200,
-            };
-          },
-          catch: (error) => error,
-        }),
+            } satisfies SyncBootstrap),
       ),
       pull: vi.fn(
         (
@@ -699,7 +775,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
 
     const row = await createOrganizationVocabularyWord({ word: "Keep" });
@@ -739,7 +815,12 @@ describe("SettingsSyncService", () => {
 
     const client = {
       bootstrap: vi.fn(() =>
-        Effect.fail(new SettingsSyncHttpError("Forbidden", 403)),
+        Effect.fail(
+          new AccessForbidden({
+            message: "Forbidden",
+            meta: { httpStatus: 403 },
+          }),
+        ),
       ),
       pull: vi.fn(),
       push: vi.fn(),
@@ -748,7 +829,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
     await vi.waitFor(async () => {
       expect(
@@ -779,18 +860,20 @@ describe("SettingsSyncService", () => {
 
   it("ignores an in-flight HTTP 401 that completes after token refresh", async () => {
     const firstBootstrap: {
-      reject?: (error: Error) => void;
+      reject?: (error: AuthenticationRequired) => void;
       interrupted?: boolean;
     } = {};
     const client = {
       bootstrap: vi.fn(() => {
         if (client.bootstrap.mock.calls.length === 1) {
-          return Effect.async<SyncBootstrap, Error>((resume) => {
-            firstBootstrap.reject = (error) => resume(Effect.fail(error));
-            return Effect.sync(() => {
-              firstBootstrap.interrupted = true;
-            });
-          });
+          return Effect.async<SyncBootstrap, AuthenticationRequired>(
+            (resume) => {
+              firstBootstrap.reject = (error) => resume(Effect.fail(error));
+              return Effect.sync(() => {
+                firstBootstrap.interrupted = true;
+              });
+            },
+          );
         }
         return Effect.succeed({
           scopes: USER_BOOTSTRAP_SCOPES,
@@ -826,12 +909,17 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
 
     auth.emit("token-refreshed", AUTH_STATE);
     await vi.waitFor(() => expect(firstBootstrap.interrupted).toBe(true));
-    firstBootstrap.reject?.(new SettingsSyncHttpError("Stale token", 401));
+    firstBootstrap.reject?.(
+      new AuthenticationRequired({
+        message: "Stale token",
+        meta: { httpStatus: 401 },
+      }),
+    );
 
     await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
@@ -869,12 +957,19 @@ describe("SettingsSyncService", () => {
               cursor: number;
             }>,
           ) =>
-            Effect.try({
-              try: (): SyncPullPage => {
-                if (scopeType === "org" && rejectOrganizationPull) {
-                  throw new SettingsSyncHttpError("Scope rejected", status);
-                }
-                return {
+            scopeType === "org" && rejectOrganizationPull
+              ? Effect.fail(
+                  status === 401
+                    ? new AuthenticationRequired({
+                        message: "Scope rejected",
+                        meta: { httpStatus: 401 },
+                      })
+                    : new AccessForbidden({
+                        message: "Scope rejected",
+                        meta: { httpStatus: 403 },
+                      }),
+                )
+              : Effect.succeed({
                   collections: cursors.map(({ collection, cursor }) => ({
                     collection,
                     items:
@@ -901,10 +996,7 @@ describe("SettingsSyncService", () => {
                         : cursor,
                     hasMore: false,
                   })),
-                };
-              },
-              catch: (error) => error,
-            }),
+                }),
         ),
         push: vi.fn(),
       };
@@ -912,7 +1004,7 @@ describe("SettingsSyncService", () => {
         auth as unknown as AuthService,
         client,
       );
-      await service.initialize();
+      await Effect.runPromise(service.initialize());
       await vi.waitFor(() => {
         expect(testDb.db.select().from(vocabulary).all()).toEqual([
           expect.objectContaining({ id: syncId, scopeId: "org-1" }),
@@ -950,7 +1042,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     auth.state = AUTH_STATE;
     auth.emit("authenticated", AUTH_STATE);
@@ -989,7 +1081,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     await createSnippet({ trigger: "first", content: "First" });
@@ -1024,7 +1116,7 @@ describe("SettingsSyncService", () => {
       client,
     );
 
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(
       () => {
         expect(client.push).toHaveBeenCalledTimes(101);
@@ -1087,7 +1179,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
     expect(client.pull.mock.calls.map((call) => call.slice(0, 2))).toEqual([
@@ -1165,7 +1257,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
 
     const row = await createOrganizationVocabularyWord({ word: "Rejected" });
@@ -1242,7 +1334,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
 
     await createOrganizationVocabularyWord({ word: "Remove" });
@@ -1334,7 +1426,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => {
       expect(testDb.db.select().from(vocabulary).all()).toEqual([
         expect.objectContaining({ scopeId: "org-1", word: "org-1" }),
@@ -1418,7 +1510,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(oldPull.resolve).toBeDefined());
 
     organizationId = "org-2";
@@ -1492,7 +1584,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
     await testDb.db.insert(vocabulary).values([
@@ -1532,7 +1624,7 @@ describe("SettingsSyncService", () => {
       ],
     });
 
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
     service = null;
     expect(await testDb.db.select().from(snippets)).toEqual([]);
     expect(await testDb.db.select().from(syncItemState)).toEqual([]);
@@ -1577,7 +1669,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
     await testDb.db.insert(vocabulary).values([
       { word: "Personal", scopeType: "user", scopeId: "" },
@@ -1585,10 +1677,12 @@ describe("SettingsSyncService", () => {
     ]);
 
     const internal = service as unknown as {
-      handleEvent: (...args: unknown[]) => Effect.Effect<never>;
+      supervisor: {
+        handleEvent: (...args: unknown[]) => Effect.Effect<never>;
+      };
     };
     const handleEvent = vi
-      .spyOn(internal, "handleEvent")
+      .spyOn(internal.supervisor, "handleEvent")
       .mockReturnValueOnce(Effect.interrupt);
     service.wake();
     await vi.waitFor(() => expect(handleEvent).toHaveBeenCalled());
@@ -1626,7 +1720,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
     expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
@@ -1647,7 +1741,7 @@ describe("SettingsSyncService", () => {
       maxPushBytes: 524288,
       pullLimit: 200,
     });
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
     service = null;
 
     expect(client.push).not.toHaveBeenCalled();
@@ -1719,7 +1813,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
     expect(client.pull.mock.calls[0][2]).toEqual([
@@ -1779,14 +1873,21 @@ describe("SettingsSyncService", () => {
             ],
           } satisfies SyncPullPage),
         )
-        .mockReturnValueOnce(Effect.fail(new Error("pull failed"))),
+        .mockReturnValueOnce(
+          Effect.fail(
+            new CloudNetworkFailure({
+              message: "pull failed",
+              cause: new Error("pull failed"),
+            }),
+          ),
+        ),
       push: vi.fn(),
     };
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
     await vi.waitFor(() =>
@@ -1797,7 +1898,14 @@ describe("SettingsSyncService", () => {
   it("waits for another wake after a failed attempt", async () => {
     const client = new InMemorySyncClient();
     client.bootstrap
-      .mockReturnValueOnce(Effect.fail(new Error("offline")))
+      .mockReturnValueOnce(
+        Effect.fail(
+          new CloudNetworkFailure({
+            message: "offline",
+            cause: new Error("offline"),
+          }),
+        ),
+      )
       .mockReturnValueOnce(
         Effect.succeed({
           scopes: USER_BOOTSTRAP_SCOPES,
@@ -1811,7 +1919,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
 
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -1835,7 +1943,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
     send.mockClear();
 
@@ -1854,7 +1962,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     const elapsed = Date.now() - startedAt;
@@ -1876,7 +1984,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     const row = await createVocabularyWord({ word: "First" });
@@ -1892,7 +2000,7 @@ describe("SettingsSyncService", () => {
 
     await updateVocabulary(row.id, { word: "Pending at shutdown" });
     await vi.advanceTimersByTimeAsync(0);
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
     await vi.advanceTimersByTimeAsync(750);
 
     expect(client.bootstrap).toHaveBeenCalledTimes(2);
@@ -1928,11 +2036,11 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
     const row = await createVocabularyWord({ word: "Pending" });
 
-    await service.shutdown();
+    await Effect.runPromise(service.shutdown());
 
     expect(pullInterrupted).toBe(true);
     expect(await testDb.db.select().from(syncClientState)).toHaveLength(1);
@@ -1991,7 +2099,7 @@ describe("SettingsSyncService", () => {
       auth as unknown as AuthService,
       client,
     );
-    await service.initialize();
+    await Effect.runPromise(service.initialize());
 
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
     service.wake();

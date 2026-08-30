@@ -623,7 +623,7 @@ export const targetById = (id: string): TargetMeta => {
 };
 
 // Default formatting preset for the foreground app, keyed by preset id
-// (matching axis PresetId). App slugs reference APP_CATALOG, which holds
+// (matching the cloud PresetId). App slugs reference APP_CATALOG, which holds
 // the validated bundle ids — single source of truth. Apps absent here
 // resolve to "default". Categorisation: messaging/email from an external
 // per-app classification; all IDEs/code editors are

@@ -1,3 +1,4 @@
+export * from "./cloud-request";
 export * from "./cloud";
 export * from "./whisper";
 export * from "./service";

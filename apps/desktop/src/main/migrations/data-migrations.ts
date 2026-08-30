@@ -12,9 +12,9 @@ import {
 } from "../../db/notes";
 import { snippets, transcriptions, vocabulary } from "../../db/schema";
 import {
-  axisSyncKeySchema,
-  axisSyncOptionalTextSchema,
-  axisSyncRequiredTextSchema,
+  cloudSyncKeySchema,
+  cloudSyncOptionalTextSchema,
+  cloudSyncRequiredTextSchema,
 } from "../../db/sync-payload";
 import {
   isLexicalEditorStateJsonString,
@@ -178,9 +178,10 @@ async function migrateSettingsSyncBounds(): Promise<{
     )) {
       const scopedWord = `${row.scopeType}\0${row.scopeId}\0${row.word}`;
       if (
-        !axisSyncKeySchema.safeParse(row.word).success ||
+        !cloudSyncKeySchema.safeParse(row.word).success ||
         (row.replacementWord !== null &&
-          !axisSyncOptionalTextSchema.safeParse(row.replacementWord).success) ||
+          !cloudSyncOptionalTextSchema.safeParse(row.replacementWord)
+            .success) ||
         seenWords.has(scopedWord)
       ) {
         vocabularyRowsToDelete.push(row);
@@ -198,8 +199,8 @@ async function migrateSettingsSyncBounds(): Promise<{
     )) {
       const scopedTrigger = `${row.scopeType}\0${row.scopeId}\0${row.trigger}`;
       if (
-        !axisSyncKeySchema.safeParse(row.trigger).success ||
-        !axisSyncRequiredTextSchema.safeParse(row.content).success ||
+        !cloudSyncKeySchema.safeParse(row.trigger).success ||
+        !cloudSyncRequiredTextSchema.safeParse(row.content).success ||
         seenTriggers.has(scopedTrigger)
       ) {
         snippetRowsToDelete.push(row);

@@ -14,10 +14,21 @@ import { Effect } from "effect";
 
 import type { AuthService } from "./auth-service";
 import {
+  SettingsSyncContractFailure,
+  SettingsSyncDependencyFailure,
+  type SettingsSyncClientError,
+  type SettingsSyncOperation,
+} from "./settings-sync-errors";
+import {
   getAmicalClientHeaders,
   getCoreApiUrl,
   getUserAgent,
 } from "../utils/http-client";
+import {
+  AuthenticationRequired,
+  CloudNetworkFailure,
+  decodeCloudHttpFailure,
+} from "../types/errors/cloud-request";
 import type {
   CanonicalSyncItem,
   PullCollectionCursor,
@@ -64,15 +75,6 @@ export interface SyncPushMutation {
   payload: SyncPayload | null;
 }
 
-export class SettingsSyncHttpError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-
 function parseCanonicalItem(raw: SettingsSyncCanonicalItem): CanonicalSyncItem {
   const collection = SettingsSyncCollectionSchema.parse(raw.collection);
   if (raw.payload === null) {
@@ -98,9 +100,15 @@ function payloadKey(
 export class SettingsSyncClient {
   constructor(private readonly authService: AuthService) {}
 
-  bootstrap(accountId: string): Effect.Effect<SyncBootstrap, unknown> {
+  bootstrap(
+    accountId: string,
+  ): Effect.Effect<SyncBootstrap, SettingsSyncClientError> {
     return Effect.gen(this, function* () {
-      const raw = yield* this.requestJson("/apps/v1/sync/bootstrap", {});
+      const raw = yield* this.requestJson(
+        "bootstrap",
+        "/apps/v1/sync/bootstrap",
+        {},
+      );
       return yield* Effect.try({
         try: () => {
           const body = SettingsSyncBootstrapResponseSchema.parse(raw);
@@ -137,7 +145,7 @@ export class SettingsSyncClient {
             ),
           };
         },
-        catch: (error) => error,
+        catch: (error) => this.contractFailure("bootstrap", "response", error),
       });
     });
   }
@@ -147,7 +155,7 @@ export class SettingsSyncClient {
     scopeId: string,
     cursors: readonly PullCollectionCursor[],
     limit: number,
-  ): Effect.Effect<SyncPullPage, unknown> {
+  ): Effect.Effect<SyncPullPage, SettingsSyncClientError> {
     return Effect.gen(this, function* () {
       const url = yield* Effect.try({
         try: () => {
@@ -169,9 +177,9 @@ export class SettingsSyncClient {
           );
           return url;
         },
-        catch: (error) => error,
+        catch: (error) => this.contractFailure("pull", "request", error),
       });
-      const response = yield* this.requestJson(url, {});
+      const response = yield* this.requestJson("pull", url, {});
 
       return yield* Effect.try({
         try: () => {
@@ -262,20 +270,20 @@ export class SettingsSyncClient {
             }),
           };
         },
-        catch: (error) => error,
+        catch: (error) => this.contractFailure("pull", "response", error),
       });
     });
   }
 
   push(
     mutations: SyncPushMutation[],
-  ): Effect.Effect<PushSyncResult[], unknown> {
+  ): Effect.Effect<PushSyncResult[], SettingsSyncClientError> {
     return Effect.gen(this, function* () {
       const request = yield* Effect.try({
         try: () => SettingsSyncPushRequestSchema.parse({ mutations }),
-        catch: (error) => error,
+        catch: (error) => this.contractFailure("push", "request", error),
       });
-      const response = yield* this.requestJson("/apps/v1/sync/push", {
+      const response = yield* this.requestJson("push", "/apps/v1/sync/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
@@ -382,31 +390,44 @@ export class SettingsSyncClient {
             return { ...result, canonical, conflictingItem };
           });
         },
-        catch: (error) => error,
+        catch: (error) => this.contractFailure("push", "response", error),
       });
     });
   }
 
   private requestJson(
+    operation: SettingsSyncOperation,
     path: string | URL,
     init: RequestInit,
-  ): Effect.Effect<unknown, unknown> {
+  ): Effect.Effect<unknown, SettingsSyncClientError> {
     return Effect.gen(this, function* () {
       const token = yield* Effect.tryPromise({
         try: () => this.authService.getIdToken(),
-        catch: (error) => error,
+        catch: (error) =>
+          new SettingsSyncDependencyFailure({
+            message: "Unable to read the settings sync authentication token",
+            dependency: "authentication",
+            cause: error,
+          }),
       });
       if (!token) {
         return yield* Effect.fail(
-          new SettingsSyncHttpError("Sign in required", 401),
+          new AuthenticationRequired({
+            message: "Sign in required",
+            meta: { httpStatus: 401 },
+          }),
         );
       }
 
       const requestController = new AbortController();
       return yield* Effect.gen(this, function* () {
+        const url = yield* Effect.try({
+          try: () => (typeof path === "string" ? getCoreApiUrl(path) : path),
+          catch: (error) => this.contractFailure(operation, "request", error),
+        });
         const response = yield* Effect.tryPromise({
           try: () =>
-            fetch(typeof path === "string" ? getCoreApiUrl(path) : path, {
+            fetch(url, {
               ...init,
               signal: requestController.signal,
               headers: {
@@ -416,23 +437,56 @@ export class SettingsSyncClient {
                 Authorization: `Bearer ${token}`,
               },
             }),
-          catch: (error) => error,
+          catch: (error) =>
+            new CloudNetworkFailure({
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Settings sync network request failed",
+              cause: error,
+            }),
         });
         if (!response.ok) {
+          const body = yield* Effect.promise(async () => {
+            try {
+              return await response.json();
+            } catch {
+              return undefined;
+            }
+          });
           return yield* Effect.fail(
-            new SettingsSyncHttpError(
-              `Settings sync request failed with ${response.status}`,
-              response.status,
-            ),
+            decodeCloudHttpFailure({
+              status: response.status,
+              statusText: response.statusText,
+              body,
+              fallbackMessage: `Settings sync request failed with ${response.status}`,
+              retryAfter: response.headers?.get("Retry-After") ?? undefined,
+            }),
           );
         }
         return yield* Effect.tryPromise({
           try: () => response.json(),
-          catch: (error) => error,
+          catch: (error) => this.contractFailure(operation, "response", error),
         });
       }).pipe(
         Effect.onInterrupt(() => Effect.sync(() => requestController.abort())),
       );
+    });
+  }
+
+  private contractFailure(
+    operation: SettingsSyncOperation,
+    phase: "request" | "response",
+    cause: unknown,
+  ): SettingsSyncContractFailure {
+    return new SettingsSyncContractFailure({
+      message:
+        cause instanceof Error
+          ? cause.message
+          : `Invalid settings sync ${phase}`,
+      operation,
+      phase,
+      cause,
     });
   }
 }
