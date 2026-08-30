@@ -915,6 +915,17 @@
       "title": "Vokabular",
       "description": "Verwalte dein benutzerdefiniertes Vokabular und Wortersetzungen für das Diktat.",
       "addButton": "Wort hinzufügen",
+      "scope": {
+        "label": "Vokabularbereich",
+        "all": "Alle",
+        "user": "Persönlich",
+        "org": "Organisation",
+        "personalBadge": "Persönlich",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Organisationswort hinzufügen",
+        "readOnly": "Das Organisationsvokabular ist für deine aktuelle Rolle schreibgeschützt.",
+        "unavailable": "Kein Organisationsvokabular ist verfügbar."
+      },
       "loading": "Vokabular wird geladen...",
       "empty": "Keine Vokabulareinträge gefunden. Füge dein erstes Wort hinzu, um zu beginnen.",
       "toast": {
@@ -949,6 +960,17 @@
       "title": "Textbausteine",
       "description": "Erstelle kurze Auslöser, die sich beim Diktieren zu längerem Text ausweiten.",
       "addButton": "Hinzufügen",
+      "scope": {
+        "label": "Textbausteinbereich",
+        "all": "Alle",
+        "user": "Persönlich",
+        "org": "Organisation",
+        "personalBadge": "Persönlich",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Organisationstextbaustein hinzufügen",
+        "readOnly": "Organisationstextbausteine sind für deine aktuelle Rolle schreibgeschützt.",
+        "unavailable": "Keine Organisationstextbausteine sind verfügbar."
+      },
       "loading": "Textbausteine werden geladen...",
       "empty": "Noch keine Textbausteine. Füge deinen ersten Textbaustein hinzu, um zu beginnen.",
       "noResults": "Keine Textbausteine stimmen mit \"{{query}}\" überein.",

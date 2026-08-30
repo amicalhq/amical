@@ -22,6 +22,8 @@ import {
   TRIGGER_MAX_LENGTH,
 } from "@/constants/snippets";
 
+type ScopeFilter = "all" | "user" | "org";
+
 interface SnippetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -169,12 +171,15 @@ export default function SnippetsSettingsPage() {
   const [deletingItem, setDeletingItem] = useState<SnippetItem | null>(null);
   const [formData, setFormData] = useState({ trigger: "", content: "" });
   const [searchTerm, setSearchTerm] = useState("");
+  const [scope, setScope] = useState<ScopeFilter>("all");
 
   const trimmedSearch = searchTerm.trim();
   const snippetsQuery = api.snippets.getSnippets.useQuery({
     limit: 200,
     search: trimmedSearch || undefined,
+    scope,
   });
+  const scopeAccessQuery = api.snippets.getScopeAccess.useQuery();
 
   const snippetItems = snippetsQuery.data || [];
   const snippetsLoading = snippetsQuery.isLoading;
@@ -207,6 +212,34 @@ export default function SnippetsSettingsPage() {
       );
     },
   });
+  const createOrganizationSnippetMutation =
+    api.snippets.createOrganizationSnippet.useMutation({
+      onSuccess: (data) => {
+        utils.snippets.getSnippets.invalidate();
+        if (data?.similarTrigger) {
+          toast.success(t("settings.snippets.toast.added"), {
+            description: t("settings.snippets.toast.similarToExisting", {
+              trigger: data.similarTrigger,
+            }),
+          });
+        } else {
+          toast.success(t("settings.snippets.toast.added"));
+        }
+      },
+      onError: (error, variables) => {
+        if (error.message === SNIPPET_ERROR_DUPLICATE_TRIGGER) {
+          toast.error(
+            t("settings.snippets.toast.duplicateTrigger", {
+              trigger: variables.trigger,
+            }),
+          );
+          return;
+        }
+        toast.error(
+          t("settings.snippets.toast.addFailed", { message: error.message }),
+        );
+      },
+    });
 
   const updateSnippetMutation = api.snippets.updateSnippet.useMutation({
     onSuccess: () => {
@@ -227,6 +260,28 @@ export default function SnippetsSettingsPage() {
       );
     },
   });
+  const updateOrganizationSnippetMutation =
+    api.snippets.updateOrganizationSnippet.useMutation({
+      onSuccess: () => {
+        utils.snippets.getSnippets.invalidate();
+        toast.success(t("settings.snippets.toast.updated"));
+      },
+      onError: (error, variables) => {
+        if (error.message === SNIPPET_ERROR_DUPLICATE_TRIGGER) {
+          toast.error(
+            t("settings.snippets.toast.duplicateTrigger", {
+              trigger: variables.data.trigger ?? "",
+            }),
+          );
+          return;
+        }
+        toast.error(
+          t("settings.snippets.toast.updateFailed", {
+            message: error.message,
+          }),
+        );
+      },
+    });
 
   const deleteSnippetMutation = api.snippets.deleteSnippet.useMutation({
     onSuccess: () => {
@@ -239,10 +294,32 @@ export default function SnippetsSettingsPage() {
       );
     },
   });
+  const deleteOrganizationSnippetMutation =
+    api.snippets.deleteOrganizationSnippet.useMutation({
+      onSuccess: () => {
+        utils.snippets.getSnippets.invalidate();
+        toast.success(t("settings.snippets.toast.deleted"));
+      },
+      onError: (error) => {
+        toast.error(
+          t("settings.snippets.toast.deleteFailed", {
+            message: error.message,
+          }),
+        );
+      },
+    });
+
+  const organizationAccess = scopeAccessQuery.data;
+  const organizationWritable = organizationAccess?.canWrite === true;
+  const addDisabled = scope === "org" && !organizationWritable;
 
   const handleAddSnippet = async () => {
     try {
-      await createSnippetMutation.mutateAsync({
+      const mutation =
+        scope === "org"
+          ? createOrganizationSnippetMutation
+          : createSnippetMutation;
+      await mutation.mutateAsync({
         trigger: formData.trigger.trim(),
         content: formData.content,
       });
@@ -257,7 +334,11 @@ export default function SnippetsSettingsPage() {
     if (!editingItem) return;
 
     try {
-      await updateSnippetMutation.mutateAsync({
+      const mutation =
+        editingItem.scopeType === "org"
+          ? updateOrganizationSnippetMutation
+          : updateSnippetMutation;
+      await mutation.mutateAsync({
         id: editingItem.id,
         data: {
           trigger: formData.trigger.trim(),
@@ -276,7 +357,11 @@ export default function SnippetsSettingsPage() {
     if (!deletingItem) return;
 
     try {
-      await deleteSnippetMutation.mutateAsync({ id: deletingItem.id });
+      const mutation =
+        deletingItem.scopeType === "org"
+          ? deleteOrganizationSnippetMutation
+          : deleteSnippetMutation;
+      await mutation.mutateAsync({ id: deletingItem.id });
       setDeletingItem(null);
       setIsDeleteDialogOpen(false);
     } catch {
@@ -311,11 +396,42 @@ export default function SnippetsSettingsPage() {
             setIsAddDialogOpen(true);
           }}
           className="flex items-center gap-2"
+          disabled={addDisabled}
         >
           <Plus className="w-4 h-4" />
-          {t("settings.snippets.addButton")}
+          {scope === "org"
+            ? t("settings.snippets.scope.addOrganization")
+            : t("settings.snippets.addButton")}
         </Button>
       </div>
+
+      <div
+        className="flex items-center gap-1 mb-4"
+        role="tablist"
+        aria-label={t("settings.snippets.scope.label")}
+      >
+        {(["all", "user", "org"] as const).map((filter) => (
+          <Button
+            key={filter}
+            type="button"
+            size="sm"
+            variant={scope === filter ? "secondary" : "ghost"}
+            role="tab"
+            aria-selected={scope === filter}
+            onClick={() => setScope(filter)}
+          >
+            {t(`settings.snippets.scope.${filter}`)}
+          </Button>
+        ))}
+      </div>
+
+      {scope === "org" && !organizationWritable && (
+        <p className="mb-4 text-sm text-muted-foreground" role="status">
+          {organizationAccess
+            ? t("settings.snippets.scope.readOnly")
+            : t("settings.snippets.scope.unavailable")}
+        </p>
+      )}
 
       <div className="mb-4 relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 pointer-events-none" />
@@ -344,7 +460,7 @@ export default function SnippetsSettingsPage() {
               {snippetItems.map((item, index) => (
                 <div
                   className="hover:bg-muted/50 transition-colors"
-                  key={item.id}
+                  key={`${item.scopeType}:${item.scopeId}:${item.id}`}
                 >
                   <div className="flex items-center justify-between py-3 px-4 group gap-4">
                     <div className="flex items-center gap-1 text-sm min-w-0 flex-1">
@@ -355,23 +471,30 @@ export default function SnippetsSettingsPage() {
                       <span className="truncate text-muted-foreground">
                         {truncate(item.content)}
                       </span>
+                      <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground shrink-0">
+                        {item.scopeType === "user"
+                          ? t("settings.snippets.scope.personalBadge")
+                          : t("settings.snippets.scope.organizationBadge")}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(item)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openDeleteDialog(item)}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
+                    {(item.scopeType === "user" || organizationWritable) && (
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditDialog(item)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openDeleteDialog(item)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   {index < snippetItems.length - 1 && (
                     <div className="border-t border-border" />
@@ -390,7 +513,10 @@ export default function SnippetsSettingsPage() {
         formData={formData}
         onFormDataChange={setFormData}
         onSubmit={handleAddSnippet}
-        isLoading={createSnippetMutation.isPending}
+        isLoading={
+          createSnippetMutation.isPending ||
+          createOrganizationSnippetMutation.isPending
+        }
       />
 
       <SnippetDialog
@@ -400,7 +526,10 @@ export default function SnippetsSettingsPage() {
         formData={formData}
         onFormDataChange={setFormData}
         onSubmit={handleEditSnippet}
-        isLoading={updateSnippetMutation.isPending}
+        isLoading={
+          updateSnippetMutation.isPending ||
+          updateOrganizationSnippetMutation.isPending
+        }
       />
 
       <DeleteDialog
@@ -408,7 +537,10 @@ export default function SnippetsSettingsPage() {
         onOpenChange={setIsDeleteDialogOpen}
         deletingItem={deletingItem}
         onConfirm={handleDeleteSnippet}
-        isLoading={deleteSnippetMutation.isPending}
+        isLoading={
+          deleteSnippetMutation.isPending ||
+          deleteOrganizationSnippetMutation.isPending
+        }
       />
     </div>
   );

@@ -61,6 +61,15 @@ describe("SettingsSyncClient", () => {
     await expect(
       client.bootstrap("user-1", new AbortController().signal),
     ).resolves.toEqual({
+      scopes: [
+        {
+          scopeType: "user",
+          scopeId: "user-1",
+          role: null,
+          canWrite: true,
+          latestSyncVersion: 0,
+        },
+      ],
       collections: ["vocabulary", "snippet"],
       maxPushBatch: 100,
       maxPushBytes: 524288,
@@ -73,6 +82,52 @@ describe("SettingsSyncClient", () => {
     ];
     expect(url.toString()).toBe("https://core.test/apps/v1/sync/bootstrap");
     expect(init.headers.Authorization).toBe("Bearer id-token");
+  });
+
+  it("returns the active organization scope and advertised write capability", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        scopes: [
+          {
+            scopeType: "user",
+            scopeId: "user-1",
+            role: null,
+            canWrite: true,
+            latestSyncVersion: 7,
+          },
+          {
+            scopeType: "org",
+            scopeId: "org-1",
+            role: "member",
+            canWrite: false,
+            latestSyncVersion: 12,
+          },
+        ],
+        capabilities: {
+          collections: ["vocabulary", "snippet"],
+          maxPushBatch: 100,
+          maxPushBytes: 524288,
+          defaultPullLimit: 200,
+          maxPullLimit: 500,
+          maxPullBytes: 524288,
+          oneScopePerPush: true,
+        },
+      }),
+    });
+
+    await expect(
+      client.bootstrap("user-1", new AbortController().signal),
+    ).resolves.toMatchObject({
+      scopes: [
+        expect.objectContaining({ scopeType: "user", scopeId: "user-1" }),
+        expect.objectContaining({
+          scopeType: "org",
+          scopeId: "org-1",
+          canWrite: false,
+        }),
+      ],
+    });
   });
 
   it("validates request shape without imposing advertised operation limits", () => {

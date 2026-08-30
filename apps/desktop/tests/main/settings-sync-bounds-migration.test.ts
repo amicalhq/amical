@@ -184,4 +184,60 @@ describe("settings sync bounds data migration", () => {
     const settings = await getAppSettings();
     expect(settings.dataMigrations?.settingsSyncBounds).toBeUndefined();
   });
+
+  it("keeps equal normalized keys in separate scopes", async () => {
+    const sharedVocabularyId = "10000000-0000-4000-8000-000000000001";
+    const sharedSnippetId = "20000000-0000-4000-8000-000000000001";
+    await testDb.db.insert(vocabulary).values([
+      {
+        id: sharedVocabularyId,
+        word: "  shared  ",
+        scopeType: "user",
+        scopeId: "",
+      },
+      {
+        id: sharedVocabularyId,
+        word: "shared",
+        scopeType: "org",
+        scopeId: "org-1",
+      },
+    ]);
+    await testDb.db.insert(snippets).values([
+      {
+        id: sharedSnippetId,
+        trigger: "  /shared  ",
+        content: "Personal",
+        scopeType: "user",
+        scopeId: "",
+      },
+      {
+        id: sharedSnippetId,
+        trigger: "/shared",
+        content: "Organization",
+        scopeType: "org",
+        scopeId: "org-1",
+      },
+    ]);
+
+    await runDataMigrations();
+
+    expect(
+      (await testDb.db.select().from(vocabulary)).map((row) => ({
+        id: row.id,
+        word: row.word,
+      })),
+    ).toEqual([
+      { id: sharedVocabularyId, word: "shared" },
+      { id: sharedVocabularyId, word: "shared" },
+    ]);
+    expect(
+      (await testDb.db.select().from(snippets)).map((row) => ({
+        id: row.id,
+        trigger: row.trigger,
+      })),
+    ).toEqual([
+      { id: sharedSnippetId, trigger: "/shared" },
+      { id: sharedSnippetId, trigger: "/shared" },
+    ]);
+  });
 });

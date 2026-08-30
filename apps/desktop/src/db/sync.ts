@@ -8,6 +8,7 @@ import {
   syncCollectionState,
   syncItemState,
   syncOutbox,
+  syncScopeState,
   vocabulary,
   type SnippetSyncPayload,
   type SyncCollection,
@@ -26,6 +27,14 @@ const SYNC_COLLECTIONS = [
 
 let localMutationHandler: (() => void) | null = null;
 let activeUserAccountId: string | null = null;
+const activeSyncScopes = new Map<
+  string,
+  { canWrite: boolean; role: string | null }
+>();
+
+const PERSONAL_SCOPE_ID = "";
+const activeScopeKey = (scopeType: SyncScopeType, scopeId: string) =>
+  `${scopeType}:${scopeId}`;
 
 export function registerLocalSyncMutationHandler(
   handler: () => void,
@@ -126,12 +135,30 @@ const syncItemKey = (collection: SyncCollection, syncId: string) =>
 
 function loadVisibleRowIds(
   database: SyncDatabase,
+  identity: Pick<SyncContext, "scopeType" | "scopeId">,
 ): Record<SyncCollection, Set<string>> {
+  const domainScopeId =
+    identity.scopeType === "user" ? PERSONAL_SCOPE_ID : identity.scopeId;
   const vocabularyRows = database
     .select({ id: vocabulary.id })
     .from(vocabulary)
+    .where(
+      and(
+        eq(vocabulary.scopeType, identity.scopeType),
+        eq(vocabulary.scopeId, domainScopeId),
+      ),
+    )
     .all();
-  const snippetRows = database.select({ id: snippets.id }).from(snippets).all();
+  const snippetRows = database
+    .select({ id: snippets.id })
+    .from(snippets)
+    .where(
+      and(
+        eq(snippets.scopeType, identity.scopeType),
+        eq(snippets.scopeId, domainScopeId),
+      ),
+    )
+    .all();
   return {
     vocabulary: new Set(vocabularyRows.map((row) => row.id)),
     snippet: new Set(snippetRows.map((row) => row.id)),
@@ -208,12 +235,15 @@ export function snippetSyncPayload(row: {
 }
 
 const contextIsActive = (context: SyncContext): boolean =>
-  context.scopeType === "user" &&
   context.accountId === activeUserAccountId &&
-  context.scopeId === activeUserAccountId;
+  activeSyncScopes.has(activeScopeKey(context.scopeType, context.scopeId));
 
-async function startUserSyncSession(
+async function startSyncScopeSession(
   accountId: string,
+  scopeType: SyncScopeType,
+  scopeId: string,
+  canWrite: boolean,
+  role: string | null,
   resetCursor: boolean,
   database: typeof db = db,
 ): Promise<SyncContext> {
@@ -223,10 +253,15 @@ async function startUserSyncSession(
       .onConflictDoNothing()
       .run();
 
-    const scope = {
-      scopeType: "user" as const,
-      scopeId: accountId,
-    };
+    const scope = { scopeType, scopeId };
+
+    tx.insert(syncScopeState)
+      .values({ ...scope, canWrite, role })
+      .onConflictDoUpdate({
+        target: [syncScopeState.scopeType, syncScopeState.scopeId],
+        set: { canWrite, role },
+      })
+      .run();
 
     for (const collection of SYNC_COLLECTIONS) {
       const insert = tx
@@ -251,6 +286,7 @@ async function startUserSyncSession(
     return { accountId, ...scope };
   });
   activeUserAccountId = accountId;
+  activeSyncScopes.set(activeScopeKey(scopeType, scopeId), { canWrite, role });
   return context;
 }
 
@@ -258,26 +294,249 @@ export async function beginUserSyncSession(
   accountId: string,
   database: typeof db = db,
 ): Promise<SyncContext> {
-  return startUserSyncSession(accountId, true, database);
+  activeSyncScopes.clear();
+  return startSyncScopeSession(
+    accountId,
+    "user",
+    accountId,
+    true,
+    null,
+    true,
+    database,
+  );
 }
 
 export async function resumeUserSyncSession(
   accountId: string,
   database: typeof db = db,
 ): Promise<SyncContext> {
-  return startUserSyncSession(accountId, false, database);
+  activeSyncScopes.clear();
+  return startSyncScopeSession(
+    accountId,
+    "user",
+    accountId,
+    true,
+    null,
+    false,
+    database,
+  );
+}
+
+export interface AdvertisedSyncScope {
+  scopeType: SyncScopeType;
+  scopeId: string;
+  role: string | null;
+  canWrite: boolean;
+  latestSyncVersion: number;
+}
+
+export interface ReconciledSyncScopes {
+  contexts: SyncContext[];
+  organizationChanged: boolean;
+  capabilityChanged: boolean;
+}
+
+export async function reconcileSyncScopes(
+  accountId: string,
+  scopes: readonly AdvertisedSyncScope[],
+  database: typeof db = db,
+): Promise<ReconciledSyncScopes | null> {
+  if (activeUserAccountId !== accountId) return null;
+
+  const userScopes = scopes.filter((scope) => scope.scopeType === "user");
+  const userScope = userScopes.find(
+    (scope) => scope.scopeType === "user" && scope.scopeId === accountId,
+  );
+  if (
+    userScopes.length !== 1 ||
+    !userScope?.canWrite ||
+    new Set(
+      scopes.map((scope) => activeScopeKey(scope.scopeType, scope.scopeId)),
+    ).size !== scopes.length
+  ) {
+    throw new Error("Bootstrap omitted the active writable user scope");
+  }
+  const organizationScopes = scopes.filter(
+    (scope) => scope.scopeType === "org",
+  );
+  if (organizationScopes.length > 1) {
+    throw new Error("Bootstrap advertised more than one active organization");
+  }
+
+  const desiredOrganization = organizationScopes[0] ?? null;
+  const previousScopeRows = database.select().from(syncScopeState).all();
+  const previousOrganization = previousScopeRows.find(
+    (scope) => scope.scopeType === "org",
+  );
+  const organizationChanged =
+    previousOrganization?.scopeId !== desiredOrganization?.scopeId;
+  const capabilityChanged = scopes.some((scope) => {
+    const previous = previousScopeRows.find(
+      (row) =>
+        row.scopeType === scope.scopeType && row.scopeId === scope.scopeId,
+    );
+    return (
+      !previous ||
+      previous.canWrite !== scope.canWrite ||
+      previous.role !== scope.role
+    );
+  });
+
+  database.transaction((tx) => {
+    const desiredOrganizationId = desiredOrganization?.scopeId;
+    const vocabularyOrganizations = tx
+      .select({ scopeId: vocabulary.scopeId })
+      .from(vocabulary)
+      .where(eq(vocabulary.scopeType, "org"))
+      .all();
+    const snippetOrganizations = tx
+      .select({ scopeId: snippets.scopeId })
+      .from(snippets)
+      .where(eq(snippets.scopeType, "org"))
+      .all();
+    const metadataOrganizations = tx
+      .select({ scopeId: syncCollectionState.scopeId })
+      .from(syncCollectionState)
+      .where(eq(syncCollectionState.scopeType, "org"))
+      .all();
+    const itemStateOrganizations = tx
+      .select({ scopeId: syncItemState.scopeId })
+      .from(syncItemState)
+      .where(eq(syncItemState.scopeType, "org"))
+      .all();
+    const outboxOrganizations = tx
+      .select({ scopeId: syncOutbox.scopeId })
+      .from(syncOutbox)
+      .where(eq(syncOutbox.scopeType, "org"))
+      .all();
+    const advertisedOrganizations = tx
+      .select({ scopeId: syncScopeState.scopeId })
+      .from(syncScopeState)
+      .where(eq(syncScopeState.scopeType, "org"))
+      .all();
+    const staleOrganizationIds = new Set(
+      [
+        ...vocabularyOrganizations,
+        ...snippetOrganizations,
+        ...metadataOrganizations,
+        ...itemStateOrganizations,
+        ...outboxOrganizations,
+        ...advertisedOrganizations,
+      ]
+        .map((row) => row.scopeId)
+        .filter((scopeId) => scopeId !== desiredOrganizationId),
+    );
+
+    for (const scopeId of staleOrganizationIds) {
+      tx.delete(vocabulary)
+        .where(
+          and(eq(vocabulary.scopeType, "org"), eq(vocabulary.scopeId, scopeId)),
+        )
+        .run();
+      tx.delete(snippets)
+        .where(
+          and(eq(snippets.scopeType, "org"), eq(snippets.scopeId, scopeId)),
+        )
+        .run();
+      tx.delete(syncOutbox)
+        .where(
+          and(eq(syncOutbox.scopeType, "org"), eq(syncOutbox.scopeId, scopeId)),
+        )
+        .run();
+      tx.delete(syncItemState)
+        .where(
+          and(
+            eq(syncItemState.scopeType, "org"),
+            eq(syncItemState.scopeId, scopeId),
+          ),
+        )
+        .run();
+      tx.delete(syncCollectionState)
+        .where(
+          and(
+            eq(syncCollectionState.scopeType, "org"),
+            eq(syncCollectionState.scopeId, scopeId),
+          ),
+        )
+        .run();
+    }
+
+    tx.delete(syncScopeState).run();
+    for (const scope of scopes) {
+      tx.insert(syncScopeState)
+        .values({
+          scopeType: scope.scopeType,
+          scopeId: scope.scopeId,
+          role: scope.role,
+          canWrite: scope.canWrite,
+        })
+        .run();
+      for (const collection of SYNC_COLLECTIONS) {
+        tx.insert(syncCollectionState)
+          .values({
+            scopeType: scope.scopeType,
+            scopeId: scope.scopeId,
+            collection,
+            cursor: 0,
+          })
+          .onConflictDoNothing()
+          .run();
+      }
+    }
+
+    if (desiredOrganization && !desiredOrganization.canWrite) {
+      discardPendingScopeMutations(tx, {
+        accountId,
+        scopeType: "org",
+        scopeId: desiredOrganization.scopeId,
+      });
+    }
+  });
+
+  if (activeUserAccountId !== accountId) return null;
+  activeSyncScopes.clear();
+  for (const scope of scopes) {
+    activeSyncScopes.set(activeScopeKey(scope.scopeType, scope.scopeId), {
+      canWrite: scope.canWrite,
+      role: scope.role,
+    });
+  }
+  return {
+    contexts: scopes.map((scope) => ({
+      accountId,
+      scopeType: scope.scopeType,
+      scopeId: scope.scopeId,
+    })),
+    organizationChanged,
+    capabilityChanged,
+  };
 }
 
 export function pauseSyncSession(): void {
   activeUserAccountId = null;
+  activeSyncScopes.clear();
+}
+
+export function deactivateOrganizationSyncScopes(): boolean {
+  let changed = false;
+  for (const key of activeSyncScopes.keys()) {
+    if (!key.startsWith("org:")) continue;
+    activeSyncScopes.delete(key);
+    changed = true;
+  }
+  return changed;
 }
 
 export async function clearSyncState(database: typeof db = db): Promise<void> {
   activeUserAccountId = null;
+  activeSyncScopes.clear();
   database.transaction((tx) => {
+    tx.delete(vocabulary).where(eq(vocabulary.scopeType, "org")).run();
+    tx.delete(snippets).where(eq(snippets.scopeType, "org")).run();
     tx.delete(syncOutbox).run();
     tx.delete(syncItemState).run();
     tx.delete(syncCollectionState).run();
+    tx.delete(syncScopeState).run();
     tx.delete(syncClientState).run();
   });
 }
@@ -309,6 +568,34 @@ function activeUserIdentity() {
   };
 }
 
+function activeWritableOrganizationIdentity() {
+  for (const [key, access] of activeSyncScopes) {
+    if (!key.startsWith("org:") || !access.canWrite) continue;
+    return { scopeType: "org" as const, scopeId: key.slice(4) };
+  }
+  return null;
+}
+
+export async function getActiveOrganizationAccess(
+  database: SyncDatabase = db,
+): Promise<{
+  scopeId: string;
+  role: string | null;
+  canWrite: boolean;
+} | null> {
+  if (!activeUserAccountId) return null;
+  const row = database
+    .select()
+    .from(syncScopeState)
+    .where(eq(syncScopeState.scopeType, "org"))
+    .limit(1)
+    .get();
+  if (!row || !activeSyncScopes.has(activeScopeKey("org", row.scopeId))) {
+    return null;
+  }
+  return { scopeId: row.scopeId, role: row.role, canWrite: row.canWrite };
+}
+
 function allocateOutboxSequence(database: SyncDatabase): number {
   const client = database
     .update(syncClientState)
@@ -325,7 +612,7 @@ function allocateOutboxSequence(database: SyncDatabase): number {
 function enqueueLocalMutation(
   database: SyncDatabase,
   identity: {
-    scopeType: "user";
+    scopeType: SyncScopeType;
     scopeId: string;
   },
   collection: SyncCollection,
@@ -455,6 +742,26 @@ export function recordLocalSyncMutation(
   enqueueLocalMutation(database, identity, collection, syncId, payload);
 }
 
+export function recordOrganizationSyncMutation(
+  database: SyncDatabase,
+  collection: SyncCollection,
+  syncId: string,
+  payload: SyncPayload | null,
+): void {
+  const identity = activeWritableOrganizationIdentity();
+  if (!identity) {
+    throw new Error("Organization language assets are read-only");
+  }
+  enqueueLocalMutation(database, identity, collection, syncId, payload);
+}
+
+export function getWritableOrganizationIdentity(): {
+  scopeType: "org";
+  scopeId: string;
+} | null {
+  return activeWritableOrganizationIdentity();
+}
+
 export interface LocalSyncMutation {
   collection: SyncCollection;
   syncId: string;
@@ -464,7 +771,7 @@ export interface LocalSyncMutation {
 function enqueueLocalSyncMutationsBulk(
   database: SyncDatabase,
   identity: {
-    scopeType: "user";
+    scopeType: SyncScopeType;
     scopeId: string;
   },
   mutations: LocalSyncMutation[],
@@ -476,7 +783,8 @@ function enqueueLocalSyncMutationsBulk(
 ): void {
   if (mutations.length === 0) return;
 
-  const visibleRowIds = options.visibleRowIds ?? loadVisibleRowIds(database);
+  const visibleRowIds =
+    options.visibleRowIds ?? loadVisibleRowIds(database, identity);
   const index = loadScopeSyncIndex(database, identity, visibleRowIds);
 
   for (const mutation of mutations) {
@@ -518,8 +826,26 @@ export async function prepareVisibleRowsForFullSync(
     if (!contextIsActive(fence)) return false;
     if (fence.scopeType !== "user") return false;
 
-    const vocabularyRows = tx.select().from(vocabulary).all();
-    const snippetRows = tx.select().from(snippets).all();
+    const vocabularyRows = tx
+      .select()
+      .from(vocabulary)
+      .where(
+        and(
+          eq(vocabulary.scopeType, "user"),
+          eq(vocabulary.scopeId, PERSONAL_SCOPE_ID),
+        ),
+      )
+      .all();
+    const snippetRows = tx
+      .select()
+      .from(snippets)
+      .where(
+        and(
+          eq(snippets.scopeType, "user"),
+          eq(snippets.scopeId, PERSONAL_SCOPE_ID),
+        ),
+      )
+      .all();
     const visibleRowIds = {
       vocabulary: new Set(vocabularyRows.map((row) => row.id)),
       snippet: new Set(snippetRows.map((row) => row.id)),
@@ -622,12 +948,32 @@ function applyDomainPayload(
 ): void {
   const sidecar = findSidecar(database, fence, collection, syncId);
   if (!sidecar) throw new Error("Sync sidecar missing during canonical apply");
+  const domainScopeId =
+    fence.scopeType === "user" ? PERSONAL_SCOPE_ID : fence.scopeId;
 
   if (payload === null) {
     if (collection === "vocabulary") {
-      database.delete(vocabulary).where(eq(vocabulary.id, syncId)).run();
+      database
+        .delete(vocabulary)
+        .where(
+          and(
+            eq(vocabulary.id, syncId),
+            eq(vocabulary.scopeType, fence.scopeType),
+            eq(vocabulary.scopeId, domainScopeId),
+          ),
+        )
+        .run();
     } else {
-      database.delete(snippets).where(eq(snippets.id, syncId)).run();
+      database
+        .delete(snippets)
+        .where(
+          and(
+            eq(snippets.id, syncId),
+            eq(snippets.scopeType, fence.scopeType),
+            eq(snippets.scopeId, domainScopeId),
+          ),
+        )
+        .run();
     }
     return;
   }
@@ -639,7 +985,13 @@ function applyDomainPayload(
     const keyRow = database
       .select()
       .from(vocabulary)
-      .where(eq(vocabulary.word, value.word))
+      .where(
+        and(
+          eq(vocabulary.scopeType, fence.scopeType),
+          eq(vocabulary.scopeId, domainScopeId),
+          eq(vocabulary.word, value.word),
+        ),
+      )
       .limit(1)
       .get();
 
@@ -651,17 +1003,34 @@ function applyDomainPayload(
         keyRow.id,
         preserveCollidingPending,
       );
-      database.delete(vocabulary).where(eq(vocabulary.id, keyRow.id)).run();
+      database
+        .delete(vocabulary)
+        .where(
+          and(
+            eq(vocabulary.id, keyRow.id),
+            eq(vocabulary.scopeType, fence.scopeType),
+            eq(vocabulary.scopeId, domainScopeId),
+          ),
+        )
+        .run();
     }
 
     const updated = database
       .update(vocabulary)
       .set({
+        scopeType: fence.scopeType,
+        scopeId: domainScopeId,
         word: value.word,
         replacementWord: value.replacement,
         updatedAt: now,
       })
-      .where(eq(vocabulary.id, syncId))
+      .where(
+        and(
+          eq(vocabulary.id, syncId),
+          eq(vocabulary.scopeType, fence.scopeType),
+          eq(vocabulary.scopeId, domainScopeId),
+        ),
+      )
       .returning({ id: vocabulary.id })
       .get();
     if (!updated) {
@@ -669,6 +1038,8 @@ function applyDomainPayload(
         .insert(vocabulary)
         .values({
           id: syncId,
+          scopeType: fence.scopeType,
+          scopeId: domainScopeId,
           word: value.word,
           replacementWord: value.replacement,
           dateAdded: now,
@@ -682,7 +1053,13 @@ function applyDomainPayload(
     const keyRow = database
       .select()
       .from(snippets)
-      .where(eq(snippets.trigger, value.trigger))
+      .where(
+        and(
+          eq(snippets.scopeType, fence.scopeType),
+          eq(snippets.scopeId, domainScopeId),
+          eq(snippets.trigger, value.trigger),
+        ),
+      )
       .limit(1)
       .get();
 
@@ -694,17 +1071,34 @@ function applyDomainPayload(
         keyRow.id,
         preserveCollidingPending,
       );
-      database.delete(snippets).where(eq(snippets.id, keyRow.id)).run();
+      database
+        .delete(snippets)
+        .where(
+          and(
+            eq(snippets.id, keyRow.id),
+            eq(snippets.scopeType, fence.scopeType),
+            eq(snippets.scopeId, domainScopeId),
+          ),
+        )
+        .run();
     }
 
     const updated = database
       .update(snippets)
       .set({
+        scopeType: fence.scopeType,
+        scopeId: domainScopeId,
         trigger: value.trigger,
         content: value.content,
         updatedAt: now,
       })
-      .where(eq(snippets.id, syncId))
+      .where(
+        and(
+          eq(snippets.id, syncId),
+          eq(snippets.scopeType, fence.scopeType),
+          eq(snippets.scopeId, domainScopeId),
+        ),
+      )
       .returning({ id: snippets.id })
       .get();
     if (!updated) {
@@ -712,6 +1106,8 @@ function applyDomainPayload(
         .insert(snippets)
         .values({
           id: syncId,
+          scopeType: fence.scopeType,
+          scopeId: domainScopeId,
           trigger: value.trigger,
           content: value.content,
           createdAt: now,
@@ -720,6 +1116,98 @@ function applyDomainPayload(
         .run();
     }
   }
+}
+
+function discardPendingScopeMutations(
+  database: SyncDatabase,
+  fence: SyncContext,
+): void {
+  const pendingRows = database
+    .select()
+    .from(syncOutbox)
+    .where(
+      and(
+        eq(syncOutbox.scopeType, fence.scopeType),
+        eq(syncOutbox.scopeId, fence.scopeId),
+      ),
+    )
+    .all();
+
+  for (const pending of pendingRows) {
+    const sidecar = findSidecar(
+      database,
+      fence,
+      pending.collection,
+      pending.syncId,
+    );
+    database.delete(syncOutbox).where(outboxWhere(pending)).run();
+    if (sidecar) {
+      applyDomainPayload(
+        database,
+        fence,
+        pending.collection,
+        pending.syncId,
+        sidecar.acceptedPayload ?? null,
+      );
+    }
+  }
+}
+
+export async function removeOrganizationSyncScope(
+  fence: SyncContext,
+  database: typeof db = db,
+): Promise<boolean> {
+  if (fence.scopeType !== "org" || !contextIsActive(fence)) return false;
+
+  database.transaction((tx) => {
+    tx.delete(vocabulary)
+      .where(
+        and(
+          eq(vocabulary.scopeType, "org"),
+          eq(vocabulary.scopeId, fence.scopeId),
+        ),
+      )
+      .run();
+    tx.delete(snippets)
+      .where(
+        and(eq(snippets.scopeType, "org"), eq(snippets.scopeId, fence.scopeId)),
+      )
+      .run();
+    tx.delete(syncOutbox)
+      .where(
+        and(
+          eq(syncOutbox.scopeType, "org"),
+          eq(syncOutbox.scopeId, fence.scopeId),
+        ),
+      )
+      .run();
+    tx.delete(syncItemState)
+      .where(
+        and(
+          eq(syncItemState.scopeType, "org"),
+          eq(syncItemState.scopeId, fence.scopeId),
+        ),
+      )
+      .run();
+    tx.delete(syncCollectionState)
+      .where(
+        and(
+          eq(syncCollectionState.scopeType, "org"),
+          eq(syncCollectionState.scopeId, fence.scopeId),
+        ),
+      )
+      .run();
+    tx.delete(syncScopeState)
+      .where(
+        and(
+          eq(syncScopeState.scopeType, "org"),
+          eq(syncScopeState.scopeId, fence.scopeId),
+        ),
+      )
+      .run();
+  });
+  activeSyncScopes.delete(activeScopeKey("org", fence.scopeId));
+  return true;
 }
 
 function ensureCanonicalSidecar(
@@ -1078,8 +1566,27 @@ export async function adoptVisibleRows(
     // Only unbound rows are adoption candidates. Existing identities are
     // governed by their accepted state or durable outbox, so a same-key
     // signed-out edit is not promoted before the login pull.
-    const vocabularyRows = tx.select().from(vocabulary).all();
-    const snippetRows = tx.select().from(snippets).all();
+    if (fence.scopeType !== "user") return false;
+    const vocabularyRows = tx
+      .select()
+      .from(vocabulary)
+      .where(
+        and(
+          eq(vocabulary.scopeType, "user"),
+          eq(vocabulary.scopeId, PERSONAL_SCOPE_ID),
+        ),
+      )
+      .all();
+    const snippetRows = tx
+      .select()
+      .from(snippets)
+      .where(
+        and(
+          eq(snippets.scopeType, "user"),
+          eq(snippets.scopeId, PERSONAL_SCOPE_ID),
+        ),
+      )
+      .all();
     enqueueLocalSyncMutationsBulk(
       tx,
       {

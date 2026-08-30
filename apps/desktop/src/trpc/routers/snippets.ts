@@ -4,11 +4,15 @@ import { SettingsSyncUuidSchema } from "@amical/types";
 import { createRouter, procedure } from "../trpc";
 import {
   createSnippet,
+  createOrganizationSnippet,
   deleteSnippet,
+  deleteOrganizationSnippet,
   findSnippetByTriggerCaseInsensitive,
   getSnippets,
   updateSnippet,
+  updateOrganizationSnippet,
 } from "../../db/snippets";
+import { getActiveOrganizationAccess } from "../../db/sync";
 import { SNIPPET_ERROR_DUPLICATE_TRIGGER } from "../../constants/snippets";
 import {
   axisSyncRequiredTextSchema,
@@ -18,6 +22,7 @@ import {
 const GetSnippetsSchema = z.object({
   limit: z.number().optional(),
   search: z.string().optional(),
+  scope: z.enum(["all", "user", "org"]).optional(),
 });
 
 const CreateSnippetSchema = z.object({
@@ -42,6 +47,8 @@ export const snippetsRouter = createRouter({
   getSnippets: procedure.input(GetSnippetsSchema).query(async ({ input }) => {
     return await getSnippets(input);
   }),
+
+  getScopeAccess: procedure.query(async () => getActiveOrganizationAccess()),
 
   createSnippet: procedure
     .input(CreateSnippetSchema)
@@ -73,6 +80,34 @@ export const snippetsRouter = createRouter({
       return { snippet, similarTrigger };
     }),
 
+  createOrganizationSnippet: procedure
+    .input(CreateSnippetSchema)
+    .mutation(async ({ input }) => {
+      const similarExisting = await findSnippetByTriggerCaseInsensitive(
+        input.trigger,
+        "org",
+      );
+      let snippet;
+      try {
+        snippet = await createOrganizationSnippet(input);
+      } catch (err) {
+        if (isDuplicateTriggerError(err)) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: SNIPPET_ERROR_DUPLICATE_TRIGGER,
+          });
+        }
+        throw err;
+      }
+      return {
+        snippet,
+        similarTrigger:
+          similarExisting && similarExisting.trigger !== input.trigger
+            ? similarExisting.trigger
+            : null,
+      };
+    }),
+
   updateSnippet: procedure
     .input(z.object({ id: SettingsSyncUuidSchema, data: UpdateSnippetSchema }))
     .mutation(async ({ input }) => {
@@ -89,9 +124,31 @@ export const snippetsRouter = createRouter({
       }
     }),
 
+  updateOrganizationSnippet: procedure
+    .input(z.object({ id: SettingsSyncUuidSchema, data: UpdateSnippetSchema }))
+    .mutation(async ({ input }) => {
+      try {
+        return await updateOrganizationSnippet(input.id, input.data);
+      } catch (err) {
+        if (isDuplicateTriggerError(err)) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: SNIPPET_ERROR_DUPLICATE_TRIGGER,
+          });
+        }
+        throw err;
+      }
+    }),
+
   deleteSnippet: procedure
     .input(z.object({ id: SettingsSyncUuidSchema }))
     .mutation(async ({ input }) => {
       return await deleteSnippet(input.id);
+    }),
+
+  deleteOrganizationSnippet: procedure
+    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .mutation(async ({ input }) => {
+      return await deleteOrganizationSnippet(input.id);
     }),
 });

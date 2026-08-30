@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { logger } from "../logger";
 import { db } from "../../db";
 import { getAppSettings, updateAppSettings } from "../../db/app-settings";
@@ -170,50 +170,66 @@ async function migrateSettingsSyncBounds(): Promise<{
       trigger: row.trigger.trim(),
     }));
 
-    const vocabularyIdsToDelete: string[] = [];
+    const vocabularyRowsToDelete: typeof normalizedVocabulary = [];
     const keptVocabulary: typeof normalizedVocabulary = [];
     const seenWords = new Set<string>();
     for (const row of normalizedVocabulary.sort((a, b) =>
       a.id.localeCompare(b.id),
     )) {
+      const scopedWord = `${row.scopeType}\0${row.scopeId}\0${row.word}`;
       if (
         !axisSyncKeySchema.safeParse(row.word).success ||
         (row.replacementWord !== null &&
           !axisSyncOptionalTextSchema.safeParse(row.replacementWord).success) ||
-        seenWords.has(row.word)
+        seenWords.has(scopedWord)
       ) {
-        vocabularyIdsToDelete.push(row.id);
+        vocabularyRowsToDelete.push(row);
         continue;
       }
-      seenWords.add(row.word);
+      seenWords.add(scopedWord);
       keptVocabulary.push(row);
     }
 
-    const snippetIdsToDelete: string[] = [];
+    const snippetRowsToDelete: typeof normalizedSnippets = [];
     const keptSnippets: typeof normalizedSnippets = [];
     const seenTriggers = new Set<string>();
     for (const row of normalizedSnippets.sort((a, b) =>
       a.id.localeCompare(b.id),
     )) {
+      const scopedTrigger = `${row.scopeType}\0${row.scopeId}\0${row.trigger}`;
       if (
         !axisSyncKeySchema.safeParse(row.trigger).success ||
         !axisSyncRequiredTextSchema.safeParse(row.content).success ||
-        seenTriggers.has(row.trigger)
+        seenTriggers.has(scopedTrigger)
       ) {
-        snippetIdsToDelete.push(row.id);
+        snippetRowsToDelete.push(row);
         continue;
       }
-      seenTriggers.add(row.trigger);
+      seenTriggers.add(scopedTrigger);
       keptSnippets.push(row);
     }
 
-    if (vocabularyIdsToDelete.length > 0) {
+    for (const row of vocabularyRowsToDelete) {
       tx.delete(vocabulary)
-        .where(inArray(vocabulary.id, vocabularyIdsToDelete))
+        .where(
+          and(
+            eq(vocabulary.id, row.id),
+            eq(vocabulary.scopeType, row.scopeType),
+            eq(vocabulary.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
-    if (snippetIdsToDelete.length > 0) {
-      tx.delete(snippets).where(inArray(snippets.id, snippetIdsToDelete)).run();
+    for (const row of snippetRowsToDelete) {
+      tx.delete(snippets)
+        .where(
+          and(
+            eq(snippets.id, row.id),
+            eq(snippets.scopeType, row.scopeType),
+            eq(snippets.scopeId, row.scopeId),
+          ),
+        )
+        .run();
     }
 
     // Move retained keys through unique temporary values so trimming can safely
@@ -221,13 +237,25 @@ async function migrateSettingsSyncBounds(): Promise<{
     for (const row of keptVocabulary) {
       tx.update(vocabulary)
         .set({ word: randomUUID() })
-        .where(eq(vocabulary.id, row.id))
+        .where(
+          and(
+            eq(vocabulary.id, row.id),
+            eq(vocabulary.scopeType, row.scopeType),
+            eq(vocabulary.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
     for (const row of keptSnippets) {
       tx.update(snippets)
         .set({ trigger: randomUUID() })
-        .where(eq(snippets.id, row.id))
+        .where(
+          and(
+            eq(snippets.id, row.id),
+            eq(snippets.scopeType, row.scopeType),
+            eq(snippets.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
 
@@ -237,7 +265,13 @@ async function migrateSettingsSyncBounds(): Promise<{
           word: row.word,
           replacementWord: row.replacementWord,
         })
-        .where(eq(vocabulary.id, row.id))
+        .where(
+          and(
+            eq(vocabulary.id, row.id),
+            eq(vocabulary.scopeType, row.scopeType),
+            eq(vocabulary.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
     for (const row of keptSnippets) {
@@ -246,13 +280,19 @@ async function migrateSettingsSyncBounds(): Promise<{
           trigger: row.trigger,
           content: row.content,
         })
-        .where(eq(snippets.id, row.id))
+        .where(
+          and(
+            eq(snippets.id, row.id),
+            eq(snippets.scopeType, row.scopeType),
+            eq(snippets.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
 
     return {
-      vocabularyDeleted: vocabularyIdsToDelete.length,
-      snippetsDeleted: snippetIdsToDelete.length,
+      vocabularyDeleted: vocabularyRowsToDelete.length,
+      snippetsDeleted: snippetRowsToDelete.length,
     };
   });
 }

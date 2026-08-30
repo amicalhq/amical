@@ -28,10 +28,19 @@ export const DESKTOP_SYNC_COLLECTIONS =
   SETTINGS_SYNC_COLLECTIONS satisfies readonly SyncCollection[];
 
 export interface SyncBootstrap {
+  scopes: SyncBootstrapScope[];
   collections: SyncCollection[];
   maxPushBatch: number;
   maxPushBytes: number;
   pullLimit: number;
+}
+
+export interface SyncBootstrapScope {
+  scopeType: SyncScopeType;
+  scopeId: string;
+  role: string | null;
+  canWrite: boolean;
+  latestSyncVersion: number;
 }
 
 export interface SyncPullCollectionPage {
@@ -104,12 +113,19 @@ export class SettingsSyncClient {
     if (!userScope) {
       throw new Error("Bootstrap omitted the active writable user scope");
     }
+    const organizationScopes = body.scopes.filter(
+      (scope) => scope.scopeType === "org",
+    );
+    if (organizationScopes.length > 1) {
+      throw new Error("Bootstrap advertised more than one active organization");
+    }
     const advertisedCollections = new Set(body.capabilities.collections);
     const collections = DESKTOP_SYNC_COLLECTIONS.filter((collection) =>
       advertisedCollections.has(collection),
     );
 
     return {
+      scopes: [userScope, ...organizationScopes],
       collections,
       maxPushBatch: body.capabilities.maxPushBatch,
       maxPushBytes: body.capabilities.maxPushBytes,

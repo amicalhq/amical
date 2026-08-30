@@ -23,11 +23,14 @@ import {
   beginUserSyncSession,
   capturePushHeads,
   clearSyncState,
+  deactivateOrganizationSyncScopes,
   getPullCursors,
   hasResumableUserSyncState,
   pauseSyncSession,
   prepareVisibleRowsForFullSync,
+  reconcileSyncScopes,
   registerLocalSyncMutationHandler,
+  removeOrganizationSyncScope,
   resumeUserSyncSession,
   type CapturedSyncHead,
   type SyncContext,
@@ -38,23 +41,37 @@ const EDIT_DEBOUNCE_MS = 750;
 
 type SyncClient = Pick<SettingsSyncClient, "bootstrap" | "pull" | "push">;
 
+class SyncScopeAuthorizationError extends Error {
+  constructor(readonly context: SyncContext) {
+    super(`Axis rejected the active ${context.scopeType} sync scope`);
+  }
+}
+
 export class SettingsSyncService {
   private readonly client: SyncClient;
   private readonly localStateMutex = new Mutex();
   private initialized = false;
   private stopped = false;
   private currentContext: SyncContext | null = null;
+  private currentContexts: SyncContext[] = [];
   private abortController: AbortController | null = null;
   private capabilities: SyncBootstrap | null = null;
   private worker: Promise<void> | null = null;
   private rerunRequested = false;
   private authorizationBlocked = false;
+  private authenticationRefreshAttempted = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private unregisterBeforeLogout: (() => void) | null = null;
   private unregisterLocalMutation: (() => void) | null = null;
 
   private readonly onExternalWake = () => this.wake();
+
+  private readonly onLoggedOut = () => {
+    queueMicrotask(() => {
+      if (this.initialized && !this.stopped) this.notifyRenderers();
+    });
+  };
 
   private readonly onAuthenticated = (authState: AuthState) => {
     const accountId = authState.userInfo?.sub;
@@ -66,15 +83,12 @@ export class SettingsSyncService {
 
   private readonly onTokenRefreshed = (authState: AuthState) => {
     const accountId = authState.userInfo?.sub;
-    if (
-      !this.authorizationBlocked ||
-      !accountId ||
-      accountId !== this.currentContext?.accountId
-    ) {
-      return;
-    }
-    this.authorizationBlocked = false;
-    this.wake();
+    if (!accountId || accountId !== this.currentContext?.accountId) return;
+    void this.restartAfterTokenRefresh(accountId).catch((error) => {
+      logger.main.error("Failed to restart settings sync after token refresh", {
+        error,
+      });
+    });
   };
 
   private constructor(
@@ -130,6 +144,7 @@ export class SettingsSyncService {
       () => this.handleBeforeLogout(),
     );
     this.authService.on("authenticated", this.onAuthenticated);
+    this.authService.on("logged-out", this.onLoggedOut);
     this.authService.on("token-refreshed", this.onTokenRefreshed);
     this.unregisterLocalMutation = registerLocalSyncMutationHandler(() =>
       this.scheduleDebouncedWake(),
@@ -158,6 +173,7 @@ export class SettingsSyncService {
       );
     } else {
       await this.runLocalTransition(() => clearSyncState());
+      this.notifyRenderers();
     }
   }
 
@@ -188,6 +204,7 @@ export class SettingsSyncService {
     this.debounceTimer = null;
 
     this.authService.off("authenticated", this.onAuthenticated);
+    this.authService.off("logged-out", this.onLoggedOut);
     this.authService.off("token-refreshed", this.onTokenRefreshed);
     ipcMain.removeListener("settings-sync-wake", this.onExternalWake);
     this.unregisterBeforeLogout?.();
@@ -198,8 +215,10 @@ export class SettingsSyncService {
     this.abortController?.abort();
     this.abortController = null;
     this.currentContext = null;
+    this.currentContexts = [];
     this.capabilities = null;
     this.authorizationBlocked = false;
+    this.authenticationRefreshAttempted = false;
     pauseSyncSession();
     await this.worker;
   }
@@ -210,9 +229,11 @@ export class SettingsSyncService {
     this.abortController?.abort();
     this.abortController = null;
     this.currentContext = null;
+    this.currentContexts = [];
     this.capabilities = null;
     this.rerunRequested = false;
     this.authorizationBlocked = false;
+    this.authenticationRefreshAttempted = false;
     pauseSyncSession();
     await this.runLocalTransition(() => clearSyncState());
   }
@@ -222,14 +243,17 @@ export class SettingsSyncService {
     mode: "full" | "resume",
   ): Promise<void> {
     this.authorizationBlocked = false;
+    this.authenticationRefreshAttempted = false;
     this.abortController?.abort();
     const controller = new AbortController();
     this.abortController = controller;
     this.currentContext = null;
+    this.currentContexts = [];
     this.capabilities = null;
     pauseSyncSession();
     if (mode === "full") {
       await this.runLocalTransition(() => clearSyncState());
+      this.notifyRenderers();
     }
     if (this.stopped || controller.signal.aborted) {
       if (this.stopped) pauseSyncSession();
@@ -260,6 +284,36 @@ export class SettingsSyncService {
     }
 
     this.currentContext = context;
+    this.currentContexts = [context];
+    this.wake();
+  }
+
+  private async restartAfterTokenRefresh(accountId: string): Promise<void> {
+    const context = this.currentContext;
+    if (!context || context.accountId !== accountId) return;
+
+    this.authorizationBlocked = true;
+    this.abortController?.abort();
+    const controller = new AbortController();
+    this.abortController = controller;
+    this.capabilities = null;
+    const hadOrganization = this.currentContexts.some(
+      (candidate) => candidate.scopeType === "org",
+    );
+    this.currentContexts = [context];
+    const organizationDeactivated = await this.runLocalTransition(async () =>
+      deactivateOrganizationSyncScopes(),
+    );
+    if (
+      this.stopped ||
+      controller !== this.abortController ||
+      accountId !== this.currentContext?.accountId
+    ) {
+      return;
+    }
+
+    this.authorizationBlocked = false;
+    if (hadOrganization || organizationDeactivated) this.notifyRenderers();
     this.wake();
   }
 
@@ -282,12 +336,40 @@ export class SettingsSyncService {
 
       try {
         await this.runIncrementalSync(context, controller.signal);
+        if (!controller.signal.aborted) {
+          this.authenticationRefreshAttempted = false;
+        }
       } catch (error) {
         if (controller.signal.aborted || this.stopped) continue;
-        if (
-          error instanceof SettingsSyncHttpError &&
-          (error.status === 401 || error.status === 403)
-        ) {
+        if (error instanceof SyncScopeAuthorizationError) {
+          this.authorizationBlocked = true;
+          this.rerunRequested = false;
+          logger.main.warn(
+            "Axis rejected the active user sync scope; waiting for auth change",
+            { error },
+          );
+          return;
+        }
+        if (error instanceof SettingsSyncHttpError && error.status === 401) {
+          this.authorizationBlocked = true;
+          this.rerunRequested = false;
+          logger.main.warn(
+            "Settings sync authentication failed; waiting for auth change",
+            { error },
+          );
+          if (!this.authenticationRefreshAttempted) {
+            this.authenticationRefreshAttempted = true;
+            await this.authService.refreshTokenIfNeeded(true);
+          }
+          return;
+        }
+        if (error instanceof SettingsSyncHttpError && error.status === 403) {
+          const changed = await this.removeAllOrganizationScopes(
+            context,
+            controller.signal,
+          );
+          if (controller.signal.aborted || this.stopped) continue;
+          if (changed) this.notifyRenderers();
           this.authorizationBlocked = true;
           this.rerunRequested = false;
           logger.main.warn(
@@ -310,18 +392,65 @@ export class SettingsSyncService {
     context: SyncContext,
     signal: AbortSignal,
   ): Promise<void> {
-    if (!this.capabilities) {
-      const capabilities = await this.client.bootstrap(
-        context.accountId,
-        signal,
-      );
-      if (signal.aborted) return;
-      this.capabilities = capabilities;
-    }
-    if (this.capabilities.collections.length === 0) return;
-    await this.pushUntilDrained(context, signal);
+    const capabilities = await this.client.bootstrap(context.accountId, signal);
     if (signal.aborted) return;
-    await this.pullUntilCurrent(context, signal);
+    const reconciled = await this.runLocalTransition(() =>
+      reconcileSyncScopes(context.accountId, capabilities.scopes),
+    );
+    if (!reconciled || signal.aborted) return;
+    this.capabilities = capabilities;
+    this.currentContexts = reconciled.contexts;
+    if (reconciled.organizationChanged || reconciled.capabilityChanged) {
+      this.notifyRenderers();
+    }
+    if (capabilities.collections.length === 0) return;
+
+    for (const scopeContext of reconciled.contexts) {
+      const scope = capabilities.scopes.find(
+        (candidate) =>
+          candidate.scopeType === scopeContext.scopeType &&
+          candidate.scopeId === scopeContext.scopeId,
+      );
+      if (!scope) continue;
+      try {
+        if (scope.canWrite) {
+          await this.pushUntilDrained(scopeContext, signal);
+          if (signal.aborted) return;
+        }
+        await this.pullUntilCurrent(scopeContext, signal);
+      } catch (error) {
+        if (signal.aborted) return;
+        if (error instanceof SyncScopeAuthorizationError) {
+          if (scopeContext.scopeType !== "org") throw error;
+          const changed = await this.deactivateOrganizationScopes(signal);
+          if (signal.aborted) return;
+          if (changed) this.notifyRenderers();
+          this.rerunRequested = true;
+          return;
+        }
+        if (
+          scopeContext.scopeType === "org" &&
+          error instanceof SettingsSyncHttpError &&
+          error.status === 403
+        ) {
+          if (
+            await this.runLocalTransition(() =>
+              removeOrganizationSyncScope(scopeContext),
+            )
+          ) {
+            this.currentContexts = this.currentContexts.filter(
+              (candidate) =>
+                candidate.scopeType !== "org" ||
+                candidate.scopeId !== scopeContext.scopeId,
+            );
+            this.notifyRenderers();
+          }
+          continue;
+        }
+        throw error;
+      }
+      if (signal.aborted) return;
+    }
   }
 
   private async pullUntilCurrent(
@@ -393,7 +522,7 @@ export class SettingsSyncService {
             result.status === "error" && result.reason === "unauthorized_scope",
         )
       ) {
-        throw new SettingsSyncHttpError("Unauthorized sync scope", 403);
+        throw new SyncScopeAuthorizationError(context);
       }
       if (
         !(await this.runLocalTransition(async () =>
@@ -449,10 +578,70 @@ export class SettingsSyncService {
     return { heads: selectedHeads, mutations };
   }
 
+  private async deactivateOrganizationScopes(
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const hadOrganization = this.currentContexts.some(
+      (context) => context.scopeType === "org",
+    );
+    const deactivated = await this.runLocalTransition(async () =>
+      signal.aborted ? false : deactivateOrganizationSyncScopes(),
+    );
+    if (signal.aborted) return false;
+    this.currentContexts = this.currentContexts.filter(
+      (context) => context.scopeType !== "org",
+    );
+    this.capabilities = null;
+    return hadOrganization || deactivated;
+  }
+
+  private async removeAllOrganizationScopes(
+    context: SyncContext,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const hadOrganization = this.currentContexts.some(
+      (candidate) => candidate.scopeType === "org",
+    );
+    const reconciled = await this.runLocalTransition(async () =>
+      signal.aborted
+        ? null
+        : reconcileSyncScopes(context.accountId, [
+            {
+              scopeType: "user",
+              scopeId: context.accountId,
+              role: null,
+              canWrite: true,
+              latestSyncVersion: 0,
+            },
+          ]),
+    );
+    if (!reconciled || signal.aborted) return false;
+    this.currentContexts = reconciled.contexts;
+    this.capabilities = null;
+    return hadOrganization || reconciled.organizationChanged;
+  }
+
   private notifyRenderers(): void {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
+    let windows: BrowserWindow[];
+    try {
+      windows = BrowserWindow.getAllWindows();
+    } catch (error) {
+      logger.main.warn("Failed to enumerate settings sync renderers", {
+        error,
+      });
+      return;
+    }
+
+    for (const window of windows) {
+      try {
+        if (window.isDestroyed() || window.webContents.isDestroyed?.())
+          continue;
         window.webContents.send("settings-sync-updated");
+      } catch (error) {
+        logger.main.warn("Failed to notify renderer of settings sync update", {
+          error,
+          windowId: window.id,
+        });
       }
     }
   }

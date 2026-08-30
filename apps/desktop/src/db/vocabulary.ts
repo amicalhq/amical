@@ -1,20 +1,50 @@
-import { eq, desc, asc, like, count, gt, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from ".";
 import { vocabulary, type Vocabulary, type NewVocabulary } from "./schema";
 import {
   recordLocalSyncMutation,
   recordLocalSyncMutations,
+  recordOrganizationSyncMutation,
+  getActiveOrganizationAccess,
+  getWritableOrganizationIdentity,
   vocabularySyncPayload,
 } from "./sync";
 
+export type LanguageAssetScopeFilter = "all" | "user" | "org";
+
+function effectiveVocabulary(rows: Vocabulary[]): Vocabulary[] {
+  const effective = new Map<string, Vocabulary>();
+  for (const row of [...rows].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  )) {
+    const existing = effective.get(row.word);
+    if (!existing || row.scopeType === "user") effective.set(row.word, row);
+  }
+  return [...effective.values()];
+}
+
+async function readableVocabulary(rows: Vocabulary[]): Promise<Vocabulary[]> {
+  const organization = await getActiveOrganizationAccess();
+  return rows.filter(
+    (row) =>
+      (row.scopeType === "user" && row.scopeId === "") ||
+      (row.scopeType === "org" && row.scopeId === organization?.scopeId),
+  );
+}
+
 // Create a new vocabulary word
 export async function createVocabularyWord(
-  data: Omit<NewVocabulary, "id" | "createdAt" | "updatedAt">,
+  data: Omit<
+    NewVocabulary,
+    "id" | "scopeType" | "scopeId" | "createdAt" | "updatedAt"
+  >,
 ) {
   const now = new Date();
 
   const newWord: NewVocabulary = {
     ...data,
+    scopeType: "user",
+    scopeId: "",
     dateAdded: data.dateAdded || now,
     createdAt: now,
     updatedAt: now,
@@ -32,13 +62,48 @@ export async function createVocabularyWord(
   });
 }
 
+export async function createOrganizationVocabularyWord(
+  data: Omit<
+    NewVocabulary,
+    "id" | "scopeType" | "scopeId" | "createdAt" | "updatedAt"
+  >,
+) {
+  const identity = getWritableOrganizationIdentity();
+  if (!identity) throw new Error("Organization language assets are read-only");
+  const now = new Date();
+
+  return db.transaction((tx) => {
+    const created = tx
+      .insert(vocabulary)
+      .values({
+        ...data,
+        scopeType: "org",
+        scopeId: identity.scopeId,
+        dateAdded: data.dateAdded || now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+    recordOrganizationSyncMutation(
+      tx,
+      "vocabulary",
+      created.id,
+      vocabularySyncPayload(created),
+    );
+    return created;
+  });
+}
+
 /**
  * Load every vocabulary row. Used by the transcription pipeline so that every
  * entry the user has authored participates in expansion / hints — no silent
  * cap. The settings UI uses `getVocabulary` which is capped/sortable/searchable.
  */
 export async function getAllVocabulary(): Promise<Vocabulary[]> {
-  return await db.select().from(vocabulary);
+  return effectiveVocabulary(
+    await readableVocabulary(await db.select().from(vocabulary)),
+  );
 }
 
 // Get all vocabulary words with pagination and sorting
@@ -49,6 +114,7 @@ export async function getVocabulary(
     sortBy?: "word" | "dateAdded" | "usageCount";
     sortOrder?: "asc" | "desc";
     search?: string;
+    scope?: LanguageAssetScopeFilter;
   } = {},
 ) {
   const {
@@ -57,40 +123,32 @@ export async function getVocabulary(
     sortBy = "dateAdded",
     sortOrder = "desc",
     search,
+    scope = "all",
   } = options;
-
-  // Determine sort column
-  let sortColumn;
-  switch (sortBy) {
-    case "word":
-      sortColumn = vocabulary.word;
-      break;
-    case "usageCount":
-      sortColumn = vocabulary.usageCount;
-      break;
-    default:
-      sortColumn = vocabulary.dateAdded;
-  }
-
-  const orderFn = sortOrder === "asc" ? asc : desc;
-
-  // Build query with conditional where clause
-  if (search) {
-    return await db
-      .select()
-      .from(vocabulary)
-      .where(like(vocabulary.word, `%${search}%`))
-      .orderBy(orderFn(sortColumn))
-      .limit(limit)
-      .offset(offset);
-  } else {
-    return await db
-      .select()
-      .from(vocabulary)
-      .orderBy(orderFn(sortColumn))
-      .limit(limit)
-      .offset(offset);
-  }
+  const searchTerm = search?.toLocaleLowerCase();
+  const scopedRows = (
+    await readableVocabulary(await db.select().from(vocabulary))
+  ).filter(
+    (row) =>
+      (scope === "all" || row.scopeType === scope) &&
+      (!searchTerm || row.word.toLocaleLowerCase().includes(searchTerm)),
+  );
+  const rows = scope === "all" ? effectiveVocabulary(scopedRows) : scopedRows;
+  const direction = sortOrder === "asc" ? 1 : -1;
+  rows.sort((left, right) => {
+    let comparison: number;
+    if (sortBy === "word") {
+      comparison = left.word.localeCompare(right.word);
+    } else if (sortBy === "usageCount") {
+      comparison = (left.usageCount ?? 0) - (right.usageCount ?? 0);
+    } else {
+      comparison = left.dateAdded.getTime() - right.dateAdded.getTime();
+    }
+    return comparison === 0
+      ? left.id.localeCompare(right.id)
+      : comparison * direction;
+  });
+  return rows.slice(offset, offset + limit);
 }
 
 // Get vocabulary word by ID
@@ -99,7 +157,10 @@ export async function getVocabularyById(id: string) {
     .select()
     .from(vocabulary)
     .where(eq(vocabulary.id, id));
-  return result[0] || null;
+  const readable = await readableVocabulary(result);
+  return (
+    readable.find((row) => row.scopeType === "user") ?? readable[0] ?? null
+  );
 }
 
 // Get vocabulary word by word text
@@ -108,13 +169,13 @@ export async function getVocabularyByWord(word: string) {
     .select()
     .from(vocabulary)
     .where(eq(vocabulary.word, word.toLowerCase()));
-  return result[0] || null;
+  return effectiveVocabulary(await readableVocabulary(result))[0] || null;
 }
 
 // Update vocabulary word
 export async function updateVocabulary(
   id: string,
-  data: Partial<Omit<Vocabulary, "id" | "createdAt">>,
+  data: Partial<Omit<Vocabulary, "id" | "scopeType" | "scopeId" | "createdAt">>,
 ) {
   const updateData = {
     ...data,
@@ -125,7 +186,13 @@ export async function updateVocabulary(
     const updated = tx
       .update(vocabulary)
       .set(updateData)
-      .where(eq(vocabulary.id, id))
+      .where(
+        and(
+          eq(vocabulary.id, id),
+          eq(vocabulary.scopeType, "user"),
+          eq(vocabulary.scopeId, ""),
+        ),
+      )
       .returning()
       .get();
     if (!updated) return null;
@@ -144,13 +211,52 @@ export async function updateVocabulary(
   });
 }
 
+export async function updateOrganizationVocabulary(
+  id: string,
+  data: Partial<Omit<Vocabulary, "id" | "scopeType" | "scopeId" | "createdAt">>,
+) {
+  const identity = getWritableOrganizationIdentity();
+  if (!identity) throw new Error("Organization language assets are read-only");
+
+  return db.transaction((tx) => {
+    const updated = tx
+      .update(vocabulary)
+      .set({ ...data, updatedAt: new Date() })
+      .where(
+        and(
+          eq(vocabulary.id, id),
+          eq(vocabulary.scopeType, "org"),
+          eq(vocabulary.scopeId, identity.scopeId),
+        ),
+      )
+      .returning()
+      .get();
+    if (!updated) return null;
+    if (Object.hasOwn(data, "word") || Object.hasOwn(data, "replacementWord")) {
+      recordOrganizationSyncMutation(
+        tx,
+        "vocabulary",
+        updated.id,
+        vocabularySyncPayload(updated),
+      );
+    }
+    return updated;
+  });
+}
+
 // Delete vocabulary word
 export async function deleteVocabulary(id: string) {
   return db.transaction((tx) => {
     const existing = tx
       .select()
       .from(vocabulary)
-      .where(eq(vocabulary.id, id))
+      .where(
+        and(
+          eq(vocabulary.id, id),
+          eq(vocabulary.scopeType, "user"),
+          eq(vocabulary.scopeId, ""),
+        ),
+      )
       .limit(1)
       .get();
     if (!existing) return null;
@@ -158,70 +264,136 @@ export async function deleteVocabulary(id: string) {
     recordLocalSyncMutation(tx, "vocabulary", existing.id, null);
     const deleted = tx
       .delete(vocabulary)
-      .where(eq(vocabulary.id, id))
+      .where(
+        and(
+          eq(vocabulary.id, id),
+          eq(vocabulary.scopeType, "user"),
+          eq(vocabulary.scopeId, ""),
+        ),
+      )
       .returning()
       .get();
     return deleted ?? null;
   });
 }
 
-// Get vocabulary count
-export async function getVocabularyCount(search?: string) {
-  if (search) {
-    const result = await db
-      .select({ count: count() })
+export async function deleteOrganizationVocabulary(id: string) {
+  const identity = getWritableOrganizationIdentity();
+  if (!identity) throw new Error("Organization language assets are read-only");
+
+  return db.transaction((tx) => {
+    const existing = tx
+      .select()
       .from(vocabulary)
-      .where(like(vocabulary.word, `%${search}%`));
-    return result[0]?.count || 0;
-  } else {
-    const result = await db.select({ count: count() }).from(vocabulary);
-    return result[0]?.count || 0;
-  }
+      .where(
+        and(
+          eq(vocabulary.id, id),
+          eq(vocabulary.scopeType, "org"),
+          eq(vocabulary.scopeId, identity.scopeId),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (!existing) return null;
+    recordOrganizationSyncMutation(tx, "vocabulary", existing.id, null);
+    return (
+      tx
+        .delete(vocabulary)
+        .where(
+          and(
+            eq(vocabulary.id, id),
+            eq(vocabulary.scopeType, "org"),
+            eq(vocabulary.scopeId, identity.scopeId),
+          ),
+        )
+        .returning()
+        .get() ?? null
+    );
+  });
+}
+
+// Get vocabulary count
+export async function getVocabularyCount(
+  search?: string,
+  scope: LanguageAssetScopeFilter = "all",
+) {
+  return (
+    await getVocabulary({
+      limit: Number.MAX_SAFE_INTEGER,
+      search,
+      scope,
+    })
+  ).length;
 }
 
 // Track word usage - increment usage count atomically
 export async function trackWordUsage(word: string) {
-  // Use atomic update with SQL increment to avoid race conditions
-  const result = await db
-    .update(vocabulary)
-    .set({
-      usageCount: sql`${vocabulary.usageCount} + 1`,
-      updatedAt: new Date(),
-    })
-    .where(eq(vocabulary.word, word.toLowerCase()))
-    .returning();
-
-  return result[0] || null;
+  const organization = await getActiveOrganizationAccess();
+  return db.transaction((tx) => {
+    const effective = effectiveVocabulary(
+      tx
+        .select()
+        .from(vocabulary)
+        .where(eq(vocabulary.word, word.toLowerCase()))
+        .all()
+        .filter(
+          (row) =>
+            (row.scopeType === "user" && row.scopeId === "") ||
+            (row.scopeType === "org" && row.scopeId === organization?.scopeId),
+        ),
+    )[0];
+    if (!effective) return null;
+    return (
+      tx
+        .update(vocabulary)
+        .set({
+          usageCount: sql`${vocabulary.usageCount} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(vocabulary.id, effective.id),
+            eq(vocabulary.scopeType, effective.scopeType),
+            eq(vocabulary.scopeId, effective.scopeId),
+          ),
+        )
+        .returning()
+        .get() ?? null
+    );
+  });
 }
 
 // Get most frequently used words
 export async function getMostUsedWords(limit = 10) {
-  return await db
-    .select()
-    .from(vocabulary)
-    .where(gt(vocabulary.usageCount, 0)) // Only words that have been used
-    .orderBy(desc(vocabulary.usageCount))
-    .limit(limit);
+  return (await getAllVocabulary())
+    .filter((row) => (row.usageCount ?? 0) > 0)
+    .sort((left, right) => (right.usageCount ?? 0) - (left.usageCount ?? 0))
+    .slice(0, limit);
 }
 
 // Search vocabulary words
 export async function searchVocabulary(searchTerm: string, limit = 20) {
-  return await db
-    .select()
-    .from(vocabulary)
-    .where(like(vocabulary.word, `%${searchTerm}%`))
-    .orderBy(asc(vocabulary.word))
-    .limit(limit);
+  return getVocabulary({
+    search: searchTerm,
+    limit,
+    sortBy: "word",
+    sortOrder: "asc",
+  });
 }
 
 // Bulk import vocabulary words
 export async function bulkImportVocabulary(
-  words: Omit<NewVocabulary, "id" | "createdAt" | "updatedAt">[],
+  words: Omit<
+    NewVocabulary,
+    "id" | "scopeType" | "scopeId" | "createdAt" | "updatedAt"
+  >[],
 ) {
   const now = new Date();
 
   const vocabularyWords = words.map((word) => ({
     ...word,
+    scopeType: "user" as const,
+    scopeId: "",
     dateAdded: word.dateAdded || now,
     createdAt: now,
     updatedAt: now,

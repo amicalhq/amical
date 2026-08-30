@@ -48,38 +48,70 @@ export const transcriptions = sqliteTable(
 );
 
 // Vocabulary table
-export const vocabulary = sqliteTable("vocabulary", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  word: text("word").notNull().unique(),
-  replacementWord: text("replacement_word"),
-  dateAdded: integer("date_added", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  usageCount: integer("usage_count").default(0), // How many times this word appeared in transcriptions
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const vocabulary = sqliteTable(
+  "vocabulary",
+  {
+    id: text("id")
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    scopeType: text("scope_type", { enum: ["user", "org"] })
+      .notNull()
+      .default("user"),
+    // Personal data keeps the existing device-local lifecycle and uses an
+    // empty scope ID. Organisation data always stores Axis's concrete scope ID.
+    scopeId: text("scope_id").notNull().default(""),
+    word: text("word").notNull(),
+    replacementWord: text("replacement_word"),
+    dateAdded: integer("date_added", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    usageCount: integer("usage_count").default(0), // How many times this word appeared in transcriptions
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scopeType, table.scopeId, table.id] }),
+    uniqueIndex("vocabulary_scope_word_unique").on(
+      table.scopeType,
+      table.scopeId,
+      table.word,
+    ),
+  ],
+);
 
 // Snippets table — short trigger phrases that expand into longer text during dictation
-export const snippets = sqliteTable("snippets", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  trigger: text("trigger").notNull().unique(),
-  content: text("content").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const snippets = sqliteTable(
+  "snippets",
+  {
+    id: text("id")
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    scopeType: text("scope_type", { enum: ["user", "org"] })
+      .notNull()
+      .default("user"),
+    scopeId: text("scope_id").notNull().default(""),
+    trigger: text("trigger").notNull(),
+    content: text("content").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scopeType, table.scopeId, table.id] }),
+    uniqueIndex("snippets_scope_trigger_unique").on(
+      table.scopeType,
+      table.scopeId,
+      table.trigger,
+    ),
+  ],
+);
 
 export type SyncScopeType = "user" | "org";
 export type SyncCollection = "vocabulary" | "snippet";
@@ -98,6 +130,19 @@ export const syncClientState = sqliteTable("sync_client_state", {
   id: integer("id").primaryKey(),
   lastOutboxSequence: integer("last_outbox_sequence").notNull().default(0),
 });
+
+// The scopes advertised by the latest successful Axis bootstrap. This gives
+// local organisation CRUD a transactionally checkable capability boundary.
+export const syncScopeState = sqliteTable(
+  "sync_scope_state",
+  {
+    scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
+    scopeId: text("scope_id").notNull(),
+    role: text("role"),
+    canWrite: integer("can_write", { mode: "boolean" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scopeType, table.scopeId] })],
+);
 
 export const syncCollectionState = sqliteTable(
   "sync_collection_state",
@@ -495,6 +540,7 @@ export type NewVocabulary = typeof vocabulary.$inferInsert;
 export type Snippet = typeof snippets.$inferSelect;
 export type NewSnippet = typeof snippets.$inferInsert;
 export type SyncClientState = typeof syncClientState.$inferSelect;
+export type SyncScopeState = typeof syncScopeState.$inferSelect;
 export type SyncCollectionState = typeof syncCollectionState.$inferSelect;
 export type SyncItemState = typeof syncItemState.$inferSelect;
 export type SyncOutbox = typeof syncOutbox.$inferSelect;

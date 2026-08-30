@@ -912,6 +912,17 @@
       "title": "Vocabulary",
       "description": "Manage your custom vocabulary and word replacements for dictation.",
       "addButton": "Add Word",
+      "scope": {
+        "label": "Vocabulary scope",
+        "all": "All",
+        "user": "Personal",
+        "org": "Organisation",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Add organisation word",
+        "readOnly": "Organisation vocabulary is read-only for your current role.",
+        "unavailable": "No organisation vocabulary is available."
+      },
       "loading": "Loading vocabulary...",
       "empty": "No vocabulary words found. Add your first word to get started.",
       "toast": {
@@ -946,6 +957,17 @@
       "title": "Snippets",
       "description": "Create short triggers that expand into longer text while you dictate.",
       "addButton": "Add new",
+      "scope": {
+        "label": "Snippet scope",
+        "all": "All",
+        "user": "Personal",
+        "org": "Organisation",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Add organisation snippet",
+        "readOnly": "Organisation snippets are read-only for your current role.",
+        "unavailable": "No organisation snippets are available."
+      },
       "loading": "Loading snippets...",
       "empty": "No snippets yet. Add your first snippet to get started.",
       "noResults": "No snippets match \"{{query}}\".",

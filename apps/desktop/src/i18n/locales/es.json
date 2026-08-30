@@ -915,6 +915,17 @@
       "title": "Vocabulario",
       "description": "Administra tu vocabulario personalizado y los reemplazos de palabras para el dictado.",
       "addButton": "Agregar palabra",
+      "scope": {
+        "label": "Ámbito del vocabulario",
+        "all": "Todo",
+        "user": "Personal",
+        "org": "Organización",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organización",
+        "addOrganization": "Agregar palabra de la organización",
+        "readOnly": "El vocabulario de la organización es de solo lectura para tu rol actual.",
+        "unavailable": "No hay vocabulario de organización disponible."
+      },
       "loading": "Cargando vocabulario...",
       "empty": "No se encontraron palabras en el vocabulario. Agrega tu primera palabra para comenzar.",
       "toast": {
@@ -949,6 +960,17 @@
       "title": "Fragmentos",
       "description": "Crea disparadores cortos que se expanden en texto más largo mientras dictas.",
       "addButton": "Agregar",
+      "scope": {
+        "label": "Ámbito del fragmento",
+        "all": "Todo",
+        "user": "Personal",
+        "org": "Organización",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organización",
+        "addOrganization": "Agregar fragmento de la organización",
+        "readOnly": "Los fragmentos de la organización son de solo lectura para tu rol actual.",
+        "unavailable": "No hay fragmentos de organización disponibles."
+      },
       "loading": "Cargando fragmentos...",
       "empty": "Todavía no hay fragmentos. Agrega tu primer fragmento para comenzar.",
       "noResults": "Ningún fragmento coincide con \"{{query}}\".",

@@ -28,7 +28,9 @@ function AppShell() {
   useEffect(() => {
     const handleSettingsSync = () => {
       void utils.vocabulary.getVocabulary.invalidate();
+      void utils.vocabulary.getScopeAccess.invalidate();
       void utils.snippets.getSnippets.invalidate();
+      void utils.snippets.getScopeAccess.invalidate();
     };
 
     window.electronAPI.on("settings-sync-updated", handleSettingsSync);

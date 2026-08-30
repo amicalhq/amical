@@ -915,6 +915,17 @@
       "title": "カスタム辞書",
       "description": "音声入力用のカスタム辞書と単語置換を管理します。",
       "addButton": "単語を追加",
+      "scope": {
+        "label": "語彙の範囲",
+        "all": "すべて",
+        "user": "個人",
+        "org": "組織",
+        "personalBadge": "個人",
+        "organizationBadge": "組織",
+        "addOrganization": "組織の単語を追加",
+        "readOnly": "現在のロールでは組織の語彙は読み取り専用です。",
+        "unavailable": "利用できる組織の語彙はありません。"
+      },
       "loading": "カスタム辞書を読み込み中...",
       "empty": "カスタム辞書が見つかりません。最初の単語を追加して始めましょう。",
       "toast": {
@@ -949,6 +960,17 @@
       "title": "スニペット",
       "description": "音声入力中に長いテキストに展開される短いトリガーを作成します。",
       "addButton": "新規追加",
+      "scope": {
+        "label": "スニペットの範囲",
+        "all": "すべて",
+        "user": "個人",
+        "org": "組織",
+        "personalBadge": "個人",
+        "organizationBadge": "組織",
+        "addOrganization": "組織のスニペットを追加",
+        "readOnly": "現在のロールでは組織のスニペットは読み取り専用です。",
+        "unavailable": "利用できる組織のスニペットはありません。"
+      },
       "loading": "スニペットを読み込み中...",
       "empty": "スニペットがまだありません。最初のスニペットを追加して始めましょう。",
       "noResults": "「{{query}}」に一致するスニペットはありません。",

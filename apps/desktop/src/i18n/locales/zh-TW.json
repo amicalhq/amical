@@ -915,6 +915,17 @@
       "title": "詞彙",
       "description": "管理您的自訂詞彙和用於聽寫的字詞替換。",
       "addButton": "新增單字",
+      "scope": {
+        "label": "詞彙範圍",
+        "all": "全部",
+        "user": "個人",
+        "org": "組織",
+        "personalBadge": "個人",
+        "organizationBadge": "組織",
+        "addOrganization": "新增組織單字",
+        "readOnly": "您目前的角色只能讀取組織詞彙。",
+        "unavailable": "目前沒有可用的組織詞彙。"
+      },
       "loading": "載入自訂詞彙中...",
       "empty": "找不到任何詞彙。加入您的第一個自訂詞彙以開始使用。",
       "toast": {
@@ -949,6 +960,17 @@
       "title": "片段",
       "description": "建立在聽寫時可展開為較長文字的簡短觸發詞。",
       "addButton": "新增",
+      "scope": {
+        "label": "文字片段範圍",
+        "all": "全部",
+        "user": "個人",
+        "org": "組織",
+        "personalBadge": "個人",
+        "organizationBadge": "組織",
+        "addOrganization": "新增組織文字片段",
+        "readOnly": "您目前的角色只能讀取組織文字片段。",
+        "unavailable": "目前沒有可用的組織文字片段。"
+      },
       "loading": "正在載入片段...",
       "empty": "尚無片段。新增您的第一個片段以開始使用。",
       "noResults": "找不到符合「{{query}}」的片段。",

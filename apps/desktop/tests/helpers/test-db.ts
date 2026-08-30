@@ -75,6 +75,7 @@ export async function createTestDatabase(
       db.delete(schema.syncOutbox).run();
       db.delete(schema.syncItemState).run();
       db.delete(schema.syncCollectionState).run();
+      db.delete(schema.syncScopeState).run();
       db.delete(schema.syncClientState).run();
       db.delete(schema.transcriptions).run();
       db.delete(schema.dailyStats).run();
