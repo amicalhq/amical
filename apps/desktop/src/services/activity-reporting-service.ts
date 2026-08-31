@@ -481,29 +481,21 @@ export class ActivityReportingService {
               const submittedIds = activities.map(
                 (activity) => activity.activityId,
               );
-              return this.client.submit(activities).pipe(
-                Effect.flatMap((result) =>
-                  this.removeSubmittedRowsIfCurrent(
-                    submittedIds,
-                    epoch,
-                    accountId,
-                  ).pipe(
-                    Effect.tap((removed) =>
-                      removed && result === "invalid"
-                        ? Effect.sync(() => {
-                            logger.main.error(
-                              "Axis rejected an activity batch; discarding batch",
-                              { activityCount: submittedIds.length },
-                            );
-                          })
-                        : Effect.void,
-                    ),
-                    Effect.flatMap((removed) =>
-                      removed ? Effect.suspend(drain) : Effect.void,
+              return this.client
+                .submit(activities)
+                .pipe(
+                  Effect.flatMap(() =>
+                    this.removeSubmittedRowsIfCurrent(
+                      submittedIds,
+                      epoch,
+                      accountId,
+                    ).pipe(
+                      Effect.flatMap((removed) =>
+                        removed ? Effect.suspend(drain) : Effect.void,
+                      ),
                     ),
                   ),
-                ),
-              );
+                );
             }),
           );
         }),

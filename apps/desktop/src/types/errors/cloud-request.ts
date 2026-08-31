@@ -29,6 +29,11 @@ export class AccessForbidden extends Data.TaggedError("AccessForbidden")<{
   meta: CloudRequestMeta;
 }> {}
 
+export class BadRequest extends Data.TaggedError("BadRequest")<{
+  message: string;
+  meta: CloudRequestMeta;
+}> {}
+
 export class RateLimited extends Data.TaggedError("RateLimited")<{
   message: string;
   meta?: CloudRequestMeta;
@@ -50,6 +55,7 @@ export class CloudHttpFailure extends Data.TaggedError("CloudHttpFailure")<{
 export type CloudRequestError =
   | AuthenticationRequired
   | AccessForbidden
+  | BadRequest
   | RateLimited
   | CloudNetworkFailure
   | CloudHttpFailure;
@@ -104,6 +110,10 @@ export const decodeCloudHttpFailure = ({
       details?.localizedMessage ?? additionalMeta?.localizedMessage,
     retryAfter: retryAfter ?? additionalMeta?.retryAfter,
   };
+
+  if (status === 400) {
+    return new BadRequest({ message, meta });
+  }
 
   switch (details?.code) {
     case "AUTH_REQUIRED":

@@ -17,14 +17,12 @@ import {
 } from "../types/errors/cloud-request";
 import { Effect } from "effect";
 
-export type ActivitySubmissionResult = "success" | "invalid";
-
 export class ActivityReportingClient {
   constructor(private readonly authService: AuthService) {}
 
   submit(
     activities: DictationActivity[],
-  ): Effect.Effect<ActivitySubmissionResult, ActivityReportingClientError> {
+  ): Effect.Effect<void, ActivityReportingClientError> {
     return Effect.gen(this, function* () {
       const request = yield* Effect.try({
         try: () => ActivityBatchSchema.parse({ activities }),
@@ -95,8 +93,7 @@ export class ActivityReportingClient {
             }),
         });
 
-        if (response.status === 200) return "success" as const;
-        if (response.status === 400) return "invalid" as const;
+        if (response.status === 200) return;
 
         const body = yield* Effect.promise(async () => {
           try {

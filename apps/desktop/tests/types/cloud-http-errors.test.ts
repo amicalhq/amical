@@ -3,12 +3,29 @@ import { describe, expect, it } from "vitest";
 import {
   AccessForbidden,
   AuthenticationRequired,
+  BadRequest,
   CloudHttpFailure,
   RateLimited,
   decodeCloudHttpFailure,
 } from "../../src/types/errors";
 
 describe("cloud HTTP error decoding", () => {
+  it("classifies HTTP 400 as BadRequest", () => {
+    const error = decodeCloudHttpFailure({
+      status: 400,
+      body: {
+        error: { code: "INVALID_REQUEST", message: "Invalid activity" },
+      },
+    });
+
+    expect(error).toBeInstanceOf(BadRequest);
+    expect(error).toMatchObject({
+      _tag: "BadRequest",
+      message: "Invalid activity",
+      meta: { wireCode: "INVALID_REQUEST", httpStatus: 400 },
+    });
+  });
+
   it.each([
     ["FORBIDDEN", 401, AccessForbidden, "AccessForbidden"],
     ["RATE_LIMIT_EXCEEDED", 500, RateLimited, "RateLimited"],

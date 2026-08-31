@@ -7,6 +7,7 @@ import { AMICAL_PLATFORM_HEADER } from "../../src/utils/http-client";
 import type { DictationActivity } from "../../src/types/activity";
 import {
   AuthenticationRequired,
+  BadRequest,
   CloudNetworkFailure,
   settleExit,
 } from "../../src/types/errors";
@@ -50,7 +51,7 @@ describe("ActivityReportingClient", () => {
   it("posts through Apps V1 with auth and platform headers and accepts empty 200", async () => {
     fetchMock.mockResolvedValue({ status: 200 });
 
-    await expect(runClient(client.submit([activity]))).resolves.toBe("success");
+    await expect(runClient(client.submit([activity]))).resolves.toBeUndefined();
 
     const [url, init] = fetchMock.mock.calls[0] as [
       URL,
@@ -63,9 +64,14 @@ describe("ActivityReportingClient", () => {
     expect(JSON.parse(init.body)).not.toHaveProperty("platform");
   });
 
-  it("returns terminal invalid only for 400 and surfaces retryable statuses", async () => {
+  it("decodes 400 as BadRequest and surfaces retryable statuses", async () => {
     fetchMock.mockResolvedValueOnce({ status: 400 });
-    await expect(runClient(client.submit([activity]))).resolves.toBe("invalid");
+    await expect(runClient(client.submit([activity]))).rejects.toEqual(
+      expect.objectContaining<Partial<BadRequest>>({
+        _tag: "BadRequest",
+        meta: expect.objectContaining({ httpStatus: 400 }),
+      }),
+    );
 
     for (const [status, tag] of [
       [401, "AuthenticationRequired"],

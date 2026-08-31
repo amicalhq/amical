@@ -9,6 +9,7 @@ import {
 import { variantForWireCode } from "./cloud-wire-decode";
 import {
   AuthenticationRequired,
+  BadRequest,
   CloudHttpFailure,
   CloudQuotaExceeded,
   ServerRejected,
@@ -367,7 +368,7 @@ export class AmicalCloudHttpTransport {
       fallbackMessage: message,
       additionalMeta: meta,
     });
-    if (decoded instanceof CloudHttpFailure) {
+    if (decoded instanceof BadRequest || decoded instanceof CloudHttpFailure) {
       return new ServerRejected({
         message: decoded.message,
         meta: {

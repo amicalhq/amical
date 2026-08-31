@@ -21,7 +21,6 @@ import {
   stampTranscriptionDisposition,
 } from "../../src/db/transcriptions";
 import type { AuthService, AuthState } from "../../src/services/auth-service";
-import type { ActivitySubmissionResult } from "../../src/services/activity-reporting-client";
 import type { ActivityReportingClientError } from "../../src/services/activity-reporting-errors";
 import {
   ActivityReportingService,
@@ -30,6 +29,7 @@ import {
 import {
   AccessForbidden,
   AuthenticationRequired,
+  BadRequest,
   CloudNetworkFailure,
 } from "../../src/types/errors";
 import {
@@ -94,7 +94,7 @@ describe("ActivityReportingService", () => {
   let submit: Mock<
     (
       activities: DictationActivity[],
-    ) => Effect.Effect<ActivitySubmissionResult, ActivityReportingClientError>
+    ) => Effect.Effect<void, ActivityReportingClientError>
   >;
   let service: ActivityReportingService;
 
@@ -139,22 +139,39 @@ describe("ActivityReportingService", () => {
     service.wake();
   }
 
-  it("removes complete 200 and terminal 400 batches", async () => {
+  it("removes complete 200 batches and retains HTTP 400 batches", async () => {
     authenticate("user-1");
-    submit.mockReturnValueOnce(Effect.succeed("success"));
+    submit.mockReturnValueOnce(Effect.void);
     enqueue(activity(ids[0]));
     await vi.waitFor(async () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
     });
 
-    submit.mockReturnValueOnce(Effect.succeed("invalid"));
+    submit.mockReturnValueOnce(
+      Effect.fail(
+        new BadRequest({
+          message: "Invalid activity batch",
+          meta: { httpStatus: 400 },
+        }),
+      ),
+    );
     enqueue(activity(ids[1]));
     enqueue(activity(ids[2]));
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(2);
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(submit.mock.calls[1][0].map((item) => item.activityId)).toEqual([
+      ids[1],
+      ids[2],
+    ]);
+
+    submit.mockReturnValueOnce(Effect.void);
+    service.wake();
     await vi.waitFor(async () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
     });
-    expect(submit).toHaveBeenCalledTimes(2);
-    expect(submit.mock.calls[1][0].map((item) => item.activityId)).toEqual([
+    expect(submit).toHaveBeenCalledTimes(3);
+    expect(submit.mock.calls[2][0].map((item) => item.activityId)).toEqual([
       ids[1],
       ids[2],
     ]);
@@ -166,7 +183,7 @@ describe("ActivityReportingService", () => {
       text: "historical words",
       timestamp: new Date("2024-01-02T03:04:05.000Z"),
     });
-    submit.mockReturnValueOnce(Effect.succeed("success"));
+    submit.mockReturnValueOnce(Effect.void);
 
     authenticate("user-1");
 
@@ -182,7 +199,7 @@ describe("ActivityReportingService", () => {
 
   it("materializes a new settled dictation directly", async () => {
     authenticate("user-1");
-    submit.mockReturnValueOnce(Effect.succeed("success"));
+    submit.mockReturnValueOnce(Effect.void);
     await createProvisionalTranscription({ sessionId: ids[0]! });
     await enrichTranscriptionBySession(ids[0]!, {
       audioDurationMs: 2_000,
@@ -213,7 +230,7 @@ describe("ActivityReportingService", () => {
   });
 
   it("materializes an earlier row when it settles after the cursor advanced", async () => {
-    submit.mockReturnValue(Effect.succeed("success"));
+    submit.mockReturnValue(Effect.void);
     authenticate("user-1");
     await vi.waitFor(async () => {
       expect(
@@ -254,7 +271,7 @@ describe("ActivityReportingService", () => {
     });
     expect(submit).not.toHaveBeenCalled();
 
-    submit.mockReturnValueOnce(Effect.succeed("success"));
+    submit.mockReturnValueOnce(Effect.void);
     authenticate("user-1");
     await vi.waitFor(async () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
@@ -287,7 +304,7 @@ describe("ActivityReportingService", () => {
     await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
 
-    submit.mockReturnValueOnce(Effect.succeed("success"));
+    submit.mockReturnValueOnce(Effect.void);
     service.wake();
     await vi.waitFor(async () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
@@ -306,7 +323,7 @@ describe("ActivityReportingService", () => {
           }),
         ),
       )
-      .mockReturnValueOnce(Effect.succeed("success"));
+      .mockReturnValueOnce(Effect.void);
     enqueue(activity());
 
     await vi.waitFor(async () => {
@@ -361,7 +378,7 @@ describe("ActivityReportingService", () => {
     expect(submit).toHaveBeenCalledOnce();
     expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
 
-    submit.mockReturnValueOnce(Effect.succeed("success"));
+    submit.mockReturnValueOnce(Effect.void);
     auth.emit("token-refreshed", auth.state);
     await vi.waitFor(async () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
@@ -375,7 +392,7 @@ describe("ActivityReportingService", () => {
       disposition: "success",
       text: "shared device history",
     });
-    submit.mockReturnValue(Effect.succeed("success"));
+    submit.mockReturnValue(Effect.void);
     authenticate("user-1");
     await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     expect(submit.mock.calls[0][0][0].activityId).toBe(ids[0]);
@@ -392,7 +409,7 @@ describe("ActivityReportingService", () => {
       disposition: "success",
       text: "already reported history",
     });
-    submit.mockReturnValue(Effect.succeed("success"));
+    submit.mockReturnValue(Effect.void);
     authenticate("user-1");
     await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
     await vi.waitFor(async () => {
@@ -446,7 +463,7 @@ describe("ActivityReportingService", () => {
     await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
     expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
 
-    submit.mockReturnValueOnce(Effect.succeed("success"));
+    submit.mockReturnValueOnce(Effect.void);
     authenticate("user-2");
     await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
     expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
@@ -465,7 +482,7 @@ describe("ActivityReportingService", () => {
           ),
         ),
       )
-      .mockReturnValueOnce(Effect.succeed("success"));
+      .mockReturnValueOnce(Effect.void);
 
     authenticate("user-1");
     enqueue(activity(ids[0]));
@@ -488,10 +505,10 @@ describe("ActivityReportingService", () => {
       .mockImplementationOnce(() =>
         Effect.sync(() => {
           authenticate("user-2");
-          return "success" as const;
+          return undefined;
         }),
       )
-      .mockReturnValueOnce(Effect.succeed("success"));
+      .mockReturnValueOnce(Effect.void);
 
     authenticate("user-1");
     enqueue(activity(ids[0]));
@@ -517,7 +534,7 @@ describe("ActivityReportingService", () => {
           ),
         ),
       )
-      .mockReturnValueOnce(Effect.succeed("success"));
+      .mockReturnValueOnce(Effect.void);
 
     authenticate("user-1");
     enqueue(activity(ids[0]));
