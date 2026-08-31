@@ -358,14 +358,15 @@ export class RemoteConfigService {
       // auth state. Attach the bearer token only when signed in, plus the
       // anonymous per-install device id (for staged-rollout bucketing), the same
       // id the auto-updater sends.
-      const idToken = yield* Effect.tryPromise({
-        try: () => this.authService.getIdToken(),
-        catch: (cause) =>
-          new RemoteConfigFetchFailed({
-            message: "Failed to resolve auth token for remote config",
-            cause,
-          }),
-      });
+      const idToken = yield* this.authService.getIdToken().pipe(
+        Effect.mapError(
+          (cause) =>
+            new RemoteConfigFetchFailed({
+              message: "Failed to resolve auth token for remote config",
+              cause,
+            }),
+        ),
+      );
       const deviceId = this.telemetryService.getMachineId();
 
       const headers: Record<string, string> = {

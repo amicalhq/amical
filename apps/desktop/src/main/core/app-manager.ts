@@ -11,7 +11,7 @@ import type { DesktopRecordingLifecycle } from "../lifecycle/live";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { SettingsService } from "../../services/settings-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
-import type { AuthService } from "../../services/auth-service";
+import { runAuthEffect, type AuthService } from "../../services/auth-service";
 import type { FeatureFlagService } from "../../services/feature-flag-service";
 import type { AutoUpdaterService } from "../services/auto-updater";
 import type { HelperEvent } from "@amical/types";
@@ -59,7 +59,9 @@ export class AppManager {
 
         if (code) {
           // Complete the OAuth flow
-          this.authService.handleAuthCallback(code, state);
+          void runAuthEffect(
+            this.authService.handleAuthCallback(code, state),
+          ).catch(() => undefined);
         }
       }
 

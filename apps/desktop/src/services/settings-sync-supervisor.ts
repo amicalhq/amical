@@ -360,9 +360,8 @@ export class SettingsSyncSupervisor {
       if (!this.lifecycleIsCurrent(generation, "starting")) return;
       this.lifecyclePhase = "running";
 
-      const authState = yield* this.fromPromise(
-        () => this.authService.getAuthState(),
-        "authentication",
+      const authState = yield* this.fromAuthentication(
+        this.authService.getAuthState(),
       );
       if (
         !this.lifecycleIsCurrent(generation, "running") ||
@@ -432,22 +431,23 @@ export class SettingsSyncSupervisor {
     this.unregisterLocalMutation = null;
   }
 
-  private handleBeforeLogout(): Promise<void> {
-    if (this.stopping || !this.initialized) return Promise.resolve();
+  private handleBeforeLogout(): Effect.Effect<
+    void,
+    SettingsSyncLifecycleError
+  > {
+    if (this.stopping || !this.initialized) return Effect.void;
     const epoch = this.fenceBoundary(true, true);
-    return this.runBoundary(
-      Effect.gen(this, function* () {
-        const ack = yield* Deferred.make<void, SettingsSyncLifecycleError>();
-        yield* Queue.offer(this.events, { _tag: "BeforeLogout", epoch, ack });
-        yield* Effect.raceFirst(
-          Deferred.await(ack),
-          Deferred.await(this.supervisorDone).pipe(
-            Effect.zipRight(this.db(() => clearSyncState())),
-            Effect.tap(() => Effect.sync(() => this.notifyRenderers())),
-          ),
-        );
-      }),
-    );
+    return Effect.gen(this, function* () {
+      const ack = yield* Deferred.make<void, SettingsSyncLifecycleError>();
+      yield* Queue.offer(this.events, { _tag: "BeforeLogout", epoch, ack });
+      yield* Effect.raceFirst(
+        Deferred.await(ack),
+        Deferred.await(this.supervisorDone).pipe(
+          Effect.zipRight(this.db(() => clearSyncState())),
+          Effect.tap(() => Effect.sync(() => this.notifyRenderers())),
+        ),
+      );
+    });
   }
 
   private fenceBoundary(pause: boolean, cancelDebounce: boolean): number {
@@ -1013,10 +1013,7 @@ export class SettingsSyncSupervisor {
     state: SupervisorState,
   ): Effect.Effect<SupervisorState> {
     const refresh = Effect.uninterruptible(
-      this.fromPromise(
-        () => this.authService.refreshTokenIfNeeded(true),
-        "authentication",
-      ),
+      this.fromAuthentication(this.authService.refreshTokenIfNeeded(true)),
     ).pipe(
       Effect.catchAll((error) =>
         Effect.sync(() => {
@@ -1166,6 +1163,21 @@ export class SettingsSyncSupervisor {
           cause,
         }),
     });
+  }
+
+  private fromAuthentication<T, E>(
+    effect: Effect.Effect<T, E>,
+  ): Effect.Effect<T, SettingsSyncLifecycleError> {
+    return effect.pipe(
+      Effect.mapError(
+        (cause) =>
+          new SettingsSyncDependencyFailure({
+            message: "Settings sync authentication operation failed",
+            dependency: "authentication",
+            cause,
+          }),
+      ),
+    );
   }
 
   private boundaryIsCurrent(epoch: number): boolean {

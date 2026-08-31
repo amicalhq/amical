@@ -35,7 +35,7 @@ describe("RemoteConfigService", () => {
   ) => {
     // The Live subscribes to auth events, so the stub must be an emitter.
     const authService = Object.assign(new EventEmitter(), {
-      getIdToken: vi.fn().mockResolvedValue(null),
+      getIdToken: vi.fn(() => Effect.succeed(null)),
     }) as unknown as AuthService;
     const settingsService = {
       getRemoteConfig:

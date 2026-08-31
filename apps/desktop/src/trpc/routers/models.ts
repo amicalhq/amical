@@ -22,6 +22,7 @@ import {
   findModelBySelectionValue,
   type ModelSelectionType,
 } from "../../utils/model-selection";
+import { runAuthEffect } from "../../services/auth-service";
 
 type ProviderConfigKey = keyof NonNullable<
   AppSettingsData["modelProvidersConfig"]
@@ -93,7 +94,9 @@ export const modelsRouter = createRouter({
 
         // Check authentication status for cloud model filtering
         const authService = ctx.services.authService;
-        const isAuthenticated = await authService.isAuthenticated();
+        const isAuthenticated = await runAuthEffect(
+          authService.isAuthenticated(),
+        );
 
         // Map available models to Model format using downloaded data if available
         let models = availableModels.map((m) => {

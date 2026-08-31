@@ -76,13 +76,17 @@ function organizationBootstrapScope(scopeId: string, canWrite: boolean) {
 
 class FakeAuthService extends EventEmitter {
   state: AuthState | null = AUTH_STATE;
-  beforeLogout: (() => Promise<void>) | null = null;
+  beforeLogout: (() => Effect.Effect<void, unknown>) | null = null;
 
-  getAuthState = vi.fn(async () => this.state);
-  getIdToken = vi.fn(async () => this.state?.idToken ?? null);
-  refreshTokenIfNeeded = vi.fn(async () => undefined);
+  getAuthState = vi.fn(
+    (): Effect.Effect<AuthState | null, unknown> => Effect.succeed(this.state),
+  );
+  getIdToken = vi.fn(() => Effect.succeed(this.state?.idToken ?? null));
+  refreshTokenIfNeeded = vi.fn(() => Effect.void);
 
-  registerBeforeLogoutHandler(handler: () => Promise<void>): () => void {
+  registerBeforeLogoutHandler(
+    handler: () => Effect.Effect<void, unknown>,
+  ): () => void {
     this.beforeLogout = handler;
     return () => {
       if (this.beforeLogout === handler) this.beforeLogout = null;
@@ -90,7 +94,7 @@ class FakeAuthService extends EventEmitter {
   }
 
   async logoutForTest(): Promise<void> {
-    await this.beforeLogout?.();
+    if (this.beforeLogout) await Effect.runPromise(this.beforeLogout());
     this.state = null;
     this.emit("logged-out");
   }
@@ -225,7 +229,7 @@ describe("SettingsSyncService", () => {
 
   it("classifies startup authentication dependency failures", async () => {
     const cause = new Error("token store unavailable");
-    auth.getAuthState.mockRejectedValueOnce(cause);
+    auth.getAuthState.mockReturnValueOnce(Effect.fail(cause));
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
       new InMemorySyncClient(),
@@ -399,13 +403,12 @@ describe("SettingsSyncService", () => {
   it("starts a fresh lifecycle when initialization is requested after shutdown", async () => {
     let releaseInitialAuth!: (state: AuthState | null) => void;
     auth.getAuthState
-      .mockImplementationOnce(
-        () =>
-          new Promise<AuthState | null>((resolve) => {
-            releaseInitialAuth = resolve;
-          }),
+      .mockImplementationOnce(() =>
+        Effect.async<AuthState | null>((resume) => {
+          releaseInitialAuth = (state) => resume(Effect.succeed(state));
+        }),
       )
-      .mockResolvedValue(AUTH_STATE);
+      .mockReturnValue(Effect.succeed(AUTH_STATE));
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
@@ -527,12 +530,13 @@ describe("SettingsSyncService", () => {
 
   it("keeps every restart caller pending until shared initialization completes", async () => {
     let releaseRestartAuth!: (state: AuthState | null) => void;
-    auth.getAuthState.mockResolvedValueOnce(AUTH_STATE).mockImplementationOnce(
-      () =>
-        new Promise<AuthState | null>((resolve) => {
-          releaseRestartAuth = resolve;
+    auth.getAuthState
+      .mockReturnValueOnce(Effect.succeed(AUTH_STATE))
+      .mockImplementationOnce(() =>
+        Effect.async<AuthState | null>((resume) => {
+          releaseRestartAuth = (state) => resume(Effect.succeed(state));
         }),
-    );
+      );
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,

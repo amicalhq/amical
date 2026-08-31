@@ -28,7 +28,7 @@ describe("SettingsSyncClient", () => {
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     client = new SettingsSyncClient({
-      getIdToken: vi.fn().mockResolvedValue("id-token"),
+      getIdToken: vi.fn(() => Effect.succeed("id-token")),
     } as unknown as AuthService);
   });
 
@@ -627,7 +627,7 @@ describe("SettingsSyncClient", () => {
 
   it("classifies a missing local token as authentication required", async () => {
     const tokenlessClient = new SettingsSyncClient({
-      getIdToken: vi.fn().mockResolvedValue(null),
+      getIdToken: vi.fn(() => Effect.succeed(null)),
     } as unknown as AuthService);
 
     await expect(

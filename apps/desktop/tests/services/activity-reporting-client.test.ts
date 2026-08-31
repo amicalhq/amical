@@ -38,7 +38,7 @@ describe("ActivityReportingClient", () => {
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     client = new ActivityReportingClient({
-      getIdToken: vi.fn().mockResolvedValue("id-token"),
+      getIdToken: vi.fn(() => Effect.succeed("id-token")),
     } as unknown as AuthService);
   });
 
@@ -118,7 +118,7 @@ describe("ActivityReportingClient", () => {
 
   it("requires a local authentication token before sending", async () => {
     const tokenlessClient = new ActivityReportingClient({
-      getIdToken: vi.fn().mockResolvedValue(null),
+      getIdToken: vi.fn(() => Effect.succeed(null)),
     } as unknown as AuthService);
 
     await expect(

@@ -401,15 +401,16 @@ export class SettingsSyncClient {
     init: RequestInit,
   ): Effect.Effect<unknown, SettingsSyncClientError> {
     return Effect.gen(this, function* () {
-      const token = yield* Effect.tryPromise({
-        try: () => this.authService.getIdToken(),
-        catch: (error) =>
-          new SettingsSyncDependencyFailure({
-            message: "Unable to read the settings sync authentication token",
-            dependency: "authentication",
-            cause: error,
-          }),
-      });
+      const token = yield* this.authService.getIdToken().pipe(
+        Effect.mapError(
+          (error) =>
+            new SettingsSyncDependencyFailure({
+              message: "Unable to read the settings sync authentication token",
+              dependency: "authentication",
+              cause: error,
+            }),
+        ),
+      );
       if (!token) {
         return yield* Effect.fail(
           new AuthenticationRequired({

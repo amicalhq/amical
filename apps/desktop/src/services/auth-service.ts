@@ -1,13 +1,23 @@
-import { shell } from "electron";
 import { randomBytes, createHash } from "crypto";
-import { Layer } from "effect";
-import { Mutex } from "async-mutex";
-import { logger } from "../main/logger";
 import { EventEmitter } from "events";
+import { shell } from "electron";
+import {
+  Cause,
+  Data,
+  Deferred,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Ref,
+  Scope,
+} from "effect";
+
 import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
+import { logger } from "../main/logger";
+import { down, up } from "../main/runtime/layer-helpers";
+import { AppScopeTag, AuthServiceTag } from "../main/runtime/tags";
 import { getAmicalClientHeaders, getUserAgent } from "../utils/http-client";
-import { AuthServiceTag } from "../main/runtime/tags";
-import { up } from "../main/runtime/layer-helpers";
 import type {
   ContractFailureKind,
   ContractFailureProperties,
@@ -45,6 +55,49 @@ interface TokenResponse {
   expires_in: number;
   refresh_token: string;
   id_token: string;
+}
+
+interface RefreshRun {
+  readonly controller: AbortController;
+  readonly completion: Deferred.Deferred<void>;
+  readonly forceRequested: Ref.Ref<boolean>;
+}
+
+export class AuthServiceFailure extends Data.TaggedError("AuthServiceFailure")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+function authFailure(
+  cause: unknown,
+  fallbackMessage: string,
+): AuthServiceFailure {
+  if (cause instanceof AuthServiceFailure) return cause;
+  return new AuthServiceFailure({
+    message: cause instanceof Error ? cause.message : fallbackMessage,
+    cause,
+  });
+}
+
+function originalAuthError(error: AuthServiceFailure): unknown {
+  return error.cause instanceof Error ? error.cause : error;
+}
+
+/**
+ * Promise bridge for imperative Electron and tRPC boundaries. Typed auth
+ * failures retain their original Error identity; defects remain defects.
+ */
+export async function runAuthEffect<A>(
+  effect: Effect.Effect<A, AuthServiceFailure>,
+): Promise<A> {
+  const exit = await Effect.runPromiseExit(effect);
+  if (Exit.isSuccess(exit)) return exit.value;
+
+  const failure = Cause.failureOption(exit.cause);
+  if (Option.isSome(failure)) {
+    throw originalAuthError(failure.value);
+  }
+  throw Cause.squash(exit.cause);
 }
 
 function parseExpiresInSeconds(value: unknown): number | null {
@@ -94,15 +147,19 @@ function parseTokenResponse(
 }
 
 export class AuthService extends EventEmitter {
-  private config: AuthConfig;
+  private readonly config: AuthConfig;
   private pendingAuth: PendingAuth | null = null;
-  private refreshPromise: Promise<void> | null = null;
-  private refreshAbortController: AbortController | null = null;
-  private readonly authStateMutex = new Mutex();
   private authGeneration = 0;
-  private beforeLogoutHandlers = new Set<() => Promise<void>>();
+  private readonly beforeLogoutHandlers = new Set<
+    () => Effect.Effect<void, unknown>
+  >();
 
-  private constructor() {
+  private constructor(
+    private readonly authScope: Scope.CloseableScope,
+    private readonly authStateSemaphore: Effect.Semaphore,
+    private readonly refreshAdmissionSemaphore: Effect.Semaphore,
+    private readonly refreshRun: Ref.Ref<RefreshRun | null>,
+  ) {
     super();
 
     this.config = {
@@ -122,6 +179,21 @@ export class AuthService extends EventEmitter {
     });
   }
 
+  private static make(): Effect.Effect<AuthService> {
+    return Effect.gen(function* () {
+      const authScope = yield* Scope.make();
+      const authStateSemaphore = yield* Effect.makeSemaphore(1);
+      const refreshAdmissionSemaphore = yield* Effect.makeSemaphore(1);
+      const refreshRun = yield* Ref.make<RefreshRun | null>(null);
+      return new AuthService(
+        authScope,
+        authStateSemaphore,
+        refreshAdmissionSemaphore,
+        refreshRun,
+      );
+    });
+  }
+
   /**
    * The service's layer. Identity side-effects on auth changes (telemetry
    * identify/reset, feature-flag refresh, remote-config reset) are NOT
@@ -129,21 +201,33 @@ export class AuthService extends EventEmitter {
    * "authenticated" / "logged-out" events in their own Live layers. Composed
    * into AppLive by src/main/runtime/layers.ts.
    */
-  static readonly Live: Layer.Layer<AuthServiceTag> = Layer.sync(
-    AuthServiceTag,
-    () => {
-      const authService = new AuthService();
-      logger.main.info("Auth service initialized");
-      up("authService");
-      return authService;
-    },
-  );
+  static readonly Live: Layer.Layer<AuthServiceTag, never, AppScopeTag> =
+    Layer.effect(
+      AuthServiceTag,
+      Effect.gen(function* () {
+        const appScope = yield* AppScopeTag;
+        const authService = yield* AuthService.make();
+        yield* Scope.addFinalizer(
+          appScope,
+          authService.shutdown().pipe(Effect.zipLeft(down("authService"))),
+        );
+        logger.main.info("Auth service initialized");
+        up("authService");
+        return authService;
+      }),
+    );
 
   static createForTests(): AuthService {
-    return new AuthService();
+    return Effect.runSync(AuthService.make());
   }
 
-  registerBeforeLogoutHandler(handler: () => Promise<void>): () => void {
+  shutdown(): Effect.Effect<void> {
+    return Scope.close(this.authScope, Exit.void);
+  }
+
+  registerBeforeLogoutHandler(
+    handler: () => Effect.Effect<void, unknown>,
+  ): () => void {
     this.beforeLogoutHandlers.add(handler);
 
     return () => {
@@ -151,9 +235,6 @@ export class AuthService extends EventEmitter {
     };
   }
 
-  /**
-   * Generate PKCE challenge and verifier
-   */
   private generatePKCE(): { verifier: string; challenge: string } {
     const verifier = this.base64URLEncode(randomBytes(32));
     const challenge = this.base64URLEncode(
@@ -162,9 +243,6 @@ export class AuthService extends EventEmitter {
     return { verifier, challenge };
   }
 
-  /**
-   * Base64 URL encode (no padding)
-   */
   private base64URLEncode(buffer: Buffer): string {
     return buffer
       .toString("base64")
@@ -173,9 +251,6 @@ export class AuthService extends EventEmitter {
       .replace(/=/g, "");
   }
 
-  /**
-   * Generate random state for OAuth
-   */
   private generateState(): string {
     return this.base64URLEncode(randomBytes(16));
   }
@@ -193,109 +268,127 @@ export class AuthService extends EventEmitter {
     this.emit("api-contract-failure", report);
   }
 
-  private async parseSuccessfulTokenResponse(
+  private parseSuccessfulTokenResponse(
     response: Response,
     fallbackRefreshToken?: string,
     fallbackIdToken?: string,
-  ): Promise<TokenResponse> {
-    const statusProperties =
-      typeof response.status === "number" ? { status: response.status } : {};
-    let raw: unknown;
-    try {
-      raw = await response.json();
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        this.reportApiContractFailure(
-          "oauth_token_response_invalid",
-          "invalid_json",
-          statusProperties,
-        );
-        throw new Error("Token endpoint returned an invalid response.");
-      }
-      throw error;
-    }
-
-    const parsed = parseTokenResponse(
-      raw,
-      fallbackRefreshToken,
-      fallbackIdToken,
-    );
-    if (!parsed) {
-      this.reportApiContractFailure(
-        "oauth_token_response_invalid",
-        "schema_mismatch",
-        statusProperties,
-      );
-      throw new Error("Token endpoint returned an invalid response.");
-    }
-    return parsed;
-  }
-
-  /**
-   * Start the OAuth login flow
-   */
-  async login(): Promise<void> {
-    try {
-      this.authGeneration += 1;
-      this.refreshAbortController?.abort();
-
-      // Generate PKCE parameters
-      const { verifier, challenge } = this.generatePKCE();
-      const state = this.generateState();
-
-      // Store pending auth data
-      this.pendingAuth = {
-        state,
-        codeVerifier: verifier,
-        codeChallenge: challenge,
-      };
-
-      // Build authorization URL
-      const params = new URLSearchParams({
-        client_id: this.config.clientId,
-        redirect_uri: this.config.redirectUri,
-        response_type: "code",
-        scope: "openid profile email offline_access",
-        state: state,
-        code_challenge: challenge,
-        code_challenge_method: "S256",
+  ): Effect.Effect<TokenResponse, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
+      const statusProperties =
+        typeof response.status === "number" ? { status: response.status } : {};
+      const raw = yield* Effect.tryPromise({
+        try: () => response.json(),
+        catch: (cause) => {
+          if (cause instanceof SyntaxError) {
+            this.reportApiContractFailure(
+              "oauth_token_response_invalid",
+              "invalid_json",
+              statusProperties,
+            );
+            return authFailure(
+              new Error("Token endpoint returned an invalid response."),
+              "Token endpoint returned an invalid response.",
+            );
+          }
+          return authFailure(cause, "Unable to read token endpoint response");
+        },
       });
 
-      const authUrl = `${this.config.authorizationEndpoint}?${params.toString()}`;
-
-      logger.main.info("Starting OAuth flow with URL:", authUrl);
-
-      // Open in default browser
-      await shell.openExternal(authUrl);
-
-      // The callback will be handled via deep link
-    } catch (error) {
-      logger.main.error("Error starting OAuth flow:", error);
-      throw error;
-    }
+      const parsed = parseTokenResponse(
+        raw,
+        fallbackRefreshToken,
+        fallbackIdToken,
+      );
+      if (!parsed) {
+        this.reportApiContractFailure(
+          "oauth_token_response_invalid",
+          "schema_mismatch",
+          statusProperties,
+        );
+        return yield* Effect.fail(
+          authFailure(
+            new Error("Token endpoint returned an invalid response."),
+            "Token endpoint returned an invalid response.",
+          ),
+        );
+      }
+      return parsed;
+    });
   }
 
-  /**
-   * Handle OAuth callback from deep link
-   */
-  async handleAuthCallback(code: string, state: string | null): Promise<void> {
-    const pendingAuth = this.pendingAuth;
-    const callbackGeneration = this.authGeneration;
+  /** Start the OAuth login flow. */
+  login(): Effect.Effect<void, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
+      yield* this.advanceGenerationAndAbortRefresh();
+      const authUrl = yield* Effect.try({
+        try: () => {
+          const { verifier, challenge } = this.generatePKCE();
+          const state = this.generateState();
+          this.pendingAuth = {
+            state,
+            codeVerifier: verifier,
+            codeChallenge: challenge,
+          };
 
-    try {
+          const params = new URLSearchParams({
+            client_id: this.config.clientId,
+            redirect_uri: this.config.redirectUri,
+            response_type: "code",
+            scope: "openid profile email offline_access",
+            state,
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+          });
+          return `${this.config.authorizationEndpoint}?${params.toString()}`;
+        },
+        catch: (cause) => authFailure(cause, "Unable to start OAuth flow"),
+      });
+
+      logger.main.info("Starting OAuth flow with URL:", authUrl);
+      yield* Effect.tryPromise({
+        try: () => shell.openExternal(authUrl),
+        catch: (cause) => authFailure(cause, "Unable to open OAuth flow"),
+      });
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() =>
+          logger.main.error(
+            "Error starting OAuth flow:",
+            originalAuthError(error),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /** Handle OAuth callback from deep link. */
+  handleAuthCallback(
+    code: string,
+    state: string | null,
+  ): Effect.Effect<void, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
       logger.main.info("Handling auth callback");
+      const pendingAuth = this.pendingAuth;
+      const callbackGeneration = this.authGeneration;
 
-      // Validate state
       if (!pendingAuth) {
-        throw new Error("No pending authentication request");
+        return yield* Effect.fail(
+          authFailure(
+            new Error("No pending authentication request"),
+            "No pending authentication request",
+          ),
+        );
       }
-
       if (state !== pendingAuth.state) {
-        throw new Error("State mismatch - possible CSRF attack");
+        return yield* Effect.fail(
+          authFailure(
+            new Error("State mismatch - possible CSRF attack"),
+            "State mismatch - possible CSRF attack",
+          ),
+        );
       }
 
-      // Exchange code for token
-      const tokenResponse = await this.exchangeCodeForToken(
+      const tokenResponse = yield* this.exchangeCodeForToken(
         code,
         pendingAuth.codeVerifier,
       );
@@ -307,7 +400,6 @@ export class AuthService extends EventEmitter {
         return;
       }
 
-      // Store auth data
       const authState: AuthState = {
         isAuthenticated: true,
         idToken: tokenResponse.id_token,
@@ -316,7 +408,6 @@ export class AuthService extends EventEmitter {
         expiresAt: Date.now() + tokenResponse.expires_in * 1000,
       };
 
-      // Decode ID token to get user info (basic JWT decode)
       if (tokenResponse.id_token) {
         try {
           const payload = tokenResponse.id_token.split(".")[1];
@@ -331,343 +422,416 @@ export class AuthService extends EventEmitter {
         }
       }
 
-      // Save to database
-      const loginGeneration = ++this.authGeneration;
-      this.refreshAbortController?.abort();
-      const persisted = await this.authStateMutex.runExclusive(async () => {
-        if (loginGeneration !== this.authGeneration) return false;
-        await updateSettingsSection("auth", authState);
-        return loginGeneration === this.authGeneration;
-      });
+      const loginGeneration = yield* this.advanceGenerationAndAbortRefresh();
+      const persisted = yield* this.writeAuthState(loginGeneration, authState);
       if (!persisted) return;
 
-      // Clear pending auth
       this.pendingAuth = null;
-
-      // Emit success event. Identity consumers (telemetry identify, feature
-      // flag refresh, remote config reset) subscribe in their Live layers.
       this.emit("authenticated", authState);
-
       logger.main.info("Authentication successful", {
         userInfo: authState.userInfo,
       });
-    } catch (error) {
-      logger.main.error("Error handling auth callback:", error);
-      this.emit("auth-error", error);
-      throw error;
-    }
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          const original = originalAuthError(error);
+          logger.main.error("Error handling auth callback:", original);
+          this.emit("auth-error", original);
+        }),
+      ),
+    );
   }
 
-  /**
-   * Exchange authorization code for tokens
-   */
-  private async exchangeCodeForToken(
+  private exchangeCodeForToken(
     code: string,
     codeVerifier: string,
-  ): Promise<TokenResponse> {
-    logger.main.info(
-      "Exchanging code for token at:",
-      this.config.tokenEndpoint,
-    );
+  ): Effect.Effect<TokenResponse, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
+      logger.main.info(
+        "Exchanging code for token at:",
+        this.config.tokenEndpoint,
+      );
+      const body = {
+        grant_type: "authorization_code",
+        code,
+        client_id: this.config.clientId,
+        redirect_uri: this.config.redirectUri,
+        code_verifier: codeVerifier,
+      };
 
-    const body = {
-      grant_type: "authorization_code",
-      code: code,
-      client_id: this.config.clientId,
-      redirect_uri: this.config.redirectUri,
-      code_verifier: codeVerifier,
-    };
-
-    try {
-      const response = await fetch(this.config.tokenEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": getUserAgent(),
-          ...getAmicalClientHeaders(),
-        },
-        body: JSON.stringify(body),
+      const response = yield* Effect.tryPromise({
+        try: (signal) =>
+          fetch(this.config.tokenEndpoint, {
+            method: "POST",
+            signal,
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": getUserAgent(),
+              ...getAmicalClientHeaders(),
+            },
+            body: JSON.stringify(body),
+          }),
+        catch: (cause) => authFailure(cause, "Token exchange failed"),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        const errorText = yield* Effect.tryPromise({
+          try: () => response.text(),
+          catch: (cause) => authFailure(cause, "Unable to read token error"),
+        });
         logger.main.error("Token exchange failed:", {
           status: response.status,
           statusText: response.statusText,
           error: errorText,
         });
-        throw new Error(`Token exchange failed: ${response.statusText}`);
+        return yield* Effect.fail(
+          authFailure(
+            new Error(`Token exchange failed: ${response.statusText}`),
+            "Token exchange failed",
+          ),
+        );
       }
 
-      const tokenResponse = await this.parseSuccessfulTokenResponse(response);
+      const tokenResponse = yield* this.parseSuccessfulTokenResponse(response);
       logger.main.debug("Token exchange successful", tokenResponse);
       return tokenResponse;
-    } catch (error) {
-      logger.main.error("Error exchanging code for token:", error);
-      throw error;
-    }
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() =>
+          logger.main.error(
+            "Error exchanging code for token:",
+            originalAuthError(error),
+          ),
+        ),
+      ),
+    );
   }
 
-  /**
-   * Logout and clear auth state
-   */
-  async logout(): Promise<void> {
-    const logoutGeneration = ++this.authGeneration;
-    this.refreshAbortController?.abort();
-    this.pendingAuth = null;
-    for (const handler of this.beforeLogoutHandlers) {
-      await handler();
-    }
-    const cleared = await this.authStateMutex.runExclusive(async () => {
-      if (logoutGeneration !== this.authGeneration) return false;
-      await updateSettingsSection("auth", undefined);
-      return logoutGeneration === this.authGeneration;
+  /** Logout and clear auth state. */
+  logout(): Effect.Effect<void, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
+      const logoutGeneration = yield* this.advanceGenerationAndAbortRefresh();
+      this.pendingAuth = null;
+
+      for (const handler of this.beforeLogoutHandlers) {
+        yield* handler().pipe(
+          Effect.mapError((cause) =>
+            authFailure(cause, "Before-logout handler failed"),
+          ),
+        );
+      }
+
+      const cleared = yield* this.writeAuthState(logoutGeneration, undefined);
+      if (!cleared) return;
+
+      this.emit("logged-out");
+      logger.main.info("User logged out");
     });
-    if (!cleared) return;
-    // Identity consumers (telemetry reset, feature flag refresh, remote
-    // config reset, model auto-switch) subscribe in their Live layers. A
-    // logout during startup token validation fires before those listeners
-    // exist and is a no-op for them, as before.
-    this.emit("logged-out");
-    logger.main.info("User logged out");
   }
 
-  /**
-   * Check if user is authenticated
-   * Automatically refreshes tokens if they are expired or expiring soon
-   */
-  async isAuthenticated(): Promise<boolean> {
-    await this.refreshTokenIfNeeded();
-
-    const authState = await this.getAuthState();
-    if (!authState || !authState.isAuthenticated) {
-      return false;
-    }
-
-    return true;
+  /** Check if the user is authenticated, refreshing near-expiry tokens. */
+  isAuthenticated(): Effect.Effect<boolean, AuthServiceFailure> {
+    return this.refreshTokenIfNeeded().pipe(
+      Effect.zipRight(this.getAuthState()),
+      Effect.map((authState) => Boolean(authState?.isAuthenticated)),
+    );
   }
 
-  /**
-   * Get current auth state
-   */
-  async getAuthState(): Promise<AuthState | null> {
-    const auth = await getSettingsSection("auth");
-    return auth as AuthState | null;
+  getAuthState(): Effect.Effect<AuthState | null, AuthServiceFailure> {
+    return Effect.tryPromise({
+      try: () => getSettingsSection("auth"),
+      catch: (cause) =>
+        authFailure(cause, "Unable to read authentication state"),
+    }).pipe(Effect.map((auth) => auth as AuthState | null));
   }
 
-  /**
-   * Get ID token for API requests
-   * Automatically refreshes the token if it's expiring soon
-   */
-  async getIdToken(): Promise<string | null> {
-    await this.refreshTokenIfNeeded();
-
-    const authState = await this.getAuthState();
-    return authState?.idToken || null;
+  /** Get the ID token, refreshing near-expiry tokens first. */
+  getIdToken(): Effect.Effect<string | null, AuthServiceFailure> {
+    return this.refreshTokenIfNeeded().pipe(
+      Effect.zipRight(this.getAuthState()),
+      Effect.map((authState) => authState?.idToken || null),
+    );
   }
 
   /**
    * `returnPath` must be a relative path; absolute and protocol-relative
    * values are rejected server-side.
    */
-  async openWebSession(returnPath: string): Promise<void> {
-    const idToken = await this.getIdToken();
-    if (!idToken) {
-      throw new Error("Not signed in");
-    }
+  openWebSession(returnPath: string): Effect.Effect<void, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
+      const idToken = yield* this.getIdToken();
+      if (!idToken) {
+        return yield* Effect.fail(
+          authFailure(new Error("Not signed in"), "Not signed in"),
+        );
+      }
 
-    // Better-Auth plugin endpoint, mounted under /api/auth/* on the same
-    // host as the OAuth token endpoint.
-    const handoffUrl = new URL(
-      "/api/auth/handoff/web-session",
-      this.config.tokenEndpoint,
-    ).toString();
-
-    const response = await fetch(handoffUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-        "User-Agent": getUserAgent(),
-        ...getAmicalClientHeaders(),
-      },
-      body: JSON.stringify({ return: returnPath }),
-    });
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      logger.main.error("Handoff request failed", {
-        status: response.status,
-        detail,
+      const handoffUrl = yield* Effect.try({
+        try: () =>
+          new URL(
+            "/api/auth/handoff/web-session",
+            this.config.tokenEndpoint,
+          ).toString(),
+        catch: (cause) => authFailure(cause, "Invalid handoff URL"),
       });
-      throw new Error(`Handoff failed: ${response.status}`);
-    }
+      const response = yield* Effect.tryPromise({
+        try: (signal) =>
+          fetch(handoffUrl, {
+            method: "POST",
+            signal,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${idToken}`,
+              "User-Agent": getUserAgent(),
+              ...getAmicalClientHeaders(),
+            },
+            body: JSON.stringify({ return: returnPath }),
+          }),
+        catch: (cause) => authFailure(cause, "Handoff request failed"),
+      });
 
-    const statusProperties =
-      typeof response.status === "number" ? { status: response.status } : {};
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      if (error instanceof SyntaxError) {
+      if (!response.ok) {
+        const detail = yield* Effect.tryPromise({
+          try: () => response.text().catch(() => ""),
+          catch: (cause) => authFailure(cause, "Unable to read handoff error"),
+        });
+        logger.main.error("Handoff request failed", {
+          status: response.status,
+          detail,
+        });
+        return yield* Effect.fail(
+          authFailure(
+            new Error(`Handoff failed: ${response.status}`),
+            "Handoff request failed",
+          ),
+        );
+      }
+
+      const statusProperties =
+        typeof response.status === "number" ? { status: response.status } : {};
+      const payload = yield* Effect.tryPromise({
+        try: () => response.json(),
+        catch: (cause) => {
+          if (cause instanceof SyntaxError) {
+            this.reportApiContractFailure(
+              "account_handoff_response_invalid",
+              "invalid_json",
+              statusProperties,
+            );
+            return authFailure(
+              new Error("Handoff response was not valid JSON"),
+              "Handoff response was not valid JSON",
+            );
+          }
+          return authFailure(cause, "Unable to read handoff response");
+        },
+      });
+
+      const url =
+        payload && typeof payload === "object" && !Array.isArray(payload)
+          ? (payload as Record<string, unknown>).url
+          : undefined;
+      if (typeof url !== "string" || !url) {
         this.reportApiContractFailure(
           "account_handoff_response_invalid",
-          "invalid_json",
-          statusProperties,
+          "schema_mismatch",
+          { ...statusProperties, reason: "missing_url" },
         );
-        throw new Error("Handoff response was not valid JSON");
+        return yield* Effect.fail(
+          authFailure(
+            new Error("Handoff response missing url"),
+            "Handoff response missing url",
+          ),
+        );
       }
-      throw error;
-    }
 
-    const url =
-      payload && typeof payload === "object" && !Array.isArray(payload)
-        ? (payload as Record<string, unknown>).url
-        : undefined;
-    if (typeof url !== "string" || !url) {
-      this.reportApiContractFailure(
-        "account_handoff_response_invalid",
-        "schema_mismatch",
-        { ...statusProperties, reason: "missing_url" },
-      );
-      throw new Error("Handoff response missing url");
-    }
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        this.reportApiContractFailure(
+          "account_handoff_response_invalid",
+          "schema_mismatch",
+          { ...statusProperties, reason: "invalid_url" },
+        );
+        return yield* Effect.fail(
+          authFailure(
+            new Error("Handoff response contained an invalid url"),
+            "Handoff response contained an invalid url",
+          ),
+        );
+      }
+      const host = parsed.hostname;
+      const hostAllowed = host === "amical.ai" || host.endsWith(".amical.ai");
+      if (parsed.protocol !== "https:" || !hostAllowed) {
+        logger.main.error("Handoff URL rejected", {
+          protocol: parsed.protocol,
+          host,
+        });
+        this.reportApiContractFailure(
+          "account_handoff_response_invalid",
+          "schema_mismatch",
+          { ...statusProperties, reason: "untrusted_url" },
+        );
+        return yield* Effect.fail(
+          authFailure(
+            new Error(`Handoff URL not allowed: ${parsed.protocol}//${host}`),
+            "Handoff URL not allowed",
+          ),
+        );
+      }
 
-    // Server compromise is a remote risk, but `shell.openExternal` honors
-    // any scheme/host the URL specifies (file://, vbscript:, etc.) and
-    // can't be undone. Constrain to https on the amical.ai family.
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      this.reportApiContractFailure(
-        "account_handoff_response_invalid",
-        "schema_mismatch",
-        { ...statusProperties, reason: "invalid_url" },
-      );
-      throw new Error("Handoff response contained an invalid url");
-    }
-    const host = parsed.hostname;
-    const hostAllowed = host === "amical.ai" || host.endsWith(".amical.ai");
-    if (parsed.protocol !== "https:" || !hostAllowed) {
-      logger.main.error("Handoff URL rejected", {
-        protocol: parsed.protocol,
-        host,
+      yield* Effect.tryPromise({
+        try: () => shell.openExternal(url),
+        catch: (cause) => authFailure(cause, "Unable to open web session"),
       });
-      this.reportApiContractFailure(
-        "account_handoff_response_invalid",
-        "schema_mismatch",
-        { ...statusProperties, reason: "untrusted_url" },
-      );
-      throw new Error(`Handoff URL not allowed: ${parsed.protocol}//${host}`);
-    }
-
-    await shell.openExternal(url);
+    });
   }
 
-  /**
-   * Refresh token if needed
-   */
-  async refreshTokenIfNeeded(force = false): Promise<void> {
-    if (this.refreshPromise) {
-      logger.main.debug("Refresh already in progress, waiting...");
-      return this.refreshPromise;
-    }
+  /** Refresh the token if needed. All callers share one auth-scoped runner. */
+  refreshTokenIfNeeded(force = false): Effect.Effect<void> {
+    return Effect.uninterruptibleMask((restore) =>
+      Effect.gen(this, function* () {
+        const admission = yield* this.refreshAdmissionSemaphore.withPermits(1)(
+          Effect.gen(this, function* () {
+            const current = yield* Ref.get(this.refreshRun);
+            if (current) {
+              if (force) yield* Ref.set(current.forceRequested, true);
+              return { run: current, existing: true } as const;
+            }
 
-    const generation = this.authGeneration;
-    const controller = new AbortController();
-    this.refreshAbortController = controller;
-    const refreshPromise = this.runTokenRefreshIfNeeded(
-      generation,
-      controller.signal,
-      force,
-    )
-      .catch((error) => {
-        logger.main.error("Token refresh failed:", error);
-      })
-      .finally(() => {
-        if (this.refreshPromise === refreshPromise) {
-          this.refreshPromise = null;
+            const completion = yield* Deferred.make<void>();
+            const run: RefreshRun = {
+              controller: new AbortController(),
+              completion,
+              forceRequested: yield* Ref.make(force),
+            };
+            yield* Ref.set(this.refreshRun, run);
+            const runner = this.runTokenRefreshIfNeeded(
+              this.authGeneration,
+              run,
+            ).pipe(
+              Effect.catchAll((error) =>
+                Effect.sync(() =>
+                  logger.main.error(
+                    "Token refresh failed:",
+                    originalAuthError(error),
+                  ),
+                ),
+              ),
+              Effect.onInterrupt(() =>
+                Effect.sync(() => run.controller.abort()),
+              ),
+              Effect.onExit((exit) =>
+                Effect.uninterruptible(
+                  Ref.update(this.refreshRun, (active) =>
+                    active === run ? null : active,
+                  ).pipe(Effect.zipRight(Deferred.done(run.completion, exit))),
+                ),
+              ),
+            );
+            yield* Effect.forkIn(Effect.interruptible(runner), this.authScope);
+            return { run, existing: false } as const;
+          }),
+        );
+
+        if (admission.existing) {
+          logger.main.debug("Refresh already in progress, waiting...");
         }
-        if (this.refreshAbortController === controller) {
-          this.refreshAbortController = null;
-        }
-      });
-    this.refreshPromise = refreshPromise;
-    return refreshPromise;
-  }
-
-  private async runTokenRefreshIfNeeded(
-    generation: number,
-    signal: AbortSignal,
-    force: boolean,
-  ): Promise<void> {
-    const authState = await this.getAuthState();
-    if (signal.aborted || generation !== this.authGeneration || !authState) {
-      // User was never logged in - nothing to refresh
-      return;
-    }
-
-    if (!authState.refreshToken) {
-      // User has auth state but no refresh token - corrupted state, logout
-      await this.logout();
-      return;
-    }
-
-    // Check if token needs refresh (10 minutes before expiry)
-    if (
-      !force &&
-      authState.expiresAt &&
-      authState.expiresAt - Date.now() > 10 * 60 * 1000
-    ) {
-      // Token still valid
-      return;
-    }
-
-    logger.main.info("Token needs refresh, starting refresh flow");
-    await this.performTokenRefresh(
-      authState.refreshToken,
-      authState.idToken,
-      generation,
-      signal,
+        yield* restore(Deferred.await(admission.run.completion));
+      }),
     );
   }
 
-  /**
-   * Perform the actual token refresh API call
-   */
-  private async performTokenRefresh(
+  private runTokenRefreshIfNeeded(
+    generation: number,
+    run: RefreshRun,
+  ): Effect.Effect<void, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
+      const { controller } = run;
+      const authState = yield* this.getAuthState();
+      if (
+        controller.signal.aborted ||
+        generation !== this.authGeneration ||
+        !authState
+      ) {
+        return;
+      }
+
+      if (!authState.refreshToken) {
+        yield* this.logout();
+        return;
+      }
+
+      if (
+        authState.expiresAt &&
+        authState.expiresAt - Date.now() > 10 * 60 * 1000
+      ) {
+        const shouldForce = yield* this.refreshAdmissionSemaphore.withPermits(
+          1,
+        )(
+          Effect.gen(this, function* () {
+            if (yield* Ref.get(run.forceRequested)) return true;
+
+            yield* Ref.update(this.refreshRun, (active) =>
+              active === run ? null : active,
+            );
+            return false;
+          }),
+        );
+        if (!shouldForce) return;
+      }
+
+      logger.main.info("Token needs refresh, starting refresh flow");
+      yield* this.performTokenRefresh(
+        authState.refreshToken,
+        authState.idToken,
+        generation,
+        controller,
+      );
+    });
+  }
+
+  private performTokenRefresh(
     refreshToken: string,
     currentIdToken: string | null,
     generation: number,
-    signal: AbortSignal,
-  ): Promise<void> {
-    try {
+    controller: AbortController,
+  ): Effect.Effect<void, AuthServiceFailure> {
+    return Effect.gen(this, function* () {
       logger.main.info("Refreshing access token");
-
       const body = {
         grant_type: "refresh_token",
         refresh_token: refreshToken,
         client_id: this.config.clientId,
       };
 
-      const response = await fetch(this.config.tokenEndpoint, {
-        method: "POST",
-        signal,
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": getUserAgent(),
-          ...getAmicalClientHeaders(),
-        },
-        body: JSON.stringify(body),
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch(this.config.tokenEndpoint, {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": getUserAgent(),
+              ...getAmicalClientHeaders(),
+            },
+            body: JSON.stringify(body),
+          }),
+        catch: (cause) => authFailure(cause, "Token refresh failed"),
       });
-      if (signal.aborted || generation !== this.authGeneration) return;
+      if (controller.signal.aborted || generation !== this.authGeneration) {
+        return;
+      }
 
       if (!response.ok) {
-        const errorText = await response.text();
-        const currentAuthState = await this.getAuthState();
+        const errorText = yield* Effect.tryPromise({
+          try: () => response.text(),
+          catch: (cause) => authFailure(cause, "Unable to read refresh error"),
+        });
+        const currentAuthState = yield* this.getAuthState();
         if (
-          signal.aborted ||
+          controller.signal.aborted ||
           generation !== this.authGeneration ||
           currentAuthState?.refreshToken !== refreshToken
         ) {
@@ -679,28 +843,37 @@ export class AuthService extends EventEmitter {
           error: errorText,
         });
 
-        // If refresh token is invalid/expired, logout the user
         if (response.status === 400 || response.status === 401) {
           logger.main.info("Refresh token invalid or expired, logging out");
-          await this.logout();
-          this.emit("token-refresh-failed", new Error("Refresh token expired"));
-          throw new Error("Refresh token expired - please log in again");
+          yield* this.logout();
+          const expired = new Error("Refresh token expired");
+          this.emit("token-refresh-failed", expired);
+          return yield* Effect.fail(
+            authFailure(
+              new Error("Refresh token expired - please log in again"),
+              "Refresh token expired - please log in again",
+            ),
+          );
         }
 
-        throw new Error(`Token refresh failed: ${response.statusText}`);
+        return yield* Effect.fail(
+          authFailure(
+            new Error(`Token refresh failed: ${response.statusText}`),
+            "Token refresh failed",
+          ),
+        );
       }
 
-      const tokenResponse = await this.parseSuccessfulTokenResponse(
+      const tokenResponse = yield* this.parseSuccessfulTokenResponse(
         response,
         refreshToken,
         currentIdToken ?? undefined,
       );
       logger.main.info("Token refresh successful");
 
-      // Get current auth state to preserve user info
-      const currentAuthState = await this.getAuthState();
+      const currentAuthState = yield* this.getAuthState();
       if (
-        signal.aborted ||
+        controller.signal.aborted ||
         generation !== this.authGeneration ||
         currentAuthState?.refreshToken !== refreshToken
       ) {
@@ -708,18 +881,15 @@ export class AuthService extends EventEmitter {
         return;
       }
 
-      // Update auth state with new tokens
       const updatedAuthState: AuthState = {
         isAuthenticated: true,
         idToken: tokenResponse.id_token,
-        // Use new refresh token if provided, otherwise keep the old one
         refreshToken: tokenResponse.refresh_token || refreshToken,
         accessToken: tokenResponse.access_token,
         expiresAt: Date.now() + tokenResponse.expires_in * 1000,
         userInfo: currentAuthState?.userInfo,
       };
 
-      // Update ID token user info if present
       if (updatedAuthState.idToken) {
         let decodedToken: {
           sub?: unknown;
@@ -739,7 +909,12 @@ export class AuthService extends EventEmitter {
             (currentAuthState?.userInfo?.sub &&
               decodedToken.sub !== currentAuthState.userInfo.sub)
           ) {
-            throw new Error("Refreshed ID token subject changed");
+            return yield* Effect.fail(
+              authFailure(
+                new Error("Refreshed ID token subject changed"),
+                "Refreshed ID token subject changed",
+              ),
+            );
           }
           updatedAuthState.userInfo = {
             sub: decodedToken.sub,
@@ -749,26 +924,64 @@ export class AuthService extends EventEmitter {
         }
       }
 
-      const persisted = await this.authStateMutex.runExclusive(async () => {
-        if (signal.aborted || generation !== this.authGeneration) return false;
-        const latestAuthState = await this.getAuthState();
-        if (latestAuthState?.refreshToken !== refreshToken) return false;
-        await updateSettingsSection("auth", updatedAuthState);
-        return !signal.aborted && generation === this.authGeneration;
-      });
+      const persisted = yield* this.writeAuthState(
+        generation,
+        updatedAuthState,
+        refreshToken,
+        controller.signal,
+      );
       if (!persisted) return;
 
-      // Emit success event
       this.emit("token-refreshed", updatedAuthState);
-
       logger.main.debug("Token refresh completed, new expiration:", {
         expiresAt: new Date(updatedAuthState.expiresAt!).toISOString(),
       });
-    } catch (error) {
-      if (signal.aborted || generation !== this.authGeneration) return;
-      logger.main.error("Error refreshing token:", error);
-      this.emit("token-refresh-failed", error);
-      throw error;
-    }
+    }).pipe(
+      Effect.catchAll((error) => {
+        if (controller.signal.aborted || generation !== this.authGeneration) {
+          return Effect.void;
+        }
+        return Effect.sync(() => {
+          const original = originalAuthError(error);
+          logger.main.error("Error refreshing token:", original);
+          this.emit("token-refresh-failed", original);
+        }).pipe(Effect.zipRight(Effect.fail(error)));
+      }),
+    );
+  }
+
+  private writeAuthState(
+    generation: number,
+    authState: AuthState | undefined,
+    expectedRefreshToken?: string,
+    signal?: AbortSignal,
+  ): Effect.Effect<boolean, AuthServiceFailure> {
+    const write = Effect.gen(this, function* () {
+      if (signal?.aborted || generation !== this.authGeneration) return false;
+      if (expectedRefreshToken !== undefined) {
+        const latest = yield* this.getAuthState();
+        if (latest?.refreshToken !== expectedRefreshToken) return false;
+      }
+      yield* Effect.tryPromise({
+        try: () => updateSettingsSection("auth", authState),
+        catch: (cause) =>
+          authFailure(cause, "Unable to update authentication state"),
+      });
+      return !signal?.aborted && generation === this.authGeneration;
+    });
+    return this.authStateSemaphore.withPermits(1)(
+      Effect.uninterruptible(write),
+    );
+  }
+
+  private advanceGenerationAndAbortRefresh(): Effect.Effect<number> {
+    return Effect.uninterruptible(
+      Effect.gen(this, function* () {
+        const generation = ++this.authGeneration;
+        const current = yield* Ref.get(this.refreshRun);
+        current?.controller.abort();
+        return generation;
+      }),
+    );
   }
 }

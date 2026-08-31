@@ -124,24 +124,24 @@ vi.mock("@grpc/grpc-js", () => grpcMock.module);
 
 // ---- AuthService mock ----------------------------------------------------
 
-const authMock = vi.hoisted(() => {
-  const isAuthenticated = vi.fn(async () => true);
-  const getIdToken = vi.fn(async () => "test-id-token");
+const authMock = (() => {
+  const isAuthenticated = vi.fn(() => EffectLib.succeed(true));
+  const getIdToken = vi.fn(() => EffectLib.succeed("test-id-token"));
   const refreshTokenIfNeeded = vi
-    .fn<(force?: boolean) => Promise<void>>()
-    .mockResolvedValue(undefined);
+    .fn<(force?: boolean) => EffectLib.Effect<void, unknown>>()
+    .mockReturnValue(EffectLib.void);
   return {
     instance: { isAuthenticated, getIdToken, refreshTokenIfNeeded },
     reset: () => {
       isAuthenticated.mockReset();
-      isAuthenticated.mockResolvedValue(true);
+      isAuthenticated.mockReturnValue(EffectLib.succeed(true));
       getIdToken.mockReset();
-      getIdToken.mockResolvedValue("test-id-token");
+      getIdToken.mockReturnValue(EffectLib.succeed("test-id-token"));
       refreshTokenIfNeeded.mockReset();
-      refreshTokenIfNeeded.mockResolvedValue(undefined);
+      refreshTokenIfNeeded.mockReturnValue(EffectLib.void);
     },
   };
-});
+})();
 
 vi.mock("../../src/utils/http-client", () => ({
   AMICAL_LAB_SELF_CORRECTION: "self-correction",
@@ -888,8 +888,8 @@ describe("AmicalCloudProvider", () => {
     it("surfaces AUTH_REQUIRED when token refresh fails after 401", async () => {
       const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({ status: 401, json: { error: {} } });
-      authMock.instance.refreshTokenIfNeeded.mockRejectedValueOnce(
-        new Error("refresh failed"),
+      authMock.instance.refreshTokenIfNeeded.mockReturnValueOnce(
+        EffectLib.fail(new Error("refresh failed")),
       );
       await provider.transcribe({
         audioData: audioFrame(),
@@ -1014,11 +1014,14 @@ describe("AmicalCloudProvider", () => {
 
     it("I-51: falls back to HTTP on UNAUTHENTICATED and force-refreshes after HTTP 401", async () => {
       let token = "stale-id-token";
-      authMock.instance.getIdToken.mockImplementation(async () => token);
+      authMock.instance.getIdToken.mockImplementation(() =>
+        EffectLib.succeed(token),
+      );
       authMock.instance.refreshTokenIfNeeded.mockImplementation(
-        async (force = false) => {
-          if (force) token = "fresh-id-token";
-        },
+        (force = false) =>
+          EffectLib.sync(() => {
+            if (force) token = "fresh-id-token";
+          }),
       );
       mockFetchOnce({ status: 401, json: { error: {} } });
       mockFetchOnce({
@@ -1666,7 +1669,9 @@ describe("AmicalCloudProvider", () => {
   describe("variant passthrough", () => {
     it("a cloud variant thrown internally is not double-wrapped", async () => {
       const provider = openCloudSessionWithTransport("http");
-      authMock.instance.isAuthenticated.mockResolvedValueOnce(false);
+      authMock.instance.isAuthenticated.mockReturnValueOnce(
+        EffectLib.succeed(false),
+      );
       const promise = provider.transcribe({
         audioData: audioFrame(),
         speechProbability: 1,
@@ -1943,11 +1948,10 @@ describe("AmicalCloudProvider", () => {
         sessionId: "session-A",
       });
       let resolveToken!: (token: string) => void;
-      authMock.instance.getIdToken.mockImplementationOnce(
-        () =>
-          new Promise<string>((resolve) => {
-            resolveToken = resolve;
-          }),
+      authMock.instance.getIdToken.mockImplementationOnce(() =>
+        EffectLib.async<string>((resume) => {
+          resolveToken = (token) => resume(EffectLib.succeed(token));
+        }),
       );
 
       const transcribe = session.transcribe({
@@ -1974,13 +1978,11 @@ describe("AmicalCloudProvider", () => {
         sessionId: "session-A",
       });
       let releaseAuthentication!: () => void;
-      const authenticationGate = new Promise<void>((resolve) => {
-        releaseAuthentication = resolve;
-      });
-      authMock.instance.isAuthenticated.mockImplementationOnce(async () => {
-        await authenticationGate;
-        return true;
-      });
+      authMock.instance.isAuthenticated.mockImplementationOnce(() =>
+        EffectLib.async<boolean>((resume) => {
+          releaseAuthentication = () => resume(EffectLib.succeed(true));
+        }),
+      );
 
       const transcribe = session.transcribe({
         audioData: audioFrame(),
@@ -2049,11 +2051,10 @@ describe("AmicalCloudProvider", () => {
         context: baseContext(),
       });
       let resolveToken!: (token: string) => void;
-      authMock.instance.getIdToken.mockImplementationOnce(
-        () =>
-          new Promise<string>((resolve) => {
-            resolveToken = resolve;
-          }),
+      authMock.instance.getIdToken.mockImplementationOnce(() =>
+        EffectLib.async<string>((resume) => {
+          resolveToken = (token) => resume(EffectLib.succeed(token));
+        }),
       );
 
       const finalization = session.flush(baseContext());

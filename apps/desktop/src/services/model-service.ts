@@ -31,7 +31,7 @@ import {
   OpenAICompatibleModel,
 } from "../types/providers";
 import { SettingsService } from "./settings-service";
-import type { AuthService } from "./auth-service";
+import { runAuthEffect, type AuthService } from "./auth-service";
 import { logger } from "../main/logger";
 import { Effect, Layer } from "effect";
 import {
@@ -288,7 +288,9 @@ class ModelService extends EventEmitter {
 
         // Check if it's a cloud model and user is authenticated
         if (availableModel?.setup === "cloud") {
-          const isAuthenticated = await this.authService.isAuthenticated();
+          const isAuthenticated = await runAuthEffect(
+            this.authService.isAuthenticated(),
+          );
 
           if (!isAuthenticated) {
             // Cloud model selected but not authenticated - auto-switch to local model
@@ -928,7 +930,9 @@ class ModelService extends EventEmitter {
 
       if (availableModel?.setup === "cloud") {
         // Cloud model - check authentication
-        const isAuthenticated = await this.authService.isAuthenticated();
+        const isAuthenticated = await runAuthEffect(
+          this.authService.isAuthenticated(),
+        );
 
         if (!isAuthenticated) {
           throw new Error("Authentication required for cloud models");

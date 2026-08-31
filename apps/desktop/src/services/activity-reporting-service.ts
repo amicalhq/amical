@@ -226,7 +226,7 @@ export class ActivityReportingService {
       this.pollTimer = setInterval(() => this.wake(), POLL_INTERVAL_MS);
       this.pollTimer.unref?.();
 
-      const authState = yield* this.authentication(() =>
+      const authState = yield* this.authentication(
         this.authService.getAuthState(),
       );
       if (this.stopped || !this.initialized) return;
@@ -293,16 +293,14 @@ export class ActivityReportingService {
     );
   }
 
-  private handleBeforeLogout(): Promise<void> {
+  private handleBeforeLogout(): Effect.Effect<void> {
     const worker = this.worker;
     this.boundaryEpoch += 1;
     this.currentAccountId = null;
     this.authorizationBlocked = false;
     this.authenticationRefreshAttempted = false;
     this.rerunRequested = false;
-    return this.runBoundary(
-      worker ? Fiber.interrupt(worker).pipe(Effect.asVoid) : Effect.void,
-    );
+    return worker ? Fiber.interrupt(worker).pipe(Effect.asVoid) : Effect.void;
   }
 
   private beginAccountBoundary(): number {
@@ -405,9 +403,7 @@ export class ActivityReportingService {
       if (!this.authenticationRefreshAttempted) {
         this.authenticationRefreshAttempted = true;
         this.forkScoped(
-          this.authentication(() =>
-            this.authService.refreshTokenIfNeeded(true),
-          ).pipe(
+          this.authentication(this.authService.refreshTokenIfNeeded(true)).pipe(
             Effect.catchAll((refreshError) =>
               Effect.sync(() => {
                 logger.main.error(
@@ -593,18 +589,19 @@ export class ActivityReportingService {
     });
   }
 
-  private authentication<T>(
-    callback: () => Promise<T>,
+  private authentication<T, E>(
+    effect: Effect.Effect<T, E>,
   ): Effect.Effect<T, ActivityReportingDependencyFailure> {
-    return Effect.tryPromise({
-      try: callback,
-      catch: (cause) =>
-        new ActivityReportingDependencyFailure({
-          message: "Activity reporting authentication operation failed",
-          dependency: "authentication",
-          cause,
-        }),
-    });
+    return effect.pipe(
+      Effect.mapError(
+        (cause) =>
+          new ActivityReportingDependencyFailure({
+            message: "Activity reporting authentication operation failed",
+            dependency: "authentication",
+            cause,
+          }),
+      ),
+    );
   }
 
   private withDb<T, E>(effect: Effect.Effect<T, E>): Effect.Effect<T, E> {
@@ -638,12 +635,5 @@ export class ActivityReportingService {
           }).pipe(Effect.zipRight(Effect.failCause(cause)));
         }),
       );
-  }
-
-  private runBoundary<T, E>(effect: Effect.Effect<T, E>): Promise<T> {
-    return Runtime.runPromiseExit(this.runtime)(effect).then((exit) => {
-      if (Exit.isSuccess(exit)) return exit.value;
-      throw Cause.squash(exit.cause);
-    });
   }
 }

@@ -70,19 +70,21 @@ function activity(
 
 class FakeAuth extends EventEmitter {
   state: AuthState | null = null;
-  private handlers = new Set<() => Promise<void>>();
+  private handlers = new Set<() => Effect.Effect<void, unknown>>();
 
-  getAuthState = vi.fn(async () => this.state);
-  getIdToken = vi.fn(async () => "token");
-  refreshTokenIfNeeded = vi.fn(async () => undefined);
+  getAuthState = vi.fn(() => Effect.succeed(this.state));
+  getIdToken = vi.fn(() => Effect.succeed("token"));
+  refreshTokenIfNeeded = vi.fn(() => Effect.void);
 
-  registerBeforeLogoutHandler(handler: () => Promise<void>): () => void {
+  registerBeforeLogoutHandler(
+    handler: () => Effect.Effect<void, unknown>,
+  ): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
   }
 
   async runBeforeLogoutHandlers(): Promise<void> {
-    for (const handler of this.handlers) await handler();
+    for (const handler of this.handlers) await Effect.runPromise(handler());
   }
 }
 
@@ -306,9 +308,11 @@ describe("ActivityReportingService", () => {
         ),
       )
       .mockReturnValueOnce(Effect.succeed("success"));
-    auth.refreshTokenIfNeeded.mockImplementationOnce(async () => {
-      auth.emit("token-refreshed", auth.state);
-    });
+    auth.refreshTokenIfNeeded.mockImplementationOnce(() =>
+      Effect.sync(() => {
+        auth.emit("token-refreshed", auth.state);
+      }),
+    );
     enqueue(activity());
 
     await vi.waitFor(async () => {

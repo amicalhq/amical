@@ -9,7 +9,10 @@ import {
   TranscriptionOutput,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
-import type { AuthService } from "../../../services/auth-service";
+import {
+  runAuthEffect,
+  type AuthService,
+} from "../../../services/auth-service";
 import type { SettingsService } from "../../../services/settings-service";
 import type { TelemetryService } from "../../../services/telemetry-service";
 import type { CloudFallbackStage } from "../../../types/telemetry-events";
@@ -47,20 +50,13 @@ import {
 const makeCloudAuthLive = (authService: AuthService) =>
   Layer.sync(CloudAuth, () => ({
     isAuthenticated: () =>
-      Effect.tryPromise({
-        try: () => authService.isAuthenticated(),
-        catch: toNetworkFailure,
-      }),
+      authService.isAuthenticated().pipe(Effect.mapError(toNetworkFailure)),
     getIdToken: () =>
-      Effect.tryPromise({
-        try: () => authService.getIdToken(),
-        catch: toNetworkFailure,
-      }),
+      authService.getIdToken().pipe(Effect.mapError(toNetworkFailure)),
     refreshTokenIfNeeded: (force = false) =>
-      Effect.tryPromise({
-        try: () => authService.refreshTokenIfNeeded(force),
-        catch: toNetworkFailure,
-      }),
+      authService
+        .refreshTokenIfNeeded(force)
+        .pipe(Effect.mapError(toNetworkFailure)),
   }));
 
 const createCloudRuntime = (config: CloudConfig, authService: AuthService) =>
@@ -179,7 +175,7 @@ export class AmicalCloudProvider implements TranscriptionEngine {
    */
   async warmup(): Promise<void> {
     this.assertNotDisposed();
-    await this.authService.refreshTokenIfNeeded();
+    await runAuthEffect(this.authService.refreshTokenIfNeeded());
     this.assertNotDisposed();
   }
 

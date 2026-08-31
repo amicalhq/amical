@@ -38,16 +38,17 @@ export class ActivityReportingClient {
             cause,
           }),
       });
-      const token = yield* Effect.tryPromise({
-        try: () => this.authService.getIdToken(),
-        catch: (cause) =>
-          new ActivityReportingDependencyFailure({
-            message:
-              "Unable to read the activity reporting authentication token",
-            dependency: "authentication",
-            cause,
-          }),
-      });
+      const token = yield* this.authService.getIdToken().pipe(
+        Effect.mapError(
+          (cause) =>
+            new ActivityReportingDependencyFailure({
+              message:
+                "Unable to read the activity reporting authentication token",
+              dependency: "authentication",
+              cause,
+            }),
+        ),
+      );
       if (!token) {
         return yield* Effect.fail(
           new AuthenticationRequired({
