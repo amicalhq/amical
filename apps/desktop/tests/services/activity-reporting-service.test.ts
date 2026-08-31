@@ -296,23 +296,17 @@ describe("ActivityReportingService", () => {
     expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
   });
 
-  it("forces one token refresh after a 401 and retries with the same activity", async () => {
+  it("forces one token refresh after AuthenticationRequired and retries with the same activity", async () => {
     authenticate("user-1");
     submit
       .mockReturnValueOnce(
         Effect.fail(
           new AuthenticationRequired({
             message: "expired",
-            meta: { httpStatus: 401 },
           }),
         ),
       )
       .mockReturnValueOnce(Effect.succeed("success"));
-    auth.refreshTokenIfNeeded.mockImplementationOnce(() =>
-      Effect.sync(() => {
-        auth.emit("token-refreshed", auth.state);
-      }),
-    );
     enqueue(activity());
 
     await vi.waitFor(async () => {
@@ -325,20 +319,14 @@ describe("ActivityReportingService", () => {
     expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
   });
 
-  it("does not force a second refresh when the retried activity gets another 401", async () => {
+  it("does not force a second refresh after another AuthenticationRequired", async () => {
     authenticate("user-1");
     submit.mockReturnValue(
       Effect.fail(
         new AuthenticationRequired({
           message: "expired",
-          meta: { httpStatus: 401 },
         }),
       ),
-    );
-    auth.refreshTokenIfNeeded.mockImplementationOnce(() =>
-      Effect.sync(() => {
-        auth.emit("token-refreshed", auth.state);
-      }),
     );
     enqueue(activity());
 
@@ -352,49 +340,6 @@ describe("ActivityReportingService", () => {
     service.wake();
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(submit).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not refresh an authentication failure returned with HTTP 403", async () => {
-    authenticate("user-1");
-    submit.mockReturnValueOnce(
-      Effect.fail(
-        new AuthenticationRequired({
-          message: "forbidden",
-          meta: { httpStatus: 403 },
-        }),
-      ),
-    );
-    enqueue(activity());
-
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
-    expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
-    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
-
-    service.wake();
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(submit).toHaveBeenCalledOnce();
-  });
-
-  it("retains the activity when forced token refresh does not refresh the token", async () => {
-    authenticate("user-1");
-    submit.mockReturnValueOnce(
-      Effect.fail(
-        new AuthenticationRequired({
-          message: "expired",
-          meta: { httpStatus: 401 },
-        }),
-      ),
-    );
-    enqueue(activity());
-
-    await vi.waitFor(() =>
-      expect(auth.refreshTokenIfNeeded).toHaveBeenCalledOnce(),
-    );
-    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
-
-    service.wake();
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(submit).toHaveBeenCalledOnce();
   });
 
   it("retains a 403 until the authenticated token changes", async () => {
@@ -554,6 +499,31 @@ describe("ActivityReportingService", () => {
     await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
     expect(submit.mock.calls[0][0][0].activityId).toBe(ids[0]);
     expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
+    await vi.waitFor(async () => {
+      expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
+    });
+  });
+
+  it("does not refresh the new account for a stale AuthenticationRequired", async () => {
+    submit
+      .mockImplementationOnce(() =>
+        Effect.sync(() => {
+          authenticate("user-2");
+        }).pipe(
+          Effect.zipRight(
+            Effect.fail(
+              new AuthenticationRequired({ message: "stale account" }),
+            ),
+          ),
+        ),
+      )
+      .mockReturnValueOnce(Effect.succeed("success"));
+
+    authenticate("user-1");
+    enqueue(activity(ids[0]));
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+    expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
     await vi.waitFor(async () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
     });

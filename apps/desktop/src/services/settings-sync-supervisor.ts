@@ -13,6 +13,7 @@ import {
 } from "effect";
 
 import { logger } from "../main/logger";
+import { retryOnceAfterAuthenticationRequired } from "./auth-retry";
 import type { AuthService, AuthState } from "./auth-service";
 import {
   SettingsSyncRunner,
@@ -61,7 +62,6 @@ type SupervisorState = {
   debounce: Fiber.RuntimeFiber<void, never> | null;
   rerunRequested: boolean;
   authorizationBlocked: boolean;
-  authenticationRefreshAttempted: boolean;
   nextAttemptId: number;
 };
 
@@ -121,6 +121,11 @@ export class SettingsSyncSupervisor {
   > | null = null;
   private unregisterBeforeLogout: (() => void) | null = null;
   private unregisterLocalMutation: (() => void) | null = null;
+  private guardedAuthenticationRefresh: {
+    attemptId: number;
+    epoch: number;
+    accountId: string;
+  } | null = null;
   private readonly runner: SettingsSyncRunner;
 
   private readonly onExternalWake = () => this.wake();
@@ -144,6 +149,14 @@ export class SettingsSyncSupervisor {
       accountId !== this.activeAccountId ||
       !this.initialized ||
       this.stopping
+    ) {
+      return;
+    }
+    const guardedRefresh = this.guardedAuthenticationRefresh;
+    if (
+      guardedRefresh?.attemptId === this.currentAttemptId &&
+      guardedRefresh.epoch === this.boundaryEpoch &&
+      guardedRefresh.accountId === accountId
     ) {
       return;
     }
@@ -475,7 +488,6 @@ export class SettingsSyncSupervisor {
       debounce: null,
       rerunRequested: false,
       authorizationBlocked: false,
-      authenticationRefreshAttempted: false,
       nextAttemptId: 1,
     };
     const loop = (state: SupervisorState): Effect.Effect<void> =>
@@ -640,7 +652,6 @@ export class SettingsSyncSupervisor {
         ...state,
         context,
         authorizationBlocked: false,
-        authenticationRefreshAttempted: false,
       });
     });
 
@@ -670,7 +681,6 @@ export class SettingsSyncSupervisor {
         context: null,
         rerunRequested: false,
         authorizationBlocked: false,
-        authenticationRefreshAttempted: false,
       };
       const context = yield* this.activateAccount(
         event.accountId,
@@ -771,7 +781,6 @@ export class SettingsSyncSupervisor {
         attempt: null,
         rerunRequested: false,
         authorizationBlocked: false,
-        authenticationRefreshAttempted: false,
       };
     });
 
@@ -892,7 +901,6 @@ export class SettingsSyncSupervisor {
     if (Exit.isSuccess(event.exit)) {
       const next = {
         ...completed,
-        authenticationRefreshAttempted: false,
         rerunRequested:
           completed.rerunRequested || event.exit.value.rebootstrap,
       };
@@ -928,16 +936,7 @@ export class SettingsSyncSupervisor {
         rerunRequested: false,
         authorizationBlocked: true,
       };
-      if (
-        blocked.authenticationRefreshAttempted ||
-        error.meta?.httpStatus !== 401
-      ) {
-        return Effect.succeed(blocked);
-      }
-      return this.startAuthenticationRefresh({
-        ...blocked,
-        authenticationRefreshAttempted: true,
-      });
+      return Effect.succeed(blocked);
     }
     if (error instanceof AccessForbidden) {
       return Effect.exit(
@@ -986,7 +985,17 @@ export class SettingsSyncSupervisor {
       const fiber = yield* Effect.forkIn(
         Effect.exit(
           Deferred.await(startGate).pipe(
-            Effect.zipRight(this.runner.run(context)),
+            Effect.zipRight(
+              retryOnceAfterAuthenticationRequired(
+                () => this.runner.run(context),
+                () =>
+                  this.refreshAuthenticationForAttempt(
+                    id,
+                    epoch,
+                    context.accountId,
+                  ),
+              ),
+            ),
           ),
         ).pipe(
           Effect.flatMap((exit) =>
@@ -1012,21 +1021,31 @@ export class SettingsSyncSupervisor {
     });
   }
 
-  private startAuthenticationRefresh(
-    state: SupervisorState,
-  ): Effect.Effect<SupervisorState> {
-    const refresh = Effect.uninterruptible(
-      this.fromAuthentication(this.authService.refreshTokenIfNeeded(true)),
-    ).pipe(
-      Effect.catchAll((error) =>
-        Effect.sync(() => {
-          logger.main.error("Settings sync authentication refresh failed", {
-            error,
-          });
-        }),
-      ),
-    );
-    return Effect.forkIn(refresh, this.serviceScope).pipe(Effect.as(state));
+  private refreshAuthenticationForAttempt(
+    attemptId: number,
+    epoch: number,
+    accountId: string,
+  ): Effect.Effect<void> {
+    const marker = { attemptId, epoch, accountId };
+    const isCurrent = () =>
+      !this.stopping &&
+      this.currentAttemptId === attemptId &&
+      this.boundaryEpoch === epoch &&
+      this.activeAccountId === accountId;
+    return Effect.gen(this, function* () {
+      if (!isCurrent()) return yield* Effect.interrupt;
+      this.guardedAuthenticationRefresh = marker;
+      yield* this.authService.refreshTokenIfNeeded(true).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.guardedAuthenticationRefresh === marker) {
+              this.guardedAuthenticationRefresh = null;
+            }
+          }),
+        ),
+      );
+      if (!isCurrent()) return yield* Effect.interrupt;
+    });
   }
 
   private interruptAttempt(

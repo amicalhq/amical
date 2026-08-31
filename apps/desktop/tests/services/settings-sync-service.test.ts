@@ -733,7 +733,7 @@ describe("SettingsSyncService", () => {
     expect(client.pull).toHaveBeenCalledTimes(2);
   });
 
-  it("retains organization state and requests reauthentication after HTTP 401", async () => {
+  it("retains organization state and retries after AuthenticationRequired", async () => {
     let rejectBootstrap = false;
     const client = {
       bootstrap: vi.fn(() =>
@@ -741,7 +741,6 @@ describe("SettingsSyncService", () => {
           ? Effect.fail(
               new AuthenticationRequired({
                 message: "Request rejected",
-                meta: { httpStatus: 401 },
               }),
             )
           : Effect.succeed({
@@ -785,7 +784,7 @@ describe("SettingsSyncService", () => {
     const row = await createOrganizationVocabularyWord({ word: "Keep" });
     rejectBootstrap = true;
     auth.emit("token-refreshed", AUTH_STATE);
-    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledTimes(3));
     await vi.waitFor(() =>
       expect(auth.refreshTokenIfNeeded).toHaveBeenCalledWith(true),
     );
@@ -802,10 +801,10 @@ describe("SettingsSyncService", () => {
     ]);
     service.wake();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(client.bootstrap).toHaveBeenCalledTimes(2);
+    expect(client.bootstrap).toHaveBeenCalledTimes(3);
   });
 
-  it("retries once after HTTP 401 without forcing a second refresh", async () => {
+  it("retries once after AuthenticationRequired without forcing a second refresh", async () => {
     await createVocabularyWord({ word: "Pending" });
     auth.refreshTokenIfNeeded.mockImplementationOnce(() =>
       Effect.sync(() => {
@@ -817,7 +816,6 @@ describe("SettingsSyncService", () => {
         Effect.fail(
           new AuthenticationRequired({
             message: "Token rejected",
-            meta: { httpStatus: 401 },
           }),
         ),
       ),
@@ -841,43 +839,13 @@ describe("SettingsSyncService", () => {
     expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
   });
 
-  it("blocks AuthenticationRequired HTTP 403 without refreshing", async () => {
-    await createVocabularyWord({ word: "Pending" });
-    const client = {
-      bootstrap: vi.fn(() =>
-        Effect.fail(
-          new AuthenticationRequired({
-            message: "Forbidden",
-            meta: { httpStatus: 403 },
-          }),
-        ),
-      ),
-      pull: vi.fn(),
-      push: vi.fn(),
-    };
-    service = SettingsSyncService.createForTests(
-      auth as unknown as AuthService,
-      client,
-    );
-
-    await Effect.runPromise(service.initialize());
-    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
-    service.wake();
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
-    expect(client.bootstrap).toHaveBeenCalledOnce();
-    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
-  });
-
-  it("retains blocked work when forced token refresh does not refresh the token", async () => {
+  it("retries once and retains blocked work when forced refresh emits no event", async () => {
     await createVocabularyWord({ word: "Pending" });
     const client = {
       bootstrap: vi.fn(() =>
         Effect.fail(
           new AuthenticationRequired({
             message: "Token rejected",
-            meta: { httpStatus: 401 },
           }),
         ),
       ),
@@ -897,7 +865,7 @@ describe("SettingsSyncService", () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
 
     expect(auth.refreshTokenIfNeeded).toHaveBeenCalledTimes(1);
-    expect(client.bootstrap).toHaveBeenCalledOnce();
+    expect(client.bootstrap).toHaveBeenCalledTimes(2);
     expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
   });
 
@@ -1113,7 +1081,9 @@ describe("SettingsSyncService", () => {
 
       rejectOrganizationPull = true;
       service.wake();
-      await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(4));
+      await vi.waitFor(() =>
+        expect(client.pull).toHaveBeenCalledTimes(status === 401 ? 6 : 4),
+      );
       await vi.waitFor(() => {
         expect(
           testDb.db

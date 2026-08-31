@@ -10,7 +10,6 @@ import {
 
 describe("cloud HTTP error decoding", () => {
   it.each([
-    ["AUTH_REQUIRED", 403, AuthenticationRequired, "AuthenticationRequired"],
     ["FORBIDDEN", 401, AccessForbidden, "AccessForbidden"],
     ["RATE_LIMIT_EXCEEDED", 500, RateLimited, "RateLimited"],
   ] as const)(

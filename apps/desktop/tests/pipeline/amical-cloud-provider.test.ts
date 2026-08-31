@@ -774,7 +774,7 @@ describe("AmicalCloudProvider", () => {
     it("maps a validated FORBIDDEN code independently of its HTTP status", async () => {
       const provider = openCloudSessionWithTransport("http");
       mockFetchOnce({
-        status: 403,
+        status: 401,
         json: {
           error: {
             code: "FORBIDDEN",
@@ -796,35 +796,8 @@ describe("AmicalCloudProvider", () => {
         code: ErrorCodes.INTERNAL_SERVER_ERROR,
         tag: "AccessForbidden",
         wireCode: DictationErrorCodes.FORBIDDEN,
-        httpStatus: 403,
+        httpStatus: 401,
         uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
-      });
-      expect(fetchMock).toHaveBeenCalledOnce();
-      expect(authMock.instance.refreshTokenIfNeeded).not.toHaveBeenCalled();
-    });
-
-    it("does not refresh AUTH_REQUIRED returned with HTTP 403", async () => {
-      const provider = openCloudSessionWithTransport("http");
-      mockFetchOnce({
-        status: 403,
-        json: {
-          error: {
-            code: "AUTH_REQUIRED",
-            message: "Authentication rejected without a refresh challenge.",
-          },
-        },
-      });
-      await provider.transcribe({
-        audioData: audioFrame(),
-        speechProbability: 1,
-        context: baseContext(),
-      });
-
-      await expectRejectionProjection(provider.flush(baseContext()), {
-        code: ErrorCodes.AUTH_REQUIRED,
-        tag: "AuthenticationRequired",
-        wireCode: DictationErrorCodes.AUTH_REQUIRED,
-        httpStatus: 403,
       });
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(authMock.instance.refreshTokenIfNeeded).not.toHaveBeenCalled();

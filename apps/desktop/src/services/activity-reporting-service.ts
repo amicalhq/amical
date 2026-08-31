@@ -35,6 +35,7 @@ import {
   AuthenticationRequired,
 } from "../types/errors/cloud-request";
 import type { AuthService, AuthState } from "./auth-service";
+import { retryOnceAfterAuthenticationRequired } from "./auth-retry";
 import { ActivityReportingClient } from "./activity-reporting-client";
 import {
   ActivityReportingContractFailure,
@@ -81,7 +82,6 @@ export class ActivityReportingService {
   private boundaryEpoch = 0;
   private rerunRequested = false;
   private authorizationBlocked = false;
-  private authenticationRefreshAttempted = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private unregisterBeforeLogout: (() => void) | null = null;
 
@@ -267,7 +267,6 @@ export class ActivityReportingService {
         this.boundaryEpoch += 1;
         this.currentAccountId = null;
         this.authorizationBlocked = false;
-        this.authenticationRefreshAttempted = false;
         this.rerunRequested = false;
 
         if (this.pollTimer) clearInterval(this.pollTimer);
@@ -298,7 +297,6 @@ export class ActivityReportingService {
     this.boundaryEpoch += 1;
     this.currentAccountId = null;
     this.authorizationBlocked = false;
-    this.authenticationRefreshAttempted = false;
     this.rerunRequested = false;
     return worker ? Fiber.interrupt(worker).pipe(Effect.asVoid) : Effect.void;
   }
@@ -307,7 +305,6 @@ export class ActivityReportingService {
     this.boundaryEpoch += 1;
     this.currentAccountId = null;
     this.authorizationBlocked = false;
-    this.authenticationRefreshAttempted = false;
     this.rerunRequested = false;
     this.worker?.unsafeInterruptAsFork(FiberId.none);
     return this.boundaryEpoch;
@@ -351,12 +348,9 @@ export class ActivityReportingService {
             const epoch = this.boundaryEpoch;
             if (!accountId || this.authorizationBlocked) return Effect.void;
             uploadAccountId = accountId;
-            return this.reportUntilDrained(epoch, accountId).pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  this.authenticationRefreshAttempted = false;
-                }),
-              ),
+            return retryOnceAfterAuthenticationRequired(
+              () => this.reportUntilDrained(epoch, accountId),
+              () => this.refreshAuthenticationIfCurrent(epoch, accountId),
             );
           }),
           Effect.matchEffect({
@@ -400,24 +394,6 @@ export class ActivityReportingService {
         return Effect.void;
       }
       this.authorizationBlocked = true;
-      if (
-        error.meta?.httpStatus === 401 &&
-        !this.authenticationRefreshAttempted
-      ) {
-        this.authenticationRefreshAttempted = true;
-        this.forkScoped(
-          this.authentication(this.authService.refreshTokenIfNeeded(true)).pipe(
-            Effect.catchAll((refreshError) =>
-              Effect.sync(() => {
-                logger.main.error(
-                  "Activity reporting authentication refresh failed",
-                  { error: refreshError },
-                );
-              }),
-            ),
-          ),
-        );
-      }
       return Effect.sync(() => {
         logger.main.warn(
           "Activity reporting authentication failed; waiting for auth change",
@@ -443,6 +419,24 @@ export class ActivityReportingService {
         { error },
       );
     });
+  }
+
+  private refreshAuthenticationIfCurrent(
+    epoch: number,
+    accountId: string,
+  ): Effect.Effect<void, ActivityReportingDependencyFailure> {
+    const ensureCurrent = Effect.suspend(() =>
+      this.uploadBoundaryIsCurrent(epoch, accountId)
+        ? Effect.void
+        : Effect.interrupt,
+    );
+
+    return ensureCurrent.pipe(
+      Effect.zipRight(
+        this.authentication(this.authService.refreshTokenIfNeeded(true)),
+      ),
+      Effect.zipRight(ensureCurrent),
+    );
   }
 
   private materializeUntilCaughtUp(): Effect.Effect<
@@ -613,6 +607,10 @@ export class ActivityReportingService {
 
   private boundaryIsCurrent(epoch: number): boolean {
     return !this.stopped && epoch === this.boundaryEpoch;
+  }
+
+  private uploadBoundaryIsCurrent(epoch: number, accountId: string): boolean {
+    return this.boundaryIsCurrent(epoch) && accountId === this.currentAccountId;
   }
 
   private finishWorker(workerId: number): void {
