@@ -799,6 +799,35 @@ describe("AmicalCloudProvider", () => {
         httpStatus: 403,
         uiMessage: "Du hast keinen Zugriff auf die Cloud-Transkription.",
       });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(authMock.instance.refreshTokenIfNeeded).not.toHaveBeenCalled();
+    });
+
+    it("does not refresh AUTH_REQUIRED returned with HTTP 403", async () => {
+      const provider = openCloudSessionWithTransport("http");
+      mockFetchOnce({
+        status: 403,
+        json: {
+          error: {
+            code: "AUTH_REQUIRED",
+            message: "Authentication rejected without a refresh challenge.",
+          },
+        },
+      });
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      await expectRejectionProjection(provider.flush(baseContext()), {
+        code: ErrorCodes.AUTH_REQUIRED,
+        tag: "AuthenticationRequired",
+        wireCode: DictationErrorCodes.AUTH_REQUIRED,
+        httpStatus: 403,
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(authMock.instance.refreshTokenIfNeeded).not.toHaveBeenCalled();
     });
 
     it("does not trust desktop-only codes or localized text from HTTP", async () => {
@@ -883,6 +912,8 @@ describe("AmicalCloudProvider", () => {
         httpStatus: 401,
       });
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalledOnce();
+      expect(authMock.instance.refreshTokenIfNeeded).toHaveBeenCalledWith(true);
     });
 
     it("surfaces AUTH_REQUIRED when token refresh fails after 401", async () => {

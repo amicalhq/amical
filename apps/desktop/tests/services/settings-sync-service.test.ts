@@ -805,6 +805,102 @@ describe("SettingsSyncService", () => {
     expect(client.bootstrap).toHaveBeenCalledTimes(2);
   });
 
+  it("retries once after HTTP 401 without forcing a second refresh", async () => {
+    await createVocabularyWord({ word: "Pending" });
+    auth.refreshTokenIfNeeded.mockImplementationOnce(() =>
+      Effect.sync(() => {
+        auth.emit("token-refreshed", AUTH_STATE);
+      }),
+    );
+    const client = {
+      bootstrap: vi.fn(() =>
+        Effect.fail(
+          new AuthenticationRequired({
+            message: "Token rejected",
+            meta: { httpStatus: 401 },
+          }),
+        ),
+      ),
+      pull: vi.fn(),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+
+    await Effect.runPromise(service.initialize());
+    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(auth.refreshTokenIfNeeded).toHaveBeenCalledTimes(1);
+    expect(auth.refreshTokenIfNeeded).toHaveBeenCalledWith(true);
+    expect(client.bootstrap).toHaveBeenCalledTimes(2);
+    expect(client.pull).not.toHaveBeenCalled();
+    expect(client.push).not.toHaveBeenCalled();
+    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
+  });
+
+  it("blocks AuthenticationRequired HTTP 403 without refreshing", async () => {
+    await createVocabularyWord({ word: "Pending" });
+    const client = {
+      bootstrap: vi.fn(() =>
+        Effect.fail(
+          new AuthenticationRequired({
+            message: "Forbidden",
+            meta: { httpStatus: 403 },
+          }),
+        ),
+      ),
+      pull: vi.fn(),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+
+    await Effect.runPromise(service.initialize());
+    await vi.waitFor(() => expect(client.bootstrap).toHaveBeenCalledOnce());
+    service.wake();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
+    expect(client.bootstrap).toHaveBeenCalledOnce();
+    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
+  });
+
+  it("retains blocked work when forced token refresh does not refresh the token", async () => {
+    await createVocabularyWord({ word: "Pending" });
+    const client = {
+      bootstrap: vi.fn(() =>
+        Effect.fail(
+          new AuthenticationRequired({
+            message: "Token rejected",
+            meta: { httpStatus: 401 },
+          }),
+        ),
+      ),
+      pull: vi.fn(),
+      push: vi.fn(),
+    };
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+
+    await Effect.runPromise(service.initialize());
+    await vi.waitFor(() =>
+      expect(auth.refreshTokenIfNeeded).toHaveBeenCalledWith(true),
+    );
+    service.wake();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(auth.refreshTokenIfNeeded).toHaveBeenCalledTimes(1);
+    expect(client.bootstrap).toHaveBeenCalledOnce();
+    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
+  });
+
   it("purges persisted organization state after bootstrap HTTP 403", async () => {
     const personal = await createVocabularyWord({ word: "Personal" });
     await beginUserSyncSession("user-1");

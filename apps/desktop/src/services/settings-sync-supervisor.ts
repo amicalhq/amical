@@ -928,7 +928,10 @@ export class SettingsSyncSupervisor {
         rerunRequested: false,
         authorizationBlocked: true,
       };
-      if (blocked.authenticationRefreshAttempted) {
+      if (
+        blocked.authenticationRefreshAttempted ||
+        error.meta?.httpStatus !== 401
+      ) {
         return Effect.succeed(blocked);
       }
       return this.startAuthenticationRefresh({

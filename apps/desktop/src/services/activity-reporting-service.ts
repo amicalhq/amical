@@ -400,7 +400,10 @@ export class ActivityReportingService {
         return Effect.void;
       }
       this.authorizationBlocked = true;
-      if (!this.authenticationRefreshAttempted) {
+      if (
+        error.meta?.httpStatus === 401 &&
+        !this.authenticationRefreshAttempted
+      ) {
         this.authenticationRefreshAttempted = true;
         this.forkScoped(
           this.authentication(this.authService.refreshTokenIfNeeded(true)).pipe(

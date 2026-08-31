@@ -325,6 +325,78 @@ describe("ActivityReportingService", () => {
     expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
   });
 
+  it("does not force a second refresh when the retried activity gets another 401", async () => {
+    authenticate("user-1");
+    submit.mockReturnValue(
+      Effect.fail(
+        new AuthenticationRequired({
+          message: "expired",
+          meta: { httpStatus: 401 },
+        }),
+      ),
+    );
+    auth.refreshTokenIfNeeded.mockImplementationOnce(() =>
+      Effect.sync(() => {
+        auth.emit("token-refreshed", auth.state);
+      }),
+    );
+    enqueue(activity());
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(auth.refreshTokenIfNeeded).toHaveBeenCalledOnce();
+    expect(auth.refreshTokenIfNeeded).toHaveBeenCalledWith(true);
+    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
+
+    service.wake();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(submit).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not refresh an authentication failure returned with HTTP 403", async () => {
+    authenticate("user-1");
+    submit.mockReturnValueOnce(
+      Effect.fail(
+        new AuthenticationRequired({
+          message: "forbidden",
+          meta: { httpStatus: 403 },
+        }),
+      ),
+    );
+    enqueue(activity());
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
+    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
+
+    service.wake();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(submit).toHaveBeenCalledOnce();
+  });
+
+  it("retains the activity when forced token refresh does not refresh the token", async () => {
+    authenticate("user-1");
+    submit.mockReturnValueOnce(
+      Effect.fail(
+        new AuthenticationRequired({
+          message: "expired",
+          meta: { httpStatus: 401 },
+        }),
+      ),
+    );
+    enqueue(activity());
+
+    await vi.waitFor(() =>
+      expect(auth.refreshTokenIfNeeded).toHaveBeenCalledOnce(),
+    );
+    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
+
+    service.wake();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(submit).toHaveBeenCalledOnce();
+  });
+
   it("retains a 403 until the authenticated token changes", async () => {
     authenticate("user-1");
     submit.mockReturnValueOnce(
