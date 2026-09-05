@@ -611,7 +611,7 @@ export class NativeBridge extends EventEmitter {
   public call<M extends keyof RPCMethods>(
     method: M,
     params: RPCMethods[M]["params"],
-    timeoutMs = 5000,
+    timeoutMs = 7000,
   ): Promise<RPCMethods[M]["result"]> {
     const proc = this.proc;
     if (!proc || !proc.stdin || !proc.stdin.writable) {
