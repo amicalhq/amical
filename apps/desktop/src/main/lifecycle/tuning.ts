@@ -51,7 +51,7 @@ export const DEFAULT_LIFECYCLE_TUNING: LifecycleTuning = {
   stageBoundsMs: {
     starting: 10_000, // v1 had no start bound; matches the stop-recovery order
     recording: 6 * 60 * 1000, // v1 RECORDING_MAX_DURATION
-    resolving: 10_000, // v1 RECORDING_STOP_RECOVERY_TIMEOUT
+    resolving: 2 * 60 * 1000, // full stop-drain and transcription resolution window
     committing: 3_000, // R7 commit grace: local write, then degrade + repair
     staging: 5_000, // paste/draft staging incl. the 2.5s draft capture barrier
   },
