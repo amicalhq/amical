@@ -39,6 +39,7 @@
       "@amical/whisper-wrapper"
     ],
     "onlyBuiltDependencies": [
+      "@posthog/cli",
       "electron",
       "electron-winstaller",
       "@amical/whisper-wrapper",
