@@ -1,19 +1,21 @@
-import * as cron from "node-cron";
+import { BrowserWindow, ipcMain } from "electron";
+import { z } from "zod";
 import {
   createNote,
   getNotes,
   getNoteById,
   updateNote,
   deleteNote,
-  saveYjsUpdate as saveYjsUpdateToDB,
-  loadYjsUpdates as loadYjsUpdatesFromDB,
-  getUniqueNoteIds,
-  getYjsUpdatesByNoteId,
-  replaceYjsUpdates,
 } from "../db/notes";
-import * as Y from "yjs";
-import { ipcMain } from "electron";
+import { loadNoteBody, saveNoteBody } from "../db/note-body";
+import type { NoteBodyChange } from "../notes/types";
 import { logger } from "../main/logger";
+
+const noteIdSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const saveSchema = z.object({
+  noteId: noteIdSchema,
+  markdown: z.string(),
+});
 
 export interface NoteCreateOptions {
   title: string;
@@ -28,44 +30,44 @@ export interface NoteUpdateOptions {
 
 class NotesService {
   private static instance: NotesService;
-  private compactionTask: cron.ScheduledTask | null = null;
 
   private constructor() {
     this.setupIPCHandlers();
-    this.setupCompactionCron();
   }
 
   private setupIPCHandlers(): void {
-    ipcMain.handle(
-      "notes:saveYjsUpdate",
-      async (_event, noteId: number, update: ArrayBuffer) => {
-        try {
-          const updateArray = new Uint8Array(update);
-          await this.saveYjsUpdate(noteId, updateArray);
-          logger.main.debug("Saved yjs update", {
-            noteId,
-            updateSize: updateArray.length,
-          });
-        } catch (error) {
-          logger.main.error("Failed to save yjs update", error);
-          throw error;
-        }
-      },
-    );
-
-    ipcMain.handle("notes:loadYjsUpdates", async (_event, noteId: number) => {
+    ipcMain.on("notes:loadBody", (event, noteId: unknown) => {
       try {
-        const updates = await this.loadYjsUpdates(noteId);
-        logger.main.debug("Loaded yjs updates", {
-          noteId,
-          count: updates.length,
-        });
-        return updates.map((u) => u.buffer);
+        event.returnValue = { body: loadNoteBody(noteIdSchema.parse(noteId)) };
       } catch (error) {
-        logger.main.error("Failed to load yjs updates", error);
-        throw error;
+        logger.main.error("Failed to load note body", error);
+        event.returnValue = { error: "Failed to load note" };
       }
     });
+    ipcMain.on("notes:saveBody", (event, input: unknown) => {
+      try {
+        const { noteId, markdown } = saveSchema.parse(input);
+        const result = saveNoteBody(noteId, markdown);
+        event.returnValue = result;
+        if (result.status === "saved") {
+          this.notifyBodyChange({ noteId });
+        }
+      } catch (error) {
+        logger.main.error("Failed to save note body", error);
+        event.returnValue = { status: "error", message: "Failed to save note" };
+      }
+    });
+    // An old renderer must not append to the frozen recovery data.
+    ipcMain.handle("notes:saveYjsUpdate", () => {
+      throw new Error("Reload this window to edit notes");
+    });
+  }
+
+  private notifyBodyChange(change: NoteBodyChange) {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed())
+        window.webContents.send("notes:bodyChanged", change);
+    }
   }
 
   public static getInstance(): NotesService {
@@ -109,107 +111,13 @@ class NotesService {
     const note = await getNoteById(id);
     if (!note) return null;
 
-    return await deleteNote(id);
+    const deleted = await deleteNote(id);
+    if (deleted) this.notifyBodyChange({ noteId: id, deleted: true });
+    return deleted;
   }
 
-  // Save yjs update to database
-  async saveYjsUpdate(noteId: number, update: Uint8Array) {
-    await saveYjsUpdateToDB(noteId, update);
-  }
-
-  // Load all yjs updates for a note
-  async loadYjsUpdates(noteId: number): Promise<Uint8Array[]> {
-    return await loadYjsUpdatesFromDB(noteId);
-  }
-
-  // Compact all note documents
-  async compactAllNotes(): Promise<void> {
-    const startTime = Date.now();
-    logger.main.info("Starting yjs compaction for all notes");
-
-    try {
-      // Get all unique note IDs that have updates
-      const noteIds = await getUniqueNoteIds();
-      logger.main.info(`Found ${noteIds.length} notes to compact`);
-
-      let totalUpdatesBefore = 0;
-      let totalUpdatesAfter = 0;
-
-      for (const noteId of noteIds) {
-        const compactResult = await this.compactNote(noteId);
-        totalUpdatesBefore += compactResult.updatesBefore;
-        totalUpdatesAfter += compactResult.updatesAfter;
-      }
-
-      const duration = Date.now() - startTime;
-      logger.main.info(`Compaction completed in ${duration}ms`, {
-        notesCompacted: noteIds.length,
-        totalUpdatesBefore,
-        totalUpdatesAfter,
-        updatesReduced: totalUpdatesBefore - totalUpdatesAfter,
-      });
-    } catch (error) {
-      logger.main.error("Failed to compact notes:", error);
-    }
-  }
-
-  // Compact a specific note
-  async compactNote(
-    noteId: number,
-  ): Promise<{ updatesBefore: number; updatesAfter: number }> {
-    // Get all updates for this note
-    const updates = await getYjsUpdatesByNoteId(noteId);
-    const updatesBefore = updates.length;
-
-    if (updatesBefore <= 1) {
-      // No need to compact if there's only one update or none
-      return { updatesBefore, updatesAfter: updatesBefore };
-    }
-
-    // Create a new Y.Doc and apply all updates
-    const ydoc = new Y.Doc();
-    for (const update of updates) {
-      const updateArray = new Uint8Array(update.updateData as Buffer);
-      Y.applyUpdate(ydoc, updateArray);
-    }
-
-    // Encode the current state as a single update
-    const stateUpdate = Y.encodeStateAsUpdate(ydoc);
-
-    // Replace all updates with the compacted one
-    await replaceYjsUpdates(noteId, stateUpdate);
-
-    logger.main.debug(
-      `Compacted note ${noteId}: ${updatesBefore} updates -> 1 update`,
-    );
-
-    return { updatesBefore, updatesAfter: 1 };
-  }
-
-  // Set up cron job for scheduled compaction
-  private setupCompactionCron() {
-    // Schedule for daily at 2 AM in production, every 5 minutes in development
-    const schedule =
-      process.env.NODE_ENV === "development" ? "*/5 * * * *" : "0 2 * * *";
-
-    this.compactionTask = cron.schedule(schedule, async () => {
-      logger.main.info(
-        `Running scheduled yjs compaction (schedule: ${schedule})`,
-      );
-      await this.compactAllNotes();
-    });
-
-    logger.main.info(`Yjs compaction cron job scheduled: ${schedule}`);
-  }
-
-  // Clean up resources
-  cleanup() {
-    // Stop the cron job
-    if (this.compactionTask) {
-      this.compactionTask.stop();
-      this.compactionTask = null;
-    }
-  }
+  // No Yjs writes or compaction: legacy rows are retained migration backups.
+  cleanup() {}
 }
 
 export default NotesService;

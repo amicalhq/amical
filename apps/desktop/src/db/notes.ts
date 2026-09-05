@@ -1,21 +1,15 @@
-import { eq, desc, asc, like, and, isNull } from "drizzle-orm";
+import { eq, desc, asc, like, and } from "drizzle-orm";
 import { db } from "./index";
-import {
-  notes,
-  yjsUpdates,
-  type Note,
-  type NewNote,
-  type YjsUpdate,
-} from "./schema";
+import { notes, type Note, type NewNote } from "./schema";
 
 // Create a new note
-export async function createNote(
-  data: Omit<NewNote, "id" | "createdAt" | "updatedAt" | "lastAccessedAt">,
-) {
+export async function createNote(data: Pick<NewNote, "title" | "icon">) {
   const now = new Date();
 
   const newNote: NewNote = {
     ...data,
+    content: "",
+    contentFormat: "markdown-v1",
     createdAt: now,
     updatedAt: now,
   };
@@ -75,7 +69,7 @@ export async function getNoteById(id: number) {
 // Update note
 export async function updateNote(
   id: number,
-  data: Partial<Omit<Note, "id" | "createdAt" | "docName">>,
+  data: Partial<Pick<Note, "title" | "icon">>,
 ) {
   const updateData = {
     ...data,
@@ -96,74 +90,4 @@ export async function deleteNote(id: number) {
   // Delete the note (yjs updates and metadata will be cascade deleted)
   const result = await db.delete(notes).where(eq(notes.id, id)).returning();
   return result[0] || null;
-}
-
-// YJS Updates operations
-
-// Save a YJS update to the database
-export async function saveYjsUpdate(noteId: number, update: Uint8Array) {
-  // Convert Uint8Array to Buffer for storage
-  const bufferUpdate = Buffer.from(update);
-
-  // Insert into yjs_updates table
-  await db.insert(yjsUpdates).values({
-    noteId,
-    updateData: bufferUpdate,
-  });
-}
-
-// Load all YJS updates for a note
-export async function loadYjsUpdates(noteId: number): Promise<Uint8Array[]> {
-  const updates = await db
-    .select()
-    .from(yjsUpdates)
-    .where(eq(yjsUpdates.noteId, noteId))
-    .orderBy(asc(yjsUpdates.id));
-
-  // Convert Buffer to Uint8Array
-  return updates.map((u: YjsUpdate) => {
-    return new Uint8Array(u.updateData as Buffer);
-  });
-}
-
-// Get all unique note IDs that have updates
-export async function getUniqueNoteIds(): Promise<number[]> {
-  const result = await db
-    .select({ noteId: yjsUpdates.noteId })
-    .from(yjsUpdates)
-    .groupBy(yjsUpdates.noteId);
-
-  return result.map((r: { noteId: number }) => r.noteId);
-}
-
-// Get all YJS updates for a specific note
-export async function getYjsUpdatesByNoteId(
-  noteId: number,
-): Promise<YjsUpdate[]> {
-  return await db
-    .select()
-    .from(yjsUpdates)
-    .where(eq(yjsUpdates.noteId, noteId))
-    .orderBy(asc(yjsUpdates.id));
-}
-
-// Replace all YJS updates with a compacted one (transactional)
-export async function replaceYjsUpdates(
-  noteId: number,
-  compactedUpdate: Uint8Array,
-): Promise<void> {
-  const bufferUpdate = Buffer.from(compactedUpdate);
-
-  db.transaction((tx) => {
-    // Delete all existing updates
-    tx.delete(yjsUpdates).where(eq(yjsUpdates.noteId, noteId)).run();
-
-    // Insert the compacted update
-    tx.insert(yjsUpdates)
-      .values({
-        noteId,
-        updateData: bufferUpdate,
-      })
-      .run();
-  });
 }

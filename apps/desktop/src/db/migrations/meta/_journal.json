@@ -78,6 +78,13 @@
       "when": 1788126291783,
       "tag": "0010_foamy_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1788643418674,
+      "tag": "0011_bright_ezekiel_stane",
+      "breakpoints": true
     }
   ]
 }

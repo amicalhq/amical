@@ -30,27 +30,6 @@ type SerializedEditorState = {
   root: SerializedRootNode;
 };
 
-export function isLexicalEditorStateJsonString(value: string): boolean {
-  if (!value) return false;
-
-  try {
-    const parsed = JSON.parse(value) as Partial<SerializedEditorState> | null;
-    const root =
-      parsed && typeof parsed === "object"
-        ? (parsed as Partial<SerializedEditorState>).root
-        : undefined;
-
-    return !!(
-      root &&
-      typeof root === "object" &&
-      root.type === "root" &&
-      Array.isArray(root.children)
-    );
-  } catch {
-    return false;
-  }
-}
-
 export function serializePlainTextToLexicalEditorStateJson(
   plainText: string,
 ): string {

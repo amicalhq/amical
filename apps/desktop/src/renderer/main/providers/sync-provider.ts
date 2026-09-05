@@ -1,99 +1,106 @@
-import * as Y from "yjs";
-import { toast } from "sonner";
+import type { ElectronAPI } from "@/types/electron-api";
+import type { NoteBody } from "@/notes/types";
 
-export interface SyncProviderConfig {
-  noteId: number;
-  onSaveError?: () => void;
-}
+export type NoteSaveIssue = "deleted" | "error" | null;
 
+// Local Markdown persistence. The last save received by SQLite wins.
 export class NoteSyncProvider {
-  private ydoc: Y.Doc;
-  private text: Y.Text;
-  private noteId: number;
-  private onSaveError: (() => void) | undefined;
-  private destroyed = false;
-  private updateHandler:
-    | ((update: Uint8Array, origin: unknown) => void)
-    | null = null;
+  body: Extract<NoteBody, { status: "ready" }>;
+  private pending: string | null = null;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private unsubscribe: () => void;
+  private issue: NoteSaveIssue = null;
+  private blockedFormatting = false;
+  onBody: (() => void) | undefined;
+  onStatus: ((pending: boolean, issue: NoteSaveIssue) => void) | undefined;
 
-  constructor(config: SyncProviderConfig) {
-    this.noteId = config.noteId;
-    this.onSaveError = config.onSaveError;
-
-    // Initialize Y.Doc and Y.Text
-    this.ydoc = new Y.Doc();
-    this.text = this.ydoc.getText("content");
-
-    // Set up persistence listener for local storage
-    this.setupPersistence();
-  }
-
-  private setupPersistence(): void {
-    // Save YJS updates to backend via IPC
-    this.updateHandler = async (update: Uint8Array, origin: unknown) => {
-      if (this.destroyed) return;
-      if (origin === "load") return;
-
+  constructor(
+    private noteId: number,
+    private api: ElectronAPI["notes"] = window.electronAPI.notes,
+  ) {
+    const body = api.loadBody(noteId);
+    if (body.status !== "ready") throw new Error("Note is not editable");
+    this.body = body;
+    this.unsubscribe = api.onBodyChange((change) => {
+      if (change.noteId !== noteId) return;
+      if (change.deleted) {
+        this.markDeleted();
+        return;
+      }
+      // An active editor finishes its own save; idle windows follow storage.
+      if (this.pending !== null || this.blockedFormatting) return;
       try {
-        // Convert Uint8Array to ArrayBuffer for IPC
-        const buffer = update.buffer.slice(
-          update.byteOffset,
-          update.byteOffset + update.byteLength,
-        );
-
-        await window.electronAPI.notes.saveYjsUpdate(
-          this.noteId,
-          buffer as ArrayBuffer,
-        );
-      } catch (error) {
-        if (!this.destroyed) {
-          console.error("Failed to save yjs update:", error);
-          if (this.onSaveError) {
-            this.onSaveError();
-          } else {
-            toast.error("Failed to save changes");
+        const latest = api.loadBody(noteId);
+        if (latest.status === "deleted") this.markDeleted();
+        else if (latest.status === "ready") {
+          this.issue = null;
+          this.notify();
+          if (latest.markdown !== this.body.markdown) {
+            this.body = latest;
+            this.onBody?.();
           }
         }
+      } catch {
+        this.issue = "error";
+        this.notify();
       }
-    };
-
-    this.ydoc.on("update", this.updateHandler);
+    });
   }
 
-  async loadFromLocal(): Promise<void> {
+  queue(markdown: string) {
+    if (this.issue === "deleted") return;
+    this.blockedFormatting = false;
+    this.pending = markdown;
+    this.issue = null;
+    this.cancelTimer();
+    this.timer = setTimeout(() => this.flush(), 250);
+    this.notify();
+  }
+
+  holdUnsupportedEdit() {
+    this.blockedFormatting = true;
+    this.cancelTimer();
+  }
+
+  flush(): boolean {
+    this.cancelTimer();
+    if (this.blockedFormatting) return false;
+    if (this.pending === null) return true;
     try {
-      const updates = await window.electronAPI.notes.loadYjsUpdates(
-        this.noteId,
-      );
-
-      if (updates.length > 0) {
-        // Apply all updates to reconstruct the document
-        updates.forEach((update: ArrayBuffer) => {
-          Y.applyUpdate(this.ydoc, new Uint8Array(update), "load");
-        });
-      }
-    } catch (error) {
-      console.error("Failed to load yjs updates:", error);
-      throw error;
+      const result = this.api.saveBody(this.noteId, this.pending);
+      if (result.status === "saved") {
+        this.body = { ...this.body, markdown: this.pending };
+        this.pending = null;
+        this.issue = null;
+      } else if (result.status === "deleted") this.markDeleted();
+      else this.issue = "error";
+    } catch {
+      this.issue = "error";
     }
+    this.notify();
+    return this.pending === null;
   }
 
-  getDoc(): Y.Doc {
-    return this.ydoc;
+  private markDeleted() {
+    this.pending = null;
+    this.blockedFormatting = false;
+    this.issue = "deleted";
+    this.cancelTimer();
+    this.notify();
   }
-
-  getText(): Y.Text {
-    return this.text;
+  private notify() {
+    this.onStatus?.(
+      this.pending !== null || this.blockedFormatting,
+      this.issue,
+    );
   }
-
-  destroy(): void {
-    this.destroyed = true;
-
-    if (this.updateHandler) {
-      this.ydoc.off("update", this.updateHandler);
-      this.updateHandler = null;
-    }
-
-    this.ydoc.destroy();
+  private cancelTimer() {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+  }
+  destroy() {
+    this.flush();
+    this.unsubscribe();
+    this.cancelTimer();
   }
 }

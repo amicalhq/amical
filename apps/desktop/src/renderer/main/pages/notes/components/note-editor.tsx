@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -21,14 +21,15 @@ import {
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LinkNode, AutoLinkNode } from "@lexical/link";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
-import { TRANSFORMERS } from "@lexical/markdown";
+import { TRANSFORMERS, HIGHLIGHT } from "@lexical/markdown";
 import { Loader2 } from "lucide-react";
-import { NoteSyncProvider } from "@/renderer/main/providers/sync-provider";
-import { YjsSyncPlugin } from "@/renderer/main/components/editor/yjs-sync-plugin";
+import type { NoteBody } from "@/notes/types";
+import { MarkdownSyncPlugin } from "@/renderer/main/components/editor/markdown-sync-plugin";
 import { CodeBlockShortcutPlugin } from "@/renderer/main/components/editor/code-block-plugin";
 import { ChecklistShortcutPlugin } from "@/renderer/main/components/editor/checklist-shortcut-plugin";
-import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+
+import { NoteListItemNode } from "@/renderer/main/components/editor/note-list-item-node";
 
 interface NoteEditorProps {
   noteId: number;
@@ -44,6 +45,7 @@ const theme = {
     h3: "text-xl font-bold mt-2 mb-1",
     h4: "text-lg font-bold mt-2 mb-1",
     h5: "text-base font-bold mt-1 mb-0.5",
+    h6: "text-sm font-bold mt-1 mb-0.5",
   },
   quote: "border-l-4 border-gray-300 pl-4 italic text-muted-foreground my-1",
   list: {
@@ -117,11 +119,21 @@ function CodeHighlightPlugin(): null {
 }
 
 // All nodes needed for markdown support
+const NOTE_SHORTCUTS = TRANSFORMERS.filter(
+  (transformer) => transformer !== HIGHLIGHT,
+);
+
 const EDITOR_NODES = [
   HeadingNode,
   QuoteNode,
   ListNode,
-  ListItemNode,
+  NoteListItemNode,
+  {
+    replace: ListItemNode,
+    with: (node: ListItemNode) =>
+      new NoteListItemNode(node.getValue(), node.getChecked()),
+    withKlass: NoteListItemNode,
+  },
   CodeNode,
   CodeHighlightNode,
   LinkNode,
@@ -178,113 +190,31 @@ export function NoteEditor({
   onReady,
 }: NoteEditorProps): React.ReactNode {
   const { t } = useTranslation();
-  const [isLoading, setIsLoading] = useState(true);
-  const [syncProvider, setSyncProvider] = useState<NoteSyncProvider | null>(
-    null,
-  );
-  const providerRef = useRef<NoteSyncProvider | null>(null);
-  const destroyQueueRef = useRef<Array<NoteSyncProvider>>([]);
-  const onReadyCalledRef = useRef(false);
-  const onSaveErrorRef = useRef(() =>
-    toast.error(t("settings.notes.toast.saveFailed")),
-  );
+  const readyNoteRef = useRef<number | null>(null);
+  const [body, setBody] = useState<NoteBody | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
-  // Handle sync status changes and propagate to parent
-  const handleSyncStatusChange = useCallback(
-    (isSyncing: boolean) => {
-      onSyncStatusChange?.(isSyncing);
-    },
-    [onSyncStatusChange],
-  );
-
-  // Reset onReady tracking when noteId changes
   useEffect(() => {
-    onReadyCalledRef.current = false;
+    readyNoteRef.current = null;
+    setBody(null);
+    setLoadError(false);
+    try {
+      setBody(window.electronAPI.notes.loadBody(noteId));
+    } catch {
+      setLoadError(true);
+    }
   }, [noteId]);
 
   useEffect(() => {
-    onSaveErrorRef.current = () =>
-      toast.error(t("settings.notes.toast.saveFailed"));
-  }, [t]);
-
-  // Notify parent when editor is ready
-  useEffect(() => {
-    if (!isLoading && syncProvider && !onReadyCalledRef.current) {
-      onReadyCalledRef.current = true;
+    if (
+      body?.status === "ready" &&
+      body.noteId === noteId &&
+      readyNoteRef.current !== noteId
+    ) {
+      readyNoteRef.current = noteId;
       onReady?.();
     }
-  }, [isLoading, syncProvider, onReady]);
-
-  // After `syncProvider` changes (either unmounting or swapping to a new
-  // provider), it is safe to destroy the previous provider(s). This ensures
-  // YjsSyncPlugin can flush any pending debounced writes during its cleanup
-  // while the persistence listener is still attached.
-  useEffect(() => {
-    if (destroyQueueRef.current.length === 0) return;
-
-    const providersToDestroy = destroyQueueRef.current;
-    destroyQueueRef.current = [];
-
-    providersToDestroy.forEach((provider) => {
-      provider.destroy();
-    });
-  }, [syncProvider]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const initProvider = async () => {
-      // Reset loading state to unmount editor when switching notes
-      setIsLoading(true);
-      setSyncProvider(null);
-
-      // Queue the previous provider for destruction after unmount. This avoids
-      // dropping any pending debounced flushes when switching notes quickly.
-      if (providerRef.current) {
-        destroyQueueRef.current.push(providerRef.current);
-        providerRef.current = null;
-      }
-
-      const provider = new NoteSyncProvider({
-        noteId,
-        onSaveError: () => onSaveErrorRef.current(),
-      });
-
-      providerRef.current = provider;
-
-      try {
-        await provider.loadFromLocal();
-      } catch (error) {
-        console.error("Failed to load note content:", error);
-      }
-
-      if (mounted) {
-        setSyncProvider(provider);
-        setIsLoading(false);
-      }
-    };
-
-    initProvider();
-
-    return () => {
-      mounted = false;
-    };
-  }, [noteId]);
-
-  // Clean up providers on unmount.
-  useEffect(() => {
-    return () => {
-      if (providerRef.current) {
-        providerRef.current.destroy();
-        providerRef.current = null;
-      }
-
-      destroyQueueRef.current.forEach((provider) => {
-        provider.destroy();
-      });
-      destroyQueueRef.current = [];
-    };
-  }, []);
+  }, [body, noteId, onReady]);
 
   const initialConfig = useMemo(
     () => ({
@@ -296,7 +226,21 @@ export function NoteEditor({
     [noteId],
   );
 
-  if (isLoading || !syncProvider) {
+  if (loadError)
+    return <p role="alert">{t("settings.notes.recovery.loadFailed")}</p>;
+  if (body?.status === "blocked" && body.noteId === noteId)
+    return (
+      <div className="space-y-3 p-4">
+        <p role="alert">{t("settings.notes.recovery.blocked")}</p>
+        <details>
+          <summary>{t("settings.notes.recovery.details")}</summary>
+          <p>{body.reason}</p>
+        </details>
+      </div>
+    );
+  if (body?.status === "deleted")
+    return <p role="alert">{t("settings.notes.recovery.deletedNote")}</p>;
+  if (!body || body.noteId !== noteId) {
     return (
       <div className="flex items-center justify-center min-h-[200px]">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -305,37 +249,36 @@ export function NoteEditor({
   }
 
   return (
-    <LexicalComposer initialConfig={initialConfig}>
-      <div className="relative">
-        <RichTextPlugin
-          contentEditable={
-            <ContentEditable
-              className="min-h-[500px] px-4 py-2 outline-none text-base leading-relaxed"
-              aria-placeholder={t("settings.notes.note.bodyPlaceholder")}
-              placeholder={
-                <div className="absolute top-2 left-4 text-muted-foreground pointer-events-none">
-                  {t("settings.notes.note.bodyPlaceholder")}
-                </div>
-              }
-            />
-          }
-          ErrorBoundary={LexicalErrorBoundary}
-        />
-        <HistoryPlugin />
-        <AutoFocusPlugin />
-        <ListPlugin />
-        <CheckListPlugin />
-        <TabIndentationPlugin />
-        <ClickableLinkPlugin />
-        <AutoLinkPlugin matchers={MATCHERS} />
-        <CodeHighlightPlugin />
-        <CodeBlockShortcutPlugin />
-        <ChecklistShortcutPlugin />
-        <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
-        <YjsSyncPlugin
-          yText={syncProvider.getText()}
-          onSyncStatusChange={handleSyncStatusChange}
-        />
+    <LexicalComposer key={noteId} initialConfig={initialConfig}>
+      <div className="flex flex-col">
+        <div className="relative">
+          <RichTextPlugin
+            contentEditable={
+              <ContentEditable
+                className="min-h-[500px] px-4 py-2 outline-none text-base leading-relaxed"
+                aria-placeholder={t("settings.notes.note.bodyPlaceholder")}
+                placeholder={
+                  <div className="absolute top-2 left-4 text-muted-foreground pointer-events-none">
+                    {t("settings.notes.note.bodyPlaceholder")}
+                  </div>
+                }
+              />
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+          <HistoryPlugin />
+          <AutoFocusPlugin />
+          <ListPlugin />
+          <CheckListPlugin />
+          <TabIndentationPlugin />
+          <ClickableLinkPlugin />
+          <AutoLinkPlugin matchers={MATCHERS} />
+          <CodeHighlightPlugin />
+          <CodeBlockShortcutPlugin />
+          <ChecklistShortcutPlugin />
+          <MarkdownShortcutPlugin transformers={NOTE_SHORTCUTS} />
+        </div>
+        <MarkdownSyncPlugin noteId={noteId} onStatus={onSyncStatusChange} />
       </div>
     </LexicalComposer>
   );

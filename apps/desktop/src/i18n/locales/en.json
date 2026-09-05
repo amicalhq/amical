@@ -906,6 +906,14 @@
           "description": "Connect your calendar to get started",
           "button": "Connect calendar"
         }
+      },
+      "recovery": {
+        "loadFailed": "The note could not be loaded. Close and reopen it to try again.",
+        "blocked": "This note could not be converted. Its original data is preserved for recovery.",
+        "details": "Recovery details",
+        "deletedNote": "This note was deleted.",
+        "format": "This formatting cannot be saved as Markdown. Use bold, italic, strikethrough, or code. Undo unsupported pasted formatting to save.",
+        "error": "Changes could not be saved. Keep this window open and try editing again."
       }
     },
     "vocabulary": {

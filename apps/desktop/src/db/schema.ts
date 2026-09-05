@@ -462,7 +462,10 @@ export interface AppSettingsData {
 export const notes = sqliteTable("notes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
-  content: text("content").default(""), // Store the actual text content
+  content: text("content").default(""), // Authoritative body when contentFormat is markdown-v1
+  contentFormat: text("content_format").notNull().default("legacy"),
+  legacyContent: text("legacy_content"), // Retained pre-migration content column
+  migrationError: text("migration_error"),
   icon: text("icon"), // Store the icon (emoji) associated with the note
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()

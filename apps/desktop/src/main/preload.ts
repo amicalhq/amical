@@ -101,13 +101,24 @@ const api: ElectronAPI = {
   // synchronously in direct response to a user gesture (click/keypress).
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
 
-  // Notes API - Yjs synchronization only
+  // Synchronous writes are used only after a debounce or during close. When
+  // the call returns SQLite has committed; no asynchronous IPC is left behind.
   notes: {
-    saveYjsUpdate: (noteId: number, update: ArrayBuffer) =>
-      ipcRenderer.invoke("notes:saveYjsUpdate", noteId, update),
-
-    loadYjsUpdates: (noteId: number) =>
-      ipcRenderer.invoke("notes:loadYjsUpdates", noteId),
+    loadBody: (noteId: number) => {
+      const result = ipcRenderer.sendSync("notes:loadBody", noteId);
+      if (result.error) throw new Error(result.error);
+      return result.body;
+    },
+    saveBody: (noteId: number, markdown: string) =>
+      ipcRenderer.sendSync("notes:saveBody", { noteId, markdown }),
+    onBodyChange: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        change: Parameters<typeof callback>[0],
+      ) => callback(change);
+      ipcRenderer.on("notes:bodyChanged", listener);
+      return () => ipcRenderer.removeListener("notes:bodyChanged", listener);
+    },
   },
 };
 

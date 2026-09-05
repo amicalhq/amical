@@ -1,28 +1,18 @@
-import * as Y from "yjs";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../logger";
 import { db } from "../../db";
 import { getAppSettings, updateAppSettings } from "../../db/app-settings";
 import { seedDailyStats } from "../../db/daily-stats";
-import {
-  getUniqueNoteIds,
-  getYjsUpdatesByNoteId,
-  replaceYjsUpdates,
-} from "../../db/notes";
+import { migrateLegacyNotes } from "../../db/note-body";
 import { snippets, transcriptions, vocabulary } from "../../db/schema";
 import {
   cloudSyncKeySchema,
   cloudSyncOptionalTextSchema,
   cloudSyncRequiredTextSchema,
 } from "../../db/sync-payload";
-import {
-  isLexicalEditorStateJsonString,
-  serializePlainTextToLexicalEditorStateJson,
-} from "../../services/notes/lexical-editor-state";
 import { countWords, toLocalStatsDate } from "../../utils/dictation-stats";
 
-const NOTES_LEXICAL_MIGRATION_VERSION = 1;
 const DICTATION_DAILY_STATS_MIGRATION_VERSION = 2;
 const SETTINGS_SYNC_BOUNDS_MIGRATION_VERSION = 1;
 
@@ -41,48 +31,6 @@ async function persistDataMigrationVersion(
   });
 
   return nextDataMigrations;
-}
-
-async function migrateNotesToLexicalEditorState(): Promise<{
-  notesChecked: number;
-  notesMigrated: number;
-}> {
-  const noteIds = await getUniqueNoteIds();
-  let notesMigrated = 0;
-
-  for (const noteId of noteIds) {
-    const updates = await getYjsUpdatesByNoteId(noteId);
-    if (updates.length === 0) continue;
-
-    const ydoc = new Y.Doc();
-    for (const update of updates) {
-      const updateArray = new Uint8Array(update.updateData as Buffer);
-      Y.applyUpdate(ydoc, updateArray);
-    }
-
-    const yText = ydoc.getText("content");
-    const storedContent = yText.toString();
-
-    if (!storedContent) continue;
-    if (isLexicalEditorStateJsonString(storedContent)) continue;
-
-    const migratedJson =
-      serializePlainTextToLexicalEditorStateJson(storedContent);
-
-    ydoc.transact(() => {
-      yText.delete(0, yText.length);
-      yText.insert(0, migratedJson);
-    }, "notes-lexical-migration");
-
-    const stateUpdate = Y.encodeStateAsUpdate(ydoc);
-    await replaceYjsUpdates(noteId, stateUpdate);
-    notesMigrated++;
-  }
-
-  return {
-    notesChecked: noteIds.length,
-    notesMigrated,
-  };
 }
 
 async function migrateDictationDailyStats(): Promise<{
@@ -343,31 +291,8 @@ export async function runDataMigrations(): Promise<void> {
     const settings = await getAppSettings();
     let currentDataMigrations = settings.dataMigrations ?? {};
 
-    if (
-      (currentDataMigrations.notesLexical ?? 0) <
-      NOTES_LEXICAL_MIGRATION_VERSION
-    ) {
-      const startTime = Date.now();
-      logger.db.info("Running notes lexical data migration", {
-        notesLexicalFrom: currentDataMigrations.notesLexical ?? 0,
-        notesLexicalTo: NOTES_LEXICAL_MIGRATION_VERSION,
-      });
-
-      const { notesChecked, notesMigrated } =
-        await migrateNotesToLexicalEditorState();
-
-      currentDataMigrations = await persistDataMigrationVersion(
-        currentDataMigrations,
-        "notesLexical",
-        NOTES_LEXICAL_MIGRATION_VERSION,
-      );
-
-      logger.db.info("Notes lexical migration complete", {
-        notesChecked,
-        notesMigrated,
-        durationMs: Date.now() - startTime,
-      });
-    }
+    // Markdown migration has per-note state and never rewrites legacy blobs.
+    migrateLegacyNotes((currentDataMigrations.notesLexical ?? 0) < 1);
 
     if (
       (currentDataMigrations.dictationDailyStats ?? 0) <
