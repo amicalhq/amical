@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import packageJson from "../../package.json" with { type: "json" };
 import { getPostHogSourceMapOptions } from "../../vite.posthog";
 
 describe("PostHog source-map configuration", () => {
@@ -33,7 +34,7 @@ describe("PostHog source-map configuration", () => {
       host: "https://us.posthog.com",
       sourcemaps: {
         releaseName: "amical-desktop",
-        releaseVersion: "1.12.0-beta.3+abcdef1234567890",
+        releaseVersion: `${packageJson.version}+abcdef1234567890`,
         deleteAfterUpload: true,
       },
     });
