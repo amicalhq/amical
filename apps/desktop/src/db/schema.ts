@@ -56,7 +56,7 @@ export const vocabulary = sqliteTable(
   {
     id: text("id")
       .notNull()
-      .$defaultFn(() => crypto.randomUUID()),
+      .$defaultFn(() => createEntityId("vocabulary")),
     scopeType: text("scope_type", { enum: ["user", "org"] })
       .notNull()
       .default("user"),
@@ -92,7 +92,7 @@ export const snippets = sqliteTable(
   {
     id: text("id")
       .notNull()
-      .$defaultFn(() => crypto.randomUUID()),
+      .$defaultFn(() => createEntityId("snippet")),
     scopeType: text("scope_type", { enum: ["user", "org"] })
       .notNull()
       .default("user"),
@@ -164,7 +164,7 @@ export const syncCollectionState = sqliteTable(
   ],
 );
 
-// The domain row UUID is also its sync ID. Accepted server state remains in a
+// The domain row ID is also its sync ID. Accepted server state remains in a
 // scope-specific sidecar so physical deletion can still sync a tombstone.
 export const syncItemState = sqliteTable(
   "sync_item_state",

@@ -10,5 +10,15 @@ export function migrateDatabase<TSchema extends Record<string, unknown>>(
   config: Parameters<typeof migrate>[1],
 ) {
   db.$client.function("amical_note_id", () => createEntityId("note"));
+  db.$client.function("amical_vocabulary_id", () =>
+    createEntityId("vocabulary"),
+  );
+  db.$client.function("amical_snippet_id", () => createEntityId("snippet"));
+  db.$client.function("amical_is_uuid", (id) =>
+    typeof id === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? 1
+      : 0,
+  );
   migrate(db, config);
 }

@@ -101,8 +101,30 @@ it("upgrades integer IDs before Markdown, retaining Yjs data and its foreign key
   const oldVocabulary = testDb.db.select().from(vocabulary).all();
   const oldSnippets = testDb.db.select().from(snippets).all();
   migrateDatabase(testDb.db, { migrationsFolder: migrations });
-  expect(testDb.db.select().from(vocabulary).all()).toEqual(oldVocabulary);
-  expect(testDb.db.select().from(snippets).all()).toEqual(oldSnippets);
+  expect(testDb.db.select().from(vocabulary).all()).toEqual(
+    oldVocabulary.map((row) => ({
+      ...row,
+      id: expect.stringMatching(/^voc_[a-z][a-z0-9]{23}$/),
+    })),
+  );
+  expect(testDb.db.select().from(snippets).all()).toEqual(
+    oldSnippets.map((row) => ({
+      ...row,
+      id: expect.stringMatching(/^snp_[a-z][a-z0-9]{23}$/),
+    })),
+  );
+  const newWord = testDb.db
+    .insert(vocabulary)
+    .values({ word: "New word" })
+    .returning()
+    .get();
+  const newSnippet = testDb.db
+    .insert(snippets)
+    .values({ trigger: "new", content: "New content" })
+    .returning()
+    .get();
+  expect(newWord.id).toMatch(/^voc_[a-z][a-z0-9]{23}$/);
+  expect(newSnippet.id).toMatch(/^snp_[a-z][a-z0-9]{23}$/);
   const rows = testDb.db.select().from(notes).all();
   const note = rows.find((row) => row.title === "Existing")!;
   expect(rows).toHaveLength(2);
@@ -146,10 +168,10 @@ it("upgrades integer IDs before Markdown, retaining Yjs data and its foreign key
 });
 
 it("rolls back ID remapping and recovery rows if a later pending migration fails", () => {
-  copyMigrations(12);
+  copyMigrations(13);
   writeFileSync(
-    join(folder, "0012_notes_markdown.sql"),
-    readFileSync(join(folder, "0012_notes_markdown.sql"), "utf8") +
+    join(folder, "0013_notes_markdown.sql"),
+    readFileSync(join(folder, "0013_notes_markdown.sql"), "utf8") +
       "\n--> statement-breakpoint\nSELECT * FROM missing_migration_table;",
   );
   expect(() =>

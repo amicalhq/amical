@@ -112,4 +112,10 @@ saving, debounce/close, last-write-wins across windows, deletion, and note servi
 
 Note IDs use `nt_` plus the full 24-character CUID2 output. Migration
 `0011_notes_ids` replaces integer primary keys and updates Yjs foreign keys
-before `0012_notes_markdown` runs. The note ID is used throughout IPC and UI.
+before `0013_notes_markdown` runs. The note ID is used throughout IPC and UI.
+
+Migration `0012_settings_ids` clears vocabulary/snippet outbox entries, saved
+server state, and pull cursors, including pending deletions, then replaces live
+UUIDs with `voc_` and `snp_` plus full 24-character CUID2 IDs. Normal sync enrolls
+the remaining rows again. Content and metadata stay unchanged locally. Server
+natural-key dedup can restore existing UUIDs and content; the migration runs once.
