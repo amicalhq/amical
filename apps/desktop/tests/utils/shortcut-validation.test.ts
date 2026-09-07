@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkAlphanumericOnly,
   checkMaxKeysLength,
   type ShortcutType,
   validateShortcutBindings,
@@ -91,5 +92,28 @@ describe("shortcut validation", () => {
       valid: false,
       error: { key: "settings.shortcuts.validation.alreadyAssigned" },
     });
+  });
+
+  it.each([
+    ["Return", 36],
+    ["the legacy Return alias", 52],
+    ["KeypadEnter", 76],
+  ])("treats macOS %s as a special key needing no modifier", (_label, key) => {
+    expect(checkAlphanumericOnly([key], "darwin")).toEqual({ valid: true });
+  });
+
+  it("treats Windows Enter as a special key needing no modifier", () => {
+    expect(checkAlphanumericOnly([0x0d], "win32")).toEqual({ valid: true });
+  });
+
+  it("accepts a bare Return binding on macOS", () => {
+    expect(
+      validateShortcutBindings({
+        candidateBindings: [[36]],
+        candidateType: "toggleRecording",
+        shortcutsByType: shortcuts,
+        platform: "darwin",
+      }),
+    ).toEqual({ valid: true, warning: undefined });
   });
 });
