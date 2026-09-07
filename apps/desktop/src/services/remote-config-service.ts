@@ -4,6 +4,7 @@ import { logger } from "../main/logger";
 import {
   RemoteConfigSchema,
   RemoteConfigSurfaceSchema,
+  type UpdateRequirement,
   type RemoteConfig,
   type RemoteConfigSurface,
 } from "@/types/remote-config";
@@ -162,6 +163,25 @@ export class RemoteConfigService {
   private telemetryService: TelemetryService;
 
   private config: DesktopRemoteConfig = EMPTY_CONFIG;
+  private readonly listeners = new Set<() => void>();
+
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  getUpdateRequirement(): UpdateRequirement | null {
+    const requirement = this.config.updateRequirement;
+    return requirement?.required &&
+      requirement.evaluatedVersion === app.getVersion()
+      ? requirement
+      : null;
+  }
+
+  private publishConfig(config: DesktopRemoteConfig): void {
+    this.config = config;
+    for (const listener of this.listeners) listener();
+  }
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private refreshPromise: Promise<void> | null = null;
   // Bumped on identity change; an in-flight refresh whose generation no longer
@@ -248,17 +268,10 @@ export class RemoteConfigService {
 
   private async initialize(): Promise<void> {
     // Load the persisted envelope first (fast, no network).
-    const lastFetchedAt = await Effect.runPromise(this.loadPersistedEffect());
-
-    const isStale =
-      !lastFetchedAt ||
-      Date.now() - new Date(lastFetchedAt).getTime() > REFRESH_INTERVAL_MS;
-
-    if (isStale) {
-      this.refresh().catch((err) => {
-        logger.main.error("Startup remote config refresh failed:", err);
-      });
-    }
+    await Effect.runPromise(this.loadPersistedEffect());
+    void this.refresh().catch((err) => {
+      logger.main.error("Startup remote config refresh failed:", err);
+    });
 
     this.refreshTimer = setInterval(() => {
       this.refresh().catch((err) => {
@@ -299,8 +312,15 @@ export class RemoteConfigService {
    */
   async resetForIdentityChange(): Promise<void> {
     this.generation += 1;
-    this.config = EMPTY_CONFIG;
-    await this.settingsService.setRemoteConfig({ config: EMPTY_CONFIG });
+    // App-version policy is independent of identity. Signing out must not
+    // remove a required update while the anonymous refresh is in flight.
+    this.publishConfig({
+      ...EMPTY_CONFIG,
+      updateRequirement: this.config.updateRequirement,
+    });
+    await this.settingsService.setRemoteConfig({
+      config: this.config,
+    });
     // doRefresh directly (not refresh) to force a fresh fetch for the new
     // identity rather than piggyback an in-flight one for the old.
     await this.doRefresh();
@@ -429,8 +449,7 @@ export class RemoteConfigService {
       const payload = yield* this.fetchEnvelopeEffect();
       const { config, brokenSurfaceIssues } = yield* parseEnvelope(payload);
 
-      // Identity changed while this fetch was in flight — drop it so it can't
-      // write the previous identity's surfaces.
+      // Identity changed while this fetch was in flight.
       if (this.generation !== generation) {
         return;
       }
@@ -494,19 +513,20 @@ export class RemoteConfigService {
 
   // Update the in-memory config and the persisted cache together.
   private async setConfig(config: RemoteConfig): Promise<void> {
-    const resolvedConfig = resolveRemoteConfig(config);
-    this.config = resolvedConfig;
+    const resolvedConfig = resolveRemoteConfig({
+      ...config,
+      // An older server response that omits this domain cannot lift a block.
+      updateRequirement:
+        config.updateRequirement ?? this.config.updateRequirement,
+    });
+    this.publishConfig(resolvedConfig);
     await this.settingsService.setRemoteConfig({
       config: resolvedConfig,
-      lastFetchedAt: new Date().toISOString(),
     });
   }
 
-  /**
-   * Returns lastFetchedAt if a persisted config was found, null otherwise.
-   * A cache that fails to load or validate is treated as absent.
-   */
-  private loadPersistedEffect(): Effect.Effect<string | null> {
+  /** A cache that fails to load or validate is treated as absent. */
+  private loadPersistedEffect(): Effect.Effect<void> {
     return Effect.gen(this, function* () {
       const persisted = yield* Effect.tryPromise({
         try: () => this.settingsService.getRemoteConfig(),
@@ -517,13 +537,12 @@ export class RemoteConfigService {
           }),
       });
       if (!persisted?.config) {
-        return null;
+        return;
       }
       // Same tolerant parse as the wire, but never reported: the cache is
       // our own post-validation write, not a server payload.
       const { config } = yield* parseEnvelope(persisted.config);
-      this.config = resolveRemoteConfig(config);
-      return persisted.lastFetchedAt ?? null;
+      this.publishConfig(resolveRemoteConfig(config));
     }).pipe(
       Effect.catchTags({
         RemoteConfigInvalid: (error) =>
@@ -531,7 +550,6 @@ export class RemoteConfigService {
             logger.main.error("Persisted remote config failed validation", {
               issues: error.issues,
             });
-            return null;
           }),
         RemoteConfigStorageFailed: (error) =>
           Effect.sync(() => {
@@ -539,13 +557,11 @@ export class RemoteConfigService {
               "Failed to load persisted remote config:",
               error.cause,
             );
-            return null;
           }),
       }),
       Effect.catchAllDefect((defect) =>
         Effect.sync(() => {
           logger.main.error("Failed to load persisted remote config:", defect);
-          return null;
         }),
       ),
     );

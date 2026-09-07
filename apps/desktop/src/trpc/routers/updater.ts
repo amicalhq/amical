@@ -1,3 +1,4 @@
+import { app, shell } from "electron";
 import { z } from "zod";
 import { observable } from "@trpc/server/observable";
 import { createRouter, procedure } from "../trpc";
@@ -9,6 +10,31 @@ interface UpdateStateUpdate {
 }
 
 export const updaterRouter = createRouter({
+  updateRequirement: procedure.subscription(({ ctx }) => {
+    const remoteConfig = ctx.services.remoteConfigService;
+    const recording = ctx.services.recordingLifecycle;
+    const getState = () => ({
+      requirement: remoteConfig.getUpdateRequirement(),
+      recordingActive:
+        recording.getSnapshot().projection.publicState !== "idle",
+    });
+    return observable<ReturnType<typeof getState>>((emit) => {
+      const push = () => emit.next(getState());
+      const offConfig = remoteConfig.onChange(push);
+      const offRecording = recording.onSnapshot(push);
+      push();
+      return () => {
+        offConfig();
+        offRecording();
+      };
+    });
+  }),
+  openDownloadPage: procedure.mutation(async () => {
+    await shell.openExternal("https://amical.ai/download");
+  }),
+  quit: procedure.mutation(() => {
+    app.quit();
+  }),
   // Pushes the current pending update prompt (or null) to the renderer.
   // eslint-disable-next-line deprecation/deprecation
   updatePrompt: procedure.subscription(({ ctx }) => {
@@ -40,6 +66,8 @@ export const updaterRouter = createRouter({
     .mutation(async ({ input, ctx }) => {
       const service = ctx.services.autoUpdaterService;
       if (!service) throw new Error("Auto-updater service not available");
+      // Policy refresh must not delay a download when the config endpoint is offline.
+      void ctx.services.remoteConfigService.refresh();
       await service.checkForUpdates(input?.userInitiated ?? false);
       return { success: true };
     }),

@@ -112,6 +112,18 @@ export class AutoUpdaterService extends EventEmitter {
   private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
   private installTriggered = false;
   private recordingIdleSince: number | null = null;
+  private readonly handleUpdateChannelChanged = (
+    channel: "stable" | "beta",
+  ): void => {
+    if (this.isCheckingOrDownloading) {
+      // Can't safely switch while a native cycle is in flight — queue it.
+      this.deferChannelChange(channel);
+      return;
+    }
+    this.pendingChannel = null;
+    this.applyChannel(channel);
+    this.checkForUpdates();
+  };
   private readonly handleRecordingStateChanged = (
     state: RecordingState,
   ): void => {
@@ -215,16 +227,7 @@ export class AutoUpdaterService extends EventEmitter {
     // Listen for channel changes
     settingsService.on(
       "update-channel-changed",
-      (channel: "stable" | "beta") => {
-        if (this.isCheckingOrDownloading) {
-          // Can't safely switch while a native cycle is in flight — queue it.
-          this.deferChannelChange(channel);
-          return;
-        }
-        this.pendingChannel = null;
-        this.applyChannel(channel);
-        this.checkForUpdates();
-      },
+      this.handleUpdateChannelChanged,
     );
 
     // Start periodic checks with platform-appropriate initial delay
@@ -730,7 +733,10 @@ export class AutoUpdaterService extends EventEmitter {
     }
     this.stopIdleInstallChecks();
     if (this.settingsService) {
-      this.settingsService.removeAllListeners("update-channel-changed");
+      this.settingsService.off(
+        "update-channel-changed",
+        this.handleUpdateChannelChanged,
+      );
       this.settingsService = null;
     }
     this.unsubscribeRecording?.();

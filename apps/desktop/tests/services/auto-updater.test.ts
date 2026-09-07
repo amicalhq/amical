@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { app, autoUpdater, net } from "electron";
+import { EventEmitter } from "node:events";
 import {
   AutoUpdaterService,
   classifyUpdaterError,
@@ -50,12 +51,18 @@ describe("classifyUpdaterError", () => {
 // far in the future and are cleared by cleanup() in afterEach.
 describe("AutoUpdaterService", () => {
   let service: AutoUpdaterService;
+  let settingsService: EventEmitter & {
+    getUpdateChannel: ReturnType<typeof vi.fn>;
+  };
   let telemetry: {
     captureException: ReturnType<typeof vi.fn>;
     captureContractFailure: ReturnType<typeof vi.fn>;
     getMachineId: ReturnType<typeof vi.fn>;
   };
-  let remoteConfig: { getConfig: ReturnType<typeof vi.fn> };
+  let remoteConfig: {
+    getConfig: ReturnType<typeof vi.fn>;
+    getUpdateRequirement: ReturnType<typeof vi.fn>;
+  };
   let recordingState: RecordingState;
   let snapshotListeners: Set<(snapshot: LifecycleSnapshotFake) => void>;
   let recordingLifecycle: {
@@ -98,6 +105,7 @@ describe("AutoUpdaterService", () => {
       getMachineId: vi.fn().mockReturnValue("machine-xyz"),
     };
     remoteConfig = {
+      getUpdateRequirement: vi.fn().mockReturnValue(null),
       getConfig: vi.fn().mockReturnValue({
         version: 1,
         surfaces: [],
@@ -114,16 +122,14 @@ describe("AutoUpdaterService", () => {
       },
     };
     service = AutoUpdaterService.createForTests();
+    settingsService = Object.assign(new EventEmitter(), {
+      getUpdateChannel: vi.fn().mockResolvedValue("stable"),
+    });
+    emitUpdateChannelChanged = (channel) => {
+      settingsService.emit("update-channel-changed", channel);
+    };
     await service.initialize(
-      {
-        getUpdateChannel: vi.fn().mockResolvedValue("stable"),
-        on: vi.fn((event, handler) => {
-          if (event === "update-channel-changed") {
-            emitUpdateChannelChanged = handler;
-          }
-        }),
-        removeAllListeners: vi.fn(),
-      } as any,
+      settingsService as any,
       telemetry as any,
       remoteConfig as any,
       recordingLifecycle as any,
@@ -134,6 +140,19 @@ describe("AutoUpdaterService", () => {
     service.cleanup();
     vi.useRealTimers();
     (app as unknown as { isPackaged: boolean }).isPackaged = false;
+  });
+
+  it("cleans up its channel listener without removing other services' listeners", () => {
+    const onRemoteConfigChannelChanged = vi.fn();
+    settingsService.on("update-channel-changed", onRemoteConfigChannelChanged);
+
+    service.cleanup();
+
+    expect(settingsService.listeners("update-channel-changed")).toEqual([
+      onRemoteConfigChannelChanged,
+    ]);
+    emitUpdateChannelChanged?.("beta");
+    expect(onRemoteConfigChannelChanged).toHaveBeenCalledWith("beta");
   });
 
   describe("state transitions", () => {
@@ -720,6 +739,17 @@ describe("AutoUpdaterService", () => {
         version: "2.0.0",
       });
     });
+  });
+
+  it("honors an explicit install request for a required update during recording", () => {
+    remoteConfig.getUpdateRequirement.mockReturnValue({
+      required: true,
+      evaluatedVersion: app.getVersion(),
+    });
+    setRecordingState("recording");
+    autoUpdater.emit("update-downloaded", {}, "", "2.0.0");
+    service.quitAndInstall();
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledOnce();
   });
 
   describe("background update installation", () => {

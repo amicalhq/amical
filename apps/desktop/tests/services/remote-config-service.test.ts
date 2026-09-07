@@ -1,3 +1,4 @@
+import { app } from "electron";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
@@ -31,7 +32,9 @@ describe("RemoteConfigService", () => {
   // interval).
   const createService = async (
     persisted?: PersistedRemoteConfig,
-    overrides?: { getRemoteConfig?: () => Promise<PersistedRemoteConfig> },
+    overrides?: {
+      getRemoteConfig?: () => Promise<PersistedRemoteConfig>;
+    },
   ) => {
     // The Live subscribes to auth events, so the stub must be an emitter.
     const authService = Object.assign(new EventEmitter(), {
@@ -69,17 +72,14 @@ describe("RemoteConfigService", () => {
     };
   };
 
-  // A persisted envelope that is fresh and well-formed, so building the Live
-  // triggers no startup refresh — auth-event tests can then attribute every
-  // fetch to the event under test.
-  const freshPersisted = (): PersistedRemoteConfig =>
+  // A well-formed persisted envelope for startup and refresh tests.
+  const cachedConfig = (): PersistedRemoteConfig =>
     ({
       config: {
         version: 1,
         surfaces: [],
         flags: { [DESKTOP_BACKGROUND_UPDATES_FLAG]: true },
       },
-      lastFetchedAt: new Date().toISOString(),
     }) as unknown as PersistedRemoteConfig;
 
   beforeEach(() => {
@@ -94,6 +94,117 @@ describe("RemoteConfigService", () => {
     }
     delete process.env.CORE_API_URL;
     vi.unstubAllGlobals();
+  });
+
+  it("loads even a fresh cache immediately and refreshes in the background", async () => {
+    let resolveFetch!: (response: unknown) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const persisted = {
+      config: {
+        version: 1,
+        surfaces: [],
+        flags: { [DESKTOP_BACKGROUND_UPDATES_FLAG]: false },
+      },
+      lastFetchedAt: new Date().toISOString(),
+    };
+    const { service } = await createService(persisted as PersistedRemoteConfig);
+    expect(service.getConfig().flags[DESKTOP_BACKGROUND_UPDATES_FLAG]).toBe(
+      false,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    resolveFetch({
+      ok: true,
+      json: async () => ({ version: 1, surfaces: [] }),
+    });
+    await service.refresh();
+    expect(service.getConfig().flags[DESKTOP_BACKGROUND_UPDATES_FLAG]).toBe(
+      true,
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a version-scoped requirement offline and across identity changes", async () => {
+    const requirement = {
+      required: true,
+      evaluatedVersion: app.getVersion(),
+      minimumVersion: "9.0.0",
+    };
+    const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
+    vi.stubGlobal("fetch", fetchMock);
+    const { service } = await createService({
+      ...cachedConfig(),
+      config: { version: 1, updateRequirement: requirement },
+    });
+    expect(service.getUpdateRequirement()).toEqual(requirement);
+    await service.resetForIdentityChange();
+    expect(service.getUpdateRequirement()).toEqual(requirement);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ version: 1 }),
+    });
+    await service.refresh();
+    expect(service.getUpdateRequirement()).toEqual(requirement);
+    const changed = vi.fn();
+    const off = service.onChange(changed);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        version: 1,
+        updateRequirement: { ...requirement, required: false },
+      }),
+    });
+    await service.refresh();
+    expect(service.getUpdateRequirement()).toBeNull();
+    expect(changed).toHaveBeenCalledOnce();
+    off();
+  });
+
+  it("does not apply a cached requirement to a newly installed version", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const { service } = await createService({
+      ...cachedConfig(),
+      config: {
+        version: 1,
+        updateRequirement: { required: true, evaluatedVersion: "old-version" },
+      },
+    });
+    expect(service.getUpdateRequirement()).toBeNull();
+    await service.refresh();
+    expect(fetch).toHaveBeenCalled();
+  });
+
+  it("deduplicates refreshes and discards a response from before an identity change", async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    const fetchMock = vi.fn(
+      () => new Promise((resolve) => pending.push(resolve)),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { service } = await createService(cachedConfig());
+    const original = service.refresh();
+    const duplicate = service.refresh();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    const reset = service.resetForIdentityChange();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const response = (required: boolean) => ({
+      ok: true,
+      json: async () => ({
+        version: 1,
+        updateRequirement: { required, evaluatedVersion: app.getVersion() },
+      }),
+    });
+    pending[1](response(false));
+    await reset;
+    pending[0](response(true));
+    await Promise.all([original, duplicate]);
+    expect(service.getConfig().updateRequirement?.required).toBe(false);
   });
 
   it("uses the selected application locale for targeting and headers", async () => {
@@ -114,6 +225,7 @@ describe("RemoteConfigService", () => {
     ];
     expect(url.pathname).toBe("/apps/v1/remote-config");
     expect(url.searchParams.get("locale")).toBe("ja");
+    expect(url.searchParams.has("channel")).toBe(false);
     expect(init.headers["Accept-Language"]).toBe("ja");
   });
 
@@ -146,7 +258,6 @@ describe("RemoteConfigService", () => {
         surfaces: [],
         flags: { [DESKTOP_BACKGROUND_UPDATES_FLAG]: true },
       },
-      lastFetchedAt: expect.any(String),
     });
   });
 
@@ -172,21 +283,20 @@ describe("RemoteConfigService", () => {
   });
 
   it("normalizes a legacy persisted config without flags", async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     vi.stubGlobal("fetch", fetchMock);
     const { service } = await createService({
       config: { version: 1, surfaces: [] },
-      lastFetchedAt: new Date().toISOString(),
     });
 
     // Building through Live already ran initialize() (the persisted load).
     expect(service.getConfig().flags[DESKTOP_BACKGROUND_UPDATES_FLAG]).toBe(
       true,
     );
-    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
   });
 
-  it("rejects malformed persisted flags and refreshes instead", async () => {
+  it("rejects malformed persisted flags while refreshing", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     vi.stubGlobal("fetch", fetchMock);
     const persisted = {
@@ -195,12 +305,11 @@ describe("RemoteConfigService", () => {
         surfaces: [],
         flags: { [DESKTOP_BACKGROUND_UPDATES_FLAG]: "true" },
       },
-      lastFetchedAt: new Date().toISOString(),
     } as unknown as PersistedRemoteConfig;
     const { service } = await createService(persisted);
 
     // initialize() ran during the layer build: it rejects the malformed
-    // persisted flags and kicks its background refresh instead.
+    // persisted flags and starts the usual background refresh.
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(service.getConfig().flags[DESKTOP_BACKGROUND_UPDATES_FLAG]).toBe(
       true,
@@ -210,8 +319,10 @@ describe("RemoteConfigService", () => {
   it("resets on every logged-out event", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     vi.stubGlobal("fetch", fetchMock);
-    const { authService } = await createService(freshPersisted());
+    const { authService } = await createService(cachedConfig());
     const emitter = authService as unknown as EventEmitter;
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    fetchMock.mockClear();
 
     emitter.emit("logged-out");
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
@@ -224,8 +335,10 @@ describe("RemoteConfigService", () => {
   it("resets on authenticated only when the token carried a subject", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     vi.stubGlobal("fetch", fetchMock);
-    const { authService } = await createService(freshPersisted());
+    const { authService } = await createService(cachedConfig());
     const emitter = authService as unknown as EventEmitter;
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    fetchMock.mockClear();
 
     emitter.emit("authenticated", { isAuthenticated: true });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -241,8 +354,10 @@ describe("RemoteConfigService", () => {
   it("drops the auth subscriptions when the scope closes", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     vi.stubGlobal("fetch", fetchMock);
-    const { authService } = await createService(freshPersisted());
+    const { authService } = await createService(cachedConfig());
     const emitter = authService as unknown as EventEmitter;
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    fetchMock.mockClear();
 
     await closeScope!();
     closeScope = null;
@@ -279,7 +394,7 @@ describe("RemoteConfigService", () => {
         .mockResolvedValueOnce(ok({ version: "one" }));
       vi.stubGlobal("fetch", fetchMock);
       const { service, captureContractFailure } =
-        await createService(freshPersisted());
+        await createService(cachedConfig());
 
       await service.refresh();
       expect(service.getConfig().surfaces).toHaveLength(1);
@@ -314,7 +429,7 @@ describe("RemoteConfigService", () => {
         ),
       );
       const { service, captureContractFailure } =
-        await createService(freshPersisted());
+        await createService(cachedConfig());
 
       await service.refresh();
 
@@ -336,7 +451,7 @@ describe("RemoteConfigService", () => {
         ),
       );
       const { service, captureContractFailure } =
-        await createService(freshPersisted());
+        await createService(cachedConfig());
 
       await service.refresh();
 
@@ -360,7 +475,7 @@ describe("RemoteConfigService", () => {
         ),
       );
       const { service, captureContractFailure } =
-        await createService(freshPersisted());
+        await createService(cachedConfig());
 
       await service.refresh();
 
@@ -385,9 +500,8 @@ describe("RemoteConfigService", () => {
         });
       vi.stubGlobal("fetch", fetchMock);
       const { service, captureContractFailure } =
-        await createService(freshPersisted());
+        await createService(cachedConfig());
 
-      await service.refresh();
       await service.refresh();
       await service.refresh();
 
@@ -403,11 +517,10 @@ describe("RemoteConfigService", () => {
       vi.stubGlobal("fetch", fetchMock);
       const persisted = {
         config: { version: "one" },
-        lastFetchedAt: new Date().toISOString(),
       } as unknown as PersistedRemoteConfig;
       const { captureContractFailure } = await createService(persisted);
 
-      // The rejected cache counts as absent, so init kicks its refresh.
+      // Startup still refreshes after rejecting the cache.
       await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
       expect(captureContractFailure).not.toHaveBeenCalled();
     });
@@ -418,7 +531,7 @@ describe("RemoteConfigService", () => {
         vi.fn().mockResolvedValue(ok({ version: 1, surfaces: [validBanner] })),
       );
       const { service, settingsService, captureContractFailure } =
-        await createService(freshPersisted());
+        await createService(cachedConfig());
       vi.mocked(settingsService.setRemoteConfig).mockRejectedValue(
         new Error("db locked"),
       );

@@ -18,6 +18,8 @@ import {
   ModelServiceTag,
   NativeBridgeTag,
   RecordingLifecycleTag,
+  RemoteConfigServiceTag,
+  WindowManagerTag,
   SettingsServiceTag,
   TranscriptionServiceTag,
 } from "../runtime/tags";
@@ -74,6 +76,8 @@ export function createDesktopRecordingLifecycle(deps: {
   nativeBridge: NativeBridge | null;
   settingsService: SettingsService;
   modelService: ModelService;
+  isUpdateRequired?: () => boolean;
+  onUpdateRequired?: () => void;
 }): DesktopRecordingLifecycle {
   const { nativeBridge, settingsService, modelService } = deps;
   const transcriptionService =
@@ -242,6 +246,8 @@ export function createDesktopRecordingLifecycle(deps: {
       : null,
     getPreserveClipboard: async () =>
       (await settingsService.getPreferences()).preserveClipboard,
+    isUpdateRequired: deps.isUpdateRequired,
+    onUpdateRequired: deps.onUpdateRequired,
     hasSpeechModelSelected: async () =>
       Boolean(await modelService.getSelectedModel()),
     isDraftChordActive: () => shortcutManager?.isPTTDraftActive() ?? false,
@@ -409,6 +415,8 @@ export const RecordingLifecycleLive: Layer.Layer<
   | NativeBridgeTag
   | TranscriptionServiceTag
   | AppScopeTag
+  | RemoteConfigServiceTag
+  | WindowManagerTag
 > = Layer.effect(
   RecordingLifecycleTag,
   Effect.gen(function* () {
@@ -417,12 +425,18 @@ export const RecordingLifecycleLive: Layer.Layer<
     const nativeBridge = yield* NativeBridgeTag;
     const transcriptionService = yield* TranscriptionServiceTag;
     const appScope = yield* AppScopeTag;
+    const remoteConfig = yield* RemoteConfigServiceTag;
+    const windowManager = yield* WindowManagerTag;
 
     const lifecycle = createDesktopRecordingLifecycle({
       transcriptionService,
       nativeBridge,
       settingsService,
       modelService,
+      isUpdateRequired: () => remoteConfig.getUpdateRequirement() !== null,
+      onUpdateRequired: () => {
+        void windowManager.createOrShowMainWindow();
+      },
     });
 
     ipcMain.handle(

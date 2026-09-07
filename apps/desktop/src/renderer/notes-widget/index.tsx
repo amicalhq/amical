@@ -1,4 +1,5 @@
 import { useNotesRefresh } from "@/renderer/main/hooks/use-notes-refresh";
+import { RequiredUpdateGate } from "@/components/required-update-gate";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -77,7 +78,9 @@ const NotesWidgetShell: React.FC = () => {
 
   return (
     <>
-      <NotesWidgetPage />
+      <RequiredUpdateGate>
+        <NotesWidgetPage />
+      </RequiredUpdateGate>
       <Toaster />
     </>
   );

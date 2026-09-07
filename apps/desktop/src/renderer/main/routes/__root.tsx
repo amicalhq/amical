@@ -1,3 +1,4 @@
+import { RequiredUpdateGate } from "@/components/required-update-gate";
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -44,8 +45,10 @@ function AppShell() {
 
   return (
     <>
-      <Outlet />
-      <UpdatePrompt />
+      <RequiredUpdateGate>
+        <Outlet />
+        <UpdatePrompt />
+      </RequiredUpdateGate>
       {process.env.NODE_ENV === "development" && (
         <TanStackRouterDevtools position="bottom-right" />
       )}

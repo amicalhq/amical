@@ -4,6 +4,7 @@
 // "@/types/remote-config".
 export {
   DEFAULT_RESHOW_AFTER_DAYS,
+  UpdateRequirementSchema,
   RemoteConfigSchema,
   RemoteConfigSurfaceSchema,
   RemoteConfigContentSchema,
@@ -11,6 +12,7 @@ export {
   RemoteConfigToneSchema,
 } from "@amical/types";
 export type {
+  UpdateRequirement,
   RemoteConfig,
   RemoteConfigSurface,
   RemoteConfigBannerSurface,

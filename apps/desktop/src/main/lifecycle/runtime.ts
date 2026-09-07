@@ -77,6 +77,8 @@ export interface RecordingLifecycleDeps {
   bridge: HostPasteBridge | null;
   getPreserveClipboard: () => Promise<boolean>;
   hasSpeechModelSelected: () => Promise<boolean>;
+  isUpdateRequired?: () => boolean;
+  onUpdateRequired?: () => void;
   /** Second-binding (draft chord) level, polled at start and per chunk. */
   isDraftChordActive: () => boolean;
   /** Grammar-side Enter routing arm (shortcut-manager draft mode). */
@@ -342,6 +344,11 @@ export function createRecordingLifecycle(
 
   async function admitStart(mode: RecordingMode): Promise<void> {
     if (shell.getSnapshot().projection.publicState !== "idle") {
+      refuseStart();
+      return;
+    }
+    if (deps.isUpdateRequired?.()) {
+      deps.onUpdateRequired?.();
       refuseStart();
       return;
     }

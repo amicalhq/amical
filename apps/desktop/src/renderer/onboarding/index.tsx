@@ -1,3 +1,4 @@
+import { RequiredUpdateGate } from "@/components/required-update-gate";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -50,7 +51,9 @@ const bootstrap = async () => {
           <api.Provider client={trpcClient} queryClient={queryClient}>
             <QueryClientProvider client={queryClient}>
               <ThemeProvider>
-                <App />
+                <RequiredUpdateGate>
+                  <App />
+                </RequiredUpdateGate>
                 <Toaster position="top-right" />
               </ThemeProvider>
             </QueryClientProvider>

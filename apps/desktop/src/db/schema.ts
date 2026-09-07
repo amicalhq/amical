@@ -459,7 +459,6 @@ export interface AppSettingsData {
   // + offline render. Re-validated against RemoteConfigSchema on read.
   remoteConfig?: {
     config?: RemoteConfig;
-    lastFetchedAt?: string; // ISO 8601
   };
   dataMigrations?: {
     notesLexical?: number;

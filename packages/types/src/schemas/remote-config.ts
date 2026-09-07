@@ -91,9 +91,19 @@ export type RemoteConfigSideSlotSurface = Extract<
   { kind: "side_slot" }
 >;
 
+// A server decision for this exact running version. A cached decision must
+// never be applied to a different binary after an update.
+export const UpdateRequirementSchema = z.object({
+  required: z.boolean(),
+  evaluatedVersion: z.string().min(1),
+  minimumVersion: z.string().min(1).optional(),
+});
+export type UpdateRequirement = z.infer<typeof UpdateRequirementSchema>;
+
 export const RemoteConfigSchema = z.object({
   version: z.number(),
   surfaces: z.array(RemoteConfigSurfaceSchema).optional(),
   flags: z.record(z.string(), z.boolean()).optional(),
+  updateRequirement: UpdateRequirementSchema.optional(),
 });
 export type RemoteConfig = z.infer<typeof RemoteConfigSchema>;
