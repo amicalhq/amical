@@ -49,8 +49,8 @@ export interface ElectronAPI {
 
   // Local Markdown note persistence
   notes: {
-    loadBody: (noteId: number) => NoteBody;
-    saveBody: (noteId: number, markdown: string) => NoteSaveResult;
+    loadBody: (noteId: string) => NoteBody;
+    saveBody: (noteId: string, markdown: string) => NoteSaveResult;
     onBodyChange: (callback: (change: NoteBodyChange) => void) => () => void;
   };
 }

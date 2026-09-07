@@ -37,7 +37,7 @@ export default function NotePage({
 
   // Fetch note data
   const { data: note, isLoading } = api.notes.getNoteById.useQuery(
-    { id: parseInt(noteId) },
+    { id: noteId },
     {
       enabled: !!noteId,
     },
@@ -47,7 +47,7 @@ export default function NotePage({
   const updateTitleMutation = api.notes.updateNoteTitle.useMutation({
     onSuccess: () => {
       utils.notes.getNotes.invalidate();
-      utils.notes.getNoteById.invalidate({ id: parseInt(noteId) });
+      utils.notes.getNoteById.invalidate({ id: noteId });
     },
   });
 
@@ -55,7 +55,7 @@ export default function NotePage({
   const updateNoteIconMutation = api.notes.updateNoteIcon.useMutation({
     onSuccess: () => {
       utils.notes.getNotes.invalidate();
-      utils.notes.getNoteById.invalidate({ id: parseInt(noteId) });
+      utils.notes.getNoteById.invalidate({ id: noteId });
       toast.success(t("settings.notes.toast.emojiUpdated"));
     },
     onError: (error) => {
@@ -142,14 +142,14 @@ export default function NotePage({
 
   // Handle delete
   const handleDelete = useCallback(() => {
-    deleteMutation.mutate({ id: parseInt(noteId) });
+    deleteMutation.mutate({ id: noteId });
   }, [noteId, deleteMutation]);
 
   // Handle emoji change
   const handleEmojiChange = useCallback(
     (emoji: string | null) => {
       setNoteIcon(emoji);
-      updateNoteIconMutation.mutate({ id: parseInt(noteId), icon: emoji });
+      updateNoteIconMutation.mutate({ id: noteId, icon: emoji });
     },
     [noteId, updateNoteIconMutation],
   );
@@ -194,7 +194,7 @@ export default function NotePage({
       isDeleting={deleteMutation.isPending}
     >
       <NoteEditor
-        noteId={parseInt(noteId)}
+        noteId={noteId}
         onSyncStatusChange={handleSyncStatusChange}
         onReady={handleEditorReady}
       />

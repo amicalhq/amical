@@ -21,7 +21,11 @@ let body: Extract<NoteBody, { status: "ready" }>;
 beforeEach(() => {
   window.sessionStorage.clear();
   Range.prototype.getBoundingClientRect = () => new DOMRect();
-  body = { status: "ready", noteId: 1, markdown: "" };
+  body = {
+    status: "ready",
+    noteId: "11111111-1111-4111-8111-111111111111",
+    markdown: "",
+  };
   window.electronAPI = {
     notes: {
       loadBody: vi.fn(() => ({ ...body })),
@@ -35,7 +39,11 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 async function openEditor() {
-  const view = render(createElement(NoteEditor, { noteId: 1 }));
+  const view = render(
+    createElement(NoteEditor, {
+      noteId: "11111111-1111-4111-8111-111111111111",
+    }),
+  );
   await waitFor(() =>
     expect(
       view.container.querySelector('[contenteditable="true"]'),
@@ -250,10 +258,14 @@ describe("real NoteEditor Markdown integration", () => {
   it("does not expose an editable empty note after failed load or migration", async () => {
     vi.mocked(window.electronAPI.notes.loadBody).mockReturnValue({
       status: "blocked",
-      noteId: 1,
+      noteId: "11111111-1111-4111-8111-111111111111",
       reason: "Incomplete legacy editor updates",
     });
-    const view = render(createElement(NoteEditor, { noteId: 1 }));
+    const view = render(
+      createElement(NoteEditor, {
+        noteId: "11111111-1111-4111-8111-111111111111",
+      }),
+    );
     expect(view.getByRole("alert").textContent).toBe(
       "settings.notes.recovery.blocked",
     );

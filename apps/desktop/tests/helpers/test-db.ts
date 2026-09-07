@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { migrateDatabase } from "@/db/migrate";
 import * as schema from "@db/schema";
 import path from "node:path";
 import fs from "fs-extra";
@@ -54,7 +54,7 @@ export async function createTestDatabase(
       );
     } else {
       try {
-        migrate(db, {
+        migrateDatabase(db, {
           migrationsFolder: migrationsPath,
         });
       } catch (error) {

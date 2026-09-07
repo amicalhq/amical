@@ -4,7 +4,7 @@ import { notes, yjsUpdates } from "./schema";
 import { convertLegacyNote } from "../notes/legacy";
 import type { NoteBody, NoteSaveResult } from "../notes/types";
 
-function updatesFor(noteId: number) {
+function updatesFor(noteId: string) {
   return db
     .select()
     .from(yjsUpdates)
@@ -16,7 +16,7 @@ function updatesFor(noteId: number) {
 
 // One synchronous transaction per note: a crash can leave either the complete
 // legacy note or the complete Markdown note, never a partially migrated body.
-function migrateNote(noteId: number, allowPlainTextYjs = false): void {
+function migrateNote(noteId: string, allowPlainTextYjs = false): void {
   db.transaction((tx) => {
     const note = tx.select().from(notes).where(eq(notes.id, noteId)).get();
     if (!note || !["legacy", "blocked"].includes(note.contentFormat)) return;
@@ -60,7 +60,7 @@ export function migrateLegacyNotes(allowPlainTextYjs = false): void {
   for (const note of pending) migrateNote(note.id, allowPlainTextYjs);
 }
 
-export function loadNoteBody(noteId: number): NoteBody {
+export function loadNoteBody(noteId: string): NoteBody {
   migrateNote(noteId);
   const note = db.select().from(notes).where(eq(notes.id, noteId)).get();
   if (!note) return { status: "deleted", noteId };
@@ -77,7 +77,7 @@ export function loadNoteBody(noteId: number): NoteBody {
   };
 }
 
-export function saveNoteBody(noteId: number, markdown: string): NoteSaveResult {
+export function saveNoteBody(noteId: string, markdown: string): NoteSaveResult {
   return db.transaction((tx) => {
     const note = tx.select().from(notes).where(eq(notes.id, noteId)).get();
     if (!note) return { status: "deleted" };

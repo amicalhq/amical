@@ -1,3 +1,4 @@
+import { SettingsSyncIdSchema } from "@amical/types";
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
 import NotesService from "../../services/notes-service";
@@ -23,12 +24,12 @@ const CreateNoteSchema = z.object({
 });
 
 const UpdateNoteTitleSchema = z.object({
-  id: z.number(),
+  id: SettingsSyncIdSchema,
   title: z.string().min(1),
 });
 
 const UpdateNoteIconSchema = z.object({
-  id: z.number(),
+  id: SettingsSyncIdSchema,
   icon: z.string().nullish(),
 });
 
@@ -47,7 +48,7 @@ export const notesRouter = createRouter({
 
   // Get note by ID
   getNoteById: procedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: SettingsSyncIdSchema }))
     .query(async ({ input }) => {
       const note = await notesService.getNote(input.id);
       if (!note) {
@@ -103,7 +104,7 @@ export const notesRouter = createRouter({
 
   // Delete note
   deleteNote: procedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: SettingsSyncIdSchema }))
     .mutation(async ({ input }) => {
       const deleted = await notesService.deleteNote(input.id);
       if (!deleted) {

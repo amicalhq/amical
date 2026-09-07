@@ -1,3 +1,4 @@
+import { SettingsSyncIdSchema } from "@amical/types";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { z } from "zod";
@@ -23,16 +24,16 @@ function NotePageWrapper() {
   const { noteId } = Route.useParams();
   const { autoRecord } = Route.useSearch();
   const { setActions } = useSettingsHeaderActions();
-  const parsedNoteId = Number.parseInt(noteId, 10);
+  const validNoteId = SettingsSyncIdSchema.safeParse(noteId).success;
 
   useEffect(() => {
-    if (!Number.isFinite(parsedNoteId)) {
+    if (!validNoteId) {
       setActions(null);
       return;
     }
 
-    setActions(<NotesPopoutHeaderAction noteId={parsedNoteId} />);
-  }, [parsedNoteId, setActions]);
+    setActions(<NotesPopoutHeaderAction noteId={noteId} />);
+  }, [noteId, validNoteId, setActions]);
 
   useEffect(() => {
     return () => {

@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 interface NotesWindowPanelProps {
-  initialNoteId?: number;
+  initialNoteId?: string;
   shouldCreateInitialNote?: boolean;
 }
 
@@ -33,12 +33,12 @@ export function NotesWindowPanel({
   const closeNotesWindowMutation = api.widget.closeNotesWindow.useMutation();
   const startRecordingMutation = api.recording.signalStart.useMutation();
 
-  const [currentNoteId, setCurrentNoteId] = useState<number | null>(null);
+  const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [editorReady, setEditorReady] = useState(false);
 
-  const autoRecordPendingNoteIdRef = useRef<number | null>(null);
-  const autoRecordStartedNoteIdRef = useRef<number | null>(null);
+  const autoRecordPendingNoteIdRef = useRef<string | null>(null);
+  const autoRecordStartedNoteIdRef = useRef<string | null>(null);
   const updateNoteTitleMutateRef = useRef(updateNoteTitleMutation.mutate);
 
   const createAndSwitchToNewNote = useCallback(async () => {
@@ -86,7 +86,7 @@ export function NotesWindowPanel({
   ]);
 
   const openAndSwitchToExistingNote = useCallback(
-    async (noteId: number) => {
+    async (noteId: string) => {
       try {
         const note = await utils.notes.getNoteById.fetch({ id: noteId });
         if (!note) {
@@ -109,8 +109,8 @@ export function NotesWindowPanel({
   );
 
   const handleOpenRequest = useCallback(
-    (noteId?: number) => {
-      if (typeof noteId === "number" && Number.isFinite(noteId) && noteId > 0) {
+    (noteId?: string) => {
+      if (typeof noteId === "string" && noteId.length > 0) {
         void openAndSwitchToExistingNote(noteId);
         return;
       }
@@ -121,7 +121,7 @@ export function NotesWindowPanel({
   );
 
   useEffect(() => {
-    const handler = (noteId?: number) => {
+    const handler = (noteId?: string) => {
       handleOpenRequest(noteId);
     };
 
@@ -136,7 +136,7 @@ export function NotesWindowPanel({
   }, [updateNoteTitleMutation.mutate]);
 
   useEffect(() => {
-    if (typeof initialNoteId === "number" && initialNoteId > 0) {
+    if (typeof initialNoteId === "string" && initialNoteId.length > 0) {
       handleOpenRequest(initialNoteId);
       return;
     }
@@ -147,7 +147,7 @@ export function NotesWindowPanel({
 
   const debouncedUpdateTitle = useMemo(
     () =>
-      debounce((id: number, title: string) => {
+      debounce((id: string, title: string) => {
         updateNoteTitleMutateRef.current({ id, title });
       }, 500),
     [],

@@ -15,13 +15,15 @@ export type SettingsSyncCollection = z.infer<
 export const SettingsSyncScopeTypeSchema = z.enum(["user", "org"]);
 export type SettingsSyncScopeType = z.infer<typeof SettingsSyncScopeTypeSchema>;
 
-export const SettingsSyncUuidSchema = z
+export const SettingsSyncIdSchema = z
   .string()
-  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-const settingsSyncRequestUuidSchema = z
+  .regex(
+    /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?:nt|voc|snp)_[a-z][a-z0-9]{23})$/,
+  );
+const settingsSyncRequestIdSchema = z
   .string()
   .transform((value) => value.toLowerCase())
-  .pipe(SettingsSyncUuidSchema);
+  .pipe(SettingsSyncIdSchema);
 const settingsSyncVersionSchema = z
   .number()
   .int()
@@ -170,7 +172,7 @@ export const SettingsSyncCanonicalItemSchema = z
     // Kept open-ended for additive collection support. The client validates a
     // requested collection's payload after matching the enclosing block.
     collection: z.string().min(1),
-    syncId: SettingsSyncUuidSchema,
+    syncId: SettingsSyncIdSchema,
     syncVersion: settingsSyncVersionSchema,
     payload: z.unknown().nullable(),
   })
@@ -202,7 +204,7 @@ export type SettingsSyncPullResponse = z.infer<
 const settingsSyncPushMutationBase = {
   scopeType: SettingsSyncScopeTypeSchema,
   scopeId: z.string().min(1),
-  syncId: settingsSyncRequestUuidSchema,
+  syncId: settingsSyncRequestIdSchema,
   expectedSyncVersion: settingsSyncVersionSchema.nullable(),
 };
 
@@ -242,7 +244,7 @@ export const SettingsSyncPushResultSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("ok"),
-      syncId: SettingsSyncUuidSchema,
+      syncId: SettingsSyncIdSchema,
       syncVersion: settingsSyncVersionSchema,
       applied: z.boolean(),
     })
@@ -251,7 +253,7 @@ export const SettingsSyncPushResultSchema = z.discriminatedUnion("status", [
     .object({
       status: z.literal("conflict"),
       reason: z.enum(["version_conflict", "duplicate_key_conflict"]),
-      syncId: SettingsSyncUuidSchema,
+      syncId: SettingsSyncIdSchema,
       canonical: SettingsSyncCanonicalItemSchema.nullable(),
       conflictingItem: SettingsSyncCanonicalItemSchema.optional(),
     })
@@ -259,7 +261,7 @@ export const SettingsSyncPushResultSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("error"),
-      syncId: SettingsSyncUuidSchema.nullable(),
+      syncId: SettingsSyncIdSchema.nullable(),
       reason: z.enum([
         "unauthorized_scope",
         "invalid_payload",

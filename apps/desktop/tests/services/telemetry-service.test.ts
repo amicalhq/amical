@@ -271,7 +271,7 @@ describe("TelemetryService flood guard", () => {
       service.trackAppLaunch();
     }
     service.trackNoteCreated({
-      note_id: 1,
+      note_id: "11111111-1111-4111-8111-111111111111",
       has_initial_content: false,
       has_icon: false,
     });

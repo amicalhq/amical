@@ -47,7 +47,7 @@
     "test:native-dependencies": "node scripts/smoke-test-native-dependencies.mjs",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "pnpm build:types && tsx scripts/migrate-db.ts",
     "generate:lifecycle-contract": "tsx scripts/generate-lifecycle-contract.ts",
     "test:lifecycle-contract": "vitest run tests/main/lifecycle-replay.test.ts",
     "verify:lifecycle-contract-version": "tsx scripts/verify-lifecycle-contract-version.ts",

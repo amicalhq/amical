@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f64b7f33-0859-412d-a0cb-bc6fb95ed94d",
-  "prevId": "a1bfddf9-494d-4e72-9cac-9136086b2c08",
+  "id": "cfb2a7ff-9ef4-4801-ac68-048aa76899cc",
+  "prevId": "f64b7f33-0859-412d-a0cb-bc6fb95ed94d",
   "tables": {
     "activity_materialization_state": {
       "name": "activity_materialization_state",
@@ -374,6 +374,28 @@
           "notNull": false,
           "autoincrement": false,
           "default": "''"
+        },
+        "content_format": {
+          "name": "content_format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'legacy'"
+        },
+        "legacy_content": {
+          "name": "legacy_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "migration_error": {
+          "name": "migration_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "icon": {
           "name": "icon",

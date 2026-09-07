@@ -1,3 +1,4 @@
+import { SettingsSyncIdSchema } from "@amical/types";
 import { useMemo } from "react";
 import { NotesWindowPanel } from "../../components/NotesWindowPanel";
 
@@ -8,15 +9,15 @@ export function NotesWidgetPage() {
       : window.location.hash;
     const hashParams = new URLSearchParams(rawHash);
 
-    let initialNoteId: number | undefined = undefined;
+    let initialNoteId: string | undefined = undefined;
     let shouldCreateInitialNote = false;
 
     if (hashParams.has("noteId")) {
       const rawNoteId = hashParams.get("noteId");
       if (rawNoteId && rawNoteId.trim().length > 0) {
-        const parsedNoteId = Number.parseInt(rawNoteId, 10);
-        if (Number.isFinite(parsedNoteId) && parsedNoteId > 0) {
-          initialNoteId = parsedNoteId;
+        const parsedNoteId = SettingsSyncIdSchema.safeParse(rawNoteId);
+        if (parsedNoteId.success) {
+          initialNoteId = parsedNoteId.data;
         } else {
           shouldCreateInitialNote = true;
         }

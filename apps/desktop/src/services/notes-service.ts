@@ -1,3 +1,4 @@
+import { SettingsSyncIdSchema } from "@amical/types";
 import { BrowserWindow, ipcMain } from "electron";
 import { z } from "zod";
 import {
@@ -11,7 +12,7 @@ import { loadNoteBody, saveNoteBody } from "../db/note-body";
 import type { NoteBodyChange } from "../notes/types";
 import { logger } from "../main/logger";
 
-const noteIdSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const noteIdSchema = SettingsSyncIdSchema;
 const saveSchema = z.object({
   noteId: noteIdSchema,
   markdown: z.string(),
@@ -87,7 +88,7 @@ class NotesService {
     return note;
   }
 
-  async getNote(id: number) {
+  async getNote(id: string) {
     const note = await getNoteById(id);
     return note;
   }
@@ -103,11 +104,11 @@ class NotesService {
     return await getNotes(options);
   }
 
-  async updateNote(id: number, options: NoteUpdateOptions) {
+  async updateNote(id: string, options: NoteUpdateOptions) {
     return await updateNote(id, options);
   }
 
-  async deleteNote(id: number) {
+  async deleteNote(id: string) {
     const note = await getNoteById(id);
     if (!note) return null;
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SettingsSyncUuidSchema } from "@amical/types";
+import { SettingsSyncIdSchema } from "@amical/types";
 import { createRouter, procedure } from "../trpc";
 import {
   getVocabulary,
@@ -102,7 +102,7 @@ export const vocabularyRouter = createRouter({
 
   // Get vocabulary by ID
   getVocabularyById: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .input(z.object({ id: SettingsSyncIdSchema }))
     .query(async ({ input }) => {
       return await getVocabularyById(input.id);
     }),
@@ -150,7 +150,7 @@ export const vocabularyRouter = createRouter({
   updateVocabulary: procedure
     .input(
       z.object({
-        id: SettingsSyncUuidSchema,
+        id: SettingsSyncIdSchema,
         data: UpdateVocabularySchema,
       }),
     )
@@ -161,7 +161,7 @@ export const vocabularyRouter = createRouter({
   updateOrganizationVocabulary: procedure
     .input(
       z.object({
-        id: SettingsSyncUuidSchema,
+        id: SettingsSyncIdSchema,
         data: UpdateVocabularySchema,
       }),
     )
@@ -171,13 +171,13 @@ export const vocabularyRouter = createRouter({
 
   // Delete vocabulary word
   deleteVocabulary: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .input(z.object({ id: SettingsSyncIdSchema }))
     .mutation(async ({ input }) => {
       return await deleteVocabulary(input.id);
     }),
 
   deleteOrganizationVocabulary: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .input(z.object({ id: SettingsSyncIdSchema }))
     .mutation(async ({ input }) => {
       return await deleteOrganizationVocabulary(input.id);
     }),

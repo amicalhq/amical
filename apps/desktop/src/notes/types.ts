@@ -1,11 +1,11 @@
 export type NoteBody =
-  | { status: "ready"; noteId: number; markdown: string }
+  | { status: "ready"; noteId: string; markdown: string }
   | {
       status: "blocked";
-      noteId: number;
+      noteId: string;
       reason: string;
     }
-  | { status: "deleted"; noteId: number };
+  | { status: "deleted"; noteId: string };
 
 export type NoteSaveResult =
   | { status: "saved" }
@@ -13,6 +13,6 @@ export type NoteSaveResult =
   | { status: "error"; message: string };
 
 export interface NoteBodyChange {
-  noteId: number;
+  noteId: string;
   deleted?: boolean;
 }

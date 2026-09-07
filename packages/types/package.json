@@ -24,16 +24,17 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@amical/typescript-config": "workspace:*",
     "@amical/eslint-config": "workspace:*",
+    "@amical/typescript-config": "workspace:*",
     "eslint": "^9.26.0",
     "quicktype": "23.1.4",
     "tsx": "^4.19.4",
     "typescript": "~5.8.3"
   },
   "dependencies": {
-    "zod": "^4.3.5",
-    "minimatch": "10.0.3"
+    "@paralleldrive/cuid2": "^2.3.1",
+    "minimatch": "10.0.3",
+    "zod": "^4.3.5"
   },
   "exports": {
     ".": {

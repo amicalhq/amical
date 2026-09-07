@@ -112,7 +112,7 @@ export interface NativeHelperCrashedEvent {
  * Fired when a new note is created
  */
 export interface NoteCreatedEvent {
-  note_id: number;
+  note_id: string;
   has_initial_content: boolean;
   has_icon: boolean;
 }

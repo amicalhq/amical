@@ -6,7 +6,7 @@ import { Note } from "../types";
 
 interface RecentNoteCardProps {
   note: Note;
-  onNoteClick: (noteId: number) => void;
+  onNoteClick: (noteId: string) => void;
 }
 
 export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {

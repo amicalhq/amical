@@ -15,7 +15,7 @@ export class NoteSyncProvider {
   onStatus: ((pending: boolean, issue: NoteSaveIssue) => void) | undefined;
 
   constructor(
-    private noteId: number,
+    private noteId: string,
     private api: ElectronAPI["notes"] = window.electronAPI.notes,
   ) {
     const body = api.loadBody(noteId);

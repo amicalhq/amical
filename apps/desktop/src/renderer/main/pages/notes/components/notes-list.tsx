@@ -14,7 +14,7 @@ export function NotesList() {
     sortOrder: "desc",
   });
 
-  const onNoteClick = (noteId: number) => {
+  const onNoteClick = (noteId: string) => {
     navigate({
       to: "/notes/$noteId",
       params: { noteId: String(noteId) },

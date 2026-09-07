@@ -32,7 +32,7 @@ import { useTranslation } from "react-i18next";
 import { NoteListItemNode } from "@/renderer/main/components/editor/note-list-item-node";
 
 interface NoteEditorProps {
-  noteId: number;
+  noteId: string;
   onSyncStatusChange?: (isSyncing: boolean) => void;
   onReady?: () => void;
 }
@@ -190,7 +190,7 @@ export function NoteEditor({
   onReady,
 }: NoteEditorProps): React.ReactNode {
   const { t } = useTranslation();
-  const readyNoteRef = useRef<number | null>(null);
+  const readyNoteRef = useRef<string | null>(null);
   const [body, setBody] = useState<NoteBody | null>(null);
   const [loadError, setLoadError] = useState(false);
 

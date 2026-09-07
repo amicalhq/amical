@@ -109,3 +109,7 @@ The tests use disposable SQLite databases and real Lexical editor components.
 They cover conversion, malformed and incomplete updates, rollback/restart,
 metadata and backup retention, large notes, editing/reopening, opening without
 saving, debounce/close, last-write-wins across windows, deletion, and note service/IPC behavior.
+
+Note IDs use `nt_` plus the full 24-character CUID2 output. Migration
+`0011_notes_ids` replaces integer primary keys and updates Yjs foreign keys
+before `0012_notes_markdown` runs. The note ID is used throughout IPC and UI.

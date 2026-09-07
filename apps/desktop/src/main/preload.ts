@@ -104,12 +104,12 @@ const api: ElectronAPI = {
   // Synchronous writes are used only after a debounce or during close. When
   // the call returns SQLite has committed; no asynchronous IPC is left behind.
   notes: {
-    loadBody: (noteId: number) => {
+    loadBody: (noteId: string) => {
       const result = ipcRenderer.sendSync("notes:loadBody", noteId);
       if (result.error) throw new Error(result.error);
       return result.body;
     },
-    saveBody: (noteId: number, markdown: string) =>
+    saveBody: (noteId: string, markdown: string) =>
       ipcRenderer.sendSync("notes:saveBody", { noteId, markdown }),
     onBodyChange: (callback) => {
       const listener = (

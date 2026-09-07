@@ -25,3 +25,5 @@ export * from "./schemas/settings-sync.js";
 
 // Shared cloud HTTP error envelope
 export * from "./schemas/cloud-http-error.js";
+
+export * from "./entity-id.js";

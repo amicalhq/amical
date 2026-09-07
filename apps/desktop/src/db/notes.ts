@@ -61,14 +61,14 @@ export async function getNotes(
 }
 
 // Get note by ID
-export async function getNoteById(id: number) {
+export async function getNoteById(id: string) {
   const result = await db.select().from(notes).where(eq(notes.id, id));
   return result[0] || null;
 }
 
 // Update note
 export async function updateNote(
-  id: number,
+  id: string,
   data: Partial<Pick<Note, "title" | "icon">>,
 ) {
   const updateData = {
@@ -86,7 +86,7 @@ export async function updateNote(
 }
 
 // Delete note
-export async function deleteNote(id: number) {
+export async function deleteNote(id: string) {
   // Delete the note (yjs updates and metadata will be cascade deleted)
   const result = await db.delete(notes).where(eq(notes.id, id)).returning();
   return result[0] || null;

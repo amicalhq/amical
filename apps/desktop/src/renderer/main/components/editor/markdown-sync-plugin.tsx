@@ -24,7 +24,7 @@ export function MarkdownSyncPlugin({
   noteId,
   onStatus,
 }: {
-  noteId: number;
+  noteId: string;
   onStatus?: (pending: boolean) => void;
 }): React.ReactNode {
   const [editor] = useLexicalComposerContext();

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { SettingsSyncUuidSchema } from "@amical/types";
+import { SettingsSyncIdSchema } from "@amical/types";
 import { createRouter, procedure } from "../trpc";
 import {
   createSnippet,
@@ -109,7 +109,7 @@ export const snippetsRouter = createRouter({
     }),
 
   updateSnippet: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema, data: UpdateSnippetSchema }))
+    .input(z.object({ id: SettingsSyncIdSchema, data: UpdateSnippetSchema }))
     .mutation(async ({ input }) => {
       try {
         return await updateSnippet(input.id, input.data);
@@ -125,7 +125,7 @@ export const snippetsRouter = createRouter({
     }),
 
   updateOrganizationSnippet: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema, data: UpdateSnippetSchema }))
+    .input(z.object({ id: SettingsSyncIdSchema, data: UpdateSnippetSchema }))
     .mutation(async ({ input }) => {
       try {
         return await updateOrganizationSnippet(input.id, input.data);
@@ -141,13 +141,13 @@ export const snippetsRouter = createRouter({
     }),
 
   deleteSnippet: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .input(z.object({ id: SettingsSyncIdSchema }))
     .mutation(async ({ input }) => {
       return await deleteSnippet(input.id);
     }),
 
   deleteOrganizationSnippet: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .input(z.object({ id: SettingsSyncIdSchema }))
     .mutation(async ({ input }) => {
       return await deleteOrganizationSnippet(input.id);
     }),

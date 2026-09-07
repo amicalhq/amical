@@ -52,7 +52,7 @@ async function rpc<T>(
 
 // Launch the actual widget renderer and preload against the throwaway app
 // profile. This avoids depending on remote feature-flag enrollment in a test.
-async function openNote(launch: AmicalLaunch, noteId: number): Promise<Page> {
+async function openNote(launch: AmicalLaunch, noteId: string): Promise<Page> {
   const appPath = await launch.app.evaluate(({ app }) => app.getAppPath());
   const id = await launch.app.evaluate(
     async ({ BrowserWindow }, { preload, html, noteId }) => {

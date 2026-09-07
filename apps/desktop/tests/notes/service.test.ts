@@ -24,7 +24,7 @@ beforeEach(async () => {
   vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
 });
 afterEach(async () => database.close());
-function ipcSave(noteId: number, markdown: string) {
+function ipcSave(noteId: string, markdown: string) {
   const event = { returnValue: undefined };
   save(event as IpcMainEvent, { noteId, markdown });
   return event.returnValue;
@@ -59,6 +59,8 @@ describe("normal note service and IPC", () => {
     for (const input of [
       { noteId: note.id, markdown: {} },
       { noteId: -1, markdown: "bad" },
+      { noteId: "42", markdown: "bad" },
+      { noteId: "not-a-uuid", markdown: "bad" },
       { noteId: NaN, markdown: "bad" },
     ]) {
       const event = { returnValue: undefined };

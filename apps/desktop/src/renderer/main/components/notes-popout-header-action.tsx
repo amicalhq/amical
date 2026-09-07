@@ -6,7 +6,7 @@ import { Loader2, PanelTopOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 type NotesPopoutHeaderActionProps = {
-  noteId: number;
+  noteId: string;
 };
 
 export function NotesPopoutHeaderAction({

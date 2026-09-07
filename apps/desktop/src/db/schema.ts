@@ -1,3 +1,4 @@
+import { createEntityId } from "@amical/types";
 import { sql } from "drizzle-orm";
 import {
   sqliteTable,
@@ -460,7 +461,10 @@ export interface AppSettingsData {
 
 // Notes table
 export const notes = sqliteTable("notes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: text("id")
+    .primaryKey()
+    .notNull()
+    .$defaultFn(() => createEntityId("note")),
   title: text("title").notNull(),
   content: text("content").default(""), // Authoritative body when contentFormat is markdown-v1
   contentFormat: text("content_format").notNull().default("legacy"),
@@ -480,7 +484,7 @@ export const yjsUpdates = sqliteTable(
   "yjs_updates",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    noteId: integer("note_id")
+    noteId: text("note_id")
       .notNull()
       .references(() => notes.id, { onDelete: "cascade" }),
     updateData: blob("update_data", { mode: "buffer" }).notNull(), // Binary data stored as Buffer

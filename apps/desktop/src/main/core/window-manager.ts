@@ -735,7 +735,7 @@ export class WindowManager extends EventEmitter {
     this.notesWindowController.close();
   }
 
-  openNotesWindow(noteId?: number): void {
+  openNotesWindow(noteId?: string): void {
     this.notesWindowController.open(noteId);
   }
 
