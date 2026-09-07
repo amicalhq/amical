@@ -1,3 +1,4 @@
+import { settleTitleSave, type NoteTitleDraft } from "@/notes/title-draft";
 import {
   useCallback,
   useEffect,
@@ -36,6 +37,21 @@ export function NotesWindowPanel({
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [editorReady, setEditorReady] = useState(false);
+
+  const titleSaveInFlight = useRef(false);
+  const pendingTitle = useRef<NoteTitleDraft | null>(null);
+  const currentNoteQuery = api.notes.getNoteById.useQuery(
+    { id: currentNoteId ?? "" },
+    { enabled: currentNoteId !== null },
+  );
+  useEffect(() => {
+    if (currentNoteQuery.isError) {
+      setCurrentNoteId(null);
+      setNoteTitle("");
+      pendingTitle.current = null;
+    } else if (currentNoteQuery.data && !pendingTitle.current)
+      setNoteTitle(currentNoteQuery.data.title);
+  }, [currentNoteQuery.data, currentNoteQuery.isError]);
 
   const autoRecordPendingNoteIdRef = useRef<string | null>(null);
   const autoRecordStartedNoteIdRef = useRef<string | null>(null);
@@ -147,8 +163,44 @@ export function NotesWindowPanel({
 
   const debouncedUpdateTitle = useMemo(
     () =>
-      debounce((id: string, title: string) => {
-        updateNoteTitleMutateRef.current({ id, title });
+      debounce(() => {
+        const pending = pendingTitle.current;
+        if (!pending || titleSaveInFlight.current) return;
+        if (pending.title === pending.originalTitle) {
+          pendingTitle.current = null;
+          void utils.notes.getNoteById.invalidate({ id: pending.id });
+          return;
+        }
+        titleSaveInFlight.current = true;
+        updateNoteTitleMutateRef.current(
+          {
+            id: pending.id,
+            title: pending.title,
+            expectedRemoteVersion: pending.remoteVersion,
+            originalTitle: pending.originalTitle,
+          },
+          {
+            onSuccess: (saved) => {
+              titleSaveInFlight.current = false;
+              pendingTitle.current = settleTitleSave(
+                pendingTitle.current,
+                pending,
+                saved,
+              );
+              if (pendingTitle.current) debouncedUpdateTitle();
+              void utils.notes.getNoteById.invalidate({ id: pending.id });
+            },
+            onError: () => {
+              titleSaveInFlight.current = false;
+              const latest = pendingTitle.current;
+              if (
+                latest &&
+                (latest.id !== pending.id || latest.title !== pending.title)
+              )
+                debouncedUpdateTitle();
+            },
+          },
+        );
       }, 500),
     [],
   );
@@ -179,7 +231,21 @@ export function NotesWindowPanel({
   const handleTitleChange = (value: string) => {
     setNoteTitle(value);
     if (currentNoteId !== null) {
-      debouncedUpdateTitle(currentNoteId, value);
+      const previous =
+        pendingTitle.current?.id === currentNoteId
+          ? pendingTitle.current
+          : null;
+      const remoteVersion = previous
+        ? previous.remoteVersion
+        : (currentNoteQuery.data?.remoteVersion ?? null);
+      const originalTitle = previous?.originalTitle ?? noteTitle;
+      pendingTitle.current = {
+        id: currentNoteId,
+        title: value,
+        remoteVersion,
+        originalTitle,
+      };
+      debouncedUpdateTitle();
     }
   };
 
@@ -278,6 +344,13 @@ export function NotesWindowPanel({
                   className="flex-1 min-h-0 overflow-y-auto"
                   style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
                 >
+                  {currentNoteQuery.data?.syncError && (
+                    <p role="alert" className="py-2 text-sm text-destructive">
+                      {t("settings.notes.cloud.error", {
+                        reason: currentNoteQuery.data.syncError,
+                      })}
+                    </p>
+                  )}
                   <NoteEditor
                     noteId={currentNoteId}
                     onReady={() => setEditorReady(true)}

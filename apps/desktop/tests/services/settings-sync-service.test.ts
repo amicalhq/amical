@@ -22,6 +22,7 @@ import {
 } from "../../src/types/errors";
 import type { CanonicalSyncItem, PushSyncResult } from "../../src/db/sync";
 import {
+  notes,
   snippets,
   syncClientState,
   syncCollectionState,
@@ -41,6 +42,8 @@ import {
   createVocabularyWord,
   updateVocabulary,
 } from "../../src/db/vocabulary";
+import { createNote } from "../../src/db/notes";
+import { saveNoteBody } from "../../src/db/note-body";
 import { createSnippet } from "../../src/db/snippets";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
@@ -102,7 +105,7 @@ class FakeAuthService extends EventEmitter {
 
 class InMemorySyncClient {
   constructor(
-    private readonly collections: Array<"vocabulary" | "snippet"> = [
+    private readonly collections: Array<"vocabulary" | "snippet" | "note"> = [
       "vocabulary",
       "snippet",
     ],
@@ -151,7 +154,7 @@ class InMemorySyncClient {
       _scopeType: "user" | "org",
       _scopeId: string,
       cursors: ReadonlyArray<{
-        collection: "vocabulary" | "snippet";
+        collection: "vocabulary" | "snippet" | "note";
         cursor: number;
       }>,
     ): Effect.Effect<SyncPullPage, SettingsSyncClientError> =>
@@ -201,6 +204,49 @@ describe("SettingsSyncService", () => {
     vi.restoreAllMocks();
   });
 
+  it("syncs notes in bounded batches, filters organization requests, and resumes after logout", async () => {
+    await beginUserSyncSession("user-1");
+    for (let index = 0; index < 7; index++)
+      await createNote({ title: `Note ${index}` });
+    const oversized = await createNote({ title: "Local large draft" });
+    saveNoteBody(oversized.id, "x".repeat(140000));
+    const client = new InMemorySyncClient(["vocabulary", "snippet", "note"]);
+    client.bootstrap.mockImplementation(() =>
+      Effect.succeed({
+        scopes: [
+          ...USER_BOOTSTRAP_SCOPES,
+          organizationBootstrapScope("org-1", true),
+        ],
+        collections: ["vocabulary", "snippet", "note"],
+        maxPushBatch: 100,
+        maxPushBytes: 524288,
+        pullLimit: 200,
+        note: { maxPayloadBytes: 131072, maxPushBatch: 2, maxPullLimit: 10 },
+      }),
+    );
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await Effect.runPromise(service.initialize());
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledTimes(2));
+    expect(client.push.mock.calls.map(([batch]) => batch.length)).toEqual([
+      2, 2, 2, 1,
+    ]);
+    expect(
+      client.pull.mock.calls
+        .find(([scope]) => scope === "org")?.[2]
+        .map((cursor) => cursor.collection),
+    ).toEqual(["vocabulary", "snippet"]);
+    expect(testDb.db.select().from(notes).all()).toHaveLength(8);
+    expect(testDb.db.select().from(syncOutbox).all()).toMatchObject([
+      { syncId: oversized.id, blockedReason: expect.any(String) },
+    ]);
+    await auth.logoutForTest();
+    expect(testDb.db.select().from(notes).all()).toHaveLength(8);
+    expect(testDb.db.select().from(syncOutbox).all()).toHaveLength(1);
+  });
+
   it("clears stale sync metadata when startup is signed out", async () => {
     auth.state = null;
     await testDb.db
@@ -224,7 +270,11 @@ describe("SettingsSyncService", () => {
     await Effect.runPromise(service.initialize());
 
     expect(await testDb.db.select().from(syncClientState)).toEqual([]);
-    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+    expect(
+      (await testDb.db.select().from(syncCollectionState)).filter(
+        (row) => row.collection !== "note",
+      ),
+    ).toEqual([]);
   });
 
   it("classifies startup authentication dependency failures", async () => {
@@ -380,7 +430,7 @@ describe("SettingsSyncService", () => {
     service = null;
 
     expect(await testDb.db.select().from(syncClientState)).toHaveLength(1);
-    expect(await testDb.db.select().from(syncCollectionState)).toHaveLength(2);
+    expect(await testDb.db.select().from(syncCollectionState)).toHaveLength(3);
   });
 
   it("can initialize the same service again after clean shutdown", async () => {
@@ -759,7 +809,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -958,7 +1008,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -1021,7 +1071,7 @@ describe("SettingsSyncService", () => {
             scopeType: "user" | "org",
             _scopeId: string,
             cursors: ReadonlyArray<{
-              collection: "vocabulary" | "snippet";
+              collection: "vocabulary" | "snippet" | "note";
               cursor: number;
             }>,
           ) =>
@@ -1221,7 +1271,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -1298,7 +1348,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -1375,7 +1425,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -1460,7 +1510,7 @@ describe("SettingsSyncService", () => {
           scopeType: "user" | "org",
           scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -1552,7 +1602,7 @@ describe("SettingsSyncService", () => {
           scopeType: "user" | "org",
           scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) => {
@@ -1668,7 +1718,11 @@ describe("SettingsSyncService", () => {
     await auth.logoutForTest();
     expect(pullState.interrupted).toBe(true);
     expect(await testDb.db.select().from(syncClientState)).toEqual([]);
-    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+    expect(
+      (await testDb.db.select().from(syncCollectionState)).filter(
+        (row) => row.collection !== "note",
+      ),
+    ).toEqual([]);
     expect(await testDb.db.select().from(syncItemState)).toEqual([]);
     expect(await testDb.db.select().from(syncOutbox)).toEqual([]);
     expect(await testDb.db.select().from(vocabulary)).toEqual([
@@ -1720,7 +1774,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -1762,7 +1816,11 @@ describe("SettingsSyncService", () => {
     expect(await testDb.db.select().from(vocabulary)).toEqual([
       expect.objectContaining({ word: "Personal", scopeType: "user" }),
     ]);
-    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+    expect(
+      (await testDb.db.select().from(syncCollectionState)).filter(
+        (row) => row.collection !== "note",
+      ),
+    ).toEqual([]);
     expect(await testDb.db.select().from(syncScopeState)).toEqual([]);
   });
 
@@ -1797,7 +1855,11 @@ describe("SettingsSyncService", () => {
     await auth.logoutForTest();
     expect(bootstrapState.interrupted).toBe(true);
     expect(await testDb.db.select().from(syncClientState)).toEqual([]);
-    expect(await testDb.db.select().from(syncCollectionState)).toEqual([]);
+    expect(
+      (await testDb.db.select().from(syncCollectionState)).filter(
+        (row) => row.collection !== "note",
+      ),
+    ).toEqual([]);
     expect(await testDb.db.select().from(syncItemState)).toEqual([]);
     expect(await testDb.db.select().from(syncOutbox)).toEqual([]);
     expect(await testDb.db.select().from(vocabulary)).toEqual([
@@ -1837,7 +1899,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>
@@ -2047,6 +2109,65 @@ describe("SettingsSyncService", () => {
     expect(client.bootstrap).toHaveBeenCalledTimes(3);
   });
 
+  it("syncs pending notes immediately on restart and debounces new edits without delaying vocabulary", async () => {
+    vi.useFakeTimers();
+    const client = new InMemorySyncClient(["vocabulary", "snippet", "note"]);
+    service = SettingsSyncService.createForTests(
+      auth as unknown as AuthService,
+      client,
+    );
+    await Effect.runPromise(service.initialize());
+    await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+
+    const note = await createNote({ title: "Draft" });
+    await vi.advanceTimersByTimeAsync(5000);
+    saveNoteBody(note.id, "B");
+    await createVocabularyWord({ word: "Ready now" });
+    await vi.advanceTimersByTimeAsync(750);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      client.push.mock.calls
+        .flatMap(([batch]) => batch)
+        .map((item) => item.collection),
+    ).toEqual(["vocabulary"]);
+    expect(testDb.db.select().from(syncOutbox).get()).toMatchObject({
+      syncId: note.id,
+      headPresent: false,
+    });
+
+    saveNoteBody(note.id, "C");
+    await Effect.runPromise(service.shutdown());
+    // A slow startup pull must not strand the note past its old deadline.
+    const originalPull = client.pull.getMockImplementation()!;
+    client.pull.mockImplementationOnce((...args) =>
+      Effect.sleep(11_000).pipe(Effect.zipRight(originalPull(...args))),
+    );
+    await Effect.runPromise(service.initialize());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.push).toHaveBeenCalledTimes(2);
+    expect(client.push.mock.calls[1][0]).toMatchObject([
+      {
+        collection: "note",
+        syncId: note.id,
+        payload: { body: { content: "C" } },
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(11_000);
+    saveNoteBody(note.id, "D");
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(client.push).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.push).toHaveBeenCalledTimes(3);
+    expect(client.push.mock.calls[2][0]).toMatchObject([
+      {
+        collection: "note",
+        syncId: note.id,
+        payload: { body: { content: "D" } },
+      },
+    ]);
+  });
+
   it("resets the edit debounce and cancels it on shutdown", async () => {
     vi.useFakeTimers();
     const client = new InMemorySyncClient();
@@ -2140,7 +2261,7 @@ describe("SettingsSyncService", () => {
           _scopeType: "user" | "org",
           _scopeId: string,
           cursors: ReadonlyArray<{
-            collection: "vocabulary" | "snippet";
+            collection: "vocabulary" | "snippet" | "note";
             cursor: number;
           }>,
         ) =>

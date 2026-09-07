@@ -1,3 +1,4 @@
+import { NOTE_SYNC_LIMITS } from "@amical/types";
 import { Effect, Exit, Ref } from "effect";
 
 import {
@@ -68,13 +69,22 @@ export class SettingsSyncRunner {
         );
         if (!scope) return syncScope(index + 1);
 
+        const scopedCapabilities = {
+          ...capabilities,
+          collections: capabilities.collections.filter(
+            (collection) =>
+              collection !== "note" || scopeContext.scopeType === "user",
+          ),
+        };
+        if (scopedCapabilities.collections.length === 0)
+          return syncScope(index + 1);
         const transfer = scope.canWrite
-          ? this.pushUntilDrained(scopeContext, capabilities).pipe(
+          ? this.pushUntilDrained(scopeContext, scopedCapabilities).pipe(
               Effect.zipRight(
-                this.pullUntilCurrent(scopeContext, capabilities),
+                this.pullUntilCurrent(scopeContext, scopedCapabilities),
               ),
             )
-          : this.pullUntilCurrent(scopeContext, capabilities);
+          : this.pullUntilCurrent(scopeContext, scopedCapabilities);
 
         return transfer.pipe(
           Effect.as<SyncAttemptResult>({ rebootstrap: false }),
@@ -135,6 +145,7 @@ export class SettingsSyncRunner {
                 context.scopeId,
                 cursors,
                 capabilities.pullLimit,
+                capabilities.note?.maxPullLimit,
               )
               .pipe(
                 Effect.flatMap((page) =>
@@ -182,9 +193,16 @@ export class SettingsSyncRunner {
   ): Effect.Effect<void, SettingsSyncAttemptError> {
     const pushBatch = (): Effect.Effect<void, SettingsSyncAttemptError> =>
       this.db(() =>
-        capturePushHeads(context, undefined, capabilities.collections),
+        capturePushHeads(context, undefined, capabilities.collections, {
+          maxPayloadBytes:
+            capabilities.note?.maxPayloadBytes ??
+            NOTE_SYNC_LIMITS.maxPayloadBytes,
+          maxPushBytes: capabilities.maxPushBytes,
+        }),
       ).pipe(
         Effect.flatMap((heads) => {
+          // Validation can block an oversized note without sending a request.
+          if (capabilities.collections.includes("note")) this.notifyRenderers();
           if (heads.length === 0) return Effect.void;
           return Effect.try({
             try: () =>
@@ -192,6 +210,8 @@ export class SettingsSyncRunner {
                 heads,
                 capabilities.maxPushBatch,
                 capabilities.maxPushBytes,
+                capabilities.note?.maxPushBatch ??
+                  NOTE_SYNC_LIMITS.maxPushBatch,
               ),
             catch: (error) =>
               new SettingsSyncContractFailure({
@@ -278,12 +298,20 @@ export class SettingsSyncRunner {
     heads: CapturedSyncHead[],
     maxCount: number,
     maxBytes: number,
+    maxNoteCount: number,
   ): { heads: CapturedSyncHead[]; mutations: SyncPushMutation[] } {
     const selectedHeads: CapturedSyncHead[] = [];
     const mutations: SyncPushMutation[] = [];
 
     for (const head of heads) {
-      if (selectedHeads.length >= maxCount) break;
+      const containsNote =
+        head.collection === "note" ||
+        mutations.some((item) => item.collection === "note");
+      if (
+        selectedHeads.length >=
+        Math.min(maxCount, containsNote ? maxNoteCount : maxCount)
+      )
+        break;
       const mutation: SyncPushMutation = {
         collection: head.collection,
         scopeType: head.scopeType,

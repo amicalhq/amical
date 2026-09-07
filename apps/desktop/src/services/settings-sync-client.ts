@@ -1,5 +1,7 @@
 import {
   SETTINGS_SYNC_COLLECTIONS,
+  NOTE_SYNC_LIMITS,
+  NoteSyncPayloadSchema,
   SettingsSyncBootstrapResponseSchema,
   SettingsSyncCollectionSchema,
   SettingsSyncPullRequestSchema,
@@ -45,6 +47,11 @@ export interface SyncBootstrap {
   maxPushBatch: number;
   maxPushBytes: number;
   pullLimit: number;
+  note?: {
+    maxPayloadBytes: number;
+    maxPushBatch: number;
+    maxPullLimit: number;
+  };
 }
 
 export interface SyncBootstrapScope {
@@ -83,7 +90,9 @@ function parseCanonicalItem(raw: SettingsSyncCanonicalItem): CanonicalSyncItem {
   const payload =
     collection === "vocabulary"
       ? VocabularySyncPayloadSchema.parse(raw.payload)
-      : SnippetSyncPayloadSchema.parse(raw.payload);
+      : collection === "snippet"
+        ? SnippetSyncPayloadSchema.parse(raw.payload)
+        : NoteSyncPayloadSchema.parse(raw.payload);
   return { ...raw, collection, payload };
 }
 
@@ -91,7 +100,7 @@ function payloadKey(
   collection: SyncCollection,
   payload: SyncPayload | null,
 ): string | null {
-  if (payload === null) return null;
+  if (payload === null || collection === "note") return null;
   return collection === "vocabulary"
     ? (payload as { word: string }).word
     : (payload as { trigger: string }).trigger;
@@ -136,6 +145,27 @@ export class SettingsSyncClient {
 
           return {
             scopes: [userScope, ...organizationScopes],
+            ...(collections.includes("note")
+              ? {
+                  note: {
+                    maxPayloadBytes: Math.min(
+                      body.capabilities.note?.maxPayloadBytes ??
+                        NOTE_SYNC_LIMITS.maxPayloadBytes,
+                      NOTE_SYNC_LIMITS.maxPayloadBytes,
+                    ),
+                    maxPushBatch: Math.min(
+                      body.capabilities.note?.maxPushBatch ??
+                        NOTE_SYNC_LIMITS.maxPushBatch,
+                      NOTE_SYNC_LIMITS.maxPushBatch,
+                    ),
+                    maxPullLimit: Math.min(
+                      body.capabilities.note?.maxPullLimit ??
+                        NOTE_SYNC_LIMITS.maxPullLimit,
+                      NOTE_SYNC_LIMITS.maxPullLimit,
+                    ),
+                  },
+                }
+              : {}),
             collections,
             maxPushBatch: body.capabilities.maxPushBatch,
             maxPushBytes: body.capabilities.maxPushBytes,
@@ -155,6 +185,7 @@ export class SettingsSyncClient {
     scopeId: string,
     cursors: readonly PullCollectionCursor[],
     limit: number,
+    noteLimit = NOTE_SYNC_LIMITS.maxPullLimit as number,
   ): Effect.Effect<SyncPullPage, SettingsSyncClientError> {
     return Effect.gen(this, function* () {
       const url = yield* Effect.try({
@@ -165,7 +196,7 @@ export class SettingsSyncClient {
             collections: cursors.map(({ collection, cursor }) => ({
               collection,
               cursor,
-              limit,
+              limit: collection === "note" ? Math.min(limit, noteLimit) : limit,
             })),
           });
           const url = getCoreApiUrl("/apps/v1/sync/pull");
@@ -342,6 +373,12 @@ export class SettingsSyncClient {
               throw new Error(
                 "Conflicting item collection does not match request",
               );
+            }
+            if (
+              result.reason === "duplicate_key_conflict" &&
+              mutation.collection === "note"
+            ) {
+              throw new Error("Notes have no duplicate keys");
             }
             if (
               result.reason === "duplicate_key_conflict" &&

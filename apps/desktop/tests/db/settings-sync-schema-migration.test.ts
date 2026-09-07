@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { snippets, syncItemState, vocabulary } from "../../src/db/schema";
+import { snippets, vocabulary } from "../../src/db/schema";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 
 const UUID_PATTERN =
@@ -142,6 +142,8 @@ describe("settings sync schema migration", () => {
       >("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_scope_state'")
       .all();
     expect(scopeTable).toEqual([{ name: "sync_scope_state" }]);
-    expect(testDb.db.select().from(syncItemState).all()).toEqual([]);
+    expect(
+      testDb.db.$client.prepare("SELECT * FROM sync_item_state").all(),
+    ).toEqual([]);
   });
 });

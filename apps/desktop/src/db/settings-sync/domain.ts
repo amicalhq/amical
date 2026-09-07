@@ -10,6 +10,7 @@ import {
   type SyncItemState,
   type VocabularySyncPayload,
 } from "../schema";
+import { loadVisibleNoteIds } from "./notes";
 import { syncItemKey } from "./query";
 import {
   PERSONAL_SCOPE_ID,
@@ -58,6 +59,7 @@ export function loadVisibleRowIds(
     )
     .all();
   return {
+    note: loadVisibleNoteIds(database, identity),
     vocabulary: new Set(vocabularyRows.map((row) => row.id)),
     snippet: new Set(snippetRows.map((row) => row.id)),
   };

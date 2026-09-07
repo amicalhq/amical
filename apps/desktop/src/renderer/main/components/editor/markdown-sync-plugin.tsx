@@ -62,7 +62,8 @@ export function MarkdownSyncPlugin({
     provider.onStatus = (hasPending, nextIssue) => {
       statusRef.current?.(hasPending);
       setIssue(nextIssue);
-      if (nextIssue === "deleted") editor.setEditable(false);
+      if (nextIssue === "deleted" || nextIssue === "recovered")
+        editor.setEditable(false);
     };
     const sanitizeLink = (node: LinkNode) => {
       if (isSafeNoteUrl(node.getURL())) return;

@@ -9,6 +9,7 @@ export type UpcomingEvent = {
 export interface Note {
   id: string;
   title: string;
+  syncError?: string | null;
   icon?: string | null;
   updatedAt: Date;
   meetingEvent?: {

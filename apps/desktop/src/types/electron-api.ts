@@ -1,3 +1,4 @@
+import type { NoteSaveOrigin } from "../notes/types";
 import type { NoteBody, NoteSaveResult, NoteBodyChange } from "../notes/types";
 
 declare global {
@@ -50,7 +51,12 @@ export interface ElectronAPI {
   // Local Markdown note persistence
   notes: {
     loadBody: (noteId: string) => NoteBody;
-    saveBody: (noteId: string, markdown: string) => NoteSaveResult;
+    saveBody: (
+      noteId: string,
+      markdown: string,
+      expectedRemoteVersion?: number | null,
+      origin?: NoteSaveOrigin,
+    ) => NoteSaveResult;
     onBodyChange: (callback: (change: NoteBodyChange) => void) => () => void;
   };
 }

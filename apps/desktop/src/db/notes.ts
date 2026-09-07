@@ -1,6 +1,15 @@
-import { eq, desc, asc, like, and } from "drizzle-orm";
+import { eq, desc, asc, like, and, isNull, count } from "drizzle-orm";
 import { db } from "./index";
 import { notes, type Note, type NewNote } from "./schema";
+
+import { activeUserIdentity } from "./settings-sync/active-state";
+import {
+  visibleNotesWhere,
+  recordNoteMutation,
+  findNoteSyncState,
+  noteSyncPayload,
+  preserveNoteConflict,
+} from "./settings-sync/notes";
 
 // Create a new note
 export async function createNote(data: Pick<NewNote, "title" | "icon">) {
@@ -8,14 +17,18 @@ export async function createNote(data: Pick<NewNote, "title" | "icon">) {
 
   const newNote: NewNote = {
     ...data,
+    accountId: activeUserIdentity()?.scopeId ?? null,
     content: "",
     contentFormat: "markdown-v1",
     createdAt: now,
     updatedAt: now,
   };
 
-  const result = await db.insert(notes).values(newNote).returning();
-  return result[0];
+  return db.transaction((tx) => {
+    const note = tx.insert(notes).values(newNote).returning().get();
+    recordNoteMutation(tx, note);
+    return note;
+  });
 }
 
 // Get all notes with optional filtering and sorting
@@ -40,7 +53,7 @@ export async function getNotes(
   let query = db.select().from(notes);
 
   // Apply filters
-  const conditions = [];
+  const conditions = [visibleNotesWhere()];
   if (search) {
     conditions.push(like(notes.title, `%${search}%`));
   }
@@ -62,32 +75,122 @@ export async function getNotes(
 
 // Get note by ID
 export async function getNoteById(id: string) {
-  const result = await db.select().from(notes).where(eq(notes.id, id));
-  return result[0] || null;
+  const result = db
+    .select()
+    .from(notes)
+    .where(and(eq(notes.id, id), visibleNotesWhere()))
+    .get();
+  return result
+    ? {
+        ...result,
+        remoteVersion: findNoteSyncState(db, result)?.remoteVersion ?? null,
+      }
+    : null;
 }
 
 // Update note
 export async function updateNote(
   id: string,
   data: Partial<Pick<Note, "title" | "icon">>,
+  expectedRemoteVersion?: number | null,
+  original: Partial<Pick<Note, "title" | "icon">> = {},
 ) {
   const updateData = {
     ...data,
     updatedAt: new Date(),
   };
 
-  const result = await db
-    .update(notes)
-    .set(updateData)
-    .where(eq(notes.id, id))
-    .returning();
-
-  return result[0] || null;
+  return db.transaction((tx) => {
+    const existing = tx
+      .select()
+      .from(notes)
+      .where(and(eq(notes.id, id), visibleNotesWhere()))
+      .get();
+    if (!existing) return null;
+    const remoteVersion =
+      findNoteSyncState(tx, existing)?.remoteVersion ?? null;
+    // Only a remote change to an edited field can conflict with an editor draft.
+    if (
+      existing.accountId &&
+      expectedRemoteVersion !== undefined &&
+      expectedRemoteVersion !== remoteVersion &&
+      ((data.title !== undefined &&
+        data.title !== existing.title &&
+        original.title !== existing.title) ||
+        (data.icon !== undefined &&
+          data.icon !== existing.icon &&
+          original.icon !== existing.icon))
+    ) {
+      preserveNoteConflict(
+        tx,
+        {
+          accountId: existing.accountId,
+          scopeId: existing.accountId,
+          scopeType: "user",
+        },
+        noteSyncPayload(existing),
+      );
+    }
+    const note = tx
+      .update(notes)
+      .set(updateData)
+      .where(and(eq(notes.id, id), visibleNotesWhere()))
+      .returning()
+      .get();
+    if (note) recordNoteMutation(tx, note);
+    return note ? { ...note, remoteVersion } : null;
+  });
 }
 
 // Delete note
 export async function deleteNote(id: string) {
   // Delete the note (yjs updates and metadata will be cascade deleted)
-  const result = await db.delete(notes).where(eq(notes.id, id)).returning();
-  return result[0] || null;
+  return db.transaction((tx) => {
+    const note = tx
+      .delete(notes)
+      .where(and(eq(notes.id, id), visibleNotesWhere()))
+      .returning()
+      .get();
+    if (note) recordNoteMutation(tx, note, true);
+    return note ?? null;
+  });
+}
+
+export function getNoteEnrollment() {
+  return {
+    signedIn: activeUserIdentity() !== null,
+    count: db
+      .select({ count: count() })
+      .from(notes)
+      .where(and(isNull(notes.accountId), eq(notes.localOnly, false)))
+      .get()!.count,
+  };
+}
+
+export function enrollLocalNotes(sync: boolean) {
+  const identity = activeUserIdentity();
+  if (!identity) throw new Error("Sign in to sync notes");
+  return db.transaction((tx) => {
+    const local = tx
+      .select()
+      .from(notes)
+      .where(and(isNull(notes.accountId), eq(notes.localOnly, false)))
+      .all();
+    for (const note of local) {
+      const updated = tx
+        .update(notes)
+        .set(
+          sync
+            ? {
+                accountId: identity.scopeId,
+              }
+            : { localOnly: true },
+        )
+        .where(eq(notes.id, note.id))
+        .returning()
+        .get()!;
+      if (sync) recordNoteMutation(tx, updated);
+    }
+    return { count: local.length };
+  });
 }

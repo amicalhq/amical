@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne, or } from "drizzle-orm";
 
 import { db } from "..";
 import {
@@ -57,6 +57,7 @@ async function startSyncScopeSession(
       .run();
 
     for (const collection of SYNC_COLLECTIONS) {
+      if (scopeType === "org" && collection === "note") continue;
       const insert = tx
         .insert(syncCollectionState)
         .values({ ...scope, collection, cursor: 0 });
@@ -250,6 +251,7 @@ export async function reconcileSyncScopes(
         })
         .run();
       for (const collection of SYNC_COLLECTIONS) {
+        if (scope.scopeType === "org" && collection === "note") continue;
         tx.insert(syncCollectionState)
           .values({
             scopeType: scope.scopeType,
@@ -296,11 +298,31 @@ export async function clearSyncState(database: typeof db = db): Promise<void> {
   database.transaction((tx) => {
     tx.delete(vocabulary).where(eq(vocabulary.scopeType, "org")).run();
     tx.delete(snippets).where(eq(snippets.scopeType, "org")).run();
-    tx.delete(syncOutbox).run();
-    tx.delete(syncItemState).run();
-    tx.delete(syncCollectionState).run();
+    // Notes and their pending edits stay in their owning account across logout.
+    tx.delete(syncOutbox)
+      .where(
+        or(ne(syncOutbox.collection, "note"), eq(syncOutbox.scopeType, "org")),
+      )
+      .run();
+    tx.delete(syncItemState)
+      .where(
+        or(
+          ne(syncItemState.collection, "note"),
+          eq(syncItemState.scopeType, "org"),
+        ),
+      )
+      .run();
+    tx.delete(syncCollectionState)
+      .where(
+        or(
+          ne(syncCollectionState.collection, "note"),
+          eq(syncCollectionState.scopeType, "org"),
+        ),
+      )
+      .run();
     tx.delete(syncScopeState).run();
-    tx.delete(syncClientState).run();
+    if (!tx.select().from(syncOutbox).limit(1).get())
+      tx.delete(syncClientState).run();
   });
 }
 

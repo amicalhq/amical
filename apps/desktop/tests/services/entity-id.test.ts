@@ -19,17 +19,16 @@ describe("sync entity IDs", () => {
       const id = createEntityId(collection);
       expect(id).toMatch(new RegExp(`^${prefix}_[a-z][a-z0-9]{23}$`));
       expect(SettingsSyncIdSchema.parse(id)).toBe(id);
-      if (collection !== "note")
-        expect(
-          SettingsSyncPushMutationSchema.parse({
-            collection,
-            scopeType: "user",
-            scopeId: "alice",
-            syncId: id,
-            expectedSyncVersion: 1,
-            payload: null,
-          }).syncId,
-        ).toBe(id);
+      expect(
+        SettingsSyncPushMutationSchema.parse({
+          collection,
+          scopeType: "user",
+          scopeId: "alice",
+          syncId: id,
+          expectedSyncVersion: 1,
+          payload: null,
+        }).syncId,
+      ).toBe(id);
       expect(
         SettingsSyncCanonicalItemSchema.parse({
           collection,

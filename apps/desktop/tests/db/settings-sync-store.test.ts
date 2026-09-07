@@ -102,6 +102,7 @@ describe("settings sync durable store", () => {
     expect(await getPullCursors(fence, undefined, database)).toEqual([
       { collection: "vocabulary", cursor: 4 },
       { collection: "snippet", cursor: 7 },
+      { collection: "note", cursor: 0 },
     ]);
   });
 
@@ -383,7 +384,7 @@ describe("settings sync durable store", () => {
     });
   });
 
-  it("reuses the row UUID after clearing the previous user's sync state", async () => {
+  it("reuses the row ID after clearing the previous user's sync state", async () => {
     const syncId = "99999999-9999-4999-8999-999999999999";
     let fence = await beginUserSyncSession("user-2", database);
     await applyPullPage(

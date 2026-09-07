@@ -1,6 +1,7 @@
 import { SettingsSyncIdSchema } from "@amical/types";
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
+import { getNoteEnrollment, enrollLocalNotes } from "../../db/notes";
 import NotesService from "../../services/notes-service";
 
 const notesService = NotesService.getInstance();
@@ -23,17 +24,32 @@ const CreateNoteSchema = z.object({
   icon: z.string().nullish(),
 });
 
+const expectedRemoteVersion = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER)
+  .nullable()
+  .optional();
 const UpdateNoteTitleSchema = z.object({
+  expectedRemoteVersion,
+  originalTitle: z.string().optional(),
   id: SettingsSyncIdSchema,
   title: z.string().min(1),
 });
 
 const UpdateNoteIconSchema = z.object({
+  expectedRemoteVersion,
+  originalIcon: z.string().nullable().optional(),
   id: SettingsSyncIdSchema,
   icon: z.string().nullish(),
 });
 
 export const notesRouter = createRouter({
+  getEnrollment: procedure.query(() => getNoteEnrollment()),
+  enrollLocal: procedure
+    .input(z.object({ sync: z.boolean() }))
+    .mutation(({ input }) => enrollLocalNotes(input.sync)),
   // Get all notes
   getNotes: procedure.input(GetNotesSchema).query(async ({ input }) => {
     return await notesService.listNotes({
@@ -82,7 +98,9 @@ export const notesRouter = createRouter({
     .input(UpdateNoteTitleSchema)
     .mutation(async ({ input }) => {
       const updated = await notesService.updateNote(input.id, {
+        expectedRemoteVersion: input.expectedRemoteVersion,
         title: input.title,
+        originalTitle: input.originalTitle,
       });
       if (!updated) {
         throw new Error("Failed to update note");
@@ -94,7 +112,9 @@ export const notesRouter = createRouter({
     .input(UpdateNoteIconSchema)
     .mutation(async ({ input }) => {
       const updated = await notesService.updateNote(input.id, {
+        expectedRemoteVersion: input.expectedRemoteVersion,
         icon: input.icon,
+        originalIcon: input.originalIcon,
       });
       if (!updated) {
         throw new Error("Failed to update note");

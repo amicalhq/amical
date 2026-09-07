@@ -1,9 +1,9 @@
-import type { SyncScopeType } from "../schema";
+import type { SyncCollection, SyncScopeType } from "../schema";
 import type { AdvertisedSyncScope, SyncContext } from "./types";
 
 type ActiveScopeAccess = { canWrite: boolean; role: string | null };
 
-let localMutationHandler: (() => void) | null = null;
+let localMutationHandler: ((collection?: SyncCollection) => void) | null = null;
 let activeUserAccountId: string | null = null;
 const activeSyncScopes = new Map<string, ActiveScopeAccess>();
 
@@ -13,7 +13,7 @@ export const activeScopeKey = (
 ): string => `${scopeType}:${scopeId}`;
 
 export function registerLocalSyncMutationHandler(
-  handler: () => void,
+  handler: (collection?: SyncCollection) => void,
 ): () => void {
   localMutationHandler = handler;
   return () => {
@@ -21,8 +21,8 @@ export function registerLocalSyncMutationHandler(
   };
 }
 
-export function notifyLocalSyncMutation(): void {
-  localMutationHandler?.();
+export function notifyLocalSyncMutation(collection?: SyncCollection): void {
+  localMutationHandler?.(collection);
 }
 
 export function resetActiveScopes(): void {

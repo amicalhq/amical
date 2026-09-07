@@ -48,8 +48,9 @@ Y.Text is recognized only when the old `notesLexical` migration marker is absent
 JSON-looking malformed content remains protected.
 
 A successful transaction stores Markdown, the format marker, and the old SQL
-column in `legacy_content`. It never changes the ID, title, icon, creation/edit
-times, or references. The Yjs rows stay byte-for-byte intact. Failed conversions
+column in `legacy_content`. The preceding ID migration changes each integer note ID to a prefixed CUID2 and remaps
+its Yjs foreign keys. The Markdown conversion preserves that ID, title, icon,
+creation/edit times, and references. The Yjs rows stay byte-for-byte intact. Failed conversions
 store `content_format = 'blocked'` and `migration_error`, leaving the original
 body and blobs intact. A crash rolls back the whole note transaction. Reruns
 skip converted rows and retry failed rows, including notes blocked by an earlier
@@ -83,17 +84,66 @@ The main process serializes local writes. A later save replaces the whole body,
 even if it came from another window that opened an older version. No save inserts
 a missing note, so delayed writes cannot resurrect deleted notes. Body-change
 events refresh idle windows without saving. A window with a pending edit finishes
-its own save. There are no revision comparisons, conflict dialogs, draft downloads,
-or session recovery copies. Deleted notes stop saving and allow normal close.
+its own save. A separate remote-change marker preserves an incoming remote snapshot as a conflict copy if
+an already-open editor then saves a divergent body or title. Local save order
+still determines the stored body. Deleted notes stop saving and allow normal close.
 A database write error keeps the pending edit available for a retry.
 
 Markdown list items retain paragraph boundaries and block order in the editor.
 A small ListItemNode subclass prevents Lexical from merging paragraphs; it is
 an editor detail, not an additional persistent note format.
 
-A later adapter can read `getNoteById()` for the complete body and metadata. It
-must use only `markdown-v1` bodies and must not interpret legacy or blocked content
-as Markdown. This change adds no cloud sync behavior.
+## Cloud sync
+
+Notes use the `note` collection through the existing authenticated sync service.
+Bootstrap must advertise `note`; older servers continue to sync vocabulary and
+snippets. Organization requests never include notes. Bodies use `markdown-v1`
+and map to the version-1 Markdown payload defined by `NoteSyncPayloadSchema` in
+[`packages/types/src/schemas/settings-sync.ts`](../../../../packages/types/src/schemas/settings-sync.ts).
+Legacy bodies and recovery blobs are never uploaded.
+
+The pending schema migrations run in order: `0011_notes_ids`,
+`0012_settings_ids`, `0013_notes_markdown`, then `0014_notes_sync`. Note primary keys and Yjs note
+foreign keys are strings (`nt_` plus a complete 24-character CUID2). The note's `id` is also the cloud `syncId`; there
+is no separate sync-ID column or permanent integer-ID mapping. Notes created while signed in belong to that account. Existing
+unowned notes remain on the device until the user chooses “Sync these notes” in
+the notes list. “Keep on this device” dismisses enrollment for those notes.
+Account-owned notes are hidden after sign-out and from other accounts. Their
+outboxes, tombstones, and accepted server state are retained for the owning
+account. An already-open editor can finish its pending body save in its original
+account even if sign-out has just hidden that note.
+
+Create, body/title/icon edits, and deletion update the note and durable outbox in
+one transaction. Pushes use accepted server versions; wall-clock timestamps do
+not resolve conflicts. The editor marker advances only on remote changes, not on local
+saves or their push acknowledgments. Title autosaves wait for the previous local
+save to finish and carry its updated base into the next draft.
+
+Note uploads wait 10 seconds after the latest local mutation for that note. The
+deadline is stored in the outbox, so background wakes cannot capture a draft early.
+Startup clears existing note deadlines so pending changes can sync immediately;
+new edits receive the normal 10-second delay.
+An already-captured head can finish while later edits wait; uncaptured edits
+coalesce into the latest payload. Vocabulary and snippet edits retain their
+750 ms wake debounce. Local body/title saves remain at 250/500 ms.
+
+Pull application and cursor advancement are atomic.
+Divergent pending edits become separate “(conflict copy)” notes before canonical
+state replaces or deletes the original. A replay cannot duplicate a committed
+conflict copy. A pending editor body can also be recovered after remote deletion,
+using a new note ID; the deleted identity is not restored. Local deletion still
+rejects delayed saves.
+
+The client checks the 128 KiB UTF-8 JSON payload limit, 1,024-code-unit title,
+64-code-unit icon, and Unicode rules. Smaller advertised payload/request limits
+also apply. Invalid or oversized drafts remain intact on the device with a sync
+error and do not block other items. Editing retries them. Note-containing batches
+contain at most three mutations (or a smaller advertised cap); note pages request
+at most 20 items. Sync updates refresh the main notes page and widget.
+
+Local timestamps retain the existing SQLite second precision and are explicitly
+converted to milliseconds in the wire payload. Network retries use the frozen
+outbox payload, including its timestamps.
 
 ## Verification
 
@@ -110,12 +160,12 @@ They cover conversion, malformed and incomplete updates, rollback/restart,
 metadata and backup retention, large notes, editing/reopening, opening without
 saving, debounce/close, last-write-wins across windows, deletion, and note service/IPC behavior.
 
-Note IDs use `nt_` plus the full 24-character CUID2 output. Migration
-`0011_notes_ids` replaces integer primary keys and updates Yjs foreign keys
-before `0013_notes_markdown` runs. The note ID is used throughout IPC and UI.
-
-Migration `0012_settings_ids` clears vocabulary/snippet outbox entries, saved
-server state, and pull cursors, including pending deletions, then replaces live
-UUIDs with `voc_` and `snp_` plus full 24-character CUID2 IDs. Normal sync enrolls
-the remaining rows again. Content and metadata stay unchanged locally. Server
-natural-key dedup can restore existing UUIDs and content; the migration runs once.
+New note, vocabulary, and snippet IDs use `nt_`, `voc_`, and `snp_` prefixes plus
+the full 24-character CUID2 output. Migration `0012_settings_ids` rekeys existing
+live vocabulary/snippet UUIDs once after clearing their outbox, saved server
+state, and pull cursors, including pending deletions. Normal sync enrolls the remaining rows again. Content, timestamps, and scope are preserved locally;
+server natural-key dedup may restore the canonical UUID and content. The migration
+journal prevents repeatedly rekeying those returned UUIDs. Notes are unaffected
+by this settings migration. Both ID formats remain valid. Upgrade the cloud ID contract before
+releasing clients that create prefixed IDs. All receiving clients must accept
+both formats.

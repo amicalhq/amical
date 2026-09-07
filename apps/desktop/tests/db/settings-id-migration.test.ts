@@ -12,7 +12,6 @@ import { migrateDatabase } from "@/db/migrate";
 import {
   vocabulary,
   snippets,
-  syncItemState,
   syncOutbox,
   syncClientState,
   syncCollectionState,
@@ -95,42 +94,56 @@ beforeEach(async () => {
       set: { lastOutboxSequence: 10 },
     })
     .run();
-  db.insert(syncItemState)
-    .values([
-      {
-        scopeType: "user",
-        scopeId: "alice",
-        collection: "vocabulary",
-        syncId: WORD,
-        acceptedSyncVersion: 5,
-        acceptedPayload: { word: "Word", replacement: "Old text" },
-      },
-      {
-        scopeType: "org",
-        scopeId: "org-1",
-        collection: "vocabulary",
-        syncId: WORD,
-        acceptedSyncVersion: 6,
-        acceptedPayload: { word: "Word", replacement: "Old org" },
-      },
-      {
-        scopeType: "user",
-        scopeId: "alice",
-        collection: "snippet",
-        syncId: SNIPPET,
-        acceptedSyncVersion: 7,
-        acceptedPayload: { trigger: "sig", content: "Regards" },
-      },
-      {
-        scopeType: "user",
-        scopeId: "alice",
-        collection: "snippet",
-        syncId: DELETED,
-        acceptedSyncVersion: 8,
-        acceptedPayload: { trigger: "deleted", content: "Gone" },
-      },
-    ])
-    .run();
+  // Seed the historical schema before the notes columns exist.
+  for (const row of [
+    {
+      scopeType: "user",
+      scopeId: "alice",
+      collection: "vocabulary",
+      syncId: WORD,
+      acceptedSyncVersion: 5,
+      acceptedPayload: { word: "Word", replacement: "Old text" },
+    },
+    {
+      scopeType: "org",
+      scopeId: "org-1",
+      collection: "vocabulary",
+      syncId: WORD,
+      acceptedSyncVersion: 6,
+      acceptedPayload: { word: "Word", replacement: "Old org" },
+    },
+    {
+      scopeType: "user",
+      scopeId: "alice",
+      collection: "snippet",
+      syncId: SNIPPET,
+      acceptedSyncVersion: 7,
+      acceptedPayload: { trigger: "sig", content: "Regards" },
+    },
+    {
+      scopeType: "user",
+      scopeId: "alice",
+      collection: "snippet",
+      syncId: DELETED,
+      acceptedSyncVersion: 8,
+      acceptedPayload: { trigger: "deleted", content: "Gone" },
+    },
+  ]) {
+    db.$client
+      .prepare(
+        `INSERT INTO sync_item_state
+      (scope_type, scope_id, collection, sync_id, accepted_sync_version, accepted_payload)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.scopeType,
+        row.scopeId,
+        row.collection,
+        row.syncId,
+        row.acceptedSyncVersion,
+        JSON.stringify(row.acceptedPayload),
+      );
+  }
   db.$client
     .prepare(
       `INSERT INTO sync_outbox (
@@ -201,7 +214,7 @@ it("clears settings sync including pending deletions, then rekeys IDs without ch
     oldNotes,
   );
   expect(db.select().from(syncOutbox).all()).toEqual([]);
-  expect(db.select().from(syncItemState).all()).toEqual([]);
+  expect(db.$client.prepare("SELECT * FROM sync_item_state").all()).toEqual([]);
   expect(db.select().from(syncCollectionState).all()).toEqual([]);
   expect(db.select().from(syncClientState).get()!.lastOutboxSequence).toBe(10);
 });
@@ -258,7 +271,7 @@ it("rolls back IDs, outbox heads and versions together on migration failure", ()
   const db = testDb.db;
   const before = {
     words: db.select().from(vocabulary).all(),
-    items: db.select().from(syncItemState).all(),
+    items: db.$client.prepare("SELECT * FROM sync_item_state").all(),
     outbox: db.$client.prepare("SELECT * FROM sync_outbox").all(),
     client: db.select().from(syncClientState).all(),
   };
@@ -271,7 +284,7 @@ it("rolls back IDs, outbox heads and versions together on migration failure", ()
   expect(() => migrateDatabase(db, { migrationsFolder: folder })).toThrow();
   expect({
     words: db.select().from(vocabulary).all(),
-    items: db.select().from(syncItemState).all(),
+    items: db.$client.prepare("SELECT * FROM sync_item_state").all(),
     outbox: db.$client.prepare("SELECT * FROM sync_outbox").all(),
     client: db.select().from(syncClientState).all(),
   }).toEqual(before);

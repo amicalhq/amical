@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api, trpcClient } from "@/trpc/react";
 import { usePostHog } from "@/renderer/lib/posthog";
 import { UpdatePrompt } from "../components/update-prompt/update-prompt";
+import { useNotesRefresh } from "../hooks/use-notes-refresh";
 import { useEffect } from "react";
 
 // Create a client
@@ -22,6 +23,7 @@ export const Route = createRootRoute({
 
 // Inner component that uses hooks requiring provider context
 function AppShell() {
+  useNotesRefresh();
   usePostHog("main"); // Initialize and sync telemetry
   const utils = api.useUtils();
 

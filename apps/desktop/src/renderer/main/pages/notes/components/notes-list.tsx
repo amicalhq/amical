@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { NotebookText } from "lucide-react";
 import { NoteCard } from "./note-card";
 import { api } from "@/trpc/react";
@@ -8,6 +9,13 @@ import { useTranslation } from "react-i18next";
 export function NotesList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const utils = api.useUtils();
+  const { data: enrollment } = api.notes.getEnrollment.useQuery();
+  const enroll = api.notes.enrollLocal.useMutation({
+    onSuccess: () => {
+      void utils.notes.invalidate();
+    },
+  });
 
   const { data: notes, isLoading } = api.notes.getNotes.useQuery({
     sortBy: "updatedAt",
@@ -53,6 +61,36 @@ export function NotesList() {
       <div className="mb-8">
         <h1 className="text-xl font-bold">{t("settings.nav.notes.title")}</h1>
       </div>
+
+      {enrollment?.signedIn && enrollment.count > 0 && (
+        <div className="mb-6 rounded-lg border p-4 space-y-3">
+          <p className="text-sm">
+            {t("settings.notes.cloud.enrollment", { count: enrollment.count })}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={enroll.isPending}
+              onClick={() => enroll.mutate({ sync: true })}
+            >
+              {t("settings.notes.cloud.enroll")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={enroll.isPending}
+              onClick={() => enroll.mutate({ sync: false })}
+            >
+              {t("settings.notes.cloud.keepLocal")}
+            </Button>
+          </div>
+          {enroll.error && (
+            <p role="alert" className="text-sm text-destructive">
+              {enroll.error.message}
+            </p>
+          )}
+        </div>
+      )}
 
       {formattedNotes.length > 0 && (
         <div>

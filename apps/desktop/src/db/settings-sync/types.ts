@@ -6,10 +6,7 @@ export type SyncDatabase = Pick<
   "select" | "insert" | "update" | "delete"
 >;
 
-export const SYNC_COLLECTIONS = [
-  "vocabulary",
-  "snippet",
-] as const satisfies readonly SyncCollection[];
+export { SETTINGS_SYNC_COLLECTIONS as SYNC_COLLECTIONS } from "@amical/types";
 
 export const PERSONAL_SCOPE_ID = "";
 

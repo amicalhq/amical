@@ -1,3 +1,4 @@
+import type { NoteSaveOrigin } from "../notes/types";
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
@@ -109,8 +110,18 @@ const api: ElectronAPI = {
       if (result.error) throw new Error(result.error);
       return result.body;
     },
-    saveBody: (noteId: string, markdown: string) =>
-      ipcRenderer.sendSync("notes:saveBody", { noteId, markdown }),
+    saveBody: (
+      noteId: string,
+      markdown: string,
+      expectedRemoteVersion?: number | null,
+      origin?: NoteSaveOrigin,
+    ) =>
+      ipcRenderer.sendSync("notes:saveBody", {
+        noteId,
+        markdown,
+        expectedRemoteVersion,
+        origin,
+      }),
     onBodyChange: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,

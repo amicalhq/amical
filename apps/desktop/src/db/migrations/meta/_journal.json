@@ -99,6 +99,13 @@
       "when": 1788757069089,
       "tag": "0013_notes_markdown",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1788757069090,
+      "tag": "0014_notes_sync",
+      "breakpoints": true
     }
   ]
 }

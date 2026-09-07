@@ -1,3 +1,4 @@
+import { useNotesRefresh } from "@/renderer/main/hooks/use-notes-refresh";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -71,6 +72,7 @@ const queryClient = new QueryClient({
 });
 
 const NotesWidgetShell: React.FC = () => {
+  useNotesRefresh();
   usePostHog("notes");
 
   return (

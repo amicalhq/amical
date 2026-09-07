@@ -6,11 +6,13 @@ import {
   syncOutbox,
   vocabulary,
   type SnippetSyncPayload,
+  type NoteSyncPayload,
   type SyncCollection,
   type SyncItemState,
   type SyncPayload,
   type VocabularySyncPayload,
 } from "../schema";
+import { applyNotePayload, preserveNoteConflict } from "./notes";
 import { itemWhere, outboxWhere, payloadsEqual } from "./query";
 import {
   PERSONAL_SCOPE_ID,
@@ -59,6 +61,15 @@ function applyDomainPayload(
 ): void {
   const sidecar = findSidecar(database, fence, collection, syncId);
   if (!sidecar) throw new Error("Sync sidecar missing during canonical apply");
+  if (collection === "note") {
+    applyNotePayload(
+      database,
+      fence,
+      syncId,
+      payload as NoteSyncPayload | null,
+    );
+    return;
+  }
   const domainScopeId =
     fence.scopeType === "user" ? PERSONAL_SCOPE_ID : fence.scopeId;
 
@@ -443,6 +454,17 @@ export function applyCanonicalItem(
   if (item.syncVersion === sidecar.acceptedSyncVersion) {
     setAcceptedState(database, fence, item);
     if (discardPendingOnEqual && pending) {
+      if (
+        item.collection === "note" &&
+        pending.desiredPayload &&
+        !payloadsEqual(pending.desiredPayload, item.payload)
+      ) {
+        preserveNoteConflict(
+          database,
+          fence,
+          pending.desiredPayload as NoteSyncPayload,
+        );
+      }
       database.delete(syncOutbox).where(outboxWhere(identity)).run();
       applyDomainPayload(
         database,
@@ -511,6 +533,27 @@ export function applyCanonicalItem(
     return;
   }
 
+  // Echoes and acknowledged local heads return above. Only a remote canonical
+  // replacement advances the editor marker, independently of the CAS version.
+  if (
+    item.collection === "note" &&
+    (!payloadsEqual(sidecar.acceptedPayload, item.payload) ||
+      (pending && !payloadsEqual(pending.desiredPayload, item.payload)))
+  ) {
+    database
+      .update(syncItemState)
+      .set({ noteRemoteVersion: item.syncVersion })
+      .where(itemWhere(identity))
+      .run();
+  }
+
+  if (item.collection === "note" && pending?.desiredPayload) {
+    preserveNoteConflict(
+      database,
+      fence,
+      pending.desiredPayload as NoteSyncPayload,
+    );
+  }
   setAcceptedState(database, fence, item);
   if (pending) {
     database.delete(syncOutbox).where(outboxWhere(identity)).run();
@@ -531,6 +574,19 @@ export function applyCanonicalAbsence(
 ): void {
   const sidecar = findSidecar(database, fence, head.collection, head.syncId);
   if (!sidecar) return;
+  if (head.collection === "note") {
+    const pending = database
+      .select()
+      .from(syncOutbox)
+      .where(outboxWhere({ ...fence, ...head }))
+      .get();
+    if (pending?.desiredPayload)
+      preserveNoteConflict(
+        database,
+        fence,
+        pending.desiredPayload as NoteSyncPayload,
+      );
+  }
 
   database
     .update(syncItemState)

@@ -97,7 +97,7 @@ afterEach(async () => {
   rmSync(folder, { recursive: true, force: true });
 });
 
-it("upgrades integer IDs before Markdown, retaining Yjs data and its foreign keys", () => {
+it("upgrades integer IDs before Markdown and sync, retaining Yjs data and its foreign keys", () => {
   const oldVocabulary = testDb.db.select().from(vocabulary).all();
   const oldSnippets = testDb.db.select().from(snippets).all();
   migrateDatabase(testDb.db, { migrationsFolder: migrations });
@@ -135,6 +135,7 @@ it("upgrades integer IDs before Markdown, retaining Yjs data and its foreign key
     icon: "🌻",
     createdAt: new Date(1000000),
     updatedAt: new Date(2000000),
+    accountId: null,
     contentFormat: "legacy",
   });
   expect(note).not.toHaveProperty("syncId");

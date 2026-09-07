@@ -36,6 +36,8 @@ import {
   clearSyncState,
   deactivateOrganizationSyncScopes,
   hasResumableUserSyncState,
+  getNextNotePushAt,
+  resetNoteUploadDelays,
   pauseSyncSession,
   prepareVisibleRowsForFullSync,
   reconcileSyncScopes,
@@ -327,7 +329,10 @@ export class SettingsSyncSupervisor {
     );
   }
 
-  private prepareServiceRun(): Effect.Effect<number> {
+  private prepareServiceRun(): Effect.Effect<
+    number,
+    SettingsSyncLifecycleError
+  > {
     return Effect.gen(this, function* () {
       if (this.runResourcesClosed) {
         this.serviceScope = yield* Scope.make();
@@ -341,6 +346,8 @@ export class SettingsSyncSupervisor {
       this.supervisorStarted = false;
       this.wakeEventQueued = false;
       this.localMutationEventQueued = false;
+      this.localMutationDeadline = 0;
+      yield* this.db(resetNoteUploadDelays);
       return this.lifecycleGeneration;
     });
   }
@@ -422,14 +429,18 @@ export class SettingsSyncSupervisor {
     this.authService.on("authenticated", this.onAuthenticated);
     this.authService.on("logged-out", this.onLoggedOut);
     this.authService.on("token-refreshed", this.onTokenRefreshed);
-    this.unregisterLocalMutation = registerLocalSyncMutationHandler(() => {
-      if (!this.initialized || this.stopping || !this.wakeAdmissionOpen) return;
-      this.localMutationEpoch = this.boundaryEpoch;
-      this.localMutationDeadline = Date.now() + EDIT_DEBOUNCE_MS;
-      if (this.localMutationEventQueued) return;
-      this.localMutationEventQueued = true;
-      this.offer({ _tag: "LocalMutation" });
-    });
+    this.unregisterLocalMutation = registerLocalSyncMutationHandler(
+      (collection) => {
+        if (!this.initialized || this.stopping || !this.wakeAdmissionOpen)
+          return;
+        this.localMutationEpoch = this.boundaryEpoch;
+        if (collection !== "note")
+          this.localMutationDeadline = Date.now() + EDIT_DEBOUNCE_MS;
+        if (this.localMutationEventQueued) return;
+        this.localMutationEventQueued = true;
+        this.offer({ _tag: "LocalMutation" });
+      },
+    );
     ipcMain.on("settings-sync-wake", this.onExternalWake);
   }
 
@@ -847,7 +858,6 @@ export class SettingsSyncSupervisor {
   ): Effect.Effect<SupervisorState> {
     this.localMutationEventQueued = false;
     const epoch = this.localMutationEpoch;
-    const remainingDelay = Math.max(0, this.localMutationDeadline - Date.now());
     if (
       epoch !== state.epoch ||
       epoch !== this.boundaryEpoch ||
@@ -858,6 +868,14 @@ export class SettingsSyncSupervisor {
       return Effect.succeed(state);
     }
 
+    const deadline = Math.min(
+      this.localMutationDeadline || Infinity,
+      getNextNotePushAt() ?? Infinity,
+    );
+    const remainingDelay = Number.isFinite(deadline)
+      ? Math.max(0, deadline - Date.now())
+      : 0;
+
     return Effect.gen(this, function* () {
       const withoutPrevious = yield* this.interruptDebounce(state);
       const fiber = yield* Effect.forkIn(
@@ -865,6 +883,8 @@ export class SettingsSyncSupervisor {
           Effect.tap(() =>
             Effect.sync(() => {
               this.currentDebounceFiber = null;
+              if (this.localMutationDeadline <= Date.now())
+                this.localMutationDeadline = 0;
             }),
           ),
           Effect.tap(() => Effect.sync(() => this.wake())),
@@ -906,7 +926,11 @@ export class SettingsSyncSupervisor {
       };
       return next.rerunRequested
         ? this.startAttempt({ ...next, rerunRequested: false })
-        : Effect.succeed(next);
+        : getNextNotePushAt() !== null
+          ? Effect.sync(() => {
+              this.localMutationEpoch = next.epoch;
+            }).pipe(Effect.flatMap(() => this.handleLocalMutation(next)))
+          : Effect.succeed(next);
     }
 
     const errorOption = Cause.failureOption(event.exit.cause);
@@ -1124,6 +1148,7 @@ export class SettingsSyncSupervisor {
         if (!this.boundaryIsCurrent(epoch)) pauseSyncSession();
         return null;
       }
+      this.notifyRenderers();
       return context;
     });
   }

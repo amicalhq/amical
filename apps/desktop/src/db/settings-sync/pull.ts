@@ -22,6 +22,8 @@ export async function applyPullPages(
     if (!contextIsActive(fence)) return false;
 
     for (const page of pages) {
+      if (page.collection === "note" && fence.scopeType !== "user")
+        throw new Error("Notes only support user scope");
       for (const item of page.items) {
         applyCanonicalItem(tx, fence, item);
       }
@@ -39,6 +41,9 @@ export async function getPullCursors(
   collections: readonly SyncCollection[] = SYNC_COLLECTIONS,
   database: SyncDatabase = db,
 ): Promise<PullCollectionCursor[] | null> {
+  collections = collections.filter(
+    (collection) => collection !== "note" || fence.scopeType === "user",
+  );
   if (!contextIsActive(fence)) return null;
   if (collections.length === 0) return [];
 

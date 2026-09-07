@@ -7,6 +7,8 @@ export {
   adoptVisibleRows,
   applyPushResults,
   capturePushHeads,
+  getNextNotePushAt,
+  resetNoteUploadDelays,
   getWritableOrganizationIdentity,
   hasPendingSyncWork,
   prepareVisibleRowsForFullSync,

@@ -8,6 +8,7 @@ import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
+import { settleTitleSave, type NoteTitleDraft } from "@/notes/title-draft";
 
 type NotePageProps = {
   noteId: string;
@@ -34,9 +35,15 @@ export default function NotePage({
   // Refs
   const noteRef = useRef<typeof note>(null);
   const autoRecordTriggeredRef = useRef(false);
+  const titleSaveInFlight = useRef(false);
+  const pendingTitle = useRef<NoteTitleDraft | null>(null);
 
   // Fetch note data
-  const { data: note, isLoading } = api.notes.getNoteById.useQuery(
+  const {
+    data: note,
+    isLoading,
+    isError,
+  } = api.notes.getNoteById.useQuery(
     { id: noteId },
     {
       enabled: !!noteId,
@@ -45,9 +52,28 @@ export default function NotePage({
 
   // Update title mutation
   const updateTitleMutation = api.notes.updateNoteTitle.useMutation({
-    onSuccess: () => {
+    onSuccess: (saved, input) => {
+      titleSaveInFlight.current = false;
+      pendingTitle.current = settleTitleSave(
+        pendingTitle.current,
+        input,
+        saved,
+      );
+      if (pendingTitle.current) debouncedUpdateTitle();
+      if (saved && noteRef.current?.id === saved.id)
+        noteRef.current = {
+          ...noteRef.current,
+          title: saved.title,
+          remoteVersion: saved.remoteVersion,
+        };
       utils.notes.getNotes.invalidate();
-      utils.notes.getNoteById.invalidate({ id: noteId });
+      utils.notes.getNoteById.invalidate({ id: input.id });
+    },
+    onError: (_error, input) => {
+      titleSaveInFlight.current = false;
+      const pending = pendingTitle.current;
+      if (pending && (pending.id !== input.id || pending.title !== input.title))
+        debouncedUpdateTitle();
     },
   });
 
@@ -87,11 +113,21 @@ export default function NotePage({
   // Debounced title update
   const debouncedUpdateTitle = useMemo(
     () =>
-      debounce((title: string) => {
-        const currentNote = noteRef.current;
-        if (currentNote && title !== currentNote.title) {
-          updateTitleMutation.mutate({ id: currentNote.id, title });
+      debounce(() => {
+        const pending = pendingTitle.current;
+        if (!pending || titleSaveInFlight.current) return;
+        if (pending.title === pending.originalTitle) {
+          pendingTitle.current = null;
+          if (noteRef.current) setNoteTitle(noteRef.current.title);
+          return;
         }
+        titleSaveInFlight.current = true;
+        updateTitleMutation.mutate({
+          id: pending.id,
+          title: pending.title,
+          expectedRemoteVersion: pending.remoteVersion,
+          originalTitle: pending.originalTitle,
+        });
       }, 500),
     [], // No dependencies - function should remain stable
   );
@@ -100,7 +136,7 @@ export default function NotePage({
   useEffect(() => {
     noteRef.current = note;
     if (note) {
-      setNoteTitle(note.title);
+      if (!pendingTitle.current) setNoteTitle(note.title);
       setNoteIcon(note.icon || null);
     }
   }, [note]);
@@ -112,6 +148,7 @@ export default function NotePage({
 
   // Reset state when noteId changes
   useEffect(() => {
+    pendingTitle.current = null;
     setEditorReady(false);
     autoRecordTriggeredRef.current = false;
   }, [noteId]);
@@ -135,9 +172,19 @@ export default function NotePage({
   const handleTitleChange = useCallback(
     (newTitle: string) => {
       setNoteTitle(newTitle);
-      debouncedUpdateTitle(newTitle);
+      const remoteVersion = pendingTitle.current
+        ? pendingTitle.current.remoteVersion
+        : (noteRef.current?.remoteVersion ?? null);
+      const originalTitle = pendingTitle.current?.originalTitle ?? noteTitle;
+      pendingTitle.current = {
+        id: noteId,
+        title: newTitle,
+        remoteVersion,
+        originalTitle,
+      };
+      debouncedUpdateTitle();
     },
-    [debouncedUpdateTitle],
+    [debouncedUpdateTitle, noteTitle, noteId],
   );
 
   // Handle delete
@@ -149,13 +196,18 @@ export default function NotePage({
   const handleEmojiChange = useCallback(
     (emoji: string | null) => {
       setNoteIcon(emoji);
-      updateNoteIconMutation.mutate({ id: noteId, icon: emoji });
+      updateNoteIconMutation.mutate({
+        id: noteId,
+        icon: emoji,
+        expectedRemoteVersion: noteRef.current?.remoteVersion,
+        originalIcon: noteIcon,
+      });
     },
-    [noteId, updateNoteIconMutation],
+    [noteId, noteIcon, updateNoteIconMutation],
   );
 
   // Note not found state
-  if (!isLoading && !note) {
+  if (!isLoading && (!note || isError)) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <FileTextIcon className="h-12 w-12 text-muted-foreground" />
@@ -193,6 +245,11 @@ export default function NotePage({
       onBack={onBack}
       isDeleting={deleteMutation.isPending}
     >
+      {note?.syncError && (
+        <p role="alert" className="px-4 py-2 text-sm text-destructive">
+          {t("settings.notes.cloud.error", { reason: note.syncError })}
+        </p>
+      )}
       <NoteEditor
         noteId={noteId}
         onSyncStatusChange={handleSyncStatusChange}

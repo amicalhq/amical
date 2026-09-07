@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Effect, Fiber } from "effect";
 
 import {
+  NOTE_SYNC_LIMITS,
+  NoteSyncPayloadSchema,
+  SettingsSyncPullRequestSchema,
   SettingsSyncPullCollectionRequestSchema,
   SettingsSyncPushRequestSchema,
 } from "@amical/types";
@@ -35,6 +38,129 @@ describe("SettingsSyncClient", () => {
   afterEach(() => {
     delete process.env.CORE_API_URL;
     vi.unstubAllGlobals();
+  });
+
+  it("enforces note payload size, Unicode, scope and batch limits", () => {
+    const payload = {
+      schemaVersion: 1,
+      title: "",
+      icon: null,
+      body: { format: "markdown", content: "" },
+      createdAtMs: 0,
+      updatedAtMs: 0,
+    };
+    const freeBytes =
+      NOTE_SYNC_LIMITS.maxPayloadBytes -
+      Buffer.byteLength(JSON.stringify(payload));
+    payload.body.content = "x".repeat(freeBytes);
+    expect(NoteSyncPayloadSchema.safeParse(payload).success).toBe(true);
+    expect(
+      NoteSyncPayloadSchema.safeParse({ ...payload, title: "x" }).success,
+    ).toBe(false);
+    expect(
+      NoteSyncPayloadSchema.safeParse({
+        ...payload,
+        body: { format: "markdown", content: "\u0000" },
+      }).success,
+    ).toBe(false);
+    expect(
+      NoteSyncPayloadSchema.safeParse({
+        ...payload,
+        body: { format: "markdown", content: "\ud800" },
+      }).success,
+    ).toBe(false);
+    const mutation = {
+      collection: "note",
+      scopeType: "user",
+      scopeId: "user-1",
+      syncId: SYNC_ID,
+      expectedSyncVersion: null,
+      payload: null,
+    };
+    expect(
+      SettingsSyncPushRequestSchema.safeParse({
+        mutations: Array(3).fill(mutation),
+      }).success,
+    ).toBe(true);
+    expect(
+      SettingsSyncPushRequestSchema.safeParse({
+        mutations: Array(4).fill(mutation),
+      }).success,
+    ).toBe(false);
+    expect(
+      SettingsSyncPushRequestSchema.safeParse({
+        mutations: [{ ...mutation, scopeType: "org" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      SettingsSyncPullRequestSchema.safeParse({
+        scopeType: "org",
+        scopeId: "org-1",
+        collections: [{ collection: "note", cursor: 0, limit: 20 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("discovers note limits and requests a bounded note page", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        scopes: [
+          {
+            scopeType: "user",
+            scopeId: "user-1",
+            role: null,
+            canWrite: true,
+            latestSyncVersion: 0,
+          },
+        ],
+        capabilities: {
+          collections: ["vocabulary", "snippet", "note", "future"],
+          maxPushBatch: 100,
+          maxPushBytes: 524288,
+          defaultPullLimit: 200,
+          maxPullLimit: 500,
+          maxPullBytes: 524288,
+          oneScopePerPush: true,
+          note: {
+            scopeType: "user",
+            maxPayloadBytes: 65536,
+            maxPushBatch: 2,
+            maxPullLimit: 10,
+          },
+        },
+      }),
+    });
+    const capabilities = await runClient(client.bootstrap("user-1"));
+    expect(capabilities.collections).toEqual(["vocabulary", "snippet", "note"]);
+    expect(capabilities.note).toEqual({
+      maxPayloadBytes: 65536,
+      maxPushBatch: 2,
+      maxPullLimit: 10,
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        scopeType: "user",
+        scopeId: "user-1",
+        collections: [
+          { collection: "note", cursor: 0, hasMore: false, items: [] },
+        ],
+      }),
+    });
+    await runClient(
+      client.pull(
+        "user",
+        "user-1",
+        [{ collection: "note", cursor: 0 }],
+        200,
+        capabilities.note?.maxPullLimit,
+      ),
+    );
+    const url = fetchMock.mock.calls[1][0] as URL;
+    expect(JSON.parse(url.searchParams.get("collections")!)).toEqual([
+      { collection: "note", cursor: 0, limit: 10 },
+    ]);
   });
 
   it("validates bootstrap and sends the current bearer token", async () => {

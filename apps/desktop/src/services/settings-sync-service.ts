@@ -102,6 +102,7 @@ function notifyRenderers(): void {
         continue;
       }
       window.webContents.send("settings-sync-updated");
+      window.webContents.send("notes:bodyChanged", {});
     } catch (error) {
       logger.main.warn("Failed to notify renderer of settings sync update", {
         error,

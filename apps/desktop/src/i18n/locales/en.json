@@ -911,9 +911,16 @@
         "loadFailed": "The note could not be loaded. Close and reopen it to try again.",
         "blocked": "This note could not be converted. Its original data is preserved for recovery.",
         "details": "Recovery details",
-        "deletedNote": "This note was deleted.",
+        "deletedNote": "This note was deleted or is not available in this account.",
+        "recovered": "This note was deleted on another device. Your changes were saved as a conflict copy in your notes.",
         "format": "This formatting cannot be saved as Markdown. Use bold, italic, strikethrough, or code. Undo unsupported pasted formatting to save.",
         "error": "Changes could not be saved. Keep this window open and try editing again."
+      },
+      "cloud": {
+        "enrollment": "Add {{count}} notes from this device to your signed-in account? They will sync across your devices.",
+        "enroll": "Sync these notes",
+        "keepLocal": "Keep on this device",
+        "error": "Saved on this device. Cloud sync needs attention: {{reason}}"
       }
     },
     "vocabulary": {

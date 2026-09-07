@@ -1,7 +1,7 @@
 import type { ElectronAPI } from "@/types/electron-api";
 import type { NoteBody } from "@/notes/types";
 
-export type NoteSaveIssue = "deleted" | "error" | null;
+export type NoteSaveIssue = "deleted" | "error" | "recovered" | null;
 
 // Local Markdown persistence. The last save received by SQLite wins.
 export class NoteSyncProvider {
@@ -22,21 +22,25 @@ export class NoteSyncProvider {
     if (body.status !== "ready") throw new Error("Note is not editable");
     this.body = body;
     this.unsubscribe = api.onBodyChange((change) => {
-      if (change.noteId !== noteId) return;
+      if (change.noteId !== undefined && change.noteId !== noteId) return;
       if (change.deleted) {
         this.markDeleted();
         return;
       }
-      // An active editor finishes its own save; idle windows follow storage.
-      if (this.pending !== null || this.blockedFormatting) return;
       try {
         const latest = api.loadBody(noteId);
-        if (latest.status === "deleted") this.markDeleted();
-        else if (latest.status === "ready") {
+        if (latest.status === "deleted") {
+          if (this.pending !== null && this.body.origin && !this.flush())
+            return;
+          this.markDeleted();
+        } else if (latest.status === "ready") {
+          // Pending editors retain their cloud base until their own save.
+          if (this.pending !== null || this.blockedFormatting) return;
+          const changed = latest.markdown !== this.body.markdown;
+          this.body = latest;
           this.issue = null;
           this.notify();
-          if (latest.markdown !== this.body.markdown) {
-            this.body = latest;
+          if (changed) {
             this.onBody?.();
           }
         }
@@ -48,7 +52,7 @@ export class NoteSyncProvider {
   }
 
   queue(markdown: string) {
-    if (this.issue === "deleted") return;
+    if (this.issue === "deleted" || this.issue === "recovered") return;
     this.blockedFormatting = false;
     this.pending = markdown;
     this.issue = null;
@@ -67,11 +71,28 @@ export class NoteSyncProvider {
     if (this.blockedFormatting) return false;
     if (this.pending === null) return true;
     try {
-      const result = this.api.saveBody(this.noteId, this.pending);
+      const result =
+        this.body.remoteVersion === undefined
+          ? this.api.saveBody(this.noteId, this.pending)
+          : this.api.saveBody(
+              this.noteId,
+              this.pending,
+              this.body.remoteVersion,
+              this.body.origin,
+            );
       if (result.status === "saved") {
-        this.body = { ...this.body, markdown: this.pending };
+        this.body = {
+          ...this.body,
+          markdown: this.pending,
+          ...(result.remoteVersion !== undefined
+            ? { remoteVersion: result.remoteVersion }
+            : {}),
+          ...(this.body.origin
+            ? { origin: { ...this.body.origin, markdown: this.pending } }
+            : {}),
+        };
         this.pending = null;
-        this.issue = null;
+        this.issue = result.recovered ? "recovered" : null;
       } else if (result.status === "deleted") this.markDeleted();
       else this.issue = "error";
     } catch {
@@ -84,7 +105,7 @@ export class NoteSyncProvider {
   private markDeleted() {
     this.pending = null;
     this.blockedFormatting = false;
-    this.issue = "deleted";
+    if (this.issue !== "recovered") this.issue = "deleted";
     this.cancelTimer();
     this.notify();
   }

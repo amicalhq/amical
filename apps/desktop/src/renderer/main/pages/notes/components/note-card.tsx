@@ -42,6 +42,10 @@ export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
           {note.title}
         </div>
 
+        {note.syncError && (
+          <p className="mt-1 text-xs text-destructive">{note.syncError}</p>
+        )}
+
         {/* Date and Meeting Info */}
         <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
           <span>{formatDate(note.updatedAt)}</span>

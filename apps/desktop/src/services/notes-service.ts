@@ -16,6 +16,22 @@ const noteIdSchema = SettingsSyncIdSchema;
 const saveSchema = z.object({
   noteId: noteIdSchema,
   markdown: z.string(),
+  expectedRemoteVersion: z
+    .number()
+    .int()
+    .positive()
+    .max(Number.MAX_SAFE_INTEGER)
+    .nullable()
+    .optional(),
+  origin: z
+    .object({
+      accountId: z.string().min(1),
+      title: z.string(),
+      markdown: z.string(),
+      icon: z.string().nullable(),
+      createdAtMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    })
+    .optional(),
 });
 
 export interface NoteCreateOptions {
@@ -24,6 +40,9 @@ export interface NoteCreateOptions {
 }
 
 export interface NoteUpdateOptions {
+  expectedRemoteVersion?: number | null;
+  originalTitle?: string;
+  originalIcon?: string | null;
   title?: string;
   transcriptionId?: number | null;
   icon?: string | null;
@@ -47,8 +66,14 @@ class NotesService {
     });
     ipcMain.on("notes:saveBody", (event, input: unknown) => {
       try {
-        const { noteId, markdown } = saveSchema.parse(input);
-        const result = saveNoteBody(noteId, markdown);
+        const { noteId, markdown, expectedRemoteVersion, origin } =
+          saveSchema.parse(input);
+        const result = saveNoteBody(
+          noteId,
+          markdown,
+          expectedRemoteVersion,
+          origin,
+        );
         event.returnValue = result;
         if (result.status === "saved") {
           this.notifyBodyChange({ noteId });
@@ -85,6 +110,7 @@ class NotesService {
       icon: options.icon,
     });
 
+    this.notifyBodyChange({ noteId: note.id });
     return note;
   }
 
@@ -105,7 +131,14 @@ class NotesService {
   }
 
   async updateNote(id: string, options: NoteUpdateOptions) {
-    return await updateNote(id, options);
+    const { expectedRemoteVersion, originalTitle, originalIcon, ...updates } =
+      options;
+    const note = await updateNote(id, updates, expectedRemoteVersion, {
+      title: originalTitle,
+      icon: originalIcon,
+    });
+    if (note) this.notifyBodyChange({ noteId: id });
+    return note;
   }
 
   async deleteNote(id: string) {

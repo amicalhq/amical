@@ -1,14 +1,14 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { NOTE_SYNC_LIMITS } from "@amical/types";
+import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 
 import { db } from "..";
 import {
+  notes,
   snippets,
-  syncClientState,
   syncItemState,
   syncOutbox,
   vocabulary,
   type SyncCollection,
-  type SyncItemState,
   type SyncPayload,
   type SyncScopeType,
 } from "../schema";
@@ -32,6 +32,13 @@ import {
   snippetSyncPayload,
   vocabularySyncPayload,
 } from "./domain";
+import { enqueueLocalMutation } from "./mutations";
+import {
+  blockNoteMutation,
+  loadVisibleNoteIds,
+  notePayloadError,
+  noteSyncPayload,
+} from "./notes";
 import { itemWhere, outboxWhere, payloadsEqual, syncItemKey } from "./query";
 import {
   PERSONAL_SCOPE_ID,
@@ -41,127 +48,6 @@ import {
   type SyncContext,
   type SyncDatabase,
 } from "./types";
-
-function allocateOutboxSequence(database: SyncDatabase): number {
-  const client = database
-    .update(syncClientState)
-    .set({
-      lastOutboxSequence: sql`${syncClientState.lastOutboxSequence} + 1`,
-    })
-    .where(eq(syncClientState.id, 1))
-    .returning({ sequence: syncClientState.lastOutboxSequence })
-    .get();
-  if (!client) throw new Error("Sync client state is missing");
-  return client.sequence;
-}
-
-function enqueueLocalMutation(
-  database: SyncDatabase,
-  identity: { scopeType: SyncScopeType; scopeId: string },
-  collection: SyncCollection,
-  syncId: string,
-  payload: SyncPayload | null,
-  options: { unversioned?: boolean; notify?: boolean } = {},
-): void {
-  const existingSidecar = database
-    .select()
-    .from(syncItemState)
-    .where(itemWhere({ ...identity, collection, syncId }))
-    .limit(1)
-    .get();
-  let sidecar: SyncItemState | undefined = existingSidecar;
-
-  if (!sidecar) {
-    database
-      .insert(syncItemState)
-      .values({
-        ...identity,
-        collection,
-        syncId,
-        acceptedSyncVersion: null,
-        acceptedPayload: null,
-      })
-      .run();
-    sidecar = database
-      .select()
-      .from(syncItemState)
-      .where(itemWhere({ ...identity, collection, syncId }))
-      .limit(1)
-      .get();
-  }
-  if (!sidecar) throw new Error("Failed to create sync item sidecar");
-
-  const identityWithItem = {
-    ...identity,
-    collection,
-    syncId: sidecar.syncId,
-  };
-  const pending = database
-    .select()
-    .from(syncOutbox)
-    .where(outboxWhere(identityWithItem))
-    .limit(1)
-    .get();
-
-  let desiredBaseSyncVersion = options.unversioned
-    ? null
-    : sidecar.acceptedSyncVersion;
-  let desiredSequence =
-    pending?.desiredSequence ?? allocateOutboxSequence(database);
-  let desiredParentHeadSequence: number | null = null;
-  let desiredParentSyncVersion: number | null = null;
-
-  if (pending?.headPresent) {
-    if (pending.headSequence === null) {
-      throw new Error("Sync outbox head is missing its sequence");
-    }
-    if (pending.desiredSequence === pending.headSequence) {
-      desiredSequence = allocateOutboxSequence(database);
-      desiredBaseSyncVersion = pending.headExpectedSyncVersion;
-      desiredParentHeadSequence = pending.headSequence;
-    } else {
-      desiredBaseSyncVersion = pending.desiredBaseSyncVersion;
-      desiredParentHeadSequence = pending.desiredParentHeadSequence;
-      desiredParentSyncVersion = pending.desiredParentSyncVersion;
-    }
-  } else if (pending) {
-    desiredBaseSyncVersion = pending.desiredBaseSyncVersion;
-    desiredParentHeadSequence = pending.desiredParentHeadSequence;
-    desiredParentSyncVersion = pending.desiredParentSyncVersion;
-  }
-
-  database
-    .insert(syncOutbox)
-    .values({
-      ...identityWithItem,
-      desiredPayload: payload,
-      desiredBaseSyncVersion,
-      desiredSequence,
-      desiredParentHeadSequence,
-      desiredParentSyncVersion,
-      headPresent: pending?.headPresent ?? false,
-      headPayload: pending?.headPayload ?? null,
-      headExpectedSyncVersion: pending?.headExpectedSyncVersion ?? null,
-      headSequence: pending?.headSequence ?? null,
-    })
-    .onConflictDoUpdate({
-      target: [
-        syncOutbox.scopeType,
-        syncOutbox.scopeId,
-        syncOutbox.collection,
-        syncOutbox.syncId,
-      ],
-      set: {
-        desiredPayload: payload,
-        desiredBaseSyncVersion,
-        desiredSequence,
-        desiredParentHeadSequence,
-        desiredParentSyncVersion,
-      },
-    })
-    .run();
-  if (options.notify !== false) notifyLocalSyncMutation();
-}
 
 export function recordLocalSyncMutation(
   database: SyncDatabase,
@@ -180,6 +66,7 @@ export function recordOrganizationSyncMutation(
   syncId: string,
   payload: SyncPayload | null,
 ): void {
+  if (collection === "note") throw new Error("Notes only support user scope");
   const identity = activeWritableOrganizationIdentity();
   if (!identity) {
     throw new Error("Organization language assets are read-only");
@@ -264,6 +151,7 @@ export async function prepareVisibleRowsForFullSync(
       )
       .all();
     const visibleRowIds = {
+      note: loadVisibleNoteIds(tx, fence),
       vocabulary: new Set(vocabularyRows.map((row) => row.id)),
       snippet: new Set(snippetRows.map((row) => row.id)),
     } satisfies Record<SyncCollection, Set<string>>;
@@ -297,6 +185,8 @@ export async function prepareVisibleRowsForFullSync(
     }
 
     for (const sidecar of index.sidecars) {
+      // Note CRUD already persists every edit/delete; account partitions survive logout.
+      if (sidecar.collection === "note") continue;
       if (visibleRowIds[sidecar.collection].has(sidecar.syncId)) continue;
       const pending = index.pendingByItem.get(
         syncItemKey(sidecar.collection, sidecar.syncId),
@@ -361,11 +251,27 @@ export async function adoptVisibleRows(
           syncId: row.id,
           payload: snippetSyncPayload(row),
         })),
+        ...tx
+          .select()
+          .from(notes)
+          .where(
+            and(
+              eq(notes.accountId, fence.accountId),
+              eq(notes.contentFormat, "markdown-v1"),
+            ),
+          )
+          .all()
+          .map((row) => ({
+            collection: "note" as const,
+            syncId: row.id,
+            payload: noteSyncPayload(row),
+          })),
       ],
       {
         unversioned: true,
         onlyUnbound: true,
         visibleRowIds: {
+          note: loadVisibleNoteIds(tx, fence),
           vocabulary: new Set(vocabularyRows.map((row) => row.id)),
           snippet: new Set(snippetRows.map((row) => row.id)),
         },
@@ -376,16 +282,51 @@ export async function adoptVisibleRows(
   });
 }
 
+export async function resetNoteUploadDelays(): Promise<void> {
+  db.update(syncOutbox)
+    .set({ desiredNotBefore: 0 })
+    .where(eq(syncOutbox.collection, "note"))
+    .run();
+}
+
+// During this run, unrelated sync wakes must still respect note edit deadlines.
+export function getNextNotePushAt(): number | null {
+  const identity = activeUserIdentity();
+  if (!identity) return null;
+  return (
+    db
+      .select({ deadline: syncOutbox.desiredNotBefore })
+      .from(syncOutbox)
+      .where(
+        and(
+          eq(syncOutbox.scopeType, "user"),
+          eq(syncOutbox.scopeId, identity.scopeId),
+          eq(syncOutbox.collection, "note"),
+          eq(syncOutbox.headPresent, false),
+          isNull(syncOutbox.blockedReason),
+          gt(syncOutbox.desiredNotBefore, Date.now()),
+        ),
+      )
+      .orderBy(syncOutbox.desiredNotBefore)
+      .limit(1)
+      .get()?.deadline ?? null
+  );
+}
+
 export async function capturePushHeads(
   fence: SyncContext,
   database: typeof db = db,
-  collections: readonly SyncCollection[] = ["vocabulary", "snippet"],
+  collections: readonly SyncCollection[] = ["vocabulary", "snippet", "note"],
+  noteLimits = {
+    maxPayloadBytes: NOTE_SYNC_LIMITS.maxPayloadBytes as number,
+    maxPushBytes: Number.MAX_SAFE_INTEGER,
+  },
 ): Promise<CapturedSyncHead[]> {
   if (collections.length === 0) return [];
   return database.transaction((tx) => {
     if (!contextIsActive(fence)) return [];
 
-    const pendingRows = tx
+    let pendingRows = tx
       .select()
       .from(syncOutbox)
       .where(
@@ -393,9 +334,51 @@ export async function capturePushHeads(
           eq(syncOutbox.scopeType, fence.scopeType),
           eq(syncOutbox.scopeId, fence.scopeId),
           inArray(syncOutbox.collection, [...collections]),
+          isNull(syncOutbox.blockedReason),
         ),
       )
       .all();
+
+    pendingRows = pendingRows.filter((pending) => {
+      if (pending.collection !== "note") return true;
+      if (!pending.headPresent && pending.desiredNotBefore > Date.now())
+        return false;
+      if (fence.scopeType !== "user")
+        throw new Error("Notes only support user scope");
+      const payload = pending.headPresent
+        ? pending.headPayload
+        : pending.desiredPayload;
+      const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+      const mutationBytes = Buffer.byteLength(
+        JSON.stringify({
+          mutations: [
+            {
+              collection: "note",
+              scopeType: "user",
+              scopeId: fence.scopeId,
+              syncId: pending.syncId,
+              expectedSyncVersion: pending.headPresent
+                ? pending.headExpectedSyncVersion
+                : pending.desiredParentHeadSequence === null
+                  ? pending.desiredBaseSyncVersion
+                  : pending.desiredParentSyncVersion,
+              payload,
+            },
+          ],
+        }),
+        "utf8",
+      );
+      const error = payload === null ? null : notePayloadError(payload);
+      const reason =
+        error ??
+        ((payload !== null && payloadBytes > noteLimits.maxPayloadBytes) ||
+        mutationBytes > noteLimits.maxPushBytes
+          ? "Note exceeds the server sync size limit. Your changes are saved on this device."
+          : null);
+      if (!reason) return true;
+      blockNoteMutation(tx, fence, pending.syncId, reason);
+      return false;
+    });
 
     const blockedTailSequence = pendingRows.reduce<number | null>(
       (earliest, pending) => {
@@ -462,6 +445,7 @@ export async function capturePushHeads(
           eq(syncOutbox.scopeType, fence.scopeType),
           eq(syncOutbox.scopeId, fence.scopeId),
           inArray(syncOutbox.collection, [...collections]),
+          isNull(syncOutbox.blockedReason),
           eq(syncOutbox.headPresent, true),
         ),
       )
@@ -519,7 +503,14 @@ export async function applyPushResults(
       }
       if (result.status === "error") {
         if (result.reason === "unauthorized_scope") continue;
-        permanentlyFailHead(tx, fence, head);
+        if (head.collection === "note")
+          blockNoteMutation(
+            tx,
+            fence,
+            head.syncId,
+            "Cloud sync rejected this note. Your changes are saved on this device.",
+          );
+        else permanentlyFailHead(tx, fence, head);
         continue;
       }
       if (result.reason === "version_conflict") {
@@ -554,7 +545,7 @@ export async function applyPushResults(
 export async function hasPendingSyncWork(
   fence: SyncContext,
   database: SyncDatabase = db,
-  collections: readonly SyncCollection[] = ["vocabulary", "snippet"],
+  collections: readonly SyncCollection[] = ["vocabulary", "snippet", "note"],
 ): Promise<boolean> {
   if (collections.length === 0) return false;
   if (!contextIsActive(fence)) return false;
@@ -566,6 +557,7 @@ export async function hasPendingSyncWork(
         eq(syncOutbox.scopeType, fence.scopeType),
         eq(syncOutbox.scopeId, fence.scopeId),
         inArray(syncOutbox.collection, [...collections]),
+        isNull(syncOutbox.blockedReason),
       ),
     )
     .limit(1)

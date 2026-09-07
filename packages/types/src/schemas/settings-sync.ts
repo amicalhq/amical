@@ -6,7 +6,11 @@ import { z } from "zod";
 export const SETTINGS_SYNC_KEY_MAX_LENGTH = 60;
 export const SETTINGS_SYNC_TEXT_MAX_LENGTH = 4000;
 
-export const SETTINGS_SYNC_COLLECTIONS = ["vocabulary", "snippet"] as const;
+export const SETTINGS_SYNC_COLLECTIONS = [
+  "vocabulary",
+  "snippet",
+  "note",
+] as const;
 export const SettingsSyncCollectionSchema = z.enum(SETTINGS_SYNC_COLLECTIONS);
 export type SettingsSyncCollection = z.infer<
   typeof SettingsSyncCollectionSchema
@@ -98,7 +102,61 @@ export const SnippetSyncPayloadSchema = z
   })
   .strict();
 export type SnippetSyncPayload = z.infer<typeof SnippetSyncPayloadSchema>;
-export type SettingsSyncPayload = VocabularySyncPayload | SnippetSyncPayload;
+export const NOTE_SYNC_LIMITS = {
+  maxPayloadBytes: 128 * 1024,
+  maxPushBatch: 3,
+  maxPullLimit: 20,
+} as const;
+
+const NoteTextSchema = z
+  .string()
+  .refine(
+    isPostgresCompatibleString,
+    "must be well-formed Unicode without null characters",
+  );
+const NoteBodySchema = z
+  .object({
+    format: z.literal("markdown"),
+    content: NoteTextSchema.max(NOTE_SYNC_LIMITS.maxPayloadBytes),
+  })
+  .strict();
+const NotePayloadObjectSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    title: NoteTextSchema.max(1024),
+    icon: NoteTextSchema.max(64).nullable(),
+    body: NoteBodySchema,
+    // Display metadata only; client clocks never order sync writes.
+    createdAtMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    updatedAtMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict();
+
+// Count serialized UTF-8 without requiring Node Buffer or a TextEncoder polyfill
+// in clients. JSON.stringify also accounts for quotes and escaped controls.
+function notePayloadFits(
+  payload: z.infer<typeof NotePayloadObjectSchema>,
+): boolean {
+  let bytes = 0;
+  for (const character of JSON.stringify(payload)) {
+    const code = character.codePointAt(0)!;
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+    if (bytes > NOTE_SYNC_LIMITS.maxPayloadBytes) return false;
+  }
+  return true;
+}
+const noteSizeMessage = `note payload must be at most ${NOTE_SYNC_LIMITS.maxPayloadBytes} UTF-8 JSON bytes`;
+export const NoteSyncPayloadSchema = NotePayloadObjectSchema.refine(
+  notePayloadFits,
+  noteSizeMessage,
+);
+export type NoteSyncPayloadInput = z.input<typeof NoteSyncPayloadSchema>;
+export type NoteSyncPayload = z.output<typeof NoteSyncPayloadSchema>;
+
+export type SettingsSyncPayload =
+  | VocabularySyncPayload
+  | SnippetSyncPayload
+  | NoteSyncPayload;
 
 export const SettingsSyncBootstrapResponseSchema = z
   .object({
@@ -124,6 +182,15 @@ export const SettingsSyncBootstrapResponseSchema = z
         maxPullLimit: z.number().int().positive(),
         maxPullBytes: z.number().int().positive(),
         oneScopePerPush: z.literal(true),
+        note: z
+          .object({
+            scopeType: z.literal("user"),
+            maxPayloadBytes: z.number().int().positive(),
+            maxPushBatch: z.number().int().positive(),
+            maxPullLimit: z.number().int().positive(),
+          })
+          .strip()
+          .optional(),
       })
       .strip(),
   })
@@ -162,7 +229,13 @@ export const SettingsSyncPullRequestSchema = z
         });
       }),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ scopeType, collections }) =>
+      scopeType === "user" ||
+      !collections.some((item) => item.collection === "note"),
+    "Notes only support user scope",
+  );
 export type SettingsSyncPullRequest = z.infer<
   typeof SettingsSyncPullRequestSchema
 >;
@@ -225,6 +298,14 @@ export const SettingsSyncPushMutationSchema = z.discriminatedUnion(
         payload: SnippetSyncPayloadSchema.nullable(),
       })
       .strict(),
+    z
+      .object({
+        ...settingsSyncPushMutationBase,
+        collection: z.literal("note"),
+        scopeType: z.literal("user"),
+        payload: NoteSyncPayloadSchema.nullable(),
+      })
+      .strict(),
   ],
 );
 export type SettingsSyncPushMutation = z.infer<
@@ -235,7 +316,13 @@ export const SettingsSyncPushRequestSchema = z
   .object({
     mutations: z.array(SettingsSyncPushMutationSchema),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ mutations }) =>
+      !mutations.some((item) => item.collection === "note") ||
+      mutations.length <= NOTE_SYNC_LIMITS.maxPushBatch,
+    "Pushes containing notes allow at most three mutations",
+  );
 export type SettingsSyncPushRequest = z.infer<
   typeof SettingsSyncPushRequestSchema
 >;
