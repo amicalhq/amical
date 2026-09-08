@@ -473,7 +473,7 @@ export function createRecordingLifecycle(
     }
 
     if (now.publicState === "recording" && was.publicState !== "recording") {
-      recordingStartedAt = Date.now();
+      recordingStartedAt = performance.now();
       recordingStoppedAt = null;
       if (snapshot.sessionId !== null) {
         // The moment recording went live; the payload reads it as an offset
@@ -496,7 +496,7 @@ export function createRecordingLifecycle(
       });
     }
     if (was.publicState === "recording" && now.publicState !== "recording") {
-      recordingStoppedAt = Date.now();
+      recordingStoppedAt = performance.now();
       clearReminder();
     }
 

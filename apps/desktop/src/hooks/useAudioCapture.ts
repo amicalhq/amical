@@ -124,10 +124,9 @@ export const useAudioCapture = ({
 
   // Get the user's microphone fallback chain from settings.
   const { data: settings } = api.settings.getSettings.useQuery();
-  const microphonePriority = settings?.recording?.microphonePriority;
-  // Stable key so the memoized startCapture re-creates on any chain change
-  // (incl. reorders that keep the top entry), not on every settings refetch.
-  const microphonePriorityKey = JSON.stringify(microphonePriority ?? []);
+  const microphonePriorityRef = useRef(settings?.recording?.microphonePriority);
+  // Preference changes apply to the next capture, without restarting this one.
+  microphonePriorityRef.current = settings?.recording?.microphonePriority;
 
   const clearIdleTimer = useCallback(() => {
     if (idleTimerRef.current) {
@@ -207,6 +206,7 @@ export const useAudioCapture = ({
   const startCapture = useCallback(
     async (onEnded: () => void) => {
       const captureSessionId = sessionId!;
+      const microphonePriority = microphonePriorityRef.current;
       // StrictMode can remount and call us before the teardown effect's cleanup is
       // reverted, so clear disposed here. pendingStartRef is read by closeIdleContext.
       disposedRef.current = false;
@@ -334,14 +334,7 @@ export const useAudioCapture = ({
           pendingStartRef.current = false;
         });
     },
-    [
-      onAudioChunk,
-      microphonePriorityKey,
-      releaseAll,
-      clearIdleTimer,
-      updateBars,
-      sessionId,
-    ],
+    [onAudioChunk, releaseAll, clearIdleTimer, updateBars, sessionId],
   );
 
   // Device-change diagnostics are only attached while dictation is active, so
@@ -498,12 +491,7 @@ export const useAudioCapture = ({
         console.log("AudioCapture: Audio capture stopped");
       }
     });
-  }, [
-    releaseAll,
-    scheduleIdleContextRecycle,
-    waitForWorkletFlush,
-    resetBars,
-  ]);
+  }, [releaseAll, scheduleIdleContextRecycle, waitForWorkletFlush, resetBars]);
 
   // Start/stop based on enabled state
   useEffect(() => {

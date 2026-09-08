@@ -616,7 +616,7 @@ describe("recording lifecycle runtime", () => {
   });
 
   it("empty transcripts toast only past the duration gate (D24)", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.useFakeTimers({ toFake: ["Date", "performance"] });
 
     // Short recording: sealed empty, but the notice stays silent.
     const short = makeHarness({ resolveText: "" });
@@ -627,7 +627,8 @@ describe("recording lifecycle runtime", () => {
       short.frames(0.5),
       false,
     );
-    vi.setSystemTime(Date.now() + TUNING.emptyNoticeMinRecordingMs);
+    vi.advanceTimersByTime(TUNING.emptyNoticeMinRecordingMs);
+    vi.setSystemTime(Date.now() + 60_000);
     short.lifecycle.setPttLevel(false);
     await settle();
     await short.lifecycle.handleAudioChunk(
@@ -647,7 +648,8 @@ describe("recording lifecycle runtime", () => {
     const longSession = await long.startToRecording("Blue Yeti");
     long.timers.fire(TUNING.pressWindowMs);
     await long.lifecycle.handleAudioChunk(longSession, long.frames(0.5), false);
-    vi.setSystemTime(Date.now() + TUNING.emptyNoticeMinRecordingMs + 1);
+    vi.advanceTimersByTime(TUNING.emptyNoticeMinRecordingMs + 1);
+    vi.setSystemTime(Date.now() - 60_000);
     long.lifecycle.setPttLevel(false);
     await settle();
     await long.lifecycle.handleAudioChunk(longSession, long.frames(0.5), true);
