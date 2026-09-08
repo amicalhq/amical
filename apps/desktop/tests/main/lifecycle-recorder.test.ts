@@ -273,7 +273,7 @@ describe("lifecycle recorder adapter", () => {
     const h = makeHarness();
     h.adapter.start("s1");
     await h.resolveAmbiance({ systemAudioMuted: true, soundsMuted: false });
-    h.adapter.captureStartFailed("s1", "MIC_PERMISSION_DENIED");
+    h.adapter.captureFailed("s1", "MIC_PERMISSION_DENIED");
 
     expect(h.facts).toContainEqual({
       type: "recorderFailed",
@@ -346,7 +346,7 @@ describe("lifecycle recorder adapter", () => {
     h.adapter.captureStarted("s0");
     await h.adapter.handleAudioChunk("s0", h.frames(160, 0.5), false);
     h.adapter.stop("s0");
-    h.adapter.captureStartFailed("s0", "LATE");
+    h.adapter.captureFailed("s0", "LATE");
 
     expect(h.facts).toEqual([{ type: "recorderReady", session: "s1" }]);
     expect(h.writers).toHaveLength(0);

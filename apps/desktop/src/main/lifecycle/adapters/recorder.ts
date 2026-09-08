@@ -18,7 +18,7 @@ import { REAL_TIMER_HOST, type ShellTimerHost } from "../shell";
  * This adapter turns that traffic into port facts:
  *
  *   captureStarted      → recorderReady   (public recording = capture-confirmed)
- *   captureStartFailed  → recorderFailed
+ *   captureFailed  → recorderFailed
  *   no frame within the dead-mic bound of recorderReady → noAudioDetected
  *   final chunk, or the drain bound after stop() → recorderClosed, exactly once
  *
@@ -83,7 +83,7 @@ export interface RecorderAdapterDeps {
 export interface RecorderAdapter extends RecorderPort {
   /** Renderer capture handshake (tRPC-reported). */
   captureStarted(session: SessionId): void;
-  captureStartFailed(session: SessionId, cause: string): void;
+  captureFailed(session: SessionId, cause: string): void;
   /** Renderer PCM traffic ("audio-data-chunk" IPC). */
   handleAudioChunk(
     session: SessionId,
@@ -334,7 +334,7 @@ export function createRecorderAdapter(
       });
     },
 
-    captureStartFailed(session, cause): void {
+    captureFailed(session, cause): void {
       const capture = current(session);
       if (!capture) return;
       closeCustody(capture);

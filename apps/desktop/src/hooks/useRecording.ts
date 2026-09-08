@@ -3,7 +3,7 @@ import { useAudioCapture } from "./useAudioCapture";
 import type { AcquiredMicrophoneMetadata } from "./audioCaptureDevice";
 import { api } from "@/trpc/react";
 import type {
-  CaptureStartFailure,
+  CaptureFailure,
   RecordingMode,
   RecordingState,
 } from "@/types/recording";
@@ -41,8 +41,7 @@ export const useRecording = (): UseRecordingOutput => {
   const stopRecordingMutation = api.recording.signalStop.useMutation();
   const dismissRecordingMutation = api.recording.dismiss.useMutation();
   const captureStartedMutation = api.recording.captureStarted.useMutation();
-  const captureStartFailedMutation =
-    api.recording.captureStartFailed.useMutation();
+  const captureFailedMutation = api.recording.captureFailed.useMutation();
 
   // Subscribe to recording state updates via tRPC
   api.recording.stateUpdates.useSubscription(undefined, {
@@ -103,15 +102,15 @@ export const useRecording = (): UseRecordingOutput => {
     [captureStartedMutation],
   );
 
-  const handleCaptureStartFailure = useCallback(
-    (failure: CaptureStartFailure) => {
-      captureStartFailedMutation.mutate(failure, {
+  const handleCaptureFailure = useCallback(
+    (failure: CaptureFailure) => {
+      captureFailedMutation.mutate(failure, {
         onError: (error) => {
           console.warn("Failed to report microphone capture failure", error);
         },
       });
     },
-    [captureStartFailedMutation],
+    [captureFailedMutation],
   );
 
   // Capture spins up at "starting" and confirms via captureStarted —
@@ -124,7 +123,7 @@ export const useRecording = (): UseRecordingOutput => {
   const { audioLevels } = useAudioCapture({
     onAudioChunk: handleAudioChunk,
     onCaptureStarted: handleCaptureStarted,
-    onCaptureStartFailure: handleCaptureStartFailure,
+    onCaptureFailure: handleCaptureFailure,
     sessionId: recordingStatus.sessionId,
     enabled: isActive,
     idle: isIdle,

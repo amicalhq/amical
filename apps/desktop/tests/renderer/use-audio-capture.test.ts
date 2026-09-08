@@ -28,10 +28,10 @@ vi.mock("@/hooks/audioCaptureRecycle", () => ({
 }));
 
 import { useAudioCapture } from "@/hooks/useAudioCapture";
-import type { CaptureStartFailure } from "@/types/recording";
+import type { CaptureFailure } from "@/types/recording";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
-interface FakeTrack {
+interface FakeTrack extends EventTarget {
   kind: string;
   stop: ReturnType<typeof vi.fn>;
 }
@@ -122,7 +122,10 @@ class FakeAudioContext {
 }
 
 function makeStream(): FakeStream {
-  const track: FakeTrack = { kind: "audio", stop: vi.fn() };
+  const track: FakeTrack = Object.assign(new EventTarget(), {
+    kind: "audio",
+    stop: vi.fn(),
+  });
   const stream: FakeStream = {
     track,
     getAudioTracks: () => [track],
@@ -178,7 +181,7 @@ interface AudioCaptureHookProps {
 function mountHook() {
   const onAudioChunk = vi.fn();
   const onCaptureStarted = vi.fn();
-  const onCaptureStartFailure = vi.fn<(failure: CaptureStartFailure) => void>();
+  const onCaptureFailure = vi.fn<(failure: CaptureFailure) => void>();
   const initialProps: AudioCaptureHookProps = {
     enabled: false,
     idle: true,
@@ -189,27 +192,27 @@ function mountHook() {
       useAudioCapture({
         onAudioChunk,
         onCaptureStarted,
-        onCaptureStartFailure,
+        onCaptureFailure,
         sessionId,
         enabled,
         idle,
       }),
     { initialProps },
   );
-  return { onAudioChunk, onCaptureStarted, onCaptureStartFailure, ...view };
+  return { onAudioChunk, onCaptureStarted, onCaptureFailure, ...view };
 }
 
 describe("useAudioCapture lifecycle", () => {
   it("I-55 reports a microphone start failure with its original cause", async () => {
     const failure = new DOMException("Permission denied", "NotAllowedError");
     getUserMedia.mockRejectedValueOnce(failure);
-    const { onCaptureStartFailure, rerender } = mountHook();
+    const { onCaptureFailure, rerender } = mountHook();
 
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
 
-    expect(onCaptureStartFailure).toHaveBeenCalledOnce();
-    expect(onCaptureStartFailure).toHaveBeenCalledWith({
+    expect(onCaptureFailure).toHaveBeenCalledOnce();
+    expect(onCaptureFailure).toHaveBeenCalledWith({
       sessionId: "session-1",
       name: "NotAllowedError",
       message: "Permission denied",
@@ -220,7 +223,7 @@ describe("useAudioCapture lifecycle", () => {
   it("I-55 ignores a capture failure from a replaced session", async () => {
     const pendingMicrophone = Promise.withResolvers<FakeStream>();
     getUserMedia.mockReturnValueOnce(pendingMicrophone.promise);
-    const { onCaptureStartFailure, rerender } = mountHook();
+    const { onCaptureFailure, rerender } = mountHook();
 
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await act(async () => {
@@ -234,7 +237,7 @@ describe("useAudioCapture lifecycle", () => {
     );
     await settle();
 
-    expect(onCaptureStartFailure).not.toHaveBeenCalled();
+    expect(onCaptureFailure).not.toHaveBeenCalled();
     expect(getUserMedia).toHaveBeenCalledTimes(2);
   });
 

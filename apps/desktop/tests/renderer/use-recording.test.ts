@@ -5,7 +5,7 @@ import type { UseAudioCaptureParams } from "@/hooks/useAudioCapture";
 
 const mocks = vi.hoisted(() => ({
   captureStarted: vi.fn(),
-  captureStartFailed: vi.fn(),
+  captureFailed: vi.fn(),
   dismiss: vi.fn(),
   sendAudioChunk: vi.fn(),
   signalStop: vi.fn(),
@@ -30,8 +30,8 @@ vi.mock("@/trpc/react", () => {
         captureStarted: {
           useMutation: () => ({ mutate: mocks.captureStarted }),
         },
-        captureStartFailed: {
-          useMutation: () => ({ mutate: mocks.captureStartFailed }),
+        captureFailed: {
+          useMutation: () => ({ mutate: mocks.captureFailed }),
         },
         stateUpdates: { useSubscription: mocks.stateUpdates },
       },
@@ -43,7 +43,7 @@ import { useRecording } from "@/hooks/useRecording";
 
 beforeEach(() => {
   mocks.captureStarted.mockReset();
-  mocks.captureStartFailed.mockReset();
+  mocks.captureFailed.mockReset();
   mocks.dismiss.mockReset();
   mocks.dismiss.mockResolvedValue(undefined);
   mocks.signalStop.mockReset();
@@ -119,10 +119,10 @@ describe("useRecording capture failure wiring", () => {
     );
 
     act(() => {
-      captureParams?.onCaptureStartFailure?.(failure);
+      captureParams?.onCaptureFailure?.(failure);
     });
 
-    expect(mocks.captureStartFailed).toHaveBeenCalledWith(
+    expect(mocks.captureFailed).toHaveBeenCalledWith(
       failure,
       expect.objectContaining({ onError: expect.any(Function) }),
     );

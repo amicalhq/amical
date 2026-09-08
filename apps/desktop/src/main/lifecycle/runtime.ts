@@ -108,7 +108,7 @@ export interface RecordingLifecycle {
 
   // Renderer capture handshake + chunk traffic
   captureStarted(session: SessionId, microphone: CapturedMicrophone): void;
-  captureStartFailed(
+  captureFailed(
     session: SessionId,
     failure: { name?: string; message: string },
   ): void;
@@ -623,12 +623,9 @@ export function createRecordingLifecycle(
         shell.updateMetadata({ microphone: microphone.name });
       }
     },
-    captureStartFailed: (session, failure) => {
+    captureFailed: (session, failure) => {
       failureDetails.set(session, { uiMessage: failure.message });
-      recorder.captureStartFailed(
-        session,
-        ErrorCodes.MICROPHONE_CAPTURE_FAILED,
-      );
+      recorder.captureFailed(session, ErrorCodes.MICROPHONE_CAPTURE_FAILED);
     },
     handleAudioChunk: (session, chunk, isFinalChunk) =>
       recorder.handleAudioChunk(session, chunk, isFinalChunk),

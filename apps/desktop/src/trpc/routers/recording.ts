@@ -90,7 +90,7 @@ export const recordingRouter = createRouter({
       });
     }),
 
-  captureStartFailed: procedure
+  captureFailed: procedure
     .input(
       z.object({
         sessionId: z.string(),
@@ -99,7 +99,7 @@ export const recordingRouter = createRouter({
       }),
     )
     .mutation(({ ctx, input }) => {
-      requireLifecycle(ctx).captureStartFailed(input.sessionId, input);
+      requireLifecycle(ctx).captureFailed(input.sessionId, input);
     }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict

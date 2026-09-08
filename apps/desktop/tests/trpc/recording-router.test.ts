@@ -68,7 +68,7 @@ describe("recordingRouter capture lifecycle", () => {
       confirmDraft: vi.fn().mockResolvedValue(undefined),
       dismissDraft: vi.fn(),
       captureStarted: vi.fn(),
-      captureStartFailed: vi.fn(),
+      captureFailed: vi.fn(),
     };
     const caller = recordingRouter.createCaller({
       services: { recordingLifecycle },
@@ -103,8 +103,8 @@ describe("recordingRouter capture lifecycle", () => {
       name: "NotAllowedError",
       message: "Permission denied",
     };
-    await caller.captureStartFailed(failure);
-    expect(recordingLifecycle.captureStartFailed).toHaveBeenCalledWith(
+    await caller.captureFailed(failure);
+    expect(recordingLifecycle.captureFailed).toHaveBeenCalledWith(
       "session-1",
       failure,
     );

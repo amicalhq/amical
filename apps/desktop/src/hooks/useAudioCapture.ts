@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import audioWorkletUrl from "@/assets/audio-recorder-processor.js?url";
 import { api } from "@/trpc/react";
-import type { CaptureStartFailure } from "@/types/recording";
+import type { CaptureFailure } from "@/types/recording";
 import { Mutex } from "async-mutex";
 import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
 import {
@@ -39,9 +39,9 @@ const ANALYSER_MIN_DB = -70; // bottom of the byte range (quiet)
 const ANALYSER_MAX_DB = -30; // top of the byte range (loud)
 const EMPTY_BARS: number[] = new Array(WAVEFORM_BAR_SLOTS).fill(0);
 
-const normalizeCaptureStartFailure = (
+const normalizeCaptureFailure = (
   error: unknown,
-): Omit<CaptureStartFailure, "sessionId"> => {
+): Omit<CaptureFailure, "sessionId"> => {
   if (typeof error === "object" && error !== null) {
     const errorLike = error as { name?: unknown; message?: unknown };
     const name =
@@ -72,7 +72,7 @@ export interface UseAudioCaptureParams {
     microphone: AcquiredMicrophoneMetadata,
     sessionId: string,
   ) => Promise<void> | void;
-  onCaptureStartFailure?: (failure: CaptureStartFailure) => void;
+  onCaptureFailure?: (failure: CaptureFailure) => void;
   sessionId: string | null;
   enabled: boolean;
   idle: boolean;
@@ -86,7 +86,7 @@ export interface UseAudioCaptureOutput {
 export const useAudioCapture = ({
   onAudioChunk,
   onCaptureStarted,
-  onCaptureStartFailure,
+  onCaptureFailure,
   sessionId,
   enabled,
   idle,
@@ -103,12 +103,12 @@ export const useAudioCapture = ({
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const trackDiagnosticsCleanupRef = useRef<(() => void) | null>(null);
+  const trackCleanupRef = useRef<(() => void) | null>(null);
   const mutexRef = useRef(new Mutex());
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleRef = useRef(idle);
   const onCaptureStartedRef = useRef(onCaptureStarted);
-  const onCaptureStartFailureRef = useRef(onCaptureStartFailure);
+  const onCaptureFailureRef = useRef(onCaptureFailure);
   const pendingWorkletFlushRef = useRef<WorkletFlushRequest | null>(null);
   // performance.now() when the current AudioContext was constructed (for max-age).
   const contextCreatedAtRef = useRef(0);
@@ -120,7 +120,7 @@ export const useAudioCapture = ({
 
   idleRef.current = idle;
   onCaptureStartedRef.current = onCaptureStarted;
-  onCaptureStartFailureRef.current = onCaptureStartFailure;
+  onCaptureFailureRef.current = onCaptureFailure;
 
   // Get the user's microphone fallback chain from settings.
   const { data: settings } = api.settings.getSettings.useQuery();
@@ -181,8 +181,8 @@ export const useAudioCapture = ({
     if (workletNodeRef.current) {
       workletNodeRef.current.port.onmessage = null;
     }
-    trackDiagnosticsCleanupRef.current?.();
-    trackDiagnosticsCleanupRef.current = null;
+    trackCleanupRef.current?.();
+    trackCleanupRef.current = null;
     if (sourceRef.current && workletNodeRef.current) {
       try {
         sourceRef.current.disconnect(workletNodeRef.current);
@@ -204,136 +204,145 @@ export const useAudioCapture = ({
     resetBars();
   }, [resetBars]);
 
-  const startCapture = useCallback(async () => {
-    const captureSessionId = sessionId!;
-    // StrictMode can remount and call us before the teardown effect's cleanup is
-    // reverted, so clear disposed here. pendingStartRef is read by closeIdleContext.
-    disposedRef.current = false;
-    pendingStartRef.current = true;
-    await mutexRef.current
-      .runExclusive(async () => {
-        try {
-          const overallStartTime = performance.now();
-          console.log("AudioCapture: Starting audio capture");
+  const startCapture = useCallback(
+    async (onEnded: () => void) => {
+      const captureSessionId = sessionId!;
+      // StrictMode can remount and call us before the teardown effect's cleanup is
+      // reverted, so clear disposed here. pendingStartRef is read by closeIdleContext.
+      disposedRef.current = false;
+      pendingStartRef.current = true;
+      await mutexRef.current
+        .runExclusive(async () => {
+          try {
+            const overallStartTime = performance.now();
+            console.log("AudioCapture: Starting audio capture");
 
-          // A new dictation started — cancel any pending idle teardown so the
-          // warm AudioContext is resumed rather than closed out from under us.
-          clearIdleTimer();
+            // A new dictation started — cancel any pending idle teardown so the
+            // warm AudioContext is resumed rather than closed out from under us.
+            clearIdleTimer();
 
-          const { stream, audioTrack, microphone } =
-            await acquireMicrophoneStream({
-              microphonePriority,
-              sampleRate: SAMPLE_RATE,
+            const { stream, audioTrack, microphone } =
+              await acquireMicrophoneStream({
+                microphonePriority,
+                sampleRate: SAMPLE_RATE,
+              });
+            streamRef.current = stream;
+            audioCaptureDiagnostics.logTrackState(audioTrack);
+            trackCleanupRef.current?.();
+            const removeTrackDiagnostics =
+              audioCaptureDiagnostics.registerTrack(audioTrack);
+            audioTrack.addEventListener("ended", onEnded);
+            trackCleanupRef.current = () => {
+              audioTrack.removeEventListener("ended", onEnded);
+              removeTrackDiagnostics();
+            };
+
+            // Bail if the hook was disposed while we awaited the microphone, so we
+            // don't build a graph (or resurrect a context) after unmount.
+            if (disposedRef.current) {
+              await releaseAll();
+              return;
+            }
+
+            const { audioContext, createdAt } =
+              await createOrResumeAudioContext({
+                currentAudioContext: audioContextRef.current,
+                sampleRate: SAMPLE_RATE,
+                audioWorkletUrl,
+              });
+            audioContextRef.current = audioContext;
+            if (createdAt !== undefined) {
+              contextCreatedAtRef.current = createdAt;
+            }
+
+            // Bail if disposed while resuming or loading the worklet module.
+            if (disposedRef.current) {
+              await releaseAll();
+              return;
+            }
+
+            const { source, workletNode } = createAudioCaptureGraph(
+              audioContextRef.current,
+              streamRef.current,
+            );
+            sourceRef.current = source;
+            workletNodeRef.current = workletNode;
+            attachAudioWorkletFrameHandler({
+              workletNode,
+              onAudioChunk: (arrayBuffer, speechProbability, isFinalChunk) => {
+                try {
+                  updateBars();
+                } catch (error) {
+                  console.error(
+                    "AudioCapture: Failed to update waveform bars:",
+                    error,
+                  );
+                }
+                return onAudioChunk(
+                  captureSessionId,
+                  arrayBuffer,
+                  speechProbability,
+                  isFinalChunk,
+                );
+              },
+              finishPendingFlush: (didFlush) =>
+                pendingWorkletFlushRef.current?.finish(didFlush),
             });
-          streamRef.current = stream;
-          audioCaptureDiagnostics.logTrackState(audioTrack);
-          trackDiagnosticsCleanupRef.current?.();
-          trackDiagnosticsCleanupRef.current =
-            audioCaptureDiagnostics.registerTrack(audioTrack);
 
-          // Bail if the hook was disposed while we awaited the microphone, so we
-          // don't build a graph (or resurrect a context) after unmount.
-          if (disposedRef.current) {
-            await releaseAll();
-            return;
-          }
+            // Connect audio graph
+            sourceRef.current.connect(workletNodeRef.current);
 
-          const { audioContext, createdAt } = await createOrResumeAudioContext({
-            currentAudioContext: audioContextRef.current,
-            sampleRate: SAMPLE_RATE,
-            audioWorkletUrl,
-          });
-          audioContextRef.current = audioContext;
-          if (createdAt !== undefined) {
-            contextCreatedAtRef.current = createdAt;
-          }
+            // Tap the source with an analyser for the spectrum visualiser. It's a
+            // passive branch (no downstream connection) and doesn't touch the
+            // worklet capture path.
+            const analyser = audioContextRef.current.createAnalyser();
+            analyser.fftSize = ANALYSER_FFT_SIZE;
+            analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
+            analyser.minDecibels = ANALYSER_MIN_DB;
+            analyser.maxDecibels = ANALYSER_MAX_DB;
+            sourceRef.current.connect(analyser);
+            analyserRef.current = analyser;
+            freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
 
-          // Bail if disposed while resuming or loading the worklet module.
-          if (disposedRef.current) {
-            await releaseAll();
-            return;
-          }
-
-          const { source, workletNode } = createAudioCaptureGraph(
-            audioContextRef.current,
-            streamRef.current,
-          );
-          sourceRef.current = source;
-          workletNodeRef.current = workletNode;
-          attachAudioWorkletFrameHandler({
-            workletNode,
-            onAudioChunk: (arrayBuffer, speechProbability, isFinalChunk) => {
-              try {
-                updateBars();
-              } catch (error) {
-                console.error(
-                  "AudioCapture: Failed to update waveform bars:",
+            // Recording readiness requires the capture graph to be connected.
+            const reportCaptureStarted = onCaptureStartedRef.current;
+            if (reportCaptureStarted) {
+              void Promise.resolve(
+                reportCaptureStarted(microphone, captureSessionId),
+              ).catch((error) => {
+                console.warn(
+                  "AudioCapture: Failed to report active microphone:",
                   error,
                 );
-              }
-              return onAudioChunk(
-                captureSessionId,
-                arrayBuffer,
-                speechProbability,
-                isFinalChunk,
-              );
-            },
-            finishPendingFlush: (didFlush) =>
-              pendingWorkletFlushRef.current?.finish(didFlush),
-          });
+              });
+            }
 
-          // Connect audio graph
-          sourceRef.current.connect(workletNodeRef.current);
-
-          // Tap the source with an analyser for the spectrum visualiser. It's a
-          // passive branch (no downstream connection) and doesn't touch the
-          // worklet capture path.
-          const analyser = audioContextRef.current.createAnalyser();
-          analyser.fftSize = ANALYSER_FFT_SIZE;
-          analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
-          analyser.minDecibels = ANALYSER_MIN_DB;
-          analyser.maxDecibels = ANALYSER_MAX_DB;
-          sourceRef.current.connect(analyser);
-          analyserRef.current = analyser;
-          freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
-
-          // Recording readiness requires the capture graph to be connected.
-          const reportCaptureStarted = onCaptureStartedRef.current;
-          if (reportCaptureStarted) {
-            void Promise.resolve(
-              reportCaptureStarted(microphone, captureSessionId),
-            ).catch((error) => {
-              console.warn(
-                "AudioCapture: Failed to report active microphone:",
-                error,
-              );
-            });
+            const overallDuration = performance.now() - overallStartTime;
+            console.log(
+              `AudioCapture: Total startup took ${overallDuration.toFixed(2)}ms`,
+            );
+            console.log("AudioCapture: Audio capture started successfully");
+          } catch (error) {
+            console.error("AudioCapture: Failed to start capture:", error);
+            // Release whatever was acquired before the failure so the mic doesn't
+            // stay open. (Can't call stopCapture here — same mutex would deadlock.)
+            await releaseAll();
+            throw error;
           }
-
-          const overallDuration = performance.now() - overallStartTime;
-          console.log(
-            `AudioCapture: Total startup took ${overallDuration.toFixed(2)}ms`,
-          );
-          console.log("AudioCapture: Audio capture started successfully");
-        } catch (error) {
-          console.error("AudioCapture: Failed to start capture:", error);
-          // Release whatever was acquired before the failure so the mic doesn't
-          // stay open. (Can't call stopCapture here — same mutex would deadlock.)
-          await releaseAll();
-          throw error;
-        }
-      })
-      .finally(() => {
-        pendingStartRef.current = false;
-      });
-  }, [
-    onAudioChunk,
-    microphonePriorityKey,
-    releaseAll,
-    clearIdleTimer,
-    updateBars,
-    sessionId,
-  ]);
+        })
+        .finally(() => {
+          pendingStartRef.current = false;
+        });
+    },
+    [
+      onAudioChunk,
+      microphonePriorityKey,
+      releaseAll,
+      clearIdleTimer,
+      updateBars,
+      sessionId,
+    ],
+  );
 
   // Device-change diagnostics are only attached while dictation is active, so
   // they don't enumerate/log in the background when not recording.
@@ -462,8 +471,8 @@ export const useAudioCapture = ({
       } finally {
         // Always release the mic, even if the steps above threw — otherwise the
         // microphone could stay live.
-        trackDiagnosticsCleanupRef.current?.();
-        trackDiagnosticsCleanupRef.current = null;
+        trackCleanupRef.current?.();
+        trackCleanupRef.current = null;
         streamRef.current?.getTracks().forEach((track) => track.stop());
         // Keep the suspended AudioContext for reuse; drop per-dictation nodes and
         // stream. Fully disconnect the source first so its worklet + analyser-tap
@@ -502,21 +511,26 @@ export const useAudioCapture = ({
       return;
     }
 
+    // Retire both startup errors and track-loss reports before teardown.
     let isCurrentAttempt = true;
-    startCapture().catch((error) => {
-      console.error("AudioCapture: Failed to start:", error);
-
+    const reportFailure = (error: unknown) => {
       if (!isCurrentAttempt) {
         return;
       }
 
-      const reportCaptureStartFailure = onCaptureStartFailureRef.current;
-      if (reportCaptureStartFailure) {
-        reportCaptureStartFailure({
+      const reportCaptureFailure = onCaptureFailureRef.current;
+      if (reportCaptureFailure) {
+        reportCaptureFailure({
           sessionId,
-          ...normalizeCaptureStartFailure(error),
+          ...normalizeCaptureFailure(error),
         });
       }
+    };
+    startCapture(() => {
+      reportFailure(new Error("Microphone capture track ended unexpectedly"));
+    }).catch((error) => {
+      console.error("AudioCapture: Failed to start:", error);
+      reportFailure(error);
     });
 
     return () => {
