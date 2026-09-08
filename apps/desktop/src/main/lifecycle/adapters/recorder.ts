@@ -92,7 +92,7 @@ export interface RecorderAdapter extends RecorderPort {
   ): Promise<void>;
   /** Resolves once the session's custody has closed and its writer settled
    * (immediately, with an empty outcome, for unknown sessions). The stamp
-   * orders behind this — a settled row always has settled custody (D25). */
+   * waits for this with a bounded fallback; a stamp can precede completion (D25). */
   whenCustodySettled(session: SessionId): Promise<CustodyOutcome>;
 }
 

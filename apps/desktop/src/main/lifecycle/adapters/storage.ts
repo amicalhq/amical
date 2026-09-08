@@ -25,11 +25,11 @@ import type { CustodyOutcome } from "./recorder";
  * (record before reveal, R7).
  *
  * Custody-ordered (D25): every commit first waits (bounded) for the
- * session's WAV writer to settle, so a settled row always has settled
- * custody — no surface can ever see a row whose audio is still being
- * written, and a crash before the stamp leaves an unstamped row that the
- * startup sweep repairs. When the writer failed, the row is settled
- * WITHOUT an audio reference and the broken file is unlinked. When the
+ * session's WAV writer to settle. On timeout or unknown custody, settlement
+ * proceeds: retained rows keep their audio reference, and discard still
+ * attempts deletion. A fallback stamp can therefore expose unfinished audio
+ * and exclude it from startup recovery; discard can race an active writer.
+ * A known writer failure detaches the audio and attempts to unlink it. When the
  * provisional row itself is missing (insert failed, or custody never
  * opened), retained outcomes insert a settled row directly — a delivered
  * transcript can never vanish from history, and every retained outcome
@@ -69,8 +69,8 @@ export function createStorageAdapter(
   const custodySettleBoundMs = options?.custodySettleBoundMs ?? 10_000;
   const sessionWork = options?.sessionWork ?? createSessionWork({ timers });
 
-  /** null = custody state unknown (no waiter wired, or the bound fired):
-   * stamp as-is and never destroy references based on ignorance. */
+  /** null = custody state unknown (no waiter, rejected wait, or timeout).
+   * Retained outcomes keep their audio reference; discard still deletes. */
   async function settleCustody(
     session: SessionId,
   ): Promise<CustodyOutcome | null> {
@@ -167,7 +167,7 @@ export function createStorageAdapter(
       const row = await deleteProvisionalTranscription(session);
       const audioFile = row?.audioFile ?? custody?.audioFile ?? null;
       if (audioFile) {
-        // Custody has settled: the writer no longer owns the file (R4).
+        // The bounded wait can expire while the writer still owns the file.
         await unlink(audioFile).catch(() => {
           // Missing file is an acceptable end state for a discard.
         });
