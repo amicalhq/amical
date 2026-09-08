@@ -1,4 +1,4 @@
-import { open, stat, unlink } from "node:fs/promises";
+import { open, unlink } from "node:fs/promises";
 import { logger } from "../logger";
 import {
   deleteProvisionalTranscription,
@@ -12,15 +12,6 @@ import type { SessionId } from "./types";
 /** A WAV with any payload past its 44-byte header counts as captured audio. */
 const WAV_HEADER_BYTES = 44;
 
-async function hasCapturedAudio(audioFile: string | null): Promise<boolean> {
-  if (!audioFile) return false;
-  try {
-    return (await stat(audioFile)).size > WAV_HEADER_BYTES;
-  } catch {
-    return false;
-  }
-}
-
 /** Custody WAV format: 16 kHz, 16-bit, mono. */
 const WAV_BYTES_PER_SECOND = 32_000;
 
@@ -28,10 +19,16 @@ const WAV_BYTES_PER_SECOND = 32_000;
  * A crashed session's writer never ran finalize, so its header still says
  * zero data and decoders read the kept WAV as empty. Patch the RIFF and
  * data sizes from the real file length; idempotent on finalized files.
- * Returns the payload size in bytes (0 when there is nothing to repair).
+ * Returns the payload size in bytes (0 for missing or payload-free files).
+ * Unknown file state or failed repair must leave the row pending recovery.
  */
-async function repairWavHeader(audioFile: string): Promise<number> {
-  const handle = await open(audioFile, "r+");
+async function repairWavHeader(audioFile: string | null): Promise<number> {
+  if (!audioFile) return 0;
+  const handle = await open(audioFile, "r+").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
+  if (!handle) return 0;
   try {
     const size = (await handle.stat()).size;
     if (size <= WAV_HEADER_BYTES) return 0;
@@ -66,29 +63,15 @@ export async function runLifecycleRecovery(options?: {
     const sessionId = row.sessionId;
     if (!sessionId || sessionId === options?.excludeSession) continue;
 
-    const verdict = decideRecovery({
-      hasCapturedAudio: await hasCapturedAudio(row.audioFile),
-    });
     try {
+      const payloadBytes = await repairWavHeader(row.audioFile);
+      const verdict = decideRecovery({ hasCapturedAudio: payloadBytes > 0 });
       if (verdict.kind === "failure") {
-        if (row.audioFile) {
-          // The crashed writer also never enriched duration; derive it from
-          // the repaired payload so the row is whole like a normal one.
-          const payloadBytes = await repairWavHeader(row.audioFile).catch(
-            (error) => {
-              logger.audio.warn("Failed to repair recovered WAV header", {
-                sessionId,
-                error,
-              });
-              return 0;
-            },
-          );
-          if (payloadBytes > 0) {
-            await enrichTranscriptionBySession(sessionId, {
-              duration: Math.round(payloadBytes / WAV_BYTES_PER_SECOND),
-            }).catch(() => undefined);
-          }
-        }
+        // The crashed writer also never enriched duration; derive it from
+        // the repaired payload so the row is whole like a normal one.
+        await enrichTranscriptionBySession(sessionId, {
+          duration: Math.round(payloadBytes / WAV_BYTES_PER_SECOND),
+        }).catch(() => undefined);
         await stampTranscriptionDisposition(sessionId, {
           disposition: "failure",
           metaPatch: { failureReason: verdict.cause },
@@ -106,7 +89,6 @@ export async function runLifecycleRecovery(options?: {
     } catch (error) {
       logger.audio.error("Failed to settle abandoned custody row", {
         sessionId,
-        verdict: verdict.kind,
         error,
       });
     }
