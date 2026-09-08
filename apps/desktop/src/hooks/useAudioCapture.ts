@@ -238,18 +238,6 @@ export const useAudioCapture = ({
             return;
           }
 
-          const reportCaptureStarted = onCaptureStartedRef.current;
-          if (reportCaptureStarted) {
-            void Promise.resolve(
-              reportCaptureStarted(microphone, captureSessionId),
-            ).catch((error) => {
-              console.warn(
-                "AudioCapture: Failed to report active microphone:",
-                error,
-              );
-            });
-          }
-
           const { audioContext, createdAt } = await createOrResumeAudioContext({
             currentAudioContext: audioContextRef.current,
             sampleRate: SAMPLE_RATE,
@@ -308,6 +296,19 @@ export const useAudioCapture = ({
           sourceRef.current.connect(analyser);
           analyserRef.current = analyser;
           freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
+
+          // Recording readiness requires the capture graph to be connected.
+          const reportCaptureStarted = onCaptureStartedRef.current;
+          if (reportCaptureStarted) {
+            void Promise.resolve(
+              reportCaptureStarted(microphone, captureSessionId),
+            ).catch((error) => {
+              console.warn(
+                "AudioCapture: Failed to report active microphone:",
+                error,
+              );
+            });
+          }
 
           const overallDuration = performance.now() - overallStartTime;
           console.log(
