@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { finished } from "node:stream/promises";
 import { logger } from "../main/logger";
 
 /**
@@ -7,6 +8,7 @@ import { logger } from "../main/logger";
  */
 export class StreamingWavWriter {
   private fileStream: fs.WriteStream;
+  private streamCompletion: Promise<void>;
   private dataSize = 0;
   private sampleRate: number;
   private channels: number;
@@ -25,6 +27,9 @@ export class StreamingWavWriter {
 
     // Create write stream
     this.fileStream = fs.createWriteStream(filePath);
+    this.streamCompletion = finished(this.fileStream);
+    // Observe early errors now; finalize/abort still await the rejection.
+    void this.streamCompletion.catch(() => {});
 
     // Write initial WAV header with placeholder sizes
     this.writeHeader();
@@ -107,9 +112,8 @@ export class StreamingWavWriter {
     this.isFinalized = true;
 
     // Close the stream
-    await new Promise<void>((resolve) => {
-      this.fileStream.end(() => resolve());
-    });
+    this.fileStream.end();
+    await this.streamCompletion;
 
     // Reopen file to update header with correct sizes
     const fd = await fs.promises.open(this.fileStream.path as string, "r+");
@@ -145,9 +149,8 @@ export class StreamingWavWriter {
     this.isFinalized = true; // Prevent further writes
 
     // Close the stream
-    await new Promise<void>((resolve) => {
-      this.fileStream.end(() => resolve());
-    });
+    this.fileStream.end();
+    await this.streamCompletion;
 
     logger.transcription.info("WAV writer aborted", {
       path: this.fileStream.path,
