@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activateActivityMaterializationAccount,
   captureActivityRows,
-  materializeCompletedDictationActivity,
   materializeCompletedDictationActivities,
 } from "../../src/db/activity-outbox";
 import {
@@ -237,28 +236,27 @@ describe("activity durable outbox", () => {
     });
   });
 
-  it("advances the cursor with the outbox insert and never regenerates an activity", async () => {
+  it("consumes pending activity with the outbox insert and replays it only for a new account", async () => {
     const occurredAt = new Date("2024-01-02T03:04:05.000Z");
-    const inserted = await testDb.db
-      .insert(transcriptions)
-      .values({
-        disposition: "success",
-        text: "once only",
-        timestamp: occurredAt,
-        createdAt: occurredAt,
-        updatedAt: occurredAt,
-      })
-      .returning();
+    await testDb.db.insert(transcriptions).values({
+      disposition: "success",
+      text: "once only",
+      timestamp: occurredAt,
+      createdAt: occurredAt,
+      updatedAt: occurredAt,
+    });
 
     await materializeCompletedDictationActivities(500, testDb.db as never);
     const [first] = await testDb.db.select().from(activityOutbox);
     expect(first).toBeDefined();
-    expect(await testDb.db.select().from(activityMaterializationState)).toEqual(
-      [expect.objectContaining({ transcriptionCursor: inserted[0]!.id })],
-    );
+    expect(await testDb.db.select().from(transcriptions)).toEqual([
+      expect.objectContaining({ activityPending: false }),
+    ]);
 
     await testDb.db.delete(activityOutbox);
-    await materializeCompletedDictationActivities(500, testDb.db as never);
+    expect(
+      await materializeCompletedDictationActivities(500, testDb.db as never),
+    ).toEqual({ enqueued: 0, scanned: 0 });
     expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
 
     await activateActivityMaterializationAccount(
@@ -271,7 +269,7 @@ describe("activity durable outbox", () => {
     ]);
   });
 
-  it("rolls back the cursor when the outbox insert fails", async () => {
+  it("keeps activity pending when the outbox insert fails", async () => {
     await testDb.db.insert(transcriptions).values({
       sessionId: SESSION_ID,
       disposition: "success",
@@ -288,16 +286,20 @@ describe("activity durable outbox", () => {
     await expect(
       materializeCompletedDictationActivities(500, testDb.db as never),
     ).rejects.toThrow("simulated insert failure");
-    expect(await testDb.db.select().from(activityMaterializationState)).toEqual(
-      [],
-    );
+    expect(await testDb.db.select().from(transcriptions)).toEqual([
+      expect.objectContaining({ activityPending: true }),
+    ]);
+    expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
 
     testDb.db.$client.exec("DROP TRIGGER fail_activity_outbox_insert");
     await materializeCompletedDictationActivities(500, testDb.db as never);
     expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
+    expect(await testDb.db.select().from(transcriptions)).toEqual([
+      expect.objectContaining({ activityPending: false }),
+    ]);
   });
 
-  it("keeps all newly materialized ranges in the same device outbox", async () => {
+  it("keeps valid activities in the same outbox and consumes invalid rows", async () => {
     await testDb.db.insert(transcriptions).values({
       sessionId: SESSION_ID,
       disposition: "success",
@@ -311,25 +313,37 @@ describe("activity durable outbox", () => {
       disposition: "success",
       text: "second account",
     });
-    await materializeCompletedDictationActivities(500, testDb.db as never);
+    await testDb.db.insert(transcriptions).values({
+      disposition: "success",
+      text: "invalid future activity",
+      createdAt: new Date(Date.now() + 48 * 60 * 60 * 1_000),
+    });
+    expect(
+      await materializeCompletedDictationActivities(500, testDb.db as never),
+    ).toEqual({ enqueued: 1, scanned: 2 });
 
     expect(
       (await testDb.db.select().from(activityOutbox)).map(
         (row) => row.activityId,
       ),
     ).toEqual([SESSION_ID, secondId]);
+    expect(
+      await materializeCompletedDictationActivities(500, testDb.db as never),
+    ).toEqual({ enqueued: 0, scanned: 0 });
   });
 
-  it("resumes the cursor for the same account and resets it for a new account", async () => {
+  it("preserves pending flags for the same account and replays successes for a new account", async () => {
     expect(
       await activateActivityMaterializationAccount(
         "user-1",
         testDb.db as never,
       ),
     ).toBe("replay");
-    await testDb.db
-      .update(activityMaterializationState)
-      .set({ transcriptionCursor: 42 });
+    await testDb.db.insert(transcriptions).values([
+      { disposition: "success", text: "reported", activityPending: false },
+      { disposition: "failure", text: "", activityPending: false },
+      { disposition: null, text: "", activityPending: true },
+    ]);
 
     expect(
       await activateActivityMaterializationAccount(
@@ -341,10 +355,14 @@ describe("activity durable outbox", () => {
       [
         expect.objectContaining({
           accountId: "user-1",
-          transcriptionCursor: 42,
         }),
       ],
     );
+    expect(
+      (await testDb.db.select().from(transcriptions)).map(
+        (row) => row.activityPending,
+      ),
+    ).toEqual([false, false, true]);
 
     expect(
       await activateActivityMaterializationAccount(
@@ -356,50 +374,57 @@ describe("activity durable outbox", () => {
       [
         expect.objectContaining({
           accountId: "user-2",
-          transcriptionCursor: 0,
         }),
       ],
     );
+    expect(
+      (await testDb.db.select().from(transcriptions)).map(
+        (row) => row.activityPending,
+      ),
+    ).toEqual([true, false, true]);
   });
 
-  it("materializes a later settlement directly without rewinding the cursor", async () => {
+  it("finds an earlier pending row after it completes on a later scan", async () => {
     await createProvisionalTranscription({ sessionId: SESSION_ID });
     const laterId = "22222222-2222-4222-8222-222222222222";
-    const [later] = await testDb.db
-      .insert(transcriptions)
-      .values({
-        sessionId: laterId,
-        disposition: "success",
-        text: "later success",
-      })
-      .returning();
+    await testDb.db.insert(transcriptions).values({
+      sessionId: laterId,
+      disposition: "success",
+      text: "later success",
+    });
 
     const skipped = await materializeCompletedDictationActivities(
       500,
       testDb.db as never,
     );
-    expect(skipped).toMatchObject({ advanced: true, enqueued: 1, scanned: 2 });
+    expect(skipped).toEqual({ enqueued: 1, scanned: 1 });
+    expect(
+      (await testDb.db.select().from(transcriptions)).map(
+        (row) => row.activityPending,
+      ),
+    ).toEqual([true, false]);
     expect(
       (await testDb.db.select().from(activityOutbox)).map(
         (row) => row.activityId,
       ),
     ).toEqual([laterId]);
 
-    const settled = await stampTranscriptionDisposition(SESSION_ID, {
+    await stampTranscriptionDisposition(SESSION_ID, {
       disposition: "success",
       text: "first success",
     });
-    await materializeCompletedDictationActivity(
-      settled!.id,
-      testDb.db as never,
-    );
+    expect(
+      await materializeCompletedDictationActivities(500, testDb.db as never),
+    ).toEqual({ enqueued: 1, scanned: 1 });
     expect(
       (await testDb.db.select().from(activityOutbox)).map(
         (row) => row.activityId,
       ),
     ).toEqual([laterId, SESSION_ID]);
-    expect(await testDb.db.select().from(activityMaterializationState)).toEqual(
-      [expect.objectContaining({ transcriptionCursor: later!.id })],
-    );
+    expect(
+      (await testDb.db.select().from(transcriptions)).map(
+        (row) => row.activityPending,
+      ),
+    ).toEqual([false, false]);
   });
 });

@@ -24,6 +24,7 @@ vi.stubGlobal("PointerEvent", MouseEvent);
 const transcription = {
   id: 42,
   sessionId: null,
+  activityPending: true,
   disposition: "success",
   text: "Test transcript",
   timestamp: new Date(),

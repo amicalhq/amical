@@ -27,6 +27,10 @@ export const transcriptions = sqliteTable(
     // settles it.
     sessionId: text("session_id"),
     disposition: text("disposition"),
+    // Consumed atomically when a successful row is staged in the activity outbox.
+    activityPending: integer("activity_pending", { mode: "boolean" })
+      .notNull()
+      .default(true),
     text: text("text").notNull(),
     timestamp: integer("timestamp", { mode: "timestamp" })
       .notNull()
@@ -47,7 +51,14 @@ export const transcriptions = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => [index("transcriptions_session_id_idx").on(table.sessionId)],
+  (table) => [
+    index("transcriptions_session_id_idx").on(table.sessionId),
+    index("transcriptions_activity_pending_idx")
+      .on(table.createdAt, table.id)
+      .where(
+        sql`${table.activityPending} = 1 AND ${table.disposition} = 'success'`,
+      ),
+  ],
 );
 
 // Vocabulary table
@@ -244,23 +255,18 @@ export const activityOutbox = sqliteTable(
   (table) => [index("activity_outbox_created_idx").on(table.createdAt)],
 );
 
-// Singleton scan cursor over the durable transcription log. Account changes
-// reset it; newly settled rows are materialized directly without changing it.
+// Desktop retains device history across accounts. Account changes re-enroll
+// successful rows; restarting the same account preserves their pending flags.
 export const activityMaterializationState = sqliteTable(
   "activity_materialization_state",
   {
     id: integer("id").primaryKey(),
     accountId: text("account_id"),
-    transcriptionCursor: integer("transcription_cursor").notNull().default(0),
   },
   (table) => [
     check(
       "activity_materialization_state_singleton_check",
       sql`${table.id} = 1`,
-    ),
-    check(
-      "activity_materialization_state_cursor_check",
-      sql`${table.transcriptionCursor} >= 0`,
     ),
   ],
 );

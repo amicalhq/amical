@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   afterEach,
@@ -17,6 +18,7 @@ import {
 } from "../../src/db/schema";
 import {
   createProvisionalTranscription,
+  deleteTranscription,
   enrichTranscriptionBySession,
   stampTranscriptionDisposition,
 } from "../../src/db/transcriptions";
@@ -197,9 +199,18 @@ describe("ActivityReportingService", () => {
     expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
   });
 
-  it("materializes a new settled dictation directly", async () => {
+  it("stages a new settlement during an upload before its history can be deleted", async () => {
+    let finishUpload!: () => void;
+    const uploading = new Promise<void>((resolve) => {
+      finishUpload = resolve;
+    });
+    submit
+      .mockReturnValueOnce(Effect.promise(() => uploading))
+      .mockReturnValue(Effect.void);
     authenticate("user-1");
-    submit.mockReturnValueOnce(Effect.void);
+    enqueue(activity(ids[1]));
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+
     await createProvisionalTranscription({ sessionId: ids[0]! });
     await enrichTranscriptionBySession(ids[0]!, {
       audioDurationMs: 2_000,
@@ -214,13 +225,23 @@ describe("ActivityReportingService", () => {
       },
     });
 
-    await stampTranscriptionDisposition(ids[0]!, {
+    const settled = await stampTranscriptionDisposition(ids[0]!, {
       disposition: "success",
       text: "new words",
     });
 
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
-    expect(submit.mock.calls[0]![0][0]).toMatchObject({
+    await vi.waitFor(async () => {
+      expect(await testDb.db.select().from(activityOutbox)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ activityId: ids[0] }),
+        ]),
+      );
+    });
+    await deleteTranscription(settled!.id);
+    finishUpload();
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+    expect(submit.mock.calls[1]![0][0]).toMatchObject({
       activityId: ids[0],
       wordCount: 2,
       audioDurationMs: 2_000,
@@ -229,7 +250,7 @@ describe("ActivityReportingService", () => {
     });
   });
 
-  it("materializes an earlier row when it settles after the cursor advanced", async () => {
+  it("finds a late completion on the next wake even without its settlement notification", async () => {
     submit.mockReturnValue(Effect.void);
     authenticate("user-1");
     await vi.waitFor(async () => {
@@ -250,10 +271,12 @@ describe("ActivityReportingService", () => {
     await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
     expect(submit.mock.calls[0][0][0].activityId).toBe(ids[1]);
 
-    await stampTranscriptionDisposition(ids[0]!, {
-      disposition: "success",
-      text: "earlier completion",
-    });
+    // Simulate a committed settlement whose notification was missed.
+    await testDb.db
+      .update(transcriptions)
+      .set({ disposition: "success", text: "earlier completion" })
+      .where(eq(transcriptions.sessionId, ids[0]!));
+    service.wake();
 
     await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
     expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
@@ -403,7 +426,7 @@ describe("ActivityReportingService", () => {
     expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
   });
 
-  it("resumes the saved cursor when the same account restarts", async () => {
+  it("preserves consumed activity flags when the same account restarts", async () => {
     await testDb.db.insert(transcriptions).values({
       sessionId: ids[0],
       disposition: "success",
@@ -418,6 +441,9 @@ describe("ActivityReportingService", () => {
     expect(await testDb.db.select().from(activityMaterializationState)).toEqual(
       [expect.objectContaining({ accountId: "user-1" })],
     );
+    expect(await testDb.db.select().from(transcriptions)).toEqual([
+      expect.objectContaining({ activityPending: false }),
+    ]);
 
     await Effect.runPromise(service.shutdown());
     submit.mockClear();

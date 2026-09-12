@@ -12,7 +12,6 @@ import {
 import {
   activateActivityMaterializationAccount,
   captureActivityRows,
-  materializeCompletedDictationActivity,
   materializeCompletedDictationActivities,
   removeActivityRows,
 } from "../db/activity-outbox";
@@ -88,9 +87,8 @@ export class ActivityReportingService {
   private readonly onTranscriptionSettled = (transcriptionId: number) => {
     if (!this.initialized || this.stopped) return;
     this.forkScoped(
-      this.db(() =>
-        materializeCompletedDictationActivity(transcriptionId),
-      ).pipe(
+      // Stage independently of HTTP so a slow upload cannot delay the snapshot.
+      this.materializeUntilCaughtUp().pipe(
         Effect.tap(() => Effect.sync(() => this.wake())),
         Effect.catchAll((error) =>
           Effect.sync(() => {
@@ -448,7 +446,7 @@ export class ActivityReportingService {
         materializeCompletedDictationActivities(ACTIVITY_MAX_BATCH_SIZE),
       ).pipe(
         Effect.flatMap((result) =>
-          result.advanced
+          result.scanned === ACTIVITY_MAX_BATCH_SIZE
             ? Effect.yieldNow().pipe(Effect.zipRight(Effect.suspend(scan)))
             : Effect.void,
         ),
@@ -521,7 +519,10 @@ export class ActivityReportingService {
             Effect.flatMap((materialized) =>
               this.db(() => captureActivityRows(ACTIVITY_MAX_BATCH_SIZE)).pipe(
                 Effect.flatMap((nextRows) => {
-                  if (nextRows.length > 0 || !materialized.advanced) {
+                  if (
+                    nextRows.length > 0 ||
+                    materialized.scanned < ACTIVITY_MAX_BATCH_SIZE
+                  ) {
                     return Effect.succeed(nextRows);
                   }
                   return Effect.yieldNow().pipe(
