@@ -66,6 +66,9 @@ Deleting a note still explicitly deletes its recovery rows through the existing
 foreign-key cascade. Malformed blobs that cannot be reconstructed require
 recovery from the retained database rows; the UI cannot invent their content.
 
+TODO: Once legacy migration recovery is no longer needed, add a cleanup migration
+to remove retained backups and obsolete schema fields/tables, then remove the legacy conversion code.
+
 ## Editor and save ordering
 
 The same `NoteEditor` is used by the main notes page and the notes widget.
