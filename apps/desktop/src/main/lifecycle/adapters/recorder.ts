@@ -146,18 +146,13 @@ export function createRecorderAdapter(
    * app-scope registry, resolved when the session's writer closes. The
    * registry outlives the session scope by design (E1 pin 7): the stamp
    * usually asks AFTER custody settled, and a commit retry can ask again
-   * seconds later — so retention is FIFO-bounded, never settle-deleted. */
+   * seconds later — so results are retained until the app exits. */
   const custodyDeferred = new Map<
     SessionId,
     Deferred.Deferred<CustodyOutcome>
   >();
 
   function openCustodyWaiter(session: SessionId): void {
-    while (custodyDeferred.size > 8) {
-      const oldest = custodyDeferred.keys().next().value;
-      if (oldest === undefined) break;
-      custodyDeferred.delete(oldest);
-    }
     custodyDeferred.set(
       session,
       Effect.runSync(Deferred.make<CustodyOutcome>()),

@@ -80,11 +80,27 @@ function makeHarness(overrides: Partial<StreamingTranscriptionService> = {}) {
 }
 
 describe("lifecycle transcription adapter", () => {
-  it("finalize resolves into a text transcriptionFinal and enriches the row", async () => {
-    const h = makeHarness();
+  it("finalize resolves and enriches once despite repeated calls", async () => {
+    let finishResolution!: (result: ResolvedStreamingSession) => void;
+    const resolution = new Promise<ResolvedStreamingSession>((resolve) => {
+      finishResolution = resolve;
+    });
+    const h = makeHarness({
+      resolveStreamingSession: vi.fn(() => resolution),
+    });
     h.adapter.open("s1");
     h.adapter.finalize("s1");
+    h.adapter.finalize("s1");
     await settle();
+    h.adapter.finalize("s1");
+    expect(h.service.resolveStreamingSession).toHaveBeenCalledOnce();
+    expect(h.facts).toEqual([]);
+
+    finishResolution(resolved("hello world"));
+    await settle();
+    h.adapter.finalize("s1");
+    await settle();
+    expect(h.service.resolveStreamingSession).toHaveBeenCalledOnce();
 
     expect(h.facts).toEqual([
       {

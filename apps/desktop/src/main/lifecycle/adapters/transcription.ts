@@ -85,6 +85,7 @@ interface SttSession {
   session: SessionId;
   isDraft: boolean;
   cancelled: boolean;
+  finalizeStarted: boolean;
   finalEmitted: boolean;
 }
 
@@ -123,6 +124,7 @@ export function createTranscriptionAdapter(
         session,
         isDraft: false,
         cancelled: false,
+        finalizeStarted: false,
         finalEmitted: false,
       };
       state = stt;
@@ -223,6 +225,9 @@ export function createTranscriptionAdapter(
         });
         return;
       }
+      if (stt.cancelled || stt.finalEmitted || stt.finalizeStarted) return;
+      stt.finalizeStarted = true;
+
       // The resolve chain is an obligation: it must run to completion after
       // the session leaves RESOLVING (the seal consumes its result wherever
       // the machine is — uniform seal law). The terminal fact is guarded by
