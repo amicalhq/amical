@@ -89,7 +89,9 @@ test("notes widget edits persist as Markdown across close and reopen", async () 
   const launch = await launchAmical();
   try {
     const onboarding = await launch.app.firstWindow();
-    await onboarding.waitForLoadState("domcontentloaded");
+    await onboarding.waitForURL(/onboarding\.html/, {
+      waitUntil: "domcontentloaded",
+    });
     const note = await rpc<Note>(onboarding, "notes.createNote", "mutation", {
       title: "Markdown E2E",
     });

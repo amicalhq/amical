@@ -1,0 +1,6 @@
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -5,1 +5,1 @@
+-import { SignOptions as WindowsInternalSignOptions } from '@electron/windows-sign/dist/esm/types';
++import { SignOptions as WindowsInternalSignOptions } from '@electron/windows-sign';

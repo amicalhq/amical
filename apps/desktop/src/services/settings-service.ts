@@ -68,14 +68,14 @@ function syncWindowsSquirrelAutoLaunch(openAtLogin: boolean): void {
       "Squirrel Update.exe not found; falling back to Electron login item settings",
       { updateExe },
     );
-    app.setLoginItemSettings({ openAtLogin, openAsHidden: false });
+    app.setLoginItemSettings({ openAtLogin });
     return;
   }
 
   // Squirrel shortcuts should point at Update.exe, not the versioned app-*/exe.
   // Clear Electron's direct login item first so Windows does not keep launching
   // an old app directory after a staged update.
-  app.setLoginItemSettings({ openAtLogin: false, openAsHidden: false });
+  app.setLoginItemSettings({ openAtLogin: false });
 
   const target = path.basename(process.execPath);
   const args = [
@@ -566,7 +566,6 @@ export class SettingsService extends EventEmitter {
 
         app.setLoginItemSettings({
           openAtLogin: preferences.launchAtLogin,
-          openAsHidden: false,
         });
       })
       .catch((error) => {

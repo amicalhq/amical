@@ -38,6 +38,7 @@ import { stageBetterSqlite3ForElectron } from "./scripts/stage-better-sqlite3";
 import { Walker, DepType, type Module } from "flora-colossus";
 
 let nativeModuleDependenciesToPackage: string[] = [];
+let sqlitePrebuildsToPackage = new Set<string>();
 
 const isBundledNodeBinaryForSigning = (filePath: string): boolean => {
   const normalizedPath = filePath.replace(/\\/g, "/");
@@ -72,8 +73,29 @@ const config: ForgeConfig = {
       }
 
       // The start script stages the same physical copy before Forge loads.
-      // Refresh it here too so packaging never reuses stale ABI metadata.
+      // Refresh it here too so packaging never reuses a stale package version.
       stageBetterSqlite3ForElectron();
+      const sqliteArches =
+        arch === "universal" || arch === "all"
+          ? ["x64", "arm64"]
+          : arch.split(",");
+      sqlitePrebuildsToPackage = new Set(
+        sqliteArches.flatMap((targetArch) =>
+          platform === "linux"
+            ? [`linux-${targetArch}.node`, `linuxmusl-${targetArch}.node`]
+            : [`${platform}-${targetArch}.node`],
+        ),
+      );
+      for (const prebuild of sqlitePrebuildsToPackage) {
+        const prebuildPath = join(
+          projectRoot,
+          "node_modules/better-sqlite3/prebuilds",
+          prebuild,
+        );
+        if (!existsSync(prebuildPath)) {
+          throw new Error(`better-sqlite3 has no prebuild for ${prebuild}`);
+        }
+      }
 
       const getExternalNestedDependencies = async (
         nodeModuleNames: string[],
@@ -661,6 +683,17 @@ const config: ForgeConfig = {
     ignore: (file: string) => {
       try {
         const filePath = file.toLowerCase();
+        // Keep all prebuilds in the staged dev copy, but only ship the target's
+        // binaries. Squirrel cannot sign foreign-platform native modules.
+        const sqlitePrebuildPrefix = "/node_modules/better-sqlite3/prebuilds/";
+        if (
+          filePath.startsWith(sqlitePrebuildPrefix) &&
+          !sqlitePrebuildsToPackage.has(
+            filePath.slice(sqlitePrebuildPrefix.length),
+          )
+        ) {
+          return true;
+        }
         // Foreign-platform native binaries must not ship in the Windows
         // package: Squirrel's releasify signs every .exe/.dll/.node it packs
         // and aborts on Mach-O/ELF files — and they're dead weight anyway.
@@ -746,7 +779,8 @@ const config: ForgeConfig = {
       }
     },
   },
-  rebuildConfig: {},
+  // better-sqlite3 13 ships N-API prebuilds that also run under Electron.
+  rebuildConfig: { ignoreModules: ["better-sqlite3"] },
   makers: [
     new MakerSquirrel({
       name: "Amical",
@@ -780,7 +814,6 @@ const config: ForgeConfig = {
     ), // Required for macOS auto-updates
     new MakerDMG(
       {
-        //! @see https://github.com/electron/forge/issues/3517#issuecomment-2428129194
         // macOS DMG files will be named like: Amical-0.0.1-arm64.dmg
         icon: "./assets/logo.icns",
         background: "./assets/dmg_bg.tiff",

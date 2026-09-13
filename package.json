@@ -17,15 +17,14 @@
     "turbo": "^2.5.3",
     "typescript": "5.8.2"
   },
-  "packageManager": "pnpm@10.15.0",
+  "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=24"
   },
   "pnpm": {
     "overrides": {
-      "@electron-forge/maker-dmg": "https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz",
-      "node-abi": "4.14.0",
-      "@types/minimatch": "3.0.5"
+      "@types/minimatch": "3.0.5",
+      "@electron/windows-sign": "2.1.0"
     },
     "ignoredBuiltDependencies": [
       "@tailwindcss/oxide",
@@ -36,18 +35,23 @@
       "keytar",
       "protobufjs",
       "sharp",
-      "@amical/whisper-wrapper"
+      "@amical/whisper-wrapper",
+      "better-sqlite3"
     ],
     "onlyBuiltDependencies": [
       "@posthog/cli",
       "electron",
       "electron-winstaller",
       "@amical/whisper-wrapper",
-      "better-sqlite3",
       "macos-alias",
       "fs-xattr",
       "onnxruntime-node",
       "jest-worker"
-    ]
+    ],
+    "patchedDependencies": {
+      "macos-alias@0.2.12": "patches/macos-alias@0.2.12.patch",
+      "fs-xattr@0.3.1": "patches/fs-xattr@0.3.1.patch",
+      "@electron/packager@18.4.2": "patches/electron-packager@18.4.2.patch"
+    }
   }
 }
