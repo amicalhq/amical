@@ -335,6 +335,7 @@ export class AuthService extends EventEmitter {
             redirect_uri: this.config.redirectUri,
             response_type: "code",
             scope: "openid profile email offline_access",
+            prompt: "select_account",
             state,
             code_challenge: challenge,
             code_challenge_method: "S256",
