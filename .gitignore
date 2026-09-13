@@ -26,6 +26,7 @@ coverage
 **/.cmake-js/
 
 # Tool helpers
+.worktrees/
 .home/
 **/.home/
 
