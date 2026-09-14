@@ -34,6 +34,8 @@ import type { CaptureFailure } from "@/types/recording";
 interface FakeTrack extends EventTarget {
   kind: string;
   stop: ReturnType<typeof vi.fn>;
+  applyConstraints: ReturnType<typeof vi.fn>;
+  getCapabilities: ReturnType<typeof vi.fn>;
 }
 interface FakeStream {
   getAudioTracks: () => FakeTrack[];
@@ -79,6 +81,7 @@ class FakeWorkletNode {
   constructor(
     public context: FakeAudioContext,
     public name: string,
+    public options?: AudioWorkletNodeOptions,
   ) {
     workletNodes.push(this);
     this.port = {
@@ -125,6 +128,8 @@ function makeStream(): FakeStream {
   const track: FakeTrack = Object.assign(new EventTarget(), {
     kind: "audio",
     stop: vi.fn(),
+    applyConstraints: vi.fn(async () => undefined),
+    getCapabilities: vi.fn(() => ({ channelCount: { min: 1, max: 16 } })),
   });
   const stream: FakeStream = {
     track,
@@ -250,11 +255,48 @@ describe("useAudioCapture lifecycle", () => {
     expect(audioContexts).toHaveLength(1);
     expect(audioContexts[0].audioWorklet.addModule).toHaveBeenCalledOnce();
     expect(workletNodes).toHaveLength(1);
+    expect(workletNodes[0].options).toEqual({
+      channelCountMode: "max",
+      channelInterpretation: "discrete",
+    });
     // source connected to the worklet node
     expect(sources[0].connect).toHaveBeenCalledWith(workletNodes[0]);
     // and tapped by an analyser for the waveform visualiser
     expect(analysers).toHaveLength(1);
     expect(sources[0].connect).toHaveBeenCalledWith(analysers[0]);
+  });
+
+  it("requests stereo initially and expands capture to every available channel", async () => {
+    const { rerender } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: expect.objectContaining({ channelCount: { ideal: 2 } }),
+    });
+    expect(streams[0].track.applyConstraints).toHaveBeenCalledWith(
+      expect.objectContaining({ channelCount: { ideal: 16 } }),
+    );
+  });
+
+  it("keeps stereo capture usable when maximum-channel expansion is rejected", async () => {
+    const stream = makeStream();
+    stream.track.applyConstraints.mockRejectedValueOnce(
+      new DOMException("Unsupported channel count", "OverconstrainedError"),
+    );
+    getUserMedia.mockResolvedValueOnce(stream);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { onCaptureStarted, rerender } = mountHook();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+
+    expect(onCaptureStarted).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      "AudioCapture: Could not expand multichannel input; keeping stereo capture",
+      expect.objectContaining({ name: "OverconstrainedError" }),
+    );
+    warn.mockRestore();
   });
 
   it("I-54 keeps delayed capture callbacks bound to their original session", async () => {
