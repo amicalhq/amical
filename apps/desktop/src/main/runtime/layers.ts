@@ -108,6 +108,7 @@ import { createContext } from "../../trpc/context";
 import {
   SettingsServiceTag,
   SettingsSyncServiceTag,
+  ActivityReportingServiceTag,
   AuthServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
@@ -168,6 +169,7 @@ export const ServicesBundleLive: Layer.Layer<
   | SettingsServiceTag
   | AuthServiceTag
   | SettingsSyncServiceTag
+  | ActivityReportingServiceTag
   | PostHogClientTag
   | TelemetryServiceTag
   | FeatureFlagServiceTag
@@ -197,6 +199,7 @@ export const ServicesBundleLive: Layer.Layer<
       settingsService: yield* SettingsServiceTag,
       authService: yield* AuthServiceTag,
       settingsSyncService: yield* SettingsSyncServiceTag,
+      activityReportingService: yield* ActivityReportingServiceTag,
       vadService: yield* VadServiceTag,
       nativeBridge: yield* NativeBridgeTag,
       autoUpdaterService: yield* AutoUpdaterServiceTag,

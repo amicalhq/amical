@@ -87,10 +87,6 @@ vi.mock("../../src/db/transcriptions", () => ({
   updateTranscription: vi.fn(async () => undefined),
 }));
 
-vi.mock("../../src/db/daily-stats", () => ({
-  incrementDailyStats: vi.fn(async () => undefined),
-}));
-
 vi.mock("../../src/services/transcription/load-dictation-context", () => ({
   loadDictationContext: vi.fn(),
 }));

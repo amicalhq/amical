@@ -18,10 +18,16 @@ import {
   getTranscriptions,
   getTranscriptionsCount,
   getUncommittedTranscriptions,
+  insertSettledTranscription,
   stampTranscriptionDisposition,
   updateTranscription,
 } from "../../src/db/transcriptions";
-import { getLifetimeStats } from "../../src/db/daily-stats";
+import {
+  getLifetimeStats,
+  getStatsRevision,
+} from "../../src/db/dictation-stats";
+import { dictationStatsEvents } from "../../src/db/dictation-stats-events";
+import { transcriptionEvents } from "../../src/db/transcription-events";
 import type { LifecyclePortFact } from "../../src/main/lifecycle/ports";
 
 describe("lifecycle storage", () => {
@@ -148,6 +154,143 @@ describe("lifecycle storage", () => {
     // Same for deletion: a settled row is not custody any more.
     expect(await deleteProvisionalTranscription("s1")).toBeNull();
     expect(await rowFor("s1")).not.toBeNull();
+  });
+
+  it("commits stats and revision before announcing upload-eligible settlement", async () => {
+    await createProvisionalTranscription({ sessionId: "s1" });
+    const observed: unknown[] = [];
+    dictationStatsEvents.once("changed", () => observed.push("stats"));
+    transcriptionEvents.once("transcription-settled", () => {
+      observed.push({
+        stats: getLifetimeStats(),
+        revision: getStatsRevision(),
+      });
+    });
+
+    await stampTranscriptionDisposition("s1", {
+      disposition: "success",
+      text: "hello world",
+      stats: { wordCount: 2, transcriptionCount: 1 },
+    });
+
+    expect(observed).toEqual([
+      "stats",
+      { stats: { totalWords: 2, totalTranscriptions: 1 }, revision: 1 },
+    ]);
+  });
+
+  it("counts a settled session once across stamp and missing-row repair retries", async () => {
+    const stamp = {
+      disposition: "success" as const,
+      text: "kept text",
+      stats: { wordCount: 2, transcriptionCount: 1 },
+    };
+    await createProvisionalTranscription({ sessionId: "s1" });
+    await stampTranscriptionDisposition("s1", stamp);
+    expect(await stampTranscriptionDisposition("s1", stamp)).toBeNull();
+    expect(
+      await insertSettledTranscription({ sessionId: "s1", ...stamp }),
+    ).toBeNull();
+    await insertSettledTranscription({ sessionId: "missing", ...stamp });
+    expect(
+      await insertSettledTranscription({ sessionId: "missing", ...stamp }),
+    ).toBeNull();
+
+    expect(getLifetimeStats()).toEqual({
+      totalWords: 4,
+      totalTranscriptions: 2,
+    });
+    expect(getStatsRevision()).toBe(2);
+  });
+
+  it("rolls back settlement and emits no events when the cache write fails", async () => {
+    await createProvisionalTranscription({ sessionId: "s1" });
+    testDb.db.run(sql`CREATE TRIGGER fail_stats BEFORE INSERT ON dictation_stats
+      BEGIN SELECT RAISE(ABORT, 'stats write failed'); END`);
+    const onStats = vi.fn();
+    const onSettled = vi.fn();
+    dictationStatsEvents.on("changed", onStats);
+    transcriptionEvents.on("transcription-settled", onSettled);
+    try {
+      await expect(
+        stampTranscriptionDisposition("s1", {
+          disposition: "success",
+          text: "kept text",
+          stats: { wordCount: 2, transcriptionCount: 1 },
+        }),
+      ).rejects.toThrow();
+      expect((await rowFor("s1"))?.disposition).toBeNull();
+      expect(getLifetimeStats()).toEqual({
+        totalWords: 0,
+        totalTranscriptions: 0,
+      });
+      expect(getStatsRevision()).toBe(0);
+      expect(onStats).not.toHaveBeenCalled();
+      expect(onSettled).not.toHaveBeenCalled();
+    } finally {
+      dictationStatsEvents.off("changed", onStats);
+      transcriptionEvents.off("transcription-settled", onSettled);
+    }
+  });
+
+  it("preserves recovery settlement without counting unless explicitly requested", async () => {
+    await createProvisionalTranscription({ sessionId: "recovered" });
+    await stampTranscriptionDisposition("recovered", {
+      disposition: "failure",
+    });
+    expect(getLifetimeStats()).toEqual({
+      totalWords: 0,
+      totalTranscriptions: 0,
+    });
+    expect(getStatsRevision()).toBe(0);
+  });
+
+  it("counts only the first empty-to-positive retry using the stored prior text", async () => {
+    const row = await insertSettledTranscription({
+      sessionId: "retry",
+      disposition: "empty",
+      stats: { wordCount: 0, transcriptionCount: 1 },
+    });
+    await Promise.all([
+      updateTranscription(
+        row!.id,
+        { text: "first retry" },
+        { countRecoveredWords: true },
+      ),
+      updateTranscription(
+        row!.id,
+        { text: "later different retry" },
+        { countRecoveredWords: true },
+      ),
+    ]);
+    expect(getLifetimeStats()).toEqual({
+      totalWords: 2,
+      totalTranscriptions: 1,
+    });
+    expect(getStatsRevision()).toBe(2);
+    expect((await rowFor("retry"))?.text).toBe("later different retry");
+  });
+
+  it("rolls back retry text when the recovered-word cache write fails", async () => {
+    const row = await insertSettledTranscription({
+      sessionId: "retry",
+      disposition: "empty",
+    });
+    testDb.db.run(sql`CREATE TRIGGER fail_stats BEFORE INSERT ON dictation_stats
+      BEGIN SELECT RAISE(ABORT, 'stats write failed'); END`);
+    await expect(
+      updateTranscription(
+        row!.id,
+        { text: "retry text" },
+        { countRecoveredWords: true },
+      ),
+    ).rejects.toThrow();
+    expect((await rowFor("retry"))?.text).toBe("");
+    expect(getLifetimeStats()).toEqual({
+      totalWords: 0,
+      totalTranscriptions: 0,
+    });
+    expect(getStatsRevision()).toBe(0);
   });
 
   it("scan returns only session-keyed uncommitted rows", async () => {
@@ -305,6 +448,10 @@ describe("lifecycle storage", () => {
       sql`SELECT id FROM transcriptions WHERE session_id = 's1'`,
     );
     expect(rows).toHaveLength(1);
+    expect(getLifetimeStats()).toEqual({
+      totalWords: 1,
+      totalTranscriptions: 1,
+    });
   });
 
   it("provisional rows are invisible to every user-facing surface", async () => {

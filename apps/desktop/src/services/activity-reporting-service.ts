@@ -15,6 +15,7 @@ import {
   materializeCompletedDictationActivities,
   removeActivityRows,
 } from "../db/activity-outbox";
+import { applyAccountSummary, getStatsRevision } from "../db/dictation-stats";
 import { transcriptionEvents } from "../db/transcription-events";
 import { logger } from "../main/logger";
 import { down, up } from "../main/runtime/layer-helpers";
@@ -36,6 +37,7 @@ import {
 import type { AuthService, AuthState } from "./auth-service";
 import { retryOnceAfterAuthenticationRequired } from "./auth-retry";
 import { ActivityReportingClient } from "./activity-reporting-client";
+import { getAccountSummary } from "./account-summary";
 import {
   ActivityReportingContractFailure,
   ActivityReportingDependencyFailure,
@@ -81,6 +83,7 @@ export class ActivityReportingService {
   private boundaryEpoch = 0;
   private rerunRequested = false;
   private authorizationBlocked = false;
+  private pendingSummaryAccountId: string | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private unregisterBeforeLogout: (() => void) | null = null;
 
@@ -108,7 +111,7 @@ export class ActivityReportingService {
   private readonly onAuthenticated = (authState: AuthState) => {
     const accountId = authState.userInfo?.sub;
     if (!accountId || !this.initialized || this.stopped) return;
-    const epoch = this.beginAccountBoundary();
+    const epoch = this.beginAccountBoundary(accountId);
     this.forkScoped(
       this.activateAccount(accountId, epoch).pipe(
         Effect.catchAll((error) =>
@@ -144,12 +147,14 @@ export class ActivityReportingService {
     private readonly runtime: Runtime.Runtime<never>,
     private serviceScope: Scope.CloseableScope,
     private readonly dbSemaphore: Effect.Semaphore,
+    private readonly readSummary: typeof getAccountSummary,
   ) {}
 
   private static make(
     authService: AuthService,
     client?: ActivityClient,
     runtime: Runtime.Runtime<never> = Runtime.defaultRuntime,
+    readSummary: typeof getAccountSummary = getAccountSummary,
   ): Effect.Effect<ActivityReportingService> {
     return Effect.gen(function* () {
       const serviceScope = yield* Scope.make();
@@ -160,6 +165,7 @@ export class ActivityReportingService {
         runtime,
         serviceScope,
         dbSemaphore,
+        readSummary,
       );
     });
   }
@@ -198,8 +204,16 @@ export class ActivityReportingService {
   static createForTests(
     authService: AuthService,
     client?: ActivityClient,
+    readSummary?: typeof getAccountSummary,
   ): ActivityReportingService {
-    return Effect.runSync(ActivityReportingService.make(authService, client));
+    return Effect.runSync(
+      ActivityReportingService.make(
+        authService,
+        client,
+        undefined,
+        readSummary,
+      ),
+    );
   }
 
   initialize(): Effect.Effect<void, ActivityReportingDependencyFailure> {
@@ -229,7 +243,7 @@ export class ActivityReportingService {
       );
       if (this.stopped || !this.initialized) return;
       if (authState?.isAuthenticated && authState.userInfo?.sub) {
-        const epoch = this.beginAccountBoundary();
+        const epoch = this.beginAccountBoundary(authState.userInfo.sub);
         return yield* this.activateAccount(authState.userInfo.sub, epoch);
       }
       this.currentAccountId = null;
@@ -256,6 +270,13 @@ export class ActivityReportingService {
     }
   }
 
+  requestSummaryRefresh(accountId: string): void {
+    if (this.stopped || !this.initialized) return;
+    if (this.currentAccountId && this.currentAccountId !== accountId) return;
+    this.pendingSummaryAccountId = accountId;
+    this.wake();
+  }
+
   shutdown(): Effect.Effect<void> {
     return Effect.uninterruptible(
       Effect.suspend(() => {
@@ -266,6 +287,7 @@ export class ActivityReportingService {
         this.currentAccountId = null;
         this.authorizationBlocked = false;
         this.rerunRequested = false;
+        this.pendingSummaryAccountId = null;
 
         if (this.pollTimer) clearInterval(this.pollTimer);
         this.pollTimer = null;
@@ -296,14 +318,18 @@ export class ActivityReportingService {
     this.currentAccountId = null;
     this.authorizationBlocked = false;
     this.rerunRequested = false;
+    this.pendingSummaryAccountId = null;
     return worker ? Fiber.interrupt(worker).pipe(Effect.asVoid) : Effect.void;
   }
 
-  private beginAccountBoundary(): number {
+  private beginAccountBoundary(accountId: string): number {
     this.boundaryEpoch += 1;
     this.currentAccountId = null;
     this.authorizationBlocked = false;
     this.rerunRequested = false;
+    if (this.pendingSummaryAccountId !== accountId) {
+      this.pendingSummaryAccountId = null;
+    }
     this.worker?.unsafeInterruptAsFork(FiberId.none);
     return this.boundaryEpoch;
   }
@@ -339,18 +365,29 @@ export class ActivityReportingService {
       Effect.suspend(() => {
         const iterationEpoch = this.boundaryEpoch;
         let uploadAccountId: string | null = null;
+        const summaryAccountId =
+          this.pendingSummaryAccountId === this.currentAccountId
+            ? this.pendingSummaryAccountId
+            : null;
+        if (summaryAccountId) this.pendingSummaryAccountId = null;
         this.rerunRequested = false;
-        return this.materializeUntilCaughtUp().pipe(
-          Effect.flatMap(() => {
-            const accountId = this.currentAccountId;
-            const epoch = this.boundaryEpoch;
-            if (!accountId || this.authorizationBlocked) return Effect.void;
-            uploadAccountId = accountId;
-            return retryOnceAfterAuthenticationRequired(
-              () => this.reportUntilDrained(epoch, accountId),
-              () => this.refreshAuthenticationIfCurrent(epoch, accountId),
-            );
-          }),
+        return Effect.gen(this, function* () {
+          const revision = summaryAccountId
+            ? yield* this.db(async () => getStatsRevision())
+            : null;
+          yield* this.materializeUntilCaughtUp();
+          const accountId = this.currentAccountId;
+          const epoch = this.boundaryEpoch;
+          if (!accountId || this.authorizationBlocked) return;
+          uploadAccountId = accountId;
+          const drained = yield* retryOnceAfterAuthenticationRequired(
+            () => this.reportUntilDrained(epoch, accountId),
+            () => this.refreshAuthenticationIfCurrent(epoch, accountId),
+          );
+          if (drained && summaryAccountId === accountId && revision !== null) {
+            yield* this.refreshSummary(epoch, accountId, revision);
+          }
+        }).pipe(
           Effect.matchEffect({
             onFailure: (error) =>
               this.handleAttemptFailure(error, iterationEpoch, uploadAccountId),
@@ -366,7 +403,9 @@ export class ActivityReportingService {
               return Effect.failCause(cause);
             }
             if (iterationEpoch === this.boundaryEpoch) {
-              this.rerunRequested = false;
+              this.rerunRequested =
+                this.pendingSummaryAccountId !== null &&
+                this.pendingSummaryAccountId === this.currentAccountId;
             }
             return Effect.sync(() => {
               logger.main.error("Activity reporting worker failed", {
@@ -386,7 +425,9 @@ export class ActivityReportingService {
     accountId: string | null,
   ): Effect.Effect<void> {
     if (epoch !== this.boundaryEpoch || this.stopped) return Effect.void;
-    this.rerunRequested = false;
+    this.rerunRequested =
+      this.pendingSummaryAccountId !== null &&
+      this.pendingSummaryAccountId === this.currentAccountId;
     if (error instanceof AuthenticationRequired) {
       if (!accountId || accountId !== this.currentAccountId) {
         return Effect.void;
@@ -417,6 +458,41 @@ export class ActivityReportingService {
         { error },
       );
     });
+  }
+
+  private refreshSummary(
+    epoch: number,
+    accountId: string,
+    expectedRevision: number,
+  ): Effect.Effect<void> {
+    return Effect.gen(this, function* () {
+      const current = yield* this.db(
+        async () =>
+          this.uploadBoundaryIsCurrent(epoch, accountId) &&
+          getStatsRevision() === expectedRevision,
+      );
+      if (!current) return;
+      const summary = yield* Effect.tryPromise({
+        try: (signal) => this.readSummary(this.authService, accountId, signal),
+        catch: (cause) => cause,
+      });
+      yield* this.db(async () => {
+        if (this.uploadBoundaryIsCurrent(epoch, accountId)) {
+          applyAccountSummary(accountId, expectedRevision, summary.totals);
+        }
+      });
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          logger.main.warn(
+            "Account dictation stats refresh failed; cache retained",
+            {
+              error,
+            },
+          );
+        }),
+      ),
+    );
   }
 
   private refreshAuthenticationIfCurrent(
@@ -458,11 +534,15 @@ export class ActivityReportingService {
   private reportUntilDrained(
     epoch: number,
     accountId: string,
-  ): Effect.Effect<void, ActivityAttemptError> {
-    const drain = (): Effect.Effect<void, ActivityAttemptError> =>
+  ): Effect.Effect<boolean, ActivityAttemptError> {
+    const drain = (): Effect.Effect<boolean, ActivityAttemptError> =>
       this.findNextRows().pipe(
         Effect.flatMap((rows) => {
-          if (rows.length === 0) return Effect.void;
+          if (rows.length === 0) {
+            return Effect.succeed(
+              this.uploadBoundaryIsCurrent(epoch, accountId),
+            );
+          }
           return Effect.try({
             try: () => buildActivityBatch(rows.map((row) => row.payload)),
             catch: (cause) =>
@@ -489,7 +569,7 @@ export class ActivityReportingService {
                       accountId,
                     ).pipe(
                       Effect.flatMap((removed) =>
-                        removed ? Effect.suspend(drain) : Effect.void,
+                        removed ? Effect.suspend(drain) : Effect.succeed(false),
                       ),
                     ),
                   ),

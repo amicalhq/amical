@@ -80,7 +80,8 @@ export async function createTestDatabase(
       db.delete(schema.syncScopeState).run();
       db.delete(schema.syncClientState).run();
       db.delete(schema.transcriptions).run();
-      db.delete(schema.dailyStats).run();
+      db.delete(schema.dictationStats).run();
+      db.insert(schema.dictationStats).values({ scope: "device" }).run();
       db.delete(schema.vocabulary).run();
       db.delete(schema.snippets).run();
       db.delete(schema.models).run();

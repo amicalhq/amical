@@ -3,7 +3,6 @@ import { expectObligation } from "../../telemetry/dictation-trace";
 import { unlink } from "node:fs/promises";
 import { Effect } from "effect";
 import { logger } from "../../logger";
-import { incrementDailyStats } from "../../../db/daily-stats";
 import {
   deleteProvisionalTranscription,
   insertSettledTranscription,
@@ -103,6 +102,10 @@ export function createStorageAdapter(
     const text = sealed.kind === "success" ? sealed.text : undefined;
     const completedWordCount =
       sealed.kind === "success" ? countWords(sealed.text) : 0;
+    const stats =
+      sealed.kind === "dismissed"
+        ? undefined
+        : { wordCount: completedWordCount, transcriptionCount: 1 };
     const completionMeta =
       sealed.kind === "success"
         ? options?.completionMetaFor?.(session)
@@ -118,6 +121,7 @@ export function createStorageAdapter(
       disposition: sealed.kind,
       text,
       metaPatch,
+      ...(stats ? { stats } : {}),
       ...(stripAudio ? { audioFile: null } : {}),
       ...(custody?.audioDurationMs
         ? {
@@ -135,6 +139,7 @@ export function createStorageAdapter(
         disposition: sealed.kind,
         text,
         metaPatch,
+        ...(stats ? { stats } : {}),
         audioFile: custody !== null && custody.wavOk ? custody.audioFile : null,
         ...(custody?.audioDurationMs
           ? {
@@ -148,12 +153,6 @@ export function createStorageAdapter(
       await unlink(custody.audioFile).catch(() => {
         // Best-effort: the broken file may not exist at all.
       });
-    }
-
-    if (sealed.kind === "success") {
-      await countTranscription(session, completedWordCount);
-    } else if (sealed.kind === "empty" || sealed.kind === "failure") {
-      await countTranscription(session, 0);
     }
   }
 
@@ -180,24 +179,10 @@ export function createStorageAdapter(
     options?.releaseCompletionMeta?.(session);
   }
 
-  async function countTranscription(
-    session: SessionId,
-    wordCount: number,
-  ): Promise<void> {
-    try {
-      await incrementDailyStats(wordCount);
-    } catch (error) {
-      logger.transcription.error("Failed to increment dictation stats", {
-        sessionId: session,
-        error,
-      });
-    }
-  }
-
   return {
     commit(session, sealed): void {
-      // The settle→stamp→count chain is one obligation fiber; its ensuring
-      // fact is storageFinished on BOTH paths (D15) — a known failure must
+      // Settlement and stats share one transaction and obligation fiber.
+      // Its ensuring fact is storageFinished on BOTH paths (D15) — a failure must
       // not look like a wedged port. The fact belongs to the FIRST attempt
       // only: the repair retry (raw timer, app-level, quarantine-lite)
       // never re-emits, and the startup sweep stays the ultimate net.

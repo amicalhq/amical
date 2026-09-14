@@ -13,10 +13,6 @@ vi.mock("../../src/db/transcriptions", () => ({
   updateTranscription: vi.fn(async () => undefined),
 }));
 
-vi.mock("../../src/db/daily-stats", () => ({
-  incrementDailyStats: vi.fn(async () => undefined),
-}));
-
 vi.mock("../../src/services/transcription/load-dictation-context", () => ({
   loadDictationContext: vi.fn(),
 }));
@@ -32,7 +28,6 @@ vi.mock(
 );
 
 import * as fs from "node:fs";
-import { incrementDailyStats } from "../../src/db/daily-stats";
 import {
   getTranscriptionById,
   updateTranscription,
@@ -182,8 +177,8 @@ describe("retranscribeHistoryItem", () => {
           retriedAt: expect.any(String),
         }),
       }),
+      { countRecoveredWords: true },
     );
-    expect(incrementDailyStats).toHaveBeenCalledWith(4, expect.any(Date), 0);
     expect(
       dependencies.telemetryService.trackTranscriptionCompleted,
     ).toHaveBeenCalledWith(
@@ -237,10 +232,11 @@ describe("retranscribeHistoryItem", () => {
     expect(updateTranscription).toHaveBeenCalledWith(
       7,
       expect.objectContaining({ speechModel: "amical-cloud" }),
+      { countRecoveredWords: true },
     );
   });
 
-  it("does not count an already-counted transcription again", async () => {
+  it("delegates recovered word counting to the atomic update", async () => {
     vi.mocked(getTranscriptionById).mockResolvedValue({
       ...historyRecord()!,
       text: "already counted",
@@ -254,7 +250,10 @@ describe("retranscribeHistoryItem", () => {
 
     await retranscribeHistoryItem(7, dependencies);
 
-    expect(updateTranscription).toHaveBeenCalledOnce();
-    expect(incrementDailyStats).not.toHaveBeenCalled();
+    expect(updateTranscription).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ text: "replacement" }),
+      { countRecoveredWords: true },
+    );
   });
 });

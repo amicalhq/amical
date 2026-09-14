@@ -11,10 +11,6 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/db/transcriptions", () => db);
-vi.mock("../../src/db/daily-stats", () => ({
-  incrementDailyStats: vi.fn(async () => undefined),
-}));
-
 import { createStorageAdapter } from "../../src/main/lifecycle/adapters/storage";
 import type { LifecyclePortFact } from "../../src/main/lifecycle/ports";
 
@@ -52,6 +48,7 @@ describe("lifecycle storage quarantine-lite repair", () => {
     expect(db.stampTranscriptionDisposition).toHaveBeenLastCalledWith("s1", {
       disposition: "success",
       text: "kept text",
+      stats: { wordCount: 2, transcriptionCount: 1 },
     });
   });
 

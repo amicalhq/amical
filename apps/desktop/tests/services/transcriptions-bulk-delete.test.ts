@@ -13,7 +13,7 @@ vi.mock("../../src/db/transcriptions.ts", () => ({
   searchTranscriptions: vi.fn(),
 }));
 
-vi.mock("../../src/db/daily-stats.ts", () => ({
+vi.mock("../../src/db/dictation-stats", () => ({
   getLifetimeStats: vi.fn(),
 }));
 

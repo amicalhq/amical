@@ -517,8 +517,9 @@ export const yjsUpdates = sqliteTable(
   ],
 );
 
-export const dailyStats = sqliteTable(
-  "daily_stats",
+// Historical counters are retained unchanged; dictationStats owns live totals.
+export const dailyStatsBackup = sqliteTable(
+  "daily_stats_backup",
   {
     id: text("id").notNull().primaryKey(),
     date: text("date").notNull(),
@@ -529,6 +530,13 @@ export const dailyStats = sqliteTable(
   },
   (table) => [uniqueIndex("daily_stats_date_unique_idx").on(table.date)],
 );
+
+export const dictationStats = sqliteTable("dictation_stats", {
+  scope: text("scope").notNull().primaryKey(),
+  totalWords: integer("total_words").notNull().default(0),
+  totalTranscriptions: integer("total_transcriptions").notNull().default(0),
+  revision: integer("revision").notNull().default(0),
+});
 
 // Skills = personalization rules that the desktop resolves at dictation
 // time into the wire-format `Skill` proto message. Each row is one
@@ -618,7 +626,5 @@ export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 export type YjsUpdate = typeof yjsUpdates.$inferSelect;
 export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;
-export type DailyStat = typeof dailyStats.$inferSelect;
-export type NewDailyStat = typeof dailyStats.$inferInsert;
 export type Skill = typeof skills.$inferSelect;
 export type NewSkill = typeof skills.$inferInsert;

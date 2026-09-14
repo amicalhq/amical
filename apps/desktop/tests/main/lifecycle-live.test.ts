@@ -11,10 +11,6 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/db/transcriptions", () => db);
-vi.mock("../../src/db/daily-stats", () => ({
-  incrementDailyStats: vi.fn(async () => undefined),
-}));
-
 import { createDesktopRecordingLifecycle } from "../../src/main/lifecycle/live";
 import type { NativeBridge } from "../../src/services/platform/native-bridge-service";
 import type { SettingsService } from "../../src/services/settings-service";

@@ -229,15 +229,9 @@ describe("Transcriptions Service", () => {
         (sum, transcription) => sum + countWords(transcription.text),
         0,
       );
-      const now = new Date();
-
-      await testDb.db.insert(schema.dailyStats).values({
-        id: `stats-${now.getTime()}`,
-        date: "2026-03-29",
-        wordCount: totalWords,
-        transcriptionCount: sampleTranscriptions.length,
-        createdAt: now,
-        updatedAt: now,
+      await testDb.db.update(schema.dictationStats).set({
+        totalWords,
+        totalTranscriptions: sampleTranscriptions.length,
       });
 
       const result = await initializeTestServices(testDb);
@@ -249,17 +243,18 @@ describe("Transcriptions Service", () => {
     it("should return lifetime stats totals", async () => {
       const stats = await trpcCaller.transcriptions.getLifetimeStats();
 
-      expect(stats.totalWords).toBe(
+      expect(stats?.totalWords).toBe(
         sampleTranscriptions.reduce(
           (sum, transcription) => sum + countWords(transcription.text),
           0,
         ),
       );
-      expect(stats.totalTranscriptions).toBe(sampleTranscriptions.length);
+      expect(stats?.totalTranscriptions).toBe(sampleTranscriptions.length);
     });
 
     it("should not reduce lifetime stats when transcription history is deleted", async () => {
       const beforeDelete = await trpcCaller.transcriptions.getLifetimeStats();
+      expect(beforeDelete).not.toBeNull();
       const transcriptions = await trpcCaller.transcriptions.getTranscriptions({
         limit: 10,
         offset: 0,
@@ -271,9 +266,9 @@ describe("Transcriptions Service", () => {
 
       const afterDelete = await trpcCaller.transcriptions.getLifetimeStats();
 
-      expect(afterDelete.totalWords).toBe(beforeDelete.totalWords);
-      expect(afterDelete.totalTranscriptions).toBe(
-        beforeDelete.totalTranscriptions,
+      expect(afterDelete?.totalWords).toBe(beforeDelete?.totalWords);
+      expect(afterDelete?.totalTranscriptions).toBe(
+        beforeDelete?.totalTranscriptions,
       );
     });
   });

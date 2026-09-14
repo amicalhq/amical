@@ -58,6 +58,7 @@ import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { format } from "date-fns";
 import { useTranslation } from "react-i18next";
 import type { RecordingState } from "@/types/recording";
+import { useDictationStats } from "./use-dictation-stats";
 
 function formatDate(timestamp: Date) {
   return format(timestamp, "MMM d, h:mm a");
@@ -498,12 +499,7 @@ export default function HistorySettingsPage() {
     },
   });
 
-  const lifetimeStatsQuery = api.transcriptions.getLifetimeStats.useQuery(
-    undefined,
-    {
-      refetchInterval: 5000,
-    },
-  );
+  const totalWords = useDictationStats();
 
   // tRPC React Query hooks
   const transcriptionsQuery = api.transcriptions.getTranscriptions.useQuery(
@@ -554,7 +550,6 @@ export default function HistorySettingsPage() {
     api.transcriptions.retryTranscription.useMutation({
       onSuccess: () => {
         utils.transcriptions.getTranscriptions.invalidate();
-        utils.transcriptions.getLifetimeStats.invalidate();
         toast.success(t("settings.history.toast.retrySuccess"));
         setRetryingId(null);
       },
@@ -655,9 +650,10 @@ export default function HistorySettingsPage() {
   }
 
   const groupedHistory = groupHistoryByDate(transcriptions);
-  const formattedLifetimeWords = new Intl.NumberFormat(i18n.language).format(
-    lifetimeStatsQuery.data?.totalWords ?? 0,
-  );
+  const formattedLifetimeWords =
+    totalWords === undefined
+      ? "—"
+      : new Intl.NumberFormat(i18n.language).format(totalWords);
   return (
     <div>
       {/* Header Section */}

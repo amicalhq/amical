@@ -74,7 +74,10 @@ export class ActivityReportingClient {
           try: () =>
             fetch(url, {
               method: "POST",
-              signal: requestController.signal,
+              signal: AbortSignal.any([
+                requestController.signal,
+                AbortSignal.timeout(30_000),
+              ]),
               headers: {
                 "Content-Type": "application/json",
                 "User-Agent": getUserAgent(),

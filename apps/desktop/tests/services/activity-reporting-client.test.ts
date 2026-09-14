@@ -46,6 +46,7 @@ describe("ActivityReportingClient", () => {
   afterEach(() => {
     delete process.env.CORE_API_URL;
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("posts through Apps V1 with auth and platform headers and accepts empty 200", async () => {
@@ -131,6 +132,30 @@ describe("ActivityReportingClient", () => {
       runClient(tokenlessClient.submit([activity])),
     ).rejects.toBeInstanceOf(AuthenticationRequired);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("times out a stalled upload after 30 seconds", async () => {
+    const timeoutController = new AbortController();
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeoutController.signal);
+    fetchMock.mockImplementation(
+      (_url: URL, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal!.addEventListener(
+            "abort",
+            () => reject(init.signal!.reason),
+            { once: true },
+          );
+        }),
+    );
+    const request = runClient(client.submit([activity]));
+    const rejected =
+      expect(request).rejects.toBeInstanceOf(CloudNetworkFailure);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(timeout).toHaveBeenCalledWith(30_000);
+    timeoutController.abort(new DOMException("Timed out", "TimeoutError"));
+    await rejected;
   });
 
   it("aborts an in-flight request when interrupted", async () => {

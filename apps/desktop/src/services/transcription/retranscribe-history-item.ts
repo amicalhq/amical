@@ -4,12 +4,10 @@ import {
   getTranscriptionById,
   updateTranscription,
 } from "../../db/transcriptions";
-import { incrementDailyStats } from "../../db/daily-stats";
 import { logger } from "../../main/logger";
 import type { ModelService } from "../model-service";
 import type { SettingsService } from "../settings-service";
 import type { TelemetryService } from "../telemetry-service";
-import { countWords } from "../../utils/dictation-stats";
 import { isAmicalCloudSelectionValue } from "../../utils/model-selection";
 import { loadDictationContext } from "./load-dictation-context";
 import {
@@ -155,35 +153,23 @@ export async function retranscribeHistoryItem(
   const speechModelId = usedCloudProvider
     ? "amical-cloud"
     : selectedModelId || "whisper-local";
-  const previousWordCount = countWords(
-    record.text,
-    record.detectedLanguage ?? record.language,
-  );
-
-  await updateTranscription(transcriptionId, {
-    text: completeTranscription,
-    detectedLanguage: prepared.detectedLanguage,
-    speechModel: speechModelId,
-    formattingModel: prepared.formattingModel,
-    meta: {
-      ...(typeof record.meta === "object" && record.meta !== null
-        ? record.meta
-        : {}),
-      retried: true,
-      retriedAt: new Date().toISOString(),
+  await updateTranscription(
+    transcriptionId,
+    {
+      text: completeTranscription,
+      detectedLanguage: prepared.detectedLanguage,
+      speechModel: speechModelId,
+      formattingModel: prepared.formattingModel,
+      meta: {
+        ...(typeof record.meta === "object" && record.meta !== null
+          ? record.meta
+          : {}),
+        retried: true,
+        retriedAt: new Date().toISOString(),
+      },
     },
-  });
-
-  if (previousWordCount === 0 && prepared.wordCount > 0) {
-    try {
-      await incrementDailyStats(prepared.wordCount, new Date(), 0);
-    } catch (error) {
-      logger.transcription.error("Failed to increment retry dictation stats", {
-        transcriptionId,
-        error,
-      });
-    }
-  }
+    { countRecoveredWords: true },
+  );
 
   const processingDuration = performance.now() - retryStartedAt;
   const audioDurationSeconds = audioData.length / 16000;

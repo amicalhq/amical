@@ -18,6 +18,11 @@ import {
   type NewTranscription,
 } from "./schema";
 import { notifyTranscriptionSettled } from "./transcription-events";
+import { incrementDictationStats } from "./dictation-stats";
+import { notifyDictationStatsChanged } from "./dictation-stats-events";
+import { countWords } from "../utils/dictation-stats";
+
+type StatsIncrement = { wordCount: number; transcriptionCount: number };
 
 /** Sealed-outcome stamp values; a NULL disposition on a session-keyed row
  * means custody was opened but the app died before the seal committed. */
@@ -105,45 +110,61 @@ export async function stampTranscriptionDisposition(
     /** Pass null to detach a broken WAV from the settled row (D25). */
     audioFile?: string | null;
     audioDurationMs?: number;
+    stats?: StatsIncrement;
   },
 ) {
-  const existing = await db
-    .select()
-    .from(transcriptions)
-    .where(
-      and(
-        eq(transcriptions.sessionId, sessionId),
-        isNull(transcriptions.disposition),
-      ),
-    );
-  const row = existing[0];
-  if (!row) return null;
+  const settled = db.transaction((tx) => {
+    const row = tx
+      .select()
+      .from(transcriptions)
+      .where(
+        and(
+          eq(transcriptions.sessionId, sessionId),
+          isNull(transcriptions.disposition),
+        ),
+      )
+      .get();
+    if (!row) return null;
 
-  const meta = {
-    ...((row.meta as Record<string, unknown> | null) ?? {}),
-    ...(stamp.metaPatch ?? {}),
-  };
-  const result = await db
-    .update(transcriptions)
-    .set({
-      disposition: stamp.disposition,
-      ...(stamp.text !== undefined ? { text: stamp.text } : {}),
-      ...(stamp.audioFile !== undefined ? { audioFile: stamp.audioFile } : {}),
-      ...(stamp.audioDurationMs !== undefined
-        ? { audioDurationMs: stamp.audioDurationMs }
-        : {}),
-      meta,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(transcriptions.sessionId, sessionId),
-        isNull(transcriptions.disposition),
-      ),
-    )
-    .returning();
-  const settled = result[0] ?? null;
-  if (settled) notifyTranscriptionSettled(settled.id);
+    const meta = {
+      ...((row.meta as Record<string, unknown> | null) ?? {}),
+      ...(stamp.metaPatch ?? {}),
+    };
+    const settled = tx
+      .update(transcriptions)
+      .set({
+        disposition: stamp.disposition,
+        ...(stamp.text !== undefined ? { text: stamp.text } : {}),
+        ...(stamp.audioFile !== undefined
+          ? { audioFile: stamp.audioFile }
+          : {}),
+        ...(stamp.audioDurationMs !== undefined
+          ? { audioDurationMs: stamp.audioDurationMs }
+          : {}),
+        meta,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(transcriptions.sessionId, sessionId),
+          isNull(transcriptions.disposition),
+        ),
+      )
+      .returning()
+      .get();
+    if (settled && stamp.stats) {
+      incrementDictationStats(
+        stamp.stats.wordCount,
+        stamp.stats.transcriptionCount,
+        tx,
+      );
+    }
+    return settled ?? null;
+  });
+  if (settled) {
+    if (stamp.stats) notifyDictationStatsChanged();
+    notifyTranscriptionSettled(settled.id);
+  }
   return settled;
 }
 
@@ -160,30 +181,45 @@ export async function insertSettledTranscription(options: {
   metaPatch?: Record<string, unknown>;
   audioFile?: string | null;
   audioDurationMs?: number;
+  stats?: StatsIncrement;
 }) {
-  const existing = await db
-    .select({ id: transcriptions.id })
-    .from(transcriptions)
-    .where(eq(transcriptions.sessionId, options.sessionId));
-  if (existing.length > 0) return null;
+  const settled = db.transaction((tx) => {
+    const existing = tx
+      .select({ id: transcriptions.id })
+      .from(transcriptions)
+      .where(eq(transcriptions.sessionId, options.sessionId))
+      .get();
+    if (existing) return null;
 
-  const now = new Date();
-  const result = await db
-    .insert(transcriptions)
-    .values({
-      sessionId: options.sessionId,
-      disposition: options.disposition,
-      text: options.text ?? "",
-      audioFile: options.audioFile ?? undefined,
-      audioDurationMs: options.audioDurationMs,
-      meta: { sessionId: options.sessionId, ...(options.metaPatch ?? {}) },
-      timestamp: now,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
-  const settled = result[0] ?? null;
-  if (settled) notifyTranscriptionSettled(settled.id);
+    const now = new Date();
+    const settled = tx
+      .insert(transcriptions)
+      .values({
+        sessionId: options.sessionId,
+        disposition: options.disposition,
+        text: options.text ?? "",
+        audioFile: options.audioFile ?? undefined,
+        audioDurationMs: options.audioDurationMs,
+        meta: { sessionId: options.sessionId, ...(options.metaPatch ?? {}) },
+        timestamp: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+    if (settled && options.stats) {
+      incrementDictationStats(
+        options.stats.wordCount,
+        options.stats.transcriptionCount,
+        tx,
+      );
+    }
+    return settled ?? null;
+  });
+  if (settled) {
+    if (options.stats) notifyDictationStatsChanged();
+    notifyTranscriptionSettled(settled.id);
+  }
   return settled;
 }
 
@@ -286,19 +322,49 @@ export async function getTranscriptionById(id: number) {
 export async function updateTranscription(
   id: number,
   data: Partial<Omit<Transcription, "id" | "createdAt" | "disposition">>,
+  options?: { countRecoveredWords: boolean },
 ) {
   const updateData = {
     ...data,
     updatedAt: new Date(),
   };
 
-  const result = await db
-    .update(transcriptions)
-    .set(updateData)
-    .where(and(settledRowsOnly, eq(transcriptions.id, id)))
-    .returning();
-
-  return result[0] || null;
+  let statsChanged = false;
+  const updated = db.transaction((tx) => {
+    const previous = options?.countRecoveredWords
+      ? tx
+          .select()
+          .from(transcriptions)
+          .where(and(settledRowsOnly, eq(transcriptions.id, id)))
+          .get()
+      : undefined;
+    const updated = tx
+      .update(transcriptions)
+      .set(updateData)
+      .where(and(settledRowsOnly, eq(transcriptions.id, id)))
+      .returning()
+      .get();
+    if (
+      previous &&
+      updated &&
+      countWords(
+        previous.text,
+        previous.detectedLanguage ?? previous.language,
+      ) === 0
+    ) {
+      const wordCount = countWords(
+        updated.text,
+        updated.detectedLanguage ?? updated.language,
+      );
+      if (wordCount > 0) {
+        incrementDictationStats(wordCount, 0, tx);
+        statsChanged = true;
+      }
+    }
+    return updated ?? null;
+  });
+  if (statsChanged) notifyDictationStatsChanged();
+  return updated;
 }
 
 // Delete transcription (settled rows only)

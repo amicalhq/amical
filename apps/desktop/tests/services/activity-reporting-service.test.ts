@@ -12,6 +12,7 @@ import {
 } from "vitest";
 
 import {
+  appSettings,
   activityMaterializationState,
   activityOutbox,
   transcriptions,
@@ -42,6 +43,20 @@ import {
 } from "../../src/types/activity";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
+import { db } from "../../src/db";
+import { getAppSettings } from "../../src/db/app-settings";
+import {
+  getLifetimeStats,
+  incrementDictationStats,
+} from "../../src/db/dictation-stats";
+import type { getAccountSummary } from "../../src/services/account-summary";
+
+const summary = {
+  totals: {
+    activities: 150,
+    words: 12000,
+  },
+};
 
 const ids = [
   "11111111-1111-4111-8111-111111111111",
@@ -99,15 +114,19 @@ describe("ActivityReportingService", () => {
     ) => Effect.Effect<void, ActivityReportingClientError>
   >;
   let service: ActivityReportingService;
+  let readSummary: Mock<typeof getAccountSummary>;
 
   beforeEach(async () => {
     testDb = await createTestDatabase();
     setTestDatabase(testDb.db);
+    await getAppSettings();
     auth = new FakeAuth();
+    readSummary = vi.fn().mockResolvedValue(summary);
     submit = vi.fn();
     service = ActivityReportingService.createForTests(
       auth as unknown as AuthService,
       { submit },
+      readSummary,
     );
     await Effect.runPromise(service.initialize());
   });
@@ -126,6 +145,11 @@ describe("ActivityReportingService", () => {
       expiresAt: Date.now() + 60_000,
       userInfo: { sub: accountId },
     };
+    const settings = testDb.db.select().from(appSettings).get()!;
+    testDb.db
+      .update(appSettings)
+      .set({ data: { ...settings.data, auth: auth.state } })
+      .run();
     auth.emit("authenticated", auth.state);
   }
 
@@ -571,6 +595,219 @@ describe("ActivityReportingService", () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
     });
   });
+
+  it("does not fetch summaries for startup, uploads, or empty wakes without a request", async () => {
+    submit.mockReturnValue(Effect.void);
+    authenticate("user-1");
+    enqueue(activity());
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(testDb.db.select().from(activityOutbox).all()).toEqual([]),
+    );
+    service.wake();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(readSummary).not.toHaveBeenCalled();
+  });
+
+  it("preserves and coalesces refresh requests during account activation, including an empty drain", async () => {
+    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh("user-1");
+    authenticate("user-1");
+    await vi.waitFor(() =>
+      expect(getLifetimeStats("user-1")).toEqual({
+        totalWords: 12000,
+        totalTranscriptions: 150,
+      }),
+    );
+    expect(readSummary).toHaveBeenCalledOnce();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("waits for pending uploads before fetching a requested summary", async () => {
+    let finishUpload!: () => void;
+    submit.mockReturnValue(
+      Effect.promise(
+        () =>
+          new Promise<void>((resolve) => {
+            finishUpload = resolve;
+          }),
+      ),
+    );
+    authenticate("user-1");
+    service.requestSummaryRefresh("user-1");
+    enqueue(activity());
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    expect(readSummary).not.toHaveBeenCalled();
+    finishUpload();
+    await vi.waitFor(() =>
+      expect(getLifetimeStats("user-1")?.totalWords).toBe(12000),
+    );
+    expect(testDb.db.select().from(activityOutbox).all()).toEqual([]);
+  });
+
+  it("does not fetch after failed uploads and preserves a newer request for another pass", async () => {
+    let failUpload!: (error: unknown) => void;
+    submit
+      .mockReturnValueOnce(
+        Effect.tryPromise({
+          try: () =>
+            new Promise<void>((_resolve, reject) => {
+              failUpload = reject;
+            }),
+          catch: () =>
+            new CloudNetworkFailure({ message: "offline", cause: undefined }),
+        }),
+      )
+      .mockReturnValue(Effect.void);
+    authenticate("user-1");
+    service.requestSummaryRefresh("user-1");
+    enqueue(activity());
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    service.requestSummaryRefresh("user-1");
+    failUpload(new Error("offline"));
+    await vi.waitFor(() =>
+      expect(getLifetimeStats("user-1")?.totalWords).toBe(12000),
+    );
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(readSummary).toHaveBeenCalledOnce();
+  });
+
+  it("skips the GET when local totals change during the requested drain", async () => {
+    let finishUpload!: () => void;
+    submit.mockReturnValue(
+      Effect.promise(
+        () =>
+          new Promise<void>((resolve) => {
+            finishUpload = resolve;
+          }),
+      ),
+    );
+    authenticate("user-1");
+    await vi.waitFor(() =>
+      expect(
+        testDb.db.select().from(activityMaterializationState).get()?.accountId,
+      ).toBe("user-1"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const item = activity();
+    testDb.db
+      .insert(activityOutbox)
+      .values({
+        activityId: item.activityId,
+        payload: item,
+        createdAt: new Date(),
+      })
+      .run();
+    service.requestSummaryRefresh("user-1");
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    db.transaction((tx) => incrementDictationStats(3, 1, tx));
+    finishUpload();
+    await vi.waitFor(() =>
+      expect(testDb.db.select().from(activityOutbox).all()).toEqual([]),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(readSummary).not.toHaveBeenCalled();
+    expect(getLifetimeStats("user-1")?.totalWords).toBe(3);
+  });
+
+  it("preserves local increments made during a summary GET", async () => {
+    let finishSummary!: (value: typeof summary) => void;
+    readSummary.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSummary = resolve;
+        }),
+    );
+    authenticate("user-1");
+    service.requestSummaryRefresh("user-1");
+    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
+    db.transaction((tx) => incrementDictationStats(3, 1, tx));
+    finishSummary(summary);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(getLifetimeStats("user-1")?.totalWords).toBe(3);
+    expect(readSummary).toHaveBeenCalledOnce();
+  });
+
+  it("retains requests arriving during a summary GET for one later pass", async () => {
+    let finishSummary!: (value: typeof summary) => void;
+    readSummary.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSummary = resolve;
+        }),
+    );
+    authenticate("user-1");
+    service.requestSummaryRefresh("user-1");
+    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
+    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh("user-1");
+    finishSummary(summary);
+    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(readSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an old account request without replacing a pending current-account refresh", async () => {
+    let finishSummary!: (value: typeof summary) => void;
+    readSummary.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSummary = resolve;
+        }),
+    );
+    authenticate("user-2");
+    service.requestSummaryRefresh("user-2");
+    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
+    service.requestSummaryRefresh("user-2");
+    service.requestSummaryRefresh("user-1");
+    finishSummary(summary);
+    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledTimes(2));
+    expect(readSummary.mock.calls.every((call) => call[1] === "user-2")).toBe(
+      true,
+    );
+  });
+
+  it("keeps summary authentication failures separate from uploader authorization", async () => {
+    readSummary.mockRejectedValueOnce(
+      new AuthenticationRequired({ message: "summary unauthorized" }),
+    );
+    authenticate("user-1");
+    service.requestSummaryRefresh("user-1");
+    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
+    submit.mockReturnValue(Effect.void);
+    enqueue(activity());
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    expect(readSummary).toHaveBeenCalledOnce();
+    service.requestSummaryRefresh("user-1");
+    await vi.waitFor(() =>
+      expect(getLifetimeStats("user-1")?.totalWords).toBe(12000),
+    );
+  });
+
+  it.each(["logout", "shutdown", "account switch"])(
+    "aborts a summary on %s and ignores its late result",
+    async (boundary) => {
+      let finishSummary!: (value: typeof summary) => void;
+      let signal: AbortSignal | undefined;
+      readSummary.mockImplementationOnce((_auth, _id, requestSignal) => {
+        signal = requestSignal;
+        return new Promise((resolve) => {
+          finishSummary = resolve;
+        });
+      });
+      authenticate("user-1");
+      service.requestSummaryRefresh("user-1");
+      await vi.waitFor(() => expect(signal).toBeDefined());
+      if (boundary === "logout") await auth.runBeforeLogoutHandlers();
+      else if (boundary === "shutdown")
+        await Effect.runPromise(service.shutdown());
+      else authenticate("user-2");
+      await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+      finishSummary(summary);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(getLifetimeStats("user-1")).toBeNull();
+    },
+  );
 
   it("enforces both server batch limits", () => {
     const many = Array.from({ length: 501 }, (_, index) =>

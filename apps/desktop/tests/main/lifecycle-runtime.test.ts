@@ -17,10 +17,6 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/db/transcriptions", () => db);
-vi.mock("../../src/db/daily-stats", () => ({
-  incrementDailyStats: vi.fn(async () => undefined),
-}));
-
 import {
   createRecordingLifecycle,
   type LifecycleNotification,
@@ -200,6 +196,7 @@ describe("recording lifecycle runtime", () => {
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
       disposition: "success",
       text: "hello world",
+      stats: { wordCount: 2, transcriptionCount: 1 },
       audioDurationMs: 200,
     });
     expect(h.pastes).toEqual(["hello world"]);
@@ -580,6 +577,7 @@ describe("recording lifecycle runtime", () => {
     // Failure keeps the record: stamped, not deleted.
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
       disposition: "failure",
+      stats: { wordCount: 0, transcriptionCount: 1 },
       metaPatch: { failureReason: ErrorCodes.NETWORK_ERROR },
     });
   });
@@ -610,6 +608,7 @@ describe("recording lifecycle runtime", () => {
     ]);
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
       disposition: "failure",
+      stats: { wordCount: 0, transcriptionCount: 1 },
       metaPatch: { failureReason: "timeout" },
       audioDurationMs: 200,
     });
@@ -639,7 +638,11 @@ describe("recording lifecycle runtime", () => {
     await settle();
     expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(
       shortSession,
-      { disposition: "empty", audioDurationMs: 200 },
+      {
+        disposition: "empty",
+        audioDurationMs: 200,
+        stats: { wordCount: 0, transcriptionCount: 1 },
+      },
     );
     expect(short.notifications).toEqual([]);
 
