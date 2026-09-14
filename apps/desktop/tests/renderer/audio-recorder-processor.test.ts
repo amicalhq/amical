@@ -59,11 +59,38 @@ function feed(inst: Processor, samples: Float32Array): boolean {
   return inst.process([[samples]], [], {});
 }
 
+function feedChannels(inst: Processor, channels: Float32Array[]): boolean {
+  return inst.process([channels], [], {});
+}
+
 function flush(inst: Processor): void {
   inst.port.onmessage?.({ data: { type: "flush" } });
 }
 
 describe("audio-recorder-processor worklet", () => {
+  it("records signal from channel 2 when channel 1 is silent", () => {
+    const { inst, posted } = makeProcessor();
+    const silence = new Float32Array(512);
+    const microphone = new Float32Array(512).fill(0.25);
+
+    feedChannels(inst, [silence, microphone]);
+
+    expect(posted).toHaveLength(1);
+    expect(posted[0].frame).toEqual(microphone);
+  });
+
+  it("selects the strongest available input channel without attenuating it", () => {
+    const { inst, posted } = makeProcessor();
+    const lowNoise = new Float32Array(512).fill(0.001);
+    const microphone = new Float32Array(512).fill(-0.4);
+    const quieterSignal = new Float32Array(512).fill(0.1);
+
+    feedChannels(inst, [lowNoise, microphone, quieterSignal]);
+
+    expect(posted).toHaveLength(1);
+    expect(posted[0].frame).toEqual(microphone);
+  });
+
   it("buffers sub-frame input and emits nothing until it has a full 512-sample frame", () => {
     const { inst, posted } = makeProcessor();
     feed(inst, ramp(300));

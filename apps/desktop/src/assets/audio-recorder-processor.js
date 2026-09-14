@@ -29,7 +29,26 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     const input = inputs[0];
     if (!input || !input[0]) return true;
 
-    const channelData = input[0];
+    // Professional interfaces expose each socket as a separate channel. Select
+    // the channel carrying the strongest signal for this render quantum so a mic
+    // connected to input 2+ is not discarded. Copying one channel also avoids
+    // attenuating a single active mic by averaging it with silent inputs.
+    let channelData = input[0];
+    let strongestPower = -1;
+    for (const channel of input) {
+      if (!channel?.length) continue;
+
+      let power = 0;
+      for (let i = 0; i < channel.length; i++) {
+        power += channel[i] * channel[i];
+      }
+      power /= channel.length;
+
+      if (power > strongestPower) {
+        strongestPower = power;
+        channelData = channel;
+      }
+    }
 
     // Add samples to buffer
     for (let i = 0; i < channelData.length; i++) {

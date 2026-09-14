@@ -65,6 +65,10 @@ export const createAudioCaptureGraph = (
   const workletNode = new AudioWorkletNode(
     audioContext,
     "audio-recorder-processor",
+    {
+      channelCountMode: "max",
+      channelInterpretation: "discrete",
+    },
   );
   const nodeCreationDuration = performance.now() - nodeCreationStartTime;
   console.log(
