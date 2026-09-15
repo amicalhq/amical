@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Effect, Exit, Fiber } from "effect";
+import { Cause, Effect, Exit, Fiber, Option } from "effect";
 
 import {
   AuthService,
+  AuthServiceFailure,
   runAuthEffect,
   type AuthState,
 } from "../../src/services/auth-service";
@@ -12,6 +13,7 @@ import {
 } from "../../src/db/app-settings";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
+import { logger } from "../../src/main/logger";
 
 function idToken(subject: string): string {
   const payload = Buffer.from(JSON.stringify({ sub: subject })).toString(
@@ -59,6 +61,72 @@ describe("AuthService refresh fencing", () => {
     delete process.env.AUTHORIZATION_ENDPOINT;
     delete process.env.AUTH_TOKEN_ENDPOINT;
     delete process.env.AUTH_REDIRECT_URI;
+  });
+
+  it("preserves a before-logout failure and its cleanup defect", async () => {
+    const error = new Error("sync cleanup failed");
+    const defect = new Error("finalizer failed");
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.fail(error).pipe(Effect.ensuring(Effect.die(defect))),
+    );
+
+    const exit = await Effect.runPromiseExit(authService.logout());
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      expect(Option.isSome(failure)).toBe(true);
+      if (Option.isSome(failure)) {
+        expect(failure.value).toBeInstanceOf(AuthServiceFailure);
+        expect(failure.value.cause).toBe(error);
+      }
+      expect(
+        exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect),
+      ).toEqual([defect]);
+    }
+    expect((await getSettingsSection("auth"))?.isAuthenticated).toBe(true);
+  });
+
+  it("does not hide logout cleanup defects when a refresh token is rejected", async () => {
+    const error = new Error("sync cleanup failed");
+    const defect = new Error("logout finalizer failed");
+    const secondDefect = new Error("second logout finalizer failed");
+    const logError = vi.spyOn(logger.main, "error");
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.fail(error).pipe(
+        Effect.ensuring(
+          Effect.die(defect).pipe(Effect.ensuring(Effect.die(secondDefect))),
+        ),
+      ),
+    );
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "invalid_grant",
+    });
+
+    const exit = await Effect.runPromiseExit(
+      authService.refreshTokenIfNeeded(true),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(
+        exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect),
+      ).toEqual([defect, secondDefect]);
+      expect(Cause.findErrorOption(exit.cause)).toEqual(Option.none());
+    }
+    expect(
+      logError.mock.calls.filter(
+        ([message, detail]) =>
+          message === "Token refresh failed:" && detail === error,
+      ),
+    ).toHaveLength(1);
+    expect((await getSettingsSection("auth"))?.isAuthenticated).toBe(true);
   });
 
   it("uses one refresh request for concurrent token readers", async () => {
@@ -155,7 +223,7 @@ describe("AuthService refresh fencing", () => {
       Effect.promise(async () => {
         authStateReadStarted?.();
         await blocked;
-      }).pipe(Effect.zipRight(originalGetAuthState())),
+      }).pipe(Effect.andThen(originalGetAuthState())),
     );
     fetchMock.mockResolvedValue({
       ok: true,
@@ -229,7 +297,7 @@ describe("AuthService refresh fencing", () => {
     );
     authService.registerBeforeLogoutHandler(() =>
       Effect.sync(() => order.push("second")).pipe(
-        Effect.zipRight(Effect.fail(new Error("stop logout"))),
+        Effect.andThen(Effect.fail(new Error("stop logout"))),
       ),
     );
     authService.registerBeforeLogoutHandler(() =>
@@ -415,6 +483,39 @@ describe("AuthService refresh fencing", () => {
       refreshedToken,
     );
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("completes all refresh waiters when shutdown happens before the worker starts", async () => {
+    const waiters = [
+      Effect.runFork(authService.refreshTokenIfNeeded(true)),
+      Effect.runFork(authService.refreshTokenIfNeeded(true)),
+    ];
+    try {
+      expect(fetchMock).not.toHaveBeenCalled();
+      await Effect.runPromise(authService.shutdown());
+
+      const exits = await Effect.runPromise(
+        Fiber.awaitAll(waiters).pipe(Effect.timeout(1000)),
+      );
+      expect(exits.every(Exit.hasInterrupts)).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await Effect.runPromise(Fiber.interruptAll(waiters));
+    }
+  });
+
+  it("completes a refresh caller admitted after auth shutdown", async () => {
+    await Effect.runPromise(authService.shutdown());
+    const waiter = Effect.runFork(authService.refreshTokenIfNeeded(true));
+    try {
+      const exit = await Effect.runPromise(
+        Fiber.await(waiter).pipe(Effect.timeout(1000)),
+      );
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await Effect.runPromise(Fiber.interrupt(waiter));
+    }
   });
 
   it("aborts the auth-scoped refresh and completes its waiter on shutdown", async () => {

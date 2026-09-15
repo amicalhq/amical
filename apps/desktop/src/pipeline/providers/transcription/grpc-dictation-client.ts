@@ -434,10 +434,8 @@ export class CloudDictationGrpcStream {
   readonly finalTranscript: Promise<GrpcFinalTranscript>;
 
   constructor(options: GrpcDictationStreamOptions) {
-    this.finalDeferred = Effect.runSync(
-      Deferred.make<GrpcFinalTranscript, Error>(),
-    );
-    this.stateRef = Effect.runSync(Ref.make(createInitialGrpcStreamState()));
+    this.finalDeferred = Deferred.makeUnsafe<GrpcFinalTranscript, Error>();
+    this.stateRef = Ref.makeUnsafe(createInitialGrpcStreamState());
     this.finalTranscript = runEffectPromise(Deferred.await(this.finalDeferred));
     this.finalTranscript.catch(() => undefined);
 
@@ -542,7 +540,7 @@ export class CloudDictationGrpcStream {
   async finalize(): Promise<GrpcFinalTranscript> {
     this.clearIdleTimeout();
     return await runEffectPromise(
-      Effect.gen(this, function* () {
+      Effect.gen({ self: this }, function* () {
         const alreadyFinalized = yield* Ref.modify(this.stateRef, (state) =>
           state.finalizeSent
             ? ([true, state] as const)
@@ -602,7 +600,7 @@ export class CloudDictationGrpcStream {
   }
 
   private writeRequestNowEffect(message: Buffer): Effect.Effect<void, Error> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.ensureWritableEffect();
       yield* Effect.try({
         try: () => {
@@ -616,9 +614,9 @@ export class CloudDictationGrpcStream {
   }
 
   private writeRequestEffect(message: Buffer): Effect.Effect<void, Error> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.ensureWritableEffect();
-      yield* Effect.async<void, Error>((resume) => {
+      yield* Effect.callback<void, Error>((resume) => {
         let completed = false;
 
         const cleanup = () => {
@@ -668,7 +666,7 @@ export class CloudDictationGrpcStream {
   }
 
   private cancelEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const decision = yield* Ref.modify(
         this.stateRef,
         (state): readonly [CancelDecision, GrpcStreamState] => {
@@ -707,7 +705,7 @@ export class CloudDictationGrpcStream {
   }
 
   private writeCancelFrameEffect(): Effect.Effect<void> {
-    return Effect.async<void>((resume) => {
+    return Effect.callback<void>((resume) => {
       let completed = false;
       const finish = () => {
         if (completed) {
@@ -781,7 +779,7 @@ export class CloudDictationGrpcStream {
   private handleDataEffect(
     event: StreamTranscribeEventMessage,
   ): Effect.Effect<void, Error> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const finalTranscript = yield* Effect.try({
         try: () => finalTranscriptFromEvent(event),
         catch: (error) =>
@@ -799,7 +797,7 @@ export class CloudDictationGrpcStream {
   }
 
   private handleResponseEndEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* Ref.update(this.stateRef, (state) => ({
         ...state,
         responseEnded: true,
@@ -812,7 +810,7 @@ export class CloudDictationGrpcStream {
   private handleGrpcStatusEffect(
     streamStatus: StatusObject,
   ): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.updateTraceIdEffect(streamStatus.metadata);
       yield* Ref.update(this.stateRef, (state) => ({
         ...state,
@@ -850,7 +848,7 @@ export class CloudDictationGrpcStream {
   }
 
   private failIfFinishedWithoutTranscriptEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const state = yield* Ref.get(this.stateRef);
       if (
         !state.responseEnded ||
@@ -874,7 +872,7 @@ export class CloudDictationGrpcStream {
   }
 
   private handleErrorEffect(error: Error): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const state = yield* Ref.get(this.stateRef);
       if (!state.cancelled) {
         yield* this.failEffect(error, false);
@@ -894,7 +892,7 @@ export class CloudDictationGrpcStream {
   }
 
   private failIfClosedBeforeStatusEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const state = yield* Ref.get(this.stateRef);
       if (state.cancelled || state.settled || state.terminalError) {
         return;
@@ -936,7 +934,7 @@ export class CloudDictationGrpcStream {
   }
 
   private ensureWritableEffect(): Effect.Effect<void, Error> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const state = yield* Ref.get(this.stateRef);
       if (state.terminalError) {
         return yield* Effect.fail(state.terminalError);
@@ -955,7 +953,7 @@ export class CloudDictationGrpcStream {
   }
 
   private failIfTerminalErrorEffect(): Effect.Effect<void, Error> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const state = yield* Ref.get(this.stateRef);
       if (state.terminalError) {
         return yield* Effect.fail(state.terminalError);
@@ -964,7 +962,7 @@ export class CloudDictationGrpcStream {
   }
 
   private writeClosedErrorEffect(): Effect.Effect<Error> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const state = yield* Ref.get(this.stateRef);
       return (
         state.terminalError ??
@@ -983,7 +981,7 @@ export class CloudDictationGrpcStream {
     }
 
     if (isServiceError(error)) {
-      return Effect.gen(this, function* () {
+      return Effect.gen({ self: this }, function* () {
         yield* this.updateTraceIdEffect(error.metadata);
         const state = yield* Ref.get(this.stateRef);
         const richDetails = decodeGrpcRichErrorDetails(error.metadata);
@@ -1012,7 +1010,7 @@ export class CloudDictationGrpcStream {
   }
 
   private resolveFinalIfOkEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const finalTranscript = yield* Ref.modify(this.stateRef, (state) => {
         if (
           state.settled ||
@@ -1042,7 +1040,7 @@ export class CloudDictationGrpcStream {
   }
 
   private failEffect(error: unknown, cancelStream = true): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const normalized = yield* this.normalizeGrpcErrorEffect(error);
       const didSettle = yield* Ref.modify(this.stateRef, (state) => {
         if (state.settled || state.terminalError) {
@@ -1074,7 +1072,7 @@ export class CloudDictationGrpcStream {
   }
 
   private closeClientEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const shouldClose = yield* Ref.modify(this.stateRef, (state) => {
         if (state.clientClosed) {
           return [false, state] as const;

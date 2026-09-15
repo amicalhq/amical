@@ -47,7 +47,7 @@ describe("HistoryCleanupService", () => {
           ),
           Layer.provide(Layer.succeed(AppScopeTag, scope)),
         ),
-      ).pipe(Scope.extend(scope)),
+      ).pipe(Scope.provide(scope)),
     );
     closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
     return Context.get(ctx, HistoryCleanupServiceTag);

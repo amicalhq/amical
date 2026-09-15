@@ -175,7 +175,7 @@ export function createTranscriptionAdapter(
           try: () => deps.service.resetVadForNewSession(),
           catch: (error) => error,
         }).pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             Effect.sync(() =>
               logger.transcription.warn("VAD reset failed", { error }),
             ),

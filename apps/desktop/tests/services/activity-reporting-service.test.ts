@@ -25,6 +25,8 @@ import {
   stampTranscriptionDisposition,
 } from "../../src/db/transcriptions";
 import type { AuthService, AuthState } from "../../src/services/auth-service";
+import * as activityStore from "../../src/db/activity-outbox";
+import { logger } from "../../src/main/logger";
 import type { ActivityReportingClientError } from "../../src/services/activity-reporting-errors";
 import {
   ActivityReportingService,
@@ -411,6 +413,62 @@ describe("ActivityReportingService", () => {
     expect(submit).toHaveBeenCalledTimes(2);
   });
 
+  it("reports a submission cleanup defect without refreshing or dropping its batch", async () => {
+    const error = new AuthenticationRequired({ message: "expired" });
+    const defect = new Error("submission cleanup failed");
+    const logError = vi.spyOn(logger.main, "error");
+    submit.mockReturnValueOnce(
+      Effect.fail(error).pipe(Effect.ensuring(Effect.die(defect))),
+    );
+    authenticate("user-1");
+    enqueue(activity(ids[0]));
+
+    await vi.waitFor(() =>
+      expect(logError).toHaveBeenCalledWith(
+        "Activity reporting worker failed",
+        {
+          error,
+          defects: [defect],
+        },
+      ),
+    );
+    expect(
+      logError.mock.calls.filter(
+        ([message]) => message === "Activity reporting worker failed",
+      ),
+    ).toHaveLength(1);
+    expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
+    expect(submit).toHaveBeenCalledOnce();
+    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
+  });
+
+  it("waits for account activation when its callback starts shutdown", async () => {
+    let finishActivation!: () => void;
+    let shutdown: Promise<void> | undefined;
+    let stopped = false;
+    vi.spyOn(
+      activityStore,
+      "activateActivityMaterializationAccount",
+    ).mockImplementationOnce(() => {
+      shutdown = Effect.runPromise(service.shutdown()).then(() => {
+        stopped = true;
+      });
+      return new Promise<"resume">((resolve) => {
+        finishActivation = () => resolve("resume");
+      });
+    });
+
+    authenticate("user-1");
+    await vi.waitFor(() => expect(shutdown).toBeDefined());
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+
+    finishActivation();
+    await shutdown;
+    expect(stopped).toBe(true);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("retains a 403 until the authenticated token changes", async () => {
     authenticate("user-1");
     submit.mockReturnValueOnce(
@@ -582,7 +640,7 @@ describe("ActivityReportingService", () => {
         Effect.sync(() => {
           authenticate("user-2");
         }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             Effect.fail(
               new AuthenticationRequired({ message: "stale account" }),
             ),

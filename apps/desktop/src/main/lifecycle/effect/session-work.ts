@@ -1,9 +1,8 @@
-import { Cause, Effect, Exit, Fiber, FiberId } from "effect";
+import { Cause, Effect, Exit, Fiber } from "effect";
 import {
   runFork as runTelemetryFork,
   runPromise as runTelemetryPromise,
 } from "../../runtime/telemetry-runtime";
-import type { RuntimeFiber } from "effect/Fiber";
 import { logger } from "../../logger";
 import type { ShellTimerHost } from "../shell";
 import type { SessionId } from "../types";
@@ -32,8 +31,8 @@ interface SessionRegions {
   /** Fiber → label. "housekeeping" fibers (the wedge watchdog) are expected
    * to be interrupted at retirement and stay out of the interrupted-work
    * signal. */
-  deliveries: Map<RuntimeFiber<unknown, unknown>, string>;
-  obligations: Set<RuntimeFiber<unknown, unknown>>;
+  deliveries: Map<Fiber.Fiber<unknown, unknown>, string>;
+  obligations: Set<Fiber.Fiber<unknown, unknown>>;
 }
 
 export interface SessionWorkDeps {
@@ -116,10 +115,10 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
   function trackDelivery(
     session: SessionId,
     r: SessionRegions,
-    fiber: RuntimeFiber<unknown, unknown>,
+    fiber: Fiber.Fiber<unknown, unknown>,
     label: string,
   ): void {
-    // The fiber starts before runFork/forkDaemon returns. Its synchronous
+    // The fiber starts before runFork/forkDetach returns. Its synchronous
     // prefix may retire and reap this region before registration completes.
     // Restore that retired tombstone so the fiber remains observable until
     // the interrupt below settles; never overwrite a different live region.
@@ -131,25 +130,25 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
     r.deliveries.set(fiber, label);
     fiber.addObserver((exit) => {
       r.deliveries.delete(fiber);
-      if (Exit.isFailure(exit) && !Cause.isInterruptedOnly(exit.cause)) {
+      if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
         onFiberFailure(session, exit.cause);
       }
       reap(session);
     });
     if (r.retired || regions.get(session) !== r) {
-      fiber.unsafeInterruptAsFork(FiberId.none);
+      fiber.interruptUnsafe();
     }
   }
 
   function trackObligation(
     session: SessionId,
     r: SessionRegions,
-    fiber: RuntimeFiber<unknown, unknown>,
+    fiber: Fiber.Fiber<unknown, unknown>,
   ): void {
     r.obligations.add(fiber);
     fiber.addObserver((exit) => {
       r.obligations.delete(fiber);
-      if (Exit.isFailure(exit) && !Cause.isInterruptedOnly(exit.cause)) {
+      if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
         onFiberFailure(session, exit.cause);
       }
       reap(session);
@@ -164,7 +163,7 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
     for (const [fiber, fiberLabel] of r.deliveries) {
       // Forked interrupt: never suspends the caller (a delivery fiber may
       // itself be the one asking — the wedge path must not deadlock).
-      fiber.unsafeInterruptAsFork(FiberId.none);
+      fiber.interruptUnsafe();
       if (fiberLabel !== "housekeeping") interrupted += 1;
     }
     if (interrupted > 0) {
@@ -179,7 +178,7 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
   }
 
   const sleep = (ms: number): Effect.Effect<void> =>
-    Effect.async<void>((resume) => {
+    Effect.callback<void>((resume) => {
       const handle = deps.timers.set(ms, () => resume(Effect.void));
       return Effect.sync(() => deps.timers.clear(handle));
     });
@@ -230,7 +229,7 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
       return Effect.suspend(() => {
         const r = regions.get(session);
         if (!r || r.retired) return Effect.void;
-        return Effect.forkDaemon(work).pipe(
+        return Effect.forkDetach(work, { startImmediately: true }).pipe(
           Effect.flatMap((fiber) => {
             trackDelivery(session, r, fiber, "delivery");
             return Fiber.join(fiber).pipe(
@@ -238,7 +237,7 @@ export function createSessionWork(deps: SessionWorkDeps): SessionWork {
               // proceeds to its ensuring fact: the child's own observer
               // already reported any failure to the sink (a re-propagated
               // cause would log the same defect twice).
-              Effect.catchAllCause(() => Effect.void),
+              Effect.catchCause(() => Effect.void),
             );
           }),
         );

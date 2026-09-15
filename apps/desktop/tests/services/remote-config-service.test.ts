@@ -14,9 +14,13 @@ import {
   DESKTOP_BACKGROUND_UPDATES_FLAG,
   RemoteConfigService,
 } from "../../src/services/remote-config-service";
-import type { AuthService } from "../../src/services/auth-service";
+import {
+  AuthServiceFailure,
+  type AuthService,
+} from "../../src/services/auth-service";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
+import { logger } from "../../src/main/logger";
 
 describe("RemoteConfigService", () => {
   type PersistedRemoteConfig = Awaited<
@@ -60,7 +64,7 @@ describe("RemoteConfigService", () => {
           Layer.provide(Layer.succeed(TelemetryServiceTag, telemetryService)),
           Layer.provide(Layer.succeed(AppScopeTag, scope)),
         ),
-      ).pipe(Scope.extend(scope)),
+      ).pipe(Scope.provide(scope)),
     );
     closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
 
@@ -178,6 +182,45 @@ describe("RemoteConfigService", () => {
     expect(service.getUpdateRequirement()).toBeNull();
     await service.refresh();
     expect(fetch).toHaveBeenCalled();
+  });
+
+  it("logs an auth failure and its finalizer defects without replacing cached config", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => cachedConfig()!.config,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { service, authService } = await createService(cachedConfig());
+    await service.refresh();
+    const config = service.getConfig();
+    const failure = new AuthServiceFailure({
+      message: "token unavailable",
+      cause: "offline",
+    });
+    const first = new Error("auth cleanup failed");
+    const second = new Error("auth finalizer failed");
+    vi.spyOn(authService, "getIdToken").mockReturnValue(
+      Effect.fail(failure).pipe(
+        Effect.ensuring(Effect.die(first)),
+        Effect.ensuring(Effect.die(second)),
+      ),
+    );
+    const logError = vi
+      .spyOn(logger.main, "error")
+      .mockImplementation(() => {});
+    fetchMock.mockClear();
+    try {
+      await service.refresh();
+      expect(service.getConfig()).toBe(config);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(logError.mock.calls).toEqual([
+        ["Failed to refresh remote config:", failure],
+        ["Failed to refresh remote config:", first],
+        ["Failed to refresh remote config:", second],
+      ]);
+    } finally {
+      logError.mockRestore();
+    }
   });
 
   it("deduplicates refreshes and discards a response from before an identity change", async () => {
@@ -382,6 +425,32 @@ describe("RemoteConfigService", () => {
     const ok = (payload: unknown) => ({
       ok: true,
       json: async () => payload,
+    });
+
+    it("contains a telemetry exception while reporting an invalid envelope", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(ok(cachedConfig()!.config));
+      vi.stubGlobal("fetch", fetchMock);
+      const { service, captureContractFailure } =
+        await createService(cachedConfig());
+      await service.refresh();
+      const config = service.getConfig();
+      const telemetryError = new Error("telemetry transport crashed");
+      captureContractFailure.mockImplementation(() => {
+        throw telemetryError;
+      });
+      fetchMock.mockResolvedValue(ok({ version: "invalid" }));
+      const logError = vi.spyOn(logger.main, "error");
+      try {
+        await expect(service.refresh()).resolves.toBeUndefined();
+        expect(service.getConfig()).toBe(config);
+        expect(logError).toHaveBeenCalledWith(
+          "Failed to refresh remote config:",
+          telemetryError,
+        );
+        expect(captureContractFailure).toHaveBeenCalledOnce();
+      } finally {
+        logError.mockRestore();
+      }
     });
 
     it("keeps the last good config and reports an invalid envelope once per episode", async () => {

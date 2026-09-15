@@ -65,7 +65,7 @@ describe("identity subscriptions", () => {
             Layer.provide(Layer.succeed(AuthServiceTag, authService)),
             Layer.provide(Layer.succeed(AppScopeTag, scope)),
           ),
-        ).pipe(Scope.extend(scope)),
+        ).pipe(Scope.provide(scope)),
       );
       closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
 
@@ -219,7 +219,7 @@ describe("identity subscriptions", () => {
             Layer.provide(Layer.succeed(TelemetryServiceTag, telemetryService)),
             Layer.provide(Layer.succeed(AppScopeTag, scope)),
           ),
-        ).pipe(Scope.extend(scope)),
+        ).pipe(Scope.provide(scope)),
       );
       closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
 

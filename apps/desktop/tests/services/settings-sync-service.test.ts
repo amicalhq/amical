@@ -1,10 +1,11 @@
 import { EventEmitter } from "node:events";
 import { BrowserWindow } from "electron";
-import { Effect, Fiber } from "effect";
+import { Context, Effect, Fiber, Scheduler } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthState, AuthService } from "../../src/services/auth-service";
 import { SettingsSyncService } from "../../src/services/settings-sync-service";
+import { logger } from "../../src/main/logger";
 import {
   type SyncBootstrap,
   type SyncPullPage,
@@ -181,6 +182,22 @@ class InMemorySyncClient {
 
   private version = 0;
   private readonly items = new Map<string, CanonicalSyncItem>();
+}
+
+// Let deferred work arm its timers through microtasks before advancing time.
+function useFakeEffectTimers() {
+  vi.useFakeTimers({
+    toFake: [
+      "Date",
+      "setTimeout",
+      "clearTimeout",
+      "setInterval",
+      "clearInterval",
+    ],
+  });
+  return Effect.runPromiseWith(
+    Context.make(Scheduler.Scheduler, new Scheduler.MixedScheduler("sync")),
+  );
 }
 
 describe("SettingsSyncService", () => {
@@ -380,7 +397,7 @@ describe("SettingsSyncService", () => {
     const client = new InMemorySyncClient();
     let releaseBootstrap!: (value: SyncBootstrap) => void;
     client.bootstrap.mockImplementationOnce(() =>
-      Effect.async<SyncBootstrap>((resume) => {
+      Effect.callback<SyncBootstrap>((resume) => {
         releaseBootstrap = (value) => resume(Effect.succeed(value));
       }),
     );
@@ -454,7 +471,7 @@ describe("SettingsSyncService", () => {
     let releaseInitialAuth!: (state: AuthState | null) => void;
     auth.getAuthState
       .mockImplementationOnce(() =>
-        Effect.async<AuthState | null>((resume) => {
+        Effect.callback<AuthState | null>((resume) => {
           releaseInitialAuth = (state) => resume(Effect.succeed(state));
         }),
       )
@@ -538,7 +555,7 @@ describe("SettingsSyncService", () => {
     let releaseShutdown!: () => void;
     vi.spyOn(internal.supervisor, "handleShutdownEvent").mockImplementationOnce(
       (...args) =>
-        Effect.async<void>((resume) => {
+        Effect.callback<void>((resume) => {
           shutdownStarted = true;
           releaseShutdown = () => resume(originalHandleShutdown(...args));
         }),
@@ -583,7 +600,7 @@ describe("SettingsSyncService", () => {
     auth.getAuthState
       .mockReturnValueOnce(Effect.succeed(AUTH_STATE))
       .mockImplementationOnce(() =>
-        Effect.async<AuthState | null>((resume) => {
+        Effect.callback<AuthState | null>((resume) => {
           releaseRestartAuth = (state) => resume(Effect.succeed(state));
         }),
       );
@@ -984,7 +1001,7 @@ describe("SettingsSyncService", () => {
     const client = {
       bootstrap: vi.fn(() => {
         if (client.bootstrap.mock.calls.length === 1) {
-          return Effect.async<SyncBootstrap, AuthenticationRequired>(
+          return Effect.callback<SyncBootstrap, AuthenticationRequired>(
             (resume) => {
               firstBootstrap.reject = (error) => resume(Effect.fail(error));
               return Effect.sync(() => {
@@ -1045,12 +1062,16 @@ describe("SettingsSyncService", () => {
   });
 
   it.each([
-    { status: 401, retained: true },
-    { status: 403, retained: false },
+    { status: 401, retained: true, cleanupDefect: false },
+    { status: 403, retained: false, cleanupDefect: false },
+    { status: 401, retained: true, cleanupDefect: true },
+    { status: 403, retained: true, cleanupDefect: true },
   ])(
-    "handles organization pull HTTP $status without conflating authentication and access loss",
-    async ({ status, retained }) => {
+    "handles organization pull HTTP $status (cleanup defect: $cleanupDefect)",
+    async ({ status, retained, cleanupDefect }) => {
       let rejectOrganizationPull = false;
+      const defect = new Error("pull cleanup failed");
+      const logError = vi.spyOn(logger.main, "error");
       const syncId = "11111111-1111-4111-8111-111111111111";
       const client = {
         bootstrap: vi.fn(
@@ -1086,6 +1107,10 @@ describe("SettingsSyncService", () => {
                         message: "Scope rejected",
                         meta: { httpStatus: 403 },
                       }),
+                ).pipe(
+                  Effect.ensuring(
+                    cleanupDefect ? Effect.die(defect) : Effect.void,
+                  ),
                 )
               : Effect.succeed({
                   collections: cursors.map(({ collection, cursor }) => ({
@@ -1132,7 +1157,9 @@ describe("SettingsSyncService", () => {
       rejectOrganizationPull = true;
       service.wake();
       await vi.waitFor(() =>
-        expect(client.pull).toHaveBeenCalledTimes(status === 401 ? 6 : 4),
+        expect(client.pull).toHaveBeenCalledTimes(
+          status === 401 && !cleanupDefect ? 6 : 4,
+        ),
       );
       await vi.waitFor(() => {
         expect(
@@ -1144,7 +1171,13 @@ describe("SettingsSyncService", () => {
         ).toBe(retained);
       });
 
-      if (status === 401) {
+      if (cleanupDefect) {
+        expect(logError).toHaveBeenCalledWith(
+          "Settings sync attempt failed unexpectedly",
+          expect.objectContaining({ defects: [defect] }),
+        );
+      }
+      if (status === 401 && !cleanupDefect) {
         expect(auth.refreshTokenIfNeeded).toHaveBeenCalledWith(true);
       } else {
         expect(auth.refreshTokenIfNeeded).not.toHaveBeenCalled();
@@ -1607,7 +1640,7 @@ describe("SettingsSyncService", () => {
           }>,
         ) => {
           if (scopeType === "org" && scopeId === "org-1") {
-            return Effect.async<SyncPullPage>((resume) => {
+            return Effect.callback<SyncPullPage>((resume) => {
               oldPull.resolve = (page) => resume(Effect.succeed(page));
               return Effect.sync(() => {
                 oldPull.interrupted = true;
@@ -1691,7 +1724,7 @@ describe("SettingsSyncService", () => {
         }),
       ),
       pull: vi.fn(() =>
-        Effect.async<SyncPullPage>((resume) => {
+        Effect.callback<SyncPullPage>((resume) => {
           pullState.resolve = (page) => resume(Effect.succeed(page));
           return Effect.sync(() => {
             pullState.interrupted = true;
@@ -1834,7 +1867,7 @@ describe("SettingsSyncService", () => {
     } = {};
     const client = {
       bootstrap: vi.fn(() =>
-        Effect.async<SyncBootstrap>((resume) => {
+        Effect.callback<SyncBootstrap>((resume) => {
           bootstrapState.resolve = (value) => resume(Effect.succeed(value));
           return Effect.sync(() => {
             bootstrapState.interrupted = true;
@@ -2087,14 +2120,14 @@ describe("SettingsSyncService", () => {
   });
 
   it("keeps the original poll phase across token refresh", async () => {
-    vi.useFakeTimers();
+    const run = useFakeEffectTimers();
     const startedAt = Date.now();
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
       client,
     );
-    await Effect.runPromise(service.initialize());
+    await run(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     const elapsed = Date.now() - startedAt;
@@ -2110,13 +2143,13 @@ describe("SettingsSyncService", () => {
   });
 
   it("syncs pending notes immediately on restart and debounces new edits without delaying vocabulary", async () => {
-    vi.useFakeTimers();
+    const run = useFakeEffectTimers();
     const client = new InMemorySyncClient(["vocabulary", "snippet", "note"]);
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
       client,
     );
-    await Effect.runPromise(service.initialize());
+    await run(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     const note = await createNote({ title: "Draft" });
@@ -2136,13 +2169,13 @@ describe("SettingsSyncService", () => {
     });
 
     saveNoteBody(note.id, "C");
-    await Effect.runPromise(service.shutdown());
+    await run(service.shutdown());
     // A slow startup pull must not strand the note past its old deadline.
     const originalPull = client.pull.getMockImplementation()!;
     client.pull.mockImplementationOnce((...args) =>
-      Effect.sleep(11_000).pipe(Effect.zipRight(originalPull(...args))),
+      Effect.sleep(11_000).pipe(Effect.andThen(originalPull(...args))),
     );
-    await Effect.runPromise(service.initialize());
+    await run(service.initialize());
     await vi.advanceTimersByTimeAsync(0);
     expect(client.push).toHaveBeenCalledTimes(2);
     expect(client.push.mock.calls[1][0]).toMatchObject([
@@ -2169,13 +2202,13 @@ describe("SettingsSyncService", () => {
   });
 
   it("resets the edit debounce and cancels it on shutdown", async () => {
-    vi.useFakeTimers();
+    const run = useFakeEffectTimers();
     const client = new InMemorySyncClient();
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
       client,
     );
-    await Effect.runPromise(service.initialize());
+    await run(service.initialize());
     await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
 
     const row = await createVocabularyWord({ word: "First" });
@@ -2191,7 +2224,7 @@ describe("SettingsSyncService", () => {
 
     await updateVocabulary(row.id, { word: "Pending at shutdown" });
     await vi.advanceTimersByTimeAsync(0);
-    await Effect.runPromise(service.shutdown());
+    await run(service.shutdown());
     await vi.advanceTimersByTimeAsync(750);
 
     expect(client.bootstrap).toHaveBeenCalledTimes(2);
@@ -2215,7 +2248,7 @@ describe("SettingsSyncService", () => {
         }),
       ),
       pull: vi.fn(() =>
-        Effect.async<SyncPullPage>(() =>
+        Effect.callback<SyncPullPage>(() =>
           Effect.sync(() => {
             pullInterrupted = true;
           }),
@@ -2269,7 +2302,7 @@ describe("SettingsSyncService", () => {
             concurrentPulls += 1;
             maxConcurrentPulls = Math.max(maxConcurrentPulls, concurrentPulls);
             if (client.pull.mock.calls.length === 1) {
-              yield* Effect.async<void>((resume) => {
+              yield* Effect.callback<void>((resume) => {
                 pullState.release = () => resume(Effect.void);
               });
             }

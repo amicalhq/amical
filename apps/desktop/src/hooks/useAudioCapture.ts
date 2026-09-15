@@ -95,7 +95,7 @@ export const useAudioCapture = ({
   // Analyser tap, reused byte buffer, and the rolling level history — kept in
   // refs so the frame handler doesn't depend on state.
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const freqDataRef = useRef<Uint8Array | null>(null);
+  const freqDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const levelHistoryRef = useRef<number[]>(
     new Array(LEVEL_HISTORY_LEN).fill(0),
   );

@@ -12,7 +12,7 @@ import {
   VocabularySyncPayloadSchema,
   type SettingsSyncCanonicalItem,
 } from "@amical/types";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 import type { AuthService } from "./auth-service";
 import {
@@ -112,7 +112,7 @@ export class SettingsSyncClient {
   bootstrap(
     accountId: string,
   ): Effect.Effect<SyncBootstrap, SettingsSyncClientError> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const raw = yield* this.requestJson(
         "bootstrap",
         "/apps/v1/sync/bootstrap",
@@ -187,7 +187,7 @@ export class SettingsSyncClient {
     limit: number,
     noteLimit = NOTE_SYNC_LIMITS.maxPullLimit as number,
   ): Effect.Effect<SyncPullPage, SettingsSyncClientError> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const url = yield* Effect.try({
         try: () => {
           const request = SettingsSyncPullRequestSchema.parse({
@@ -309,7 +309,7 @@ export class SettingsSyncClient {
   push(
     mutations: SyncPushMutation[],
   ): Effect.Effect<PushSyncResult[], SettingsSyncClientError> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const request = yield* Effect.try({
         try: () => SettingsSyncPushRequestSchema.parse({ mutations }),
         catch: (error) => this.contractFailure("push", "request", error),
@@ -437,15 +437,21 @@ export class SettingsSyncClient {
     path: string | URL,
     init: RequestInit,
   ): Effect.Effect<unknown, SettingsSyncClientError> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const token = yield* this.authService.getIdToken().pipe(
-        Effect.mapError(
-          (error) =>
-            new SettingsSyncDependencyFailure({
-              message: "Unable to read the settings sync authentication token",
-              dependency: "authentication",
-              cause: error,
-            }),
+        Effect.catchCause((cause) =>
+          Effect.failCause(
+            Cause.map(
+              cause,
+              (error) =>
+                new SettingsSyncDependencyFailure({
+                  message:
+                    "Unable to read the settings sync authentication token",
+                  dependency: "authentication",
+                  cause: error,
+                }),
+            ),
+          ),
         ),
       );
       if (!token) {
@@ -458,7 +464,7 @@ export class SettingsSyncClient {
       }
 
       const requestController = new AbortController();
-      return yield* Effect.gen(this, function* () {
+      return yield* Effect.gen({ self: this }, function* () {
         const url = yield* Effect.try({
           try: () => (typeof path === "string" ? getCoreApiUrl(path) : path),
           catch: (error) => this.contractFailure(operation, "request", error),

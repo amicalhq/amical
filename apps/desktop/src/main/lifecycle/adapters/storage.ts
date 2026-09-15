@@ -80,7 +80,7 @@ export function createStorageAdapter(
     const read = Effect.tryPromise({
       try: () => wait,
       catch: () => null,
-    }).pipe(Effect.catchAll(() => Effect.succeed<CustodyOutcome | null>(null)));
+    }).pipe(Effect.catch(() => Effect.succeed<CustodyOutcome | null>(null)));
     const bound = sessionWork.sleep(custodySettleBoundMs).pipe(
       Effect.tap(() =>
         Effect.sync(() =>
@@ -190,7 +190,7 @@ export function createStorageAdapter(
         try: () => commitSealed(session, sealed),
         catch: (error) => error,
       }).pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           Effect.sync(() => {
             logger.transcription.error("Lifecycle commit failed", {
               sessionId: session,

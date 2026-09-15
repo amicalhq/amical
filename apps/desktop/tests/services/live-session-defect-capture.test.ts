@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Deferred, Effect } from "effect";
+import { Cause, Deferred, Effect, Exit } from "effect";
 import { LiveTranscriptionSession } from "../../src/services/transcription/live-transcription-session";
 import { Cancelled } from "../../src/types/errors";
 
@@ -49,6 +49,27 @@ describe("LiveTranscriptionSession — defect capture", () => {
     expect(onDefect).toHaveBeenCalledExactlyOnceWith([finalizerBug]);
   });
 
+  it("retirement keeps a null failure and reports every co-defect once", async () => {
+    const onDefect = vi.fn();
+    const listener = vi.fn(() => session.retire());
+    const session = new LiveTranscriptionSession("s1", listener, onDefect);
+    const firstBug = new TypeError("first finalizer");
+    const secondBug = new RangeError("second finalizer");
+    const returned = session.processChunkEffect(
+      Effect.fail(null).pipe(
+        Effect.ensuring(Effect.die(firstBug)),
+        Effect.ensuring(Effect.die(secondBug)),
+        Effect.withSpan("chunk.work"),
+      ),
+    );
+
+    await expect(returned).rejects.toBeNull();
+    expect(listener).toHaveBeenCalledExactlyOnceWith(new Error("null"));
+    expect(onDefect).toHaveBeenCalledExactlyOnceWith([firstBug, secondBug]);
+    expect(session.openWorkCount()).toBe(0);
+    expect(session.canCompleteAdmittedWork()).toBe(false);
+  });
+
   it("abort with a dying finalizer: the defect is reported, the chunk settles empty, nothing latches", async () => {
     const onDefect = vi.fn();
     const listener = vi.fn();
@@ -81,33 +102,32 @@ describe("LiveTranscriptionSession — defect capture", () => {
     expect(session.wasDefectReported(observed)).toBe(false);
   });
 
-  it("dedups a defect marked raw and later seen span-proxied", async () => {
+  it("dedups a defect marked before it crosses a span", async () => {
     const onDefect = vi.fn();
     const session = new LiveTranscriptionSession("s1", undefined, onDefect);
     const observed = new TypeError("observed bug");
-    // The acceptance callback marks the RAW value when it captures.
+    // The acceptance callback marks the value when it captures.
     session.markDefectsReported([observed]);
-    // At resolve, the terminal gate re-dies with it under a span, so the
-    // triage sees the annotation PROXY — still the same defect.
-    const { Cause: EffectCause, Exit: EffectExit } = await import("effect");
+    // At resolve, the terminal gate re-dies under a span. Effect 4 keeps
+    // the original defect identity for the boundary's capture bookkeeping.
     const exit = await Effect.runPromiseExit(
       Effect.die(observed).pipe(Effect.withSpan("transcription.resolve")),
     );
-    const proxied = EffectExit.isFailure(exit)
-      ? Array.from(EffectCause.defects(exit.cause))[0]
+    const spanned = Exit.isFailure(exit)
+      ? exit.cause.reasons.find(Cause.isDieReason)?.defect
       : null;
-    expect(proxied).not.toBe(observed);
-    expect(session.wasDefectReported(proxied)).toBe(true);
+    expect(spanned).toBe(observed);
+    expect(session.wasDefectReported(spanned)).toBe(true);
   });
 
-  it("a span-proxied chunk defect reports exactly once across both report paths", async () => {
+  it("a spanned chunk defect reports exactly once across both report paths", async () => {
     const onDefect = vi.fn();
     const session = new LiveTranscriptionSession("s1", undefined, onDefect);
     const bug = new TypeError("spanned chunk bug");
     const returned = session.processChunkEffect(
       Effect.die(bug).pipe(Effect.withSpan("chunk.work")),
     );
-    await expect(returned).rejects.toMatchObject({ message: bug.message });
-    expect(onDefect).toHaveBeenCalledTimes(1);
+    await expect(returned).rejects.toBe(bug);
+    expect(onDefect).toHaveBeenCalledExactlyOnceWith([bug]);
   });
 });

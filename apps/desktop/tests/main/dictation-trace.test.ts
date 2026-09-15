@@ -106,7 +106,7 @@ describe("dictation trace", () => {
       "s4",
       Effect.fail(Object.assign(new Error("late"), { code: "UNKNOWN" })).pipe(
         Effect.ignore,
-        Effect.zipRight(Effect.fail("resolve failed")),
+        Effect.andThen(Effect.fail("resolve failed")),
       ),
     ).catch(() => undefined);
     closeSessionTrace("s4", { disposition: "failure" });

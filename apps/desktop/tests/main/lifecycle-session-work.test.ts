@@ -114,7 +114,7 @@ describe("SessionWork — regions", () => {
     work.forkDelivery(
       "s1",
       Effect.sync(() => work.quarantine("s1")).pipe(
-        Effect.zipRight(work.sleep(5_000)),
+        Effect.andThen(work.sleep(5_000)),
         Effect.tap(() => Effect.sync(after)),
       ),
     );
@@ -124,6 +124,32 @@ describe("SessionWork — regions", () => {
     expect(timers.armedDurations()).toEqual([]);
     await work.settled();
     expect(after).not.toHaveBeenCalled();
+    expect(work.openCount()).toBe(0);
+  });
+
+  it("deliverySpan starts in the admitting turn and can retire its own region", async () => {
+    const { timers, work } = makeWork();
+    const events: string[] = [];
+    work.open("s1");
+    work.runObligation(
+      "s1",
+      ensuringFact(
+        work.deliverySpan(
+          "s1",
+          Effect.sync(() => {
+            events.push("delivery");
+            work.retire("s1");
+          }).pipe(Effect.andThen(work.sleep(5_000))),
+        ),
+        () => events.push("staged"),
+      ),
+    );
+
+    expect(events[0]).toBe("delivery");
+    expect(work.forkDelivery("s1", Effect.void)).toBe(false);
+    await work.settled();
+    expect(events).toEqual(["delivery", "staged"]);
+    expect(timers.armedDurations()).toEqual([]);
     expect(work.openCount()).toBe(0);
   });
 });
@@ -154,6 +180,30 @@ describe("SessionWork — facts and sinks", () => {
     work.retire("s1");
     await work.settled();
     expect(failures).toEqual([]);
+  });
+
+  it("deliverySpan reports a typed failure and finalizer defect once, then completes its obligation", async () => {
+    const { failures, work } = makeWork();
+    const staged = vi.fn();
+    work.open("s1");
+    work.runObligation(
+      "s1",
+      ensuringFact(
+        work.deliverySpan(
+          "s1",
+          Effect.fail(new Error("paste failed")).pipe(
+            Effect.ensuring(Effect.die(new Error("paste cleanup failed"))),
+          ),
+        ),
+        staged,
+      ),
+    );
+    await work.settled();
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0].cause).toContain("paste failed");
+    expect(failures[0].cause).toContain("paste cleanup failed");
+    expect(staged).toHaveBeenCalledOnce();
   });
 });
 

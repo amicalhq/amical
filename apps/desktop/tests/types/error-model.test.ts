@@ -177,12 +177,14 @@ describe("lift helpers", () => {
   it("failOrDie fails variants and dies on foreign values", async () => {
     const typed = await Effect.runPromiseExit(failOrDie(new Cancelled(msg)));
     expect(
-      Exit.isFailure(typed) && Cause.failureOption(typed.cause)._tag === "Some",
+      Exit.isFailure(typed) &&
+        Cause.findErrorOption(typed.cause)._tag === "Some",
     ).toBe(true);
     const foreign = await Effect.runPromiseExit(failOrDie(new TypeError("b")));
     expect(
       Exit.isFailure(foreign) &&
-        Array.from(Cause.defects(foreign.cause))[0] instanceof TypeError,
+        foreign.cause.reasons.filter(Cause.isDieReason)[0]?.defect instanceof
+          TypeError,
     ).toBe(true);
   });
 });
@@ -196,7 +198,7 @@ describe("settleExit", () => {
     const failure = new Cancelled(msg);
     const coDefect = new RangeError("finalizer bug");
     const exit = Exit.failCause(
-      Cause.sequential(Cause.fail(failure), Cause.die(coDefect)),
+      Cause.combine(Cause.fail(failure), Cause.die(coDefect)),
     );
     const onDropped = vi.fn();
     expect(() => settleExit(exit, onDropped)).toThrow(failure);
@@ -207,11 +209,32 @@ describe("settleExit", () => {
     const first = new CloudQuotaExceeded(msg);
     const second = new RangeError("finalizer bug");
     const exit = Exit.failCause(
-      Cause.sequential(Cause.die(first), Cause.die(second)),
+      Cause.combine(Cause.die(first), Cause.die(second)),
     );
     const onDropped = vi.fn();
     expect(() => settleExit(exit, onDropped)).toThrow(first);
     expect(onDropped).toHaveBeenCalledExactlyOnceWith([second]);
+  });
+
+  it("preserves a null failure and reports every co-defect from a real exit", async () => {
+    const first = new Error("first finalizer");
+    const second = new Error("second finalizer");
+    const exit = await Effect.runPromiseExit(
+      Effect.fail(null).pipe(
+        Effect.ensuring(Effect.die(first)),
+        Effect.ensuring(Effect.die(second)),
+        Effect.withSpan("settle.mixed"),
+      ),
+    );
+    const onDropped = vi.fn();
+    let thrown: unknown = "not thrown";
+    try {
+      settleExit(exit, onDropped);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeNull();
+    expect(onDropped).toHaveBeenCalledExactlyOnceWith([first, second]);
   });
 
   it("does not call onDropped when nothing is dropped", () => {

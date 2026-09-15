@@ -135,7 +135,7 @@ describe("LiveTranscriptionSession — characterization", () => {
     const session = new LiveTranscriptionSession("s1");
     const result = session.processChunkEffect(
       Effect.sync(() => session.retire()).pipe(
-        Effect.zipRight(Effect.never),
+        Effect.andThen(Effect.never),
         Effect.as("unreachable"),
       ),
     );

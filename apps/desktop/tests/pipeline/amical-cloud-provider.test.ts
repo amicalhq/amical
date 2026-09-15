@@ -187,6 +187,7 @@ import {
   AuthenticationRequired,
   CloudQuotaExceeded as CloudQuotaExceededVariant,
   IdleTimeout,
+  NetworkFailure,
 } from "../../src/types/errors";
 import { Effect as EffectLib } from "effect";
 import type {
@@ -1953,7 +1954,7 @@ describe("AmicalCloudProvider", () => {
       });
       let resolveToken!: (token: string) => void;
       authMock.instance.getIdToken.mockImplementationOnce(() =>
-        EffectLib.async<string>((resume) => {
+        EffectLib.callback<string>((resume) => {
           resolveToken = (token) => resume(EffectLib.succeed(token));
         }),
       );
@@ -1983,7 +1984,7 @@ describe("AmicalCloudProvider", () => {
       });
       let releaseAuthentication!: () => void;
       authMock.instance.isAuthenticated.mockImplementationOnce(() =>
-        EffectLib.async<boolean>((resume) => {
+        EffectLib.callback<boolean>((resume) => {
           releaseAuthentication = () => resume(EffectLib.succeed(true));
         }),
       );
@@ -2056,7 +2057,7 @@ describe("AmicalCloudProvider", () => {
       });
       let resolveToken!: (token: string) => void;
       authMock.instance.getIdToken.mockImplementationOnce(() =>
-        EffectLib.async<string>((resume) => {
+        EffectLib.callback<string>((resume) => {
           resolveToken = (token) => resume(EffectLib.succeed(token));
         }),
       );
@@ -2590,6 +2591,84 @@ describe("error characterization pins", () => {
   });
 
   describe("provider exit settle (mixed cause integration)", () => {
+    it("keeps a token-refresh finalizer defect when an HTTP 401 triggers refresh", async () => {
+      // eslint-disable-next-line turbo/no-undeclared-env-vars
+      process.env.CLOUD_DICTATION_TRANSPORT = "http";
+      const captureException = vi.fn();
+      const session = openCloudSession(
+        new AmicalCloudProvider(
+          authMock.instance as unknown as AuthService,
+          { captureException } as unknown as TelemetryService,
+        ),
+      );
+      const typed = new NetworkFailure({ message: "refresh failed" });
+      const finalizerBug = new RangeError("refresh cleanup failed");
+      authMock.instance.refreshTokenIfNeeded.mockReturnValueOnce(
+        EffectLib.fail(typed).pipe(
+          EffectLib.ensuring(EffectLib.die(finalizerBug)),
+        ),
+      );
+      mockFetchOnce({ status: 401, json: { error: {} } });
+      await session.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+
+      await expect(session.flush(baseContext())).rejects.toBe(typed);
+
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(finalizerBug, {
+        source: "dictation",
+        session_id: "session-1",
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    it("does not hide a gRPC finalizer defect behind successful HTTP fallback", async () => {
+      // eslint-disable-next-line turbo/no-undeclared-env-vars
+      process.env.CLOUD_DICTATION_TRANSPORT = "grpc";
+      const captureException = vi.fn();
+      const trackCloudGrpcFallback = vi.fn();
+      const session = openCloudSession(
+        new AmicalCloudProvider(
+          authMock.instance as unknown as AuthService,
+          {
+            captureException,
+            trackCloudGrpcFallback,
+          } as unknown as TelemetryService,
+        ),
+      );
+      const typed = new NetworkFailure({ message: "connection failed" });
+      const finalizerBug = new RangeError("gRPC cleanup failed");
+      const transport = (
+        session as unknown as {
+          grpcTransport: {
+            transcribeGrpcEffect(): EffectLib.Effect<never, NetworkFailure>;
+          };
+        }
+      ).grpcTransport;
+      vi.spyOn(transport, "transcribeGrpcEffect").mockReturnValue(
+        EffectLib.fail(typed).pipe(
+          EffectLib.ensuring(EffectLib.die(finalizerBug)),
+        ),
+      );
+
+      await expect(
+        session.transcribe({
+          audioData: audioFrame(),
+          speechProbability: 1,
+          context: baseContext(),
+        }),
+      ).rejects.toBe(typed);
+
+      expect(captureException).toHaveBeenCalledExactlyOnceWith(finalizerBug, {
+        source: "dictation",
+        session_id: "session-1",
+      });
+      expect(trackCloudGrpcFallback).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("settles a mixed CloudError + dying finalizer with the typed value and captures the co-defect once", async () => {
       const captureException = vi.fn();
       const trackCloudGrpcFallback = vi.fn();

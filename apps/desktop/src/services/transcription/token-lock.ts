@@ -1,10 +1,10 @@
-import { Deferred, Effect, Exit, FiberId } from "effect";
+import { Deferred, Effect } from "effect";
 import { runEffectSettled } from "./effect-boundary";
 
 /**
  * A FIFO mutual-exclusion lock with interruption-safe handoff.
  *
- * Effect.Semaphore does not wake waiters in arrival order, and a capacity-1
+ * Semaphore does not wake waiters in arrival order, and a capacity-1
  * token Queue loses the token when a waiter is interrupted after the release
  * has handed it over (probe-verified: the take completes, the fiber never
  * resumes, the token is destroyed and the lock deadlocks). This lock keeps
@@ -32,7 +32,9 @@ const release = (lock: TokenLock): void => {
   if (next) {
     // Hand off directly: the lock stays held, ownership moves to the head
     // waiter. A fresh acquirer cannot barge in because held stays true.
-    Deferred.unsafeDone(next, Exit.void);
+    // Schedule the continuation so failure classification can retire queued
+    // work before it starts, and synchronous users cannot recurse on release.
+    Deferred.doneUnsafe(next, Effect.yieldNow);
   } else {
     lock.held = false;
   }
@@ -57,7 +59,7 @@ export const withLock = <A, E, R>(
         lock.held = true;
         return Effect.void;
       }
-      const ticket = Deferred.unsafeMake<void>(FiberId.none);
+      const ticket = Deferred.makeUnsafe<void>();
       lock.waiters.push(ticket);
       // The wait itself stays interruptible. On interruption there are two
       // cases, distinguished by queue membership: still queued means the
@@ -77,7 +79,7 @@ export const withLock = <A, E, R>(
         ),
       );
     }).pipe(
-      Effect.zipRight(
+      Effect.andThen(
         restore(use).pipe(Effect.ensuring(Effect.sync(() => release(lock)))),
       ),
     ),

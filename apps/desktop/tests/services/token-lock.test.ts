@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Deferred, Effect, Exit, Fiber, FiberId } from "effect";
+import { Deferred, Effect, Exit, Fiber } from "effect";
 import {
   makeTokenLock,
   withLock,
@@ -44,23 +44,88 @@ describe("token lock", () => {
     );
   });
 
+  it("drains a large queue of synchronous users in FIFO order", async () => {
+    const lock = makeTokenLock();
+    const gate = Deferred.makeUnsafe<void>();
+    const order: number[] = [];
+    const holder = Effect.runFork(withLock(lock, Deferred.await(gate)));
+    const waiters = Array.from({ length: 2000 }, (_, index) =>
+      Effect.runFork(
+        withLock(
+          lock,
+          Effect.sync(() => {
+            order.push(index);
+          }),
+        ),
+      ),
+    );
+    try {
+      expect(lock.waiters).toHaveLength(2000);
+      Deferred.doneUnsafe(gate, Effect.void);
+      const exits = await runPromise(
+        Fiber.awaitAll([holder, ...waiters]).pipe(Effect.timeout(2000)),
+      );
+      expect(exits.every(Exit.isSuccess)).toBe(true);
+      expect(order).toEqual(Array.from({ length: 2000 }, (_, index) => index));
+      expect(lock.held).toBe(false);
+      expect(lock.waiters).toHaveLength(0);
+    } finally {
+      // A stack overflow in a broken handoff can strand a fiber mid-resume.
+      // Request cancellation without letting that failure hang test cleanup.
+      for (const fiber of [holder, ...waiters]) fiber.interruptUnsafe();
+    }
+  });
+
+  it("a releasing fiber cannot reacquire before an existing waiter", async () => {
+    const lock = makeTokenLock();
+    const order: string[] = [];
+    const program = Effect.gen(function* () {
+      const gate = yield* Deferred.make<void>();
+      const holder = yield* Effect.forkChild(
+        withLock(lock, Deferred.await(gate)).pipe(
+          Effect.andThen(
+            withLock(
+              lock,
+              Effect.sync(() => order.push("reacquired")),
+            ),
+          ),
+        ),
+        { startImmediately: true },
+      );
+      const waiter = yield* Effect.forkChild(
+        withLock(
+          lock,
+          Effect.sync(() => order.push("waiting")),
+        ),
+        { startImmediately: true },
+      );
+      yield* Deferred.succeed(gate, undefined);
+      yield* Fiber.join(holder);
+      yield* Fiber.join(waiter);
+    });
+
+    await runPromise(program);
+    expect(order).toEqual(["waiting", "reacquired"]);
+  });
+
   it("an interrupted queued waiter neither consumes nor strands the token", async () => {
     const lock = makeTokenLock();
     const program = Effect.gen(function* () {
       const holdGate = yield* Deferred.make<void>();
-      const holder = yield* Effect.fork(
+      const holder = yield* Effect.forkChild(
         withLock(lock, Deferred.await(holdGate)),
       );
-      yield* Effect.yieldNow();
+      yield* Effect.yieldNow;
       // A waiter queues behind the holder, then is interrupted while waiting.
-      const waiter = yield* Effect.fork(withLock(lock, Effect.void));
-      yield* Effect.yieldNow();
-      const waiterExit = yield* Fiber.interrupt(waiter);
+      const waiter = yield* Effect.forkChild(withLock(lock, Effect.void));
+      yield* Effect.yieldNow;
+      yield* Fiber.interrupt(waiter);
+      const waiterExit = yield* Fiber.await(waiter);
       // Release the holder; the lock must be immediately usable.
       yield* Deferred.succeed(holdGate, void 0);
       yield* Fiber.join(holder);
       const after = yield* withLock(lock, Effect.succeed("after"));
-      return { waiterInterrupted: Exit.isInterrupted(waiterExit), after };
+      return { waiterInterrupted: Exit.hasInterrupts(waiterExit), after };
     });
     const result = await runPromise(program);
     expect(result.waiterInterrupted).toBe(true);
@@ -75,35 +140,54 @@ describe("token lock", () => {
   // was just handed the lock by the failing fiber's own release.
   it("a waiter interrupted right after the handoff passes the lock on", async () => {
     const lock = makeTokenLock();
-    const program = Effect.gen(function* () {
-      const holdGate = yield* Deferred.make<void>();
-      const holder = yield* Effect.fork(
-        withLock(lock, Deferred.await(holdGate)),
+    const order: string[] = [];
+    const gate = Deferred.makeUnsafe<void>();
+    const holder = Effect.runFork(withLock(lock, Deferred.await(gate)));
+    const waiter = Effect.runFork(
+      withLock(
+        lock,
+        Effect.sync(() => order.push("cancelled")),
+      ),
+    );
+    const next = Effect.runFork(
+      withLock(
+        lock,
+        Effect.sync(() => order.push("next")),
+      ),
+    );
+    const fibers = [holder, waiter, next];
+    try {
+      Deferred.doneUnsafe(gate, Effect.void);
+      // Ownership has moved to the first waiter, but its use has not started.
+      expect(lock.waiters).toHaveLength(1);
+      expect(lock.held).toBe(true);
+      expect(order).toEqual([]);
+      waiter.interruptUnsafe();
+      const late = Effect.runFork(
+        withLock(
+          lock,
+          Effect.sync(() => order.push("late")),
+        ),
       );
-      yield* Effect.yieldNow();
-      const waiter = yield* Effect.fork(withLock(lock, Effect.void));
-      yield* Effect.yieldNow();
-      // One synchronous frame: flag the waiter interrupted, then let the
-      // holder release — the handoff lands on an already-interrupting fiber.
-      yield* Effect.sync(() => {
-        waiter.unsafeInterruptAsFork(FiberId.none);
-        Deferred.unsafeDone(holdGate, Exit.void);
-      });
-      yield* Fiber.await(holder);
-      yield* Fiber.await(waiter);
-      return yield* withLock(lock, Effect.succeed("alive"));
-    });
-    await expect(runPromise(program)).resolves.toBe("alive");
+      fibers.push(late);
+      const exits = await runPromise(Fiber.awaitAll(fibers));
+      expect(Exit.hasInterrupts(exits[1])).toBe(true);
+      expect(order).toEqual(["next", "late"]);
+      expect(lock.held).toBe(false);
+      expect(lock.waiters).toHaveLength(0);
+    } finally {
+      await runPromise(Fiber.interruptAll(fibers));
+    }
   }, 10000);
 
   it("a fiber interrupted while holding the lock releases the token", async () => {
     const lock = makeTokenLock();
     const program = Effect.gen(function* () {
       const entered = yield* Deferred.make<void>();
-      const holder = yield* Effect.fork(
+      const holder = yield* Effect.forkChild(
         withLock(
           lock,
-          Deferred.succeed(entered, void 0).pipe(Effect.zipRight(Effect.never)),
+          Deferred.succeed(entered, void 0).pipe(Effect.andThen(Effect.never)),
         ),
       );
       yield* Deferred.await(entered);

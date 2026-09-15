@@ -33,7 +33,7 @@ export const passThroughLift: Effect.Effect<string, ProbeError> =
   Effect.tryPromise({
     try: () => Promise.resolve("ok"),
     catch: (e) => e,
-  }).pipe(Effect.catchAll(failOrDie));
+  }).pipe(Effect.catch(failOrDie));
 
 // A wrap lift with declared unions composes through Effect.gen.
 const toDependencyFailure = (e: unknown): DependencyFailure =>

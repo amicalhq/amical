@@ -1,0 +1,2441 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Amical — Effect 4 migration plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1117;
+        --panel: #171b23;
+        --ink: #e2e8f0;
+        --muted: #a3aebb;
+        --line: #303845;
+        --accent: #c4e889;
+        --blue: #96c9e9;
+        --amber: #efc080;
+        --side: 258px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 32px;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.65 "Avenir Next",
+          Avenir,
+          "Segoe UI",
+          sans-serif;
+      }
+      a {
+        color: var(--blue);
+        text-underline-offset: 4px;
+      }
+      a:hover {
+        color: var(--accent);
+      }
+      a:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 5px;
+      }
+      .skip {
+        position: fixed;
+        top: -80px;
+        left: 20px;
+        z-index: 5;
+        background: var(--panel);
+        padding: 10px;
+      }
+      .skip:focus {
+        top: 10px;
+      }
+      aside {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: var(--side);
+        border-right: 1px solid var(--line);
+        padding: 34px 23px 24px;
+        overflow-y: auto;
+        background: #12151b;
+      }
+      .brand {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        color: var(--ink);
+      }
+      .brand span {
+        color: var(--accent);
+      }
+      .eyebrow,
+      .group,
+      .mono,
+      .section-no,
+      .label {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      }
+      .eyebrow,
+      .group,
+      .label {
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+      .edition {
+        color: var(--muted);
+        margin: 5px 0 38px;
+        font-size: 12px;
+      }
+      .group {
+        color: #8795a8;
+        margin: 25px 10px 8px;
+      }
+      nav a {
+        display: flex;
+        gap: 14px;
+        text-decoration: none;
+        color: var(--muted);
+        padding: 8px 10px;
+        border-left: 2px solid transparent;
+        font-size: 13px;
+      }
+      nav a .mono {
+        color: #8895a6;
+        width: 12px;
+      }
+      nav a[aria-current="location"] {
+        color: var(--ink);
+        background: #20291d;
+        border-left-color: var(--accent);
+      }
+      nav a[aria-current="location"] .mono {
+        color: var(--accent);
+      }
+      .side-foot {
+        margin-top: 42px;
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .side-foot strong {
+        display: block;
+        color: var(--accent);
+        font-weight: 500;
+      }
+      main {
+        margin-left: var(--side);
+        padding: 0 6vw 60px;
+        max-width: 1650px;
+      }
+      section {
+        padding: 64px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .hero {
+        padding-top: 42px;
+      }
+      .topline {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+        color: var(--muted);
+      }
+      .badge {
+        color: var(--accent);
+        border: 1px solid #52613e;
+        border-radius: 99px;
+        padding: 5px 12px;
+        white-space: nowrap;
+        font-size: 11px;
+        letter-spacing: 0.6px;
+      }
+      h1 {
+        font-family:
+          "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+        font-size: clamp(64px, 8vw, 118px);
+        font-weight: 400;
+        line-height: 1;
+        letter-spacing: -5px;
+        margin: 62px 0 20px;
+      }
+      h1 span {
+        color: var(--accent);
+      }
+      .subtitle {
+        font-size: 25px;
+        line-height: 1.35;
+        letter-spacing: -0.6px;
+        max-width: 720px;
+        margin-bottom: 24px;
+      }
+      .lede {
+        max-width: 740px;
+        color: var(--muted);
+        font-size: 17px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        margin-top: 36px;
+      }
+      .stat {
+        padding: 20px 18px 20px 0;
+      }
+      .stat + .stat {
+        border-left: 1px solid var(--line);
+        padding-left: 22px;
+      }
+      .stat strong {
+        display: block;
+        font-size: 28px;
+        line-height: 1.4;
+        font-weight: 500;
+        letter-spacing: -1px;
+      }
+      .stat small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .decision {
+        padding: 21px 24px;
+        background: #1b241c;
+        border-left: 3px solid var(--accent);
+        margin: 28px 0 0;
+      }
+      .decision p {
+        margin: 5px 0 0;
+      }
+      h2 {
+        font-size: 29px;
+        line-height: 1.3;
+        letter-spacing: -0.7px;
+        font-weight: 600;
+        margin: 0 0 24px;
+        display: flex;
+        align-items: baseline;
+        gap: 20px;
+      }
+      .section-no {
+        color: var(--accent);
+        font-size: 16px;
+        font-weight: 400;
+        letter-spacing: 0;
+      }
+      h3 {
+        margin: 28px 0 12px;
+        font-size: 19px;
+        line-height: 1.45;
+        font-weight: 600;
+      }
+      p {
+        margin: 12px 0;
+      }
+      ul,
+      ol {
+        margin: 12px 0;
+        padding-left: 23px;
+      }
+      li {
+        margin: 7px 0;
+      }
+      .muted,
+      .note {
+        color: var(--muted);
+      }
+      .note {
+        font-size: 13px;
+      }
+      .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+      }
+      .columns h3 {
+        margin-top: 12px;
+      }
+      code {
+        color: #d6e3ba;
+        font:
+          0.85em/1.6 "SFMono-Regular",
+          Consolas,
+          "Liberation Mono",
+          monospace;
+        overflow-wrap: anywhere;
+      }
+      pre {
+        overflow-x: auto;
+        padding: 20px 22px;
+        background: #10141b;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+      }
+      pre code {
+        font-size: 12px;
+        white-space: pre;
+        overflow-wrap: normal;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        margin: 20px 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+        text-align: left;
+      }
+      th {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 500;
+        padding: 12px 14px;
+        border-bottom: 1px solid #57616d;
+      }
+      td {
+        padding: 16px 14px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      td:first-child {
+        padding-left: 0;
+      }
+      th:first-child {
+        padding-left: 0;
+      }
+      td p {
+        margin: 5px 0;
+      }
+      .tag {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: inline-block;
+        border: 1px solid var(--line);
+        padding: 2px 7px;
+        border-radius: 3px;
+        color: var(--blue);
+        white-space: nowrap;
+      }
+      .tag.manual {
+        color: var(--amber);
+        border-color: #6a5337;
+      }
+      details {
+        border: 1px solid var(--line);
+        margin: 16px 0;
+        border-radius: 4px;
+        background: #141820;
+      }
+      summary {
+        padding: 15px 19px;
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 14px;
+      }
+      summary::marker {
+        color: var(--accent);
+      }
+      details > .detail {
+        padding: 0 20px 18px;
+      }
+      .contract {
+        border-top: 1px solid var(--line);
+        padding: 16px 0;
+        display: grid;
+        grid-template-columns: 40px 1fr;
+        gap: 10px;
+      }
+      .contract .index {
+        color: var(--amber);
+        font:
+          14px/1.8 "SFMono-Regular",
+          Consolas,
+          monospace;
+        padding-top: 2px;
+      }
+      .contract h3 {
+        margin: 0;
+        font-size: 17px;
+      }
+      .contract p {
+        margin: 5px 0;
+      }
+      .phase {
+        border-left: 1px solid #49553e;
+        padding: 0 0 20px 24px;
+        margin-left: 6px;
+        position: relative;
+      }
+      .phase::before {
+        content: "";
+        width: 9px;
+        height: 9px;
+        background: var(--accent);
+        border-radius: 50%;
+        position: absolute;
+        left: -5px;
+        top: 9px;
+      }
+      .phase h3 {
+        margin: 0 0 7px;
+      }
+      .phase .label {
+        color: var(--accent);
+      }
+      .gate {
+        color: var(--ink);
+        font-size: 14px;
+      }
+      .gate strong {
+        color: var(--accent);
+      }
+      .diagram {
+        margin: 26px 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        padding: 25px 20px;
+      }
+      .mermaid {
+        text-align: center;
+        border: 0;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
+      .mermaid svg {
+        max-width: 100%;
+        height: auto;
+      }
+      .diagram figcaption {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 14px;
+      }
+      .source-list {
+        font-size: 13px;
+      }
+      .source-list li {
+        padding: 7px 0;
+      }
+      .source-list code {
+        font-size: 11px;
+      }
+      footer {
+        padding-top: 30px;
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      @media (max-width: 1050px) {
+        :root {
+          --side: 216px;
+        }
+        aside {
+          padding: 26px 14px;
+        }
+        main {
+          padding-left: 4vw;
+          padding-right: 4vw;
+        }
+        .stats {
+          grid-template-columns: 1fr 1fr;
+        }
+        .stat:nth-child(3) {
+          border-left: 0;
+          padding-left: 0;
+        }
+        .stat:nth-child(n + 3) {
+          border-top: 1px solid var(--line);
+        }
+        .columns {
+          grid-template-columns: 1fr;
+          gap: 5px;
+        }
+      }
+      @media (max-width: 680px) {
+        :root {
+          --side: 150px;
+        }
+        aside {
+          padding: 22px 9px;
+        }
+        .brand {
+          font-size: 21px;
+        }
+        .edition {
+          margin-bottom: 25px;
+        }
+        nav a {
+          font-size: 11px;
+          gap: 8px;
+          padding: 8px 6px;
+        }
+        .group {
+          font-size: 9px;
+          margin-left: 7px;
+        }
+        main {
+          padding: 0 20px 40px;
+        }
+        h1 {
+          font-size: 58px;
+          letter-spacing: -3px;
+          margin-top: 42px;
+        }
+        .subtitle {
+          font-size: 20px;
+        }
+        body {
+          font-size: 14px;
+        }
+        h2 {
+          font-size: 22px;
+          gap: 12px;
+        }
+        section {
+          padding: 40px 0;
+        }
+        .topline {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .stats {
+          grid-template-columns: 1fr;
+        }
+        .stat + .stat {
+          border-left: 0;
+          padding-left: 0;
+          border-top: 1px solid var(--line);
+        }
+        .stat strong {
+          font-size: 25px;
+        }
+        .decision {
+          padding: 15px;
+        }
+        .contract {
+          grid-template-columns: 25px 1fr;
+        }
+        .side-foot {
+          font-size: 10px;
+        }
+        footer {
+          flex-direction: column;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to plan</a>
+    <aside>
+      <div class="brand">amical<span> /</span></div>
+      <div class="edition mono">ENGINEERING PLAN · 026</div>
+      <nav aria-label="Table of contents">
+        <div class="group">Orientation</div>
+        <a href="#overview" aria-current="location"
+          ><span class="mono">0</span>Recommendation</a
+        >
+        <a href="#target"><span class="mono">1</span>Version &amp; scope</a>
+        <a href="#footprint"><span class="mono">2</span>Current footprint</a>
+        <div class="group">Migration</div>
+        <a href="#changes"><span class="mono">3</span>API change map</a>
+        <a href="#contracts"><span class="mono">4</span>Behavior contracts</a>
+        <a href="#phases"><span class="mono">5</span>Execution plan</a>
+        <div class="group">Delivery</div>
+        <a href="#validation"><span class="mono">6</span>Validation</a>
+        <a href="#release"><span class="mono">7</span>Release &amp; rollback</a>
+        <a href="#sources"><span class="mono">8</span>Evidence &amp; sources</a>
+      </nav>
+      <div class="side-foot mono">
+        TARGET SNAPSHOT<strong>4.0.0-rc.115</strong>15 SEP 2026<br />Implemented
+        · reviewed locally
+      </div>
+    </aside>
+    <main id="content">
+      <section id="overview" class="hero" aria-labelledby="overview-title">
+        <div class="topline">
+          <span class="eyebrow">0 / Architecture &amp; execution</span
+          ><span class="badge mono">V3 → V4 RC</span>
+        </div>
+        <h1 id="overview-title">Effect <span>4.</span></h1>
+        <div class="subtitle">
+          Upgrade the runtime.<br />Preserve the app’s behavior.
+        </div>
+        <p class="lede">
+          Amical already uses Effect for desktop services, dictation,
+          synchronization, and telemetry. The migration is bounded in package
+          scope, but several paths depend on precise Effect 3 runtime behavior.
+        </p>
+        <div class="stats">
+          <div class="stat">
+            <strong>53</strong><small>production files import Effect</small>
+          </div>
+          <div class="stat">
+            <strong>23</strong><small>test / type-probe files import it</small>
+          </div>
+          <div class="stat">
+            <strong>1,321</strong><small>v3 baseline tests · 140 files</small>
+          </div>
+          <div class="stat">
+            <strong>1</strong><small>workspace package to migrate</small>
+          </div>
+        </div>
+        <div class="decision">
+          <span class="label">Recommendation</span>
+          <p>
+            <strong
+              >Pin Effect 4.0.0-rc.115, move the desktop compiler to TypeScript
+              5.9.3, and migrate in one coordinated branch.</strong
+            >
+            First prove immediate fiber startup, error settlement, and scope
+            cleanup against the exact RC. Then migrate the wider service graph
+            and package the app.
+          </p>
+          <p>
+            <strong
+              >Prefer a clean Effect 4 design where the old approach no longer
+              fits.</strong
+            >
+            Internal adapters and v3 workarounds may be rewritten. Surface the
+            recommendation, tradeoffs, and behavior changes before implementing
+            a substantial rewrite. See
+            <a href="#rewrite-decisions">3.7 Rewrite decisions</a>.
+          </p>
+        </div>
+        <p class="note">
+          Planning snapshot: 15 September 2026 · repository commit
+          <code>abdfd4d</code>. Baseline typecheck and full desktop unit suite
+          were run on Effect 3.22.1. Conversion is complete on
+          <code>feat/effect-4</code>: 1,348 unit tests across 140 files and all
+          workspace typechecks pass. The macOS arm64 package builds, native
+          dependency smoke checks pass, and the freshly rebuilt package passes
+          both macOS E2E checks (two Windows-only checks skipped). Lint has no
+          errors; it reports 282 warnings. Boot ownership, quit policy, the FIFO
+          lock, and session regions are retained. The static tracer and
+          cause-aware error boundaries are rewritten. The follow-up review used
+          three independent reviewers and covered reuse, simplicity, efficiency,
+          and module structure. All 11 Swift helper tests also pass.
+        </p>
+        <details open>
+          <summary>
+            Latest pass: native Effect v4 use and simplification
+          </summary>
+          <div class="detail">
+            <p>
+              Three fresh reviewers checked runtime/error handling, auth/sync,
+              and transcription/lifecycle against the official pinned migration
+              guides and installed RC source. Two remaining gaps were fixed:
+            </p>
+            <ul>
+              <li>
+                <strong>Cleanup diagnostics:</strong> v4's Promise runner
+                rejects with one error when several finalizers fail.
+                <code>closeAppScope</code> now logs the complete cause through
+                <code>Effect.tapCause</code> before rejection. Tests use the
+                real ServiceManager cleanup boundary and verify both errors
+                remain visible, all releases run, the first rejection keeps its
+                identity, and repeated cleanup is a no-op.
+              </li>
+              <li>
+                <strong>Tracer sampling:</strong> the custom tracer now stores
+                v4's computed <code>sampled</code> value. Tests cover explicit
+                true/false decisions and child inheritance. Default production
+                sampling stays unchanged.
+              </li>
+            </ul>
+            <p>
+              Eight synchronous operations at imperative boundaries now use
+              native <code>Ref.makeUnsafe</code>, <code>Ref.getUnsafe</code>,
+              <code>Deferred.makeUnsafe</code>, or
+              <code>Queue.offerUnsafe</code>. This removes unnecessary
+              root-fiber execution. The unbounded sync event queue still
+              delivers through its captured scheduler. Composite effects,
+              resource ownership, and error settlement stay intact.
+            </p>
+            <p>
+              Context services and runners, scoped forks, callback cleanup, and
+              flat Cause handling match v4. The explicit app scope and FIFO lock
+              remain necessary for the existing boot and ordering contracts.
+              Lifecycle V2 state-machine and contract files are unchanged. The
+              full 1,348-test suite, workspace typechecks, lifecycle contract
+              validation, and RC probes pass. Full lint reports zero errors and
+              the same 282 warnings. A fresh macOS arm64 package, including the
+              auth fix, passes both macOS E2E checks; two Windows-only checks
+              are skipped on this machine.
+            </p>
+            <p class="note">
+              The latest E2E setup warned that macOS System Events could not
+              snapshot login items. Test assertions passed, but that run's
+              login-item baseline was not captured. The existing harness treats
+              this as a warning; it is outside the Effect conversion.
+            </p>
+          </div>
+        </details>
+        <details>
+          <summary>Follow-up review: three migration regressions fixed</summary>
+          <div class="detail">
+            <ul>
+              <li>
+                <strong>FIFO lock handoff:</strong> v4 resumes Deferred waiters
+                synchronously. A queued chunk could start before the preceding
+                failure retired its session; a long synchronous queue could also
+                overflow the stack. Completing the ticket with
+                <code>Effect.yieldNow</code> schedules its continuation while
+                retaining ownership and cancellation safety. Tests cover two
+                chunks, interruption after handoff, and 2,000 queued users.
+              </li>
+              <li>
+                <strong>Fatal layer errors:</strong> v4's <code>orDie</code>
+                drops co-present cleanup defects when a typed error is present.
+                Three existing fatal service boundaries now use
+                <code>orDiePreservingCause</code>, which keeps all reasons and
+                annotations. Boot and shutdown policy stays the same.
+              </li>
+              <li>
+                <strong>Remote-config reporting:</strong> the outer defect
+                handler again contains an exception thrown by telemetry while
+                reporting invalid config. Refresh resolves and retains the last
+                valid config, as it did before the migration.
+              </li>
+            </ul>
+            <p>
+              Simplification removes three copies of fake timer setup and the
+              duplicate lifecycle replay invocation in CI. The full unit suite
+              includes that replay; the separate contract-version check remains.
+            </p>
+          </div>
+        </details>
+        <details>
+          <summary>Resolved follow-up: pre-existing auth shutdown race</summary>
+          <div class="detail">
+            <p>
+              Starting <code>refreshTokenIfNeeded(true)</code> and immediately
+              calling <code>shutdown()</code> previously left its caller waiting
+              when shutdown interrupted the child before its completion handler
+              was installed. The same reproduction failed on Effect 3.22.1 and
+              the initial v4 conversion.
+            </p>
+            <p>
+              The refresh fiber now starts with cancellation masked until its
+              abort and completion handlers are installed. An inner
+              <code>Effect.interruptible</code> keeps the refresh work
+              cancellable. Both early shutdown and admission into a closed auth
+              scope complete callers with interruption and start no HTTP
+              request. The existing shared-refresh behavior is retained.
+              Lifecycle V2 receives no additional changes from this fix.
+            </p>
+            <p>
+              Both new regressions failed before the fix and pass afterward. All
+              20 auth refresh tests, the full 1,345-test desktop suite,
+              workspace typechecks, and lint/format checks for the changed auth
+              files passed at the auth-fix checkpoint. Packaging and E2E were
+              not rerun at that checkpoint; the latest native-v4 review is
+              recorded above.
+            </p>
+          </div>
+        </details>
+        <details>
+          <summary>Validation note: notes deletion timing</summary>
+          <div class="detail">
+            <p>
+              The first packaged run failed at
+              <code>e2e/notes-markdown.spec.ts:191</code>: the assertion expects
+              a temporarily disabled editor after deletion, but the widget had
+              already reached its empty state. All earlier persistence and
+              synchronization checks passed. The notes source and test are
+              unchanged by this migration. An isolated Effect 3.22.1 baseline
+              passed four runs, and the pre-review v4 package passed three
+              further runs. The package rebuilt after the follow-up fixes also
+              passes. The initial timing failure remains a test limitation; it
+              was not reproduced on the baseline or fixed in this conversion.
+            </p>
+          </div>
+        </details>
+      </section>
+
+      <section id="target" aria-labelledby="target-title">
+        <h2 id="target-title">
+          <span class="section-no">1</span>Version &amp; scope
+        </h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Current</th>
+                <th>Planned target</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Effect</td>
+                <td><code>^3.22.1</code>, locked to <code>3.22.1</code></td>
+                <td><code>4.0.0-rc.115</code>, exact pin</td>
+              </tr>
+              <tr>
+                <td>Desktop TypeScript</td>
+                <td><code>~5.8.3</code></td>
+                <td><code>5.9.3</code>, exact pin</td>
+              </tr>
+              <tr>
+                <td>Root TypeScript</td>
+                <td><code>5.8.2</code></td>
+                <td>
+                  Retain unless a root task needs the newer compiler. Turbo runs
+                  package checks with each package’s own compiler.
+                </td>
+              </tr>
+              <tr>
+                <td>Runtime / package manager</td>
+                <td>
+                  Node <code>&gt;=24</code> required; local <code>24.18.0</code
+                  ><br />pnpm <code>10.34.5</code> · Electron
+                  <code>44.3.0</code>
+                </td>
+                <td>Retain versions; verify the packaged Electron runtime</td>
+              </tr>
+              <tr>
+                <td>Other Effect packages</td>
+                <td>No direct <code>@effect/*</code> dependencies</td>
+                <td>No additional packages required by this plan</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The npm <code>rc</code> tag resolved to
+          <code>4.0.0-rc.115</code> during research. It was published on 11
+          September 2026. The <code>latest</code> tag still points to Effect
+          3.22.2. Recheck the tag when implementation starts, record any new
+          target, and then keep the exact version fixed through validation.
+          <a href="https://registry.npmjs.org/-/package/effect/dist-tags"
+            >npm dist-tags</a
+          >
+          ·
+          <a
+            href="https://github.com/Effect-TS/effect/releases/tag/effect%404.0.0-rc.115"
+            >RC release</a
+          >
+        </p>
+        <p>
+          Effect 4 requires TypeScript 5.9 or newer and strict checking. Desktop
+          already enables <code>strict</code>. Version 5.9.3 is a small,
+          compatible compiler step; a move to TypeScript 7 is a separate
+          decision.
+          <a href="https://effect.website/docs/v4/getting-started/installation"
+            >Official installation requirements</a
+          >
+        </p>
+        <div class="columns">
+          <div>
+            <h3>1.1 Included</h3>
+            <ul>
+              <li>
+                Existing Effect production code and its tests in
+                <code>apps/desktop</code>.
+              </li>
+              <li>
+                Runtime bridges, service tags, error handling, fibers, queues,
+                and the custom tracer.
+              </li>
+              <li>
+                Desktop compiler pin, lockfile, and the CI checks needed to
+                protect the upgrade.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3>1.2 Scope boundaries</h3>
+            <p>
+              The plan assumes “convert” means upgrade current Effect 3 code.
+              Existing Promise interfaces, Zod validation, IPC contracts,
+              database format, native helpers, and renderer architecture stay
+              part of the current design.
+            </p>
+            <p>
+              Within the Effect code, preserving the old implementation is not a
+              goal. Compare a direct port with a design that uses v4’s native
+              primitives; prefer the latter when it removes proven complexity.
+              Flag changes to public interfaces or behavior before
+              implementation.
+            </p>
+            <p class="note">
+              No Effect Schema, Stream, or Schedule usage was found.
+              <code>apps/www</code> is explicitly excluded from the pnpm
+              workspace. Expanding Effect into those areas would be separate
+              work.
+            </p>
+          </div>
+        </div>
+        <details>
+          <summary>
+            1.3 Proposed dependency commands — for the implementation branch
+          </summary>
+          <div class="detail">
+            <pre><code>pnpm view effect dist-tags --json
+pnpm --filter @amical/desktop add --save-exact effect@4.0.0-rc.115
+pnpm --filter @amical/desktop add -D --save-exact typescript@5.9.3
+pnpm -r why effect</code></pre>
+            <p class="note">
+              Review the lockfile for unrelated churn. Root and other workspace
+              compiler declarations do not need a blanket upgrade; change them
+              only if an actual dependency or validation failure requires it.
+            </p>
+          </div>
+        </details>
+      </section>
+
+      <section id="footprint" aria-labelledby="footprint-title">
+        <h2 id="footprint-title">
+          <span class="section-no">2</span>Current footprint
+        </h2>
+        <p>
+          Effect is concentrated in the Electron main process and its service
+          boundaries. Counts below are direct-import files, not an estimate of
+          every indirectly affected caller.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Files</th>
+                <th>Migration focus</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>src/services</code></td>
+                <td>24</td>
+                <td>
+                  Auth refresh, account sync, activity reporting, live
+                  transcription, FIFO token lock, service layers.
+                </td>
+              </tr>
+              <tr>
+                <td><code>src/main</code></td>
+                <td>17</td>
+                <td>
+                  App construction and cleanup, lifecycle session work, custom
+                  telemetry runtime and trace projection.
+                </td>
+              </tr>
+              <tr>
+                <td><code>src/types</code></td>
+                <td>7</td>
+                <td>
+                  Tagged domain errors, Promise lifting, failure/defect
+                  settlement, error projection.
+                </td>
+              </tr>
+              <tr>
+                <td><code>src/pipeline</code></td>
+                <td>5</td>
+                <td>
+                  Cloud provider state and runtime, HTTP transport, gRPC
+                  callbacks and cancellation.
+                </td>
+              </tr>
+              <tr>
+                <td><code>tests</code></td>
+                <td>23</td>
+                <td>
+                  Direct Effect imports, including compile-time error probes.
+                  Broader tests also exercise these paths.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <details>
+          <summary>2.1 Concrete inventory and starting files</summary>
+          <div class="detail">
+            <ul>
+              <li>
+                <strong>22 class service tags</strong> in
+                <code>src/main/runtime/tags.ts:48</code>;
+                <strong>2 generic tags</strong> in
+                <code
+                  >src/pipeline/providers/transcription/amical-cloud-provider-state.ts:22</code
+                >.
+              </li>
+              <li>
+                <strong>29 tagged error classes</strong> across domain/service
+                errors. Keep public tags, fields, and frozen error codes stable.
+              </li>
+              <li>
+                <strong>4 semaphore constructors</strong>: auth (2), activity
+                reporting (1), settings sync (1).
+              </li>
+              <li>
+                <strong>4 Effect callback constructors</strong>: gRPC (2),
+                lifecycle session work (1), settings sync (1).
+              </li>
+              <li>
+                <strong>4 files using the Runtime module</strong>:
+                <code>main/runtime/telemetry-runtime.ts</code>,
+                <code>services/settings-sync-service.ts</code>,
+                <code>services/settings-sync-supervisor.ts</code>, and
+                <code>services/activity-reporting-service.ts</code>. The cloud
+                provider also uses <code>ManagedRuntime</code>.
+              </li>
+            </ul>
+            <p class="note">
+              All paths in this plan are relative to <code>apps/desktop</code>,
+              unless a root/workspace path is shown explicitly.
+            </p>
+          </div>
+        </details>
+        <figure class="diagram">
+          <pre class="mermaid">
+flowchart TD
+    A[Electron app scope] --> B[Service layers and tags]
+    B --> C[Auth, sync and activity]
+    B --> D[Lifecycle and dictation]
+    D --> E[Immediate telemetry runners]
+    D --> F[Live session and FIFO token lock]
+    F --> G[Cloud HTTP / gRPC provider]
+    G --> H[Failure and defect settlement]
+    E --> H
+    H --> I[Existing Promise / IPC boundaries]</pre
+          >
+          <figcaption>
+            Read the migration from app ownership to runtime boundaries. The
+            same user-visible behavior must survive at the edges.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section id="changes" aria-labelledby="changes-title">
+        <h2 id="changes-title">
+          <span class="section-no">3</span>API change map
+        </h2>
+        <p>
+          Use the exact RC’s declarations and source for implementation.
+          Mechanical renames are only one part of the change; the runtime and
+          data-model rows require behavior checks.
+        </p>
+        <h3>3.1 Mechanical changes with focused review</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Current API</th>
+                <th>Effect 4.0.0-rc.115</th>
+                <th>Where / check</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>Effect.gen(this, generator)</code></td>
+                <td><code>Effect.gen({ self: this }, generator)</code></td>
+                <td>
+                  86 calls in 11 production files use the receiver overload,
+                  including auth, settings sync, and gRPC. Preserve generator
+                  receiver binding with the native options object; no wrapper is
+                  needed.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Effect.ts#L2199"
+                    >Pinned generator declaration</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>Context.Tag(id)&lt;Self, Shape&gt;()</code><br /><code
+                    >Context.GenericTag&lt;T&gt;(id)</code
+                  >
+                </td>
+                <td>
+                  <code>Context.Service&lt;Self, Shape&gt;()(id)</code
+                  ><br /><code>Context.Service&lt;T&gt;(id)</code>
+                </td>
+                <td>
+                  Keep service IDs and shapes; migrate test tags too.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/services.md"
+                    >Services guide</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>Scope.CloseableScope</code><br /><code
+                    >Scope.extend</code
+                  >
+                </td>
+                <td>
+                  <code>Scope.Closeable</code><br /><code>Scope.provide</code>
+                </td>
+                <td>
+                  Preserve the chosen scope ownership and finalizer behavior;
+                  review any boot-ownership rewrite under 3.7 first.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/scope.md"
+                    >Scope guide</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>Effect.async</code><br /><code
+                    >Effect.zipRight / zipLeft</code
+                  ><br /><code>Effect.yieldNow()</code>
+                </td>
+                <td>
+                  <code>Effect.callback</code><br /><code
+                    >Effect.andThen / tap</code
+                  ><br /><code>Effect.yieldNow</code> (value)
+                </td>
+                <td>
+                  Check callback cleanup and abort paths. Sequence combinators
+                  must retain return values.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Effect.ts"
+                    >Effect declarations</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>Effect.makeSemaphore</code><br /><code
+                    >Effect.Semaphore</code
+                  >
+                </td>
+                <td>
+                  <code>Semaphore.make</code><br /><code
+                    >Semaphore.Semaphore</code
+                  >
+                </td>
+                <td>
+                  <code>withPermits</code> remains available. Preserve masks and
+                  scope ownership.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Semaphore.ts"
+                    >Semaphore declarations</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>Deferred.unsafeMake(FiberId.none)</code><br /><code
+                    >Deferred.unsafeDone</code
+                  >
+                </td>
+                <td>
+                  <code>Deferred.makeUnsafe()</code><br /><code
+                    >Deferred.doneUnsafe</code
+                  >
+                </td>
+                <td>
+                  Remove the fiber-ID argument. <code>Exit.void</code> still
+                  works as a completion value; Exit remains an Effect in this
+                  RC.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Deferred.ts"
+                    >Deferred declarations</a
+                  >
+                  ·
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Exit.ts"
+                    >Exit declarations</a
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>3.2 Runtime, fiber, and tracer changes</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Surface</th>
+                <th>Migration</th>
+                <th>Required review</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <span class="tag manual">Runtime</span>
+                  <p>
+                    <code>Runtime.Runtime</code>, <code>Effect.runtime</code>,
+                    <code>Runtime.run*</code>
+                  </p>
+                </td>
+                <td>
+                  Capture <code>Context.Context</code> with
+                  <code>Effect.context</code>; use
+                  <code>Effect.run*With(context)</code>. Use plain runners or an
+                  empty context for defaults.
+                </td>
+                <td>
+                  Audit telemetry, sync, and activity reporting. Root runner
+                  options no longer accept <code>scope</code>; attach fibers
+                  before their work starts. For eager roots, use
+                  <code>Effect.withFiber</code> to call <code>Fiber.runIn</code>
+                  before returning the work effect. Attaching after
+                  <code>runForkWith</code> returns is too late when the work
+                  synchronously triggers shutdown. Test finalizer completion in
+                  that case.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/runtime.md"
+                    >Runtime guide</a
+                  >
+                  ·
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Fiber.ts"
+                    >Scope attachment</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span class="tag manual">Fiber</span>
+                  <p><code>RuntimeFiber</code>, interruption and fork APIs</p>
+                </td>
+                <td>
+                  <code>Fiber.Fiber</code>;
+                  <code>fiber.interruptUnsafe()</code>; numeric
+                  <code>fiber.id</code>. <code>fork</code> →
+                  <code>forkChild</code>; <code>forkDaemon</code> →
+                  <code>forkDetach</code>.
+                </td>
+                <td>
+                  <code>Fiber.interrupt</code> now returns
+                  <code>Effect&lt;void&gt;</code>; await the fiber separately if
+                  its Exit is needed. Review immediate-start requirements at
+                  each fork.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Fiber.ts"
+                    >Fiber declarations</a
+                  >
+                  ·
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/forking.md"
+                    >Forking guide</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span class="tag manual">Tracer</span>
+                  <p>
+                    Custom <code>DictationSpan</code> and
+                    <code>Tracer.make</code>
+                  </p>
+                </td>
+                <td>
+                  The span factory receives one options object.
+                  <code>Span.context</code> becomes <code>annotations</code>.
+                  Remove the optional <code>context: (f) =&gt; f()</code> hook,
+                  whose v4 arguments changed.
+                </td>
+                <td>
+                  Supply <code>Tracer.Tracer</code> in the runner context;
+                  <code>Layer.setTracer</code> /
+                  <code>Layer.toRuntime</code> are absent. Preserve span timing,
+                  parentage, exit, and sink isolation.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Tracer.ts"
+                    >Tracer declarations</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span class="tag">Queue</span>
+                  <p>Settings sync control events</p>
+                </td>
+                <td>
+                  <code>Queue.unbounded</code>, <code>offer</code>, and
+                  <code>take</code> remain. Keep the existing shutdown
+                  event/acknowledgment protocol.
+                </td>
+                <td>
+                  Test pending acknowledgments at shutdown. Queue termination
+                  operations have distinct drain/discard behavior; choose only
+                  if needed.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Queue.ts"
+                    >Queue declarations</a
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <details>
+          <summary>
+            3.3 Immediate-start behavior — observed in isolated RC probes
+          </summary>
+          <div class="detail">
+            <p>
+              <code>runFork</code>, <code>runForkWith</code>,
+              <code>runPromise</code>, and <code>runPromiseWith</code> executed
+              the synchronous prefix before returning in rc.115. Root runner
+              options have no <code>startImmediately</code> field.
+            </p>
+            <p>
+              Child and detached fork combinators defer startup by default.
+              Their <code>{ startImmediately: true }</code> option restores
+              immediate startup where the app requires it. Review
+              <code>main/lifecycle/effect/session-work.ts:233</code> in
+              particular.
+            </p>
+            <p>
+              <code>Effect.forever</code> now yields between iterations. The
+              activity schedule keeps its explicit 301–360 second or one-hour
+              sleep and uses <code>{ disableYield: true }</code> to register the
+              next timer without another scheduler handoff. Sleep still suspends
+              the fiber for the intended interval.
+            </p>
+            <pre><code>// Static telemetry bridge; covered by the custom tracer tests.
+const context = Context.make(Tracer.Tracer, tracer);
+export const runFork = Effect.runForkWith(context);
+export const runPromise = Effect.runPromiseWith(context);
+export const runPromiseExit = Effect.runPromiseExitWith(context);</code></pre>
+            <p class="note">
+              The isolated probe confirmed immediate startup and tracer
+              invocation for this context pattern. It did not migrate or
+              validate the full app.
+              <a
+                href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/runtime.md"
+                >Runtime guide</a
+              >
+              ·
+              <a
+                href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/forking.md"
+                >Forking guide</a
+              >
+            </p>
+          </div>
+        </details>
+        <h3>3.4 Error handling is the first semantic gate</h3>
+        <div class="decision">
+          <span class="label">Observed RC difference</span>
+          <p>
+            A failure with both a typed error and a finalizer defect retains
+            both in its raw Exit. In rc.115, <code>Effect.catch</code> can
+            recover the typed error and discard the defect;
+            <code>Effect.result</code>, <code>Effect.mapError</code>,
+            <code>Effect.orDie</code>, and typed matching can also hide it. The
+            conversion uses <code>catchCause</code> plus
+            <code>Cause.map</code> to transform typed errors while retaining the
+            complete cause. Regression tests cover auth, cloud fallback, remote
+            config, and finalizer defects.
+          </p>
+        </div>
+        <p>
+          Review <code>catchAll</code> → <code>catch</code>,
+          <code>catchAllCause</code> → <code>catchCause</code>,
+          <code>catchAllDefect</code> → <code>catchDefect</code>, and test
+          <code>either</code> → <code>result</code> changes together. Audit
+          existing <code>catchTags</code> and error taps where finalizers can
+          also fail. Keep application-level defect reporting through cause-aware
+          handling at the relevant boundaries.
+          <a
+            href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/internal/effect.ts"
+            >Pinned recovery implementation</a
+          >
+        </p>
+        <details>
+          <summary>3.5 Cause representation and test changes</summary>
+          <div class="detail">
+            <p>
+              V4 uses a flat collection of reasons. Replace
+              <code>Cause.failureOption</code> with
+              <code>findErrorOption</code>; <code>dieOption</code> becomes
+              <code>findDefect</code>, which returns a Result, not an Option.
+              Read defect values from <code>cause.reasons</code> using
+              <code>Cause.isDieReason</code>. <code>sequential</code> becomes
+              <code>combine</code>, which deduplicates equal reasons while
+              preserving first-occurrence order; interruption checks become
+              <code>hasInterrupts</code> / <code>hasInterruptsOnly</code>.
+              <code>Exit.isInterrupted</code> becomes
+              <code>Exit.hasInterrupts</code> in settings sync and its tests.
+            </p>
+            <p>
+              The RC has no <code>Cause.electFailures</code> export. Update
+              probes that describe v3 mechanics to describe actual v4 behavior.
+              Keep tests for the app’s typed-error priority, original error
+              identity, null rejection handling, and exactly-once defect
+              capture.
+            </p>
+            <p>
+              <code>Cause.originalError</code> is also removed. Isolated probes
+              preserved raw defect identity through plain, single-span, and
+              nested-span failures. Use the raw defect value for deduplication
+              in the live session and retain tests for those cases.
+              <a
+                href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Cause.ts"
+                >Cause source</a
+              >
+            </p>
+            <p class="note">
+              Start in <code>types/errors/settle.ts</code>,
+              <code>services/transcription/live-transcription-session.ts</code>,
+              <code>services/auth-retry.ts</code>, and
+              <code>tests/effect/error-model-probes.test.ts</code>.
+              <a
+                href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/cause.md"
+                >Cause migration guide</a
+              >
+            </p>
+          </div>
+        </details>
+        <h3>3.6 Packaging and lifetime</h3>
+        <p>
+          The RC package exposes ESM. Effect currently bundles into the Vite
+          main output; verify the packaged output has no unresolved Effect load
+          and launches in Electron. A repo-wide module-format conversion is not
+          required by the current evidence.
+          <a href="https://registry.npmjs.org/effect/4.0.0-rc.115"
+            >Pinned package exports</a
+          >
+        </p>
+        <p>
+          V4 keeps suspended fibers alive, and layer memoization changes across
+          repeated <code>Effect.provide</code> calls. Verify process exit,
+          singleton construction, test isolation, and finalizer order.
+          <a
+            href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/fiber-keep-alive.md"
+            >Fiber lifetime guide</a
+          >
+          ·
+          <a
+            href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/layer-memoization.md"
+            >Layer memoization guide</a
+          >
+        </p>
+        <h3 id="rewrite-decisions">3.7 Rewrite decisions</h3>
+        <p>
+          Updated direction: prefer a durable v4 implementation where the old
+          design no longer fits. These recommendations distinguish confirmed
+          library changes from optional architecture changes.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Recommendation</th>
+                <th>Reason and decision gate</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  Runtime / tracer bridge<br /><span class="tag manual"
+                    >Rewrite now</span
+                  >
+                </td>
+                <td>
+                  Replace the old runtime-building shell with context-based
+                  runners and the v4 tracer interface.
+                </td>
+                <td>
+                  The old Runtime type and tracer-layer construction APIs are
+                  gone. Remove obsolete initialization machinery. Direct context
+                  runners fit the current static tracer. A fresh RC probe also
+                  showed that a cold ManagedRuntime starts immediately for a
+                  synchronous layer; do not carry forward the v3 assumption that
+                  it always defers startup.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/runtime.md"
+                    >Runtime guide</a
+                  >
+                  ·
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/ManagedRuntime.ts"
+                    >ManagedRuntime source</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Error settlement / recovery<br /><span class="tag manual"
+                    >Rewrite now</span
+                  >
+                </td>
+                <td>
+                  Rewrite cause inspection and recovery at affected boundaries
+                  around v4 reasons and raw defect identity.
+                </td>
+                <td>
+                  Mixed-cause behavior changed. Make error priority and defect
+                  reporting explicit where needed; remove old proxy
+                  normalization and revise v3-only probes. Verify null failures,
+                  interrupted finalizers, and exactly-once reports. See 3.4–3.5.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Custom FIFO token lock<br /><span class="tag"
+                    >Retain for ordering</span
+                  >
+                </td>
+                <td>
+                  Keep the explicit FIFO handoff. Complete each waiter with
+                  <code>Effect.yieldNow</code> to schedule its continuation;
+                  v4's synchronous Deferred wakeup otherwise changes failure
+                  ordering and can recurse through a long queue.
+                </td>
+                <td>
+                  An rc.115 probe showed a new semaphore acquirer overtaking an
+                  already queued waiter. Native Semaphore(1) does not satisfy
+                  the current FIFO contract. Removing this lock would require a
+                  resource-serialization design, such as ordered jobs with one
+                  worker. Include VAD reset, final flush, and history retry as
+                  well as streaming chunks: they share these locks. That rewrite
+                  is an option to compare, not a demonstrated simplification.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Semaphore.ts"
+                    >Semaphore implementation</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Boot scope ownership<br /><span class="tag manual"
+                    >Design review</span
+                  >
+                </td>
+                <td>
+                  Evaluate an outer crash-reporting scope with ordinary scoped
+                  acquisition for the inner application graph.
+                </td>
+                <td>
+                  This is an architecture option, not a new v4 requirement.
+                  Keeping telemetry alive is insufficient: inner rollback can
+                  block initialization from rejecting, so the current crash
+                  reporter never runs. Compare reporting before rollback, a
+                  defined bounded rollback policy, and current ownership. Test
+                  blocked cleanup and a pending sibling initializer before
+                  recommending a rewrite; see 4.1.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Session fiber ownership<br /><span class="tag manual"
+                    >Evaluate primitives</span
+                  >
+                </td>
+                <td>
+                  Evaluate <code>FiberSet</code> for generic running-fiber
+                  bookkeeping and native scopes for background workers. Keep
+                  cloud/provider <code>ManagedRuntime</code> ownership.
+                </td>
+                <td>
+                  Production closes chunk admission before draining
+                  (<code>transcription-service.ts:912,962</code>), so
+                  <code>FiberSet.awaitEmpty</code> may meet the real
+                  requirement: drain accepted work and let abort release the
+                  wait. Snapshot semantics and
+                  <code>SessionWork.settled()</code> are currently test/API
+                  details, not proven product constraints. Verify the chosen
+                  drain and retain explicit error settlement.
+                  <code>FiberMap</code> holds one fiber per key and would
+                  replace earlier work under the same session key; it cannot
+                  replace the whole lifecycle registry directly. Delivery and
+                  surviving obligations need distinct lifetimes.
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/FiberSet.ts"
+                    >FiberSet source</a
+                  >
+                  ·
+                  <a
+                    href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/FiberMap.ts"
+                    >FiberMap source</a
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Electron quit boundary<br /><span class="tag manual"
+                    >Design review</span
+                  >
+                </td>
+                <td>
+                  Require asynchronous finalizer completion before normal
+                  application exit; evaluate a guarded quit sequence if needed.
+                </td>
+                <td>
+                  This is a pre-existing integration risk. The only quit hook
+                  (<code>main/app.ts:157</code>) returns the cleanup Promise
+                  without preventing termination. A successful exit can
+                  therefore hide incomplete cleanup. Decide repeated-quit,
+                  cleanup-error, and timeout behavior, and prove completion in a
+                  packaged app.
+                  <a
+                    href="https://www.electronjs.org/docs/latest/api/app#event-will-quit"
+                    >Electron quit semantics</a
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          For each non-clean migration, report the old design, supported v4
+          alternative, recommended rewrite, behavior changes, and effort/test
+          impact before implementation. Service-tag renames and retained queue
+          operations can follow the guide directly. Any compatibility wrapper
+          needs a concrete reason to survive the migration.
+        </p>
+      </section>
+
+      <section id="contracts" aria-labelledby="contracts-title">
+        <h2 id="contracts-title">
+          <span class="section-no">4</span>Behavior contracts
+        </h2>
+        <p>
+          These are the current behavior checks. Separate product requirements
+          from tests that pin a v3 implementation detail. Update the latter for
+          the chosen v4 design; document any proposed product-behavior change
+          before implementation.
+        </p>
+        <div class="contract">
+          <div class="index">4.1</div>
+          <div>
+            <h3>
+              Startup failures reach crash reporting before cleanup can block
+            </h3>
+            <p>
+              Preserve the original boot error, telemetry flush, and fatal
+              dialog even when a sibling’s cleanup is pending. Register release
+              before fallible initialization; own and await or cancel pending
+              initialization when a sibling fails. The chosen scope design must
+              clean up resources once in dependency order.
+            </p>
+            <p class="note">
+              The essential requirement is usable crash reporting and reliable
+              cleanup. Keeping the entire partial graph alive is the current
+              solution; the scope review in 3.7 may propose a smaller retained
+              graph and explicitly revised cleanup expectations.
+            </p>
+            <p class="note">
+              Evidence: <code>main/runtime/app-runtime.ts:1</code>,
+              <code>main/runtime/layer-helpers.ts:16</code>. Gate: existing
+              <code>tests/main/app-layers.test.ts</code> failure and shutdown
+              cases, extended with a pending initializer and a blocked
+              finalizer. The existing late-failure case does not prove those
+              scenarios.
+              <a
+                href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Layer.ts"
+                >Pinned layer cleanup</a
+              >
+            </p>
+          </div>
+        </div>
+        <div class="contract">
+          <div class="index">4.2</div>
+          <div>
+            <h3>The first dictation fork starts immediately</h3>
+            <p>
+              The synchronous prefix must run before the runner returns,
+              including on the first call. The lifecycle code uses this to
+              register work and telemetry obligations without a scheduling gap.
+            </p>
+            <p class="note">
+              Evidence: <code>main/runtime/telemetry-runtime.ts:6</code>. Gate:
+              keep the first test in
+              <code>tests/main/telemetry-runtime.test.ts:15</code>; extend
+              coverage to Promise/exit runners and callback-created work where
+              needed.
+            </p>
+          </div>
+        </div>
+        <div class="contract">
+          <div class="index">4.3</div>
+          <div>
+            <h3>Errors retain identity and defects stay visible</h3>
+            <p>
+              Promise boundaries reject with the same typed error value. In a
+              mixed cause, settlement preserves the app’s failure priority and
+              reports each dropped defect exactly once. Pure cancellation does
+              not become a domain failure or a bug report.
+            </p>
+            <p class="note">
+              Evidence: <code>types/errors/settle.ts:3</code>,
+              <code
+                >services/transcription/live-transcription-session.ts:52</code
+              >. Gate: error-model probes, settlement tests, and live-session
+              defect-capture tests.
+            </p>
+          </div>
+        </div>
+        <div class="contract">
+          <div class="index">4.4</div>
+          <div>
+            <h3>Token acquisition remains FIFO and cancellation-safe</h3>
+            <p>
+              Waiters enter in arrival order. An interrupted waiter is removed;
+              handoff cannot lose the token; release happens once. Keep the
+              custom lock until an alternative proves all of these properties.
+            </p>
+            <p class="note">
+              Evidence: <code>services/transcription/token-lock.ts:5</code>.
+              Gate: <code>tests/services/token-lock.test.ts</code>, including
+              interrupted handoff and mixed Promise/Effect use.
+            </p>
+          </div>
+        </div>
+        <div class="contract">
+          <div class="index">4.5</div>
+          <div>
+            <h3>Identity changes fence old work</h3>
+            <p>
+              Logout and account switches cancel or retire old requests before
+              new-account work can commit. Settings sync and activity reporting
+              retain their single-flight, debounce, retry, and shutdown rules.
+              Auth refresh remains shared by concurrent callers.
+            </p>
+            <p class="note">
+              Gate: settings-sync service/client, activity-reporting
+              service/client, auth-refresh and auth-retry suites. Add targeted
+              RC cases for queued work during scope close only where coverage is
+              missing.
+            </p>
+          </div>
+        </div>
+        <div class="contract">
+          <div class="index">4.6</div>
+          <div>
+            <h3>
+              Telemetry completes once; quit completes without a forced kill
+            </h3>
+            <p>
+              Nested spans keep parentage; separate sessions keep distinct trace
+              IDs. A throwing telemetry sink cannot fail dictation.
+              Cancellation, finalization, and provider disposal leave no stuck
+              background work when the app quits. Observe finalizer completion
+              before process exit; an exit code alone is insufficient. Test
+              repeated quit requests and the chosen error/timeout policy.
+            </p>
+            <p class="note">
+              Gate: telemetry runtime/trace tests, lifecycle session-work tests,
+              cloud provider tests, and an explicit packaged clean-exit check.
+              The current E2E close helper can kill a hung app, so it is
+              insufficient evidence by itself.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="phases" aria-labelledby="phases-title">
+        <h2 id="phases-title">
+          <span class="section-no">5</span>Execution plan
+        </h2>
+        <p>
+          Use one integration owner and one migration branch. Land compatible
+          preparation separately if useful; merge the dependency cutover and all
+          affected callers together.
+        </p>
+        <div class="phase">
+          <span class="label">5.1 · Baseline &amp; target · ½ day</span>
+          <h3>Freeze the comparison</h3>
+          <p>
+            Record the RC tag, dependency graph, compiler versions, test
+            results, packaged startup behavior, and shutdown timing. Keep
+            unrelated native submodule changes outside the migration diff. Add
+            only missing contract tests that can run on v3. Mark which existing
+            assertions describe product behavior and which describe v3
+            mechanics.
+          </p>
+          <p class="gate">
+            <strong>Exit gate:</strong> a reproducible v3 baseline and a named
+            RC target. Current typecheck and unit-suite baseline already pass;
+            packaging and live behavior still need capture.
+          </p>
+        </div>
+        <div class="phase">
+          <span class="label"
+            >5.2 · Design decisions &amp; probes · 1–2 days</span
+          >
+          <h3>Choose what to migrate and what to rewrite</h3>
+          <p>
+            Run the retained characterization harness in 6.6, then extend
+            focused probes for the chosen design. Test the exact RC’s runner
+            startup, custom tracer, flattened causes, app-owned scope behavior,
+            and FIFO lock primitives. Compare each rewrite candidate in 3.7 with
+            a direct port. Present the recommended design, code removed,
+            behavior differences, validation evidence, and effort impact before
+            implementing a substantial rewrite or distributing wider file edits.
+          </p>
+          <p class="gate">
+            <strong>Exit gate:</strong> each candidate has a recorded decision
+            with retained probe source, command, exact version, assertions, and
+            output. A mismatch first triggers a design review; call it an
+            upstream blocker only after checking the supported v4 approach.
+          </p>
+        </div>
+        <div class="phase">
+          <span class="label"
+            >5.3 · Coordinated source migration · 1–2 days</span
+          >
+          <h3>Update the graph and its consumers</h3>
+          <p>
+            Change the dependency/compiler pins. Implement the agreed runtime
+            and error-boundary rewrites, then migrate generator receivers,
+            service tags, fibers, queues, deferred values, callback
+            cancellation, and tracing. Remove old adapters made obsolete by
+            those changes. Update test fixtures and compile-time probes for the
+            chosen contracts.
+          </p>
+          <p class="gate">
+            <strong>Exit gate:</strong> desktop typecheck passes; focused suites
+            pass; searches find no obsolete APIs in executable source/tests. No
+            new broad casts or suppressed errors hide incompatibilities.
+          </p>
+        </div>
+        <div class="phase">
+          <span class="label"
+            >5.4 · Full validation &amp; review · 1–2 days</span
+          >
+          <h3>Exercise the real app boundaries</h3>
+          <p>
+            Run the full suite, lint/format checks, lifecycle contracts, desktop
+            packaging, native dependency smoke, and packaged E2E. Verify
+            dictation cancel, account changes, and completed finalizers before
+            clean quit under active work. Add the full desktop unit suite to CI.
+          </p>
+          <p class="gate">
+            <strong>Exit gate:</strong> all required checks pass on the intended
+            release platforms. Apply the <code>simplify</code> review to each
+            major implementation pass, then rerun checks affected by any
+            cleanup.
+          </p>
+        </div>
+        <div class="phase">
+          <span class="label"
+            >5.5 · Candidate &amp; observation · ½–1 day + soak</span
+          >
+          <h3>Ship through the existing prerelease process</h3>
+          <p>
+            Review one concrete candidate with the pinned lockfile and
+            validation evidence. Exercise repeated launch/dictation/logout/quit
+            cycles, compare telemetry to the v3 baseline, and keep the previous
+            artifact available.
+          </p>
+          <p class="gate">
+            <strong>Exit gate:</strong> stable behavior during the agreed
+            internal observation window and a tested rollback path.
+          </p>
+        </div>
+        <p class="note">
+          <strong>Planning estimate:</strong> approximately 4–8 engineer-days,
+          plus CI/platform availability and an observation window. This is a
+          provisional range, not a delivery commitment. Re-estimate after the
+          design decisions and runtime probes. A wider boot-ownership or session
+          redesign needs its own revised estimate before implementation.
+        </p>
+        <details>
+          <summary>5.6 Safe parallel work after runtime decisions</summary>
+          <div class="detail">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Owner</th>
+                    <th>Bounded assignment</th>
+                    <th>Dependency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Integration owner</td>
+                    <td>
+                      Package/lockfile, runtime bridges, service tags, shared
+                      error settlement, final integration.
+                    </td>
+                    <td>Owns the contract decisions first.</td>
+                  </tr>
+                  <tr>
+                    <td>Agent A</td>
+                    <td>
+                      Auth, settings-sync, activity-reporting APIs and tests.
+                    </td>
+                    <td>Agreed runtime and Cause approach.</td>
+                  </tr>
+                  <tr>
+                    <td>Agent B</td>
+                    <td>
+                      Live transcription, FIFO lock, gRPC/HTTP bridges,
+                      lifecycle session-work and tests.
+                    </td>
+                    <td>Agreed fiber/deferred and immediate-start approach.</td>
+                  </tr>
+                  <tr>
+                    <td>Agent C</td>
+                    <td>
+                      Independent compatibility review, CI/unit gate, packaged
+                      checks, regression audit.
+                    </td>
+                    <td>Compiling integration branch.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">
+              Give each editor distinct files. Integrate shared primitives
+              centrally before branch-wide verification.
+            </p>
+          </div>
+        </details>
+      </section>
+
+      <section id="validation" aria-labelledby="validation-title">
+        <h2 id="validation-title">
+          <span class="section-no">6</span>Validation
+        </h2>
+        <div class="decision">
+          <span class="label">Observed today · Effect 3.22.1</span>
+          <p>
+            <strong
+              >Typecheck passed. 140 test files passed. 1,321 tests
+              passed.</strong
+            >
+            The full Vitest run completed in 9.27 seconds. These results
+            establish the old-version baseline; they do not prove RC
+            compatibility.
+          </p>
+        </div>
+        <h3>6.1 Required commands</h3>
+        <p>
+          Run from the repository root. Start with focused suites during edits,
+          then run this full gate once the integrated change is ready.
+        </p>
+        <pre><code>pnpm type:check
+pnpm --filter @amical/desktop test
+pnpm --filter @amical/desktop lint
+pnpm --filter @amical/desktop format:check
+pnpm --filter @amical/desktop test:lifecycle-contract
+pnpm --filter @amical/desktop verify:lifecycle-contract-version BASE_SHA</code></pre>
+        <p class="note">
+          Replace <code>BASE_SHA</code> with the migration PR’s base revision;
+          the version-check command requires it.
+        </p>
+        <details>
+          <summary>
+            6.2 Package and test using the existing CI build setup
+          </summary>
+          <div class="detail">
+            <pre><code>pnpm --filter @amical/types generate:all
+pnpm --filter @amical/whisper-wrapper build
+pnpm --filter @amical/whisper-wrapper build:native
+pnpm --filter @amical/whisper-wrapper test:load
+pnpm --filter @amical/desktop download-node
+
+# macOS shell; use equivalent environment settings on Windows.
+AMICAL_E2E_PACKAGE=1 SKIP_CODESIGNING=true SKIP_NOTARIZATION=true \
+  TELEMETRY_ENABLED=false pnpm --filter @amical/desktop package
+pnpm --filter @amical/desktop test:native-dependencies
+pnpm --filter @amical/desktop test:e2e</code></pre>
+            <p class="note">
+              Reuse <code>.github/workflows/ci.yml</code> for native setup,
+              API/auth build settings, and platform architecture checks.
+              <code>test:e2e</code> defaults to the packaged executable.
+              <code>test:e2e:bundle</code> tests bundles with a development
+              Electron binary and is only an additional check.
+            </p>
+          </div>
+        </details>
+        <p class="note">
+          The desktop has no <code>build</code> script. Root
+          <code>pnpm build</code> is not a desktop bundle gate; use Electron
+          Forge’s <code>package</code> script. During edits, use the faster
+          <code>pnpm --filter @amical/desktop type:check</code>; the full gate
+          checks the workspace. Package/E2E commands require the project’s
+          native tooling and test configuration.
+        </p>
+        <h3>6.3 Behavior matrix</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Surface</th>
+                <th>Existing coverage to retain</th>
+                <th>RC-specific evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>App graph</td>
+                <td>
+                  <code>app-layers</code>, <code>identity-subscriptions</code>,
+                  service layers, window bridge.
+                </td>
+                <td>
+                  Crash reporting before blocked rollback; owned pending
+                  initialization; finalizer order and exactly-once cleanup; no
+                  duplicate service construction.
+                </td>
+              </tr>
+              <tr>
+                <td>Dictation lifecycle</td>
+                <td>
+                  <code>lifecycle-session-work</code>,
+                  <code>live-transcription-session</code>,
+                  <code>token-lock</code>.
+                </td>
+                <td>
+                  Immediate first start; cancel at acquisition/handoff; late
+                  callbacks after retirement.
+                </td>
+              </tr>
+              <tr>
+                <td>Error model</td>
+                <td>
+                  <code>tests/effect/error-model-probes.*</code>,
+                  <code>tests/types/error-model.test.ts</code>, defect-capture
+                  tests.
+                </td>
+                <td>
+                  Mixed failure/defect order, exact error identity, each dropped
+                  defect captured once, pure interruption.
+                </td>
+              </tr>
+              <tr>
+                <td>Identity and requests</td>
+                <td>
+                  Auth refresh/retry, settings sync, activity reporting, cloud
+                  provider suites.
+                </td>
+                <td>
+                  Concurrent refresh; account switch during active I/O; queue
+                  and semaphore shutdown; gRPC abort cleanup.
+                </td>
+              </tr>
+              <tr>
+                <td>Telemetry</td>
+                <td>
+                  <code>telemetry-runtime</code>, <code>dictation-trace</code>.
+                </td>
+                <td>
+                  Tracer fields/timestamps; parentage; one completion event; a
+                  failing sink stays isolated.
+                </td>
+              </tr>
+              <tr>
+                <td>Packaged app</td>
+                <td>
+                  Native dependency smoke and packaged launch/onboarding E2E.
+                </td>
+                <td>
+                  Effect module loading, real dictation success/cancel, and
+                  finalizer completion before clean process exit with active
+                  background work, including repeated quit and cleanup failure.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>6.4 CI gate updated</h3>
+        <p>
+          The updated CI gate typechecks and runs the complete desktop Vitest
+          suite, including lifecycle replay, before packaging and E2E on macOS
+          arm64 and Windows x64/arm64. The separate lifecycle contract-version
+          check remains. Releases also ship macOS x64. This local pass validates
+          macOS arm64; the other shipped architectures still need packaged
+          verification before broad release.
+        </p>
+        <details>
+          <summary>6.5 Limits of the current evidence</summary>
+          <div class="detail">
+            <ul>
+              <li>
+                The full application suite and typechecks ran on v4, with local
+                macOS arm64 packaging, native smoke checks, and packaged E2E.
+                Windows x64/arm64 and macOS x64 were not validated locally, and
+                no remote CI run was started.
+              </li>
+              <li>
+                Live microphone dictation and graceful quit under real active
+                provider work were not manually exercised. Native whisper
+                binaries were smoke-tested without rebuilding the user's
+                separately modified whisper source.
+              </li>
+              <li>
+                <code>e2e/helpers/launch.ts:114</code> races shutdown against a
+                timeout and catches errors before killing the app. A passing
+                existing E2E result does not prove graceful shutdown.
+              </li>
+              <li>
+                Some passing v3 tests log expected failures; a ServiceManager
+                mock also warns that <code>app.getAppPath</code> is unavailable.
+                Compare new output to the captured baseline instead of treating
+                all stderr as a regression.
+              </li>
+              <li>
+                Existing coverage should be extended only for changed or
+                uncovered behavior. Avoid tests that merely repeat renamed API
+                calls.
+              </li>
+            </ul>
+          </div>
+        </details>
+        <details id="rc-probes">
+          <summary>6.6 Reproduce the RC observations</summary>
+          <div class="detail">
+            <p>
+              <a href="effect-4-probes.mjs">Companion probe source</a> uses
+              Node’s built-in assertions and verifies the package version before
+              loading it. Run from the repository root with Node 24. This
+              downloads the exact RC into a temporary directory and leaves the
+              application dependencies unchanged.
+            </p>
+            <pre><code>effect_probe_dir=$(mktemp -d "${TMPDIR:-/tmp}/amical-effect4.XXXXXX")
+npm pack effect@4.0.0-rc.115 --ignore-scripts --pack-destination "$effect_probe_dir"
+tar -xzf "$effect_probe_dir/effect-4.0.0-rc.115.tgz" -C "$effect_probe_dir"
+node docs/plans/effect-4-probes.mjs "$effect_probe_dir/package"</code></pre>
+            <p class="note">
+              Shell commands above work on macOS/Linux; on Windows, extract the
+              tarball into a temporary directory and pass its
+              <code>package</code>
+              path to the same Node command. This RC has no runtime
+              dependencies, so its extracted distribution runs directly.
+            </p>
+            <p>
+              Checks cover generator receiver binding; root/child startup;
+              static tracer injection; cold synchronous/asynchronous
+              ManagedRuntime initialization; mixed errors and defects; raw
+              defect identity through spans; and semaphore overtaking under the
+              default scheduler. The waiter probe starts its earlier waiter
+              synchronously, then releases and reacquires in one fiber before
+              the scheduled wake-up runs.
+            </p>
+            <pre><code>Effect 4.0.0-rc.115; Node v24.18.0
+… individual assertions and observations …
+Semaphore overtaking: new arrival -&gt; queued earlier
+All RC characterization checks passed.</code></pre>
+            <p class="note">
+              Reconstructed from the exploratory cases, retained, and rerun
+              during this review. Passing these checks proves the listed library
+              behavior; application tests separately cover boot ownership,
+              pending initialization, session cancellation, and cleanup.
+              Existing packaged E2E does not prove graceful Electron quit under
+              active provider work. If the target RC changes, review the
+              harness’s version pin and expected semantics explicitly.
+            </p>
+          </div>
+        </details>
+      </section>
+
+      <section id="release" aria-labelledby="release-title">
+        <h2 id="release-title">
+          <span class="section-no">7</span>Release &amp; rollback
+        </h2>
+        <div class="columns">
+          <div>
+            <h3>7.1 Release criteria</h3>
+            <ul>
+              <li>Exact RC/compiler pins and reviewed lockfile.</li>
+              <li>
+                All six behavior contracts pass with no unresolved new failures.
+              </li>
+              <li>
+                Full unit suite runs in CI; packaged checks pass for release
+                targets.
+              </li>
+              <li>
+                Internal sessions show no new dropped dictation, duplicate
+                telemetry, wrong-account writes, or stuck quit.
+              </li>
+              <li>
+                Compare startup, stop-to-paste latency, and memory after
+                repeated sessions with the v3 baseline. Investigate sustained
+                regressions before promotion.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3>7.2 Rollback unit</h3>
+            <p>
+              Keep the dependency update, API migration, and corresponding tests
+              as one revertible release unit. If a regression appears, pause
+              promotion and use a corrective build from the known-good v3 code
+              and lockfile.
+            </p>
+            <p>
+              Validate the updater’s version rules before choosing an older
+              artifact directly. The plan makes no data-format or cloud-protocol
+              changes, so rollback should not require a database downgrade.
+            </p>
+          </div>
+        </div>
+        <h3>7.3 Decisions to settle during implementation</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Decision</th>
+                <th>Default in this draft</th>
+                <th>Evidence that could change it</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>RC target</td>
+                <td><code>4.0.0-rc.115</code></td>
+                <td>
+                  A newer RC at kickoff; read its release notes and rerun the
+                  same gates.
+                </td>
+              </tr>
+              <tr>
+                <td>Runtime replacement</td>
+                <td>
+                  Explicit synchronous context runners for telemetry; scoped
+                  context capture for sync.
+                </td>
+                <td>
+                  Exact RC probes fail to retain current startup/cancellation
+                  behavior.
+                </td>
+              </tr>
+              <tr>
+                <td>Release observation</td>
+                <td>
+                  Internal candidate first; use the existing prerelease channel.
+                </td>
+                <td>
+                  Team release cadence and availability of macOS/Windows
+                  testers.
+                </td>
+              </tr>
+              <tr>
+                <td>Broader adoption</td>
+                <td>Upgrade existing Effect boundaries.</td>
+                <td>
+                  A separate request to convert more services, validation, or
+                  renderer code.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          These decisions do not block drafting or research. Any confirmed
+          upstream incompatibility should be documented with a minimal
+          reproduction and its effect on the app’s contract.
+        </p>
+      </section>
+
+      <section id="sources" aria-labelledby="sources-title">
+        <h2 id="sources-title">
+          <span class="section-no">8</span>Evidence &amp; sources
+        </h2>
+        <p>
+          Primary sources were checked on 15 September 2026. The version target
+          comes from npm; migration API decisions should use the pinned release
+          source. General website guidance can change after this snapshot.
+        </p>
+        <ol class="source-list">
+          <li>
+            <a href="https://registry.npmjs.org/-/package/effect/dist-tags"
+              >Official npm package tags</a
+            >
+            and
+            <a href="https://registry.npmjs.org/effect/4.0.0-rc.115"
+              >RC package metadata</a
+            >
+            and
+            <a href="https://registry.npmjs.org/effect">publication history</a>
+            — observed target <code>4.0.0-rc.115</code>; published
+            <code>2026-09-11T17:20:13.421Z</code>.
+          </li>
+          <li>
+            <a
+              href="https://github.com/Effect-TS/effect/releases/tag/effect%404.0.0-rc.115"
+              >Effect 4.0.0-rc.115 release</a
+            >
+            — release notes and tagged source.
+          </li>
+          <li>
+            <a
+              href="https://effect.website/docs/v4/getting-started/installation"
+              >Effect 4 installation</a
+            >
+            — RC install channel, TypeScript and strict-mode requirements.
+          </li>
+          <li>
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/MIGRATION.md"
+              >Pinned migration index</a
+            >
+            — guide to the v3 → v4 changes.
+          </li>
+          <li>
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/runtime.md"
+              >Runtime</a
+            >,
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/forking.md"
+              >forking</a
+            >, and
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Tracer.ts"
+              >Tracer source</a
+            >
+            — runner and span changes.
+          </li>
+          <li>
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/migration/cause.md"
+              >Cause guide</a
+            >
+            and
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/internal/effect.ts"
+              >recovery implementation</a
+            >
+            — flattened reasons and mixed-cause recovery.
+          </li>
+          <li>
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Fiber.ts"
+              >Fiber</a
+            >,
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Deferred.ts"
+              >Deferred</a
+            >, and
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/packages/effect/src/Queue.ts"
+              >Queue</a
+            >
+            — exact RC primitive declarations.
+          </li>
+          <li>
+            <a
+              href="https://github.com/Effect-TS/effect/blob/effect%404.0.0-rc.115/README.md"
+              >Pinned README</a
+            >
+            — Node ≥18 and TypeScript ≥5.9. The website installation page
+            specifies Node ≥22.18 for its direct TypeScript workflow; Amical’s
+            Node 24 baseline meets both. The pinned migration index still uses
+            an older beta label; npm and the release identify this version as an
+            RC.
+          </li>
+        </ol>
+        <details>
+          <summary>8.1 Repository evidence index</summary>
+          <div class="detail">
+            <ul class="source-list">
+              <li>
+                <code>apps/desktop/package.json:108,180</code>, root
+                <code>package.json:18</code>, <code>pnpm-lock.yaml:239</code> —
+                current dependency and compiler pins.
+              </li>
+              <li>
+                <code>pnpm-workspace.yaml:6</code> — website excluded from
+                workspace.
+              </li>
+              <li>
+                <code
+                  >apps/desktop/src/main/runtime/{tags,app-runtime,layer-helpers,telemetry-runtime}.ts</code
+                >
+                — service identity, app ownership, and immediate-start runtime.
+              </li>
+              <li>
+                <code>apps/desktop/src/types/errors/settle.ts</code> and
+                <code
+                  >src/services/transcription/{live-transcription-session,token-lock}.ts</code
+                >
+                — settlement and cancellation contracts.
+              </li>
+              <li>
+                <code
+                  >apps/desktop/src/services/{auth-service,settings-sync-supervisor,activity-reporting-service}.ts</code
+                >
+                — semaphores, queue ownership, and identity fencing.
+              </li>
+              <li>
+                <code>apps/desktop/vitest.config.ts</code>,
+                <code>tsconfig.json</code>, <code>vite.main.config.mts</code> —
+                test discovery, compiler, and bundled main entry.
+              </li>
+              <li>
+                <code>.github/workflows</code> and
+                <code>apps/desktop/e2e/helpers/launch.ts:114</code> — release
+                gates and shutdown-test limitation.
+              </li>
+            </ul>
+            <p class="note">
+              Working-tree observation before writing: the
+              <code>packages/whisper-wrapper/whisper.cpp</code> submodule
+              already had modifications. This plan does not alter them.
+            </p>
+          </div>
+        </details>
+      </section>
+      <footer>
+        <span>Amical / Engineering</span
+        ><span class="mono">EFFECT 4 · DRAFT 03 · 2026-09-15</span>
+      </footer>
+    </main>
+    <script>
+      const links = [...document.querySelectorAll('nav a[href^="#"]')];
+      const sections = [...document.querySelectorAll("main > section[id]")];
+      const observer = new IntersectionObserver(
+        () => {
+          const active =
+            sections.find(
+              (section) => section.getBoundingClientRect().bottom > 32,
+            ) ?? sections.at(-1);
+          for (const link of links) {
+            if (link.hash === `#${active.id}`)
+              link.setAttribute("aria-current", "location");
+            else link.removeAttribute("aria-current");
+          }
+        },
+        { rootMargin: "-32px 0px 0px 0px", threshold: 0 },
+      );
+      sections.forEach((section) => observer.observe(section));
+    </script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.2/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "base",
+        securityLevel: "strict",
+        themeVariables: {
+          background: "#171b23",
+          primaryColor: "#253122",
+          primaryTextColor: "#e2e8f0",
+          primaryBorderColor: "#64764e",
+          lineColor: "#9ba99d",
+          secondaryColor: "#1c2a35",
+          tertiaryColor: "#1c2a35",
+          fontFamily: "Avenir Next, Segoe UI, sans-serif",
+          fontSize: "14px",
+        },
+      });
+    </script>
+  </body>
+</html>

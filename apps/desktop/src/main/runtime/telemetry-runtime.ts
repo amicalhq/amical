@@ -1,17 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { Effect, Exit, Layer, Runtime, Scope, Tracer } from "effect";
-import type * as Context from "effect/Context";
+import { Context, Effect, Exit, Tracer } from "effect";
 import * as Option from "effect/Option";
 
 /**
  * The shared runtime for dictation-path fibers (lifecycle session work and
  * the transcription service streaming path).
  *
- * Built SYNCHRONOUSLY at module load: the tracer layer acquires no async
- * resources, so the first runFork/runPromise call already executes the
- * fiber's synchronous prefix. A lazily built runtime (ManagedRuntime) defers
- * the first call's synchronous prefix, which breaks zero-tick guarantees the
- * session code and its tests rely on. Pinned by telemetry-runtime.test.ts.
+ * The tracer has no resources to acquire. A static context provides it to
+ * root runners, which execute each fiber's synchronous prefix immediately.
+ * Pinned by telemetry-runtime.test.ts.
  */
 
 /** Called once per finished span. The real sink (per-session accumulator +
@@ -35,7 +32,6 @@ class DictationSpan implements Tracer.Span {
   readonly _tag = "Span" as const;
   readonly spanId: string;
   readonly traceId: string;
-  readonly sampled = true;
   readonly attributes = new Map<string, unknown>();
   status: Tracer.SpanStatus;
   private readonly mutableLinks: Array<Tracer.SpanLink>;
@@ -43,10 +39,11 @@ class DictationSpan implements Tracer.Span {
   constructor(
     readonly name: string,
     readonly parent: Option.Option<Tracer.AnySpan>,
-    readonly context: Context.Context<never>,
+    readonly annotations: Context.Context<never>,
     links: ReadonlyArray<Tracer.SpanLink>,
     startTime: bigint,
     readonly kind: Tracer.SpanKind,
+    readonly sampled: boolean,
   ) {
     this.spanId = `span-${++spanCounter}`;
     // A root span mints its own trace id; children inherit the parent's, so
@@ -101,17 +98,20 @@ class DictationSpan implements Tracer.Span {
 }
 
 const tracer = Tracer.make({
-  span: (name, parent, context, links, startTime, kind) =>
-    new DictationSpan(name, parent, context, links, startTime, kind),
-  context: (f) => f(),
+  span: ({ name, parent, annotations, links, startTime, kind, sampled }) =>
+    new DictationSpan(
+      name,
+      parent,
+      annotations,
+      links,
+      startTime,
+      kind,
+      sampled,
+    ),
 });
 
-const runtimeScope = Effect.runSync(Scope.make());
+const telemetryContext = Context.make(Tracer.Tracer, tracer);
 
-export const telemetryRuntime: Runtime.Runtime<never> = Effect.runSync(
-  Layer.toRuntime(Layer.setTracer(tracer)).pipe(Scope.extend(runtimeScope)),
-);
-
-export const runFork = Runtime.runFork(telemetryRuntime);
-export const runPromise = Runtime.runPromise(telemetryRuntime);
-export const runPromiseExit = Runtime.runPromiseExit(telemetryRuntime);
+export const runFork = Effect.runForkWith(telemetryContext);
+export const runPromise = Effect.runPromiseWith(telemetryContext);
+export const runPromiseExit = Effect.runPromiseExitWith(telemetryContext);

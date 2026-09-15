@@ -153,10 +153,7 @@ export function createRecorderAdapter(
   >();
 
   function openCustodyWaiter(session: SessionId): void {
-    custodyDeferred.set(
-      session,
-      Effect.runSync(Deferred.make<CustodyOutcome>()),
-    );
+    custodyDeferred.set(session, Deferred.makeUnsafe<CustodyOutcome>());
   }
 
   function settleCustodyWaiter(
@@ -164,7 +161,7 @@ export function createRecorderAdapter(
     outcome: CustodyOutcome,
   ): void {
     const waiter = custodyDeferred.get(session);
-    if (waiter) Deferred.unsafeDone(waiter, Effect.succeed(outcome));
+    if (waiter) Deferred.doneUnsafe(waiter, Effect.succeed(outcome));
   }
 
   function current(session: SessionId): CaptureState | null {

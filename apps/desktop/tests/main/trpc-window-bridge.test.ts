@@ -54,7 +54,7 @@ describe("TrpcHandlerLive window bridge", () => {
           Layer.provide(Layer.succeed(ServicesBundleTag, services)),
           Layer.provide(Layer.succeed(AppScopeTag, scope)),
         ),
-      ).pipe(Scope.extend(scope)),
+      ).pipe(Scope.provide(scope)),
     );
     closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
 

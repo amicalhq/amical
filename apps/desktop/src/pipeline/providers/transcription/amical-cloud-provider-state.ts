@@ -19,7 +19,7 @@ export interface CloudAuth {
   refreshTokenIfNeeded(force?: boolean): Effect.Effect<void, CloudError>;
 }
 
-export const CloudAuth = Context.GenericTag<CloudAuth>(
+export const CloudAuth = Context.Service<CloudAuth>(
   "AmicalCloudProvider/CloudAuth",
 );
 
@@ -30,7 +30,7 @@ export interface CloudConfig {
   transport: Transport;
 }
 
-export const CloudConfig = Context.GenericTag<CloudConfig>(
+export const CloudConfig = Context.Service<CloudConfig>(
   "AmicalCloudProvider/CloudConfig",
 );
 

@@ -1,4 +1,4 @@
-import { Effect, Ref } from "effect";
+import { Cause, Effect, Option, Ref } from "effect";
 import type { TranscriptionOutput } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { retryOnceAfterAuthenticationRequired } from "../../../services/auth-retry";
@@ -95,7 +95,7 @@ export class AmicalCloudHttpTransport {
     audioData: Float32Array,
     speechProbability: number,
   ): CloudProviderEffect<TranscriptionOutput> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.bufferHttpFrameEffect(audioData, speechProbability);
       return yield* this.transcribeFromBufferEffect();
     });
@@ -108,7 +108,7 @@ export class AmicalCloudHttpTransport {
    * the provider, so re-buffering it here would duplicate audio.
    */
   transcribeFromBufferEffect(): CloudProviderEffect<TranscriptionOutput> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const shouldTranscribe = yield* this.shouldTranscribeEffect();
       if (!shouldTranscribe) {
         return { text: "" };
@@ -132,7 +132,7 @@ export class AmicalCloudHttpTransport {
     enableFormatting: boolean,
     isFinal = false,
   ): CloudProviderEffect<TranscriptionOutput> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const { combinedAudio, vadProbs } = yield* Ref.modify(
         this.state,
         (
@@ -221,7 +221,7 @@ export class AmicalCloudHttpTransport {
   }
 
   private refreshTokenEffect(force = false): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const auth = yield* CloudAuth;
       yield* auth.refreshTokenIfNeeded(force);
     });
@@ -240,7 +240,7 @@ export class AmicalCloudHttpTransport {
     // Empty audio is the text-only finalize path; preserve the
     // original "" wire shape so the server's default float32 path keeps working.
     const hasAudio = audioData.length > 0;
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const config = yield* CloudConfig;
       const audioPayload = hasAudio
         ? Buffer.from(float32ToPcmS16le(audioData)).toString("base64")
@@ -394,7 +394,7 @@ export class AmicalCloudHttpTransport {
       skills: preResolvedSkills,
     } = request;
 
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.failIfClosedEffect();
       const requestSnapshot =
         snapshot ?? (yield* requestSnapshotEffect(this.state));
@@ -444,16 +444,24 @@ export class AmicalCloudHttpTransport {
               "Authentication required, attempting token refresh and retry",
             );
           }).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               this.refreshTokenEffect(true).pipe(
-                Effect.catchAll((refreshError) =>
-                  Effect.sync(() => {
+                Effect.catchCause((cause) => {
+                  const failure = Cause.findErrorOption(cause);
+                  if (
+                    Option.isNone(failure) ||
+                    Cause.hasDies(cause) ||
+                    Cause.hasInterrupts(cause)
+                  ) {
+                    return Effect.failCause(cause);
+                  }
+                  return Effect.sync(() => {
                     logger.transcription.error(
                       "Token refresh failed:",
-                      refreshError,
+                      failure.value,
                     );
                   }).pipe(
-                    Effect.zipRight(
+                    Effect.andThen(
                       Effect.fail(
                         new AuthenticationRequired({
                           message:
@@ -462,11 +470,11 @@ export class AmicalCloudHttpTransport {
                         }),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                }),
               ),
             ),
-            Effect.zipRight(this.failIfClosedEffect()),
+            Effect.andThen(this.failIfClosedEffect()),
           ),
       );
     });
@@ -485,7 +493,7 @@ export class AmicalCloudHttpTransport {
         : state,
     );
 
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.failIfClosedEffect();
 
       // Register before token lookup. Auth remains non-interruptible, but a

@@ -3,10 +3,11 @@ import {
   Effect,
   Exit,
   Fiber,
-  FiberId,
   Layer,
-  Runtime,
+  Option,
+  Context,
   Scope,
+  Semaphore,
 } from "effect";
 
 import {
@@ -18,7 +19,7 @@ import {
 import { applyAccountSummary, getStatsRevision } from "../db/dictation-stats";
 import { transcriptionEvents } from "../db/transcription-events";
 import { logger } from "../main/logger";
-import { down, up } from "../main/runtime/layer-helpers";
+import { down, orDiePreservingCause, up } from "../main/runtime/layer-helpers";
 import {
   ActivityReportingServiceTag,
   AppScopeTag,
@@ -77,14 +78,14 @@ export class ActivityReportingService {
   private initialized = false;
   private stopped = false;
   private currentAccountId: string | null = null;
-  private worker: Fiber.RuntimeFiber<void, never> | null = null;
+  private worker: Fiber.Fiber<void, never> | null = null;
   private currentWorkerId: number | null = null;
   private nextWorkerId = 1;
   private boundaryEpoch = 0;
   private rerunRequested = false;
   private authorizationBlocked = false;
   private summaryRefreshRequested = false;
-  private summarySchedule: Fiber.RuntimeFiber<never, never> | null = null;
+  private summarySchedule: Fiber.Fiber<never, never> | null = null;
   private readonly summaryViews = new Set<symbol>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private unregisterBeforeLogout: (() => void) | null = null;
@@ -95,7 +96,7 @@ export class ActivityReportingService {
       // Stage independently of HTTP so a slow upload cannot delay the snapshot.
       this.materializeUntilCaughtUp().pipe(
         Effect.tap(() => Effect.sync(() => this.wake())),
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           Effect.sync(() => {
             logger.main.error(
               "Failed to materialize settled transcription activity",
@@ -116,7 +117,7 @@ export class ActivityReportingService {
     const epoch = this.beginAccountBoundary();
     this.forkScoped(
       this.activateAccount(accountId, epoch).pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           Effect.sync(() => {
             logger.main.error("Failed to activate activity reporting account", {
               error,
@@ -146,25 +147,25 @@ export class ActivityReportingService {
   private constructor(
     private readonly authService: AuthService,
     private readonly client: ActivityClient,
-    private readonly runtime: Runtime.Runtime<never>,
-    private serviceScope: Scope.CloseableScope,
-    private readonly dbSemaphore: Effect.Semaphore,
+    private readonly context: Context.Context<never>,
+    private serviceScope: Scope.Closeable,
+    private readonly dbSemaphore: Semaphore.Semaphore,
     private readonly readSummary: typeof getAccountSummary,
   ) {}
 
   private static make(
     authService: AuthService,
     client?: ActivityClient,
-    runtime: Runtime.Runtime<never> = Runtime.defaultRuntime,
+    context: Context.Context<never> = Context.empty(),
     readSummary: typeof getAccountSummary = getAccountSummary,
   ): Effect.Effect<ActivityReportingService> {
     return Effect.gen(function* () {
       const serviceScope = yield* Scope.make();
-      const dbSemaphore = yield* Effect.makeSemaphore(1);
+      const dbSemaphore = yield* Semaphore.make(1);
       return new ActivityReportingService(
         authService,
         client ?? new ActivityReportingClient(authService),
-        runtime,
+        context,
         serviceScope,
         dbSemaphore,
         readSummary,
@@ -181,22 +182,24 @@ export class ActivityReportingService {
     Effect.gen(function* () {
       const authService = yield* AuthServiceTag;
       const appScope = yield* AppScopeTag;
-      const runtime = yield* Effect.runtime<never>();
+      const context = yield* Effect.context<never>();
       const service = yield* ActivityReportingService.make(
         authService,
         undefined,
-        runtime,
+        context,
       );
       yield* Scope.addFinalizer(
         appScope,
         Effect.sync(() =>
           logger.main.info("Shutting down activity reporting service..."),
         ).pipe(
-          Effect.zipRight(service.shutdown()),
-          Effect.zipLeft(down("activityReportingService")),
+          Effect.andThen(service.shutdown()),
+          Effect.tap(down("activityReportingService")),
         ),
       );
-      yield* Effect.uninterruptible(service.initialize().pipe(Effect.orDie));
+      yield* Effect.uninterruptible(
+        service.initialize().pipe(orDiePreservingCause),
+      );
       logger.main.info("Activity reporting service created");
       up("activityReportingService");
       return service;
@@ -219,7 +222,7 @@ export class ActivityReportingService {
   }
 
   initialize(): Effect.Effect<void, ActivityReportingDependencyFailure> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       if (this.initialized) return;
       if (this.stopped) {
         this.serviceScope = yield* Scope.make();
@@ -264,9 +267,7 @@ export class ActivityReportingService {
     const work = this.runWorker().pipe(
       Effect.onExit(() => Effect.sync(() => this.finishWorker(workerId))),
     );
-    const fiber = Runtime.runFork(this.runtime)(work, {
-      scope: this.serviceScope,
-    });
+    const fiber = this.forkScoped(work);
     if (this.currentWorkerId === workerId) {
       this.worker = fiber;
     }
@@ -295,11 +296,11 @@ export class ActivityReportingService {
   }
 
   private restartSummarySchedule(): void {
-    this.summarySchedule?.unsafeInterruptAsFork(FiberId.none);
+    this.summarySchedule?.interruptUnsafe();
     this.summarySchedule = null;
     if (this.stopped || !this.initialized || !this.currentAccountId) return;
     const visible = this.summaryViews.size > 0;
-    this.summarySchedule = Runtime.runFork(this.runtime)(
+    this.summarySchedule = this.forkScoped(
       Effect.forever(
         Effect.suspend(() =>
           Effect.sleep(
@@ -307,11 +308,12 @@ export class ActivityReportingService {
               ? (301 + Math.floor(Math.random() * 60)) * 1000
               : 60 * 60_000,
           ).pipe(
-            Effect.zipRight(Effect.sync(() => this.requestSummaryRefresh())),
+            Effect.andThen(Effect.sync(() => this.requestSummaryRefresh())),
           ),
         ),
+        // Sleep already yields; schedule the next interval in this turn.
+        { disableYield: true },
       ),
-      { scope: this.serviceScope },
     );
   }
 
@@ -369,7 +371,7 @@ export class ActivityReportingService {
     this.authorizationBlocked = false;
     this.rerunRequested = false;
     this.restartSummarySchedule();
-    this.worker?.unsafeInterruptAsFork(FiberId.none);
+    this.worker?.interruptUnsafe();
     return this.boundaryEpoch;
   }
 
@@ -413,7 +415,7 @@ export class ActivityReportingService {
           this.summaryRefreshRequested && this.currentAccountId !== null;
         if (refreshRequested) this.summaryRefreshRequested = false;
         this.rerunRequested = false;
-        return Effect.gen(this, function* () {
+        return Effect.gen({ self: this }, function* () {
           const revision = refreshRequested
             ? yield* this.db(async () => getStatsRevision())
             : null;
@@ -430,9 +432,21 @@ export class ActivityReportingService {
             yield* this.refreshSummary(epoch, accountId, revision);
           }
         }).pipe(
-          Effect.matchEffect({
-            onFailure: (error) =>
-              this.handleAttemptFailure(error, iterationEpoch, uploadAccountId),
+          Effect.matchCauseEffect({
+            onFailure: (cause) => {
+              const failure = Cause.findErrorOption(cause);
+              if (
+                cause.reasons.every(Cause.isFailReason) &&
+                Option.isSome(failure)
+              ) {
+                return this.handleAttemptFailure(
+                  failure.value,
+                  iterationEpoch,
+                  uploadAccountId,
+                );
+              }
+              return Effect.failCause(cause);
+            },
             onSuccess: () =>
               iterationEpoch === this.boundaryEpoch &&
               this.rerunRequested &&
@@ -440,9 +454,14 @@ export class ActivityReportingService {
                 ? iteration()
                 : Effect.void,
           }),
-          Effect.catchAllCause((cause) => {
-            if (Cause.isInterruptedOnly(cause)) {
-              return Effect.failCause(cause);
+          Effect.catchCause((cause) => {
+            if (Cause.hasInterruptsOnly(cause)) {
+              // Rebuild from interrupts to narrow the typed error channel to never.
+              return Effect.failCause(
+                Cause.fromReasons(
+                  cause.reasons.filter(Cause.isInterruptReason),
+                ),
+              );
             }
             if (iterationEpoch === this.boundaryEpoch) {
               this.rerunRequested =
@@ -451,6 +470,9 @@ export class ActivityReportingService {
             return Effect.sync(() => {
               logger.main.error("Activity reporting worker failed", {
                 error: Cause.squash(cause),
+                defects: cause.reasons
+                  .filter(Cause.isDieReason)
+                  .map((reason) => reason.defect),
               });
             });
           }),
@@ -505,7 +527,7 @@ export class ActivityReportingService {
     accountId: string,
     expectedRevision: number,
   ): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const current = yield* this.db(
         async () =>
           this.uploadBoundaryIsCurrent(epoch, accountId) &&
@@ -522,7 +544,7 @@ export class ActivityReportingService {
         }
       });
     }).pipe(
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           logger.main.warn(
             "Account dictation stats refresh failed; cache retained",
@@ -546,10 +568,10 @@ export class ActivityReportingService {
     );
 
     return ensureCurrent.pipe(
-      Effect.zipRight(
+      Effect.andThen(
         this.authentication(this.authService.refreshTokenIfNeeded(true)),
       ),
-      Effect.zipRight(ensureCurrent),
+      Effect.andThen(ensureCurrent),
     );
   }
 
@@ -563,7 +585,7 @@ export class ActivityReportingService {
       ).pipe(
         Effect.flatMap((result) =>
           result.scanned === ACTIVITY_MAX_BATCH_SIZE
-            ? Effect.yieldNow().pipe(Effect.zipRight(Effect.suspend(scan)))
+            ? Effect.yieldNow.pipe(Effect.andThen(Effect.suspend(scan)))
             : Effect.void,
         ),
       );
@@ -645,8 +667,8 @@ export class ActivityReportingService {
                   ) {
                     return Effect.succeed(nextRows);
                   }
-                  return Effect.yieldNow().pipe(
-                    Effect.zipRight(Effect.suspend(find)),
+                  return Effect.yieldNow.pipe(
+                    Effect.andThen(Effect.suspend(find)),
                   );
                 }),
               ),
@@ -703,13 +725,18 @@ export class ActivityReportingService {
     effect: Effect.Effect<T, E>,
   ): Effect.Effect<T, ActivityReportingDependencyFailure> {
     return effect.pipe(
-      Effect.mapError(
-        (cause) =>
-          new ActivityReportingDependencyFailure({
-            message: "Activity reporting authentication operation failed",
-            dependency: "authentication",
+      Effect.catchCause((cause) =>
+        Effect.failCause(
+          Cause.map(
             cause,
-          }),
+            (cause) =>
+              new ActivityReportingDependencyFailure({
+                message: "Activity reporting authentication operation failed",
+                dependency: "authentication",
+                cause,
+              }),
+          ),
+        ),
       ),
     );
   }
@@ -735,18 +762,23 @@ export class ActivityReportingService {
     }
   }
 
-  private forkScoped(effect: Effect.Effect<void, never>): void {
-    Runtime.runFork(this.runtime)(effect, { scope: this.serviceScope });
+  private forkScoped<A>(effect: Effect.Effect<A>): Fiber.Fiber<A> {
+    return Effect.runForkWith(this.context)(
+      Effect.withFiber((fiber) => {
+        Fiber.runIn(fiber, this.serviceScope);
+        return effect;
+      }),
+    );
   }
 
   private logBackgroundDefect(message: string) {
     return <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
       effect.pipe(
-        Effect.catchAllCause((cause) => {
-          if (Cause.isInterruptedOnly(cause)) return Effect.failCause(cause);
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
           return Effect.sync(() => {
             logger.main.error(message, { error: Cause.squash(cause) });
-          }).pipe(Effect.zipRight(Effect.failCause(cause)));
+          }).pipe(Effect.andThen(Effect.failCause(cause)));
         }),
       );
   }

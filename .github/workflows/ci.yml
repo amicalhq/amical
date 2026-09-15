@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   typecheck:
-    name: Type Check
+    name: Type Check and Tests
     runs-on: macos-latest
     permissions:
       contents: read
@@ -47,8 +47,8 @@ jobs:
       - name: Type check
         run: pnpm type:check
 
-      - name: Verify lifecycle contract artifact
-        run: pnpm --filter @amical/desktop test:lifecycle-contract
+      - name: Test desktop (including lifecycle contract)
+        run: pnpm --filter @amical/desktop test
 
       - name: Verify lifecycle contract version
         if: github.event_name == 'pull_request'

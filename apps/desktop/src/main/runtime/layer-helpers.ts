@@ -3,7 +3,7 @@
  * layers.ts wrappers and by services that own their Live layer directly.
  */
 
-import { Effect, Scope } from "effect";
+import { Cause, Effect, Scope } from "effect";
 
 import { logger } from "../logger";
 
@@ -12,10 +12,31 @@ export const up = (name: string) => logger.main.debug(`[layers] ${name} up`);
 export const down = (name: string) =>
   Effect.sync(() => logger.main.debug(`[layers] ${name} down`));
 
+// Layer failures are fatal, but co-present cleanup defects and interruptions
+// must survive. Effect v4's orDie keeps only the first typed failure.
+export const orDiePreservingCause = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, never, R> =>
+  effect.pipe(
+    Effect.catchCause((cause) =>
+      Effect.failCause(
+        Cause.fromReasons<never>(
+          cause.reasons.map((reason) =>
+            Cause.isFailReason(reason)
+              ? Cause.makeDieReason(reason.error).annotate(
+                  Cause.reasonAnnotations(reason),
+                )
+              : reason,
+          ),
+        ),
+      ),
+    ),
+  );
+
 /**
  * Registers a service release on the app scope. Releases must NOT use
  * Effect.acquireRelease inside a layer: Layer.build is transactional in
- * effect 3.21 and closes layer scopes on partial build failure, which would
+ * Effect and closes layer scopes on partial build failure, which would
  * tear down already-acquired services before the crash path can use them
  * (see app-runtime.ts). Finalizers on the app scope are invisible to
  * Layer.build, so a failed boot leaves the partial graph alive until
@@ -26,7 +47,7 @@ export const down = (name: string) =>
  * shutdown hang stays attributable from the last info line in field logs.
  */
 export const addRelease = (
-  appScope: Scope.CloseableScope,
+  appScope: Scope.Closeable,
   legacyMessage: string,
   name: string,
   release: () => void | Promise<void>,
@@ -34,12 +55,12 @@ export const addRelease = (
   Scope.addFinalizer(
     appScope,
     Effect.sync(() => logger.main.info(legacyMessage)).pipe(
-      Effect.zipRight(
+      Effect.andThen(
         Effect.promise(async () => {
           await release();
         }),
       ),
-      Effect.zipLeft(down(name)),
+      Effect.tap(down(name)),
     ),
   );
 

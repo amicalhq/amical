@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { retryOnceAfterAuthenticationRequired } from "../../src/services/auth-retry";
@@ -77,5 +77,30 @@ describe("retryOnceAfterAuthenticationRequired", () => {
     expect(exit._tag).toBe("Failure");
     expect(operation).toHaveBeenCalledOnce();
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("preserves an authentication failure with a finalizer defect", async () => {
+    const error = new AuthenticationRequired({ message: "expired" });
+    const defect = new Error("cleanup failed");
+    const operation = vi.fn(() =>
+      Effect.fail(error).pipe(Effect.ensuring(Effect.die(defect))),
+    );
+    const refresh = vi.fn(() => Effect.void);
+
+    const exit = await Effect.runPromiseExit(
+      retryOnceAfterAuthenticationRequired(operation, refresh),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Cause.findErrorOption(exit.cause)).toEqual(Option.some(error));
+      expect(
+        exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect),
+      ).toEqual([defect]);
+    }
+    expect(operation).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

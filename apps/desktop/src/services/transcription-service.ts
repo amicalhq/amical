@@ -648,7 +648,7 @@ export class TranscriptionService {
                 },
                 catch: (error) => error,
               }).pipe(
-                Effect.catchAll((error) => {
+                Effect.catch((error) => {
                   // A VAD error degrades this chunk exactly like a missing
                   // VAD degrades the whole session: assume speech instead of
                   // letting one bad frame fail the session terminally.
@@ -747,7 +747,7 @@ export class TranscriptionService {
                       liveSession.reportTerminalFailure(error),
                   }),
                 catch: (error) => error,
-              }).pipe(Effect.catchAll(failOrDie));
+              }).pipe(Effect.catch(failOrDie));
 
               session = {
                 context,
@@ -787,7 +787,7 @@ export class TranscriptionService {
                   ),
                 }),
               catch: (error) => error,
-            }).pipe(Effect.catchAll(failOrDie));
+            }).pipe(Effect.catch(failOrDie));
             {
               const stats = service.chunkStats.get(sessionId);
               if (stats) {
@@ -918,9 +918,10 @@ export class TranscriptionService {
       // cause is reported once (the session bookkeeping dedups values the
       // chunk arm or an out-of-band channel already own), loudly.
       if (Exit.isFailure(exit)) {
-        const fresh = Array.from(Cause.defects(exit.cause)).filter(
-          (defect) => !liveSession.wasDefectReported(defect),
-        );
+        const fresh = exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect)
+          .filter((defect) => !liveSession.wasDefectReported(defect));
         if (fresh.length > 0) {
           liveSession.markDefectsReported(fresh);
           logger.transcription.error("Dictation resolve defect", {
@@ -955,14 +956,14 @@ export class TranscriptionService {
     const terminalGate = Effect.try({
       try: () => liveSession.throwIfTerminalFailure(),
       catch: (error) => error,
-    }).pipe(Effect.catchAll(failOrDie));
+    }).pipe(Effect.catch(failOrDie));
 
     return Effect.gen(function* () {
       yield* Effect.tryPromise({
         try: () => liveSession.drainAdmittedChunks(),
         catch: (error) => error,
       }).pipe(
-        Effect.catchAll(failOrDie),
+        Effect.catch(failOrDie),
         Effect.withSpan("resolve.drain", { attributes: { sessionId } }),
       );
       const session = liveSession.materializedSession;
@@ -1002,7 +1003,7 @@ export class TranscriptionService {
                   liveSession.signal,
                 ),
               catch: (error) => error,
-            }).pipe(Effect.catchAll(failOrDie));
+            }).pipe(Effect.catch(failOrDie));
             yield* terminalGate;
             session.detectedLanguage = mergeDetectedLanguage(
               session.detectedLanguage,

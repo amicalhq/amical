@@ -1,5 +1,5 @@
 import { NOTE_SYNC_LIMITS } from "@amical/types";
-import { Effect, Exit, Ref } from "effect";
+import { Cause, Effect, Exit, Option, Ref } from "effect";
 
 import {
   applyPullPages,
@@ -44,7 +44,7 @@ export class SettingsSyncRunner {
   run(
     context: SyncContext,
   ): Effect.Effect<SyncAttemptResult, SettingsSyncAttemptError> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const capabilities = yield* this.client.bootstrap(context.accountId);
       const reconciled = yield* this.db(() =>
         reconcileSyncScopes(context.accountId, capabilities.scopes),
@@ -80,7 +80,7 @@ export class SettingsSyncRunner {
           return syncScope(index + 1);
         const transfer = scope.canWrite
           ? this.pushUntilDrained(scopeContext, scopedCapabilities).pipe(
-              Effect.zipRight(
+              Effect.andThen(
                 this.pullUntilCurrent(scopeContext, scopedCapabilities),
               ),
             )
@@ -88,7 +88,13 @@ export class SettingsSyncRunner {
 
         return transfer.pipe(
           Effect.as<SyncAttemptResult>({ rebootstrap: false }),
-          Effect.catchAll((error) => {
+          Effect.catchCause((cause) => {
+            if (!cause.reasons.every(Cause.isFailReason)) {
+              return Effect.failCause(cause);
+            }
+            const failure = Cause.findErrorOption(cause);
+            if (Option.isNone(failure)) return Effect.failCause(cause);
+            const error = failure.value;
             if (
               error instanceof SettingsSyncScopeRejected &&
               scopeContext.scopeType === "org"
@@ -117,7 +123,7 @@ export class SettingsSyncRunner {
                 Effect.as<SyncAttemptResult>({ rebootstrap: false }),
               );
             }
-            return Effect.fail(error);
+            return Effect.failCause(cause);
           }),
           Effect.flatMap((result) =>
             result.rebootstrap ? Effect.succeed(result) : syncScope(index + 1),
@@ -133,7 +139,7 @@ export class SettingsSyncRunner {
     context: SyncContext,
     capabilities: SyncBootstrap,
   ): Effect.Effect<void, SettingsSyncAttemptError> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const changed = yield* Ref.make(false);
       const pullPage = (): Effect.Effect<void, SettingsSyncAttemptError> =>
         this.db(() => getPullCursors(context, capabilities.collections)).pipe(
@@ -161,7 +167,7 @@ export class SettingsSyncRunner {
                       return (
                         pageChanged ? Ref.set(changed, true) : Effect.void
                       ).pipe(
-                        Effect.zipRight(hasMore ? pullPage() : Effect.void),
+                        Effect.andThen(hasMore ? pullPage() : Effect.void),
                       );
                     }),
                   ),
@@ -172,7 +178,7 @@ export class SettingsSyncRunner {
 
       yield* pullPage().pipe(
         Effect.onExit((exit) =>
-          Exit.isInterrupted(exit)
+          Exit.hasInterrupts(exit)
             ? Effect.void
             : Ref.get(changed).pipe(
                 Effect.tap((didChange) =>

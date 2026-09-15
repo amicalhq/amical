@@ -9,7 +9,7 @@ import {
 describe("telemetry runtime shell", () => {
   // This test must stay FIRST: it pins that the module-load-time runtime has
   // no cold phase — the very first fork runs its synchronous prefix before
-  // runFork returns. A lazily built runtime (ManagedRuntime) fails this.
+  // runFork returns.
   it("runs the synchronous prefix of the first fork before returning", () => {
     let ran = false;
     runFork(
@@ -50,6 +50,30 @@ describe("telemetry runtime shell", () => {
     }
     expect(seen).toEqual([{ name: "probe.fail", failed: true }]);
   });
+
+  it.each([true, false])(
+    "retains sampled=%s and passes it to child spans",
+    async (sampled) => {
+      const spans: Array<{ name: string; sampled: boolean }> = [];
+      setSpanEndSink((span) => {
+        spans.push({ name: span.name, sampled: span.sampled });
+      });
+      try {
+        await runPromise(
+          Effect.void.pipe(
+            Effect.withSpan("child"),
+            Effect.withSpan("parent", { sampled }),
+          ),
+        );
+      } finally {
+        setSpanEndSink(() => {});
+      }
+      expect(spans).toEqual([
+        { name: "child", sampled },
+        { name: "parent", sampled },
+      ]);
+    },
+  );
 
   it("a throwing sink never poisons the fiber", async () => {
     setSpanEndSink(() => {

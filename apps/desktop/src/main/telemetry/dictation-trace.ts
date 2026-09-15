@@ -347,11 +347,11 @@ function handleSpanEnd(
     span.status._tag === "Ended" ? nsToMs(endTime - span.status.startTime) : 0;
   const status = Exit.isSuccess(exit)
     ? "ok"
-    : Cause.isInterruptedOnly(exit.cause)
+    : Cause.hasInterruptsOnly(exit.cause)
       ? "interrupted"
       : "failed";
   const failure = Exit.isFailure(exit)
-    ? Cause.failureOption(exit.cause)
+    ? Cause.findErrorOption(exit.cause)
     : Option.none();
   // The projection owns coding now: variants project their frozen code and
   // carry their tag; foreign values project UNKNOWN (the foreign-`.code`

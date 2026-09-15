@@ -17,7 +17,7 @@
  *
  * 1. Releases register on the app-owned scope (AppScopeTag) via
  *    Scope.addFinalizer (layer-helpers.ts addRelease), NOT via
- *    Effect.acquireRelease: Layer.build is transactional in effect 3.21 and
+ *    Effect.acquireRelease: Layer.build is transactional and
  *    closes layer scopes on partial build failure, which would tear down
  *    PostHog before the crash path can flush telemetry (verified
  *    empirically; see app-runtime.ts). Finalizers on the app scope are

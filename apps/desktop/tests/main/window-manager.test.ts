@@ -41,7 +41,7 @@ describe("WindowManager lifecycle events", () => {
         WindowManager.Live.pipe(
           Layer.provide(Layer.succeed(SettingsServiceTag, settingsService)),
         ),
-      ).pipe(Scope.extend(scope)),
+      ).pipe(Scope.provide(scope)),
     );
     closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
 

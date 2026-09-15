@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { Cause, Data, Deferred, Effect, Exit, Fiber, Option } from "effect";
+import {
+  Cause,
+  Data,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Option,
+  Result,
+} from "effect";
 
 /**
  * Executable probes for the effect semantics the tagged-error model relies
@@ -9,7 +18,7 @@ import { Cause, Data, Deferred, Effect, Exit, Fiber, Option } from "effect";
  */
 
 const defectsOf = (cause: Cause.Cause<unknown>): unknown[] =>
-  Array.from(Cause.defects(cause));
+  cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect);
 
 class QuotaExceeded extends Data.TaggedError("QuotaExceeded")<{
   message: string;
@@ -44,16 +53,17 @@ describe("error-model probes (effect semantics)", () => {
     expect(v.message ?? "").toBe("");
   });
 
-  it("P2: the span failure proxy is read-transparent; identity is not preserved", async () => {
+  it("P2: spans preserve the original failure identity", async () => {
     const original = new QuotaExceeded({ message: "span msg" });
     const exit = await Effect.runPromiseExit(
       Effect.fail(original).pipe(Effect.withSpan("probe-span")),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty;
-    const failure = Cause.failureOption(cause);
+    const failure = Cause.findErrorOption(cause);
     expect(Option.isSome(failure)).toBe(true);
     const value = Option.isSome(failure) ? failure.value : null;
+    expect(value).toBe(original);
     expect(value).toBeInstanceOf(QuotaExceeded);
     expect((value as QuotaExceeded)._tag).toBe("QuotaExceeded");
     expect((value as QuotaExceeded).message).toBe("span msg");
@@ -65,10 +75,10 @@ describe("error-model probes (effect semantics)", () => {
         throw new QuotaExceeded({ message: "disposed" });
       },
       catch: (e) => e,
-    }).pipe(Effect.catchAll(failOrDie));
+    }).pipe(Effect.catch(failOrDie));
     const exit = await Effect.runPromiseExit(lifted);
     const failure = Exit.isFailure(exit)
-      ? Cause.failureOption(exit.cause)
+      ? Cause.findErrorOption(exit.cause)
       : Option.none();
     expect(Option.isSome(failure)).toBe(true);
     expect(Option.isSome(failure) ? failure.value : null).toBeInstanceOf(
@@ -80,10 +90,10 @@ describe("error-model probes (effect semantics)", () => {
     const lifted = Effect.tryPromise({
       try: () => Promise.reject(new TypeError("bug")),
       catch: (e) => e,
-    }).pipe(Effect.catchAll(failOrDie));
+    }).pipe(Effect.catch(failOrDie));
     const exit = await Effect.runPromiseExit(lifted);
     const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty;
-    expect(Option.isNone(Cause.failureOption(cause))).toBe(true);
+    expect(Option.isNone(Cause.findErrorOption(cause))).toBe(true);
     expect(defectsOf(cause)[0]).toBeInstanceOf(TypeError);
   });
 
@@ -98,7 +108,7 @@ describe("error-model probes (effect semantics)", () => {
     );
     const exit = await Effect.runPromiseExit(mixed);
     const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty;
-    const failure = Cause.failureOption(cause);
+    const failure = Cause.findErrorOption(cause);
     expect(Option.isSome(failure)).toBe(true);
     expect(Option.isSome(failure) ? failure.value : null).toBeInstanceOf(
       QuotaExceeded,
@@ -106,7 +116,7 @@ describe("error-model probes (effect semantics)", () => {
     expect(defectsOf(cause)).toContain(finalizerBug);
   });
 
-  it("P6: catchAll skips its handler on a mixed cause; the failure value survives as the first defect", async () => {
+  it("P6: catch recovers a mixed cause and discards its co-defect", async () => {
     const finalizerBug = new RangeError("finalizer bug");
     const mixed = Effect.fail(new QuotaExceeded({ message: "typed" })).pipe(
       Effect.ensuring(
@@ -117,30 +127,52 @@ describe("error-model probes (effect semantics)", () => {
     );
     let handlerRan = false;
     const caught = mixed.pipe(
-      Effect.catchAll(() => {
+      Effect.catch(() => {
         handlerRan = true;
         return Effect.succeed("handled");
       }),
     );
     const exit = await Effect.runPromiseExit(caught);
-    expect(handlerRan).toBe(false);
-    const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty;
-    expect(Option.isNone(Cause.failureOption(cause))).toBe(true);
-    const defects = defectsOf(cause);
-    expect(defects[0]).toBeInstanceOf(QuotaExceeded);
-    expect(defects).toContain(finalizerBug);
-    expect(isVariant(defects[0])).toBe(true);
+    expect(handlerRan).toBe(true);
+    expect(exit).toEqual(Exit.succeed("handled"));
   });
 
-  it("P6: runPromise(Effect.either(...)) rejects on a mixed cause — Left is never produced", async () => {
-    const mixed = Effect.fail(new QuotaExceeded({ message: "typed" })).pipe(
+  it("P6: result keeps the typed failure and discards its co-defect", async () => {
+    const failure = new QuotaExceeded({ message: "typed" });
+    const mixed = Effect.fail(failure).pipe(
       Effect.ensuring(
         Effect.sync(() => {
           throw new RangeError("finalizer bug");
         }),
       ),
     );
-    await expect(Effect.runPromise(Effect.either(mixed))).rejects.toThrow();
+    const result = await Effect.runPromise(Effect.result(mixed));
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) ? result.failure : undefined).toBe(failure);
+  });
+
+  it("P6: mapError drops co-defects, while catchCause with Cause.map keeps them", async () => {
+    const defect = new Error("finalizer");
+    const mixed = Effect.fail("typed").pipe(
+      Effect.ensuring(Effect.die(defect)),
+    );
+    const mapped = await Effect.runPromiseExit(
+      mixed.pipe(Effect.mapError(() => "mapped")),
+    );
+    const preserved = await Effect.runPromiseExit(
+      mixed.pipe(
+        Effect.catchCause((cause) =>
+          Effect.failCause(Cause.map(cause, () => "mapped")),
+        ),
+      ),
+    );
+    expect(Exit.isFailure(mapped) && defectsOf(mapped.cause)).toEqual([]);
+    expect(Exit.isFailure(preserved) && defectsOf(preserved.cause)).toEqual([
+      defect,
+    ]);
+    expect(
+      Exit.isFailure(preserved) && Cause.findErrorOption(preserved.cause),
+    ).toEqual(Option.some("mapped"));
   });
 
   it("P7: a sync throw of a tagged error inside Effect.gen is a defect, not a failure", async () => {
@@ -154,7 +186,7 @@ describe("error-model probes (effect semantics)", () => {
     });
     const exit = await Effect.runPromiseExit(eff);
     const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty;
-    expect(Option.isNone(Cause.failureOption(cause))).toBe(true);
+    expect(Option.isNone(Cause.findErrorOption(cause))).toBe(true);
     expect(defectsOf(cause)[0]).toBeInstanceOf(QuotaExceeded);
   });
 
@@ -169,13 +201,13 @@ describe("error-model probes (effect semantics)", () => {
       ),
     );
     const fiber = Effect.runFork(work);
-    Effect.runSync(Fiber.interruptAsFork(fiber, fiber.id()));
+    fiber.interruptUnsafe(fiber.id);
     const exit = await Effect.runPromise(Fiber.await(fiber));
     const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty;
-    expect(Cause.isInterrupted(cause)).toBe(true);
-    expect(Option.isNone(Cause.failureOption(cause))).toBe(true);
+    expect(Cause.hasInterrupts(cause)).toBe(true);
+    expect(Option.isNone(Cause.findErrorOption(cause))).toBe(true);
     expect(defectsOf(cause)).toContain(finalizerBug);
-    expect(Option.isSome(Cause.dieOption(cause))).toBe(true);
+    expect(Cause.hasDies(cause)).toBe(true);
   });
 
   it("P8: Effect.promise treats a rejection as a defect", async () => {
@@ -183,17 +215,17 @@ describe("error-model probes (effect semantics)", () => {
       Effect.promise(() => Promise.reject(new EvalError("dependency bug"))),
     );
     const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty;
-    expect(Option.isNone(Cause.failureOption(cause))).toBe(true);
+    expect(Option.isNone(Cause.findErrorOption(cause))).toBe(true);
     expect(defectsOf(cause)[0]).toBeInstanceOf(EvalError);
   });
 
-  it("P8: Cause.defects is in order and does not dedup — dedup belongs to the caller", () => {
+  it("P8: combine keeps first-occurrence order and deduplicates equal reasons", () => {
     const a = new Error("A");
     const b = new Error("B");
-    const cause = Cause.sequential(
+    const cause = Cause.combine(
       Cause.die(a),
-      Cause.sequential(Cause.die(b), Cause.die(a)),
+      Cause.combine(Cause.die(b), Cause.die(a)),
     );
-    expect(defectsOf(cause)).toEqual([a, b, a]);
+    expect(defectsOf(cause)).toEqual([a, b]);
   });
 });

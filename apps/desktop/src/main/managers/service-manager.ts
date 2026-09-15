@@ -92,7 +92,7 @@ export interface EarlyServiceRefs {
 export class ServiceManager {
   private isInitialized = false;
 
-  private scope: Scope.CloseableScope | null = null;
+  private scope: Scope.Closeable | null = null;
   private resolvedServices: Readonly<ServiceMap> | null = null;
   private earlyRefs: EarlyServiceRefs = {};
 

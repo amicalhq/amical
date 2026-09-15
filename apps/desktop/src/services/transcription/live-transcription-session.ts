@@ -1,5 +1,4 @@
-import { Cause, Deferred, Effect, Exit, Fiber, FiberId, Option } from "effect";
-import type { RuntimeFiber } from "effect/Fiber";
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
 import { runFork, runPromise } from "../../main/runtime/telemetry-runtime";
 import type {
   MaterializedTranscriptionSession,
@@ -31,14 +30,13 @@ const applyUpdate = (
  * fired, never awaited, so the synchronous cancel path stays zero-tick. The
  * public surface is unchanged and stays synchronous; the promise returned by
  * processChunk settles exactly as before: rejection with the failure value for a
- * terminal failure (reads survive span proxies; object identity is not
- * guaranteed), empty string for cancelled work.
+ * terminal failure, preserving its identity, or empty string for cancelled work.
  */
 export class LiveTranscriptionSession {
   private readonly abortController = new AbortController();
   private phase: LiveSessionPhase = "open";
-  private readonly ledger = new Set<RuntimeFiber<string, unknown>>();
-  private readonly abortGate = Deferred.unsafeMake<void>(FiberId.none);
+  private readonly ledger = new Set<Fiber.Fiber<string, unknown>>();
+  private readonly abortGate = Deferred.makeUnsafe<void>();
   private pendingUpdate: StreamingSessionUpdate = {};
   private materialized: MaterializedTranscriptionSession | null = null;
   private providerCancelled = false;
@@ -54,19 +52,18 @@ export class LiveTranscriptionSession {
    * Defect capture bookkeeping: a defect is reported exactly once. Values
    * land here when classification reports them, when the resolve triage
    * reports them, or when they latch via an out-of-band delivery (whose
-   * channel owns the capture — the observed-stream policy). Keys normalize
-   * through the span-annotation proxy: the same defect can cross one
-   * boundary raw and another proxied, and both must count as one.
+   * channel owns the capture — the observed-stream policy). Effect preserves
+   * defect identity through spans, so the same value identifies each report.
    */
   private readonly reportedDefects = new Set<unknown>();
 
   wasDefectReported(value: unknown): boolean {
-    return this.reportedDefects.has(Cause.originalError(value as Error));
+    return this.reportedDefects.has(value);
   }
 
   markDefectsReported(defects: ReadonlyArray<unknown>): void {
     for (const defect of defects) {
-      this.reportedDefects.add(Cause.originalError(defect as Error));
+      this.reportedDefects.add(defect);
     }
   }
 
@@ -116,7 +113,7 @@ export class LiveTranscriptionSession {
    * the same uninterruptible region: when the failing chunk's callback
    * retires this session, the retirement interrupts this very fiber, and an
    * interruptible tail would lose the original error (the cause would end
-   * interruption-only). Verified against Effect 3.22.1.
+   * interruption-only).
    */
   processChunkEffect(work: Effect.Effect<string, unknown>): Promise<string> {
     if (!this.acceptsChunks()) {
@@ -124,13 +121,15 @@ export class LiveTranscriptionSession {
     }
 
     const classified = work.pipe(
-      Effect.catchAllCause((cause) =>
+      Effect.catchCause((cause) =>
         Effect.uninterruptible(
           Effect.suspend(() => {
             // Report defects BEFORE any suppression: an interrupted chunk
             // whose finalizer dies carries Interrupt + Die, and the phase
             // guard below would silently swallow the defect.
-            const defects = Array.from(Cause.defects(cause));
+            const defects = cause.reasons
+              .filter(Cause.isDieReason)
+              .map((reason) => reason.defect);
             if (defects.length > 0) {
               this.reportDefectsOnce(defects);
             }
@@ -139,15 +138,14 @@ export class LiveTranscriptionSession {
               // failures after abort/retire are swallowed, never terminal.
               return Effect.succeed("");
             }
-            const failure = Cause.failureOption(cause);
-            const defect = Cause.dieOption(cause);
+            const failure = Cause.findErrorOption(cause);
             // Branch on PRESENCE, not value: a rejection whose value is
             // literally null must still latch; a null sentinel would misroute
             // Fail(null) into the interruption arm.
             if (Option.isSome(failure)) {
               this.reportTerminalFailure(failure.value);
-            } else if (Option.isSome(defect)) {
-              this.reportTerminalFailure(defect.value);
+            } else if (defects.length > 0) {
+              this.reportTerminalFailure(defects[0]);
             }
             // Pure interruption falls through without latching.
             return Effect.failCause(cause);
@@ -168,7 +166,7 @@ export class LiveTranscriptionSession {
       });
     });
     if (this.phase === "aborted" || this.phase === "retired") {
-      fiber.unsafeInterruptAsFork(FiberId.none);
+      fiber.interruptUnsafe();
     }
 
     return exitPromise.then((exit) => {
@@ -178,17 +176,18 @@ export class LiveTranscriptionSession {
       // Interruption skips the classification arm entirely, so an
       // interrupted chunk whose finalizer died surfaces its defect only
       // here — report it (deduped) before settling.
-      const exitDefects = Array.from(Cause.defects(exit.cause));
+      const exitDefects = exit.cause.reasons
+        .filter(Cause.isDieReason)
+        .map((reason) => reason.defect);
       if (exitDefects.length > 0) {
         this.reportDefectsOnce(exitDefects);
       }
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (Option.isSome(failure)) {
         throw failure.value;
       }
-      const defect = Cause.dieOption(exit.cause);
-      if (Option.isSome(defect)) {
-        throw defect.value;
+      if (exitDefects.length > 0) {
+        throw exitDefects[0];
       }
       // Interrupted chunk work settles as the empty string the pinned
       // cancellation behavior requires.
@@ -294,7 +293,7 @@ export class LiveTranscriptionSession {
     }
     this.cancelProviderOnce();
     this.interruptLedger();
-    Deferred.unsafeDone(this.abortGate, Exit.void);
+    Deferred.doneUnsafe(this.abortGate, Exit.void);
   }
 
   retire(): void {
@@ -313,7 +312,7 @@ export class LiveTranscriptionSession {
     // Fired, never awaited: an awaited interrupt would block the
     // synchronous cancel path behind uninterruptible provider work.
     for (const fiber of this.ledger) {
-      fiber.unsafeInterruptAsFork(FiberId.none);
+      fiber.interruptUnsafe();
     }
   }
 

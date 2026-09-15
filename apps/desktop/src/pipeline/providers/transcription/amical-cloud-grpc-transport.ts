@@ -1,4 +1,4 @@
-import { Effect, Ref } from "effect";
+import { Cause, Effect, Ref } from "effect";
 import type {
   TranscribeContext,
   TranscriptionOutput,
@@ -54,20 +54,24 @@ export class AmicalCloudGrpcTransport {
       return Effect.succeed({ text: "" });
     }
 
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.enqueueGrpcAudioEffect(audioData);
       yield* this.ensureGrpcStreamEffect(context.formattingEnabled ?? false);
       yield* this.sendReadyGrpcPacketsEffect(false);
       return { text: "" };
     }).pipe(
-      Effect.catchAll((error) =>
-        this.resetGrpcStreamEffect().pipe(Effect.zipRight(Effect.fail(error))),
+      Effect.tapCauseIf(
+        (cause) =>
+          Cause.hasFails(cause) &&
+          !Cause.hasDies(cause) &&
+          !Cause.hasInterrupts(cause),
+        () => this.resetGrpcStreamEffect(),
       ),
     );
   }
 
   updateOpenStreamEffect(enableFormatting: boolean): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const stream = yield* Ref.get(this.state).pipe(
         Effect.map((state) => state.grpcStream),
       );
@@ -82,7 +86,7 @@ export class AmicalCloudGrpcTransport {
   flushGrpcEffect(
     enableFormatting: boolean,
   ): CloudProviderEffect<TranscriptionOutput> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.markGrpcFlushStageEffect();
       const state = yield* Ref.get(this.state);
       if (state.transportOverride === "http") {
@@ -107,7 +111,7 @@ export class AmicalCloudGrpcTransport {
     rawTranscript: string;
     formattedTranscript: string;
   }> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const stream = yield* this.ensureGrpcStreamEffect(enableFormatting);
       // Final re-sync: flush any context/skills change that landed since the
       // last push but wasn't sent (e.g. a dropped mid-session push). The server
@@ -120,7 +124,7 @@ export class AmicalCloudGrpcTransport {
       const result = yield* Effect.tryPromise({
         try: () => stream.finalize(),
         catch: (error) => error,
-      }).pipe(Effect.catchAll(cloudFailOrDie));
+      }).pipe(Effect.catch(cloudFailOrDie));
       yield* this.clearSuccessfulGrpcMirrorEffect(stream);
       return result;
     });
@@ -129,7 +133,7 @@ export class AmicalCloudGrpcTransport {
   private ensureGrpcStreamEffect(
     enableFormatting: boolean,
   ): CloudProviderEffect<CloudDictationGrpcStream> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.failIfClosedEffect();
       const initialState = yield* Ref.get(this.state);
       if (initialState.transportOverride === "http") {
@@ -181,7 +185,7 @@ export class AmicalCloudGrpcTransport {
       const stream = yield* Effect.try({
         try: () => new CloudDictationGrpcStream(openOptions),
         catch: (error) => error,
-      }).pipe(Effect.catchAll(cloudFailOrDie));
+      }).pipe(Effect.catch(cloudFailOrDie));
       const selectedStream = yield* Ref.modify(this.state, (state) => {
         if (state.transportOverride === "http") {
           return [null, state] as const;
@@ -231,7 +235,7 @@ export class AmicalCloudGrpcTransport {
     stream: CloudDictationGrpcStream,
     enableFormatting: boolean,
   ): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const snapshot = yield* requestSnapshotEffect(this.state);
       const streamContext = this.buildGrpcStreamContext(snapshot);
       const nextContextKey = contextSnapshotKey(streamContext);
@@ -243,7 +247,7 @@ export class AmicalCloudGrpcTransport {
         yield* Effect.tryPromise({
           try: () => stream.sendContextUpdate(streamContext),
           catch: (error) => error,
-        }).pipe(Effect.catchAll(cloudFailOrDie));
+        }).pipe(Effect.catch(cloudFailOrDie));
         yield* Ref.update(this.state, (state) => ({
           ...state,
           grpcSentContextKey: nextContextKey,
@@ -268,7 +272,7 @@ export class AmicalCloudGrpcTransport {
         yield* Effect.tryPromise({
           try: () => stream.sendSkillsUpdate(resolvedSkills),
           catch: (error) => error,
-        }).pipe(Effect.catchAll(cloudFailOrDie));
+        }).pipe(Effect.catch(cloudFailOrDie));
         yield* Ref.update(this.state, (state) => ({
           ...state,
           grpcSentSkillsKey: nextSkillsKey,
@@ -339,7 +343,7 @@ export class AmicalCloudGrpcTransport {
   private sendReadyGrpcPacketsEffect(
     padFinalPacket: boolean,
   ): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       while (true) {
         const packet = yield* this.takeGrpcPacketEffect(padFinalPacket);
         if (!packet) {
@@ -352,7 +356,7 @@ export class AmicalCloudGrpcTransport {
   }
 
   private sendGrpcPacketEffect(packet: Uint8Array): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const stream = yield* this.ensureGrpcStreamEffect(false);
       const seq = yield* Ref.modify(this.state, (state) => [
         state.grpcNextSeq,
@@ -364,7 +368,7 @@ export class AmicalCloudGrpcTransport {
       yield* Effect.tryPromise({
         try: () => stream.sendAudioBatch(seq, [packet]),
         catch: (error) => error,
-      }).pipe(Effect.catchAll(cloudFailOrDie));
+      }).pipe(Effect.catch(cloudFailOrDie));
     });
   }
 
@@ -375,7 +379,7 @@ export class AmicalCloudGrpcTransport {
   }
 
   private resetGrpcStreamEffect(): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const stream = yield* Ref.modify(this.state, (state) => [
         state.grpcStream,
         resetGrpcState(state),

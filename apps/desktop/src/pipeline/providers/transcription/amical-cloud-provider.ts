@@ -1,5 +1,5 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
-import { Effect, Layer, ManagedRuntime, Ref } from "effect";
+import { Cause, Effect, Layer, ManagedRuntime, Option, Ref } from "effect";
 import {
   OpenTranscriptionSessionOptions,
   TranscriptionEngine,
@@ -47,16 +47,20 @@ import {
   type Transport,
 } from "./amical-cloud-provider-state";
 
+// Map expected auth errors while keeping any finalizer defects for settlement.
+const failCloudAuthCause = (cause: Cause.Cause<unknown>) =>
+  Effect.failCause(Cause.map(cause, toNetworkFailure));
+
 const makeCloudAuthLive = (authService: AuthService) =>
   Layer.sync(CloudAuth, () => ({
     isAuthenticated: () =>
-      authService.isAuthenticated().pipe(Effect.mapError(toNetworkFailure)),
+      authService.isAuthenticated().pipe(Effect.catchCause(failCloudAuthCause)),
     getIdToken: () =>
-      authService.getIdToken().pipe(Effect.mapError(toNetworkFailure)),
+      authService.getIdToken().pipe(Effect.catchCause(failCloudAuthCause)),
     refreshTokenIfNeeded: (force = false) =>
       authService
         .refreshTokenIfNeeded(force)
-        .pipe(Effect.mapError(toNetworkFailure)),
+        .pipe(Effect.catchCause(failCloudAuthCause)),
   }));
 
 const createCloudRuntime = (config: CloudConfig, authService: AuthService) =>
@@ -225,7 +229,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     private readonly onTerminalFailure: ((error: Error) => void) | undefined,
     private readonly onCancel: (session: AmicalCloudSession) => void,
   ) {
-    this.state = Effect.runSync(Ref.make(createInitialProviderState()));
+    this.state = Ref.makeUnsafe(createInitialProviderState());
     const failIfClosedEffect = () => this.failIfClosedEffect();
     this.grpcTransport = new AmicalCloudGrpcTransport(
       this.state,
@@ -256,7 +260,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   private transcribeEffect(
     params: TranscribeParams,
   ): CloudProviderEffect<TranscriptionOutput> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const { audioData, speechProbability = 1, context } = params;
 
       yield* this.failIfClosedEffect();
@@ -292,8 +296,19 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     stage: CloudFallbackStage,
   ): CloudProviderEffect<A> {
     return grpcEffect.pipe(
-      Effect.catchAll((error) =>
-        Effect.gen(this, function* () {
+      Effect.catchCause((cause) => {
+        const failure = Cause.findErrorOption(cause);
+        // A failed finalizer must reach the exit boundary, even when the
+        // transport error alone would permit a successful HTTP fallback.
+        if (
+          Option.isNone(failure) ||
+          Cause.hasDies(cause) ||
+          Cause.hasInterrupts(cause)
+        ) {
+          return Effect.failCause(cause);
+        }
+        const error = failure.value;
+        return Effect.gen({ self: this }, function* () {
           if (this.closed) {
             return yield* Effect.fail(error);
           }
@@ -308,8 +323,8 @@ class AmicalCloudSession implements TranscriptionProviderSession {
           yield* this.engageHttpFallbackEffect(error, stage);
           yield* this.failIfClosedEffect();
           return yield* httpRoute();
-        }),
-      ),
+        });
+      }),
     );
   }
 
@@ -326,7 +341,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   private updateSessionContextEffect(
     context: TranscribeContext,
   ): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.failIfClosedEffect();
       yield* this.storeContextEffect(context);
       yield* this.failIfClosedEffect();
@@ -410,7 +425,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   private flushEffect(
     context: TranscribeContext,
   ): CloudProviderEffect<TranscriptionOutput> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* this.failIfClosedEffect();
       yield* this.storeContextEffect(context);
       yield* this.ensureAuthenticatedEffect();
@@ -432,7 +447,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   }
 
   private effectiveTransportEffect(): CloudProviderEffect<Transport> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const config = yield* CloudConfig;
       const state = yield* Ref.get(this.state);
       return state.transportOverride ?? config.transport;
@@ -444,7 +459,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     stage: CloudFallbackStage,
     expectedStream?: NonNullable<ProviderState["grpcStream"]>,
   ): Effect.Effect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const fallback = yield* Ref.modify(this.state, (state) => {
         if (
           state.transportOverride === "http" ||
@@ -507,7 +522,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
       if (this.closed) {
         return;
       }
-      const currentStream = Effect.runSync(Ref.get(this.state)).grpcStream;
+      const currentStream = Ref.getUnsafe(this.state).grpcStream;
       if (currentStream !== stream) {
         return;
       }
@@ -531,7 +546,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
       return;
     }
 
-    const currentStream = Effect.runSync(Ref.get(this.state)).grpcStream;
+    const currentStream = Ref.getUnsafe(this.state).grpcStream;
     if (currentStream !== stream) {
       return;
     }
@@ -578,7 +593,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   private storeContextEffect(
     context: TranscribeContext,
   ): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const isFirstContext =
         (yield* Ref.get(this.state)).currentSessionId === undefined;
 
@@ -604,7 +619,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   }
 
   private ensureAuthenticatedEffect(): CloudProviderEffect<void> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const auth = yield* CloudAuth;
       const isAuthenticated = yield* auth.isAuthenticated();
 
@@ -701,7 +716,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
       Effect.map((labsSettings) =>
         labsSettings.selfCorrection ? [AMICAL_LAB_SELF_CORRECTION] : [],
       ),
-      Effect.catchAll((error) => {
+      Effect.catch((error) => {
         logger.transcription.warn("Failed to read labs settings", {
           error: error instanceof Error ? error.message : String(error),
         });

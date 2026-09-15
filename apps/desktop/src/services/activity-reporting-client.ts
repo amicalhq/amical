@@ -15,7 +15,7 @@ import {
   CloudNetworkFailure,
   decodeCloudHttpFailure,
 } from "../types/errors/cloud-request";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 export class ActivityReportingClient {
   constructor(private readonly authService: AuthService) {}
@@ -23,7 +23,7 @@ export class ActivityReportingClient {
   submit(
     activities: DictationActivity[],
   ): Effect.Effect<void, ActivityReportingClientError> {
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const request = yield* Effect.try({
         try: () => ActivityBatchSchema.parse({ activities }),
         catch: (cause) =>
@@ -37,14 +37,19 @@ export class ActivityReportingClient {
           }),
       });
       const token = yield* this.authService.getIdToken().pipe(
-        Effect.mapError(
-          (cause) =>
-            new ActivityReportingDependencyFailure({
-              message:
-                "Unable to read the activity reporting authentication token",
-              dependency: "authentication",
+        Effect.catchCause((cause) =>
+          Effect.failCause(
+            Cause.map(
               cause,
-            }),
+              (cause) =>
+                new ActivityReportingDependencyFailure({
+                  message:
+                    "Unable to read the activity reporting authentication token",
+                  dependency: "authentication",
+                  cause,
+                }),
+            ),
+          ),
         ),
       );
       if (!token) {

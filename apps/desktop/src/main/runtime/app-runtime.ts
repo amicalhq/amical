@@ -1,11 +1,10 @@
 /**
  * Builds and tears down the app service graph (AMIC-42 step 2).
  *
- * Deliberately an explicitly OWNED CloseableScope rather than ManagedRuntime:
+ * Deliberately an explicitly OWNED Scope.Closeable rather than ManagedRuntime:
  * boot failure is the highest-risk surface, and owning the scope makes the
  * semantics explicit and testable — on a partial build failure NOTHING rolls
- * back. That property does NOT come for free from Layer.build: in effect
- * 3.21, Layer.build is transactional — each memoized layer builds in an inner
+ * back. Layer.build is transactional: each memoized layer builds in an inner
  * scope that is closed on failure, so acquireRelease finalizers inside layers
  * would run BEFORE the failure exit even returns, tearing down PostHog before
  * the crash path can flush telemetry (verified empirically against this exact
@@ -18,14 +17,15 @@
  * registration order).
  */
 
-import { Context, Effect, Exit, Layer, Scope } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Scope } from "effect";
 
+import { logger } from "../logger";
 import { AppLive } from "./layers";
 import { EarlyRefsTag, AppScopeTag, type AppServices } from "./tags";
 import type { EarlyServiceRefs } from "../managers/service-manager";
 
 export interface AppServicesBuild {
-  scope: Scope.CloseableScope;
+  scope: Scope.Closeable;
   exit: Exit.Exit<Context.Context<AppServices>, never>;
 }
 
@@ -39,13 +39,24 @@ export async function buildAppServices(
         Layer.provide(Layer.succeed(EarlyRefsTag, earlyRefs)),
         Layer.provide(Layer.succeed(AppScopeTag, scope)),
       ),
-    ).pipe(Scope.extend(scope)),
+    ).pipe(Scope.provide(scope)),
   );
   // On failure the scope is HELD un-closed: the partial graph stays alive for
   // the crash path. The caller owns closing it (cleanup()).
   return { scope, exit };
 }
 
-/** Runs every registered finalizer, dependents-first; errors are aggregated. */
-export const closeAppScope = (scope: Scope.CloseableScope): Promise<void> =>
-  Effect.runPromise(Scope.close(scope, Exit.void));
+/** Runs finalizers dependents-first; reports all failures before rejecting. */
+export const closeAppScope = (scope: Scope.Closeable): Promise<void> =>
+  Effect.runPromise(
+    Scope.close(scope, Exit.void).pipe(
+      // runPromise rejects with one error in v4; report all cleanup failures first.
+      Effect.tapCause((cause) =>
+        Effect.sync(() =>
+          logger.main.error(
+            "Service graph cleanup failed:\n" + Cause.pretty(cause),
+          ),
+        ),
+      ),
+    ),
+  );

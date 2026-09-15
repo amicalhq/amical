@@ -177,7 +177,7 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
             }),
           ),
         ),
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           Effect.sync(() =>
             logger.main.warn("Failed to prepare paste", { error }),
           ),

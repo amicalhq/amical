@@ -309,7 +309,7 @@ export function createDesktopRecordingLifecycle(deps: {
     ) {
       // Once per session: stopping publishes several snapshots (drain,
       // seal, settle) and the capture must not re-fire on each.
-      const barrier = Effect.runSync(Deferred.make<void>());
+      const barrier = Deferred.makeUnsafe<void>();
       draftCaptures.set(session, barrier);
       void captureDraftSelectionViaCopy(session)
         .catch((error) => {
@@ -318,7 +318,7 @@ export function createDesktopRecordingLifecycle(deps: {
             error: error instanceof Error ? error.message : String(error),
           });
         })
-        .finally(() => Deferred.unsafeDone(barrier, Effect.void));
+        .finally(() => Deferred.doneUnsafe(barrier, Effect.void));
     }
   });
 
