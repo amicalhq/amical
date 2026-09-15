@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { z } from "zod";
+import { DictationActivitySummarySchema } from "@amical/types";
 import { runAuthEffect, type AuthService } from "./auth-service";
 import { retryOnceAfterAuthenticationRequired } from "./auth-retry";
 import { settleExit } from "../types/errors";
@@ -12,14 +12,6 @@ import {
   getCoreApiUrl,
   getUserAgent,
 } from "../utils/http-client";
-
-// The totals consumed by desktop from the Apps V1 activity summary contract.
-const AccountSummarySchema = z.object({
-  totals: z.object({
-    activities: z.number().int().nonnegative(),
-    words: z.number().int().nonnegative(),
-  }),
-});
 
 export async function getAccountSummary(
   authService: AuthService,
@@ -67,7 +59,7 @@ export async function getAccountSummary(
         retryAfter: response.headers.get("Retry-After") ?? undefined,
       });
     }
-    return AccountSummarySchema.parse(body);
+    return DictationActivitySummarySchema.parse(body);
   };
 
   return Effect.runPromiseExit(

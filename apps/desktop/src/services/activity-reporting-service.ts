@@ -83,7 +83,9 @@ export class ActivityReportingService {
   private boundaryEpoch = 0;
   private rerunRequested = false;
   private authorizationBlocked = false;
-  private pendingSummaryAccountId: string | null = null;
+  private summaryRefreshRequested = false;
+  private summarySchedule: Fiber.RuntimeFiber<never, never> | null = null;
+  private readonly summaryViews = new Set<symbol>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private unregisterBeforeLogout: (() => void) | null = null;
 
@@ -111,7 +113,7 @@ export class ActivityReportingService {
   private readonly onAuthenticated = (authState: AuthState) => {
     const accountId = authState.userInfo?.sub;
     if (!accountId || !this.initialized || this.stopped) return;
-    const epoch = this.beginAccountBoundary(accountId);
+    const epoch = this.beginAccountBoundary();
     this.forkScoped(
       this.activateAccount(accountId, epoch).pipe(
         Effect.catchAll((error) =>
@@ -243,7 +245,7 @@ export class ActivityReportingService {
       );
       if (this.stopped || !this.initialized) return;
       if (authState?.isAuthenticated && authState.userInfo?.sub) {
-        const epoch = this.beginAccountBoundary(authState.userInfo.sub);
+        const epoch = this.beginAccountBoundary();
         return yield* this.activateAccount(authState.userInfo.sub, epoch);
       }
       this.currentAccountId = null;
@@ -270,11 +272,47 @@ export class ActivityReportingService {
     }
   }
 
-  requestSummaryRefresh(accountId: string): void {
+  requestSummaryRefresh(): void {
     if (this.stopped || !this.initialized) return;
-    if (this.currentAccountId && this.currentAccountId !== accountId) return;
-    this.pendingSummaryAccountId = accountId;
+    this.summaryRefreshRequested = true;
     this.wake();
+  }
+
+  // Subscription lifetime owns the fast cadence, including renderer disconnects.
+  watchSummary(): () => void {
+    const alreadyVisible = this.summaryViews.size > 0;
+    const view = Symbol();
+    this.summaryViews.add(view);
+    if (!alreadyVisible) {
+      this.restartSummarySchedule();
+    }
+    return () => {
+      if (!this.summaryViews.delete(view)) return;
+      if (this.summaryViews.size === 0) {
+        this.restartSummarySchedule();
+      }
+    };
+  }
+
+  private restartSummarySchedule(): void {
+    this.summarySchedule?.unsafeInterruptAsFork(FiberId.none);
+    this.summarySchedule = null;
+    if (this.stopped || !this.initialized || !this.currentAccountId) return;
+    const visible = this.summaryViews.size > 0;
+    this.summarySchedule = Runtime.runFork(this.runtime)(
+      Effect.forever(
+        Effect.suspend(() =>
+          Effect.sleep(
+            visible
+              ? (301 + Math.floor(Math.random() * 60)) * 1000
+              : 60 * 60_000,
+          ).pipe(
+            Effect.zipRight(Effect.sync(() => this.requestSummaryRefresh())),
+          ),
+        ),
+      ),
+      { scope: this.serviceScope },
+    );
   }
 
   shutdown(): Effect.Effect<void> {
@@ -287,7 +325,9 @@ export class ActivityReportingService {
         this.currentAccountId = null;
         this.authorizationBlocked = false;
         this.rerunRequested = false;
-        this.pendingSummaryAccountId = null;
+        this.summaryRefreshRequested = false;
+        this.summarySchedule = null;
+        this.summaryViews.clear();
 
         if (this.pollTimer) clearInterval(this.pollTimer);
         this.pollTimer = null;
@@ -318,18 +358,17 @@ export class ActivityReportingService {
     this.currentAccountId = null;
     this.authorizationBlocked = false;
     this.rerunRequested = false;
-    this.pendingSummaryAccountId = null;
+    this.summaryRefreshRequested = false;
+    this.restartSummarySchedule();
     return worker ? Fiber.interrupt(worker).pipe(Effect.asVoid) : Effect.void;
   }
 
-  private beginAccountBoundary(accountId: string): number {
+  private beginAccountBoundary(): number {
     this.boundaryEpoch += 1;
     this.currentAccountId = null;
     this.authorizationBlocked = false;
     this.rerunRequested = false;
-    if (this.pendingSummaryAccountId !== accountId) {
-      this.pendingSummaryAccountId = null;
-    }
+    this.restartSummarySchedule();
     this.worker?.unsafeInterruptAsFork(FiberId.none);
     return this.boundaryEpoch;
   }
@@ -354,7 +393,12 @@ export class ActivityReportingService {
       }),
     ).pipe(
       Effect.tap((activated) =>
-        activated ? Effect.sync(() => this.wake()) : Effect.void,
+        activated
+          ? Effect.sync(() => {
+              this.restartSummarySchedule();
+              this.wake();
+            })
+          : Effect.void,
       ),
       Effect.asVoid,
     );
@@ -365,14 +409,12 @@ export class ActivityReportingService {
       Effect.suspend(() => {
         const iterationEpoch = this.boundaryEpoch;
         let uploadAccountId: string | null = null;
-        const summaryAccountId =
-          this.pendingSummaryAccountId === this.currentAccountId
-            ? this.pendingSummaryAccountId
-            : null;
-        if (summaryAccountId) this.pendingSummaryAccountId = null;
+        const refreshRequested =
+          this.summaryRefreshRequested && this.currentAccountId !== null;
+        if (refreshRequested) this.summaryRefreshRequested = false;
         this.rerunRequested = false;
         return Effect.gen(this, function* () {
-          const revision = summaryAccountId
+          const revision = refreshRequested
             ? yield* this.db(async () => getStatsRevision())
             : null;
           yield* this.materializeUntilCaughtUp();
@@ -384,7 +426,7 @@ export class ActivityReportingService {
             () => this.reportUntilDrained(epoch, accountId),
             () => this.refreshAuthenticationIfCurrent(epoch, accountId),
           );
-          if (drained && summaryAccountId === accountId && revision !== null) {
+          if (drained && revision !== null) {
             yield* this.refreshSummary(epoch, accountId, revision);
           }
         }).pipe(
@@ -404,8 +446,7 @@ export class ActivityReportingService {
             }
             if (iterationEpoch === this.boundaryEpoch) {
               this.rerunRequested =
-                this.pendingSummaryAccountId !== null &&
-                this.pendingSummaryAccountId === this.currentAccountId;
+                this.summaryRefreshRequested && this.currentAccountId !== null;
             }
             return Effect.sync(() => {
               logger.main.error("Activity reporting worker failed", {
@@ -426,8 +467,7 @@ export class ActivityReportingService {
   ): Effect.Effect<void> {
     if (epoch !== this.boundaryEpoch || this.stopped) return Effect.void;
     this.rerunRequested =
-      this.pendingSummaryAccountId !== null &&
-      this.pendingSummaryAccountId === this.currentAccountId;
+      this.summaryRefreshRequested && this.currentAccountId !== null;
     if (error instanceof AuthenticationRequired) {
       if (!accountId || accountId !== this.currentAccountId) {
         return Effect.void;

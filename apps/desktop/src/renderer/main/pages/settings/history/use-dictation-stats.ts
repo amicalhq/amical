@@ -4,6 +4,9 @@ import { api } from "@/trpc/react";
 export function useDictationStats() {
   // undefined means authentication is not yet known.
   const [accountId, setAccountId] = useState<string | null>();
+  const [visible, setVisible] = useState(
+    () => document.visibilityState !== "hidden",
+  );
   const utils = api.useUtils();
   const { mutate: requestRefresh } =
     api.transcriptions.requestStatsRefresh.useMutation({
@@ -21,42 +24,36 @@ export function useDictationStats() {
     onError: () => setAccountId(undefined),
   });
 
-  const stats = api.transcriptions.getLifetimeStats.useQuery(
-    { accountId: accountId ?? null },
+  const stats = api.transcriptions.getLifetimeStats.useQuery(undefined, {
+    networkMode: "always",
+  });
+
+  api.transcriptions.onStatsChanged.useSubscription(
+    { visible },
     {
-      enabled: accountId !== undefined,
-      gcTime: 0,
-      networkMode: "always",
+      onData: async () => {
+        // Invalidation alone can reuse a first read that predates this change.
+        await utils.transcriptions.getLifetimeStats.cancel();
+        await utils.transcriptions.getLifetimeStats.invalidate();
+      },
     },
   );
 
-  api.transcriptions.onStatsChanged.useSubscription(undefined, {
-    onData: async () => {
-      // Invalidation alone can reuse a first read that predates this change.
-      await utils.transcriptions.getLifetimeStats.cancel();
-      await utils.transcriptions.getLifetimeStats.invalidate();
-    },
-  });
+  useEffect(() => {
+    if (accountId === undefined) return;
+    void utils.transcriptions.getLifetimeStats.invalidate();
+    if (accountId) requestRefresh();
+  }, [accountId, requestRefresh, utils]);
 
   useEffect(() => {
-    if (!accountId) return;
-    requestRefresh({ accountId });
-
-    let timer: ReturnType<typeof setTimeout>;
-    const schedule = () => {
-      timer = setTimeout(
-        () => {
-          if (document.visibilityState !== "hidden") {
-            requestRefresh({ accountId });
-          }
-          schedule();
-        },
-        (301 + Math.floor(Math.random() * 60)) * 1000,
-      );
+    const onVisibilityChange = () => {
+      setVisible(document.visibilityState !== "hidden");
     };
-    schedule();
-    return () => clearTimeout(timer);
-  }, [accountId, requestRefresh]);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    onVisibilityChange();
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
-  return accountId === undefined ? undefined : stats.data?.totalWords;
+  return stats.data?.totalWords;
 }

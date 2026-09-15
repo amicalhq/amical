@@ -15,6 +15,7 @@ import {
   appSettings,
   activityMaterializationState,
   activityOutbox,
+  dictationStats,
   transcriptions,
 } from "../../src/db/schema";
 import {
@@ -55,6 +56,8 @@ const summary = {
   totals: {
     activities: 150,
     words: 12000,
+    wordsWithAudioDuration: 0,
+    audioDurationMs: null,
   },
 };
 
@@ -134,6 +137,8 @@ describe("ActivityReportingService", () => {
   afterEach(async () => {
     await Effect.runPromise(service.shutdown());
     await testDb.close();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   function authenticate(accountId: string) {
@@ -610,11 +615,11 @@ describe("ActivityReportingService", () => {
   });
 
   it("preserves and coalesces refresh requests during account activation, including an empty drain", async () => {
-    service.requestSummaryRefresh("user-1");
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
+    service.requestSummaryRefresh();
     authenticate("user-1");
     await vi.waitFor(() =>
-      expect(getLifetimeStats("user-1")).toEqual({
+      expect(getLifetimeStats()).toEqual({
         totalWords: 12000,
         totalTranscriptions: 150,
       }),
@@ -634,14 +639,12 @@ describe("ActivityReportingService", () => {
       ),
     );
     authenticate("user-1");
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
     enqueue(activity());
     await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
     expect(readSummary).not.toHaveBeenCalled();
     finishUpload();
-    await vi.waitFor(() =>
-      expect(getLifetimeStats("user-1")?.totalWords).toBe(12000),
-    );
+    await vi.waitFor(() => expect(getLifetimeStats()?.totalWords).toBe(12000));
     expect(testDb.db.select().from(activityOutbox).all()).toEqual([]);
   });
 
@@ -660,14 +663,12 @@ describe("ActivityReportingService", () => {
       )
       .mockReturnValue(Effect.void);
     authenticate("user-1");
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
     enqueue(activity());
     await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
     failUpload(new Error("offline"));
-    await vi.waitFor(() =>
-      expect(getLifetimeStats("user-1")?.totalWords).toBe(12000),
-    );
+    await vi.waitFor(() => expect(getLifetimeStats()?.totalWords).toBe(12000));
     expect(submit).toHaveBeenCalledTimes(2);
     expect(readSummary).toHaveBeenCalledOnce();
   });
@@ -698,7 +699,7 @@ describe("ActivityReportingService", () => {
         createdAt: new Date(),
       })
       .run();
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
     await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
     db.transaction((tx) => incrementDictationStats(3, 1, tx));
     finishUpload();
@@ -707,7 +708,7 @@ describe("ActivityReportingService", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(readSummary).not.toHaveBeenCalled();
-    expect(getLifetimeStats("user-1")?.totalWords).toBe(3);
+    expect(getLifetimeStats()?.totalWords).toBe(3);
   });
 
   it("preserves local increments made during a summary GET", async () => {
@@ -719,12 +720,12 @@ describe("ActivityReportingService", () => {
         }),
     );
     authenticate("user-1");
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
     await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
     db.transaction((tx) => incrementDictationStats(3, 1, tx));
     finishSummary(summary);
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(getLifetimeStats("user-1")?.totalWords).toBe(3);
+    expect(getLifetimeStats()?.totalWords).toBe(3);
     expect(readSummary).toHaveBeenCalledOnce();
   });
 
@@ -737,34 +738,14 @@ describe("ActivityReportingService", () => {
         }),
     );
     authenticate("user-1");
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
     await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
-    service.requestSummaryRefresh("user-1");
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
+    service.requestSummaryRefresh();
     finishSummary(summary);
     await vi.waitFor(() => expect(readSummary).toHaveBeenCalledTimes(2));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(readSummary).toHaveBeenCalledTimes(2);
-  });
-
-  it("ignores an old account request without replacing a pending current-account refresh", async () => {
-    let finishSummary!: (value: typeof summary) => void;
-    readSummary.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishSummary = resolve;
-        }),
-    );
-    authenticate("user-2");
-    service.requestSummaryRefresh("user-2");
-    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
-    service.requestSummaryRefresh("user-2");
-    service.requestSummaryRefresh("user-1");
-    finishSummary(summary);
-    await vi.waitFor(() => expect(readSummary).toHaveBeenCalledTimes(2));
-    expect(readSummary.mock.calls.every((call) => call[1] === "user-2")).toBe(
-      true,
-    );
   });
 
   it("keeps summary authentication failures separate from uploader authorization", async () => {
@@ -772,16 +753,14 @@ describe("ActivityReportingService", () => {
       new AuthenticationRequired({ message: "summary unauthorized" }),
     );
     authenticate("user-1");
-    service.requestSummaryRefresh("user-1");
+    service.requestSummaryRefresh();
     await vi.waitFor(() => expect(readSummary).toHaveBeenCalledOnce());
     submit.mockReturnValue(Effect.void);
     enqueue(activity());
     await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
     expect(readSummary).toHaveBeenCalledOnce();
-    service.requestSummaryRefresh("user-1");
-    await vi.waitFor(() =>
-      expect(getLifetimeStats("user-1")?.totalWords).toBe(12000),
-    );
+    service.requestSummaryRefresh();
+    await vi.waitFor(() => expect(getLifetimeStats()?.totalWords).toBe(12000));
   });
 
   it.each(["logout", "shutdown", "account switch"])(
@@ -796,7 +775,7 @@ describe("ActivityReportingService", () => {
         });
       });
       authenticate("user-1");
-      service.requestSummaryRefresh("user-1");
+      service.requestSummaryRefresh();
       await vi.waitFor(() => expect(signal).toBeDefined());
       if (boundary === "logout") await auth.runBeforeLogoutHandlers();
       else if (boundary === "shutdown")
@@ -805,9 +784,162 @@ describe("ActivityReportingService", () => {
       await vi.waitFor(() => expect(signal?.aborted).toBe(true));
       finishSummary(summary);
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(getLifetimeStats("user-1")).toBeNull();
+      expect(
+        testDb.db
+          .select()
+          .from(dictationStats)
+          .where(eq(dictationStats.scope, "account:user-1"))
+          .get(),
+      ).toBeUndefined();
     },
   );
+
+  describe("summary scheduling", () => {
+    beforeEach(async () => {
+      await Effect.runPromise(service.shutdown());
+      vi.useFakeTimers();
+      await Effect.runPromise(service.initialize());
+    });
+
+    it("fetches hourly without History, and never while signed out", async () => {
+      await vi.advanceTimersByTimeAsync(3_600_000);
+      expect(readSummary).not.toHaveBeenCalled();
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(3_599_999);
+      expect(readSummary).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3_600_000);
+      expect(readSummary).toHaveBeenCalledTimes(2);
+    });
+
+    it("refreshes on opening, uses fresh short jitter, and returns to hourly on closing", async () => {
+      const random = vi.spyOn(Math, "random").mockReturnValue(0);
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      const close = service.watchSummary();
+      service.requestSummaryRefresh();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      random.mockReturnValue(0.999);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(readSummary).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(359_999);
+      expect(readSummary).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(readSummary).toHaveBeenCalledTimes(3);
+      close();
+      await vi.advanceTimersByTimeAsync(3_599_999);
+      expect(readSummary).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(readSummary).toHaveBeenCalledTimes(4);
+    });
+
+    it("keeps the short cadence until the last visible subscription closes", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      const closeFirst = service.watchSummary();
+      const closeSecond = service.watchSummary();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readSummary).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(100_000);
+      closeFirst();
+      closeFirst();
+      await vi.advanceTimersByTimeAsync(201_000);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      closeSecond();
+      await vi.advanceTimersByTimeAsync(301_000);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the visible cadence across account changes", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      const close = service.watchSummary();
+      service.requestSummaryRefresh();
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      authenticate("user-2");
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(301_000);
+      expect(readSummary).toHaveBeenCalledTimes(2);
+      expect(readSummary.mock.lastCall![1]).toBe("user-2");
+      close();
+      await vi.advanceTimersByTimeAsync(3_599_999);
+      expect(readSummary).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(readSummary).toHaveBeenCalledTimes(3);
+      expect(readSummary.mock.lastCall![1]).toBe("user-2");
+    });
+
+    it("refreshes the current account after switching accounts", async () => {
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      authenticate("user-2");
+      service.requestSummaryRefresh();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      expect(readSummary.mock.lastCall![1]).toBe("user-2");
+      expect(getLifetimeStats()?.totalWords).toBe(12000);
+    });
+
+    it.each(["logout", "shutdown"])(
+      "stops scheduling on %s",
+      async (boundary) => {
+        authenticate("user-1");
+        await vi.advanceTimersByTimeAsync(0);
+        if (boundary === "logout") await auth.runBeforeLogoutHandlers();
+        else await Effect.runPromise(service.shutdown());
+        await vi.advanceTimersByTimeAsync(7_200_000);
+        expect(readSummary).not.toHaveBeenCalled();
+      },
+    );
+
+    it("does not interrupt an active refresh when the cadence changes", async () => {
+      let finishSummary!: (value: typeof summary) => void;
+      let signal: AbortSignal | undefined;
+      readSummary.mockImplementationOnce((_auth, _id, requestSignal) => {
+        signal = requestSignal;
+        return new Promise((resolve) => {
+          finishSummary = resolve;
+        });
+      });
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      const close = service.watchSummary();
+      service.requestSummaryRefresh();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      close();
+      expect(signal?.aborted).toBe(false);
+      finishSummary(summary);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getLifetimeStats()?.totalWords).toBe(12000);
+    });
+
+    it("changes cadence on hide and restore without requesting an immediate refresh", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      const hide = service.watchSummary();
+      service.requestSummaryRefresh();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(100_000);
+      hide();
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      service.watchSummary();
+      await vi.advanceTimersByTimeAsync(300_999);
+      expect(readSummary).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(readSummary).toHaveBeenCalledTimes(2);
+    });
+  });
 
   it("enforces both server batch limits", () => {
     const many = Array.from({ length: 501 }, (_, index) =>

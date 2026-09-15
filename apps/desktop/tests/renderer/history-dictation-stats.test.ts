@@ -24,31 +24,32 @@ vi.mock("@/trpc/react", () => ({
   api: {
     useUtils: () => {
       const client = useQueryClient();
-      return {
-        transcriptions: {
-          getLifetimeStats: {
-            cancel: () => client.cancelQueries({ queryKey: ["stats"] }),
-            invalidate: () => client.invalidateQueries({ queryKey: ["stats"] }),
+      return React.useMemo(
+        () => ({
+          transcriptions: {
+            getLifetimeStats: {
+              cancel: () => client.cancelQueries({ queryKey: ["stats"] }),
+              invalidate: () =>
+                client.invalidateQueries({ queryKey: ["stats"] }),
+            },
           },
-        },
-      };
+        }),
+        [client],
+      );
     },
     auth: { onAuthStateChange: { useSubscription: mocks.subscribe } },
     transcriptions: {
       getLifetimeStats: {
-        useQuery: (input: { accountId: string | null }, options: object) =>
+        useQuery: (_input: undefined, options: object) =>
           useQuery({
-            queryKey: ["stats", input.accountId],
-            queryFn: () => mocks.readStats(input.accountId),
+            queryKey: ["stats"],
+            queryFn: () => mocks.readStats(),
             ...options,
           }),
       },
       requestStatsRefresh: {
         useMutation: (options: object) =>
-          useMutation({
-            mutationFn: mocks.requestRefresh,
-            ...options,
-          }),
+          useMutation({ mutationFn: mocks.requestRefresh, ...options }),
       },
       onStatsChanged: { useSubscription: mocks.statsSubscribe },
     },
@@ -64,12 +65,10 @@ describe("History dictation stats", () => {
         queries: { retry: false, refetchOnWindowFocus: false },
       },
     });
+    mocks.requestRefresh.mockReset().mockResolvedValue(undefined);
     mocks.readStats
       .mockReset()
-      .mockImplementation(async (id: string | null) => ({
-        totalWords: id === null ? 100 : 12000,
-        totalTranscriptions: 1,
-      }));
+      .mockResolvedValue({ totalWords: 12000, totalTranscriptions: 1 });
   });
 
   afterEach(() => {
@@ -101,25 +100,58 @@ describe("History dictation stats", () => {
     );
   }
 
-  it("waits for auth, reads the account cache, and requests background refresh", async () => {
+  function expectSubscription(visible = true) {
+    expect(mocks.statsSubscribe).toHaveBeenLastCalledWith(
+      { visible },
+      expect.any(Object),
+    );
+  }
+
+  it("reads immediately without renderer auth and sends no account in stats IPC", async () => {
     const { result } = renderStats();
-    expect(result.current).toBeUndefined();
-    expect(mocks.readStats).not.toHaveBeenCalled();
-    expect(mocks.requestRefresh).not.toHaveBeenCalled();
-    authenticate("account-a");
     await waitFor(() => expect(result.current).toBe(12000));
-    expect(mocks.readStats).toHaveBeenCalledWith("account-a");
-    expect(mocks.requestRefresh).toHaveBeenCalledExactlyOnceWith({
-      accountId: "account-a",
-    });
+    expect(mocks.readStats).toHaveBeenCalledExactlyOnceWith();
+    expect(mocks.requestRefresh).not.toHaveBeenCalled();
+    expectSubscription();
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey),
+    ).toEqual([["stats"]]);
   });
 
-  it("reads device totals through the same cache query without remote refresh", async () => {
+  it("rereads the same query on login, account switch, and signout", async () => {
+    mocks.readStats.mockResolvedValue({ totalWords: 100 });
     const { result } = renderStats();
+    await waitFor(() => expect(result.current).toBe(100));
+    mocks.readStats.mockResolvedValue({ totalWords: 12000 });
+    authenticate("account-a");
+    await waitFor(() => expect(result.current).toBe(12000));
+    expect(mocks.requestRefresh).toHaveBeenCalledExactlyOnceWith(undefined);
+    mocks.readStats.mockResolvedValue({ totalWords: 250 });
+    authenticate("account-b");
+    await waitFor(() => expect(result.current).toBe(250));
+    expect(mocks.requestRefresh).toHaveBeenCalledTimes(2);
+    mocks.readStats.mockResolvedValue({ totalWords: 100 });
     authenticate(null);
     await waitFor(() => expect(result.current).toBe(100));
-    expect(mocks.readStats).toHaveBeenCalledWith(null);
-    expect(mocks.requestRefresh).not.toHaveBeenCalled();
+    expect(mocks.requestRefresh).toHaveBeenCalledTimes(2);
+    expect(mocks.readStats).toHaveBeenCalledTimes(4);
+    expect(mocks.readStats.mock.calls.every((args) => args.length === 0)).toBe(
+      true,
+    );
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey),
+    ).toEqual([["stats"]]);
+    expect(
+      mocks.statsSubscribe.mock.calls.every(
+        ([input]) => Object.keys(input).length === 1 && input.visible === true,
+      ),
+    ).toBe(true);
   });
 
   it.each([null, "account-a"])(
@@ -127,15 +159,13 @@ describe("History dictation stats", () => {
     async (accountId) => {
       const { result } = renderStats();
       authenticate(accountId);
-      await waitFor(() => expect(result.current).toBe(accountId ? 12000 : 100));
-      mocks.readStats.mockResolvedValue({
-        totalWords: 12020,
-        totalTranscriptions: 2,
-      });
+      await waitFor(() => expect(result.current).toBe(12000));
+      mocks.readStats.mockResolvedValue({ totalWords: 12020 });
       await act(async () =>
         mocks.statsSubscribe.mock.lastCall![1].onData({ changed: true }),
       );
       await waitFor(() => expect(result.current).toBe(12020));
+      expectSubscription();
       expect(mocks.requestRefresh).toHaveBeenCalledTimes(accountId ? 1 : 0);
     },
   );
@@ -146,7 +176,8 @@ describe("History dictation stats", () => {
       onlineManager.setOnline(false);
       const { result, unmount } = renderStats();
       authenticate(accountId);
-      await waitFor(() => expect(result.current).toBe(accountId ? 12000 : 100));
+      await waitFor(() => expect(result.current).toBe(12000));
+      expectSubscription();
       expect(mocks.requestRefresh).toHaveBeenCalledTimes(accountId ? 1 : 0);
       mocks.readStats.mockResolvedValue({ totalWords: 12020 });
       await act(async () =>
@@ -168,7 +199,6 @@ describe("History dictation stats", () => {
         }),
     );
     const { result } = renderStats();
-    authenticate("account-a");
     await waitFor(() => expect(mocks.readStats).toHaveBeenCalledTimes(1));
     mocks.readStats.mockResolvedValue({ totalWords: 12020 });
     await act(async () =>
@@ -180,119 +210,90 @@ describe("History dictation stats", () => {
       resolvePrevious({ totalWords: 12000 });
     });
     expect(result.current).toBe(12020);
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("requests refresh at five minutes plus fresh jitter and stops on closing", async () => {
+  it("requests once on a hidden mount, but only changes cadence when hidden or restored", async () => {
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+    const removeListener = vi.spyOn(document, "removeEventListener");
+    const { result, unmount } = renderStats();
+    authenticate("account-a");
+    await waitFor(() => expect(result.current).toBe(12000));
+    expectSubscription(false);
+    expect(mocks.requestRefresh).toHaveBeenCalledExactlyOnceWith(undefined);
+    mocks.readStats.mockResolvedValue({ totalWords: 12020 });
+    await act(async () =>
+      mocks.statsSubscribe.mock.lastCall![1].onData({ changed: true }),
+    );
+    await waitFor(() => expect(result.current).toBe(12020));
+    expectSubscription(false);
+    visibility.mockReturnValue("visible");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expectSubscription(true);
+    visibility.mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expectSubscription(false);
+    await act(async () => {});
+    expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(removeListener).toHaveBeenCalledWith(
+      "visibilitychange",
+      expect.any(Function),
+    );
+    const subscriptionCalls = mocks.statsSubscribe.mock.calls.length;
+    visibility.mockReturnValue("visible");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(mocks.statsSubscribe).toHaveBeenCalledTimes(subscriptionCalls);
+  });
+
+  it("does not schedule periodic renderer work or refetch local stats on focus", async () => {
     vi.useFakeTimers();
-    const random = vi.spyOn(Math, "random").mockReturnValue(0);
-    const { unmount, rerender } = renderStats();
+    renderStats();
     authenticate("account-a");
     await act(() => vi.advanceTimersByTimeAsync(0));
+    const subscriptionCalls = mocks.statsSubscribe.mock.calls.length;
+    const readCalls = mocks.readStats.mock.calls.length;
+    act(() => window.dispatchEvent(new Event("focus")));
+    await act(() => vi.advanceTimersByTimeAsync(2 * 60 * 60_000));
+    expect(mocks.readStats).toHaveBeenCalledTimes(readCalls);
+    expect(mocks.statsSubscribe).toHaveBeenCalledTimes(subscriptionCalls);
     expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
-    await act(() => vi.advanceTimersByTimeAsync(300_000));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
-    random.mockReturnValue(0.999);
-    rerender();
-    await act(() => vi.advanceTimersByTimeAsync(1000));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(2);
-    await act(() => vi.advanceTimersByTimeAsync(359_999));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(2);
-    await act(() => vi.advanceTimersByTimeAsync(1));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(3);
-    // Local reads are event driven, not polled with the refresh requests.
-    expect(mocks.readStats).toHaveBeenCalledTimes(1);
-    unmount();
-    await act(() => vi.advanceTimersByTimeAsync(600_000));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(3);
   });
 
-  it("requests refresh immediately when History reopens before the next tick", async () => {
-    vi.useFakeTimers();
+  it("requests immediately on reopening but not on ordinary rerenders", async () => {
     const first = renderStats();
     authenticate("account-a");
-    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await waitFor(() => expect(mocks.requestRefresh).toHaveBeenCalledTimes(1));
+    first.rerender();
+    authenticate("account-a");
+    await act(async () => {});
     expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
     first.unmount();
     renderStats();
     authenticate("account-a");
-    await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(2);
-  });
-
-  it("skips hidden ticks and does not refresh merely on becoming visible", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(Math, "random").mockReturnValue(0);
-    const visibility = vi
-      .spyOn(document, "visibilityState", "get")
-      .mockReturnValue("visible");
-    renderStats();
-    authenticate("account-a");
-    await act(() => vi.advanceTimersByTimeAsync(0));
-    visibility.mockReturnValue("hidden");
-    act(() => window.dispatchEvent(new Event("visibilitychange")));
-    await act(() => vi.advanceTimersByTimeAsync(602_000));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
-    visibility.mockReturnValue("visible");
-    act(() => window.dispatchEvent(new Event("visibilitychange")));
-    await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
-    expect(mocks.readStats).toHaveBeenCalledTimes(1);
-    await act(() => vi.advanceTimersByTimeAsync(301_000));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(mocks.requestRefresh).toHaveBeenCalledTimes(2));
   });
 
   it.each([
     { eventType: "authenticated", isAuthenticated: true, userId: null },
     { eventType: "auth-error", isAuthenticated: false, userId: null },
-  ])("hides totals on uncertain auth ($eventType)", async (state) => {
-    const { result } = renderStats();
-    authenticate("account-a");
-    await waitFor(() => expect(result.current).toBe(12000));
-    act(() => mocks.subscribe.mock.lastCall![1].onData(state));
-    expect(result.current).toBeUndefined();
-    expect(mocks.readStats).not.toHaveBeenCalledWith(null);
-  });
+  ])(
+    "keeps displaying DB totals when renderer auth is uncertain ($eventType)",
+    async (state) => {
+      const { result } = renderStats();
+      await waitFor(() => expect(result.current).toBe(12000));
+      act(() => mocks.subscribe.mock.lastCall![1].onData(state));
+      expect(result.current).toBe(12000);
+      expect(mocks.requestRefresh).not.toHaveBeenCalled();
+      expectSubscription();
+    },
+  );
 
-  it("does not substitute device totals when an account has no cache", async () => {
+  it("displays an unavailable result when the DB has no current cache", async () => {
     mocks.readStats.mockResolvedValue(null);
     const { result } = renderStats();
-    authenticate("account-a");
-    await waitFor(() =>
-      expect(mocks.readStats).toHaveBeenCalledWith("account-a"),
-    );
+    await waitFor(() => expect(mocks.readStats).toHaveBeenCalledOnce());
     expect(result.current).toBeUndefined();
-    expect(mocks.readStats).not.toHaveBeenCalledWith(null);
-  });
-
-  it("ignores an old account's late local read and clears refresh timers on signout", async () => {
-    let resolvePrevious!: (value: unknown) => void;
-    mocks.readStats.mockImplementation((id: string | null) =>
-      id === "account-a"
-        ? new Promise((resolve) => {
-            resolvePrevious = resolve;
-          })
-        : Promise.resolve({ totalWords: id === null ? 100 : 250 }),
-    );
-    const { result } = renderStats();
-    authenticate("account-a");
-    await waitFor(() =>
-      expect(mocks.readStats).toHaveBeenCalledWith("account-a"),
-    );
-    authenticate("account-b");
-    expect(result.current).toBeUndefined();
-    await waitFor(() => expect(result.current).toBe(250));
-    await act(async () => {
-      resolvePrevious({ totalWords: 12000 });
-    });
-    expect(result.current).toBe(250);
-    expect(mocks.requestRefresh).toHaveBeenLastCalledWith({
-      accountId: "account-b",
-    });
-    authenticate(null);
-    await waitFor(() => expect(result.current).toBe(100));
-    vi.useFakeTimers();
-    await act(() => vi.advanceTimersByTimeAsync(600_000));
-    expect(mocks.requestRefresh).toHaveBeenCalledTimes(2);
   });
 });

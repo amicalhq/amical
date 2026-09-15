@@ -17,7 +17,6 @@ import {
 import { getLifetimeStats } from "../../db/dictation-stats";
 import { dictationStatsEvents } from "../../db/dictation-stats-events";
 import { deleteAudioFilesForTranscriptions } from "../../utils/audio-file-cleanup.js";
-import { runAuthEffect } from "../../services/auth-service";
 
 // Input schemas
 const GetTranscriptionsSchema = z.object({
@@ -41,32 +40,29 @@ const ReportTranscriptionSchema = z.object({
 });
 
 export const transcriptionsRouter = createRouter({
-  requestStatsRefresh: procedure
-    .input(z.object({ accountId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const auth = await runAuthEffect(ctx.services.authService.getAuthState());
-      if (!auth?.isAuthenticated || auth.userInfo?.sub !== input.accountId) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
-      ctx.services.activityReportingService.requestSummaryRefresh(
-        input.accountId,
-      );
-      return { requested: true };
+  requestStatsRefresh: procedure.mutation(({ ctx }) =>
+    ctx.services.activityReportingService.requestSummaryRefresh(),
+  ),
+
+  getLifetimeStats: procedure.query(() => getLifetimeStats()),
+
+  onStatsChanged: procedure
+    .input(z.object({ visible: z.boolean() }))
+    .subscription(({ ctx, input }) => {
+      return observable<{ changed: true }>((emit) => {
+        const onChanged = () => emit.next({ changed: true });
+        dictationStatsEvents.on("changed", onChanged);
+        const stopWatching = input.visible
+          ? ctx.services.activityReportingService.watchSummary()
+          : undefined;
+        // Also repair updates missed before attachment or during reconnection.
+        onChanged();
+        return () => {
+          dictationStatsEvents.off("changed", onChanged);
+          stopWatching?.();
+        };
+      });
     }),
-
-  getLifetimeStats: procedure
-    .input(z.object({ accountId: z.string().min(1).nullable() }).optional())
-    .query(({ input }) => getLifetimeStats(input?.accountId ?? null)),
-
-  onStatsChanged: procedure.subscription(() => {
-    return observable<{ changed: true }>((emit) => {
-      const onChanged = () => emit.next({ changed: true });
-      dictationStatsEvents.on("changed", onChanged);
-      // Also repair updates missed before attachment or during reconnection.
-      onChanged();
-      return () => dictationStatsEvents.off("changed", onChanged);
-    });
-  }),
 
   // Get transcriptions list with pagination and filtering
   getTranscriptions: procedure

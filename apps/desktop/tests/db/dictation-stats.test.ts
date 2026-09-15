@@ -72,26 +72,28 @@ describe("persisted dictation stats", () => {
   it("increments device and only the authenticated account in one transaction", () => {
     increment(10);
     authenticate("alice");
-    expect(getLifetimeStats("alice")).toBeNull();
+    expect(getLifetimeStats()).toBeNull();
     increment(7);
-    expect(getLifetimeStats("alice")).toEqual({
+    expect(getLifetimeStats()).toEqual({
       totalWords: 7,
       totalTranscriptions: 1,
     });
-    expect(getLifetimeStats()).toBeNull();
-    expect(getLifetimeStats("bob")).toBeNull();
     authenticate("bob");
-    expect(getLifetimeStats("alice")).toBeNull();
+    expect(getLifetimeStats()).toBeNull();
     increment(3);
-    expect(getLifetimeStats("bob")).toEqual({
+    expect(getLifetimeStats()).toEqual({
       totalWords: 3,
       totalTranscriptions: 1,
     });
     authenticate(null);
-    expect(getLifetimeStats("bob")).toBeNull();
     expect(getLifetimeStats()).toEqual({
       totalWords: 20,
       totalTranscriptions: 3,
+    });
+    authenticate("alice");
+    expect(getLifetimeStats()).toEqual({
+      totalWords: 7,
+      totalTranscriptions: 1,
     });
   });
 
@@ -99,7 +101,6 @@ describe("persisted dictation stats", () => {
     increment(10);
     authenticate(null, true);
     expect(getLifetimeStats()).toBeNull();
-    expect(getLifetimeStats("alice")).toBeNull();
   });
 
   it("rolls back both scopes and revision with the caller transaction", async () => {
@@ -113,7 +114,7 @@ describe("persisted dictation stats", () => {
       }),
     ).toThrow("settlement failed");
     expect(getStatsRevision()).toBe(0);
-    expect(getLifetimeStats("alice")).toBeNull();
+    expect(getLifetimeStats()).toBeNull();
     await Promise.resolve();
     expect(changed).not.toHaveBeenCalled();
   });
@@ -139,7 +140,7 @@ describe("persisted dictation stats", () => {
     increment(100);
     authenticate("alice");
     const changed = vi.fn(() =>
-      expect(getLifetimeStats("alice")).toEqual({
+      expect(getLifetimeStats()).toEqual({
         totalWords: 12000,
         totalTranscriptions: 500,
       }),
@@ -170,7 +171,7 @@ describe("persisted dictation stats", () => {
     expect(
       applyAccountSummary("alice", revision, { words: 100, activities: 10 }),
     ).toBe(false);
-    expect(getLifetimeStats("alice")).toEqual({
+    expect(getLifetimeStats()).toEqual({
       totalWords: 105,
       totalTranscriptions: 11,
     });
@@ -183,7 +184,7 @@ describe("persisted dictation stats", () => {
     expect(applyAccountSummary("alice", 0, { words: 0, activities: 0 })).toBe(
       true,
     );
-    expect(getLifetimeStats("alice")).toEqual({
+    expect(getLifetimeStats()).toEqual({
       totalWords: 0,
       totalTranscriptions: 0,
     });
@@ -196,7 +197,7 @@ describe("persisted dictation stats", () => {
       applyAccountSummary("alice", 0, { words: 100, activities: 10 }),
     ).toBe(false);
     authenticate("alice");
-    expect(getLifetimeStats("alice")).toEqual({
+    expect(getLifetimeStats()).toEqual({
       totalWords: 0,
       totalTranscriptions: 0,
     });

@@ -18,17 +18,10 @@ function readAuth(database: typeof db | DbTransaction) {
     .get()?.data.auth;
 }
 
-export function getLifetimeStats(
-  accountId: string | null = null,
-): LifetimeStats | null {
+export function getLifetimeStats(): LifetimeStats | null {
   const auth = readAuth(db);
-  if (
-    accountId === null
-      ? auth?.isAuthenticated
-      : !auth?.isAuthenticated || auth.userInfo?.sub !== accountId
-  ) {
-    return null;
-  }
+  const accountId = auth?.isAuthenticated ? auth.userInfo?.sub : null;
+  if (accountId === undefined) return null;
 
   const totals = db
     .select({

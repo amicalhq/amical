@@ -10,8 +10,6 @@ const summary = {
     wordsWithAudioDuration: 11000,
     audioDurationMs: 600000,
   },
-  byPlatform: [{ platform: "ios", words: 9000 }],
-  asOf: "2026-09-14T10:00:00.000Z",
 };
 
 describe("getAccountSummary", () => {
@@ -45,9 +43,9 @@ describe("getAccountSummary", () => {
   });
 
   it("reads account totals across platforms from Apps V1", async () => {
-    await expect(getAccountSummary(authService, "account-a")).resolves.toEqual({
-      totals: { activities: 150, words: 12000 },
-    });
+    await expect(getAccountSummary(authService, "account-a")).resolves.toEqual(
+      summary,
+    );
     const [url, init] = fetchMock.mock.calls[0];
     expect(url.toString()).toBe(
       "https://core.test/apps/v1/me/activities/summary",
@@ -164,6 +162,18 @@ describe("getAccountSummary", () => {
   it("rejects malformed totals instead of displaying zero", async () => {
     fetchMock.mockResolvedValueOnce(
       Response.json({ ...summary, totals: { words: -1 } }),
+    );
+    await expect(getAccountSummary(authService, "account-a")).rejects.toThrow();
+  });
+
+  it.each([
+    { activities: 1.5 },
+    { words: -1 },
+    { wordsWithAudioDuration: undefined },
+    { audioDurationMs: 0 },
+  ])("rejects invalid summary fields: %j", async (invalid) => {
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ totals: { ...summary.totals, ...invalid } }),
     );
     await expect(getAccountSummary(authService, "account-a")).rejects.toThrow();
   });
