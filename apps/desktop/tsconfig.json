@@ -14,15 +14,14 @@
     "jsx": "react-jsx",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "strict": true,
-    "baseUrl": ".",
     "noEmit": true,
     "paths": {
-      "@/*": ["src/*"],
-      "@db/*": ["src/db/*"],
-      "@main/*": ["src/main/*"],
-      "@services/*": ["src/services/*"],
-      "@utils/*": ["src/utils/*"],
-      "@trpc/*": ["src/trpc/*"]
+      "@/*": ["./src/*"],
+      "@db/*": ["./src/db/*"],
+      "@main/*": ["./src/main/*"],
+      "@services/*": ["./src/services/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@trpc/*": ["./src/trpc/*"]
     }
   },
   "include": [

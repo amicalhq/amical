@@ -26,10 +26,11 @@
   "devDependencies": {
     "@amical/eslint-config": "workspace:*",
     "@amical/typescript-config": "workspace:*",
-    "eslint": "^9.26.0",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "eslint": "^9.39.5",
     "quicktype": "23.1.4",
     "tsx": "^4.19.4",
-    "typescript": "~5.8.3"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^2.3.1",
