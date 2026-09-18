@@ -25,7 +25,7 @@ const saveSchema = z.object({
     .optional(),
   origin: z
     .object({
-      accountId: z.string().min(1),
+      accountId: z.string().min(1).nullable(),
       title: z.string(),
       markdown: z.string(),
       icon: z.string().nullable(),

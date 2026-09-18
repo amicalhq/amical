@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "./index";
-import { notes, yjsUpdates } from "./schema";
+import { notes, yjsUpdates, syncItemState } from "./schema";
 import { convertLegacyNote } from "../notes/legacy";
 import {
   visibleNotesWhere,
@@ -9,7 +9,6 @@ import {
   preserveNoteConflict,
   findNoteSyncState,
 } from "./settings-sync/notes";
-import { findSidecar } from "./settings-sync/canonical";
 import type { NoteBody, NoteSaveResult, NoteSaveOrigin } from "../notes/types";
 
 function updatesFor(noteId: string) {
@@ -90,17 +89,13 @@ export function loadNoteBody(noteId: string): NoteBody {
       noteId,
       markdown: note.content ?? "",
       remoteVersion: syncState?.remoteVersion ?? null,
-      ...(note.accountId
-        ? {
-            origin: {
-              accountId: note.accountId,
-              title: note.title,
-              icon: note.icon,
-              createdAtMs: note.createdAt.getTime(),
-              markdown: note.content ?? "",
-            },
-          }
-        : {}),
+      origin: {
+        accountId: note.accountId,
+        title: note.title,
+        icon: note.icon,
+        createdAtMs: note.createdAt.getTime(),
+        markdown: note.content ?? "",
+      },
     };
   }
   return {
@@ -122,31 +117,55 @@ export function saveNoteBody(
       // Only a newer accepted remote tombstone can recover a pending editor
       // draft. Local deletion and ordinary delayed saves never recreate notes.
       if (origin && expectedRemoteVersion !== undefined) {
-        const fence = {
-          accountId: origin.accountId,
-          scopeId: origin.accountId,
-          scopeType: "user" as const,
-        };
-        const sidecar = findSidecar(tx, fence, "note", noteId);
+        // A local editor may miss adoption. Retained sync state identifies its
+        // owner after deletion; never guess if more than one account matches.
+        const [sidecar, otherOwner] = tx
+          .select()
+          .from(syncItemState)
+          .where(
+            and(
+              eq(syncItemState.scopeType, "user"),
+              eq(syncItemState.collection, "note"),
+              eq(syncItemState.syncId, noteId),
+              origin.accountId === null
+                ? undefined
+                : eq(syncItemState.scopeId, origin.accountId),
+            ),
+          )
+          .limit(2)
+          .all();
         if (
+          !otherOwner &&
           sidecar?.acceptedPayload === null &&
           sidecar.noteRemoteVersion !== null &&
           sidecar.noteRemoteVersion > (expectedRemoteVersion ?? 0)
         ) {
-          preserveNoteConflict(tx, fence, {
-            schemaVersion: 1,
-            title: origin.title,
-            icon: origin.icon,
-            body: { format: "markdown", content: markdown },
-            createdAtMs: origin.createdAtMs,
-            updatedAtMs: Date.now(),
-          });
+          preserveNoteConflict(
+            tx,
+            {
+              accountId: sidecar.scopeId,
+              scopeId: sidecar.scopeId,
+              scopeType: "user",
+            },
+            {
+              schemaVersion: 1,
+              title: origin.title,
+              icon: origin.icon,
+              body: { format: "markdown", content: markdown },
+              createdAtMs: origin.createdAtMs,
+              updatedAtMs: Date.now(),
+            },
+          );
           return { status: "saved", recovered: true };
         }
       }
       return { status: "deleted" };
     }
-    const fromOpenEditor = origin && note.accountId === origin.accountId;
+    // A local editor can miss the adoption notification before logout. Its
+    // pending save still belongs to this note and its persisted owner.
+    const fromOpenEditor =
+      origin &&
+      (origin.accountId === null || note.accountId === origin.accountId);
     if (
       !fromOpenEditor &&
       !tx

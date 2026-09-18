@@ -221,6 +221,55 @@ describe("SettingsSyncService", () => {
     vi.restoreAllMocks();
   });
 
+  it.each(["login", "startup", "resume"] as const)(
+    "adopts and uploads signed-out notes on %s",
+    async (activation) => {
+      const run = useFakeEffectTimers();
+      const local = await createNote({ title: "Signed-out note" });
+      saveNoteBody(local.id, "# Saved before login\n");
+      if (activation === "login") auth.state = null;
+      if (activation === "resume") {
+        await beginUserSyncSession("user-1");
+        pauseSyncSession();
+      }
+      const client = new InMemorySyncClient(["vocabulary", "snippet", "note"]);
+      service = SettingsSyncService.createForTests(
+        auth as unknown as AuthService,
+        client,
+      );
+
+      await run(service.initialize());
+      if (activation === "login") {
+        expect(testDb.db.select().from(notes).get()?.accountId).toBeNull();
+        expect(testDb.db.select().from(syncOutbox).all()).toEqual([]);
+        auth.state = AUTH_STATE;
+        auth.emit("authenticated", AUTH_STATE);
+      }
+      await vi.waitFor(() => expect(client.pull).toHaveBeenCalledOnce());
+      expect(testDb.db.select().from(notes).get()).toMatchObject({
+        id: local.id,
+        accountId: "user-1",
+        content: "# Saved before login\n",
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.waitFor(() => expect(client.push).toHaveBeenCalledOnce());
+
+      expect(client.push.mock.calls[0][0]).toMatchObject([
+        {
+          collection: "note",
+          scopeId: "user-1",
+          syncId: local.id,
+          expectedSyncVersion: null,
+          payload: {
+            title: "Signed-out note",
+            body: { content: "# Saved before login\n" },
+          },
+        },
+      ]);
+      expect(testDb.db.select().from(syncOutbox).all()).toEqual([]);
+    },
+  );
+
   it("syncs notes in bounded batches, filters organization requests, and resumes after logout", async () => {
     await beginUserSyncSession("user-1");
     for (let index = 0; index < 7; index++)
@@ -635,6 +684,8 @@ describe("SettingsSyncService", () => {
     await createVocabularyWord({
       word: "Pending",
     });
+    const local = await createNote({ title: "Adopted while offline" });
+    saveNoteBody(local.id, "Pending offline note");
     const unavailableClient = {
       bootstrap: vi.fn(() =>
         Effect.fail(
@@ -655,12 +706,21 @@ describe("SettingsSyncService", () => {
     await vi.waitFor(() =>
       expect(unavailableClient.bootstrap).toHaveBeenCalledOnce(),
     );
-    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(1);
+    expect(await testDb.db.select().from(syncOutbox)).toHaveLength(2);
+    expect(testDb.db.select().from(notes).get()).toMatchObject({
+      id: local.id,
+      accountId: "user-1",
+      content: "Pending offline note",
+    });
 
     await Effect.runPromise(service.shutdown());
     service = null;
 
-    const resumedClient = new InMemorySyncClient();
+    const resumedClient = new InMemorySyncClient([
+      "vocabulary",
+      "snippet",
+      "note",
+    ]);
     service = SettingsSyncService.createForTests(
       auth as unknown as AuthService,
       resumedClient,
@@ -671,13 +731,26 @@ describe("SettingsSyncService", () => {
       expect(resumedClient.pull).toHaveBeenCalledOnce();
     });
 
-    expect(resumedClient.push.mock.calls[0][0][0]).toMatchObject({
-      expectedSyncVersion: null,
-      payload: { word: "Pending", replacement: null },
-    });
+    expect(resumedClient.push.mock.calls[0][0]).toMatchObject([
+      {
+        expectedSyncVersion: null,
+        payload: { word: "Pending", replacement: null },
+      },
+      {
+        collection: "note",
+        syncId: local.id,
+        expectedSyncVersion: null,
+        payload: {
+          title: "Adopted while offline",
+          body: { content: "Pending offline note" },
+        },
+      },
+    ]);
+    expect(await testDb.db.select().from(syncOutbox)).toEqual([]);
     expect(resumedClient.pull.mock.calls[0][2]).toEqual([
       { collection: "vocabulary", cursor: 0 },
       { collection: "snippet", cursor: 0 },
+      { collection: "note", cursor: 0 },
     ]);
   });
 

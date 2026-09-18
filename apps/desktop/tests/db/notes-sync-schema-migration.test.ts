@@ -13,7 +13,16 @@ import * as Y from "yjs";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
 import { loadNoteBody } from "@/db/note-body";
-import { notes, yjsUpdates, vocabulary, snippets } from "@/db/schema";
+import {
+  notes,
+  yjsUpdates,
+  vocabulary,
+  snippets,
+  syncOutbox,
+  syncItemState,
+  syncCollectionState,
+} from "@/db/schema";
+import { noteSyncPayload } from "@/db/settings-sync/notes";
 
 const migrations = join(process.cwd(), "src/db/migrations");
 const journal = JSON.parse(
@@ -204,4 +213,98 @@ it("rolls back ID remapping and recovery rows if a later pending migration fails
       .all()
       .every((note) => NOTE_ID.test(note.id)),
   ).toBe(true);
+});
+
+it("removes the old device-only choice while preserving notes, recovery data, and pending sync", () => {
+  copyMigrations(16);
+  migrateDatabase(testDb.db, { migrationsFolder: folder });
+  const database = testDb.db;
+  const client = database.$client;
+  const kept = database
+    .select()
+    .from(notes)
+    .all()
+    .find((note) => note.title === "Existing")!;
+  const owned = database
+    .insert(notes)
+    .values({
+      title: "Owned",
+      content: "# Pending edit\n",
+      contentFormat: "markdown-v1",
+      accountId: "alice",
+      syncError: "pending retry",
+    })
+    .returning()
+    .get()!;
+  client
+    .prepare(
+      "UPDATE notes SET local_only = 1, legacy_content = ?, migration_error = ? WHERE id = ?",
+    )
+    .run("original backup", "conversion needs recovery", kept.id);
+  const identity = {
+    scopeType: "user" as const,
+    scopeId: "alice",
+    collection: "note" as const,
+  };
+  const payload = noteSyncPayload(owned);
+  database
+    .insert(syncOutbox)
+    .values([
+      {
+        ...identity,
+        syncId: owned.id,
+        desiredPayload: payload,
+        desiredSequence: 7,
+        desiredBaseSyncVersion: 4,
+        desiredNotBefore: 123456,
+      },
+      {
+        ...identity,
+        syncId: "deleted-note",
+        desiredPayload: null,
+        desiredSequence: 8,
+        desiredBaseSyncVersion: 5,
+      },
+    ])
+    .run();
+  database
+    .insert(syncItemState)
+    .values({
+      ...identity,
+      syncId: owned.id,
+      acceptedSyncVersion: 4,
+      noteRemoteVersion: 3,
+      acceptedPayload: payload,
+    })
+    .run();
+  database
+    .insert(syncCollectionState)
+    .values({ ...identity, cursor: 9 })
+    .run();
+  const before = {
+    notes: database.select().from(notes).all(),
+    recovery: database.select().from(yjsUpdates).all(),
+    outbox: database.select().from(syncOutbox).all(),
+    state: database.select().from(syncItemState).all(),
+    cursors: database.select().from(syncCollectionState).all(),
+  };
+
+  migrateDatabase(database, { migrationsFolder: migrations });
+  migrateDatabase(database, { migrationsFolder: migrations });
+
+  expect(client.prepare("PRAGMA table_info(notes)").all()).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ name: "local_only" })]),
+  );
+  expect(database.select().from(notes).all()).toEqual(before.notes);
+  expect(database.select().from(yjsUpdates).all()).toEqual(before.recovery);
+  expect(database.select().from(syncOutbox).all()).toEqual(before.outbox);
+  expect(database.select().from(syncItemState).all()).toEqual(before.state);
+  expect(database.select().from(syncCollectionState).all()).toEqual(
+    before.cursors,
+  );
+  expect(client.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  client.prepare("DELETE FROM notes WHERE id = ?").run(kept.id);
+  expect(database.select().from(yjsUpdates).all()).toEqual(
+    before.recovery.filter((row) => row.noteId !== kept.id),
+  );
 });

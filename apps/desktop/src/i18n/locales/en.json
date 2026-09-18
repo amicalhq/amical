@@ -928,9 +928,6 @@
         "error": "Changes could not be saved. Keep this window open and try editing again."
       },
       "cloud": {
-        "enrollment": "Add {{count}} notes from this device to your signed-in account? They will sync across your devices.",
-        "enroll": "Sync these notes",
-        "keepLocal": "Keep on this device",
         "error": "Saved on this device. Cloud sync needs attention: {{reason}}"
       }
     },

@@ -480,9 +480,6 @@ export const notes = sqliteTable("notes", {
     .notNull()
     .$defaultFn(() => createEntityId("note")),
   accountId: text("account_id"),
-  localOnly: integer("local_only", { mode: "boolean" })
-    .notNull()
-    .default(false),
   syncError: text("sync_error"),
   title: text("title").notNull(),
   content: text("content").default(""), // Authoritative body when contentFormat is markdown-v1

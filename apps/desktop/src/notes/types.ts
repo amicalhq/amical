@@ -1,6 +1,6 @@
-// An already-open editor can finish its pending save in its original account.
+// An already-open editor can finish its pending save after logout or adoption.
 export interface NoteSaveOrigin {
-  accountId: string;
+  accountId: string | null;
   title: string;
   icon: string | null;
   createdAtMs: number;

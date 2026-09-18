@@ -1,0 +1,1 @@
+ALTER TABLE `notes` DROP COLUMN `local_only`;

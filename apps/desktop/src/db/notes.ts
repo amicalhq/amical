@@ -1,4 +1,4 @@
-import { eq, desc, asc, like, and, isNull, count } from "drizzle-orm";
+import { eq, desc, asc, like, and } from "drizzle-orm";
 import { db } from "./index";
 import { notes, type Note, type NewNote } from "./schema";
 
@@ -153,44 +153,5 @@ export async function deleteNote(id: string) {
       .get();
     if (note) recordNoteMutation(tx, note, true);
     return note ?? null;
-  });
-}
-
-export function getNoteEnrollment() {
-  return {
-    signedIn: activeUserIdentity() !== null,
-    count: db
-      .select({ count: count() })
-      .from(notes)
-      .where(and(isNull(notes.accountId), eq(notes.localOnly, false)))
-      .get()!.count,
-  };
-}
-
-export function enrollLocalNotes(sync: boolean) {
-  const identity = activeUserIdentity();
-  if (!identity) throw new Error("Sign in to sync notes");
-  return db.transaction((tx) => {
-    const local = tx
-      .select()
-      .from(notes)
-      .where(and(isNull(notes.accountId), eq(notes.localOnly, false)))
-      .all();
-    for (const note of local) {
-      const updated = tx
-        .update(notes)
-        .set(
-          sync
-            ? {
-                accountId: identity.scopeId,
-              }
-            : { localOnly: true },
-        )
-        .where(eq(notes.id, note.id))
-        .returning()
-        .get()!;
-      if (sync) recordNoteMutation(tx, updated);
-    }
-    return { count: local.length };
   });
 }

@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
-import { notes, syncOutbox } from "@/db/schema";
+import { notes, syncItemState, syncOutbox } from "@/db/schema";
 import {
   createNote,
   updateNote,
   deleteNote,
   getNotes,
   getNoteById,
-  enrollLocalNotes,
 } from "@/db/notes";
 import { loadNoteBody, saveNoteBody } from "@/db/note-body";
 import {
   applyPullPages,
   applyPushResults,
+  adoptVisibleRows,
   beginUserSyncSession,
   capturePushHeads as captureEligibleHeads,
   clearSyncState,
@@ -116,16 +116,25 @@ describe("personal note sync", () => {
     expect(loadNoteBody(note.id)).toMatchObject({ markdown: "" });
   });
 
-  it("enrolls existing notes only by choice, and never adopts them into another account", async () => {
+  it("adopts local notes automatically and never adopts them into another account", async () => {
     const local = await createNote({ title: "Device note" });
-    await beginUserSyncSession("alice");
+    saveNoteBody(local.id, "# Device draft\n");
+    const before = all()[0];
+    const fence = await beginUserSyncSession("alice");
     expect(pending()).toEqual([]);
-    enrollLocalNotes(true);
-    expect(pending()).toMatchObject([{ scopeId: "alice", syncId: local.id }]);
+    await adoptVisibleRows(fence);
+    expect(all()).toEqual([{ ...before, accountId: "alice" }]);
+    expect(pending()).toMatchObject([
+      {
+        scopeId: "alice",
+        syncId: local.id,
+        desiredPayload: noteSyncPayload(before),
+      },
+    ]);
     await clearSyncState();
     expect(await getNotes()).toEqual([]);
-    await beginUserSyncSession("bob");
-    enrollLocalNotes(true);
+    const bob = await beginUserSyncSession("bob");
+    await adoptVisibleRows(bob);
     expect(await getNotes()).toEqual([]);
     expect(await getNoteById(local.id)).toBeNull();
     expect(loadNoteBody(local.id).status).toBe("deleted");
@@ -134,16 +143,72 @@ describe("personal note sync", () => {
     });
     expect(await updateNote(local.id, { title: "wrong account" })).toBeNull();
     expect(await deleteNote(local.id)).toBeNull();
-    expect(
-      await capturePushHeads({
-        accountId: "bob",
-        scopeType: "user",
-        scopeId: "bob",
-      }),
-    ).toEqual([]);
+    expect(await capturePushHeads(bob)).toEqual([]);
     await resumeUserSyncSession("alice");
     expect((await getNotes())[0].id).toBe(local.id);
     expect(pending()[0].desiredPayload).toMatchObject({ title: "Device note" });
+  });
+
+  it("keeps blocked note recovery data while adopting its ownership", async () => {
+    const before = testDb.db
+      .insert(notes)
+      .values({
+        title: "Needs recovery",
+        contentFormat: "blocked",
+        legacyContent: "Original legacy content",
+        migrationError: "Unsupported content",
+      })
+      .returning()
+      .get()!;
+    const fence = await beginUserSyncSession("alice");
+
+    await adoptVisibleRows(fence);
+
+    expect(all()).toEqual([{ ...before, accountId: "alice" }]);
+    expect(pending()).toEqual([]);
+  });
+
+  it("does not requeue adopted notes or reset their upload deadline on resume", async () => {
+    await createNote({ title: "Adopt once" });
+    const fence = await beginUserSyncSession("alice");
+    await adoptVisibleRows(fence);
+    const before = pending();
+
+    vi.setSystemTime(Date.now() + 5000);
+    await adoptVisibleRows(fence);
+    const resumed = await resumeUserSyncSession("alice");
+    await adoptVisibleRows(resumed);
+
+    expect(pending()).toEqual(before);
+    expect(testDb.db.select().from(syncItemState).all()).toHaveLength(1);
+  });
+
+  it("rolls back ownership when an adopted note cannot be queued", async () => {
+    const local = await createNote({ title: "Atomic adoption" });
+    const fence = await beginUserSyncSession("alice");
+    testDb.db.$client.exec(
+      "CREATE TRIGGER fail_note_outbox BEFORE INSERT ON sync_outbox BEGIN SELECT RAISE(ABORT, 'outbox failed'); END;",
+    );
+
+    await expect(adoptVisibleRows(fence)).rejects.toThrow();
+
+    expect(all()[0]).toMatchObject({ id: local.id, accountId: null });
+    expect(pending()).toEqual([]);
+    expect(testDb.db.select().from(syncItemState).all()).toEqual([]);
+  });
+
+  it("does not adopt notes for a stale account session", async () => {
+    const local = await createNote({ title: "Wait for current account" });
+    const alice = await beginUserSyncSession("alice");
+    const bob = await beginUserSyncSession("bob");
+
+    expect(await adoptVisibleRows(alice)).toBe(false);
+    expect(all()[0]).toMatchObject({ id: local.id, accountId: null });
+    expect(pending()).toEqual([]);
+
+    expect(await adoptVisibleRows(bob)).toBe(true);
+    expect(all()[0]).toMatchObject({ id: local.id, accountId: "bob" });
+    expect(pending()).toMatchObject([{ scopeId: "bob", syncId: local.id }]);
   });
 
   it("retains a deleted note's queued tombstone through logout and restart", async () => {

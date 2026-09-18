@@ -217,6 +217,11 @@ export async function adoptVisibleRows(
     if (!contextIsActive(fence)) return false;
     if (fence.scopeType !== "user") return false;
 
+    tx.update(notes)
+      .set({ accountId: fence.scopeId })
+      .where(isNull(notes.accountId))
+      .run();
+
     const vocabularyRows = tx
       .select()
       .from(vocabulary)

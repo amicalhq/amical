@@ -1,7 +1,6 @@
 import { SettingsSyncIdSchema } from "@amical/types";
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
-import { getNoteEnrollment, enrollLocalNotes } from "../../db/notes";
 import NotesService from "../../services/notes-service";
 
 const notesService = NotesService.getInstance();
@@ -46,10 +45,6 @@ const UpdateNoteIconSchema = z.object({
 });
 
 export const notesRouter = createRouter({
-  getEnrollment: procedure.query(() => getNoteEnrollment()),
-  enrollLocal: procedure
-    .input(z.object({ sync: z.boolean() }))
-    .mutation(({ input }) => enrollLocalNotes(input.sync)),
   // Get all notes
   getNotes: procedure.input(GetNotesSchema).query(async ({ input }) => {
     return await notesService.listNotes({
