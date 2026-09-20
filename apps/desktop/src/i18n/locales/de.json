@@ -516,6 +516,7 @@
           "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
+          "ko": "한국어",
           "zh-TW": "繁體中文"
         },
         "restartDialog": {
@@ -923,16 +924,16 @@
         }
       },
       "recovery": {
-        "loadFailed": "Die Notiz konnte nicht geladen werden. Schließe sie und öffne sie erneut, um es noch einmal zu versuchen.",
+        "loadFailed": "Die Notiz konnte nicht geladen werden. Schließe sie und öffne sie erneut.",
         "blocked": "Diese Notiz konnte nicht konvertiert werden. Ihre ursprünglichen Daten bleiben zur Wiederherstellung erhalten.",
         "details": "Details zur Wiederherstellung",
         "deletedNote": "Diese Notiz wurde gelöscht oder ist in diesem Konto nicht verfügbar.",
         "recovered": "Diese Notiz wurde auf einem anderen Gerät gelöscht. Deine Änderungen wurden als Konfliktkopie in deinen Notizen gespeichert.",
-        "format": "Diese Formatierung kann nicht als Markdown gespeichert werden. Verwende Fett, Kursiv, Durchgestrichen oder Code. Mache eingefügte, nicht unterstützte Formatierungen rückgängig, um zu speichern.",
+        "format": "Diese Formatierung kann nicht als Markdown gespeichert werden. Verwende Fettschrift, Kursivschrift, durchgestrichenen Text oder Code. Mache das Einfügen nicht unterstützter Formatierungen rückgängig, um die Notiz zu speichern.",
         "error": "Änderungen konnten nicht gespeichert werden. Lass dieses Fenster geöffnet und versuche erneut, die Notiz zu bearbeiten."
       },
       "cloud": {
-        "error": "Auf diesem Gerät gespeichert. Die Cloud-Synchronisierung erfordert deine Aufmerksamkeit: {{reason}}"
+        "error": "Auf diesem Gerät gespeichert. Bei der Cloud-Synchronisierung gibt es ein Problem: {{reason}}"
       }
     },
     "vocabulary": {

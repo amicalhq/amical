@@ -32,6 +32,17 @@ describe("Amical client locale", () => {
     });
   });
 
+  it.each(["ko", "ko-KR", "ko_KR"])(
+    "uses Korean for the %s locale",
+    (locale) => {
+      expect(setApplicationLocale(locale)).toBe("ko");
+      expect(getAmicalClientHeaders()).toMatchObject({
+        "Accept-Language": "ko",
+      });
+      expect(getAmicalClientInfo()).toMatchObject({ locale: "ko" });
+    },
+  );
+
   it("falls back safely instead of forwarding an unsupported locale", () => {
     expect(setApplicationLocale("not-a-supported-locale")).toBe("en");
     expect(getAmicalClientInfo()).toMatchObject({ locale: "en" });

@@ -34,7 +34,7 @@
   "updater": {
     "updateAvailable": "Actualización disponible",
     "requiredUpdate": "Actualización requerida",
-    "appBlocked": "Esta versión de Amical ya no es compatible. Actualiza ahora para continuar.",
+    "appBlocked": "Esta versión de Amical ya no cuenta con soporte. Actualiza ahora para continuar.",
     "finishingRecording": "Termina tu grabación actual. Amical la guardará antes de que actualices.",
     "requiredUpdateFailed": "No se pudo completar la actualización. Inténtalo de nuevo.",
     "checking": "Buscando actualizaciones…",
@@ -516,6 +516,7 @@
           "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
+          "ko": "한국어",
           "zh-TW": "繁體中文"
         },
         "restartDialog": {
@@ -928,11 +929,11 @@
         "details": "Detalles de recuperación",
         "deletedNote": "Esta nota se eliminó o no está disponible en esta cuenta.",
         "recovered": "Esta nota se eliminó en otro dispositivo. Tus cambios se guardaron como una copia en conflicto en tus notas.",
-        "format": "Este formato no se puede guardar como Markdown. Usa negrita, cursiva, tachado o código. Deshaz el formato pegado no compatible para guardar.",
+        "format": "Este formato no se puede guardar como Markdown. Usa negrita, cursiva, tachado o código. Si pegaste texto con un formato no compatible, deshaz esa acción para poder guardar.",
         "error": "No se pudieron guardar los cambios. Mantén esta ventana abierta e intenta editar de nuevo."
       },
       "cloud": {
-        "error": "Guardado en este dispositivo. La sincronización en la nube requiere tu atención: {{reason}}"
+        "error": "Guardado en este dispositivo. Hay un problema con la sincronización en la nube: {{reason}}"
       }
     },
     "vocabulary": {
