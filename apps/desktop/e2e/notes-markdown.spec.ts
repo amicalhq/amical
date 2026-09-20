@@ -188,7 +188,10 @@ test("notes widget edits persist as Markdown across close and reopen", async () 
       "beforenestedafter edited",
     );
     await rpc(onboarding, "notes.deleteNote", "mutation", { id: note.id });
-    await expect(other.locator('[contenteditable="false"]')).toBeVisible();
+    await expect(
+      other.getByText("Create your first note to get started", { exact: true }),
+    ).toBeVisible();
+    await expect(other.locator('[contenteditable="true"]')).toHaveCount(0);
     const lateDelete = await other.evaluate(
       (id) => window.electronAPI.notes.saveBody(id, "late after delete"),
       note.id,
