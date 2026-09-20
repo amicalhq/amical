@@ -1,4 +1,5 @@
 import { ipcRenderer } from "electron";
+import type { AudioCaptureInfo } from "../types/audio-capture";
 
 /**
  * The renderer→main audio-capture bridge for windows that stream microphone
@@ -10,6 +11,7 @@ export const audioBridge = {
     sessionId: string,
     chunk: Float32Array,
     isFinalChunk: boolean = false,
+    captureInfo?: AudioCaptureInfo,
   ): Promise<void> => {
     // Convert Float32Array to ArrayBuffer for IPC transfer
     const buffer = chunk.buffer.slice(
@@ -21,6 +23,7 @@ export const audioBridge = {
       sessionId,
       buffer,
       isFinalChunk,
+      captureInfo,
     );
   },
 

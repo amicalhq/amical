@@ -21,6 +21,7 @@ import {
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 import { logger } from "../../src/main/logger";
+import { DESKTOP_STEREO_MIC_DOWNMIX_FLAG } from "../../src/types/audio-capture";
 
 describe("RemoteConfigService", () => {
   type PersistedRemoteConfig = Awaited<
@@ -299,9 +300,38 @@ describe("RemoteConfigService", () => {
       config: {
         version: 1,
         surfaces: [],
-        flags: { [DESKTOP_BACKGROUND_UPDATES_FLAG]: true },
+        flags: {
+          [DESKTOP_BACKGROUND_UPDATES_FLAG]: true,
+          [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
+        },
       },
     });
+  });
+
+  it("keeps a cached stereo-downmix kill switch offline and accepts a refreshed value", async () => {
+    const cached = cachedConfig();
+    cached!.config!.flags = { [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: false };
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const { service } = await createService(cached);
+    await service.refresh();
+    expect(service.getConfig().flags[DESKTOP_STEREO_MIC_DOWNMIX_FLAG]).toBe(
+      false,
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          version: 1,
+          flags: { [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true },
+        }),
+      }),
+    );
+    await service.refresh();
+    expect(service.getConfig().flags[DESKTOP_STEREO_MIC_DOWNMIX_FLAG]).toBe(
+      true,
+    );
   });
 
   it("preserves an explicit false flag from the server", async () => {

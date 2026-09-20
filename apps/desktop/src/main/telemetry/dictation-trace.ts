@@ -426,6 +426,14 @@ function flush(trace: SessionTrace): void {
   };
 
   for (const record of trace.records) {
+    if (record.name === "lifecycle.audio-capture") {
+      // Latest observed format, reported before mono conversion. Keep these
+      // as top-level properties on transcription_completed_v2 in PostHog.
+      payload.audio_input_channel_count = record.attributes.inputChannelCount;
+      payload.audio_track_channel_count = record.attributes.trackChannelCount;
+      payload.audio_stereo_downmix_enabled =
+        record.attributes.stereoDownmixEnabled;
+    }
     const key = FLAT_KEYS[record.name];
     if (key !== undefined && payload[key] === undefined) {
       payload[key] = Math.round(record.durationMs);

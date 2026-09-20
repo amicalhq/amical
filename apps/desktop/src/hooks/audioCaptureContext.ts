@@ -56,6 +56,7 @@ export const createOrResumeAudioContext = async ({
 export const createAudioCaptureGraph = (
   audioContext: AudioContext,
   stream: MediaStream,
+  stereoDownmixEnabled: boolean,
 ): {
   source: MediaStreamAudioSourceNode;
   workletNode: AudioWorkletNode;
@@ -65,6 +66,11 @@ export const createAudioCaptureGraph = (
   const workletNode = new AudioWorkletNode(
     audioContext,
     "audio-recorder-processor",
+    {
+      channelCountMode: "max",
+      channelInterpretation: "discrete",
+      processorOptions: { stereoDownmixEnabled },
+    },
   );
   const nodeCreationDuration = performance.now() - nodeCreationStartTime;
   console.log(

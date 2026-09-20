@@ -2,6 +2,10 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import audioWorkletUrl from "@/assets/audio-recorder-processor.js?url";
 import { api } from "@/trpc/react";
 import type { CaptureFailure } from "@/types/recording";
+import {
+  DESKTOP_STEREO_MIC_DOWNMIX_FLAG,
+  type AudioCaptureInfo,
+} from "@/types/audio-capture";
 import { Mutex } from "async-mutex";
 import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
 import {
@@ -67,6 +71,7 @@ export interface UseAudioCaptureParams {
     arrayBuffer: ArrayBuffer,
     speechProbability: number,
     isFinalChunk: boolean,
+    captureInfo?: AudioCaptureInfo,
   ) => Promise<void> | void;
   onCaptureStarted?: (
     microphone: AcquiredMicrophoneMetadata,
@@ -91,6 +96,7 @@ export const useAudioCapture = ({
   enabled,
   idle,
 }: UseAudioCaptureParams): UseAudioCaptureOutput => {
+  const utils = api.useUtils();
   const [audioLevels, setAudioLevels] = useState<number[]>(EMPTY_BARS);
   // Analyser tap, reused byte buffer, and the rolling level history — kept in
   // refs so the frame handler doesn't depend on state.
@@ -221,6 +227,21 @@ export const useAudioCapture = ({
             // warm AudioContext is resumed rather than closed out from under us.
             clearIdleTimer();
 
+            // Read main's current cached config for each dictation. Do not
+            // switch channel handling partway through an utterance.
+            const remoteConfig = await utils.client.remoteConfig.get
+              .query()
+              .catch((error) => {
+                console.warn(
+                  "AudioCapture: Failed to read remote config",
+                  error,
+                );
+                return null;
+              });
+            if (disposedRef.current) return;
+            const stereoDownmixEnabled =
+              remoteConfig?.flags[DESKTOP_STEREO_MIC_DOWNMIX_FLAG] === true;
+
             const { stream, audioTrack, microphone } =
               await acquireMicrophoneStream({
                 microphonePriority,
@@ -264,12 +285,22 @@ export const useAudioCapture = ({
             const { source, workletNode } = createAudioCaptureGraph(
               audioContextRef.current,
               streamRef.current,
+              stereoDownmixEnabled,
             );
             sourceRef.current = source;
             workletNodeRef.current = workletNode;
             attachAudioWorkletFrameHandler({
               workletNode,
-              onAudioChunk: (arrayBuffer, speechProbability, isFinalChunk) => {
+              captureConfig: {
+                stereoDownmixEnabled,
+                trackChannelCount: audioTrack.getSettings?.().channelCount,
+              },
+              onAudioChunk: (
+                arrayBuffer,
+                speechProbability,
+                isFinalChunk,
+                captureInfo,
+              ) => {
                 try {
                   updateBars();
                 } catch (error) {
@@ -283,6 +314,7 @@ export const useAudioCapture = ({
                   arrayBuffer,
                   speechProbability,
                   isFinalChunk,
+                  captureInfo,
                 );
               },
               finishPendingFlush: (didFlush) =>
@@ -334,7 +366,7 @@ export const useAudioCapture = ({
           pendingStartRef.current = false;
         });
     },
-    [onAudioChunk, releaseAll, clearIdleTimer, updateBars, sessionId],
+    [onAudioChunk, releaseAll, clearIdleTimer, updateBars, sessionId, utils],
   );
 
   // Device-change diagnostics are only attached while dictation is active, so

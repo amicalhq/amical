@@ -147,12 +147,18 @@ describe("useRecording capture identity wiring", () => {
     });
 
     const frame = new Float32Array([0.1, 0.2]);
+    const captureInfo = {
+      inputChannelCount: 2,
+      trackChannelCount: 2,
+      stereoDownmixEnabled: true,
+    };
     await act(async () => {
       await captureParams?.onAudioChunk(
         "session-1",
         frame.buffer as ArrayBuffer,
         0,
         false,
+        captureInfo,
       );
     });
 
@@ -168,6 +174,7 @@ describe("useRecording capture identity wiring", () => {
       "session-1",
       expect.any(Float32Array),
       false,
+      captureInfo,
     );
   });
 });

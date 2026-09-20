@@ -29,6 +29,7 @@ vi.mock("@/hooks/audioCaptureRecycle", () => ({
 
 import { useAudioCapture } from "@/hooks/useAudioCapture";
 import type { CaptureFailure } from "@/types/recording";
+import { api } from "@/trpc/react";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
 interface FakeTrack extends EventTarget {
@@ -79,6 +80,7 @@ class FakeWorkletNode {
   constructor(
     public context: FakeAudioContext,
     public name: string,
+    public options: AudioWorkletNodeOptions,
   ) {
     workletNodes.push(this);
     this.port = {
@@ -159,6 +161,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete (globalThis as Record<string, unknown>).AudioContext;
   delete (globalThis as Record<string, unknown>).AudioWorkletNode;
 });
@@ -203,6 +206,112 @@ function mountHook() {
 }
 
 describe("useAudioCapture lifecycle", () => {
+  it("snapshots the remote control per capture without restarting an active graph", async () => {
+    const query = vi.spyOn(api.useUtils().client.remoteConfig.get, "query");
+    query.mockResolvedValue({
+      flags: { "desktop-stereo-mic-downmix": true },
+    } as never);
+    const { rerender } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(workletNodes[0].options).toEqual({
+      channelCountMode: "max",
+      channelInterpretation: "discrete",
+      processorOptions: { stereoDownmixEnabled: true },
+    });
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        channelCount: 1,
+        sampleRate: 16000,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        deviceId: { exact: "default" },
+      },
+    });
+    query.mockResolvedValue({
+      flags: { "desktop-stereo-mic-downmix": false },
+    } as never);
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(workletNodes).toHaveLength(1);
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
+    await settle();
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    expect(workletNodes[1].options.processorOptions).toEqual({
+      stereoDownmixEnabled: false,
+    });
+  });
+
+  it("does not open the mic after unmount while waiting for config", async () => {
+    const query = vi.spyOn(api.useUtils().client.remoteConfig.get, "query");
+    const pendingConfig =
+      Promise.withResolvers<Awaited<ReturnType<typeof query>>>();
+    query.mockReturnValueOnce(pendingConfig.promise);
+    const { rerender, unmount } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(query).toHaveBeenCalledOnce();
+    unmount();
+    pendingConfig.resolve({
+      flags: { "desktop-stereo-mic-downmix": true },
+    } as never);
+    await settle();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(workletNodes).toHaveLength(0);
+  });
+
+  it("falls back to first-channel capture if the config IPC read fails", async () => {
+    vi.spyOn(api.useUtils().client.remoteConfig.get, "query").mockRejectedValue(
+      new Error("IPC unavailable"),
+    );
+    const { rerender } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(workletNodes[0].options.processorOptions).toEqual({
+      stereoDownmixEnabled: false,
+    });
+  });
+
+  it("forwards observed channels on the first frame and format changes, including a short final frame", async () => {
+    getUserMedia.mockImplementation(async () => {
+      const stream = makeStream();
+      Object.assign(stream.track, { getSettings: () => ({ channelCount: 2 }) });
+      return stream;
+    });
+    const { rerender, onAudioChunk } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    const send = (inputChannelCount: number, isFinal = false) =>
+      act(async () => {
+        workletNodes[0].port.onmessage?.({
+          data: {
+            type: "audioFrame",
+            frame: new Float32Array(32),
+            isFinal,
+            inputChannelCount,
+          },
+        });
+      });
+    await send(2);
+    await send(2);
+    await send(1, true);
+    expect(onAudioChunk.mock.calls.map((call) => call[4])).toEqual([
+      {
+        inputChannelCount: 2,
+        trackChannelCount: 2,
+        stereoDownmixEnabled: true,
+      },
+      undefined,
+      {
+        inputChannelCount: 1,
+        trackChannelCount: 2,
+        stereoDownmixEnabled: true,
+      },
+    ]);
+  });
+
   it("I-55 reports a microphone start failure with its original cause", async () => {
     const failure = new DOMException("Permission denied", "NotAllowedError");
     getUserMedia.mockRejectedValueOnce(failure);
@@ -296,6 +405,7 @@ describe("useAudioCapture lifecycle", () => {
       expect.any(ArrayBuffer),
       0,
       false,
+      undefined,
     );
   });
 
