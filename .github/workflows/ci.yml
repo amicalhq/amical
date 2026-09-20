@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -21,10 +23,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Fetch pull request base
-        if: github.event_name == 'pull_request'
+      - name: Fetch comparison base
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
 
       - name: Setup pnpm
@@ -51,9 +53,9 @@ jobs:
         run: pnpm --filter @amical/desktop test
 
       - name: Verify lifecycle contract version
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: pnpm --filter @amical/desktop verify:lifecycle-contract-version "$BASE_SHA"
 
   build_desktop:
@@ -137,6 +139,7 @@ jobs:
       - name: Package desktop app (no signing)
         working-directory: apps/desktop
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           AMICAL_E2E_PACKAGE: "1"
           SKIP_CODESIGNING: "true"
           SKIP_NOTARIZATION: "true"

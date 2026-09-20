@@ -35,13 +35,13 @@ public class RpcResponseExecutorTests
         );
         var result = (JsonElement)response.Result;
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Id, Is.EqualTo("request-1"));
             Assert.That(response.Error, Is.Null);
             Assert.That(result.GetProperty("success").GetBoolean(), Is.True);
             Assert.That(result.GetProperty("message").GetString(), Is.EqualTo("Recording started"));
-        });
+        }
     }
 
     [Test]
@@ -55,7 +55,7 @@ public class RpcResponseExecutorTests
             )
         );
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Id, Is.EqualTo("request-2"));
             Assert.That(response.Result, Is.Null);
@@ -64,7 +64,7 @@ public class RpcResponseExecutorTests
                 response.Error?.Message,
                 Is.EqualTo("Missing params for startRecording")
             );
-        });
+        }
     }
 
     [Test]
@@ -75,12 +75,12 @@ public class RpcResponseExecutorTests
             () => throw new InvalidOperationException("test failure")
         );
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Id, Is.EqualTo("request-3"));
             Assert.That(response.Result, Is.Null);
             Assert.That(response.Error?.Code, Is.EqualTo(-32603));
-        });
+        }
     }
 
     [Test]
@@ -94,13 +94,13 @@ public class RpcResponseExecutorTests
             () => Task.FromResult<object?>(cyclicResult)
         );
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Id, Is.EqualTo("request-4"));
             Assert.That(response.Result, Is.Null);
             Assert.That(response.Error?.Code, Is.EqualTo(-32603));
             Assert.That(response.Error?.Message, Does.StartWith("Internal error:"));
-        });
+        }
     }
 
     [Test]
