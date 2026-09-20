@@ -56,7 +56,11 @@ export const MAC_KEYCODES = {
   TAB: 48,
   SPACE: 49,
   DELETE: 51,
-  ENTER: 52,
+  // Enter reaches us as one of three codes: keycode-map.ts names all three and
+  // the Swift helper's enterKeyCodes masks all three during a draft review.
+  ENTER: 36, // kVK_Return, what the built-in keyboard sends
+  ENTER_LEGACY: 52, // legacy/defensive alias kept alongside kVK_Return
+  KEYPAD_ENTER: 76, // kVK_ANSI_KeypadEnter
   ESCAPE: 53,
   CAPS_LOCK: 57,
   FORWARD_DELETE: 117,
