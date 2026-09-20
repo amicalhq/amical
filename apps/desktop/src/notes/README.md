@@ -131,7 +131,7 @@ Startup clears existing note deadlines so pending changes can sync immediately;
 new edits receive the normal 10-second delay.
 An already-captured head can finish while later edits wait; uncaptured edits
 coalesce into the latest payload. Vocabulary and snippet edits retain their
-750 ms wake debounce. Local body/title saves remain at 250/500 ms.
+750 ms wake debounce. Local body and title saves both use a 250 ms debounce.
 
 Pull application and cursor advancement are atomic.
 Divergent pending edits become separate “(conflict copy)” notes before canonical

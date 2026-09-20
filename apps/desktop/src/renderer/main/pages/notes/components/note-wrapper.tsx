@@ -1,14 +1,13 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import { debounce } from "@/renderer/main/utils/debounce";
 import Note from "./note";
 import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
-import { settleTitleSave, type NoteTitleDraft } from "@/notes/title-draft";
+import { useNoteTitleSave } from "@/renderer/main/hooks/use-note-title-save";
 
 type NotePageProps = {
   noteId: string;
@@ -35,8 +34,21 @@ export default function NotePage({
   // Refs
   const noteRef = useRef<typeof note>(null);
   const autoRecordTriggeredRef = useRef(false);
-  const titleSaveInFlight = useRef(false);
-  const pendingTitle = useRef<NoteTitleDraft | null>(null);
+  const { pendingTitle, setPendingTitle } = useNoteTitleSave(
+    noteId,
+    (saved) => {
+      if (noteRef.current?.id === saved.id)
+        noteRef.current = {
+          ...noteRef.current,
+          title: saved.title,
+          remoteVersion: saved.remoteVersion,
+        };
+    },
+    (id) => {
+      if (noteRef.current?.id === id && !pendingTitle.current)
+        setNoteTitle(noteRef.current.title);
+    },
+  );
 
   // Fetch note data
   const {
@@ -49,33 +61,6 @@ export default function NotePage({
       enabled: !!noteId,
     },
   );
-
-  // Update title mutation
-  const updateTitleMutation = api.notes.updateNoteTitle.useMutation({
-    onSuccess: (saved, input) => {
-      titleSaveInFlight.current = false;
-      pendingTitle.current = settleTitleSave(
-        pendingTitle.current,
-        input,
-        saved,
-      );
-      if (pendingTitle.current) debouncedUpdateTitle();
-      if (saved && noteRef.current?.id === saved.id)
-        noteRef.current = {
-          ...noteRef.current,
-          title: saved.title,
-          remoteVersion: saved.remoteVersion,
-        };
-      utils.notes.getNotes.invalidate();
-      utils.notes.getNoteById.invalidate({ id: input.id });
-    },
-    onError: (_error, input) => {
-      titleSaveInFlight.current = false;
-      const pending = pendingTitle.current;
-      if (pending && (pending.id !== input.id || pending.title !== input.title))
-        debouncedUpdateTitle();
-    },
-  });
 
   // Update emoji mutation
   const updateNoteIconMutation = api.notes.updateNoteIcon.useMutation({
@@ -110,33 +95,11 @@ export default function NotePage({
     },
   });
 
-  // Debounced title update
-  const debouncedUpdateTitle = useMemo(
-    () =>
-      debounce(() => {
-        const pending = pendingTitle.current;
-        if (!pending || titleSaveInFlight.current) return;
-        if (pending.title === pending.originalTitle) {
-          pendingTitle.current = null;
-          if (noteRef.current) setNoteTitle(noteRef.current.title);
-          return;
-        }
-        titleSaveInFlight.current = true;
-        updateTitleMutation.mutate({
-          id: pending.id,
-          title: pending.title,
-          expectedRemoteVersion: pending.remoteVersion,
-          originalTitle: pending.originalTitle,
-        });
-      }, 500),
-    [], // No dependencies - function should remain stable
-  );
-
   // Update note ref and set initial title and emoji
   useEffect(() => {
     noteRef.current = note;
     if (note) {
-      if (!pendingTitle.current) setNoteTitle(note.title);
+      setNoteTitle(pendingTitle.current?.title ?? note.title);
       setNoteIcon(note.icon || null);
     }
   }, [note]);
@@ -148,7 +111,6 @@ export default function NotePage({
 
   // Reset state when noteId changes
   useEffect(() => {
-    pendingTitle.current = null;
     setEditorReady(false);
     autoRecordTriggeredRef.current = false;
   }, [noteId]);
@@ -176,15 +138,14 @@ export default function NotePage({
         ? pendingTitle.current.remoteVersion
         : (noteRef.current?.remoteVersion ?? null);
       const originalTitle = pendingTitle.current?.originalTitle ?? noteTitle;
-      pendingTitle.current = {
+      setPendingTitle({
         id: noteId,
         title: newTitle,
         remoteVersion,
         originalTitle,
-      };
-      debouncedUpdateTitle();
+      });
     },
-    [debouncedUpdateTitle, noteTitle, noteId],
+    [setPendingTitle, noteTitle, noteId],
   );
 
   // Handle delete

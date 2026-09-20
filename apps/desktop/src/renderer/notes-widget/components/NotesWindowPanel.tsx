@@ -1,8 +1,7 @@
-import { settleTitleSave, type NoteTitleDraft } from "@/notes/title-draft";
+import { useNoteTitleSave } from "@/renderer/main/hooks/use-note-title-save";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -12,7 +11,6 @@ import { Loader2, Plus, X } from "lucide-react";
 import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { debounce } from "@/renderer/main/utils/debounce";
 import { NoteEditor } from "@/renderer/main/pages/notes/components/note-editor";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -30,7 +28,6 @@ export function NotesWindowPanel({
   const utils = api.useUtils();
   const preferencesQuery = api.settings.getPreferences.useQuery();
   const createNoteMutation = api.notes.createNote.useMutation();
-  const updateNoteTitleMutation = api.notes.updateNoteTitle.useMutation();
   const closeNotesWindowMutation = api.widget.closeNotesWindow.useMutation();
   const startRecordingMutation = api.recording.signalStart.useMutation();
 
@@ -38,8 +35,7 @@ export function NotesWindowPanel({
   const [noteTitle, setNoteTitle] = useState("");
   const [editorReady, setEditorReady] = useState(false);
 
-  const titleSaveInFlight = useRef(false);
-  const pendingTitle = useRef<NoteTitleDraft | null>(null);
+  const { pendingTitle, setPendingTitle } = useNoteTitleSave(currentNoteId);
   const currentNoteQuery = api.notes.getNoteById.useQuery(
     { id: currentNoteId ?? "" },
     { enabled: currentNoteId !== null },
@@ -48,14 +44,13 @@ export function NotesWindowPanel({
     if (currentNoteQuery.isError) {
       setCurrentNoteId(null);
       setNoteTitle("");
-      pendingTitle.current = null;
-    } else if (currentNoteQuery.data && !pendingTitle.current)
-      setNoteTitle(currentNoteQuery.data.title);
+      setPendingTitle(null);
+    } else if (currentNoteQuery.data)
+      setNoteTitle(pendingTitle.current?.title ?? currentNoteQuery.data.title);
   }, [currentNoteQuery.data, currentNoteQuery.isError]);
 
   const autoRecordPendingNoteIdRef = useRef<string | null>(null);
   const autoRecordStartedNoteIdRef = useRef<string | null>(null);
-  const updateNoteTitleMutateRef = useRef(updateNoteTitleMutation.mutate);
 
   const createAndSwitchToNewNote = useCallback(async () => {
     if (createNoteMutation.isPending) {
@@ -148,10 +143,6 @@ export function NotesWindowPanel({
   }, [handleOpenRequest]);
 
   useEffect(() => {
-    updateNoteTitleMutateRef.current = updateNoteTitleMutation.mutate;
-  }, [updateNoteTitleMutation.mutate]);
-
-  useEffect(() => {
     if (typeof initialNoteId === "string" && initialNoteId.length > 0) {
       handleOpenRequest(initialNoteId);
       return;
@@ -160,56 +151,6 @@ export function NotesWindowPanel({
       handleOpenRequest(undefined);
     }
   }, [handleOpenRequest, initialNoteId, shouldCreateInitialNote]);
-
-  const debouncedUpdateTitle = useMemo(
-    () =>
-      debounce(() => {
-        const pending = pendingTitle.current;
-        if (!pending || titleSaveInFlight.current) return;
-        if (pending.title === pending.originalTitle) {
-          pendingTitle.current = null;
-          void utils.notes.getNoteById.invalidate({ id: pending.id });
-          return;
-        }
-        titleSaveInFlight.current = true;
-        updateNoteTitleMutateRef.current(
-          {
-            id: pending.id,
-            title: pending.title,
-            expectedRemoteVersion: pending.remoteVersion,
-            originalTitle: pending.originalTitle,
-          },
-          {
-            onSuccess: (saved) => {
-              titleSaveInFlight.current = false;
-              pendingTitle.current = settleTitleSave(
-                pendingTitle.current,
-                pending,
-                saved,
-              );
-              if (pendingTitle.current) debouncedUpdateTitle();
-              void utils.notes.getNoteById.invalidate({ id: pending.id });
-            },
-            onError: () => {
-              titleSaveInFlight.current = false;
-              const latest = pendingTitle.current;
-              if (
-                latest &&
-                (latest.id !== pending.id || latest.title !== pending.title)
-              )
-                debouncedUpdateTitle();
-            },
-          },
-        );
-      }, 500),
-    [],
-  );
-
-  useEffect(() => {
-    return () => {
-      debouncedUpdateTitle.cancel();
-    };
-  }, [debouncedUpdateTitle]);
 
   useEffect(() => {
     if (!editorReady || currentNoteId === null) {
@@ -231,21 +172,17 @@ export function NotesWindowPanel({
   const handleTitleChange = (value: string) => {
     setNoteTitle(value);
     if (currentNoteId !== null) {
-      const previous =
-        pendingTitle.current?.id === currentNoteId
-          ? pendingTitle.current
-          : null;
+      const previous = pendingTitle.current;
       const remoteVersion = previous
         ? previous.remoteVersion
         : (currentNoteQuery.data?.remoteVersion ?? null);
       const originalTitle = previous?.originalTitle ?? noteTitle;
-      pendingTitle.current = {
+      setPendingTitle({
         id: currentNoteId,
         title: value,
         remoteVersion,
         originalTitle,
-      };
-      debouncedUpdateTitle();
+      });
     }
   };
 
