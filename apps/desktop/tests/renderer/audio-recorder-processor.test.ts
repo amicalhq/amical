@@ -4,6 +4,7 @@ interface PostedFrame {
   type: string;
   frame: Float32Array;
   isFinal: boolean;
+  inputChannelCount: number;
 }
 
 interface Processor {
@@ -21,7 +22,8 @@ interface Processor {
 // The worklet module references AudioWorkletProcessor / registerProcessor at load
 // time and does not export its class. Define the globals first, then capture the
 // registered class via a mocked registerProcessor.
-let ProcessorClass: new () => Processor;
+type ProcessorOptions = { processorOptions: { stereoDownmixEnabled: boolean } };
+let ProcessorClass: new (options?: ProcessorOptions) => Processor;
 
 beforeAll(async () => {
   (globalThis as Record<string, unknown>).AudioWorkletProcessor = class {
@@ -40,8 +42,10 @@ beforeAll(async () => {
   await import("@/assets/audio-recorder-processor.js");
 });
 
-function makeProcessor() {
-  const inst = new ProcessorClass();
+function makeProcessor(stereoDownmixEnabled = true) {
+  const inst = new ProcessorClass({
+    processorOptions: { stereoDownmixEnabled },
+  });
   const posted: PostedFrame[] = [];
   inst.port.postMessage = (msg) => posted.push(msg);
   return { inst, posted };
@@ -59,36 +63,73 @@ function feed(inst: Processor, samples: Float32Array): boolean {
   return inst.process([[samples]], [], {});
 }
 
-function feedChannels(inst: Processor, channels: Float32Array[]): boolean {
-  return inst.process([channels], [], {});
-}
-
 function flush(inst: Processor): void {
   inst.port.onmessage?.({ data: { type: "flush" } });
 }
 
 describe("audio-recorder-processor worklet", () => {
-  it("records signal from channel 2 when channel 1 is silent", () => {
+  it("retains right-only stereo speech at half amplitude and reports both input channels", () => {
     const { inst, posted } = makeProcessor();
-    const silence = new Float32Array(512);
-    const microphone = new Float32Array(512).fill(0.25);
-
-    feedChannels(inst, [silence, microphone]);
-
-    expect(posted).toHaveLength(1);
-    expect(posted[0].frame).toEqual(microphone);
+    inst.process(
+      [[new Float32Array(512), new Float32Array(512).fill(0.5)]],
+      [],
+      {},
+    );
+    expect(posted[0].frame).toEqual(new Float32Array(512).fill(0.25));
+    expect(posted[0].inputChannelCount).toBe(2);
   });
 
-  it("selects the strongest available input channel without attenuating it", () => {
+  it("preserves mono and duplicated stereo samples without changing gain", () => {
+    const samples = ramp(512);
+    for (const channels of [[samples], [samples, samples]]) {
+      const { inst, posted } = makeProcessor();
+      inst.process([channels], [], {});
+      expect(posted[0].frame).toEqual(samples);
+      expect(posted[0].inputChannelCount).toBe(channels.length);
+    }
+  });
+
+  it("uses a fixed mean even when the louder stereo channel changes", () => {
     const { inst, posted } = makeProcessor();
-    const lowNoise = new Float32Array(512).fill(0.001);
-    const microphone = new Float32Array(512).fill(-0.4);
-    const quieterSignal = new Float32Array(512).fill(0.1);
+    const left = Float32Array.from({ length: 512 }, (_, i) =>
+      i % 2 ? 0.25 : 0.75,
+    );
+    const right = Float32Array.from(left, (value) => 1 - value);
+    inst.process([[left, right]], [], {});
+    expect(posted[0].frame).toEqual(new Float32Array(512).fill(0.5));
+  });
 
-    feedChannels(inst, [lowNoise, microphone, quieterSignal]);
+  it("restores first-channel capture when the remote control is disabled", () => {
+    const { inst, posted } = makeProcessor(false);
+    const first = new Float32Array(512).fill(0.25);
+    inst.process([[first, new Float32Array(512).fill(0.75)]], [], {});
+    expect(posted[0].frame).toEqual(first);
+    expect(posted[0].inputChannelCount).toBe(2);
+  });
 
-    expect(posted).toHaveLength(1);
-    expect(posted[0].frame).toEqual(microphone);
+  it("does not mix additional interface or loopback channels", () => {
+    const { inst, posted } = makeProcessor();
+    const first = new Float32Array(512).fill(0.25);
+    inst.process(
+      [[first, new Float32Array(512), new Float32Array(512).fill(1)]],
+      [],
+      {},
+    );
+    expect(posted[0].frame).toEqual(first);
+    expect(posted[0].inputChannelCount).toBe(3);
+  });
+
+  it("reports the channel count on a short final frame", () => {
+    const { inst, posted } = makeProcessor();
+    inst.process(
+      [[new Float32Array(64), new Float32Array(64).fill(0.5)]],
+      [],
+      {},
+    );
+    flush(inst);
+    expect(posted[0].frame).toEqual(new Float32Array(64).fill(0.25));
+    expect(posted[0].inputChannelCount).toBe(2);
+    expect(posted[0].isFinal).toBe(true);
   });
 
   it("buffers sub-frame input and emits nothing until it has a full 512-sample frame", () => {

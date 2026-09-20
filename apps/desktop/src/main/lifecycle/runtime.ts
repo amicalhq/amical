@@ -6,6 +6,7 @@ import {
   recordPoint,
 } from "../telemetry/dictation-trace";
 import { ErrorCodes, type ErrorCode } from "../../types/error";
+import type { AudioCaptureInfo } from "../../types/audio-capture";
 import {
   createProvisionalTranscription,
   enrichTranscriptionBySession,
@@ -116,6 +117,7 @@ export interface RecordingLifecycle {
     session: SessionId,
     chunk: Float32Array,
     isFinalChunk: boolean,
+    captureInfo?: AudioCaptureInfo,
   ): Promise<void>;
 
   // Surface state
@@ -627,8 +629,12 @@ export function createRecordingLifecycle(
       failureDetails.set(session, { uiMessage: failure.message });
       recorder.captureFailed(session, ErrorCodes.MICROPHONE_CAPTURE_FAILED);
     },
-    handleAudioChunk: (session, chunk, isFinalChunk) =>
-      recorder.handleAudioChunk(session, chunk, isFinalChunk),
+    handleAudioChunk: (session, chunk, isFinalChunk, captureInfo) => {
+      if (captureInfo && shell.getSnapshot().sessionId === session) {
+        recordPoint(session, "lifecycle.audio-capture", captureInfo);
+      }
+      return recorder.handleAudioChunk(session, chunk, isFinalChunk);
+    },
 
     getSnapshot: () => shell.getSnapshot(),
     onSnapshot: (listener) => shell.onSnapshot(listener),

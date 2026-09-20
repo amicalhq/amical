@@ -38,6 +38,29 @@ afterEach(() => {
 });
 
 describe("dictation trace", () => {
+  it("reports the latest observed capture format on the v2 event without leaking arbitrary fields", () => {
+    install();
+    openSessionTrace("channels", {});
+    recordPoint("channels", "lifecycle.audio-capture", {
+      inputChannelCount: 2,
+      trackChannelCount: 2,
+      stereoDownmixEnabled: true,
+    });
+    recordPoint("channels", "lifecycle.audio-capture", {
+      inputChannelCount: 1,
+      trackChannelCount: 2,
+      stereoDownmixEnabled: true,
+      deviceId: "not-an-event-property",
+    });
+    closeSessionTrace("channels", { disposition: "empty" });
+    expect(flushed[0]).toMatchObject({
+      audio_input_channel_count: 1,
+      audio_track_channel_count: 2,
+      audio_stereo_downmix_enabled: true,
+    });
+    expect(flushed[0]).not.toHaveProperty("deviceId");
+  });
+
   it("a session with zero expected obligations flushes immediately at close", () => {
     install();
     openSessionTrace("s1", { mode: "dictate", model_id: "whisper-local" });

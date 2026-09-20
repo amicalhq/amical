@@ -220,7 +220,11 @@ describe("recording lifecycle runtime", () => {
       const h = makeHarness();
       const session = await h.startToRecording();
       h.timers.fire(TUNING.pressWindowMs);
-      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false, {
+        inputChannelCount: 2,
+        trackChannelCount: 2,
+        stereoDownmixEnabled: true,
+      });
       await settle();
       h.lifecycle.setPttLevel(false);
       await settle();
@@ -240,6 +244,9 @@ describe("recording lifecycle runtime", () => {
       expect(trace.pasted_offset_ms).toBeTypeOf("number");
       expect(trace.storage_duration_ms).toBeTypeOf("number");
       expect(trace.session_duration_ms).toBeTypeOf("number");
+      expect(trace.audio_input_channel_count).toBe(2);
+      expect(trace.audio_track_channel_count).toBe(2);
+      expect(trace.audio_stereo_downmix_enabled).toBe(true);
     } finally {
       _resetDictationTraceForTests();
     }

@@ -31,6 +31,7 @@ import {
   AppScopeTag,
 } from "../main/runtime/tags";
 import { addRelease, step, up } from "../main/runtime/layer-helpers";
+import { DESKTOP_STEREO_MIC_DOWNMIX_FLAG } from "@/types/audio-capture";
 
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const DESKTOP_BACKGROUND_UPDATES_FLAG = "desktop-background-updates";
@@ -135,13 +136,18 @@ const parseEnvelope = (
 
 export type DesktopRemoteConfig = Omit<RemoteConfig, "flags"> & {
   flags: NonNullable<RemoteConfig["flags"]> &
-    Record<typeof DESKTOP_BACKGROUND_UPDATES_FLAG, boolean>;
+    Record<
+      | typeof DESKTOP_BACKGROUND_UPDATES_FLAG
+      | typeof DESKTOP_STEREO_MIC_DOWNMIX_FLAG,
+      boolean
+    >;
 };
 
 const resolveRemoteConfig = (config: RemoteConfig): DesktopRemoteConfig => ({
   ...config,
   flags: {
     [DESKTOP_BACKGROUND_UPDATES_FLAG]: true,
+    [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
     ...(config.flags ?? {}),
   },
 });

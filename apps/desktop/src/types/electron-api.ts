@@ -1,4 +1,5 @@
 import type { NoteSaveOrigin } from "../notes/types";
+import type { AudioCaptureInfo } from "./audio-capture";
 import type { NoteBody, NoteSaveResult, NoteBodyChange } from "../notes/types";
 
 declare global {
@@ -23,6 +24,7 @@ export interface ElectronAPI {
     sessionId: string,
     chunk: Float32Array,
     isFinalChunk: boolean,
+    captureInfo?: AudioCaptureInfo,
   ) => Promise<void>;
 
   // Model Management API (moved to tRPC)

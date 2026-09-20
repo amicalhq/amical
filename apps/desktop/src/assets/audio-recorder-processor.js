@@ -1,9 +1,12 @@
 class AudioRecorderProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
     this.frameSize = 512; // 32ms at 16kHz
     this.sampleRate = 16000;
     this.buffer = [];
+    this.stereoDownmixEnabled =
+      options?.processorOptions?.stereoDownmixEnabled === true;
+    this.inputChannelCount = 0;
 
     // Listen for control messages
     this.port.onmessage = (event) => {
@@ -22,6 +25,7 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
       type: "audioFrame",
       frame: finalFrame,
       isFinal: true,
+      inputChannelCount: this.inputChannelCount,
     });
   }
 
@@ -29,30 +33,15 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     const input = inputs[0];
     if (!input || !input[0]) return true;
 
-    // Professional interfaces expose each socket as a separate channel. Select
-    // the channel carrying the strongest signal for this render quantum so a mic
-    // connected to input 2+ is not discarded. Copying one channel also avoids
-    // attenuating a single active mic by averaging it with silent inputs.
-    let channelData = input[0];
-    let strongestPower = -1;
-    for (const channel of input) {
-      if (!channel?.length) continue;
-
-      let power = 0;
-      for (let i = 0; i < channel.length; i++) {
-        power += channel[i] * channel[i];
-      }
-      power /= channel.length;
-
-      if (power > strongestPower) {
-        strongestPower = power;
-        channelData = channel;
-      }
-    }
+    const channelData = input[0];
+    this.inputChannelCount = input.length;
+    const mixStereo = this.stereoDownmixEnabled && input.length === 2;
 
     // Add samples to buffer
     for (let i = 0; i < channelData.length; i++) {
-      this.buffer.push(channelData[i]);
+      this.buffer.push(
+        mixStereo ? (channelData[i] + input[1][i]) / 2 : channelData[i],
+      );
     }
 
     // When we have enough samples, send a frame
@@ -65,6 +54,7 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
         type: "audioFrame",
         frame: new Float32Array(frame),
         isFinal: false,
+        inputChannelCount: this.inputChannelCount,
       });
     }
 

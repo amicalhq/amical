@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useAudioCapture } from "./useAudioCapture";
 import type { AcquiredMicrophoneMetadata } from "./audioCaptureDevice";
+import type { AudioCaptureInfo } from "@/types/audio-capture";
 import { api } from "@/trpc/react";
 import type {
   CaptureFailure,
@@ -60,6 +61,7 @@ export const useRecording = (): UseRecordingOutput => {
       arrayBuffer: ArrayBuffer,
       speechProbability: number,
       isFinalChunk: boolean,
+      captureInfo?: AudioCaptureInfo,
     ) => {
       // Convert ArrayBuffer to Float32Array
       const float32Array = new Float32Array(arrayBuffer);
@@ -70,6 +72,7 @@ export const useRecording = (): UseRecordingOutput => {
         sessionId,
         float32Array,
         isFinalChunk,
+        captureInfo,
       );
       console.debug(`Sent audio frame`, {
         samples: float32Array.length,

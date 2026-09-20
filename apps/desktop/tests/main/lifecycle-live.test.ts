@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { ipcMain } from "electron";
+import { Context, Effect, Exit, Layer, Scope } from "effect";
 import type { GetAccessibilityContextResult } from "@amical/types";
 
 const db = vi.hoisted(() => ({
@@ -11,7 +13,20 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/db/transcriptions", () => db);
-import { createDesktopRecordingLifecycle } from "../../src/main/lifecycle/live";
+import {
+  createDesktopRecordingLifecycle,
+  RecordingLifecycleLive,
+} from "../../src/main/lifecycle/live";
+import {
+  AppScopeTag,
+  ModelServiceTag,
+  NativeBridgeTag,
+  RecordingLifecycleTag,
+  RemoteConfigServiceTag,
+  SettingsServiceTag,
+  TranscriptionServiceTag,
+  WindowManagerTag,
+} from "../../src/main/runtime/tags";
 import type { NativeBridge } from "../../src/services/platform/native-bridge-service";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { ModelService } from "../../src/services/model-service";
@@ -170,6 +185,63 @@ function makeLive(options?: {
 }
 
 describe("desktop live binding", () => {
+  it("validates channel metadata at IPC without dropping valid audio", async () => {
+    const scope = Effect.runSync(Scope.make());
+    try {
+      const ctx = await Effect.runPromise(
+        Layer.build(
+          RecordingLifecycleLive.pipe(
+            Layer.provide(Layer.succeed(AppScopeTag, scope)),
+            Layer.provide(
+              Layer.succeed(SettingsServiceTag, {} as SettingsService),
+            ),
+            Layer.provide(Layer.succeed(ModelServiceTag, {} as ModelService)),
+            Layer.provide(Layer.succeed(NativeBridgeTag, null)),
+            Layer.provide(Layer.succeed(TranscriptionServiceTag, null)),
+            Layer.provide(Layer.succeed(RemoteConfigServiceTag, {} as never)),
+            Layer.provide(Layer.succeed(WindowManagerTag, {} as never)),
+          ),
+        ).pipe(Scope.provide(scope)),
+      );
+      const lifecycle = Context.get(ctx, RecordingLifecycleTag);
+      const forward = vi
+        .spyOn(lifecycle, "handleAudioChunk")
+        .mockResolvedValue();
+      const handler = vi
+        .mocked(ipcMain.handle)
+        .mock.calls.find(([channel]) => channel === "audio-data-chunk")![1];
+      const pcm = new Float32Array([0.25, -0.5]);
+      const valid = {
+        inputChannelCount: 2,
+        trackChannelCount: 2,
+        stereoDownmixEnabled: false,
+      };
+      for (const [metadata, expected] of [
+        [{ ...valid, deviceId: "must-not-leak" }, valid],
+        [{ ...valid, inputChannelCount: 0 }, undefined],
+        [{ ...valid, stereoDownmixEnabled: "false" }, undefined],
+        [undefined, undefined],
+      ]) {
+        await handler(
+          {} as Electron.IpcMainInvokeEvent,
+          "session-1",
+          pcm.buffer,
+          true,
+          metadata,
+        );
+        expect(forward).toHaveBeenLastCalledWith(
+          "session-1",
+          pcm,
+          true,
+          expected,
+        );
+      }
+      expect(forward).toHaveBeenCalledTimes(4);
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void));
+    }
+  });
+
   it("a rejected preferences read still releases the beep gate", async () => {
     const h = makeLive({
       preferences: async () => {

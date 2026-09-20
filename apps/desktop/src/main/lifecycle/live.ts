@@ -38,6 +38,7 @@ import { createSessionWork } from "./effect/session-work";
 import { REAL_TIMER_HOST } from "./shell";
 import { runLifecycleRecovery } from "./startup-recovery";
 import { DEFAULT_LIFECYCLE_TUNING } from "./tuning";
+import { AudioCaptureInfoSchema } from "../../types/audio-capture";
 
 /**
  * Desktop binding of the recording lifecycle: real ambiance (native start/
@@ -446,6 +447,7 @@ export const RecordingLifecycleLive: Layer.Layer<
         sessionId: string,
         chunk: ArrayBuffer,
         isFinalChunk: boolean,
+        captureInfo?: unknown,
       ) => {
         if (!(chunk instanceof ArrayBuffer)) {
           logger.audio.error("Received invalid audio chunk type", {
@@ -457,6 +459,9 @@ export const RecordingLifecycleLive: Layer.Layer<
           sessionId,
           new Float32Array(chunk),
           isFinalChunk,
+          captureInfo === undefined
+            ? undefined
+            : AudioCaptureInfoSchema.safeParse(captureInfo).data,
         );
       },
     );

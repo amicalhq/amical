@@ -27,9 +27,7 @@ export const acquireMicrophoneStream = async ({
   sampleRate,
 }: AcquireMicrophoneStreamOptions): Promise<AcquiredMicrophoneStream> => {
   const audioConstraints: MediaTrackConstraints = {
-    // Start with stereo so interfaces whose microphone is on input 2 work even
-    // when the browser does not expose per-track channel capabilities.
-    channelCount: { ideal: 2 },
+    channelCount: 1,
     sampleRate,
     echoCancellation: false,
     noiseSuppression: false,
@@ -94,33 +92,6 @@ export const acquireMicrophoneStream = async ({
   if (!audioTrack) {
     stream.getTracks().forEach((track) => track.stop());
     throw new Error("No audio tracks available from microphone");
-  }
-
-  // Once permission gives us a track, ask for every channel the selected device
-  // reports. Unsupported or rejected expansion leaves the initial stereo stream
-  // usable, while interfaces with input 3+ can expose those channels to the
-  // AudioWorklet.
-  try {
-    const maximumChannelCount =
-      audioTrack.getCapabilities?.().channelCount?.max;
-    if (
-      maximumChannelCount &&
-      maximumChannelCount > 2 &&
-      audioTrack.applyConstraints
-    ) {
-      await audioTrack.applyConstraints({
-        channelCount: { ideal: maximumChannelCount },
-        sampleRate,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      });
-    }
-  } catch (error) {
-    console.warn(
-      "AudioCapture: Could not expand multichannel input; keeping stereo capture",
-      error,
-    );
   }
 
   const trackSettings = audioTrack.getSettings?.() ?? {};

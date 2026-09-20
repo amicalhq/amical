@@ -1,7 +1,10 @@
+import type { AudioCaptureInfo } from "@/types/audio-capture";
+
 export type AudioChunkForwarder = (
   arrayBuffer: ArrayBuffer,
   speechProbability: number,
   isFinalChunk: boolean,
+  captureInfo?: AudioCaptureInfo,
 ) => Promise<void> | void;
 
 export interface PendingWorkletFlush {
@@ -15,12 +18,15 @@ export const attachAudioWorkletFrameHandler = ({
   workletNode,
   onAudioChunk,
   finishPendingFlush,
+  captureConfig,
 }: {
   workletNode: AudioWorkletNode;
   onAudioChunk: AudioChunkForwarder;
   finishPendingFlush: (didFlush?: boolean) => void;
+  captureConfig: Omit<AudioCaptureInfo, "inputChannelCount">;
 }) => {
   let firstFrameReceived = false;
+  let lastInputChannelCount: number | undefined;
   const firstFrameStartTime = performance.now();
 
   workletNode.port.onmessage = async (event: MessageEvent) => {
@@ -28,6 +34,7 @@ export const attachAudioWorkletFrameHandler = ({
       type?: string;
       frame?: Float32Array;
       isFinal?: boolean;
+      inputChannelCount?: number;
     };
     if (data.type !== "audioFrame" || !data.frame) {
       return;
@@ -42,6 +49,19 @@ export const attachAudioWorkletFrameHandler = ({
     }
 
     const frame = data.frame;
+    let captureInfo: AudioCaptureInfo | undefined;
+    if (
+      data.inputChannelCount !== undefined &&
+      data.inputChannelCount > 0 &&
+      data.inputChannelCount !== lastInputChannelCount
+    ) {
+      lastInputChannelCount = data.inputChannelCount;
+      captureInfo = {
+        ...captureConfig,
+        inputChannelCount: data.inputChannelCount,
+      };
+      console.log("AudioCapture: Received microphone channels", captureInfo);
+    }
     const isFinal = data.isFinal || false;
     const arrayBuffer = frame.buffer.slice(
       frame.byteOffset,
@@ -52,7 +72,7 @@ export const attachAudioWorkletFrameHandler = ({
     // main-process finalization can take much longer.
     let sendPromise: Promise<void> | void;
     try {
-      sendPromise = onAudioChunk(arrayBuffer, 0, isFinal);
+      sendPromise = onAudioChunk(arrayBuffer, 0, isFinal, captureInfo);
     } catch (error) {
       logAudioFrameForwardError(error);
       if (isFinal) {
