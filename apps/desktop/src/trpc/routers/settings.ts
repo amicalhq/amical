@@ -13,6 +13,7 @@ import {
   DEFAULT_HISTORY_RETENTION_PERIOD,
 } from "../../constants/history-retention";
 import { supportedLocales } from "../../i18n/shared";
+import { getRelaunchArgs } from "../../main/launch-options";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
@@ -926,7 +927,7 @@ export const settingsRouter = createRouter({
       return true;
     }
 
-    app.relaunch();
+    app.relaunch({ args: getRelaunchArgs() });
     app.quit();
     return true;
   }),
@@ -1042,7 +1043,7 @@ export const settingsRouter = createRouter({
         app.quit();
       } else {
         // Production mode: relaunch the app
-        app.relaunch();
+        app.relaunch({ args: getRelaunchArgs() });
         app.quit();
       }
 

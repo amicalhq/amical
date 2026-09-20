@@ -20,6 +20,7 @@ import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { getApplicationLocale } from "@/i18n/application-locale";
 import { installRendererFailureTelemetry } from "../telemetry/renderer-failure-telemetry";
+import { getRelaunchArgs } from "../launch-options";
 
 export class AppManager {
   // Resolved ONCE in initialize() after the graph builds — AppManager's only
@@ -83,7 +84,9 @@ export class AppManager {
     }
   }
 
-  async initialize(): Promise<void> {
+  async initialize({
+    silentStart = false,
+  }: { silentStart?: boolean } = {}): Promise<void> {
     await this.initializeDatabase();
 
     await this.serviceManager.initialize();
@@ -142,7 +145,7 @@ export class AppManager {
         }
       });
     } else {
-      await this.setupWindows();
+      await this.setupWindows(silentStart);
     }
 
     const locale = await this.setupMenu();
@@ -189,7 +192,7 @@ export class AppManager {
       if (shouldRelaunch) {
         // Production: relaunch app to reinitialize with new settings
         logger.main.info("Relaunching app after onboarding completion");
-        app.relaunch();
+        app.relaunch({ args: getRelaunchArgs() });
         app.quit();
       } else {
         // Development: just show the main app windows
@@ -307,10 +310,12 @@ export class AppManager {
     logger.main.info("Settings event listeners set up");
   }
 
-  private async setupWindows(): Promise<void> {
+  private async setupWindows(silentStart = false): Promise<void> {
     await this.windowManager.ensureWidgetWindow();
 
-    this.windowManager.createOrShowMainWindow();
+    if (!silentStart) {
+      await this.windowManager.createOrShowMainWindow();
+    }
 
     // Apply dock visibility based on user preference (macOS only)
     const preferences = await this.settingsService.getPreferences();

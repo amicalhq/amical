@@ -5,6 +5,7 @@ import { logger } from "../main/logger";
 import { clearUserData, hasPendingUserData } from "../db/user-data";
 import { deleteAudioFilesForTranscriptions } from "../utils/audio-file-cleanup";
 import { runAuthEffect } from "./auth-service";
+import { getRelaunchArgs } from "../main/launch-options";
 
 type LogoutServices = Pick<
   ServiceMap,
@@ -74,7 +75,9 @@ export async function logoutAndClearUserData(
       event.preventDefault(),
     );
   }
-  if (app.isPackaged && process.env.NODE_ENV !== "development") app.relaunch();
+  if (app.isPackaged && process.env.NODE_ENV !== "development") {
+    app.relaunch({ args: getRelaunchArgs() });
+  }
   app.quit();
   return { success: true };
 }
