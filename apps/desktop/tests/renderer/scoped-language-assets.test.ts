@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   vocabularyScope: "all",
   snippetScope: "all",
   organizationCanWrite: false,
+  organizationAvailable: true,
   organizationVocabulary: {
     id: "11111111-1111-4111-8111-111111111111",
     scopeType: "org" as const,
@@ -72,16 +73,31 @@ vi.mock("@/trpc/react", () => ({
       getVocabulary: {
         useQuery: (input: { scope: string }) => {
           mocks.vocabularyScope = input.scope;
-          return { data: [mocks.organizationVocabulary], isLoading: false };
+          const personalVocabulary = {
+            ...mocks.organizationVocabulary,
+            id: "33333333-3333-4333-8333-333333333333",
+            scopeType: "user" as const,
+            scopeId: "",
+            word: "Personal word",
+          };
+          return {
+            data:
+              input.scope === "user"
+                ? [personalVocabulary]
+                : [personalVocabulary, mocks.organizationVocabulary],
+            isLoading: false,
+          };
         },
       },
       getScopeAccess: {
         useQuery: () => ({
-          data: {
-            scopeId: "org-1",
-            role: "member",
-            canWrite: mocks.organizationCanWrite,
-          },
+          data: mocks.organizationAvailable
+            ? {
+                scopeId: "org-1",
+                role: "member",
+                canWrite: mocks.organizationCanWrite,
+              }
+            : null,
         }),
       },
       createVocabularyWord: {
@@ -145,35 +161,48 @@ describe("organization-scoped language asset settings", () => {
   afterEach(() => {
     cleanup();
     mocks.organizationCanWrite = false;
+    mocks.organizationAvailable = true;
   });
 
-  it("filters vocabulary by All, Personal, and Organisation", () => {
-    render(React.createElement(VocabularySettingsPage));
+  it.each([
+    { account: "signed out", organizationAvailable: false, canWrite: false },
+    {
+      account: "organization member",
+      organizationAvailable: true,
+      canWrite: false,
+    },
+    {
+      account: "organization admin",
+      organizationAvailable: true,
+      canWrite: true,
+    },
+  ])(
+    "hides organization vocabulary for $account",
+    ({ organizationAvailable, canWrite }) => {
+      mocks.organizationAvailable = organizationAvailable;
+      mocks.organizationCanWrite = canWrite;
+      render(React.createElement(VocabularySettingsPage));
 
-    expect(mocks.vocabularyScope).toBe("all");
-    fireEvent.click(screen.getByRole("tab", { name: "Personal" }));
-    expect(mocks.vocabularyScope).toBe("user");
-    fireEvent.click(screen.getByRole("tab", { name: "Organisation" }));
-    expect(mocks.vocabularyScope).toBe("org");
-  });
-
-  it("makes read-only organization vocabulary actions unavailable", () => {
-    const { container } = render(React.createElement(VocabularySettingsPage));
-    fireEvent.click(screen.getByRole("tab", { name: "Organisation" }));
-
-    expect(
-      screen.getByRole<HTMLButtonElement>("button", {
-        name: "Add organisation word",
-      }).disabled,
-    ).toBe(true);
-    expect(
-      screen.getByText(
-        "Organisation vocabulary is read-only for your current role.",
-      ),
-    ).not.toBeNull();
-    expect(container.querySelector(".lucide-edit")).toBeNull();
-    expect(container.querySelector(".lucide-trash-2")).toBeNull();
-  });
+      expect(mocks.vocabularyScope).toBe("user");
+      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(screen.queryByText("Organisation")).toBeNull();
+      expect(screen.queryByText("Amical")).toBeNull();
+      expect(screen.getByText("Personal word")).not.toBeNull();
+      expect(
+        screen.queryByText("settings.vocabulary.scope.personalBadge"),
+      ).toBeNull();
+      expect(
+        screen.getByRole<HTMLButtonElement>("button", {
+          name: "settings.vocabulary.addButton",
+        }).disabled,
+      ).toBe(false);
+      const rowActions = screen.getAllByRole<HTMLButtonElement>("button", {
+        name: "",
+      });
+      expect(rowActions).toHaveLength(2);
+      expect(rowActions.every((button) => !button.disabled)).toBe(true);
+    },
+  );
 
   it("filters snippets and hides read-only organization row actions", () => {
     const { container } = render(React.createElement(SnippetsSettingsPage));
