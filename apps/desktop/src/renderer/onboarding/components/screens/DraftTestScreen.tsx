@@ -67,9 +67,10 @@ export function DraftTestScreen({
     compose: OnboardingScreen.DraftCompose,
     selection: OnboardingScreen.DraftSelection,
   }[variant];
-  const ns = `onboarding.draft.${variant}`;
+  const ns = `onboarding.draft.${variant}` as const;
 
-  const seed = variant === "selection" ? t(`${ns}.seedText`) : "";
+  const seed =
+    variant === "selection" ? t("onboarding.draft.selection.seedText") : "";
   const [text, setText] = useState(seed);
   // compose: any text counts; selection: only a CHANGE counts (the seed alone
   // must not unlock Continue).
@@ -161,7 +162,9 @@ export function DraftTestScreen({
                 spellCheck={false}
                 className="w-full flex-1 resize-none border-0 bg-transparent py-4 text-[15.5px] leading-[1.65] text-zinc-900 caret-brand outline-none placeholder:text-zinc-400"
                 placeholder={
-                  variant === "compose" ? t(`${ns}.ghost`) : undefined
+                  variant === "compose"
+                    ? t("onboarding.draft.compose.ghost")
+                    : undefined
                 }
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -181,7 +184,7 @@ export function DraftTestScreen({
                     aria-hidden
                   />
                   <TextSelect size={14} />
-                  {t(`${ns}.selectHint`)}
+                  {t("onboarding.draft.selection.selectHint")}
                 </div>
               )}
             </div>

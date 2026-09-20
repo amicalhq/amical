@@ -34,6 +34,17 @@
   "updater": {
     "updateAvailable": "Update verfügbar",
     "requiredUpdate": "Erforderliches Update",
+    "appBlocked": "Diese Version von Amical wird nicht mehr unterstützt. Bitte aktualisiere jetzt, um fortzufahren.",
+    "finishingRecording": "Beende deine aktuelle Aufnahme. Amical speichert sie, bevor du das Update installierst.",
+    "requiredUpdateFailed": "Das Update konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+    "checking": "Wird geprüft…",
+    "downloading": "Wird heruntergeladen…",
+    "restarting": "Wird neu gestartet…",
+    "tryAgain": "Erneut versuchen",
+    "updateNow": "Jetzt aktualisieren",
+    "manualDownload": "Manuell herunterladen",
+    "manualDownloadFailed": "Die Downloadseite konnte nicht geöffnet werden. Bitte versuche es erneut.",
+    "quit": "Amical beenden",
     "versionAvailable": "Version {{version}} ist verfügbar.",
     "versionRequired": "Version {{version}} ist erforderlich.",
     "restartAndUpdate": "Neu starten & aktualisieren",
@@ -864,6 +875,7 @@
     },
     "notes": {
       "create": "Notiz erstellen",
+      "loading": "Notiz wird geladen...",
       "defaultTitleWithDate": "Notiz – {{date}}",
       "untitledTitle": "Unbenannte Notiz",
       "empty": {
@@ -909,6 +921,18 @@
           "description": "Verbinde deinen Kalender, um zu beginnen",
           "button": "Kalender verbinden"
         }
+      },
+      "recovery": {
+        "loadFailed": "Die Notiz konnte nicht geladen werden. Schließe sie und öffne sie erneut, um es noch einmal zu versuchen.",
+        "blocked": "Diese Notiz konnte nicht konvertiert werden. Ihre ursprünglichen Daten bleiben zur Wiederherstellung erhalten.",
+        "details": "Details zur Wiederherstellung",
+        "deletedNote": "Diese Notiz wurde gelöscht oder ist in diesem Konto nicht verfügbar.",
+        "recovered": "Diese Notiz wurde auf einem anderen Gerät gelöscht. Deine Änderungen wurden als Konfliktkopie in deinen Notizen gespeichert.",
+        "format": "Diese Formatierung kann nicht als Markdown gespeichert werden. Verwende Fett, Kursiv, Durchgestrichen oder Code. Mache eingefügte, nicht unterstützte Formatierungen rückgängig, um zu speichern.",
+        "error": "Änderungen konnten nicht gespeichert werden. Lass dieses Fenster geöffnet und versuche erneut, die Notiz zu bearbeiten."
+      },
+      "cloud": {
+        "error": "Auf diesem Gerät gespeichert. Die Cloud-Synchronisierung erfordert deine Aufmerksamkeit: {{reason}}"
       }
     },
     "vocabulary": {

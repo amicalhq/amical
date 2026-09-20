@@ -3,6 +3,7 @@
  * Provides comprehensive validation for keyboard shortcuts
  */
 
+import type { ParseKeys } from "i18next";
 import { getKeyFromKeycode } from "./keycode-map";
 import {
   MAC_MODIFIER_KEYCODES,
@@ -44,7 +45,7 @@ export interface ValidationResult {
 }
 
 export interface I18nMessage {
-  key: string;
+  key: ParseKeys;
   params?: Record<string, string | number>;
 }
 

@@ -1,3 +1,4 @@
+import type { ParseKeys } from "i18next";
 import {
   IconSettings,
   IconMicrophone,
@@ -14,9 +15,9 @@ import {
 } from "@tabler/icons-react";
 
 export interface SettingsNavItem {
-  titleKey: string;
+  titleKey: ParseKeys;
   url: string;
-  descriptionKey: string;
+  descriptionKey: ParseKeys;
   icon: Icon | string;
   type: "app" | "settings";
 }

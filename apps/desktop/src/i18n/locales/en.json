@@ -872,6 +872,7 @@
     },
     "notes": {
       "create": "Create note",
+      "loading": "Loading note...",
       "defaultTitleWithDate": "Note - {{date}}",
       "untitledTitle": "Untitled Note",
       "empty": {

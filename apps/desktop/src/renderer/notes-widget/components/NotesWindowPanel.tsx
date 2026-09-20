@@ -197,7 +197,7 @@ export function NotesWindowPanel({
   const headerTitle =
     currentNoteId === null
       ? createNoteMutation.isPending
-        ? t("loading")
+        ? t("settings.notes.loading")
         : t("settings.notes.note.titlePlaceholder")
       : noteTitle.trim().length > 0
         ? noteTitle
@@ -269,7 +269,7 @@ export function NotesWindowPanel({
                 {createNoteMutation.isPending ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {t("loading")}
+                    {t("settings.notes.loading")}
                   </span>
                 ) : (
                   t("settings.notes.empty.description")

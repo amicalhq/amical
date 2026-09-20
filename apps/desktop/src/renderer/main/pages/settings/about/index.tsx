@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { useTranslation } from "react-i18next";
+import type { ParseKeys } from "i18next";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useUpdateState } from "@/hooks/useUpdateState";
 import type { UpdateState } from "@/main/services/auto-updater";
@@ -29,7 +30,7 @@ const UPDATE_STATUS: Record<
     Icon: LucideIcon;
     iconClassName: string;
     textClassName?: string;
-    labelKey: string;
+    labelKey: ParseKeys;
   }
 > = {
   checking: {

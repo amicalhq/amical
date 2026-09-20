@@ -1,3 +1,4 @@
+import type { ParseKeys } from "i18next";
 import { ErrorCodes, type ErrorCode } from "./error";
 
 export type WidgetNotificationType =
@@ -10,7 +11,7 @@ export type WidgetNotificationType =
 export type WidgetNotificationActionIcon = "discord";
 
 export type I18nText = {
-  key: string;
+  key: ParseKeys;
   params?: Record<string, string | number>;
 };
 

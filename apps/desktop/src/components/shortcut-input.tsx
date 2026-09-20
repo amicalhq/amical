@@ -10,6 +10,7 @@ import {
   initialShortcutRecordingState,
 } from "@/utils/shortcut-recording";
 import { useTranslation } from "react-i18next";
+import type { I18nMessage } from "@/utils/shortcut-validation";
 
 interface ShortcutInputProps {
   value?: number[];
@@ -37,10 +38,7 @@ const MAX_KEY_COMBINATION_LENGTH = 4;
 type ValidationResult = {
   valid: boolean;
   shortcut?: number[];
-  error?: {
-    key: string;
-    params?: Record<string, string | number>;
-  };
+  error?: I18nMessage;
 };
 
 function isModifierKeycode(keycode: number): boolean {

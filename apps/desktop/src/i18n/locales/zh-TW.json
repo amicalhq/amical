@@ -34,6 +34,17 @@
   "updater": {
     "updateAvailable": "有可用更新",
     "requiredUpdate": "需要更新",
+    "appBlocked": "此版本的 Amical 已不再受支援。請立即更新以繼續使用。",
+    "finishingRecording": "請結束目前的錄音。Amical 會在更新前儲存錄音。",
+    "requiredUpdateFailed": "無法完成更新。請再試一次。",
+    "checking": "檢查中…",
+    "downloading": "下載中…",
+    "restarting": "重新啟動中…",
+    "tryAgain": "再試一次",
+    "updateNow": "立即更新",
+    "manualDownload": "手動下載",
+    "manualDownloadFailed": "無法開啟下載頁面。請再試一次。",
+    "quit": "結束 Amical",
     "versionAvailable": "有新版本 {{version}}",
     "versionRequired": "需要版本 {{version}}",
     "restartAndUpdate": "重新啟動並更新",
@@ -864,6 +875,7 @@
     },
     "notes": {
       "create": "建立筆記",
+      "loading": "正在載入筆記...",
       "defaultTitleWithDate": "筆記 - {{date}}",
       "untitledTitle": "未命名筆記",
       "empty": {
@@ -909,6 +921,18 @@
           "description": "連結日曆即可開始",
           "button": "連接日曆"
         }
+      },
+      "recovery": {
+        "loadFailed": "無法載入此筆記。請關閉後重新開啟，再試一次。",
+        "blocked": "無法轉換此筆記。原始資料已保留，以供復原。",
+        "details": "復原詳細資訊",
+        "deletedNote": "此筆記已刪除，或無法在此帳戶中使用。",
+        "recovered": "此筆記已在其他裝置上刪除。您的變更已另存為衝突副本，可在筆記清單中找到。",
+        "format": "此格式無法儲存為 Markdown。請使用粗體、斜體、刪除線或程式碼。請復原貼上內容中不支援的格式，即可儲存。",
+        "error": "無法儲存變更。請保持此視窗開啟，並再次嘗試編輯。"
+      },
+      "cloud": {
+        "error": "已儲存於此裝置。雲端同步需要您處理：{{reason}}"
       }
     },
     "vocabulary": {

@@ -34,6 +34,17 @@
   "updater": {
     "updateAvailable": "アップデートがあります",
     "requiredUpdate": "必須アップデート",
+    "appBlocked": "このバージョンのAmicalはサポートが終了しています。続行するには今すぐアップデートしてください。",
+    "finishingRecording": "現在の録音を終了してください。Amicalはアップデート前に録音を保存します。",
+    "requiredUpdateFailed": "アップデートを完了できませんでした。もう一度お試しください。",
+    "checking": "確認中…",
+    "downloading": "ダウンロード中…",
+    "restarting": "再起動中…",
+    "tryAgain": "再試行",
+    "updateNow": "今すぐアップデート",
+    "manualDownload": "手動でダウンロード",
+    "manualDownloadFailed": "ダウンロードページを開けませんでした。もう一度お試しください。",
+    "quit": "Amicalを終了",
     "versionAvailable": "バージョン {{version}} が利用可能です。",
     "versionRequired": "バージョン {{version}} が必要です。",
     "restartAndUpdate": "再起動してアップデート",
@@ -864,6 +875,7 @@
     },
     "notes": {
       "create": "ノートを作成",
+      "loading": "ノートを読み込み中...",
       "defaultTitleWithDate": "ノート - {{date}}",
       "untitledTitle": "無題のノート",
       "empty": {
@@ -909,6 +921,18 @@
           "description": "カレンダーを接続して始めましょう",
           "button": "カレンダーを接続"
         }
+      },
+      "recovery": {
+        "loadFailed": "ノートを読み込めませんでした。閉じてからもう一度開いてください。",
+        "blocked": "このノートを変換できませんでした。復元できるように元のデータは保持されています。",
+        "details": "復元の詳細",
+        "deletedNote": "このノートは削除されたか、このアカウントでは利用できません。",
+        "recovered": "このノートは別のデバイスで削除されました。変更内容は競合コピーとしてノート一覧に保存されました。",
+        "format": "この書式はMarkdownとして保存できません。太字、斜体、取り消し線、またはコードを使用してください。保存するには、貼り付けた未対応の書式を元に戻してください。",
+        "error": "変更を保存できませんでした。このウィンドウを開いたまま、もう一度編集してみてください。"
+      },
+      "cloud": {
+        "error": "このデバイスに保存済みです。クラウド同期の問題を確認してください：{{reason}}"
       }
     },
     "vocabulary": {

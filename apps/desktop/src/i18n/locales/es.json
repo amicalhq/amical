@@ -34,6 +34,17 @@
   "updater": {
     "updateAvailable": "Actualización disponible",
     "requiredUpdate": "Actualización requerida",
+    "appBlocked": "Esta versión de Amical ya no es compatible. Actualiza ahora para continuar.",
+    "finishingRecording": "Termina tu grabación actual. Amical la guardará antes de que actualices.",
+    "requiredUpdateFailed": "No se pudo completar la actualización. Inténtalo de nuevo.",
+    "checking": "Buscando actualizaciones…",
+    "downloading": "Descargando…",
+    "restarting": "Reiniciando…",
+    "tryAgain": "Intentar de nuevo",
+    "updateNow": "Actualizar ahora",
+    "manualDownload": "Descargar manualmente",
+    "manualDownloadFailed": "No se pudo abrir la página de descarga. Inténtalo de nuevo.",
+    "quit": "Salir de Amical",
     "versionAvailable": "La versión {{version}} está disponible.",
     "versionRequired": "Se requiere la versión {{version}}.",
     "restartAndUpdate": "Reiniciar y actualizar",
@@ -864,6 +875,7 @@
     },
     "notes": {
       "create": "Crear nota",
+      "loading": "Cargando nota...",
       "defaultTitleWithDate": "Nota - {{date}}",
       "untitledTitle": "Nota sin título",
       "empty": {
@@ -909,6 +921,18 @@
           "description": "Conecta tu calendario para comenzar",
           "button": "Conectar calendario"
         }
+      },
+      "recovery": {
+        "loadFailed": "No se pudo cargar la nota. Ciérrala y vuelve a abrirla para intentarlo de nuevo.",
+        "blocked": "No se pudo convertir esta nota. Sus datos originales se conservan para recuperarla.",
+        "details": "Detalles de recuperación",
+        "deletedNote": "Esta nota se eliminó o no está disponible en esta cuenta.",
+        "recovered": "Esta nota se eliminó en otro dispositivo. Tus cambios se guardaron como una copia en conflicto en tus notas.",
+        "format": "Este formato no se puede guardar como Markdown. Usa negrita, cursiva, tachado o código. Deshaz el formato pegado no compatible para guardar.",
+        "error": "No se pudieron guardar los cambios. Mantén esta ventana abierta e intenta editar de nuevo."
+      },
+      "cloud": {
+        "error": "Guardado en este dispositivo. La sincronización en la nube requiere tu atención: {{reason}}"
       }
     },
     "vocabulary": {

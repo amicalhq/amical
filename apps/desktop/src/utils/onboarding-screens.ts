@@ -60,7 +60,9 @@ export type OnboardingPhase =
   | "done";
 
 /** i18n key for a phase's display label (the eyebrow). */
-export function phaseLabelKey(phase: OnboardingPhase): string {
+export function phaseLabelKey(
+  phase: OnboardingPhase,
+): `onboarding.phases.${OnboardingPhase}` {
   return `onboarding.phases.${phase}`;
 }
 

@@ -43,7 +43,7 @@ export function DictationTestScreen({
     notes: OnboardingScreen.DictationNotes,
     simple: OnboardingScreen.DictationLocal,
   }[variant];
-  const ns = `onboarding.dictationTest.${variant}`;
+  const ns = `onboarding.dictationTest.${variant}` as const;
 
   const [text, setText] = useState("");
   const canContinue = text.trim().length > 0;
