@@ -33,6 +33,7 @@ import type { TelemetryService } from "../../services/telemetry-service";
 import type { FeatureFlagService } from "../../services/feature-flag-service";
 import type { RemoteConfigService } from "../../services/remote-config-service";
 import type { HistoryCleanupService } from "../../services/history-cleanup-service";
+import type { McpServerService } from "../../services/mcp-server-service";
 import type { ModelService } from "../../services/model-service";
 import type { OnboardingService } from "../../services/onboarding-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
@@ -54,6 +55,11 @@ export class HistoryCleanupServiceTag extends Context.Service<
   HistoryCleanupServiceTag,
   HistoryCleanupService
 >()("AmicalApp/HistoryCleanupService") {}
+
+export class McpServerServiceTag extends Context.Service<
+  McpServerServiceTag,
+  McpServerService
+>()("AmicalApp/McpServerService") {}
 
 export class AuthServiceTag extends Context.Service<
   AuthServiceTag,
@@ -183,6 +189,7 @@ export class AppScopeTag extends Context.Service<
 export type AppServices =
   | SettingsServiceTag
   | HistoryCleanupServiceTag
+  | McpServerServiceTag
   | AuthServiceTag
   | SettingsSyncServiceTag
   | ActivityReportingServiceTag

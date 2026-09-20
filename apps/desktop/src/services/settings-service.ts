@@ -121,6 +121,12 @@ export interface LabsSettings {
   selfCorrection: boolean;
 }
 
+export interface McpServerSettings {
+  enabled: boolean;
+  port: number;
+  token: string;
+}
+
 export class SettingsService extends EventEmitter {
   // Construction goes through Live: the graph is the only thing that may
   // build this service, which also makes single-construction structural.
@@ -549,6 +555,28 @@ export class SettingsService extends EventEmitter {
       previous: previousSettings,
       current: historySettings,
     });
+  }
+
+  /**
+   * Get local MCP server settings
+   */
+  async getMcpServerSettings(): Promise<McpServerSettings> {
+    const mcpServer = await getSettingsSection("mcpServer");
+    return {
+      enabled: mcpServer?.enabled ?? false,
+      port: mcpServer?.port ?? 7878,
+      token: mcpServer?.token ?? "",
+    };
+  }
+
+  /**
+   * Update local MCP server settings
+   */
+  async setMcpServerSettings(next: McpServerSettings): Promise<void> {
+    const previous = await this.getMcpServerSettings();
+    await updateSettingsSection("mcpServer", next);
+
+    this.emit("mcp-settings-changed", { previous, current: next });
   }
 
   /**

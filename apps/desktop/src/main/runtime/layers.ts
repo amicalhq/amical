@@ -92,6 +92,7 @@ import { TelemetryService } from "../../services/telemetry-service";
 import { FeatureFlagService } from "../../services/feature-flag-service";
 import { RemoteConfigService } from "../../services/remote-config-service";
 import { HistoryCleanupService } from "../../services/history-cleanup-service";
+import { McpServerService } from "../../services/mcp-server-service";
 import { ModelService } from "../../services/model-service";
 import { OnboardingService } from "../../services/onboarding-service";
 import { NativeBridge } from "../../services/platform/native-bridge-service";
@@ -293,6 +294,7 @@ export const AppLive: Layer.Layer<
       // Converted services own their Live (class-static, colocated with the
       // implementation); this file only composes them.
       HistoryCleanupService.Live,
+      McpServerService.Live,
     ),
   ),
   Layer.provideMerge(TelemetryService.Live),

@@ -65,7 +65,11 @@ vi.mock("@/trpc/react", () => ({
   // These factories are local because vi.mock is hoisted above module scope.
   api: {
     useUtils: () => ({
-      vocabulary: { getVocabulary: { invalidate: vi.fn() } },
+      vocabulary: {
+        getVocabulary: { invalidate: vi.fn() },
+        listProposals: { invalidate: vi.fn() },
+        getPendingProposalCount: { invalidate: vi.fn() },
+      },
       snippets: { getSnippets: { invalidate: vi.fn() } },
     }),
     vocabulary: {
@@ -101,6 +105,18 @@ vi.mock("@/trpc/react", () => ({
       },
       deleteOrganizationVocabulary: {
         useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+      },
+      listProposals: {
+        useQuery: () => ({ data: [], isLoading: false }),
+      },
+      getPendingProposalCount: {
+        useQuery: () => ({ data: 0, isLoading: false }),
+      },
+      approveProposal: {
+        useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+      },
+      rejectProposal: {
+        useMutation: () => ({ mutate: vi.fn(), isPending: false }),
       },
     },
     snippets: {

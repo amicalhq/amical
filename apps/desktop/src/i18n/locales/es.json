@@ -431,6 +431,10 @@
         "title": "Modelos de IA",
         "description": "Configura modelos y proveedores de IA"
       },
+      "mcp": {
+        "title": "MCP",
+        "description": "Permite que un cliente de IA local revise dictados y sugiera correcciones de vocabulario"
+      },
       "labs": {
         "title": "Labs",
         "description": "Prueba funciones experimentales"
@@ -521,6 +525,38 @@
       "theme": {
         "label": "Tema",
         "description": "Elige tu esquema de colores preferido"
+      }
+    },
+    "mcp": {
+      "title": "MCP",
+      "description": "Ejecuta un servidor MCP local para que un cliente de IA conectado (como Claude) pueda leer tu historial de dictado y proponer correcciones de vocabulario para que las apruebes.",
+      "enable": {
+        "label": "Activar servidor MCP local",
+        "description": "Abre un puerto local para que un cliente MCP conectado pueda leer el historial de dictado y el vocabulario existente, y sugerir correcciones. Nada se escribe en tu vocabulario sin tu aprobación.",
+        "ariaLabel": "Activar o desactivar el servidor MCP local"
+      },
+      "status": {
+        "running": "Activado",
+        "stopped": "Desactivado"
+      },
+      "port": {
+        "label": "Puerto"
+      },
+      "token": {
+        "label": "Token de acceso",
+        "regenerateAriaLabel": "Regenerar token de acceso"
+      },
+      "connectCommand": {
+        "label": "Comando de conexión",
+        "description": "Ejecuta esto en una terminal para conectar Claude Code a este servidor.",
+        "copyAriaLabel": "Copiar comando de conexión"
+      },
+      "toast": {
+        "updated": "Configuración del servidor MCP actualizada",
+        "updateFailed": "Error al actualizar la configuración del servidor MCP: {{message}}",
+        "tokenRegenerated": "Token de acceso regenerado",
+        "tokenRegenerateFailed": "Error al regenerar el token de acceso: {{message}}",
+        "commandCopied": "Comando de conexión copiado al portapapeles"
       }
     },
     "labs": {
@@ -954,6 +990,18 @@
         "cancel": "Cancelar",
         "deleting": "Eliminando...",
         "confirm": "Eliminar"
+      },
+      "proposals": {
+        "title": "Propuestas",
+        "loading": "Cargando propuestas...",
+        "approveButton": "Aprobar",
+        "rejectButton": "Rechazar",
+        "toast": {
+          "approved": "Propuesta aprobada y añadida al vocabulario",
+          "approveFailed": "Error al aprobar la propuesta: {{message}}",
+          "rejected": "Propuesta rechazada",
+          "rejectFailed": "Error al rechazar la propuesta: {{message}}"
+        }
       }
     },
     "snippets": {

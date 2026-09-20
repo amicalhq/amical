@@ -136,10 +136,7 @@
         "local": {
           "name": "ローカル",
           "tag": "プライベート＆オフライン",
-          "bullets": [
-            "すべてデバイス上で動作",
-            "アカウント不要"
-          ],
+          "bullets": ["すべてデバイス上で動作", "アカウント不要"],
           "caveats": [
             "速度と精度はハードウェアに依存します",
             "初回のみダウンロードが必要"
@@ -431,6 +428,10 @@
         "title": "AIモデル",
         "description": "AIモデルとプロバイダーを設定"
       },
+      "mcp": {
+        "title": "MCP",
+        "description": "ローカルのAIクライアントにディクテーションを確認させ、辞書修正を提案させます"
+      },
       "labs": {
         "title": "Labs",
         "description": "実験的な機能を試す"
@@ -521,6 +522,38 @@
       "theme": {
         "label": "テーマ",
         "description": "お好みのカラースキームを選択"
+      }
+    },
+    "mcp": {
+      "title": "MCP",
+      "description": "ローカルMCPサーバーを起動し、接続したAIクライアント(Claudeなど)にディクテーション履歴を読み取らせ、辞書の修正を提案させます。承認するまで辞書には反映されません。",
+      "enable": {
+        "label": "ローカルMCPサーバーを有効にする",
+        "description": "ローカルポートを開き、接続したMCPクライアントがディクテーション履歴と既存の辞書を読み取り、修正を提案できるようにします。承認するまで辞書には書き込まれません。",
+        "ariaLabel": "ローカルMCPサーバーの切り替え"
+      },
+      "status": {
+        "running": "有効",
+        "stopped": "無効"
+      },
+      "port": {
+        "label": "ポート"
+      },
+      "token": {
+        "label": "アクセストークン",
+        "regenerateAriaLabel": "アクセストークンを再生成"
+      },
+      "connectCommand": {
+        "label": "接続コマンド",
+        "description": "ターミナルでこのコマンドを実行すると、Claude Codeをこのサーバーに接続できます。",
+        "copyAriaLabel": "接続コマンドをコピー"
+      },
+      "toast": {
+        "updated": "MCPサーバー設定を更新しました",
+        "updateFailed": "MCPサーバー設定の更新に失敗しました: {{message}}",
+        "tokenRegenerated": "アクセストークンを再生成しました",
+        "tokenRegenerateFailed": "アクセストークンの再生成に失敗しました: {{message}}",
+        "commandCopied": "接続コマンドをクリップボードにコピーしました"
       }
     },
     "labs": {
@@ -954,6 +987,18 @@
         "cancel": "キャンセル",
         "deleting": "削除中...",
         "confirm": "削除"
+      },
+      "proposals": {
+        "title": "提案",
+        "loading": "提案を読み込み中...",
+        "approveButton": "承認",
+        "rejectButton": "却下",
+        "toast": {
+          "approved": "提案を承認し、辞書に追加しました",
+          "approveFailed": "提案の承認に失敗しました: {{message}}",
+          "rejected": "提案を却下しました",
+          "rejectFailed": "提案の却下に失敗しました: {{message}}"
+        }
       }
     },
     "snippets": {

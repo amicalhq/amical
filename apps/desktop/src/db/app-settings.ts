@@ -124,6 +124,11 @@ const buildDefaultSettings = (): AppSettingsData => ({
   labs: {
     selfCorrection: false,
   },
+  mcpServer: {
+    enabled: false, // opens a local port — opt-in only
+    port: 7878,
+    token: "",
+  },
   recording: {
     defaultFormat: "wav",
     sampleRate: 16000,

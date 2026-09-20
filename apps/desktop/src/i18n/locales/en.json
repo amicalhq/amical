@@ -439,6 +439,10 @@
         "title": "AI Models",
         "description": "Configure AI models and providers"
       },
+      "mcp": {
+        "title": "MCP",
+        "description": "Let a local AI client review dictations and suggest vocabulary fixes"
+      },
       "labs": {
         "title": "Labs",
         "description": "Try experimental features"
@@ -529,6 +533,38 @@
       "theme": {
         "label": "Theme",
         "description": "Choose your preferred color scheme"
+      }
+    },
+    "mcp": {
+      "title": "MCP",
+      "description": "Run a local MCP server so a connected AI client (like Claude) can read your dictation history and propose vocabulary corrections for you to approve.",
+      "enable": {
+        "label": "Enable local MCP server",
+        "description": "Opens a local port so a connected MCP client can read dictation history and existing vocabulary, and suggest corrections. Nothing is written to your vocabulary without your approval.",
+        "ariaLabel": "Toggle local MCP server"
+      },
+      "status": {
+        "running": "Enabled",
+        "stopped": "Disabled"
+      },
+      "port": {
+        "label": "Port"
+      },
+      "token": {
+        "label": "Access token",
+        "regenerateAriaLabel": "Regenerate access token"
+      },
+      "connectCommand": {
+        "label": "Connect command",
+        "description": "Run this in a terminal to connect Claude Code to this server.",
+        "copyAriaLabel": "Copy connect command"
+      },
+      "toast": {
+        "updated": "MCP server settings updated",
+        "updateFailed": "Failed to update MCP server settings: {{message}}",
+        "tokenRegenerated": "Access token regenerated",
+        "tokenRegenerateFailed": "Failed to regenerate access token: {{message}}",
+        "commandCopied": "Connect command copied to clipboard"
       }
     },
     "labs": {
@@ -977,6 +1013,18 @@
         "cancel": "Cancel",
         "deleting": "Deleting...",
         "confirm": "Delete"
+      },
+      "proposals": {
+        "title": "Proposals",
+        "loading": "Loading proposals...",
+        "approveButton": "Approve",
+        "rejectButton": "Reject",
+        "toast": {
+          "approved": "Proposal approved and added to vocabulary",
+          "approveFailed": "Failed to approve proposal: {{message}}",
+          "rejected": "Proposal rejected",
+          "rejectFailed": "Failed to reject proposal: {{message}}"
+        }
       }
     },
     "snippets": {

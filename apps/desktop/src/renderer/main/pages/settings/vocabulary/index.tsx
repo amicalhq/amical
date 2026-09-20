@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { Plus, Edit, Trash2, Info, MoveRight } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Info,
+  MoveRight,
+  Check,
+  X,
+  Sparkles,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -203,6 +213,135 @@ function DeleteDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Proposals suggested by an MCP client (e.g. Claude), pending user approval
+// before they become real vocabulary entries. Self-contained: owns its own
+// queries/mutations so it can be dropped into the vocabulary page.
+function ProposalsCard() {
+  const { t } = useTranslation();
+  const utils = api.useUtils();
+
+  const proposalsQuery = api.vocabulary.listProposals.useQuery({
+    status: "pending",
+  });
+  const proposals = proposalsQuery.data ?? [];
+
+  const invalidateAfterDecision = () => {
+    utils.vocabulary.listProposals.invalidate();
+    utils.vocabulary.getPendingProposalCount.invalidate();
+  };
+
+  const approveMutation = api.vocabulary.approveProposal.useMutation({
+    onSuccess: () => {
+      utils.vocabulary.getVocabulary.invalidate();
+      invalidateAfterDecision();
+      toast.success(t("settings.vocabulary.proposals.toast.approved"));
+    },
+    onError: (error) => {
+      toast.error(
+        t("settings.vocabulary.proposals.toast.approveFailed", {
+          message: error.message,
+        }),
+      );
+    },
+  });
+
+  const rejectMutation = api.vocabulary.rejectProposal.useMutation({
+    onSuccess: () => {
+      invalidateAfterDecision();
+      toast.success(t("settings.vocabulary.proposals.toast.rejected"));
+    },
+    onError: (error) => {
+      toast.error(
+        t("settings.vocabulary.proposals.toast.rejectFailed", {
+          message: error.message,
+        }),
+      );
+    },
+  });
+
+  if (!proposalsQuery.isLoading && proposals.length === 0) return null;
+
+  return (
+    <Card className="mb-6 p-0 overflow-clip">
+      <CardContent className="p-0">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Sparkles className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">
+            {t("settings.vocabulary.proposals.title")}
+          </span>
+          <Badge variant="secondary">{proposals.length}</Badge>
+        </div>
+        {proposalsQuery.isLoading ? (
+          <div className="p-8 text-center text-muted-foreground">
+            {t("settings.vocabulary.proposals.loading")}
+          </div>
+        ) : (
+          <div className="space-y-0">
+            {proposals.map((proposal, index) => (
+              <div key={proposal.id}>
+                <div className="flex items-start justify-between gap-4 py-3 px-4">
+                  <div className="min-w-0 space-y-1">
+                    <span className="text-sm flex items-center gap-1 flex-wrap">
+                      {proposal.replacementWord !== null ? (
+                        <>
+                          <span>{proposal.word}</span>
+                          <MoveRight className="w-4 h-4 mx-1" />
+                          <span>{proposal.replacementWord}</span>
+                        </>
+                      ) : (
+                        proposal.word
+                      )}
+                    </span>
+                    {proposal.rationale && (
+                      <p className="text-xs text-muted-foreground">
+                        {proposal.rationale}
+                      </p>
+                    )}
+                    {proposal.contextSnippet && (
+                      <p className="text-xs text-muted-foreground italic truncate">
+                        "{proposal.contextSnippet}"
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        approveMutation.isPending || rejectMutation.isPending
+                      }
+                      onClick={() =>
+                        approveMutation.mutate({ id: proposal.id })
+                      }
+                    >
+                      <Check className="w-4 h-4" />
+                      {t("settings.vocabulary.proposals.approveButton")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={
+                        approveMutation.isPending || rejectMutation.isPending
+                      }
+                      onClick={() => rejectMutation.mutate({ id: proposal.id })}
+                    >
+                      <X className="w-4 h-4 text-destructive" />
+                      {t("settings.vocabulary.proposals.rejectButton")}
+                    </Button>
+                  </div>
+                </div>
+                {index < proposals.length - 1 && (
+                  <div className="border-t border-border" />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -470,6 +609,8 @@ export default function VocabularySettingsPage() {
             : t("settings.vocabulary.scope.unavailable")}
         </p>
       )}
+
+      <ProposalsCard />
 
       {/* Vocabulary List */}
       <Card className="p-0 overflow-clip">

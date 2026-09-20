@@ -19,6 +19,7 @@ import { Route as AppSettingsVocabularyRouteImport } from './routes/_app/setting
 import { Route as AppSettingsSnippetsRouteImport } from './routes/_app/settings/snippets'
 import { Route as AppSettingsShortcutsRouteImport } from './routes/_app/settings/shortcuts'
 import { Route as AppSettingsPreferencesRouteImport } from './routes/_app/settings/preferences'
+import { Route as AppSettingsMcpRouteImport } from './routes/_app/settings/mcp'
 import { Route as AppSettingsLabsRouteImport } from './routes/_app/settings/labs'
 import { Route as AppSettingsFormattingRouteImport } from './routes/_app/settings/formatting'
 import { Route as AppSettingsDictationRouteImport } from './routes/_app/settings/dictation'
@@ -76,6 +77,11 @@ const AppSettingsPreferencesRoute = AppSettingsPreferencesRouteImport.update({
   path: '/settings/preferences',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppSettingsMcpRoute = AppSettingsMcpRouteImport.update({
+  id: '/settings/mcp',
+  path: '/settings/mcp',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppSettingsLabsRoute = AppSettingsLabsRouteImport.update({
   id: '/settings/labs',
   path: '/settings/labs',
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/settings/dictation': typeof AppSettingsDictationRoute
   '/settings/formatting': typeof AppSettingsFormattingRoute
   '/settings/labs': typeof AppSettingsLabsRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/shortcuts': typeof AppSettingsShortcutsRoute
   '/settings/snippets': typeof AppSettingsSnippetsRoute
@@ -140,6 +147,7 @@ export interface FileRoutesByTo {
   '/settings/dictation': typeof AppSettingsDictationRoute
   '/settings/formatting': typeof AppSettingsFormattingRoute
   '/settings/labs': typeof AppSettingsLabsRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/shortcuts': typeof AppSettingsShortcutsRoute
   '/settings/snippets': typeof AppSettingsSnippetsRoute
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/_app/settings/dictation': typeof AppSettingsDictationRoute
   '/_app/settings/formatting': typeof AppSettingsFormattingRoute
   '/_app/settings/labs': typeof AppSettingsLabsRoute
+  '/_app/settings/mcp': typeof AppSettingsMcpRoute
   '/_app/settings/preferences': typeof AppSettingsPreferencesRoute
   '/_app/settings/shortcuts': typeof AppSettingsShortcutsRoute
   '/_app/settings/snippets': typeof AppSettingsSnippetsRoute
@@ -180,6 +189,7 @@ export interface FileRouteTypes {
     | '/settings/dictation'
     | '/settings/formatting'
     | '/settings/labs'
+    | '/settings/mcp'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/snippets'
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/settings/dictation'
     | '/settings/formatting'
     | '/settings/labs'
+    | '/settings/mcp'
     | '/settings/preferences'
     | '/settings/shortcuts'
     | '/settings/snippets'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/_app/settings/dictation'
     | '/_app/settings/formatting'
     | '/_app/settings/labs'
+    | '/_app/settings/mcp'
     | '/_app/settings/preferences'
     | '/_app/settings/shortcuts'
     | '/_app/settings/snippets'
@@ -301,6 +313,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsPreferencesRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/settings/mcp': {
+      id: '/_app/settings/mcp'
+      path: '/settings/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof AppSettingsMcpRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/settings/labs': {
       id: '/_app/settings/labs'
       path: '/settings/labs'
@@ -376,6 +395,7 @@ interface AppRouteRouteChildren {
   AppSettingsDictationRoute: typeof AppSettingsDictationRoute
   AppSettingsFormattingRoute: typeof AppSettingsFormattingRoute
   AppSettingsLabsRoute: typeof AppSettingsLabsRoute
+  AppSettingsMcpRoute: typeof AppSettingsMcpRoute
   AppSettingsPreferencesRoute: typeof AppSettingsPreferencesRoute
   AppSettingsShortcutsRoute: typeof AppSettingsShortcutsRoute
   AppSettingsSnippetsRoute: typeof AppSettingsSnippetsRoute
@@ -392,6 +412,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSettingsDictationRoute: AppSettingsDictationRoute,
   AppSettingsFormattingRoute: AppSettingsFormattingRoute,
   AppSettingsLabsRoute: AppSettingsLabsRoute,
+  AppSettingsMcpRoute: AppSettingsMcpRoute,
   AppSettingsPreferencesRoute: AppSettingsPreferencesRoute,
   AppSettingsShortcutsRoute: AppSettingsShortcutsRoute,
   AppSettingsSnippetsRoute: AppSettingsSnippetsRoute,

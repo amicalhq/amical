@@ -22,6 +22,12 @@ import {
   cloudSyncOptionalTextSchema,
   trimmedSyncKeySchema,
 } from "../../db/sync-payload";
+import {
+  listProposals,
+  countPendingProposals,
+  approveProposal,
+  rejectProposal,
+} from "../../db/vocabulary-proposals";
 
 // Input schemas
 const GetVocabularySchema = z.object({
@@ -194,5 +200,37 @@ export const vocabularyRouter = createRouter({
     .input(BulkImportSchema)
     .mutation(async ({ input }) => {
       return await bulkImportVocabulary(input);
+    }),
+
+  // List MCP-suggested vocabulary proposals awaiting review
+  listProposals: procedure
+    .input(
+      z.object({
+        status: z.enum(["pending", "approved", "rejected"]).optional(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      return await listProposals(input);
+    }),
+
+  // Count of pending proposals, for the settings UI badge
+  getPendingProposalCount: procedure.query(async () => {
+    return await countPendingProposals();
+  }),
+
+  // Approve a proposal: creates/updates the matching vocabulary entry
+  approveProposal: procedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      return await approveProposal(input.id);
+    }),
+
+  // Reject a proposal
+  rejectProposal: procedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      return await rejectProposal(input.id);
     }),
 });

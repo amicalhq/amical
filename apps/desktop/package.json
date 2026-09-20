@@ -131,6 +131,7 @@
     "@lexical/rich-text": "^0.38.1",
     "@lexical/selection": "^0.38.1",
     "@lexical/utils": "^0.38.1",
+    "@modelcontextprotocol/sdk": "^1.19.1",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "@radix-ui/react-accordion": "^1.2.10",
     "@radix-ui/react-alert-dialog": "^1.1.13",

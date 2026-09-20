@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { app } from "electron";
 import path from "node:path";
+import { randomBytes } from "crypto";
 import { createRouter, procedure } from "../trpc";
 import { dbPath, closeDatabase } from "../../db";
 import type { AppSettingsData } from "../../db/schema";
@@ -67,6 +68,12 @@ const DictationSettingsSchema = z.object({
 
 const LabsSettingsSchema = z.object({
   selfCorrection: z.boolean(),
+});
+
+const McpServerSettingsSchema = z.object({
+  enabled: z.boolean(),
+  port: z.number().int().min(1).max(65535),
+  token: z.string(),
 });
 
 const AppPreferencesSchema = z.object({
@@ -583,6 +590,79 @@ export const settingsRouter = createRouter({
         throw error;
       }
     }),
+
+  // Get local MCP server settings
+  getMcpServerSettings: procedure.query(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.services.settingsService;
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+      return await settingsService.getMcpServerSettings();
+    } catch (error) {
+      const logger = ctx.logger;
+      if (logger) {
+        logger.main.error("Error getting MCP server settings:", error);
+      }
+      return {
+        enabled: false,
+        port: 7878,
+        token: "",
+      };
+    }
+  }),
+
+  // Set local MCP server settings
+  setMcpServerSettings: procedure
+    .input(McpServerSettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService = ctx.services.settingsService;
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+
+        await settingsService.setMcpServerSettings(input);
+
+        const logger = ctx.logger;
+        if (logger) {
+          logger.main.info("MCP server settings updated:", {
+            enabled: input.enabled,
+            port: input.port,
+          });
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.logger;
+        if (logger) {
+          logger.main.error("Error setting MCP server settings:", error);
+        }
+        throw error;
+      }
+    }),
+
+  // Regenerate the local MCP server's bearer token
+  regenerateMcpServerToken: procedure.mutation(async ({ ctx }) => {
+    try {
+      const settingsService = ctx.services.settingsService;
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      const current = await settingsService.getMcpServerSettings();
+      const next = { ...current, token: randomBytes(32).toString("hex") };
+      await settingsService.setMcpServerSettings(next);
+
+      return next;
+    } catch (error) {
+      const logger = ctx.logger;
+      if (logger) {
+        logger.main.error("Error regenerating MCP server token:", error);
+      }
+      throw error;
+    }
+  }),
 
   // Get model providers configuration
   getModelProvidersConfig: procedure.query(async ({ ctx }) => {

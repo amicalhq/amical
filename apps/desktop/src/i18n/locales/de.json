@@ -136,10 +136,7 @@
         "local": {
           "name": "Lokal",
           "tag": "Privat und offline",
-          "bullets": [
-            "Läuft komplett auf deinem Gerät",
-            "Kein Konto nötig"
-          ],
+          "bullets": ["Läuft komplett auf deinem Gerät", "Kein Konto nötig"],
           "caveats": [
             "Geschwindigkeit und Genauigkeit hängen von deiner Hardware ab",
             "Einmaliger Download"
@@ -431,6 +428,10 @@
         "title": "KI-Modelle",
         "description": "KI-Modelle und Anbieter konfigurieren"
       },
+      "mcp": {
+        "title": "MCP",
+        "description": "Lässt einen lokalen KI-Client Diktate prüfen und Vokabelkorrekturen vorschlagen"
+      },
       "labs": {
         "title": "Labs",
         "description": "Experimentelle Funktionen ausprobieren"
@@ -521,6 +522,38 @@
       "theme": {
         "label": "Erscheinungsbild",
         "description": "Wähle dein bevorzugtes Farbschema"
+      }
+    },
+    "mcp": {
+      "title": "MCP",
+      "description": "Startet einen lokalen MCP-Server, damit ein verbundener KI-Client (wie Claude) deinen Diktatverlauf lesen und Vokabelkorrekturen zur Freigabe vorschlagen kann.",
+      "enable": {
+        "label": "Lokalen MCP-Server aktivieren",
+        "description": "Öffnet einen lokalen Port, damit ein verbundener MCP-Client den Diktatverlauf und das vorhandene Vokabular lesen und Korrekturen vorschlagen kann. Ohne deine Freigabe wird nichts in dein Vokabular geschrieben.",
+        "ariaLabel": "Lokalen MCP-Server umschalten"
+      },
+      "status": {
+        "running": "Aktiviert",
+        "stopped": "Deaktiviert"
+      },
+      "port": {
+        "label": "Port"
+      },
+      "token": {
+        "label": "Zugriffstoken",
+        "regenerateAriaLabel": "Zugriffstoken neu generieren"
+      },
+      "connectCommand": {
+        "label": "Verbindungsbefehl",
+        "description": "Führe dies in einem Terminal aus, um Claude Code mit diesem Server zu verbinden.",
+        "copyAriaLabel": "Verbindungsbefehl kopieren"
+      },
+      "toast": {
+        "updated": "MCP-Servereinstellungen aktualisiert",
+        "updateFailed": "Fehler beim Aktualisieren der MCP-Servereinstellungen: {{message}}",
+        "tokenRegenerated": "Zugriffstoken neu generiert",
+        "tokenRegenerateFailed": "Fehler beim Neugenerieren des Zugriffstokens: {{message}}",
+        "commandCopied": "Verbindungsbefehl in die Zwischenablage kopiert"
       }
     },
     "labs": {
@@ -954,6 +987,18 @@
         "cancel": "Abbrechen",
         "deleting": "Wird gelöscht...",
         "confirm": "Löschen"
+      },
+      "proposals": {
+        "title": "Vorschläge",
+        "loading": "Vorschläge werden geladen...",
+        "approveButton": "Genehmigen",
+        "rejectButton": "Ablehnen",
+        "toast": {
+          "approved": "Vorschlag genehmigt und zum Vokabular hinzugefügt",
+          "approveFailed": "Genehmigung des Vorschlags fehlgeschlagen: {{message}}",
+          "rejected": "Vorschlag abgelehnt",
+          "rejectFailed": "Ablehnung des Vorschlags fehlgeschlagen: {{message}}"
+        }
       }
     },
     "snippets": {

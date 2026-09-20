@@ -10,6 +10,7 @@ import {
   IconAdjustments,
   IconFlask,
   IconNotes,
+  IconPlugConnected,
   type Icon,
 } from "@tabler/icons-react";
 
@@ -79,6 +80,13 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     url: "/settings/ai-models",
     descriptionKey: "settings.nav.aiModels.description",
     icon: IconBrain,
+    type: "settings",
+  },
+  {
+    titleKey: "settings.nav.mcp.title",
+    url: "/settings/mcp",
+    descriptionKey: "settings.nav.mcp.description",
+    icon: IconPlugConnected,
     type: "settings",
   },
   {

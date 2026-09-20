@@ -97,6 +97,44 @@ export const vocabulary = sqliteTable(
   ],
 );
 
+// Vocabulary proposals — misrecognition fixes suggested by an MCP client,
+// held for user approval before they become real vocabulary entries.
+export const vocabularyProposals = sqliteTable(
+  "vocabulary_proposals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    // The misrecognized surface form.
+    word: text("word").notNull(),
+    // The correct form. NULL means "propose this as a hint word", matching
+    // the two-mode convention of the vocabulary table.
+    replacementWord: text("replacement_word"),
+    // Why the MCP client believes this is a misrecognition.
+    rationale: text("rationale"),
+    // Transcript excerpt showing the misrecognition in context. Baked in so
+    // the proposal stays reviewable after history retention deletes the row.
+    contextSnippet: text("context_snippet"),
+    // Deliberately NOT a foreign key: history cleanup deletes transcriptions
+    // on a retention schedule and must not cascade into pending proposals.
+    transcriptionId: integer("transcription_id"),
+    source: text("source").notNull().default("mcp"),
+    status: text("status", { enum: ["pending", "approved", "rejected"] })
+      .notNull()
+      .default("pending"),
+    // Set on approval: the vocabulary row this proposal produced.
+    vocabularyId: text("vocabulary_id"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    decidedAt: integer("decided_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    index("vocabulary_proposals_status_idx").on(table.status, table.createdAt),
+  ],
+);
+
 // Snippets table — short trigger phrases that expand into longer text during dictation
 export const snippets = sqliteTable(
   "snippets",
@@ -405,6 +443,11 @@ export interface AppSettingsData {
   labs?: {
     selfCorrection?: boolean;
   };
+  mcpServer?: {
+    enabled: boolean;
+    port: number;
+    token: string;
+  };
   preferences?: {
     launchAtLogin?: boolean;
     minimizeToTray?: boolean;
@@ -608,6 +651,8 @@ export type Transcription = typeof transcriptions.$inferSelect;
 export type NewTranscription = typeof transcriptions.$inferInsert;
 export type Vocabulary = typeof vocabulary.$inferSelect;
 export type NewVocabulary = typeof vocabulary.$inferInsert;
+export type VocabularyProposal = typeof vocabularyProposals.$inferSelect;
+export type NewVocabularyProposal = typeof vocabularyProposals.$inferInsert;
 export type Snippet = typeof snippets.$inferSelect;
 export type NewSnippet = typeof snippets.$inferInsert;
 export type SyncClientState = typeof syncClientState.$inferSelect;
