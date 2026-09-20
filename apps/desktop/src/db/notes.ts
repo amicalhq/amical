@@ -3,6 +3,7 @@ import { db } from "./index";
 import { notes, type Note, type NewNote } from "./schema";
 
 import { activeUserIdentity } from "./settings-sync/active-state";
+import { getUserDataAccountId } from "./user-data";
 import {
   visibleNotesWhere,
   recordNoteMutation,
@@ -17,7 +18,7 @@ export async function createNote(data: Pick<NewNote, "title" | "icon">) {
 
   const newNote: NewNote = {
     ...data,
-    accountId: activeUserIdentity()?.scopeId ?? null,
+    accountId: activeUserIdentity()?.scopeId ?? getUserDataAccountId(),
     content: "",
     contentFormat: "markdown-v1",
     createdAt: now,

@@ -3,6 +3,7 @@ import { ipcMain, BrowserWindow, type IpcMainEvent } from "electron";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
 import NotesService from "@/services/notes-service";
+import { updateSettingsSection } from "@/db/app-settings";
 import { notes, yjsUpdates, syncOutbox } from "@/db/schema";
 import { loadNoteBody } from "@/db/note-body";
 import {
@@ -11,7 +12,6 @@ import {
   applyPushResults,
   capturePushHeads,
   beginUserSyncSession,
-  clearSyncState,
   pauseSyncSession,
 } from "@/db/sync";
 import * as Y from "yjs";
@@ -147,23 +147,28 @@ describe("open local editors during automatic adoption", () => {
     return note;
   }
 
-  it.each([
-    { notifyAdoption: true, switchAccount: false },
-    { notifyAdoption: false, switchAccount: false },
-    { notifyAdoption: true, switchAccount: true },
-    { notifyAdoption: false, switchAccount: true },
-  ])(
-    "preserves the pending draft across $notifyAdoption adoption notification and account switch $switchAccount",
-    async ({ notifyAdoption, switchAccount }) => {
+  it.each([true, false])(
+    "preserves the visible pending draft when credentials expire (adoption notification: %s)",
+    async (notifyAdoption) => {
       const note = await openLocalNote();
       if (notifyAdoption) refresh({});
-      await clearSyncState();
-      if (switchAccount) await beginUserSyncSession("bob");
+      pauseSyncSession();
+      await updateSettingsSection("auth", {
+        isAuthenticated: false,
+        idToken: null,
+        accessToken: null,
+        refreshToken: null,
+        expiresAt: null,
+        userInfo: { sub: "alice" },
+      });
       // This may be the first refresh the editor receives after login.
       refresh({});
       vi.runAllTimers();
 
-      expect(await service.getNote(note.id)).toBeNull();
+      expect(await service.getNote(note.id)).toMatchObject({
+        accountId: "alice",
+        content: "Typing during login",
+      });
       expect(database.db.select().from(notes).all()).toMatchObject([
         { id: note.id, accountId: "alice", content: "Typing during login" },
       ]);
@@ -207,8 +212,15 @@ describe("open local editors during automatic adoption", () => {
           ],
         },
       ]);
-      await clearSyncState();
-      await beginUserSyncSession("bob");
+      pauseSyncSession();
+      await updateSettingsSection("auth", {
+        isAuthenticated: false,
+        idToken: null,
+        accessToken: null,
+        refreshToken: null,
+        expiresAt: null,
+        userInfo: { sub: "alice" },
+      });
       refresh({});
 
       const recovered = database.db.select().from(notes).all();
@@ -216,7 +228,10 @@ describe("open local editors during automatic adoption", () => {
         { accountId: "alice", content: "Typing during login" },
       ]);
       expect(recovered[0].id).not.toBe(note.id);
-      expect(await service.getNote(recovered[0].id)).toBeNull();
+      expect(await service.getNote(recovered[0].id)).toMatchObject({
+        accountId: "alice",
+        content: "Typing during login",
+      });
       expect(database.db.select().from(syncOutbox).all()).toMatchObject([
         {
           scopeId: "alice",

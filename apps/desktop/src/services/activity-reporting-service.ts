@@ -11,7 +11,6 @@ import {
 } from "effect";
 
 import {
-  activateActivityMaterializationAccount,
   captureActivityRows,
   materializeCompletedDictationActivities,
   removeActivityRows,
@@ -114,21 +113,7 @@ export class ActivityReportingService {
   private readonly onAuthenticated = (authState: AuthState) => {
     const accountId = authState.userInfo?.sub;
     if (!accountId || !this.initialized || this.stopped) return;
-    const epoch = this.beginAccountBoundary();
-    this.forkScoped(
-      this.activateAccount(accountId, epoch).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            logger.main.error("Failed to activate activity reporting account", {
-              error,
-            });
-          }),
-        ),
-        this.logBackgroundDefect(
-          "Activity account activation failed unexpectedly",
-        ),
-      ),
-    );
+    this.activateAccount(accountId);
   };
 
   private readonly onTokenRefreshed = (authState: AuthState) => {
@@ -150,6 +135,7 @@ export class ActivityReportingService {
     private readonly context: Context.Context<never>,
     private serviceScope: Scope.Closeable,
     private readonly dbSemaphore: Semaphore.Semaphore,
+    private readonly reportingSemaphore: Semaphore.Semaphore,
     private readonly readSummary: typeof getAccountSummary,
   ) {}
 
@@ -162,12 +148,14 @@ export class ActivityReportingService {
     return Effect.gen(function* () {
       const serviceScope = yield* Scope.make();
       const dbSemaphore = yield* Semaphore.make(1);
+      const reportingSemaphore = yield* Semaphore.make(1);
       return new ActivityReportingService(
         authService,
         client ?? new ActivityReportingClient(authService),
         context,
         serviceScope,
         dbSemaphore,
+        reportingSemaphore,
         readSummary,
       );
     });
@@ -248,8 +236,8 @@ export class ActivityReportingService {
       );
       if (this.stopped || !this.initialized) return;
       if (authState?.isAuthenticated && authState.userInfo?.sub) {
-        const epoch = this.beginAccountBoundary();
-        return yield* this.activateAccount(authState.userInfo.sub, epoch);
+        this.activateAccount(authState.userInfo.sub);
+        return;
       }
       this.currentAccountId = null;
       this.wake();
@@ -277,6 +265,32 @@ export class ActivityReportingService {
     if (this.stopped || !this.initialized) return;
     this.summaryRefreshRequested = true;
     this.wake();
+  }
+
+  flush(): Effect.Effect<void, ActivityReportingClientError> {
+    return this.reportingSemaphore.withPermits(1)(
+      Effect.gen({ self: this }, function* () {
+        const accountId = this.currentAccountId;
+        const epoch = this.boundaryEpoch;
+        if (!accountId || this.stopped) {
+          return yield* Effect.fail(
+            new AuthenticationRequired({ message: "Sign in required" }),
+          );
+        }
+        yield* this.materializeUntilCaughtUp();
+        const drained = yield* retryOnceAfterAuthenticationRequired(
+          () => this.reportUntilDrained(epoch, accountId),
+          () => this.refreshAuthenticationIfCurrent(epoch, accountId),
+        );
+        if (!drained) {
+          return yield* Effect.fail(
+            new AuthenticationRequired({
+              message: "Account changed while flushing dictation activity",
+            }),
+          );
+        }
+      }),
+    );
   }
 
   // Subscription lifetime owns the fast cadence, including renderer disconnects.
@@ -362,48 +376,19 @@ export class ActivityReportingService {
     this.rerunRequested = false;
     this.summaryRefreshRequested = false;
     this.restartSummarySchedule();
-    return worker ? Fiber.interrupt(worker).pipe(Effect.asVoid) : Effect.void;
+    return (worker ? Fiber.interrupt(worker) : Effect.void).pipe(
+      Effect.andThen(this.withDb(Effect.void)),
+    );
   }
 
-  private beginAccountBoundary(): number {
+  private activateAccount(accountId: string): void {
     this.boundaryEpoch += 1;
-    this.currentAccountId = null;
+    this.currentAccountId = accountId;
     this.authorizationBlocked = false;
     this.rerunRequested = false;
     this.restartSummarySchedule();
     this.worker?.interruptUnsafe();
-    return this.boundaryEpoch;
-  }
-
-  private activateAccount(
-    accountId: string,
-    epoch: number,
-  ): Effect.Effect<void, ActivityReportingDependencyFailure> {
-    return this.withDb(
-      Effect.suspend(() => {
-        if (!this.boundaryIsCurrent(epoch)) return Effect.succeed(false);
-        return this.database(() =>
-          activateActivityMaterializationAccount(accountId),
-        ).pipe(
-          Effect.map(() => {
-            if (!this.boundaryIsCurrent(epoch)) return false;
-            this.currentAccountId = accountId;
-            this.authorizationBlocked = false;
-            return true;
-          }),
-        );
-      }),
-    ).pipe(
-      Effect.tap((activated) =>
-        activated
-          ? Effect.sync(() => {
-              this.restartSummarySchedule();
-              this.wake();
-            })
-          : Effect.void,
-      ),
-      Effect.asVoid,
-    );
+    this.wake();
   }
 
   private runWorker(): Effect.Effect<void, never> {
@@ -419,17 +404,26 @@ export class ActivityReportingService {
           const revision = refreshRequested
             ? yield* this.db(async () => getStatsRevision())
             : null;
-          yield* this.materializeUntilCaughtUp();
-          const accountId = this.currentAccountId;
-          const epoch = this.boundaryEpoch;
-          if (!accountId || this.authorizationBlocked) return;
-          uploadAccountId = accountId;
-          const drained = yield* retryOnceAfterAuthenticationRequired(
-            () => this.reportUntilDrained(epoch, accountId),
-            () => this.refreshAuthenticationIfCurrent(epoch, accountId),
+          const drainedAccount = yield* this.reportingSemaphore.withPermits(1)(
+            Effect.gen({ self: this }, function* () {
+              yield* this.materializeUntilCaughtUp();
+              const accountId = this.currentAccountId;
+              const epoch = this.boundaryEpoch;
+              if (!accountId || this.authorizationBlocked) return null;
+              uploadAccountId = accountId;
+              const drained = yield* retryOnceAfterAuthenticationRequired(
+                () => this.reportUntilDrained(epoch, accountId),
+                () => this.refreshAuthenticationIfCurrent(epoch, accountId),
+              );
+              return drained ? { epoch, accountId } : null;
+            }),
           );
-          if (drained && revision !== null) {
-            yield* this.refreshSummary(epoch, accountId, revision);
+          if (drainedAccount && revision !== null) {
+            yield* this.refreshSummary(
+              drainedAccount.epoch,
+              drainedAccount.accountId,
+              revision,
+            );
           }
         }).pipe(
           Effect.matchCauseEffect({
@@ -579,9 +573,12 @@ export class ActivityReportingService {
     void,
     ActivityReportingDependencyFailure
   > {
+    const epoch = this.boundaryEpoch;
     const scan = (): Effect.Effect<void, ActivityReportingDependencyFailure> =>
-      this.db(() =>
-        materializeCompletedDictationActivities(ACTIVITY_MAX_BATCH_SIZE),
+      this.db(async () =>
+        this.boundaryIsCurrent(epoch)
+          ? materializeCompletedDictationActivities(ACTIVITY_MAX_BATCH_SIZE)
+          : { scanned: 0, enqueued: 0 },
       ).pipe(
         Effect.flatMap((result) =>
           result.scanned === ACTIVITY_MAX_BATCH_SIZE
@@ -600,10 +597,11 @@ export class ActivityReportingService {
     const drain = (): Effect.Effect<boolean, ActivityAttemptError> =>
       this.findNextRows().pipe(
         Effect.flatMap((rows) => {
+          if (!this.uploadBoundaryIsCurrent(epoch, accountId)) {
+            return Effect.succeed(false);
+          }
           if (rows.length === 0) {
-            return Effect.succeed(
-              this.uploadBoundaryIsCurrent(epoch, accountId),
-            );
+            return Effect.succeed(true);
           }
           return Effect.try({
             try: () => buildActivityBatch(rows.map((row) => row.payload)),

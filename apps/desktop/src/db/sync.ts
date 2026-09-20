@@ -11,7 +11,6 @@ export {
   resetNoteUploadDelays,
   getWritableOrganizationIdentity,
   hasPendingSyncWork,
-  prepareVisibleRowsForFullSync,
   recordLocalSyncMutation,
   recordLocalSyncMutations,
   recordOrganizationSyncMutation,
@@ -19,14 +18,11 @@ export {
 export { applyPullPages, getPullCursors } from "./settings-sync/pull";
 export {
   beginUserSyncSession,
-  clearSyncState,
   deactivateOrganizationSyncScopes,
   getActiveOrganizationAccess,
-  hasResumableUserSyncState,
   pauseSyncSession,
   reconcileSyncScopes,
   removeOrganizationSyncScope,
-  resumeUserSyncSession,
 } from "./settings-sync/session";
 export type {
   AdvertisedSyncScope,

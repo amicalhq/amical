@@ -313,7 +313,7 @@ describe("AuthService refresh fencing", () => {
     expect(loggedOut).not.toHaveBeenCalled();
   });
 
-  it("logs out once when the refresh token is rejected", async () => {
+  it("expires credentials once but retains the data owner when refresh is rejected", async () => {
     const loggedOut = vi.fn();
     const refreshFailed = vi.fn();
     authService.on("logged-out", loggedOut);
@@ -327,7 +327,12 @@ describe("AuthService refresh fencing", () => {
 
     await Effect.runPromise(authService.refreshTokenIfNeeded(true));
 
-    expect(await getSettingsSection("auth")).toBeUndefined();
+    expect(await getSettingsSection("auth")).toMatchObject({
+      isAuthenticated: false,
+      idToken: null,
+      refreshToken: null,
+      userInfo: { sub: "user-1" },
+    });
     expect(loggedOut).toHaveBeenCalledOnce();
     expect(refreshFailed).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ message: "Refresh token expired" }),
@@ -364,6 +369,29 @@ describe("AuthService refresh fencing", () => {
 
     await expect(tokenPromise).resolves.toBeNull();
     expect(await getSettingsSection("auth")).toBeUndefined();
+  });
+
+  it("does not wipe data when another authentication generation overtakes logout", async () => {
+    let release!: () => void;
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.promise(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      ),
+    );
+    const clear = vi.fn();
+    const logout = runAuthEffect(authService.logout(false, clear));
+    const rejected = expect(logout).rejects.toThrow(
+      "Authentication changed during logout",
+    );
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    await runAuthEffect(authService.login());
+    release();
+    await rejected;
+    expect(clear).not.toHaveBeenCalled();
+    expect((await getSettingsSection("auth"))?.userInfo?.sub).toBe("user-1");
   });
 
   it("does not persist a refreshed token for another subject", async () => {
@@ -426,6 +454,63 @@ describe("AuthService refresh fencing", () => {
     expect(await getSettingsSection("auth")).toBeUndefined();
     expect(authenticated).not.toHaveBeenCalled();
   });
+
+  it("ignores a callback superseded while reading the account owner", async () => {
+    await runAuthEffect(authService.login());
+    const pending = (
+      authService as unknown as { pendingAuth: { state: string } }
+    ).pendingAuth;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id_token: idToken("user-1"),
+        refresh_token: "stale-refresh",
+        access_token: "stale-access",
+        expires_in: 3600,
+      }),
+    });
+    const owner = await getSettingsSection("auth");
+    const read = Promise.withResolvers<AuthState | null>();
+    const getAuthState = vi
+      .spyOn(authService, "getAuthState")
+      .mockImplementationOnce(() => Effect.promise(() => read.promise));
+    const authenticated = vi.fn();
+    authService.on("authenticated", authenticated);
+    const callback = runAuthEffect(
+      authService.handleAuthCallback("code", pending.state),
+    );
+    await vi.waitFor(() => expect(getAuthState).toHaveBeenCalledOnce());
+    await runAuthEffect(authService.login());
+    read.resolve(owner!);
+    await callback;
+
+    expect(await getSettingsSection("auth")).toEqual(owner);
+    expect(authenticated).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "requires explicit logout before another account signs in (expired: %s)",
+    async (expired) => {
+      if (expired) await runAuthEffect(authService.logout(true));
+      await runAuthEffect(authService.login());
+      const pending = (
+        authService as unknown as { pendingAuth: { state: string } }
+      ).pendingAuth;
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id_token: idToken("user-2"),
+          refresh_token: "refresh-user-2",
+          access_token: "access-user-2",
+          expires_in: 3600,
+        }),
+      });
+      await expect(
+        runAuthEffect(authService.handleAuthCallback("code", pending.state)),
+      ).rejects.toThrow("Log out before signing in to a different account");
+      expect((await getSettingsSection("auth"))?.userInfo?.sub).toBe("user-1");
+    },
+  );
 
   it("reports an untrusted account-handoff URL without including the URL", async () => {
     const authState = await getSettingsSection("auth");

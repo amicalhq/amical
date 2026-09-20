@@ -1,9 +1,8 @@
-import { and, eq, ne, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "..";
 import {
   snippets,
-  syncClientState,
   syncCollectionState,
   syncItemState,
   syncOutbox,
@@ -21,7 +20,6 @@ import {
   pauseActiveSyncSession,
   removeActiveScope,
   replaceActiveScopes,
-  resetActiveScopes,
 } from "./active-state";
 import { discardPendingScopeMutations } from "./canonical";
 import {
@@ -32,87 +30,33 @@ import {
   type SyncDatabase,
 } from "./types";
 
-async function startSyncScopeSession(
-  accountId: string,
-  scopeType: SyncContext["scopeType"],
-  scopeId: string,
-  canWrite: boolean,
-  role: string | null,
-  resetCursor: boolean,
-  database: typeof db = db,
-): Promise<SyncContext> {
-  const context = database.transaction((tx) => {
-    tx.insert(syncClientState)
-      .values({ id: 1, lastOutboxSequence: 0 })
-      .onConflictDoNothing()
-      .run();
-
-    const scope = { scopeType, scopeId };
-    tx.insert(syncScopeState)
-      .values({ ...scope, canWrite, role })
-      .onConflictDoUpdate({
-        target: [syncScopeState.scopeType, syncScopeState.scopeId],
-        set: { canWrite, role },
-      })
-      .run();
-
-    for (const collection of SYNC_COLLECTIONS) {
-      if (scopeType === "org" && collection === "note") continue;
-      const insert = tx
-        .insert(syncCollectionState)
-        .values({ ...scope, collection, cursor: 0 });
-      if (resetCursor) {
-        insert
-          .onConflictDoUpdate({
-            target: [
-              syncCollectionState.scopeType,
-              syncCollectionState.scopeId,
-              syncCollectionState.collection,
-            ],
-            set: { cursor: 0 },
-          })
-          .run();
-      } else {
-        insert.onConflictDoNothing().run();
-      }
-    }
-
-    return { accountId, ...scope };
-  });
-  activateScope(accountId, scopeType, scopeId, { canWrite, role });
-  return context;
-}
-
 export async function beginUserSyncSession(
   accountId: string,
   database: typeof db = db,
 ): Promise<SyncContext> {
-  resetActiveScopes();
-  return startSyncScopeSession(
-    accountId,
-    "user",
-    accountId,
-    true,
-    null,
-    true,
-    database,
-  );
-}
+  pauseActiveSyncSession();
+  const scope = { scopeType: "user" as const, scopeId: accountId };
+  const access = { canWrite: true, role: null };
+  const context = database.transaction((tx) => {
+    tx.insert(syncScopeState)
+      .values({ ...scope, ...access })
+      .onConflictDoUpdate({
+        target: [syncScopeState.scopeType, syncScopeState.scopeId],
+        set: access,
+      })
+      .run();
 
-export async function resumeUserSyncSession(
-  accountId: string,
-  database: typeof db = db,
-): Promise<SyncContext> {
-  resetActiveScopes();
-  return startSyncScopeSession(
-    accountId,
-    "user",
-    accountId,
-    true,
-    null,
-    false,
-    database,
-  );
+    for (const collection of SYNC_COLLECTIONS) {
+      tx.insert(syncCollectionState)
+        .values({ ...scope, collection, cursor: 0 })
+        .onConflictDoNothing()
+        .run();
+    }
+
+    return { accountId, ...scope };
+  });
+  activateScope(accountId, scope.scopeType, scope.scopeId, access);
+  return context;
 }
 
 export async function reconcileSyncScopes(
@@ -291,57 +235,6 @@ export function pauseSyncSession(): void {
 
 export function deactivateOrganizationSyncScopes(): boolean {
   return deactivateActiveOrganizationScopes();
-}
-
-export async function clearSyncState(database: typeof db = db): Promise<void> {
-  pauseActiveSyncSession();
-  database.transaction((tx) => {
-    tx.delete(vocabulary).where(eq(vocabulary.scopeType, "org")).run();
-    tx.delete(snippets).where(eq(snippets.scopeType, "org")).run();
-    // Notes and their pending edits stay in their owning account across logout.
-    tx.delete(syncOutbox)
-      .where(
-        or(ne(syncOutbox.collection, "note"), eq(syncOutbox.scopeType, "org")),
-      )
-      .run();
-    tx.delete(syncItemState)
-      .where(
-        or(
-          ne(syncItemState.collection, "note"),
-          eq(syncItemState.scopeType, "org"),
-        ),
-      )
-      .run();
-    tx.delete(syncCollectionState)
-      .where(
-        or(
-          ne(syncCollectionState.collection, "note"),
-          eq(syncCollectionState.scopeType, "org"),
-        ),
-      )
-      .run();
-    tx.delete(syncScopeState).run();
-    if (!tx.select().from(syncOutbox).limit(1).get())
-      tx.delete(syncClientState).run();
-  });
-}
-
-export async function hasResumableUserSyncState(
-  accountId: string,
-  database: SyncDatabase = db,
-): Promise<boolean> {
-  const state = database
-    .select({ collection: syncCollectionState.collection })
-    .from(syncCollectionState)
-    .where(
-      and(
-        eq(syncCollectionState.scopeType, "user"),
-        eq(syncCollectionState.scopeId, accountId),
-      ),
-    )
-    .limit(1)
-    .get();
-  return Boolean(state);
 }
 
 export async function getActiveOrganizationAccess(

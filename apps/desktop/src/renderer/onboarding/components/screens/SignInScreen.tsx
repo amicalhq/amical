@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
+import { LogoutDialog } from "@/components/logout-dialog";
+import { useLogout } from "@/hooks/useLogout";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, Loader2, Check, Mail } from "lucide-react";
 import { OnboardingLayout } from "../shared/OnboardingLayout";
@@ -57,7 +59,8 @@ export function SignInScreen({ onNext, onBack }: SignInScreenProps) {
     },
   });
 
-  const logoutMutation = api.auth.logout.useMutation();
+  const logout = useLogout();
+  const switchAccountRef = useRef<HTMLButtonElement>(null);
 
   api.auth.onAuthStateChange.useSubscription(undefined, {
     onData: (authState) => {
@@ -117,8 +120,10 @@ export function SignInScreen({ onNext, onBack }: SignInScreenProps) {
               />
             </div>
             <button
+              ref={switchAccountRef}
               type="button"
-              onClick={() => logoutMutation.mutate()}
+              onClick={logout.requestLogout}
+              disabled={logout.isBusy}
               className="self-start py-1 text-[13px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
             >
               {t("onboarding.signIn.switchAccount")}
@@ -128,7 +133,7 @@ export function SignInScreen({ onNext, onBack }: SignInScreenProps) {
           <>
             <ObButton
               className="w-full justify-center"
-              disabled={loading}
+              disabled={loading || logout.isBusy}
               onClick={() => loginMutation.mutate()}
             >
               {loading ? (
@@ -149,6 +154,14 @@ export function SignInScreen({ onNext, onBack }: SignInScreenProps) {
           </>
         )}
       </div>
+      {logout.dialogOpen && (
+        <LogoutDialog
+          returnFocusRef={switchAccountRef}
+          onOpenChange={logout.setDialogOpen}
+          onLogout={logout.confirmLogout}
+          isLoggingOut={logout.isLoggingOut}
+        />
+      )}
     </OnboardingLayout>
   );
 }

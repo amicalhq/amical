@@ -57,7 +57,7 @@ skip converted rows and retry failed rows, including notes blocked by an earlier
 formatting policy.
 Opening also checks the per-note marker, so it cannot overwrite an edited body.
 
-Recovery data is intentionally not pruned. Work on a database copy: inspect
+Recovery data stays until the note is deleted or the user logs out. Work on a database copy: inspect
 `legacy_content`, `migration_error`, and all `yjs_updates` rows for the note,
 ordered by `id`. After fixing the source or adding a tested converter, rerun
 the migration on the copy.
@@ -114,10 +114,20 @@ unowned notes automatically join the signed-in account and enter its sync queue
 on login or when an existing session resumes, including notes previously kept
 on the device. Notes stay local while signed out. Uploads require connectivity
 and a server that advertises the `note` collection.
-Account-owned notes are hidden after sign-out and from other accounts. Their
-outboxes, tombstones, and accepted server state are retained for the owning
-account. An already-open editor can finish its pending body save in its original
-account even if sign-out has just hidden that note.
+Logout checks persisted data for pending uploads. When changes remain, it
+immediately shows sync progress and attempts to upload them without the normal
+delay. The whole attempt has a 15-second limit. Editors keep their normal
+autosave behavior; logout does not check or force-save unsaved body/title drafts.
+Successful sync automatically logs out; failed or timed-out sync offers Cancel
+or Discard changes and log out. Cancelling keeps the account open even if the
+background upload later finishes. With no pending changes, logout proceeds
+directly. Logout clears local notes, recovery data, sync metadata, vocabulary,
+snippets, dictation history, and counters, then restarts the app. Cloud copies,
+device settings, and downloaded models stay intact. Restart resets in-memory
+state; unsaved editor drafts, unfinished recording, and other work may be dropped.
+Expired credentials preserve the data and its owner for reauthentication; a
+different account requires explicit logout first. Work created after logout is
+local until the next sign-in.
 
 Create, body/title/icon edits, and deletion update the note and durable outbox in
 one transaction. Pushes use accepted server versions; wall-clock timestamps do

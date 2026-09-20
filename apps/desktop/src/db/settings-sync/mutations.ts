@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   syncClientState,
   syncItemState,
@@ -16,14 +16,16 @@ const NOTE_UPLOAD_DELAY_MS = 10_000;
 
 function allocateOutboxSequence(database: SyncDatabase): number {
   const client = database
-    .update(syncClientState)
-    .set({
-      lastOutboxSequence: sql`${syncClientState.lastOutboxSequence} + 1`,
+    .insert(syncClientState)
+    .values({ id: 1, lastOutboxSequence: 1 })
+    .onConflictDoUpdate({
+      target: syncClientState.id,
+      set: {
+        lastOutboxSequence: sql`${syncClientState.lastOutboxSequence} + 1`,
+      },
     })
-    .where(eq(syncClientState.id, 1))
     .returning({ sequence: syncClientState.lastOutboxSequence })
-    .get();
-  if (!client) throw new Error("Sync client state is missing");
+    .get()!;
   return client.sequence;
 }
 
@@ -33,7 +35,7 @@ export function enqueueLocalMutation(
   collection: SyncCollection,
   syncId: string,
   payload: SyncPayload | null,
-  options: { unversioned?: boolean; notify?: boolean } = {},
+  options: { notify?: boolean } = {},
 ): void {
   const existingSidecar = database
     .select()
@@ -83,9 +85,7 @@ export function enqueueLocalMutation(
       .run();
   }
 
-  let desiredBaseSyncVersion = options.unversioned
-    ? null
-    : sidecar.acceptedSyncVersion;
+  let desiredBaseSyncVersion = sidecar.acceptedSyncVersion;
   let desiredSequence =
     pending?.desiredSequence ?? allocateOutboxSequence(database);
   let desiredParentHeadSequence: number | null = null;

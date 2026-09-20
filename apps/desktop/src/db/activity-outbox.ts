@@ -18,14 +18,11 @@ import {
 } from "../types/activity";
 import { db } from ".";
 import {
-  activityMaterializationState,
   activityOutbox,
   transcriptions,
   type ActivityOutbox,
   type Transcription,
 } from "./schema";
-
-const ACTIVITY_MATERIALIZATION_STATE_ID = 1;
 
 function historicalActivityFor(
   transcription: Transcription,
@@ -177,39 +174,6 @@ export async function materializeAllCompletedDictationActivities(
     total.scanned += result.scanned;
     if (result.scanned < ACTIVITY_MAX_BATCH_SIZE) return total;
   }
-}
-
-export async function activateActivityMaterializationAccount(
-  accountId: string,
-  database: typeof db = db,
-): Promise<"replay" | "resume"> {
-  return database.transaction((tx) => {
-    const state = tx
-      .select()
-      .from(activityMaterializationState)
-      .where(
-        eq(activityMaterializationState.id, ACTIVITY_MATERIALIZATION_STATE_ID),
-      )
-      .get();
-
-    if (state?.accountId === accountId) return "resume";
-
-    tx.insert(activityMaterializationState)
-      .values({
-        id: ACTIVITY_MATERIALIZATION_STATE_ID,
-        accountId,
-      })
-      .onConflictDoUpdate({
-        target: activityMaterializationState.id,
-        set: { accountId },
-      })
-      .run();
-    tx.update(transcriptions)
-      .set({ activityPending: true })
-      .where(eq(transcriptions.disposition, "success"))
-      .run();
-    return "replay";
-  });
 }
 
 export async function captureActivityRows(

@@ -3,37 +3,21 @@ import { NoteSyncPayloadSchema } from "@amical/types";
 import {
   notes,
   syncOutbox,
-  syncClientState,
   syncItemState,
   type Note,
   type NoteSyncPayload,
 } from "../schema";
 import { activeUserIdentity } from "./active-state";
+import { getUserDataAccountId } from "../user-data";
 import { enqueueLocalMutation } from "./mutations";
 import { itemWhere, outboxWhere } from "./query";
 import type { SyncContext, SyncDatabase } from "./types";
 
 export function visibleNotesWhere() {
-  const identity = activeUserIdentity();
-  return identity
-    ? or(isNull(notes.accountId), eq(notes.accountId, identity.scopeId))!
+  const accountId = activeUserIdentity()?.scopeId ?? getUserDataAccountId();
+  return accountId
+    ? or(isNull(notes.accountId), eq(notes.accountId, accountId))!
     : isNull(notes.accountId);
-}
-
-export function loadVisibleNoteIds(
-  database: SyncDatabase,
-  identity: Pick<SyncContext, "scopeType" | "scopeId">,
-): Set<string> {
-  return new Set(
-    identity.scopeType === "user"
-      ? database
-          .select({ id: notes.id })
-          .from(notes)
-          .where(eq(notes.accountId, identity.scopeId))
-          .all()
-          .map((row) => row.id)
-      : [],
-  );
 }
 
 export function findNoteSyncState(database: SyncDatabase, note: Note) {
@@ -79,11 +63,6 @@ export function recordNoteMutation(
 ) {
   if (!note.accountId) return;
   if (note.contentFormat !== "markdown-v1" && !deleted) return;
-  database
-    .insert(syncClientState)
-    .values({ id: 1, lastOutboxSequence: 0 })
-    .onConflictDoNothing()
-    .run();
   const payload = deleted ? null : noteSyncPayload(note);
   enqueueLocalMutation(
     database,

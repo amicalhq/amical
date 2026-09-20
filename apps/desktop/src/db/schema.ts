@@ -255,8 +255,7 @@ export const activityOutbox = sqliteTable(
   (table) => [index("activity_outbox_created_idx").on(table.createdAt)],
 );
 
-// Desktop retains device history across accounts. Account changes re-enroll
-// successful rows; restarting the same account preserves their pending flags.
+// Historical account-replay marker. Runtime no longer uses it; logout clears it.
 export const activityMaterializationState = sqliteTable(
   "activity_materialization_state",
   {

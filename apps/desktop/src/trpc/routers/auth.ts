@@ -3,6 +3,11 @@ import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
 import { logger } from "../../main/logger";
 import { runAuthEffect, type AuthState } from "../../services/auth-service";
+import {
+  getLogoutStatus,
+  logoutAndClearUserData,
+  syncBeforeLogout,
+} from "../../services/logout";
 
 export const authRouter = createRouter({
   // Get current auth status
@@ -51,17 +56,14 @@ export const authRouter = createRouter({
       return { success: true };
     }),
 
+  getLogoutStatus: procedure.query(() => getLogoutStatus()),
+
+  syncBeforeLogout: procedure.mutation(({ ctx }) =>
+    syncBeforeLogout(ctx.services),
+  ),
+
   // Logout
-  logout: procedure.mutation(async ({ ctx }) => {
-    const authService = ctx.services.authService;
-
-    await runAuthEffect(authService.logout());
-
-    return {
-      success: true,
-      message: "Logged out successfully",
-    };
-  }),
+  logout: procedure.mutation(({ ctx }) => logoutAndClearUserData(ctx.services)),
 
   // Subscribe to auth state changes
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict

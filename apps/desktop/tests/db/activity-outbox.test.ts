@@ -1,15 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  activateActivityMaterializationAccount,
   captureActivityRows,
   materializeCompletedDictationActivities,
 } from "../../src/db/activity-outbox";
-import {
-  activityMaterializationState,
-  activityOutbox,
-  transcriptions,
-} from "../../src/db/schema";
+import { activityOutbox, transcriptions } from "../../src/db/schema";
 import {
   createProvisionalTranscription,
   enrichTranscriptionBySession,
@@ -236,7 +231,7 @@ describe("activity durable outbox", () => {
     });
   });
 
-  it("consumes pending activity with the outbox insert and replays it only for a new account", async () => {
+  it("consumes pending activity once", async () => {
     const occurredAt = new Date("2024-01-02T03:04:05.000Z");
     await testDb.db.insert(transcriptions).values({
       disposition: "success",
@@ -258,15 +253,6 @@ describe("activity durable outbox", () => {
       await materializeCompletedDictationActivities(500, testDb.db as never),
     ).toEqual({ enqueued: 0, scanned: 0 });
     expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
-
-    await activateActivityMaterializationAccount(
-      "replay-user",
-      testDb.db as never,
-    );
-    await materializeCompletedDictationActivities(500, testDb.db as never);
-    expect(await testDb.db.select().from(activityOutbox)).toEqual([
-      expect.objectContaining({ activityId: first!.activityId }),
-    ]);
   });
 
   it("keeps activity pending when the outbox insert fails", async () => {
@@ -330,58 +316,6 @@ describe("activity durable outbox", () => {
     expect(
       await materializeCompletedDictationActivities(500, testDb.db as never),
     ).toEqual({ enqueued: 0, scanned: 0 });
-  });
-
-  it("preserves pending flags for the same account and replays successes for a new account", async () => {
-    expect(
-      await activateActivityMaterializationAccount(
-        "user-1",
-        testDb.db as never,
-      ),
-    ).toBe("replay");
-    await testDb.db.insert(transcriptions).values([
-      { disposition: "success", text: "reported", activityPending: false },
-      { disposition: "failure", text: "", activityPending: false },
-      { disposition: null, text: "", activityPending: true },
-    ]);
-
-    expect(
-      await activateActivityMaterializationAccount(
-        "user-1",
-        testDb.db as never,
-      ),
-    ).toBe("resume");
-    expect(await testDb.db.select().from(activityMaterializationState)).toEqual(
-      [
-        expect.objectContaining({
-          accountId: "user-1",
-        }),
-      ],
-    );
-    expect(
-      (await testDb.db.select().from(transcriptions)).map(
-        (row) => row.activityPending,
-      ),
-    ).toEqual([false, false, true]);
-
-    expect(
-      await activateActivityMaterializationAccount(
-        "user-2",
-        testDb.db as never,
-      ),
-    ).toBe("replay");
-    expect(await testDb.db.select().from(activityMaterializationState)).toEqual(
-      [
-        expect.objectContaining({
-          accountId: "user-2",
-        }),
-      ],
-    );
-    expect(
-      (await testDb.db.select().from(transcriptions)).map(
-        (row) => row.activityPending,
-      ),
-    ).toEqual([true, false, true]);
   });
 
   it("finds an earlier pending row after it completes on a later scan", async () => {

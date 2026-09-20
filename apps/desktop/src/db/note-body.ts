@@ -1,3 +1,5 @@
+import { activeUserIdentity } from "./settings-sync/active-state";
+import { getUserDataAccountId } from "./user-data";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "./index";
 import { notes, yjsUpdates, syncItemState } from "./schema";
@@ -112,14 +114,23 @@ export function saveNoteBody(
   origin?: NoteSaveOrigin,
 ): NoteSaveResult {
   return db.transaction((tx) => {
-    const note = tx.select().from(notes).where(eq(notes.id, noteId)).get();
+    const note = tx
+      .select()
+      .from(notes)
+      .where(and(eq(notes.id, noteId), visibleNotesWhere()))
+      .get();
     if (!note) {
       // Only a newer accepted remote tombstone can recover a pending editor
       // draft. Local deletion and ordinary delayed saves never recreate notes.
-      if (origin && expectedRemoteVersion !== undefined) {
-        // A local editor may miss adoption. Retained sync state identifies its
-        // owner after deletion; never guess if more than one account matches.
-        const [sidecar, otherOwner] = tx
+      const accountId =
+        activeUserIdentity()?.scopeId ?? getUserDataAccountId(tx);
+      if (
+        accountId &&
+        origin &&
+        (origin.accountId === null || origin.accountId === accountId) &&
+        expectedRemoteVersion !== undefined
+      ) {
+        const sidecar = tx
           .select()
           .from(syncItemState)
           .where(
@@ -127,15 +138,11 @@ export function saveNoteBody(
               eq(syncItemState.scopeType, "user"),
               eq(syncItemState.collection, "note"),
               eq(syncItemState.syncId, noteId),
-              origin.accountId === null
-                ? undefined
-                : eq(syncItemState.scopeId, origin.accountId),
+              eq(syncItemState.scopeId, accountId),
             ),
           )
-          .limit(2)
-          .all();
+          .get();
         if (
-          !otherOwner &&
           sidecar?.acceptedPayload === null &&
           sidecar.noteRemoteVersion !== null &&
           sidecar.noteRemoteVersion > (expectedRemoteVersion ?? 0)
@@ -161,20 +168,6 @@ export function saveNoteBody(
       }
       return { status: "deleted" };
     }
-    // A local editor can miss the adoption notification before logout. Its
-    // pending save still belongs to this note and its persisted owner.
-    const fromOpenEditor =
-      origin &&
-      (origin.accountId === null || note.accountId === origin.accountId);
-    if (
-      !fromOpenEditor &&
-      !tx
-        .select({ id: notes.id })
-        .from(notes)
-        .where(and(eq(notes.id, noteId), visibleNotesWhere()))
-        .get()
-    )
-      return { status: "deleted" };
     if (note.contentFormat !== "markdown-v1")
       throw new Error("This note needs recovery before editing");
     const remoteVersion = findNoteSyncState(tx, note)?.remoteVersion ?? null;

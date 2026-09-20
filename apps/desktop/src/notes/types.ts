@@ -1,4 +1,4 @@
-// An already-open editor can finish its pending save after logout or adoption.
+// Metadata for recovering an open editor draft after remote deletion.
 export interface NoteSaveOrigin {
   accountId: string | null;
   title: string;

@@ -282,6 +282,27 @@ export async function updateSettingsSection<K extends keyof AppSettingsData>(
   } as Partial<AppSettingsData>);
 }
 
+// Auth fencing and logout cleanup must execute after queued settings writes,
+// in the same transaction as the credential change.
+export async function updateAuthSettings(
+  auth: AppSettingsData["auth"],
+  isCurrent: () => boolean,
+  clearLocalData?: () => void,
+): Promise<boolean> {
+  return serialized(async () => {
+    const settings = await readOrInitSettingsLocked();
+    if (!isCurrent()) return false;
+    db.transaction((tx) => {
+      clearLocalData?.();
+      tx.update(appSettings)
+        .set({ data: { ...settings, auth }, updatedAt: new Date() })
+        .where(eq(appSettings.id, SETTINGS_ID))
+        .run();
+    });
+    return true;
+  });
+}
+
 // Reset settings to defaults
 export async function resetAppSettings(): Promise<AppSettingsData> {
   return await replaceAppSettings(buildDefaultSettings());

@@ -51,6 +51,3 @@ export const payloadsEqual = (
   left: SyncPayload | null,
   right: SyncPayload | null,
 ): boolean => isDeepStrictEqual(left, right);
-
-export const syncItemKey = (collection: SyncCollection, syncId: string) =>
-  `${collection}:${syncId}`;

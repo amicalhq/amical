@@ -14,7 +14,7 @@ import {
   Semaphore,
 } from "effect";
 
-import { getSettingsSection, updateSettingsSection } from "../db/app-settings";
+import { getSettingsSection, updateAuthSettings } from "../db/app-settings";
 import { logger } from "../main/logger";
 import { down, up } from "../main/runtime/layer-helpers";
 import { AppScopeTag, AuthServiceTag } from "../main/runtime/tags";
@@ -394,6 +394,7 @@ export class AuthService extends EventEmitter {
         code,
         pendingAuth.codeVerifier,
       );
+      const previous = yield* this.getAuthState();
       if (
         callbackGeneration !== this.authGeneration ||
         this.pendingAuth !== pendingAuth
@@ -422,6 +423,18 @@ export class AuthService extends EventEmitter {
         } catch (error) {
           logger.main.error("Error decoding ID token:", error);
         }
+      }
+
+      if (
+        previous?.userInfo?.sub &&
+        previous.userInfo.sub !== authState.userInfo?.sub
+      ) {
+        return yield* Effect.fail(
+          authFailure(
+            new Error("Log out before signing in to a different account"),
+            "Account change requires logout",
+          ),
+        );
       }
 
       const loginGeneration = yield* this.advanceGenerationAndAbortRefresh();
@@ -510,10 +523,14 @@ export class AuthService extends EventEmitter {
   }
 
   /** Logout and clear auth state. */
-  logout(): Effect.Effect<void, AuthServiceFailure> {
+  logout(
+    preserveAccount = false,
+    clearLocalData?: () => void,
+  ): Effect.Effect<void, AuthServiceFailure> {
     return Effect.gen({ self: this }, function* () {
       const logoutGeneration = yield* this.advanceGenerationAndAbortRefresh();
       this.pendingAuth = null;
+      const previous = preserveAccount ? yield* this.getAuthState() : null;
 
       for (const handler of this.beforeLogoutHandlers) {
         yield* handler().pipe(
@@ -527,8 +544,34 @@ export class AuthService extends EventEmitter {
         );
       }
 
-      const cleared = yield* this.writeAuthState(logoutGeneration, undefined);
-      if (!cleared) return;
+      // Expired credentials must not turn account data into another user's
+      // guest data. Keep the owner until explicit logout clears local data.
+      const cleared = yield* this.writeAuthState(
+        logoutGeneration,
+        previous
+          ? {
+              ...previous,
+              isAuthenticated: false,
+              idToken: null,
+              accessToken: null,
+              refreshToken: null,
+              expiresAt: null,
+            }
+          : undefined,
+        undefined,
+        undefined,
+        clearLocalData,
+      );
+      if (!cleared) {
+        return yield* Effect.fail(
+          authFailure(
+            new Error(
+              "Authentication changed during logout. Please try again.",
+            ),
+            "Logout interrupted",
+          ),
+        );
+      }
 
       this.emit("logged-out");
       logger.main.info("User logged out");
@@ -779,13 +822,13 @@ export class AuthService extends EventEmitter {
       if (
         controller.signal.aborted ||
         generation !== this.authGeneration ||
-        !authState
+        !authState?.isAuthenticated
       ) {
         return;
       }
 
       if (!authState.refreshToken) {
-        yield* this.logout();
+        yield* this.logout(true);
         return;
       }
 
@@ -871,7 +914,7 @@ export class AuthService extends EventEmitter {
 
         if (response.status === 400 || response.status === 401) {
           logger.main.info("Refresh token invalid or expired, logging out");
-          yield* this.logout();
+          yield* this.logout(true);
           const expired = new Error("Refresh token expired");
           this.emit("token-refresh-failed", expired);
           return yield* Effect.fail(
@@ -987,6 +1030,7 @@ export class AuthService extends EventEmitter {
     authState: AuthState | undefined,
     expectedRefreshToken?: string,
     signal?: AbortSignal,
+    clearLocalData?: () => void,
   ): Effect.Effect<boolean, AuthServiceFailure> {
     const write = Effect.gen({ self: this }, function* () {
       if (signal?.aborted || generation !== this.authGeneration) return false;
@@ -994,12 +1038,16 @@ export class AuthService extends EventEmitter {
         const latest = yield* this.getAuthState();
         if (latest?.refreshToken !== expectedRefreshToken) return false;
       }
-      yield* Effect.tryPromise({
-        try: () => updateSettingsSection("auth", authState),
+      return yield* Effect.tryPromise({
+        try: () =>
+          updateAuthSettings(
+            authState,
+            () => !signal?.aborted && generation === this.authGeneration,
+            clearLocalData,
+          ),
         catch: (cause) =>
           authFailure(cause, "Unable to update authentication state"),
       });
-      return !signal?.aborted && generation === this.authGeneration;
     });
     return this.authStateSemaphore.withPermits(1)(
       Effect.uninterruptible(write),

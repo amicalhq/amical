@@ -39,3 +39,10 @@ export type SettingsSyncAttemptError =
   | SettingsSyncScopeRejected;
 
 export type SettingsSyncLifecycleError = SettingsSyncDependencyFailure;
+
+export class SettingsSyncFlushFailed extends Data.TaggedError(
+  "SettingsSyncFlushFailed",
+)<{
+  message: string;
+  cause?: unknown;
+}> {}

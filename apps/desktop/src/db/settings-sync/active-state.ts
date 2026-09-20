@@ -25,10 +25,6 @@ export function notifyLocalSyncMutation(collection?: SyncCollection): void {
   localMutationHandler?.(collection);
 }
 
-export function resetActiveScopes(): void {
-  activeSyncScopes.clear();
-}
-
 export function activateScope(
   accountId: string,
   scopeType: SyncScopeType,

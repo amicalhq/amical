@@ -13,7 +13,6 @@ import {
 
 import {
   appSettings,
-  activityMaterializationState,
   activityOutbox,
   dictationStats,
   transcriptions,
@@ -25,7 +24,6 @@ import {
   stampTranscriptionDisposition,
 } from "../../src/db/transcriptions";
 import type { AuthService, AuthState } from "../../src/services/auth-service";
-import * as activityStore from "../../src/db/activity-outbox";
 import { logger } from "../../src/main/logger";
 import type { ActivityReportingClientError } from "../../src/services/activity-reporting-errors";
 import {
@@ -230,6 +228,76 @@ describe("ActivityReportingService", () => {
     expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
   });
 
+  it("flush waits for the current upload and drains settled rows without a summary", async () => {
+    let finishUpload!: () => void;
+    submit
+      .mockReturnValueOnce(
+        Effect.promise(
+          () =>
+            new Promise<void>((resolve) => {
+              finishUpload = resolve;
+            }),
+        ),
+      )
+      .mockReturnValue(Effect.void);
+    authenticate("user-1");
+    enqueue(activity());
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
+    await testDb.db.insert(transcriptions).values({
+      sessionId: ids[1],
+      disposition: "success",
+      text: "settled before logout",
+    });
+
+    let flushed = false;
+    const flushing = Effect.runPromise(service.flush()).then(() => {
+      flushed = true;
+    });
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+    expect(submit).toHaveBeenCalledOnce();
+    finishUpload();
+    await flushing;
+
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(submit.mock.calls[1][0][0].activityId).toBe(ids[1]);
+    expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
+    expect(readSummary).not.toHaveBeenCalled();
+  });
+
+  it.each(["offline", "timeout"])(
+    "flush retains pending activity on %s and can retry",
+    async (failure) => {
+      vi.useFakeTimers();
+      authenticate("user-1");
+      await vi.advanceTimersByTimeAsync(0);
+      await testDb.db.insert(transcriptions).values({
+        sessionId: ids[0],
+        disposition: "success",
+        text: "pending changes",
+      });
+      submit.mockReturnValueOnce(
+        failure === "timeout"
+          ? Effect.never
+          : Effect.fail(
+              new CloudNetworkFailure({ message: "offline", cause: null }),
+            ),
+      );
+      const flushing = Effect.runPromise(
+        service.flush().pipe(Effect.timeout(15_000), Effect.exit),
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(await flushing).toMatchObject({ _tag: "Failure" });
+      expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
+      expect(await testDb.db.select().from(transcriptions)).toHaveLength(1);
+
+      submit.mockReturnValue(Effect.void);
+      await Effect.runPromise(service.flush());
+      expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
+      expect(readSummary).not.toHaveBeenCalled();
+    },
+  );
+
   it("stages a new settlement during an upload before its history can be deleted", async () => {
     let finishUpload!: () => void;
     const uploading = new Promise<void>((resolve) => {
@@ -284,12 +352,6 @@ describe("ActivityReportingService", () => {
   it("finds a late completion on the next wake even without its settlement notification", async () => {
     submit.mockReturnValue(Effect.void);
     authenticate("user-1");
-    await vi.waitFor(async () => {
-      expect(
-        (await testDb.db.select().from(activityMaterializationState))[0]
-          ?.accountId,
-      ).toBe("user-1");
-    });
 
     await createProvisionalTranscription({ sessionId: ids[0]! });
     await testDb.db.insert(transcriptions).values({
@@ -442,33 +504,6 @@ describe("ActivityReportingService", () => {
     expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
   });
 
-  it("waits for account activation when its callback starts shutdown", async () => {
-    let finishActivation!: () => void;
-    let shutdown: Promise<void> | undefined;
-    let stopped = false;
-    vi.spyOn(
-      activityStore,
-      "activateActivityMaterializationAccount",
-    ).mockImplementationOnce(() => {
-      shutdown = Effect.runPromise(service.shutdown()).then(() => {
-        stopped = true;
-      });
-      return new Promise<"resume">((resolve) => {
-        finishActivation = () => resolve("resume");
-      });
-    });
-
-    authenticate("user-1");
-    await vi.waitFor(() => expect(shutdown).toBeDefined());
-    await Promise.resolve();
-    expect(stopped).toBe(false);
-
-    finishActivation();
-    await shutdown;
-    expect(stopped).toBe(true);
-    expect(submit).not.toHaveBeenCalled();
-  });
-
   it("retains a 403 until the authenticated token changes", async () => {
     authenticate("user-1");
     submit.mockReturnValueOnce(
@@ -496,7 +531,7 @@ describe("ActivityReportingService", () => {
     expect(submit).toHaveBeenCalledTimes(2);
   });
 
-  it("replays retained transcription history after an account switch", async () => {
+  it("does not replay reported transcription history after an account switch", async () => {
     await testDb.db.insert(transcriptions).values({
       sessionId: ids[0],
       disposition: "success",
@@ -509,8 +544,8 @@ describe("ActivityReportingService", () => {
     expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
 
     authenticate("user-2");
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
-    expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
+    await Effect.runPromise(service.flush());
+    expect(submit).toHaveBeenCalledOnce();
   });
 
   it("preserves consumed activity flags when the same account restarts", async () => {
@@ -525,9 +560,6 @@ describe("ActivityReportingService", () => {
     await vi.waitFor(async () => {
       expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
     });
-    expect(await testDb.db.select().from(activityMaterializationState)).toEqual(
-      [expect.objectContaining({ accountId: "user-1" })],
-    );
     expect(await testDb.db.select().from(transcriptions)).toEqual([
       expect.objectContaining({ activityPending: false }),
     ]);
@@ -562,28 +594,7 @@ describe("ActivityReportingService", () => {
     expect(interrupted).toBe(true);
   });
 
-  it("transfers a retryable pending row to the next authenticated account", async () => {
-    authenticate("user-1");
-    submit.mockReturnValueOnce(
-      Effect.fail(
-        new CloudNetworkFailure({
-          message: "network unavailable",
-          cause: new TypeError("network unavailable"),
-        }),
-      ),
-    );
-    enqueue(activity(ids[0]));
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
-    expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
-
-    submit.mockReturnValueOnce(Effect.void);
-    authenticate("user-2");
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
-    expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
-    expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
-  });
-
-  it("aborts an in-flight submission at logout and retries it for the next account", async () => {
+  it("aborts an in-flight submission before logout cleanup", async () => {
     let firstInterrupted = false;
     submit
       .mockImplementationOnce(() =>
@@ -604,13 +615,6 @@ describe("ActivityReportingService", () => {
     await auth.runBeforeLogoutHandlers();
     expect(firstInterrupted).toBe(true);
     expect(await testDb.db.select().from(activityOutbox)).toHaveLength(1);
-
-    authenticate("user-2");
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
-    expect(submit.mock.calls[1][0][0].activityId).toBe(ids[0]);
-    await vi.waitFor(async () => {
-      expect(await testDb.db.select().from(activityOutbox)).toEqual([]);
-    });
   });
 
   it("does not let a stale account completion remove an outbox-only row", async () => {
@@ -742,11 +746,6 @@ describe("ActivityReportingService", () => {
       ),
     );
     authenticate("user-1");
-    await vi.waitFor(() =>
-      expect(
-        testDb.db.select().from(activityMaterializationState).get()?.accountId,
-      ).toBe("user-1"),
-    );
     await new Promise((resolve) => setTimeout(resolve, 10));
     const item = activity();
     testDb.db

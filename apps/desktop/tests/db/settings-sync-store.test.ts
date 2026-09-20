@@ -15,10 +15,8 @@ import {
   applyPushResults,
   beginUserSyncSession,
   capturePushHeads,
-  clearSyncState,
   getPullCursors,
   pauseSyncSession,
-  prepareVisibleRowsForFullSync,
   recordLocalSyncMutation,
   type CanonicalSyncItem,
   type SyncContext,
@@ -28,6 +26,8 @@ import {
   createVocabularyWord,
   updateVocabulary,
 } from "../../src/db/vocabulary";
+import { updateSettingsSection } from "../../src/db/app-settings";
+import { clearUserData } from "../../src/db/user-data";
 import { createSnippet } from "../../src/db/snippets";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
@@ -154,13 +154,42 @@ describe("settings sync durable store", () => {
     expect(await database.select().from(syncOutbox)).toHaveLength(2);
   });
 
+  it("queues writes after login before the sync session starts", async () => {
+    clearUserData();
+    await updateSettingsSection("auth", {
+      isAuthenticated: true,
+      idToken: "id-token",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 60_000,
+      userInfo: { sub: "user-1" },
+    });
+    expect(await database.select().from(syncClientState)).toEqual([]);
+
+    const word = await createVocabularyWord({ word: "Amical" });
+    const snippet = await createSnippet({ trigger: "sig", content: "Regards" });
+    const imported = await bulkImportVocabulary([{ word: "Elgato" }]);
+    const pending = await database.select().from(syncOutbox);
+    expect(pending).toMatchObject([
+      { scopeId: "user-1", syncId: word.id, desiredSequence: 1 },
+      { scopeId: "user-1", syncId: snippet.id, desiredSequence: 2 },
+      { scopeId: "user-1", syncId: imported[0].id, desiredSequence: 3 },
+    ]);
+
+    const fence = await beginUserSyncSession("user-1", database);
+    await adoptVisibleRows(fence, database);
+    expect(await database.select().from(syncOutbox)).toEqual(pending);
+  });
+
   it("rolls back domain writes when sync mutation recording fails", async () => {
     await beginUserSyncSession("user-1", database);
-    database.delete(syncClientState).run();
+    testDb.db.$client.exec(
+      "CREATE TRIGGER fail_outbox BEFORE INSERT ON sync_outbox BEGIN SELECT RAISE(ABORT, 'outbox failed'); END;",
+    );
 
     await expect(
       createSnippet({ trigger: "sig", content: "Regards" }),
-    ).rejects.toThrow("Sync client state is missing");
+    ).rejects.toThrow("outbox failed");
 
     expect(await database.select().from(snippets)).toEqual([]);
     expect(await database.select().from(syncItemState)).toEqual([]);
@@ -184,112 +213,6 @@ describe("settings sync durable store", () => {
         desiredPayload: { word: "teh", replacement: null },
       }),
     ]);
-  });
-
-  it("keeps a stable identity when the server wins a signed-out key edit", async () => {
-    let fence = await beginUserSyncSession("user-1", database);
-    const syncId = "77777777-7777-4777-8777-777777777777";
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "server-key", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    const [row] = await database.select().from(snippets);
-
-    await clearSyncState(database);
-    await database
-      .update(snippets)
-      .set({ trigger: "local-key", content: "Local" })
-      .where(eq(snippets.id, row.id));
-
-    fence = await beginUserSyncSession("user-1", database);
-    await prepareVisibleRowsForFullSync(fence, database);
-    await adoptVisibleRows(fence, database);
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "server-key", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    expect(await database.select().from(syncOutbox)).toEqual([]);
-    expect(await database.select().from(snippets)).toEqual([
-      expect.objectContaining({
-        id: syncId,
-        trigger: "server-key",
-        content: "Server",
-      }),
-    ]);
-    expect((await database.select().from(syncItemState))[0]).toMatchObject({
-      syncId,
-      acceptedSyncVersion: 1,
-    });
-  });
-
-  it("lets the server win a same-key signed-out edit", async () => {
-    let fence = await beginUserSyncSession("user-1", database);
-    const syncId = "88888888-8888-4888-8888-888888888888";
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    const [row] = await database.select().from(snippets);
-
-    await clearSyncState(database);
-    await database
-      .update(snippets)
-      .set({ content: "Local" })
-      .where(eq(snippets.id, row.id));
-
-    fence = await beginUserSyncSession("user-1", database);
-    await prepareVisibleRowsForFullSync(fence, database);
-    await adoptVisibleRows(fence, database);
-    expect((await database.select().from(syncOutbox))[0]).toMatchObject({
-      syncId,
-      desiredBaseSyncVersion: null,
-      desiredPayload: { trigger: "sig", content: "Local" },
-    });
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    expect(await database.select().from(syncOutbox)).toEqual([]);
-    expect((await database.select().from(snippets))[0]).toMatchObject({
-      trigger: "sig",
-      content: "Server",
-    });
   });
 
   it("accepts a changed canonical payload at the same server version", async () => {
@@ -382,260 +305,6 @@ describe("settings sync durable store", () => {
       acceptedSyncVersion: 1,
       acceptedPayload: { trigger: "sig", content: "Canonical" },
     });
-  });
-
-  it("reuses the row ID after clearing the previous user's sync state", async () => {
-    const syncId = "99999999-9999-4999-8999-999999999999";
-    let fence = await beginUserSyncSession("user-2", database);
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 5,
-          payload: { trigger: "sig", content: "User 2" },
-        },
-      ],
-      5,
-      database,
-    );
-    const [row] = await database.select().from(snippets);
-
-    await clearSyncState(database);
-    fence = await beginUserSyncSession("user-1", database);
-    await database
-      .update(snippets)
-      .set({ content: "Visible device row" })
-      .where(eq(snippets.id, row.id));
-    await prepareVisibleRowsForFullSync(fence, database);
-    await adoptVisibleRows(fence, database);
-
-    const [pending] = await database.select().from(syncOutbox);
-    expect(pending).toMatchObject({
-      syncId,
-      desiredPayload: { trigger: "sig", content: "Visible device row" },
-      desiredBaseSyncVersion: null,
-    });
-    const [head] = await capturePushHeads(fence, database);
-    expect(head.headExpectedSyncVersion).toBeNull();
-    expect(head.syncId).toBe(row.id);
-    expect(await database.select().from(syncItemState)).toEqual([
-      expect.objectContaining({
-        syncId,
-        acceptedSyncVersion: null,
-      }),
-    ]);
-  });
-
-  it("lets the server restore a fresh-login deletion that was not pushed", async () => {
-    let fence = await beginUserSyncSession("user-1", database);
-    const syncId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    const [row] = await database.select().from(snippets);
-
-    await clearSyncState(database);
-    await database
-      .update(snippets)
-      .set({ content: "Signed out" })
-      .where(eq(snippets.id, row.id));
-
-    fence = await beginUserSyncSession("user-1", database);
-    await prepareVisibleRowsForFullSync(fence, database);
-    database.transaction((tx) => {
-      recordLocalSyncMutation(tx, "snippet", row.id, null);
-      tx.delete(snippets).where(eq(snippets.id, row.id)).run();
-    });
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-
-    expect(await database.select().from(snippets)).toEqual([
-      expect.objectContaining({
-        id: syncId,
-        trigger: "sig",
-        content: "Server",
-      }),
-    ]);
-    expect(await database.select().from(syncOutbox)).toEqual([]);
-  });
-
-  it("rebuilds fresh login work from the visible row after logout", async () => {
-    let fence = await beginUserSyncSession("user-1", database);
-    const syncId = "99999999-9999-4999-8999-999999999999";
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    const [row] = await database.select().from(snippets);
-    database.transaction((tx) => {
-      tx.update(snippets)
-        .set({ content: "Pending" })
-        .where(eq(snippets.id, row.id))
-        .run();
-      recordLocalSyncMutation(tx, "snippet", row.id, {
-        trigger: "sig",
-        content: "Pending",
-      });
-    });
-
-    await clearSyncState(database);
-    await database
-      .update(snippets)
-      .set({ content: "Latest" })
-      .where(eq(snippets.id, row.id));
-
-    fence = await beginUserSyncSession("user-1", database);
-    await prepareVisibleRowsForFullSync(fence, database);
-    await adoptVisibleRows(fence, database);
-    expect((await database.select().from(syncOutbox))[0]).toMatchObject({
-      syncId,
-      desiredPayload: { trigger: "sig", content: "Latest" },
-      desiredBaseSyncVersion: null,
-    });
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-
-    expect(await database.select().from(syncOutbox)).toEqual([]);
-    expect((await database.select().from(snippets))[0].content).toBe("Server");
-  });
-
-  it("discards a pending deletion on logout", async () => {
-    let fence = await beginUserSyncSession("user-1", database);
-    const syncId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    const [row] = await database.select().from(snippets);
-    database.transaction((tx) => {
-      tx.update(snippets)
-        .set({ content: "Pending" })
-        .where(eq(snippets.id, row.id))
-        .run();
-      recordLocalSyncMutation(tx, "snippet", row.id, {
-        trigger: "sig",
-        content: "Pending",
-      });
-    });
-
-    await clearSyncState(database);
-    await database.delete(snippets).where(eq(snippets.id, row.id));
-
-    fence = await beginUserSyncSession("user-1", database);
-    await prepareVisibleRowsForFullSync(fence, database);
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-
-    expect(await database.select().from(snippets)).toEqual([
-      expect.objectContaining({ id: syncId, content: "Server" }),
-    ]);
-    expect(await database.select().from(syncOutbox)).toEqual([]);
-  });
-
-  it("does not infer a tombstone from local absence after logout", async () => {
-    let fence = await beginUserSyncSession("user-1", database);
-    const syncId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-    const [row] = await database.select().from(snippets);
-
-    await clearSyncState(database);
-    await database.delete(snippets).where(eq(snippets.id, row.id));
-
-    fence = await beginUserSyncSession("user-1", database);
-    await prepareVisibleRowsForFullSync(fence, database);
-    await applyPullPage(
-      fence,
-      [
-        {
-          collection: "snippet",
-          syncId,
-          syncVersion: 1,
-          payload: { trigger: "sig", content: "Server" },
-        },
-      ],
-      1,
-      database,
-    );
-
-    expect(await database.select().from(snippets)).toEqual([
-      expect.objectContaining({ id: syncId, content: "Server" }),
-    ]);
-    expect(await database.select().from(syncOutbox)).toEqual([]);
   });
 
   it("freezes a head and chains a newer tail from that exact base", async () => {
@@ -1128,7 +797,7 @@ describe("settings sync durable store", () => {
     });
   });
 
-  it("ignores an old account response after sync state is reset", async () => {
+  it("ignores old responses and never adopts wiped rows into the next account", async () => {
     const [row] = await database
       .insert(snippets)
       .values({ trigger: "x", content: "device" })
@@ -1137,9 +806,16 @@ describe("settings sync durable store", () => {
     await adoptVisibleRows(userOne, database);
     const [oldHead] = await capturePushHeads(userOne, database);
 
-    await clearSyncState(database);
+    pauseSyncSession();
+    clearUserData();
     const userTwo = await beginUserSyncSession("user-2", database);
     await adoptVisibleRows(userTwo, database);
+    expect(await database.select().from(syncOutbox)).toEqual([]);
+    expect(await database.select().from(snippets)).toEqual([]);
+    const newRow = await createSnippet({
+      trigger: "x",
+      content: "New account",
+    });
 
     expect(
       await applyPushResults(
@@ -1161,7 +837,8 @@ describe("settings sync durable store", () => {
     expect(outboxes.map((pending) => pending.scopeId)).toEqual(["user-2"]);
     const [userTwoHead] = await capturePushHeads(userTwo, database);
     expect(userTwoHead.accountId).toBe("user-2");
-    expect(userTwoHead.syncId).toBe(oldHead.syncId);
+    expect(userTwoHead.syncId).toBe(newRow.id);
+    expect(newRow.id).not.toBe(row.id);
 
     const [client] = await database.select().from(syncClientState);
     const cursors = await database
@@ -1175,6 +852,6 @@ describe("settings sync durable store", () => {
         expect.objectContaining({ collection: "snippet", cursor: 0 }),
       ]),
     );
-    expect((await database.select().from(snippets))[0].id).toBe(row.id);
+    expect((await database.select().from(snippets))[0].id).toBe(newRow.id);
   });
 });

@@ -12,7 +12,10 @@ import type { AuthService } from "./auth-service";
 import { SettingsSyncClient } from "./settings-sync-client";
 import type { SyncClient } from "./settings-sync-runner";
 import { SettingsSyncSupervisor } from "./settings-sync-supervisor";
-import type { SettingsSyncLifecycleError } from "./settings-sync-errors";
+import type {
+  SettingsSyncFlushFailed,
+  SettingsSyncLifecycleError,
+} from "./settings-sync-errors";
 
 export class SettingsSyncService {
   private constructor(private readonly supervisor: SettingsSyncSupervisor) {}
@@ -80,6 +83,10 @@ export class SettingsSyncService {
 
   wake(): void {
     this.supervisor.wake();
+  }
+
+  flush(): Effect.Effect<void, SettingsSyncFlushFailed> {
+    return this.supervisor.flush();
   }
 
   shutdown(): Effect.Effect<void, SettingsSyncLifecycleError> {

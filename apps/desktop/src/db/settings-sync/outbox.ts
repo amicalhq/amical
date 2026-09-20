@@ -1,7 +1,8 @@
 import { NOTE_SYNC_LIMITS } from "@amical/types";
-import { and, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, eq, getTableColumns, gt, inArray, isNull } from "drizzle-orm";
 
 import { db } from "..";
+import { getUserDataAccountId } from "../user-data";
 import {
   notes,
   snippets,
@@ -26,20 +27,10 @@ import {
   permanentlyFailHead,
   setAcceptedState,
 } from "./canonical";
-import {
-  loadScopeSyncIndex,
-  loadVisibleRowIds,
-  snippetSyncPayload,
-  vocabularySyncPayload,
-} from "./domain";
+import { snippetSyncPayload, vocabularySyncPayload } from "./domain";
 import { enqueueLocalMutation } from "./mutations";
-import {
-  blockNoteMutation,
-  loadVisibleNoteIds,
-  notePayloadError,
-  noteSyncPayload,
-} from "./notes";
-import { itemWhere, outboxWhere, payloadsEqual, syncItemKey } from "./query";
+import { blockNoteMutation, notePayloadError, noteSyncPayload } from "./notes";
+import { itemWhere, outboxWhere } from "./query";
 import {
   PERSONAL_SCOPE_ID,
   type CapturedSyncHead,
@@ -55,8 +46,10 @@ export function recordLocalSyncMutation(
   syncId: string,
   payload: SyncPayload | null,
 ): void {
-  const identity = activeUserIdentity();
-  if (!identity) return;
+  const accountId =
+    activeUserIdentity()?.scopeId ?? getUserDataAccountId(database);
+  if (!accountId) return;
+  const identity = { scopeType: "user" as const, scopeId: accountId };
   enqueueLocalMutation(database, identity, collection, syncId, payload);
 }
 
@@ -85,28 +78,17 @@ function enqueueLocalSyncMutationsBulk(
   database: SyncDatabase,
   identity: { scopeType: SyncScopeType; scopeId: string },
   mutations: LocalSyncMutation[],
-  options: {
-    unversioned?: boolean;
-    onlyUnbound?: boolean;
-    visibleRowIds?: Record<SyncCollection, Set<string>>;
-  } = {},
 ): void {
   if (mutations.length === 0) return;
 
-  const visibleRowIds =
-    options.visibleRowIds ?? loadVisibleRowIds(database, identity);
-  const index = loadScopeSyncIndex(database, identity, visibleRowIds);
-
   for (const mutation of mutations) {
-    const itemKey = syncItemKey(mutation.collection, mutation.syncId);
-    if (options.onlyUnbound && index.sidecarByItem.has(itemKey)) continue;
     enqueueLocalMutation(
       database,
       identity,
       mutation.collection,
       mutation.syncId,
       mutation.payload,
-      { unversioned: options.unversioned, notify: false },
+      { notify: false },
     );
   }
 
@@ -117,96 +99,11 @@ export function recordLocalSyncMutations(
   database: SyncDatabase,
   mutations: LocalSyncMutation[],
 ): void {
-  const identity = activeUserIdentity();
-  if (!identity) return;
+  const accountId =
+    activeUserIdentity()?.scopeId ?? getUserDataAccountId(database);
+  if (!accountId) return;
+  const identity = { scopeType: "user" as const, scopeId: accountId };
   enqueueLocalSyncMutationsBulk(database, identity, mutations);
-}
-
-export async function prepareVisibleRowsForFullSync(
-  fence: SyncContext,
-  database: typeof db = db,
-): Promise<boolean> {
-  return database.transaction((tx) => {
-    if (!contextIsActive(fence)) return false;
-    if (fence.scopeType !== "user") return false;
-
-    const vocabularyRows = tx
-      .select()
-      .from(vocabulary)
-      .where(
-        and(
-          eq(vocabulary.scopeType, "user"),
-          eq(vocabulary.scopeId, PERSONAL_SCOPE_ID),
-        ),
-      )
-      .all();
-    const snippetRows = tx
-      .select()
-      .from(snippets)
-      .where(
-        and(
-          eq(snippets.scopeType, "user"),
-          eq(snippets.scopeId, PERSONAL_SCOPE_ID),
-        ),
-      )
-      .all();
-    const visibleRowIds = {
-      note: loadVisibleNoteIds(tx, fence),
-      vocabulary: new Set(vocabularyRows.map((row) => row.id)),
-      snippet: new Set(snippetRows.map((row) => row.id)),
-    } satisfies Record<SyncCollection, Set<string>>;
-    const index = loadScopeSyncIndex(tx, fence, visibleRowIds);
-    const identity = { scopeType: "user" as const, scopeId: fence.scopeId };
-    let enqueuedMutation = false;
-
-    const prepareRow = (
-      collection: SyncCollection,
-      syncId: string,
-      payload: SyncPayload,
-    ) => {
-      const itemKey = syncItemKey(collection, syncId);
-      const sidecar = index.sidecarByItem.get(itemKey);
-      if (!sidecar) return;
-      const pending = index.pendingByItem.get(itemKey);
-
-      if (pending && !payloadsEqual(payload, pending.desiredPayload)) {
-        enqueueLocalMutation(tx, identity, collection, syncId, payload, {
-          notify: false,
-        });
-        enqueuedMutation = true;
-      }
-    };
-
-    for (const row of vocabularyRows) {
-      prepareRow("vocabulary", row.id, vocabularySyncPayload(row));
-    }
-    for (const row of snippetRows) {
-      prepareRow("snippet", row.id, snippetSyncPayload(row));
-    }
-
-    for (const sidecar of index.sidecars) {
-      // Note CRUD already persists every edit/delete; account partitions survive logout.
-      if (sidecar.collection === "note") continue;
-      if (visibleRowIds[sidecar.collection].has(sidecar.syncId)) continue;
-      const pending = index.pendingByItem.get(
-        syncItemKey(sidecar.collection, sidecar.syncId),
-      );
-      if (pending?.desiredPayload === null) continue;
-      if (!pending && sidecar.acceptedPayload === null) continue;
-      enqueueLocalMutation(
-        tx,
-        identity,
-        sidecar.collection,
-        sidecar.syncId,
-        null,
-        { notify: false },
-      );
-      enqueuedMutation = true;
-    }
-
-    if (enqueuedMutation) notifyLocalSyncMutation();
-    return true;
-  });
 }
 
 export async function adoptVisibleRows(
@@ -223,22 +120,42 @@ export async function adoptVisibleRows(
       .run();
 
     const vocabularyRows = tx
-      .select()
+      .select(getTableColumns(vocabulary))
       .from(vocabulary)
+      .leftJoin(
+        syncItemState,
+        and(
+          eq(syncItemState.scopeType, "user"),
+          eq(syncItemState.scopeId, fence.scopeId),
+          eq(syncItemState.collection, "vocabulary"),
+          eq(syncItemState.syncId, vocabulary.id),
+        ),
+      )
       .where(
         and(
           eq(vocabulary.scopeType, "user"),
           eq(vocabulary.scopeId, PERSONAL_SCOPE_ID),
+          isNull(syncItemState.syncId),
         ),
       )
       .all();
     const snippetRows = tx
-      .select()
+      .select(getTableColumns(snippets))
       .from(snippets)
+      .leftJoin(
+        syncItemState,
+        and(
+          eq(syncItemState.scopeType, "user"),
+          eq(syncItemState.scopeId, fence.scopeId),
+          eq(syncItemState.collection, "snippet"),
+          eq(syncItemState.syncId, snippets.id),
+        ),
+      )
       .where(
         and(
           eq(snippets.scopeType, "user"),
           eq(snippets.scopeId, PERSONAL_SCOPE_ID),
+          isNull(syncItemState.syncId),
         ),
       )
       .all();
@@ -257,12 +174,22 @@ export async function adoptVisibleRows(
           payload: snippetSyncPayload(row),
         })),
         ...tx
-          .select()
+          .select(getTableColumns(notes))
           .from(notes)
+          .leftJoin(
+            syncItemState,
+            and(
+              eq(syncItemState.scopeType, "user"),
+              eq(syncItemState.scopeId, fence.scopeId),
+              eq(syncItemState.collection, "note"),
+              eq(syncItemState.syncId, notes.id),
+            ),
+          )
           .where(
             and(
               eq(notes.accountId, fence.accountId),
               eq(notes.contentFormat, "markdown-v1"),
+              isNull(syncItemState.syncId),
             ),
           )
           .all()
@@ -272,26 +199,25 @@ export async function adoptVisibleRows(
             payload: noteSyncPayload(row),
           })),
       ],
-      {
-        unversioned: true,
-        onlyUnbound: true,
-        visibleRowIds: {
-          note: loadVisibleNoteIds(tx, fence),
-          vocabulary: new Set(vocabularyRows.map((row) => row.id)),
-          snippet: new Set(snippetRows.map((row) => row.id)),
-        },
-      },
     );
 
     return true;
   });
 }
 
-export async function resetNoteUploadDelays(): Promise<void> {
-  db.update(syncOutbox)
+export async function resetNoteUploadDelays(): Promise<boolean> {
+  const result = db
+    .update(syncOutbox)
     .set({ desiredNotBefore: 0 })
-    .where(eq(syncOutbox.collection, "note"))
+    .where(
+      and(
+        eq(syncOutbox.collection, "note"),
+        gt(syncOutbox.desiredNotBefore, 0),
+        isNull(syncOutbox.blockedReason),
+      ),
+    )
     .run();
+  return result.changes > 0;
 }
 
 // During this run, unrelated sync wakes must still respect note edit deadlines.
