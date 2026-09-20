@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "electron";
+import { app, BrowserWindow } from "electron";
+import { EventEmitter } from "node:events";
 import { Effect } from "effect";
 import { sql } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
@@ -286,6 +287,34 @@ describe("logout sync and restart", () => {
     expect(app.quit).toHaveBeenCalledOnce();
   });
 
+  it("allows logout to quit even when editors try to prevent unloading", async () => {
+    const contents = [new EventEmitter(), new EventEmitter()];
+    const windows = contents.map((webContents) => ({
+      webContents,
+    })) as BrowserWindow[];
+    const getWindows = vi
+      .spyOn(BrowserWindow, "getAllWindows")
+      .mockReturnValue(windows);
+    const allowUnload = contents.map(() => vi.fn());
+    vi.mocked(app.quit).mockImplementationOnce(() => {
+      contents.forEach((webContents, index) => {
+        webContents.emit("will-prevent-unload", {
+          preventDefault: allowUnload[index],
+        });
+      });
+    });
+
+    try {
+      await logoutAndClearUserData(services);
+
+      expect(await getSettingsSection("auth")).toBeUndefined();
+      for (const allow of allowUnload) expect(allow).toHaveBeenCalledOnce();
+      expect(app.quit).toHaveBeenCalledOnce();
+    } finally {
+      getWindows.mockRestore();
+    }
+  });
+
   it.each(["notes", "app_settings"])(
     "retains the database and account if %s fails",
     async (table) => {
@@ -308,6 +337,7 @@ describe("logout sync and restart", () => {
       expect((await getSettingsSection("auth"))?.userInfo?.sub).toBe("alice");
       expect(app.quit).not.toHaveBeenCalled();
       expect(app.relaunch).not.toHaveBeenCalled();
+      expect(BrowserWindow.getAllWindows).not.toHaveBeenCalled();
     },
   );
 

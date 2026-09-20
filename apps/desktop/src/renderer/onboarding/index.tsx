@@ -1,4 +1,6 @@
 import { RequiredUpdateGate } from "@/components/required-update-gate";
+import { SessionExpiredDialog } from "@/components/session-expired-dialog";
+import { LogoutProvider } from "@/hooks/useLogout";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -52,7 +54,10 @@ const bootstrap = async () => {
             <QueryClientProvider client={queryClient}>
               <ThemeProvider>
                 <RequiredUpdateGate>
-                  <App />
+                  <LogoutProvider>
+                    <App />
+                    <SessionExpiredDialog />
+                  </LogoutProvider>
                 </RequiredUpdateGate>
                 <Toaster position="top-right" />
               </ThemeProvider>

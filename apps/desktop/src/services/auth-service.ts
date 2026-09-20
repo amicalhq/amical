@@ -431,7 +431,9 @@ export class AuthService extends EventEmitter {
       ) {
         return yield* Effect.fail(
           authFailure(
-            new Error("Log out before signing in to a different account"),
+            new Error(
+              `Please sign in with ${previous.userInfo.email || "your existing account"}, or log out first to switch accounts.`,
+            ),
             "Account change requires logout",
           ),
         );

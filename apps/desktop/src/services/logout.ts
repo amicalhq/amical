@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, BrowserWindow } from "electron";
 import { Effect } from "effect";
 import type { ServiceMap } from "../main/managers/service-manager";
 import { logger } from "../main/logger";
@@ -19,35 +19,33 @@ export function getLogoutStatus(): { hasPendingChanges: boolean } {
 export async function syncBeforeLogout(
   services: LogoutServices,
 ): Promise<{ synced: boolean }> {
-  return Effect.runPromise(
-    Effect.gen(function* () {
-      if (hasPendingUserData()) {
-        yield* Effect.all(
-          [
-            services.settingsSyncService.flush(),
-            services.activityReportingService.flush(),
-          ].map((work: Effect.Effect<void, unknown>) =>
-            work.pipe(
-              Effect.catchCause((cause) =>
-                Effect.sync(() => {
-                  logger.main.warn("Could not finish syncing before logout", {
-                    cause,
-                  });
-                }),
-              ),
-            ),
+  if (!hasPendingUserData()) return { synced: true };
+
+  await Effect.runPromise(
+    Effect.all(
+      [
+        services.settingsSyncService.flush(),
+        services.activityReportingService.flush(),
+      ].map((work: Effect.Effect<void, unknown>) =>
+        work.pipe(
+          Effect.catchCause((cause) =>
+            Effect.sync(() => {
+              logger.main.warn("Could not finish syncing before logout", {
+                cause,
+              });
+            }),
           ),
-          { concurrency: "unbounded" },
-        );
-      }
-      return { synced: !hasPendingUserData() };
-    }).pipe(
+        ),
+      ),
+      { concurrency: "unbounded" },
+    ).pipe(
       Effect.timeoutOrElse({
         duration: 15_000,
-        orElse: () => Effect.succeed({ synced: !hasPendingUserData() }),
+        orElse: () => Effect.void,
       }),
     ),
   );
+  return { synced: !hasPendingUserData() };
 }
 
 // Called only once the renderer has finished syncing or the user chose discard.
@@ -69,6 +67,13 @@ export async function logoutAndClearUserData(
     throw error;
   }
   await deleteAudioFilesForTranscriptions(audio);
+  // Explicit logout has already cleared local data. Editors must not veto
+  // this restart, but normal app.quit() cleanup should still run.
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.once("will-prevent-unload", (event) =>
+      event.preventDefault(),
+    );
+  }
   if (app.isPackaged && process.env.NODE_ENV !== "development") app.relaunch();
   app.quit();
   return { success: true };

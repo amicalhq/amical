@@ -488,9 +488,21 @@ describe("AuthService refresh fencing", () => {
     expect(authenticated).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    "requires explicit logout before another account signs in (expired: %s)",
-    async (expired) => {
+  it.each([
+    { expired: false, email: "user@example.com" },
+    { expired: true, email: "user@example.com" },
+    { expired: true, email: undefined },
+  ])(
+    "requires logout before switching accounts (expired: $expired, email: $email)",
+    async ({ expired, email }) => {
+      const onAuthError = vi.fn();
+      authService.on("auth-error", onAuthError);
+      const owner = (await getSettingsSection("auth"))!;
+      await updateSettingsSection("auth", {
+        ...owner,
+        userInfo: { ...owner.userInfo!, email },
+      });
+      const message = `Please sign in with ${email || "your existing account"}, or log out first to switch accounts.`;
       if (expired) await runAuthEffect(authService.logout(true));
       await runAuthEffect(authService.login());
       const pending = (
@@ -507,7 +519,8 @@ describe("AuthService refresh fencing", () => {
       });
       await expect(
         runAuthEffect(authService.handleAuthCallback("code", pending.state)),
-      ).rejects.toThrow("Log out before signing in to a different account");
+      ).rejects.toThrow(message);
+      expect(onAuthError).toHaveBeenCalledWith(new Error(message));
       expect((await getSettingsSection("auth"))?.userInfo?.sub).toBe("user-1");
     },
   );

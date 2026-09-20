@@ -1,4 +1,6 @@
 import { RequiredUpdateGate } from "@/components/required-update-gate";
+import { SessionExpiredDialog } from "@/components/session-expired-dialog";
+import { LogoutProvider } from "@/hooks/useLogout";
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -46,8 +48,11 @@ function AppShell() {
   return (
     <>
       <RequiredUpdateGate>
-        <Outlet />
-        <UpdatePrompt />
+        <LogoutProvider>
+          <Outlet />
+          <UpdatePrompt />
+          <SessionExpiredDialog />
+        </LogoutProvider>
       </RequiredUpdateGate>
       {process.env.NODE_ENV === "development" && (
         <TanStackRouterDevtools position="bottom-right" />

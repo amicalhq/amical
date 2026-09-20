@@ -12,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
-import { LogoutDialog } from "@/components/logout-dialog";
 import { useLogout } from "@/hooks/useLogout";
 
 // Helper function to generate initials from email or name
@@ -86,8 +85,12 @@ export function AuthButton() {
       clearLoadingTimeout();
       authStatusQuery.refetch();
       setIsLoading(false);
-      // Only show toast for actual authentication events, not initial state
-      if (data.eventType === "authenticated" && data.isAuthenticated) {
+      // Failed logout also emits authenticated to resume sync for the same session.
+      if (
+        data.eventType === "authenticated" &&
+        data.isAuthenticated &&
+        !authStatusQuery.data?.isAuthenticated
+      ) {
         toast.success("Signed in successfully");
       }
     },
@@ -147,14 +150,8 @@ export function AuthButton() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {!isAuthenticated && (
-              <DropdownMenuItem onClick={handleLogin} disabled={isBusy}>
-                <LogIn className="mr-2 h-4 w-4" />
-                Sign in again
-              </DropdownMenuItem>
-            )}
             <DropdownMenuItem
-              onClick={logout.requestLogout}
+              onClick={() => logout.requestLogout(accountButtonRef)}
               disabled={isBusy}
               className="text-destructive focus:text-destructive"
             >
@@ -167,14 +164,6 @@ export function AuthButton() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        {logout.dialogOpen && (
-          <LogoutDialog
-            returnFocusRef={accountButtonRef}
-            onOpenChange={logout.setDialogOpen}
-            onLogout={logout.confirmLogout}
-            isLoggingOut={logout.isLoggingOut}
-          />
-        )}
       </SidebarMenuItem>
     );
   }

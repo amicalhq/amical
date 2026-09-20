@@ -5,12 +5,13 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderComponent,
   screen,
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthButton } from "../../src/components/auth-button";
+import { LogoutProvider } from "../../src/hooks/useLogout";
 import { SignInScreen } from "../../src/renderer/onboarding/components/screens/SignInScreen";
 
 const mocks = vi.hoisted(() => ({
@@ -36,10 +37,15 @@ const mocks = vi.hoisted(() => ({
     }) => void;
   },
   toastError: vi.fn(),
+  toastSuccess: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
-  toast: { error: mocks.toastError, success: vi.fn(), info: vi.fn() },
+  toast: {
+    error: mocks.toastError,
+    success: mocks.toastSuccess,
+    info: vi.fn(),
+  },
 }));
 
 vi.mock("react-i18next", () => ({
@@ -94,6 +100,10 @@ vi.mock("@/trpc/react", () => ({
     },
   },
 }));
+
+function render(element: React.ReactElement) {
+  return renderComponent(element, { wrapper: LogoutProvider });
+}
 
 function deferredSync() {
   let resolve!: (result: { synced: boolean }) => void;
@@ -298,14 +308,38 @@ describe("logout dialog", () => {
     await startLogout();
     await waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
 
-    act(() => mocks.logoutCallbacks.onError(new Error("Could not clear data")));
+    act(() => {
+      // Failed logout resumes sync services without starting a new sign-in.
+      mocks.authCallbacks.onData({
+        eventType: "authenticated",
+        isAuthenticated: true,
+      });
+      mocks.logoutCallbacks.onError(new Error("Could not clear data"));
+    });
 
     expect(mocks.toastError).toHaveBeenCalledWith("Failed to sign out", {
       description: "Could not clear data",
     });
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     await startLogout();
     await waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(2));
+  });
+
+  it("announces successful sign-in when the previous session was unauthenticated", () => {
+    mocks.authStatus.isAuthenticated = false;
+    render(React.createElement(AuthButton));
+
+    act(() =>
+      mocks.authCallbacks.onData({
+        eventType: "authenticated",
+        isAuthenticated: true,
+      }),
+    );
+
+    expect(mocks.toastSuccess).toHaveBeenCalledExactlyOnceWith(
+      "Signed in successfully",
+    );
   });
 
   it("keeps logout busy across auth events while the restart is pending", async () => {
@@ -328,19 +362,5 @@ describe("logout dialog", () => {
       (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-  });
-
-  it("keeps sign-in-again available for an account with expired credentials", () => {
-    mocks.authStatus.isAuthenticated = false;
-    render(React.createElement(AuthButton));
-    fireEvent.keyDown(
-      screen.getByRole("button", { name: /user@example.com/ }),
-      {
-        key: "Enter",
-      },
-    );
-
-    expect(screen.getByText("Sign in again")).toBeTruthy();
-    expect(screen.getByText("Sign Out")).toBeTruthy();
   });
 });

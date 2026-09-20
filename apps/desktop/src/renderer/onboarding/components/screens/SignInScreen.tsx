@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import { LogoutDialog } from "@/components/logout-dialog";
 import { useLogout } from "@/hooks/useLogout";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, Loader2, Check, Mail } from "lucide-react";
@@ -122,7 +121,7 @@ export function SignInScreen({ onNext, onBack }: SignInScreenProps) {
             <button
               ref={switchAccountRef}
               type="button"
-              onClick={logout.requestLogout}
+              onClick={() => logout.requestLogout(switchAccountRef)}
               disabled={logout.isBusy}
               className="self-start py-1 text-[13px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
             >
@@ -154,14 +153,6 @@ export function SignInScreen({ onNext, onBack }: SignInScreenProps) {
           </>
         )}
       </div>
-      {logout.dialogOpen && (
-        <LogoutDialog
-          returnFocusRef={switchAccountRef}
-          onOpenChange={logout.setDialogOpen}
-          onLogout={logout.confirmLogout}
-          isLoggingOut={logout.isLoggingOut}
-        />
-      )}
     </OnboardingLayout>
   );
 }
