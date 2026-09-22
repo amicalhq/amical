@@ -25,13 +25,10 @@ describe("WindowManager widget z-order recovery", () => {
   it("restores always-on-top status whenever the Windows widget is shown", () => {
     const manager = createManager();
     let visible = false;
-    let alwaysOnTop = false;
     const showInactive = vi.fn(() => {
       visible = true;
     });
-    const setAlwaysOnTop = vi.fn((flag: boolean) => {
-      alwaysOnTop = flag;
-    });
+    const setAlwaysOnTop = vi.fn();
     Reflect.set(manager, "widgetWindow", {
       isDestroyed: vi.fn(() => false),
       isVisible: vi.fn(() => visible),
@@ -42,14 +39,12 @@ describe("WindowManager widget z-order recovery", () => {
     manager.showWidget();
 
     expect(showInactive).toHaveBeenCalledOnce();
-    expect(alwaysOnTop).toBe(true);
-    expect(setAlwaysOnTop).toHaveBeenCalledWith(true, "screen-saver");
+    expect(setAlwaysOnTop).toHaveBeenNthCalledWith(1, true, "screen-saver");
 
-    // Recover again if topmost status is lost while the widget stays visible.
-    alwaysOnTop = false;
+    // Reassert even when the widget is already visible.
     manager.showWidget();
 
-    expect(alwaysOnTop).toBe(true);
+    expect(setAlwaysOnTop).toHaveBeenNthCalledWith(2, true, "screen-saver");
     expect(setAlwaysOnTop).toHaveBeenCalledTimes(2);
   });
 

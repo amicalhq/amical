@@ -49,24 +49,44 @@ export class TrayManager {
     // Set tooltip
     this.tray.setToolTip(t("tray.tooltip"));
 
+    // Click and double-click can arrive before async window creation finishes.
+    let openingWindow = false;
+    const openWindow = async () => {
+      if (!this.windowManager || openingWindow) {
+        return;
+      }
+      openingWindow = true;
+      try {
+        logger.main.info("Open console requested from tray");
+        // During onboarding, focus the wizard instead of opening the main
+        // window beside it (same guard as activate / second-instance).
+        const onboardingWindow = this.windowManager.getOnboardingWindow();
+        if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+          if (onboardingWindow.isMinimized()) {
+            onboardingWindow.restore();
+          }
+          onboardingWindow.show();
+          onboardingWindow.focus();
+          return;
+        }
+        await this.windowManager.createOrShowMainWindow();
+      } catch (error) {
+        logger.main.error("Failed to open window from tray", error);
+      } finally {
+        openingWindow = false;
+      }
+    };
+
+    if (isWindows()) {
+      this.tray.on("click", openWindow);
+      this.tray.on("double-click", openWindow);
+    }
+
     // Create context menu
     const contextMenu = Menu.buildFromTemplate([
       {
         label: t("tray.openConsole"),
-        click: async () => {
-          logger.main.info("Open console requested from tray");
-          if (this.windowManager) {
-            // During onboarding, focus the wizard instead of opening the main
-            // window beside it (same guard as activate / second-instance).
-            const onboardingWindow = this.windowManager.getOnboardingWindow();
-            if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-              onboardingWindow.show();
-              onboardingWindow.focus();
-              return;
-            }
-            await this.windowManager.createOrShowMainWindow();
-          }
-        },
+        click: openWindow,
       },
       { type: "separator" as const },
       ...(isMacOS()

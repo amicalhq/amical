@@ -254,6 +254,9 @@ export class WindowManager extends EventEmitter {
    */
   async createOrShowMainWindow(initialRoute?: string): Promise<void> {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      if (this.mainWindow.isMinimized()) {
+        this.mainWindow.restore();
+      }
       this.mainWindow.show();
       this.mainWindow.focus();
       return;
