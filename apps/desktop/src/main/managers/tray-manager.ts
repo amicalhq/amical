@@ -102,7 +102,7 @@ export class TrayManager {
   private getIconPath(): string {
     // Use appropriate icon based on platform
     const iconName = isWindows()
-      ? "icon-256x256.png" // Windows uses standard icon
+      ? "tray.ico" // Windows uses a dedicated symbol at each display scale
       : "iconTemplate.png"; // macOS uses template naming convention
 
     if (app.isPackaged) {
