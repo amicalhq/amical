@@ -448,6 +448,10 @@ export function createRecordingLifecycle(
     ) {
       sessionWork.open(snapshot.sessionId);
       transcription.open(snapshot.sessionId);
+      transcription.setDraft(
+        snapshot.sessionId,
+        snapshot.metadata?.isDraft === true,
+      );
       traceDisposition = null;
       openSessionTrace(snapshot.sessionId, {});
       // Wedge watchdog: every stage is bounded, so a session outliving the

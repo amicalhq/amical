@@ -383,6 +383,68 @@ describe("recording lifecycle runtime", () => {
   });
 
   it.each([false, true])(
+    "sends instruct audio when the Draft chord is active at start=%s",
+    async (activeAtStart) => {
+      let draftChord = activeAtStart;
+      const h = makeHarness({ draftChord: () => draftChord });
+      const session = await h.startToRecording();
+      draftChord = true;
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+      await settle();
+
+      expect(h.lifecycle.getSnapshot().metadata?.isDraft).toBe(true);
+      expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: session, isInstruct: true }),
+      );
+
+      draftChord = false;
+      h.timers.fire(TUNING.pressWindowMs);
+      h.lifecycle.setPttLevel(false);
+      await settle();
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+      await settle();
+      expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: session, isInstruct: true }),
+      );
+    },
+  );
+
+  it("keeps instruct audio for re-dictation over a pending Draft and clears it after dismissal", async () => {
+    let draftChord = true;
+    const h = makeHarness({ draftChord: () => draftChord });
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    expect(h.lifecycle.getPendingDraft()).not.toBeNull();
+
+    draftChord = false;
+    const replacement = await h.startToRecording();
+    await h.lifecycle.handleAudioChunk(replacement, h.frames(0.5), false);
+    await settle();
+    expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: replacement, isInstruct: true }),
+    );
+
+    h.timers.fire(TUNING.pressWindowMs);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(replacement, h.frames(0.5), true);
+    await settle();
+    h.lifecycle.dismissDraft();
+
+    const dictation = await h.startToRecording();
+    await h.lifecycle.handleAudioChunk(dictation, h.frames(0.5), false);
+    await settle();
+    expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: dictation, isInstruct: false }),
+    );
+  });
+
+  it.each([false, true])(
     "draft review and Enter paste work with update required=%s",
     async (required) => {
       let updateRequired = false;
