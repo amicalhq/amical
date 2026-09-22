@@ -580,8 +580,7 @@ export class WindowManager extends EventEmitter {
   }
 
   /**
-   * Restore a visible widget's native ordering.
-   * Keep the visibility guard: moveTop() can show a hidden window on Windows.
+   * Restore a visible widget's always-on-top status and native ordering.
    */
   reassertWidgetZOrder(): void {
     if (
@@ -590,7 +589,7 @@ export class WindowManager extends EventEmitter {
       !this.widgetWindow.isDestroyed() &&
       this.widgetWindow.isVisible()
     ) {
-      this.widgetWindow.moveTop();
+      this.widgetWindow.setAlwaysOnTop(true, "screen-saver");
     }
   }
 

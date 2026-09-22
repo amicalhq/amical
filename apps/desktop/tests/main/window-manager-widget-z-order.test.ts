@@ -22,36 +22,50 @@ const createManager = () =>
   Object.create(WindowManager.prototype) as WindowManager;
 
 describe("WindowManager widget z-order recovery", () => {
-  it("moves a newly shown widget to the top on Windows", () => {
+  it("restores always-on-top status whenever the Windows widget is shown", () => {
     const manager = createManager();
-    const showInactive = vi.fn();
-    const moveTop = vi.fn();
+    let visible = false;
+    let alwaysOnTop = false;
+    const showInactive = vi.fn(() => {
+      visible = true;
+    });
+    const setAlwaysOnTop = vi.fn((flag: boolean) => {
+      alwaysOnTop = flag;
+    });
     Reflect.set(manager, "widgetWindow", {
       isDestroyed: vi.fn(() => false),
-      isVisible: vi.fn(() => true),
+      isVisible: vi.fn(() => visible),
       showInactive,
-      moveTop,
+      setAlwaysOnTop,
     });
 
     manager.showWidget();
 
     expect(showInactive).toHaveBeenCalledOnce();
-    expect(moveTop).toHaveBeenCalledOnce();
+    expect(alwaysOnTop).toBe(true);
+    expect(setAlwaysOnTop).toHaveBeenCalledWith(true, "screen-saver");
+
+    // Recover again if topmost status is lost while the widget stays visible.
+    alwaysOnTop = false;
+    manager.showWidget();
+
+    expect(alwaysOnTop).toBe(true);
+    expect(setAlwaysOnTop).toHaveBeenCalledTimes(2);
   });
 
-  it("moves only an existing visible widget to the top", () => {
+  it("restores always-on-top status only for an existing visible widget", () => {
     const manager = createManager();
-    const moveTop = vi.fn();
+    const setAlwaysOnTop = vi.fn();
     const widgetWindow = {
       isDestroyed: vi.fn(() => false),
       isVisible: vi.fn(() => true),
-      moveTop,
+      setAlwaysOnTop,
     };
     Reflect.set(manager, "widgetWindow", widgetWindow);
 
     manager.reassertWidgetZOrder();
 
-    expect(moveTop).toHaveBeenCalledOnce();
+    expect(setAlwaysOnTop).toHaveBeenCalledOnce();
 
     widgetWindow.isVisible.mockReturnValue(false);
     manager.reassertWidgetZOrder();
@@ -60,7 +74,7 @@ describe("WindowManager widget z-order recovery", () => {
     widgetWindow.isDestroyed.mockReturnValue(true);
     manager.reassertWidgetZOrder();
 
-    expect(moveTop).toHaveBeenCalledOnce();
+    expect(setAlwaysOnTop).toHaveBeenCalledOnce();
   });
 
   it("does not change z-order outside Windows", () => {
@@ -69,16 +83,16 @@ describe("WindowManager widget z-order recovery", () => {
       value: "darwin",
     });
     const manager = createManager();
-    const moveTop = vi.fn();
+    const setAlwaysOnTop = vi.fn();
     Reflect.set(manager, "widgetWindow", {
       isDestroyed: vi.fn(() => false),
       isVisible: vi.fn(() => true),
-      moveTop,
+      setAlwaysOnTop,
     });
 
     manager.reassertWidgetZOrder();
 
-    expect(moveTop).not.toHaveBeenCalled();
+    expect(setAlwaysOnTop).not.toHaveBeenCalled();
   });
 
   it("reasserts only after the notes window has closed", () => {
